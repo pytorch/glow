@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Kernels")
       .addMember(MemberType::VectorSizeT, "Strides")
       .addMember(MemberType::VectorSizeT, "Pads")
-      .addMember(MemberType::SizeT, "Group")
+      .addMember(MemberType::Unsigned, "Group")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "Bias"})
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Scale", OperandKind::Out)
-      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Unsigned, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Axis")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
@@ -366,8 +366,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Offsets")
-      .addMember(MemberType::SizeT, "Count")
-      .addMember(MemberType::SizeT, "Axis");
+      .addMember(MemberType::Unsigned, "Count")
+      .addMember(MemberType::Unsigned, "Axis");
 
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
@@ -452,7 +452,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .addOperand("Scratch", OperandKind::InOut)
-      .addMember(MemberType::SizeT, "K")
+      .addMember(MemberType::Unsigned, "K")
       .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 

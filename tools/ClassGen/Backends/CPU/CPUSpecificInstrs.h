@@ -31,7 +31,7 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addMember(MemberType::VectorSizeT, "Kernels")
     .addMember(MemberType::VectorSizeT, "Strides")
     .addMember(MemberType::VectorSizeT, "Pads")
-    .addMember(MemberType::SizeT, "Group")
+    .addMember(MemberType::Unsigned, "Group")
     .autoIRGen();
 
 BB.includeBackendSpecificVerification("glow/CPUSpecificInstrsVerification.h");

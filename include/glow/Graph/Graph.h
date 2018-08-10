@@ -199,22 +199,22 @@ public:
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               size_t depth, llvm::ArrayRef<size_t> kernels,
                               llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              llvm::ArrayRef<size_t> pads, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<size_t> kernels,
                               llvm::ArrayRef<size_t> strides,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              llvm::ArrayRef<size_t> pads, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               size_t depth, size_t kernel, size_t stride,
-                              size_t pad, size_t group);
+                              size_t pad, unsigned group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               size_t kernel, size_t stride, size_t pad,
-                              size_t group);
+                              unsigned group);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<size_t> kernels,
@@ -339,18 +339,18 @@ public:
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
-                                                   size_t channelIdx = 0,
+                                                   unsigned channelIdx = 0,
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
   BatchNormalizationNode *
   createBatchNormalization(llvm::StringRef name, NodeValue input,
                            NodeValue beta, NodeValue gamma, NodeValue mean,
-                           NodeValue var, size_t channelIdx = 0,
+                           NodeValue var, unsigned channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
   LocalResponseNormalizationNode *createLocalResponseNormalization(
-      llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
+      llvm::StringRef name, NodeValue input, unsigned halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -391,25 +391,25 @@ public:
   Node *createBatchMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
-                                               NodeValue batch, size_t axis);
+                                               NodeValue batch, unsigned axis);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                TypeRef outTy, NodeValue batch,
-                                               size_t axis);
+                                               unsigned axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
   /// a DivNode with a SplatNode of the length of the \p axis
   /// dimension. \returns the final DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, size_t axis);
+                                   NodeValue batch, unsigned axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
   /// SplatNode of the length of the \p axis dimension. \returns the final
   /// DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
-                                   size_t axis);
+                                   unsigned axis);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
@@ -462,7 +462,7 @@ public:
   IntLookupTableNode *createIntSigmoid(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy);
 
-  TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
+  TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned k);
 
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the

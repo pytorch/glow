@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorSizeT, "Kernels")
       .addMember(MemberType::VectorSizeT, "Strides")
       .addMember(MemberType::VectorSizeT, "Pads")
-      .addMember(MemberType::SizeT, "Group")
+      .addMember(MemberType::Unsigned, "Group")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs Convolution using a given Input, Filter, and "
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addInput("Mean")
       .addInput("Var")
-      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Input.getType()")
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Mean")
       .addInput("Var")
-      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Mean.getType()", "NewMean")
       .addResult("Var.getType()", "NewVar")
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Unsigned, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
@@ -266,7 +266,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Axis")
       .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
@@ -351,8 +351,8 @@ int main(int argc, char **argv) {
       .addInput("Big")
       .addInput("Small")
       .addMember(MemberType::VectorSizeT, "Start")
-      .addMember(MemberType::SizeT, "Count")
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Count")
+      .addMember(MemberType::Unsigned, "Axis")
       .addResult("Big.getType()")
       .setDocstring("Insert tensor Small into tensor Big given indices Start. "
                     "Small is inserted Count times along Axis. The resulting "
@@ -473,7 +473,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("TopK")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "K")
+      .addMember(MemberType::Unsigned, "K")
       .addResultFromCtorArg("Values")
       .addResultFromCtorArg("Indices")
       .setDocstring("Finds the top K maximal elements for each vector in the "

@@ -30,8 +30,8 @@ BB.newNode("OCLConvolution")
 
 BB.newNode("OCLAvgPool")
     .addInput("Input")
-    .addMember(MemberType::SizeT, "Kernel")
-    .addMember(MemberType::SizeT, "Stride")
+    .addMember(MemberType::Unsigned, "Kernel")
+    .addMember(MemberType::Unsigned, "Stride")
     .addMember(MemberType::VectorSizeT, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
@@ -41,8 +41,8 @@ BB.newNode("OCLAvgPool")
 
 BB.newNode("OCLMaxPool")
     .addInput("Input")
-    .addMember(MemberType::SizeT, "Kernel")
-    .addMember(MemberType::SizeT, "Stride")
+    .addMember(MemberType::Unsigned, "Kernel")
+    .addMember(MemberType::Unsigned, "Stride")
     .addMember(MemberType::VectorSizeT, "Pads")
     .addResultFromCtorArg()
     .setDocstring(
