@@ -30,9 +30,9 @@ kinds of fields that the Instruction has.
   BB.newInstr("AvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
