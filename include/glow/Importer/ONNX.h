@@ -89,7 +89,7 @@ public:
   /// Checks that the inputs tensors are compatible with the inputs declared in
   /// the ONNX model. The input tensors in \p tensors are stored with the names
   /// in the list of names \p tensorNames.
-  void checkInputs(onnx::GraphProto &net,
+  void checkInputs(ONNX_NAMESPACE::GraphProto &net,
                    llvm::ArrayRef<const char *> tensorNames,
                    llvm::ArrayRef<Tensor *> tensors);
 
