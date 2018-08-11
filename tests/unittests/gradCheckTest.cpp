@@ -169,36 +169,33 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatRELU) {
   performGradCheck(EE_, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
 }
 
-static void gradientCheckGroupConv(size_t numInputChan, size_t group,
+static void gradientCheckGroupConv(size_t depth, size_t group,
                                    ExecutionEngine &EE_) {
   size_t numDim = 10;
-  size_t numOutputElem = 10;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, numInputChan},
+      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, depth},
                          "A", VisibilityKind::Public, false);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numOutputElem}, "exp",
+  auto *Ex = mod.createVariable(ElemKind::FloatTy,
+                                {1, numDim + 1, numDim + 1, depth}, "exp",
                                 VisibilityKind::Public, false);
 
-  Node *O = F->createConv("conv", A, 4, 5, 1, 2, group);
-  O = F->createMaxPool("pool", O, 3, 3, 0);
-  O = F->createFullyConnected("fc", O, numOutputElem);
-  O = F->createRELU("relu", O);
+  Node *O = F->createConv("conv", A, depth, 2, 1, 1, group);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
-  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, numInputChan});
-  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, depth});
+  Tensor outputs(ElemKind::FloatTy, {1, numDim + 1, numDim + 1, depth});
 
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1, mod.getPRNG());
-  outputsH.initXavier(1, mod.getPRNG());
+  inputsH.randomize(-1, 1, mod.getPRNG());
+  outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, result, A, Ex, &inputs, &outputs, 0.001, 0.04);
 }
 
 TEST_P(GradCheck, gradientCheckConv) { gradientCheckGroupConv(1, 1, EE_); }
