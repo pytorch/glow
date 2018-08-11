@@ -915,6 +915,9 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
 
+      assert(CC->getGroup() == 1 &&
+             "Group Convolution is not supported by OpenCL backend.");
+
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(CC->getPads());
@@ -950,6 +953,9 @@ void OpenCLFunction::execute() {
     }
 
     if (auto *CG = dyn_cast<ConvolutionGradInst>(&I)) {
+      assert(CG->getGroup() == 1 &&
+             "Group Convolution is not supported by OpenCL backend.");
+
       auto *src = CG->getSrc();
       auto *filter = CG->getFilter();
       auto *destGrad = CG->getDestGrad();
