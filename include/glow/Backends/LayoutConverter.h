@@ -25,6 +25,9 @@ namespace glow {
 /// convolution nodes using NCHW.
 template <class NCHWConvNode>
 Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
+  assert(CN->getGroup() == 1 &&
+         "Group Convolution is not supported for NCHW layout.");
+
   // Convert filter and input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
   auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
