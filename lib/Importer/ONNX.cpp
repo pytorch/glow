@@ -41,7 +41,8 @@ using ArgumentDictionaryTy =
     std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
 /// Translates the protocol buffer node \p op into a random access map.
-static ArgumentDictionaryTy loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
+static ArgumentDictionaryTy
+loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict;
   for (auto i = 0, e = op.attribute_size(); i < e; i++) {
     const ONNX_NAMESPACE::AttributeProto &arg = op.attribute(i);
@@ -73,7 +74,8 @@ void ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
 }
 
 bool ONNXModelLoader::loadProto(
-    ONNX_NAMESPACE::GraphProto &net, google::protobuf::io::ZeroCopyInputStream &iStream) {
+    ONNX_NAMESPACE::GraphProto &net,
+    google::protobuf::io::ZeroCopyInputStream &iStream) {
   // Construct and configure a Coded Input Stream
   google::protobuf::io::CodedInputStream codedStream(&iStream);
 
@@ -87,8 +89,8 @@ bool ONNXModelLoader::loadProto(
   return parseNet;
 }
 
-bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net, const void *onnxModel,
-                                size_t onnxModelSize) {
+bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
+                                const void *onnxModel, size_t onnxModelSize) {
   google::protobuf::io::ArrayInputStream arrayStream(onnxModel, onnxModelSize);
   return loadProto(net, arrayStream);
 }

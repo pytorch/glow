@@ -32,7 +32,8 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
-  } else if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+  } else if (in.tensor_type().elem_type() ==
+             ONNX_NAMESPACE::TensorProto::INT64) {
     // TODO: either switch IndexTy to be 64 bit, or switch to another type here.
     T->reset(ElemKind::IndexTy, dim);
   } else {

@@ -175,12 +175,11 @@ static void gradientCheckGroupConv(size_t depth, size_t group,
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, depth},
-                         "A", VisibilityKind::Public, false);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy,
-                                {1, numDim + 1, numDim + 1, depth}, "exp",
-                                VisibilityKind::Public, false);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numDim, numDim, depth},
+                               "A", VisibilityKind::Public, false);
+  auto *Ex =
+      mod.createVariable(ElemKind::FloatTy, {1, numDim + 1, numDim + 1, depth},
+                         "exp", VisibilityKind::Public, false);
 
   Node *O = F->createConv("conv", A, depth, 2, 1, 1, group);
   O = F->createRegression("reg", O, Ex);
