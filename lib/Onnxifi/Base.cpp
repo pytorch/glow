@@ -17,6 +17,8 @@
 
 #include "glow/Importer/ONNXIFILoader.h"
 
+#include "llvm/ADT/SmallVector.h"
+
 namespace glow {
 namespace onnxifi {
 
@@ -55,15 +57,74 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
+  onnxNameToInputVar_ = loader->getInputVarsMapping();
+  onnxNameToOutputNode_ = loader->getOutputVarsMapping();
+
+  // Emit IR for the graph and compile it.
+  backendPtr_->getEE().compile(CompilationMode::Infer, function_);
+
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus Graph::run() { return ONNXIFI_STATUS_SUCCESS; }
+onnxStatus Graph::run() {
+  // Copy tensors from the input addresses to the Glow tensors.
+  llvm::SmallVector<Tensor *, 4> tensors;
+  llvm::SmallVector<Variable *, 4> vars;
+  for (auto inputVar : inputVarToBuffer_) {
+    auto *var = inputVar.first;
+    auto *type = var->getType();
+    void *inputBuffer = reinterpret_cast<void *>(inputVar.second);
+    tensors.push_back(new Tensor(inputBuffer, type));
+    vars.push_back(var);
+  }
+
+  // Run inference.
+  backendPtr_->getEE().run(vars, tensors);
+
+  // Copy outputs to the addresses specified in the outputNodeToBuffer_.
+  for (auto outputVar : outputNodeToBuffer_) {
+    void *outputAddress = reinterpret_cast<void *>(outputVar.second);
+    const Tensor &res = outputVar.first->getVariable()->getPayload();
+
+    memcpy(outputAddress, res.getUnsafePtr(),
+           res.size() * res.getType().getElementSize());
+  }
+
+  return ONNXIFI_STATUS_SUCCESS;
+}
 
 onnxStatus Graph::setIO(uint32_t inputsCount,
                         const onnxTensorDescriptorV1 *inputDescriptors,
                         uint32_t outputsCount,
                         const onnxTensorDescriptorV1 *outputDescriptors) {
+  // Process inputs.
+  for (unsigned i = 0; i < inputsCount; ++i) {
+    const auto &in = inputDescriptors[i];
+    // TODO: Fix this.
+    // This check is to avoid issues when weight is passed in input descriptors.
+    // The issue needs to be fixed on the caller side first. Once it is fixed
+    // we'd need to handle missing variable accordingly here, e.g., return
+    // ONNXIFI_STATUS_UNIDENTIFIED_NAME.
+    if (!onnxNameToInputVar_.count(in.name)) {
+      continue;
+    }
+
+    auto *input = onnxNameToInputVar_[in.name];
+    inputVarToBuffer_.insert({input, in.buffer});
+  }
+
+  // Process outputs.
+  for (unsigned i = 0; i < outputsCount; ++i) {
+    const auto &out = outputDescriptors[i];
+
+    if (!onnxNameToOutputNode_.count(out.name)) {
+      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    }
+
+    auto *output = onnxNameToOutputNode_[out.name];
+    outputNodeToBuffer_.insert({output, out.buffer});
+  }
+
   return ONNXIFI_STATUS_SUCCESS;
 }
 

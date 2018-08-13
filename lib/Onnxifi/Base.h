@@ -17,12 +17,16 @@
 #define GLOW_ONNXIFI_BASE_H
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Importer/ONNXIFILoader.h"
 
 #include "onnx/onnxifi.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace glow {
 namespace onnxifi {
@@ -85,21 +89,42 @@ public:
 
   BackendPtr backend() { return backendPtr_; }
 
-  /// InitGraph.
+  /// Init Glow graph based on the ONNX model \p onnxModel and
+  /// static trained weights \p weightDescriptors.
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors);
-  /// Set IO.
+
+  /// Setup Glow graph in preparation for the inference.
+  /// Set input memory addresses for inputs based on the \p inputDescriptors.
+  /// Set output memory addresses for outputs based on
+  /// the \p outputDescriptors.
   onnxStatus setIO(uint32_t inputsCount,
                    const onnxTensorDescriptorV1 *inputDescriptors,
                    uint32_t outputsCount,
                    const onnxTensorDescriptorV1 *outputDescriptors);
-  /// Run graph.
+
+  /// Run inference.
   onnxStatus run();
 
 private:
   BackendPtr backendPtr_;
   Function *function_;
+
+  /// Mapping between ONNX name for the input variable and Glow variable.
+  llvm::StringMap<Variable *> onnxNameToInputVar_;
+
+  /// Mapping between ONNX name for the output variable and Glow output
+  /// node.
+  llvm::StringMap<SaveNode *> onnxNameToOutputNode_;
+
+  /// Mapping between input var and the actual memory address.
+  /// Inputs will be read from these addresses.
+  llvm::DenseMap<Variable *, onnxPointer> inputVarToBuffer_;
+
+  /// Mapping between output var and the actual memory address.
+  /// Results must be written to these addresses.
+  llvm::DenseMap<SaveNode *, onnxPointer> outputNodeToBuffer_;
 };
 
 typedef Graph *GraphPtr;

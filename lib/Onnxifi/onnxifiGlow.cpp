@@ -279,7 +279,7 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
     onnxBackend backend, const uint64_t *auxPropertiesList,
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
-  if (!onnxModel || !weightDescriptors || !graph) {
+  if (!onnxModel || (!weightDescriptors && weightsCount) || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
   if (!onnxModelSize) {
@@ -302,18 +302,48 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
   return ONNXIFI_STATUS_SUCCESS;
 }
 
+static bool verifyDescriptors(uint32_t count,
+                              const onnxTensorDescriptorV1 *descriptors) {
+  for (unsigned i = 0; i < count; i++) {
+    const auto &descriptor = descriptors[i];
+    if (descriptor.tag != ONNXIFI_TAG_TENSOR_DESCRIPTOR_V1) {
+      return ONNXIFI_STATUS_UNSUPPORTED_TAG;
+    }
+
+    if (descriptor.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
+      return ONNXIFI_STATUS_INVALID_MEMORY_TYPE;
+    }
+
+    if (!descriptor.buffer) {
+      return ONNXIFI_STATUS_INVALID_MEMORY_LOCATION;
+    }
+  }
+
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
-  if (!inputDescriptors || !outputDescriptors) {
+  if ((!inputDescriptors && inputsCount) || !outputDescriptors) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
   auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
+  }
+
+  auto inputStatus = verifyDescriptors(inputsCount, inputDescriptors);
+  if (inputStatus != ONNXIFI_STATUS_SUCCESS) {
+    return inputStatus;
+  }
+
+  auto outputStatus = verifyDescriptors(outputsCount, outputDescriptors);
+  if (outputStatus != ONNXIFI_STATUS_SUCCESS) {
+    return outputStatus;
   }
 
   return glowGraph->setIO(inputsCount, inputDescriptors, outputsCount,

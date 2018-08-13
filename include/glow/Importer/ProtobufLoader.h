@@ -21,6 +21,7 @@
 #include "glow/Graph/Graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -99,7 +100,7 @@ protected:
   /// A list of weight tensors indexed by name.
   std::unordered_map<std::string, Tensor *> tensors_;
   /// A map from names of the external outputs of the network to SaveNodes.
-  std::unordered_map<std::string, SaveNode *> outputsByName_;
+  llvm::StringMap<SaveNode *> outputsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);

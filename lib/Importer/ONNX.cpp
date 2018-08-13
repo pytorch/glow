@@ -29,7 +29,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -457,7 +456,7 @@ bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   }
 
   for (int i = 0; i < net.output_size(); i++) {
-    auto &outputName = net.output(i).name();
+    const auto &outputName = net.output(i).name();
     auto r = getNodeValueByName(outputName);
     outputsByName_[outputName] = G_.createSave("save_" + outputName, r);
   }
