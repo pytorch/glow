@@ -21,6 +21,8 @@
 
 #include "glow/Importer/ONNX.h"
 
+#include "llvm/ADT/StringMap.h"
+
 namespace glow {
 namespace onnxifi {
 
@@ -36,7 +38,20 @@ private:
   bool loadWeights(uint32_t weightsCount,
                    const onnxTensorDescriptorV1 *weightDescriptors);
 
+  /// Mapping between ONNX names for inputs and actual Glow input vars.
+  llvm::StringMap<Variable *> onnxNameToInputVars_;
+
 public:
+  /// \returns mapping between ONNX names and actual Glow input vars.
+  const llvm::StringMap<Variable *> &getInputVarsMapping() const {
+    return onnxNameToInputVars_;
+  }
+
+  /// \returns mapping between ONNX names and actual Glow output nodes.
+  const llvm::StringMap<SaveNode *> &getOutputVarsMapping() const {
+    return outputsByName_;
+  }
+
   /// \returns unique pointer to ModelLoader if \p onnxModel can be parsed
   /// and static weights can be loaded from the \p wightDescriptors.
   /// \returns nullptr otherwise.

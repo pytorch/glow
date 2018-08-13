@@ -45,7 +45,9 @@ void ModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.input()) {
     Tensor *T = new Tensor();
     setTensorType(in.type(), T);
-    tensors_[in.name()] = T;
+    auto *var =
+        createAndRememberVariable(in.name(), *T, VisibilityKind::Public);
+    onnxNameToInputVars_.try_emplace(in.name(), var);
   }
 }
 
@@ -110,15 +112,16 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
     return nullptr;
   }
 
+  loader->loadInputs(modelDef);
+
   if (!loader->loadWeights(weightsCount, weightDescriptors)) {
     return nullptr;
   }
-  loader->loadInputs(modelDef);
 
   if (!loader->loadNetwork(modelDef)) {
     return nullptr;
   }
-  
+
   if (!loader->setOutputNodes(modelDef)) {
     return nullptr;
   }
