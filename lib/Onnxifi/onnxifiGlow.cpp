@@ -102,8 +102,7 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  auto *glowBackendId =
-      static_cast<glow::onnxifi::BackendIdPtr>(backendID);
+  auto *glowBackendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!glowBackendId) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -142,8 +141,7 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
     return ONNXIFI_STATUS_INVALID_SIZE;
   }
 
-  auto *glowBackendId =
-      static_cast<glow::onnxifi::BackendIdPtr>(backendID);
+  auto *glowBackendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!glowBackendId) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -247,9 +245,7 @@ onnxWaitEvent(onnxEvent event) {
 
 /// Query ONNXIFI event state without blocking.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-  onnxGetEventState(
-    onnxEvent event,
-    onnxEventState* state) {
+onnxGetEventState(onnxEvent event, onnxEventState *state) {
   if (!state) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -260,8 +256,9 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
 
-  *state = glowEvent->isSignalled() ? ONNXIFI_EVENT_STATE_SIGNALLED : ONNXIFI_EVENT_STATE_NONSIGNALLED;
-  return ONNXIFI_STATUS_SUCCESS; 
+  *state = glowEvent->isSignalled() ? ONNXIFI_EVENT_STATE_SIGNALLED
+                                    : ONNXIFI_EVENT_STATE_NONSIGNALLED;
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 /// Deinitialize an ONNXIFI event and release associated resources.

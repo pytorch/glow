@@ -35,7 +35,8 @@ namespace glow {
 
 /// Loads ONNX models.
 class ONNXModelLoader
-    : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto, ONNX_NAMESPACE::AttributeProto> {
+    : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
+                                  ONNX_NAMESPACE::AttributeProto> {
   /// Get the broadcast attribute based on different ONNX op versions.
   bool getBroadcast(const ArgumentDictionaryTy &dict) override;
 
