@@ -201,7 +201,9 @@ TEST_P(Operator, end2end) {
   // STEP1 - Generate the first network to record the quantization parameters.
   Function *F1 = createSimpleGraphForQuantization(mod, A, B, "main");
   Function *F2 = F1->clone("main2");
-  SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
+  SaveNode *SN1 =
+      cast<SaveNode>(F1->getNodeByName("save"));
+  Variable *result1Var = SN1->getVariable();  
 
   F1 = glow::profileQuantization(F1);
   interpreterEE.compile(CompilationMode::Infer, F1);
@@ -214,15 +216,17 @@ TEST_P(Operator, end2end) {
       quantization::generateNodeQuantizationInfos(F1);
 
   // STEP2 - Use the profile to quantize a network.
-  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+  SaveNode *SN2 =
+      cast<SaveNode>(F2->getNodeByName("save"));
+  Variable *result2Var = SN2->getVariable();
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run({}, {});
 
   // STEP3 - Compare the results of the original and quantized functions.
-  auto result1Handle = result1->getVariable()->getHandle();
-  auto result2Handle = result2->getVariable()->getHandle();
+  auto result1Handle = result1Var->getHandle();
+  auto result2Handle = result2Var->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
 
@@ -336,7 +340,9 @@ TEST_P(Quantization, end2endGRU) {
   auto *mod = &interpreterEE.getModule();
   Function *F1 = createGRUForQuantization(mod, "main");
   Function *F2 = F1->clone("main2");
-  SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
+  SaveNode *SN1 =
+      cast<SaveNode>(F1->getNodeByName("save"));
+  Variable *result1Var = SN1->getVariable();
 
   F1 = glow::profileQuantization(F1);
   interpreterEE.compile(CompilationMode::Infer, F1);
@@ -349,15 +355,17 @@ TEST_P(Quantization, end2endGRU) {
       quantization::generateNodeQuantizationInfos(F1);
 
   // STEP2 - Use the profile to quantize a network.
-  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+  SaveNode *SN2 =
+      cast<SaveNode>(F2->getNodeByName("save"));
+  Variable *result2Var = SN2->getVariable();
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run({}, {});
 
   // STEP3 - Compare the results of the original and quantized functions.
-  auto result1Handle = result1->getVariable()->getHandle();
-  auto result2Handle = result2->getVariable()->getHandle();
+  auto result1Handle = result1Var->getHandle();
+  auto result2Handle = result2Var->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
 

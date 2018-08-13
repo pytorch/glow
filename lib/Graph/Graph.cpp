@@ -265,11 +265,16 @@ void Module::dumpDAG(const char *dotFilename) {
 }
 
 void Module::eraseFunctions() {
-  for (auto *F : functions_) {
-    delete F;
+  while (!functions_.empty()) {
+    eraseFunction(*functions_.begin());
   }
+}
 
-  functions_.clear();
+void Module::eraseFunction(Function *F) {
+  auto it = std::find(functions_.begin(), functions_.end(), F);
+  assert(it != functions_.end() && "Function is not part of a module");
+  functions_.erase(it);
+  delete F;
 }
 
 Function::~Function() {

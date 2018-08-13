@@ -432,6 +432,9 @@ quantizeFunction(const ExecutionEngine &EE,
     }
   } while (nodeIt != stopIt);
 
+  // Erase the original function so that the redundant variables that are only 
+  // referenced by the original function will be removed.
+  F->getParent()->eraseFunction(F);
   return G;
 }
 

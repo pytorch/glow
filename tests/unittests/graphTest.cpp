@@ -387,6 +387,26 @@ TEST(Graph, NodeValue) {
       24);
 }
 
+/// Check that by deleting one function, the variables that refernced
+/// by this function, will reduce its number of uses by one.
+TEST(Graph, deleteFunction) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F1 = mod.createFunction("f1");
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
+                                    VisibilityKind::Public, true);
+  F1->createLog("log1", inputX);
+  Function *F2 = mod.createFunction("f2");
+  F2->createLog("log2", inputX);
+  // We check the number of user of inputX to be 2 as only F1 and F2 are 
+  // using it.
+  EXPECT_EQ(inputX->getNumUsers(), 2);
+  // Erase this function here to see if we can see the number of user of inputX
+  // reduce to 1.
+  mod.eraseFunction(F1);
+  EXPECT_EQ(inputX->getNumUsers(), 1);
+}
+
 TEST(Graph, nodesWithPredicates) {
   ExecutionEngine EE;
 
