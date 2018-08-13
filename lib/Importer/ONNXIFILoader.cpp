@@ -81,7 +81,7 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     llvm_unreachable("Only float and index tensors are supported");
   }
 
-  return false;
+  return true;
 }
 
 bool ModelLoader::loadWeights(uint32_t weightsCount,
