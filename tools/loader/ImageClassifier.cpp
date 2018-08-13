@@ -156,6 +156,10 @@ int main(int argc, char **argv) {
     i1 = LD.getVariableByName("data_0");
   }
 
+  // We want to have a way to reference the variable of SM node later, after 
+  // it is removed when we finish the quantization.
+  auto *SMVar = SM->getVariable();
+
   assert(i0->getVisibilityKind() == VisibilityKind::Public);
   assert(i1->getVisibilityKind() == VisibilityKind::Public);
 
@@ -168,7 +172,7 @@ int main(int argc, char **argv) {
     loader.runInference({i0, i1}, {&data, &data});
 
     // Print out the inferred image classification.
-    Tensor &res = SM->getVariable()->getPayload();
+    Tensor &res = SMVar->getPayload();
     auto H = res.getHandle<>();
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
     for (unsigned i = 0; i < inputImageFilenames.size(); i++) {

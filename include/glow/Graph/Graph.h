@@ -160,6 +160,9 @@ public:
 
   /// Erase all of the functions from the module.
   void eraseFunctions();
+
+  /// Erase a function \p F from the module.
+  void eraseFunction(Function *F);
 };
 
 /// Represents the compute graph.
