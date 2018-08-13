@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 
 #include "glow/Base/Traits.h"
@@ -33,6 +34,9 @@ class Function;
 class Node;
 class NodeWalker;
 struct NodeUse;
+template <bool is_const_iter> class NodeValueIteratorImpl;
+using NodeValueIterator = NodeValueIteratorImpl<false>;
+using NodeValueConstIterator = NodeValueIteratorImpl<true>;
 
 /// Unlike LLVM values, graph nodes may return multiple values as the result of
 /// a computation. Gradient-calculating nodes such as conv-grad return multiple
@@ -100,6 +104,15 @@ public:
       return resNo_ < O.resNo_;
     return (node_ < O.node_);
   }
+
+  /// Check if this NodeValue has exactly one use.
+  bool hasOneUse() const { return getNumUsers() == 1; }
+  /// Get the number of users of this NodeValue.
+  unsigned getNumUsers() const;
+
+  /// Get the list of users of this NodeValue.
+  llvm::iterator_range<NodeValueIterator> getUsers();
+  llvm::iterator_range<NodeValueConstIterator> getUsers() const;
 };
 
 /// A handle type for a NodeValue. This type should be used only by the
@@ -350,6 +363,82 @@ public:
 
   /// Dtor.
   virtual ~NodeWalker() = default;
+};
+
+/// Helper class to walk through the specific uses of a NodeValue.
+/// This class is built on top of the regular users-list (Node::getUsers)
+/// but filters out the uses that don't affect the desired NodeValue.
+template <bool is_const_iter = false>
+class NodeValueIteratorImpl
+    : public std::iterator<std::forward_iterator_tag, NodeUse> {
+public:
+  /// Base type of the iterator.
+  using iterator =
+      typename std::conditional<is_const_iter,
+                                std::list<NodeUse>::const_iterator,
+                                std::list<NodeUse>::iterator>::type;
+  /// Type of the NodeValue that this iterator is filtering for.
+  using NodeValueTy = typename std::conditional<is_const_iter, const NodeValue,
+                                                NodeValue>::type;
+  /// Type of the NodeUse that this iterator should return when dereferenced.
+  using NodeUseTy =
+      typename std::conditional<is_const_iter, const NodeUse, NodeUse>::type;
+
+private:
+  /// NodeValue that this iterator tracks.
+  NodeValueTy &parent_;
+  /// Actual iterator on the users-list.
+  /// \invariant if it_ points to a valid iterator, then the NodeValue it
+  /// references (via the NodeUse) is equal to parent_.
+  iterator it_;
+
+  /// Convenient method to get the end iterator of the users list that this
+  /// iterator walks.
+  iterator getEnd() const { return parent_.getNode()->getUsers().end(); }
+
+  /// Check if \p it_ points to a NodeUse that references \p parents_.
+  bool hasSameParent() const {
+    assert(it_ != getEnd() && "Cannot check invalid iterator");
+    // A users-list should be for one node.
+    // If this assert breaks, that means the input list is broken,
+    // or this iterator is not used as it was intended: to walk
+    // through a users-list.
+    assert(it_->get()->getNode() == parent_.getNode() &&
+           "Iterator points to a list with different parent?!");
+    return it_->get()->getResNo() == parent_.getResNo();
+  }
+
+public:
+  NodeValueIteratorImpl(NodeValueTy &parent, iterator it)
+      : parent_(parent), it_(it) {
+    if (it_ != getEnd() && !hasSameParent()) {
+      ++(*this);
+    }
+    assert((it_ == getEnd() || hasSameParent()) &&
+           "operator++ should return the next valid iterator");
+  }
+
+  /// Move to the next use of parent_.
+  NodeValueIteratorImpl &operator++() {
+    auto endIt = getEnd();
+    while (++it_ != endIt && !hasSameParent()) {
+    }
+    return *this;
+  }
+
+  NodeUseTy &operator*() {
+    assert(hasSameParent() && "Invalid iterator");
+    return *it_;
+  }
+
+  const NodeUseTy &operator*() const {
+    assert(hasSameParent() && "Invalid iterator");
+    return *it_;
+  }
+
+  bool operator!=(const NodeValueIteratorImpl &other) const {
+    return it_ != other.it_;
+  }
 };
 
 } // namespace glow
