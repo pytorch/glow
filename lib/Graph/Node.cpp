@@ -46,15 +46,35 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v) {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
-  auto &users = node_->getUsers();
-  llvm::SmallVector<NodeUse, 4> usersVec(users.begin(), users.end());
+  // Copy the list of users in a temporary vector since that list (and the
+  // underlying iterators) are going to be invalidated by the next loop.
+  auto nodeValueUsers = getUsers();
+  llvm::SmallVector<NodeUse, 4> usersVec(nodeValueUsers.begin(),
+                                         nodeValueUsers.end());
   for (auto &U : usersVec) {
     NodeHandle *site = U.get();
     assert(site->getNode() == node_ && "Invalid user");
-    if (site->getResNo() == getResNo()) {
-      site->setOperand(v.getNode(), v.getResNo());
-    }
+    assert(site->getResNo() == getResNo() && "Invalid list of uses");
+    site->setOperand(v.getNode(), v.getResNo());
   }
+}
+
+unsigned NodeValue::getNumUsers() const {
+  auto range = getUsers();
+  return std::distance(range.begin(), range.end());
+}
+
+llvm::iterator_range<NodeValueIterator> NodeValue::getUsers() {
+  auto &unfilteredUsers = getNode()->getUsers();
+  return llvm::make_range(NodeValueIterator(*this, unfilteredUsers.begin()),
+                          NodeValueIterator(*this, unfilteredUsers.end()));
+}
+
+llvm::iterator_range<NodeValueConstIterator> NodeValue::getUsers() const {
+  const auto &unfilteredUsers = getNode()->getUsers();
+  return llvm::make_range(
+      NodeValueConstIterator(*this, unfilteredUsers.begin()),
+      NodeValueConstIterator(*this, unfilteredUsers.end()));
 }
 
 void Node::setPredicate(const NodeValue &P) { predicate_ = P; }

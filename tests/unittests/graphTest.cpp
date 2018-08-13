@@ -21,6 +21,8 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
+
 #include "gtest/gtest.h"
 
 using namespace glow;
@@ -661,8 +663,24 @@ TEST(Graph, cmpOutputTypes) {
   EXPECT_EQ(cmpNode4->getResult().getType(), nqv3->getType());
 }
 
+/// Check that the users of value are equal to expectedUsers.
+static bool
+hasAllTheseUses(const llvm::SmallPtrSetImpl<const Node *> &expectedUsers,
+                const NodeValue &value) {
+  llvm::SmallPtrSet<const Node *, 4> uses;
+  for (const NodeUse &use : value.getUsers()) {
+    const Node *user = use.getUser();
+    if (!expectedUsers.count(user)) {
+      // We found a user that wasn't on the list.
+      return false;
+    }
+    uses.insert(user);
+  }
+  return expectedUsers.size() == uses.size();
+}
+
 /// Check that our uses lists are correct for nodes with multiple results.
-TEST(Graph, usesLists) {
+TEST(Graph, usesListsWithSeveralResult) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
@@ -674,38 +692,117 @@ TEST(Graph, usesLists) {
 
   NodeValue values = topK->getValues();
   NodeValue indices = topK->getIndices();
-  // Right now, we actually don't have a way to query the number
-  // of users for specific NodeValues.
-  // What we would really want to check here is indices.getNumUsers()
-  // (. instead of ->), but this API does not exist.
-  // As counter-intuitive this may be, both the following calls
-  // asks the number of users for topK.
-  // To add to the confusion, it is possible to use
-  // replaceAllUsesOfWith directly with an instance NodeValue and
-  // this would walk only the right uses.
-  EXPECT_EQ(indices.getNode()->getNumUsers(), 0);
-  EXPECT_EQ(values.getNode()->getNumUsers(), 0);
+  llvm::SmallPtrSet<const Node *, 4> savesOfValues;
+  llvm::SmallPtrSet<const Node *, 4> savesOfIndices;
+
+  EXPECT_EQ(indices.getNumUsers(), 0);
+  EXPECT_EQ(values.getNumUsers(), 0);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Now add a user to only one result of the topK node.
-  F->createSave("saveValues", values);
+  savesOfValues.insert(F->createSave("saveValues1", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 1);
 
   // Each result should have its own use list.
-  // FIXME: but right now they don't, we have to go through the node.
-  EXPECT_EQ(indices.getNode()->getNumUsers(),
-            1 /*we want a way to get 0 here*/);
-  EXPECT_EQ(values.getNode()->getNumUsers(), 1);
+  EXPECT_EQ(indices.getNumUsers(), 0);
+  EXPECT_EQ(values.getNumUsers(), 1);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_TRUE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add a user to the other result of the topK node.
-  F->createSave("saveIndices", indices);
+  savesOfIndices.insert(F->createSave("saveIndices1", indices));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 2);
 
   // Each result should have its own use list.
-  // FIXME: but right now they don't.
-  EXPECT_EQ(indices.getNode()->getNumUsers(), 2 /*should be 1*/);
-  EXPECT_EQ(values.getNode()->getNumUsers(), 2 /*should be 1*/);
+  EXPECT_EQ(indices.getNumUsers(), 1);
+  EXPECT_EQ(values.getNumUsers(), 1);
+
+  EXPECT_TRUE(indices.hasOneUse());
+  EXPECT_TRUE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add a couple more users of values and indices.
+  // Interleaves the insertions in the uses list for both values and indices.
+  savesOfValues.insert(F->createSave("saveValues2", values));
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfIndices.insert(F->createSave("saveIndices2", indices));
+
+  EXPECT_EQ(topK->getNumUsers(), 5);
+
+  EXPECT_EQ(indices.getNumUsers(), 2);
+  EXPECT_EQ(values.getNumUsers(), 3);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+}
+
+/// Check that our uses lists are correct when accessed through
+/// NodeValue.
+TEST(Graph, usesListsThroughNodeValues) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
+                                   VisibilityKind::Public, true);
+  auto *reLU = F->createRELU("reLU", input);
+  EXPECT_EQ(reLU->getNumUsers(), 0);
+
+  NodeValue values = reLU->getResult();
+  llvm::SmallPtrSet<const Node *, 4> savesOfValues;
+
+  EXPECT_EQ(values.getNumUsers(), 0);
+
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Now add a user to only one result of the reLU node.
+  savesOfValues.insert(F->createSave("saveValues1", values));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(reLU->getNumUsers(), 1);
+
+  // The NodeValue should match.
+  EXPECT_EQ(values.getNumUsers(), 1);
+  EXPECT_TRUE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add one more use.
+  savesOfValues.insert(F->createSave("saveValues2", values));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(reLU->getNumUsers(), 2);
+
+  EXPECT_EQ(values.getNumUsers(), 2);
+  EXPECT_FALSE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add a couple more users.
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfValues.insert(F->createSave("saveValues4", values));
+
+  EXPECT_EQ(reLU->getNumUsers(), 4);
+
+  EXPECT_EQ(values.getNumUsers(), 4);
+  EXPECT_FALSE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 }
