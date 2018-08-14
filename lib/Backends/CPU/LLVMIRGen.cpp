@@ -1674,13 +1674,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
-      auto *F = getFunction("pool_avg", dest->getElementType());
+      auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
                   destOffset, srcOffset, outPre, outPost, outScale});
       break;
     } else {
-      auto *F = getFunction("pool_avg", dest->getElementType());
+      auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
       break;
@@ -1700,7 +1700,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstArray(builder, PAG->getStrides());
     auto *pads = emitConstArray(builder, PAG->getPads());
 
-    auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
+    auto *F = getFunction("avg_pool_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
                 strides, pads});
