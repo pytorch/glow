@@ -99,20 +99,38 @@ std::string Variable::getDebugDesc() const {
 //                       Nodes verification
 //===----------------------------------------------------------------------===//
 
-/// Check that the type of the first operand matches the type of the second
-/// operand.
+/// Check that the type of the first operand \p A matches the type of the second
+/// operand \p B.
 static void checkSameType(NodeValue A, NodeValue B) {
   assert(A.getType() == B.getType() && "Invalid type");
 }
 
-/// Check that the shape of the first operand matches the shape of the second
-/// operand.
+/// Check that the shape of the first operand \p A matches the shape of the
+/// second operand \p B.
 static void checkSameShape(NodeValue A, NodeValue B) {
   assert(A.dims() == B.dims() && "Invalid shape");
 }
 
+/// Check that the element type of the operand \p A matches expected type \p
+/// expected Type.
 static void checkType(NodeValue A, ElemKind expectedType) {
   assert(A.getElementType() == expectedType && "Invalid type");
+}
+
+/// Check that the type of the first operand \p A matches the type of the second
+/// operand \p B but ignore the actual shape. Use only element type and
+/// quantization parameters in comparison.
+static void checkTypeIgnoreShape(NodeValue A, NodeValue B) {
+  assert(A.getElementType() == B.getElementType() && "Invalid element type");
+  assert(A.getType()->isQuantizedType() == B.getType()->isQuantizedType() &&
+         "Invalid mix of quantized and non quantized types");
+
+  if (A.getType()->isQuantizedType()) {
+    assert(A.getType()->getScale() == B.getType()->getScale() &&
+           "Invalid scale");
+    assert(A.getType()->getOffset() == B.getType()->getOffset() &&
+           "Invalid offset");
+  }
 }
 
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
@@ -179,6 +197,7 @@ static void verifyPool(NodeValue src, NodeValue dest,
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
+  checkTypeIgnoreShape(src, dest);
 }
 
 static void verifyBatchNormalization(NodeValue src, NodeValue dest,
