@@ -1600,7 +1600,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstArray(builder, PM->getStrides());
     auto *pads = emitConstArray(builder, PM->getPads());
 
-    auto *F = getFunction("pool_max", dest->getElementType());
+    auto *F = getFunction("max_pool", dest->getElementType());
     createCall(builder, F,
                {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
     break;
@@ -1621,7 +1621,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstArray(builder, PMXY->getStrides());
     auto *pads = emitConstArray(builder, PMXY->getPads());
 
-    auto *F = getFunction("pool_max_xy", dest->getElementType());
+    auto *F = getFunction("max_pool_xy", dest->getElementType());
     createCall(
         builder, F,
         {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernels, strides, pads});
@@ -1638,7 +1638,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
-    auto *F = getFunction("pool_max_xy_grad", srcGrad->getElementType());
+    auto *F = getFunction("max_pool_xy_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
     break;

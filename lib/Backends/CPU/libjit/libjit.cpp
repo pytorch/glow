@@ -454,7 +454,7 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
 }
 
 template <typename T>
-void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
+void libjit_max_pool_generic(const T *inW, T *outW, const size_t *inWdims,
                              const size_t *outWdims, size_t *filterSizes,
                              size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
@@ -506,7 +506,7 @@ void libjit_pool_max_generic(const T *inW, T *outW, const size_t *inWdims,
 }
 
 template <typename T>
-void libjit_pool_max_xy_generic(const T *inW, T *outW, size_t *inXY,
+void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
                                 const size_t *inWdims, const size_t *outWdims,
                                 size_t *kernels, size_t *strides,
                                 size_t *pads) {
@@ -938,34 +938,34 @@ void libjit_local_response_normalization_grad_f(
   }     // N
 }
 
-void libjit_pool_max_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
+void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
                         const size_t *outWdims, size_t *filterSizes,
                         size_t *strides, size_t *pads) {
-  libjit_pool_max_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
+  libjit_max_pool_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
                           pads);
 }
-void libjit_pool_max_f(const float *inW, float *outW, const size_t *inWdims,
+void libjit_max_pool_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t *filterSizes,
                        size_t *strides, size_t *pads) {
-  libjit_pool_max_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
+  libjit_max_pool_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
                           pads);
 }
 
-void libjit_pool_max_xy_i8(const int8_t *inW, int8_t *outW, size_t *inXY,
+void libjit_max_pool_xy_i8(const int8_t *inW, int8_t *outW, size_t *inXY,
                            const size_t *inWdims, const size_t *outWdims,
                            size_t *kernels, size_t *strides, size_t *pads) {
-  libjit_pool_max_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
+  libjit_max_pool_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
                              strides, pads);
 }
 
-void libjit_pool_max_xy_f(const float *inW, float *outW, size_t *inXY,
+void libjit_max_pool_xy_f(const float *inW, float *outW, size_t *inXY,
                           const size_t *inWdims, const size_t *outWdims,
                           size_t *kernels, size_t *strides, size_t *pads) {
-  libjit_pool_max_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
+  libjit_max_pool_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
                              strides, pads);
 }
 
-void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
+void libjit_max_pool_xy_grad_f(float *inG, const float *outG,
                                const size_t *inXY, const size_t *inGdims,
                                const size_t *outWdims) {
   // NHWC format is assumed
