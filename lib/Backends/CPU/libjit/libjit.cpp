@@ -994,7 +994,7 @@ void libjit_pool_max_xy_grad_f(float *inG, const float *outG,
   }       // N
 }
 
-void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
+void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
                         const size_t *outWdims, size_t *filterSizes,
                         size_t *strides, size_t *pads, int32_t outOffset,
                         int32_t inOffset, int32_t outPre, int32_t outPost,
@@ -1040,7 +1040,7 @@ void libjit_pool_avg_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
   }       // N
 }
 
-void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
+void libjit_avg_pool_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t *filterSizes,
                        size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
@@ -1084,7 +1084,7 @@ void libjit_pool_avg_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
-void libjit_pool_avg_grad_f(float *inG, const float *outG,
+void libjit_avg_pool_grad_f(float *inG, const float *outG,
                             const size_t *inGdims, const size_t *outWdims,
                             size_t *kernels, size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
