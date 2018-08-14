@@ -297,7 +297,7 @@ protected:
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
-    std::vector<unsigned> perm = getShape<unsigned>(dict[permArgName]);
+    std::vector<unsigned_t> perm = getShape<unsigned_t>(dict[permArgName]);
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
       size_t N = in.dims().size();
@@ -329,10 +329,10 @@ protected:
   void loadTopK(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    auto k = loadInt(dict["k"]);
+    unsigned_t k = loadInt(dict["k"]);
 
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
-    unsigned lastDim = in.dims().size() - 1;
+    unsigned_t lastDim = in.dims().size() - 1;
     if (axis == -1) {
       axis = lastDim;
     }

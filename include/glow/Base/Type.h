@@ -36,6 +36,12 @@ using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 
+/// This type is used to implement the Node and Instruction builder's
+/// MemberType::Unsigned and MemberType::VectorUnsigned. Thus it should be used
+/// when handling members of these classes, e.g. a convolution Node/Instr's
+/// getGroup() (Unsigned), or getKernels() (UnsignedVector).
+using unsigned_t = uint32_t;
+
 using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
@@ -148,15 +154,15 @@ struct ShapeHW {
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
 inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,
-                                            size_t n = 1) {
+                                            unsigned_t n = 1) {
   assert(1 <= n && n < dims.size());
   size_t first = dims[0];
-  for (size_t i = 1; i < n; i++) {
+  for (unsigned_t i = 1; i < n; i++) {
     first *= dims[i];
   }
 
   size_t rest = dims[n];
-  for (size_t i = n + 1; i < dims.size(); i++) {
+  for (unsigned_t i = n + 1; i < dims.size(); i++) {
     rest *= dims[i];
   }
 

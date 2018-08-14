@@ -232,9 +232,9 @@ TEST(Graph, simpleQuant) {
   auto *F = MD.createFunction("main");
 
   unsigned depth = 16;
-  llvm::SmallVector<unsigned, 2> kernels = {5, 5};
-  llvm::SmallVector<unsigned, 4> pads = {0, 0, 0, 0};
-  llvm::SmallVector<unsigned, 2> steps = {1, 1};
+  llvm::SmallVector<unsigned_t, 2> kernels = {5, 5};
+  llvm::SmallVector<unsigned_t, 4> pads = {0, 0, 0, 0};
+  llvm::SmallVector<unsigned_t, 2> steps = {1, 1};
   unsigned width = 224;
 
   auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
@@ -400,7 +400,7 @@ TEST(Graph, deleteFunction) {
   F1->createLog("log1", inputX);
   Function *F2 = mod.createFunction("f2");
   F2->createLog("log2", inputX);
-  // We check the number of user of inputX to be 2 as only F1 and F2 are 
+  // We check the number of user of inputX to be 2 as only F1 and F2 are
   // using it.
   EXPECT_EQ(inputX->getNumUsers(), 2);
   // Erase this function here to see if we can see the number of user of inputX

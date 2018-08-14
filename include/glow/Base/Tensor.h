@@ -37,7 +37,7 @@ template <class ElemTy> class Handle;
 class Tensor;
 
 void genericTranspose(Tensor *src, Tensor *dest,
-                      llvm::ArrayRef<unsigned> shuffle);
+                      llvm::ArrayRef<unsigned_t> shuffle);
 
 /// Helper function that \returns a ShapeVector of those dimensions in \p
 /// currDims expanded with dimension = 1 until the maximum tensor dimension is
@@ -352,7 +352,7 @@ public:
 
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
-  void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
+  void transpose(Tensor *dest, llvm::ArrayRef<unsigned_t> shuffle) {
     genericTranspose(this, dest, shuffle);
   }
 
