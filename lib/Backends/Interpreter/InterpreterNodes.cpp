@@ -39,8 +39,8 @@ void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<unsigned> filterSizes, llvm::ArrayRef<unsigned> strides,
-    llvm::ArrayRef<unsigned> pads, size_t group) {
+    llvm::ArrayRef<unsigned_t> filterSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group) {
 
   auto inW = getWeightHandle(inV);
   auto outW = getWeightHandle(outV);
@@ -105,8 +105,8 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 // This is the quantized i8 implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<unsigned> filterSizes, llvm::ArrayRef<unsigned> strides,
-    llvm::ArrayRef<unsigned> pads, size_t group) {
+    llvm::ArrayRef<unsigned_t> filterSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
@@ -198,9 +198,9 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 }
 
 void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  llvm::ArrayRef<unsigned> filterSizes = I->getKernels();
-  llvm::ArrayRef<unsigned> pads = I->getPads();
-  llvm::ArrayRef<unsigned> strides = I->getStrides();
+  auto filterSizes = I->getKernels();
+  auto pads = I->getPads();
+  auto strides = I->getStrides();
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
@@ -222,9 +222,6 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
   auto filterG = getWeightHandle(I->getFilterGrad());
   auto biasG = getWeightHandle(I->getBiasGrad());
 
-  llvm::ArrayRef<unsigned> filterSizes = I->getKernels();
-  llvm::ArrayRef<unsigned> pads = I->getPads();
-  llvm::ArrayRef<unsigned> strides = I->getStrides();
   size_t group = I->getGroup();
 
   inG.clear();
@@ -233,9 +230,9 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 
   ShapeNHWC odim(outG.dims());
   ShapeNHWC idim(inW.dims());
-  ShapeHW kdim(filterSizes);
-  ShapeHW sdim(strides);
-  PaddingTLBR pdim(pads);
+  ShapeHW kdim(I->getKernels());
+  ShapeHW sdim(I->getStrides());
+  PaddingTLBR pdim(I->getPads());
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
@@ -294,9 +291,9 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //===----------------------------------------------------------------------===//
 template <class T>
 static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
-                       llvm::ArrayRef<unsigned> filterSizes,
-                       llvm::ArrayRef<unsigned> strides,
-                       llvm::ArrayRef<unsigned> pads) {
+                       llvm::ArrayRef<unsigned_t> filterSizes,
+                       llvm::ArrayRef<unsigned_t> strides,
+                       llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC odim(outW->dims());
   ShapeNHWC idim(inW->dims());
   Handle<T> inHandle = inW->getHandle<T>();
@@ -743,7 +740,7 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
-  unsigned batchDims = I->getBatchDims();
+  unsigned_t batchDims = I->getBatchDims();
 
   size_t out_p = 0;
   unsigned elementSize = dataTy.getElementSize();
@@ -812,7 +809,7 @@ void InterpreterFunction::fwdLocalResponseNormalizationInst(
   // depth of 1.
   assert(idim.c > 0 && "Input of LRN node must have a minimum depth of 1");
 
-  auto halfWindowSize = I->getHalfWindowSize();
+  auto halfWindowSize = (size_t)I->getHalfWindowSize();
   auto k = I->getK();
   auto beta = I->getBeta();
   auto windowSize = 2 * halfWindowSize + 1;

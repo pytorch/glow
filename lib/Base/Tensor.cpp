@@ -195,7 +195,7 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 template <class ElemTy>
 static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  size_t *srcCoor, size_t *destCoor,
-                                 llvm::ArrayRef<unsigned> shuffle,
+                                 llvm::ArrayRef<unsigned_t> shuffle,
                                  unsigned depth = 0) {
   if (depth == shuffle.size()) {
     auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
@@ -206,7 +206,7 @@ static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 
   // Iterate over one dimension and continue recursively to the next dim.
   for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
-    unsigned swizzledDepth = shuffle[depth];
+    unsigned_t swizzledDepth = shuffle[depth];
     srcCoor[swizzledDepth] = x;
     destCoor[depth] = x;
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
@@ -220,7 +220,7 @@ static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
 template <class ElemTy>
 static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                 llvm::ArrayRef<unsigned> shuffle) {
+                                 llvm::ArrayRef<unsigned_t> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[max_tensor_dimensions];
   size_t destCoorArr[max_tensor_dimensions] = {0};
@@ -255,7 +255,7 @@ static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 
 template <class ElemTy>
 static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                llvm::ArrayRef<unsigned> shuffle) {
+                                llvm::ArrayRef<unsigned_t> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
     size_t srcCoor[max_tensor_dimensions];
@@ -296,7 +296,7 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
 void glow::dumpImpl(Tensor *T) { dumpImpl(T, llvm::outs()); }
 
 void glow::genericTranspose(Tensor *src, Tensor *dest,
-                            llvm::ArrayRef<unsigned> shuffle) {
+                            llvm::ArrayRef<unsigned_t> shuffle) {
   assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
 
   size_t newSizes[max_tensor_dimensions];

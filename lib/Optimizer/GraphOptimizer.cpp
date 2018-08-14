@@ -111,8 +111,8 @@ static void DCE(Function *F) {
 /// \returns true if the masks \p shuffle1 and shuffle2 are
 /// the inverse of on another. Applying both masks should result in the identity
 /// shuffle.
-static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
-                              llvm::ArrayRef<unsigned> shuffle2) {
+static bool isIdentityShuffle(llvm::ArrayRef<unsigned_t> shuffle1,
+                              llvm::ArrayRef<unsigned_t> shuffle2) {
 
   if (shuffle1.size() != shuffle2.size()) {
     return false;
@@ -120,7 +120,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 
   // Check if the combined masks are the identity mask.
   for (unsigned i = 0, e = shuffle1.size(); i < e; i++) {
-    unsigned idx = shuffle2[shuffle1[i]];
+    unsigned_t idx = shuffle2[shuffle1[i]];
     if (idx != i) {
       return false;
     }
@@ -232,8 +232,8 @@ static bool sinkCode(Function *F) {
 
       // Figure out where we transposed the channel index for batch
       // normalization.
-      unsigned idx = BN->getChannelIdx();
-      unsigned newChannelIdx = TR->getShuffle()[idx];
+      unsigned_t idx = BN->getChannelIdx();
+      unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
       auto *NewBN = F->createBatchNormalization(
           BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
@@ -429,8 +429,8 @@ static bool sinkCode(Function *F) {
 
       // Figure out where we transposed the channel index for batch
       // normalization.
-      unsigned idx = CN->getDim();
-      unsigned newChannelIdx = L->getShuffle()[idx];
+      unsigned_t idx = CN->getDim();
+      unsigned_t newChannelIdx = L->getShuffle()[idx];
 
       auto *newCN = F->createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
@@ -568,7 +568,7 @@ static void mergeMatMul(Function *F) {
 /// \returns True if the two slices \p A and \p B access consecutive spacial
 /// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50) are
 /// consecutive but Slice(0..10) Slice(20..30) are not.
-static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
+static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   // The slices must extract from the same input.
   if (A->getInput().getNode() != B->getInput().getNode()) {
     return false;
@@ -613,7 +613,7 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
 /// \returns True if a group of slices that span the whole input was found. The
 /// order of the slices is recorded in \p order.
 static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
-                                    unsigned dimension,
+                                    unsigned_t dimension,
                                     std::vector<SliceNode *> &order) {
   // This is the 'last' slice to be found in the sequence of slices.
   SliceNode *lastSlice = nullptr;
@@ -907,7 +907,7 @@ static void optimizeBatchNorm(Function *F) {
 /// \returns true if all dimensions of the \p input tensors are the same except
 /// for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
-                                       size_t dimension) {
+                                       unsigned_t dimension) {
   for (size_t i = 1; i < inputs.size(); i++) {
     for (size_t j = 0; j < inputs[0].dims().size(); j++) {
       if (j == dimension) {

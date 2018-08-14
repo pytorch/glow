@@ -1112,7 +1112,7 @@ void OpenCLFunction::execute() {
       // TODO: support any dimensional transposes.
       std::vector<size_t> odim_vec = TR->getDest()->getType()->dims();
       std::vector<size_t> idim_vec = TR->getSrc()->getType()->dims();
-      std::vector<unsigned> mask = TR->getShuffle();
+      std::vector<unsigned_t> mask = TR->getShuffle();
       while (mask.size() < 4) {
         odim_vec.push_back(1);
         idim_vec.push_back(1);
@@ -1158,7 +1158,7 @@ void OpenCLFunction::execute() {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
-      unsigned batchDims = GI->getBatchDims();
+      unsigned_t batchDims = GI->getBatchDims();
 
       auto *data = GI->getData();
 

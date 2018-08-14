@@ -107,8 +107,8 @@ public:
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
 inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
-    size_t sx, size_t sy, llvm::ArrayRef<unsigned> kernels,
-    llvm::ArrayRef<unsigned> strides, llvm::ArrayRef<unsigned> pads) {
+    size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);

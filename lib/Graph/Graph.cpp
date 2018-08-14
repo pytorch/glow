@@ -391,10 +391,10 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       size_t depth,
-                                      llvm::ArrayRef<unsigned> kernels,
-                                      llvm::ArrayRef<unsigned> strides,
-                                      llvm::ArrayRef<unsigned> pads,
-                                      unsigned group) {
+                                      llvm::ArrayRef<unsigned_t> kernels,
+                                      llvm::ArrayRef<unsigned_t> strides,
+                                      llvm::ArrayRef<unsigned_t> pads,
+                                      unsigned_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -436,9 +436,9 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
-                           llvm::ArrayRef<unsigned> kernels,
-                           llvm::ArrayRef<unsigned> strides,
-                           llvm::ArrayRef<unsigned> pads, unsigned group) {
+                           llvm::ArrayRef<unsigned_t> kernels,
+                           llvm::ArrayRef<unsigned_t> strides,
+                           llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -462,10 +462,10 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy,
-                                      llvm::ArrayRef<unsigned> kernels,
-                                      llvm::ArrayRef<unsigned> strides,
-                                      llvm::ArrayRef<unsigned> pads,
-                                      unsigned group) {
+                                      llvm::ArrayRef<unsigned_t> kernels,
+                                      llvm::ArrayRef<unsigned_t> strides,
+                                      llvm::ArrayRef<unsigned_t> pads,
+                                      unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
@@ -474,30 +474,30 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
-                                      TypeRef outTy, unsigned kernel,
-                                      unsigned stride, unsigned pad,
-                                      unsigned group) {
-  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
+                                      TypeRef outTy, unsigned_t kernel,
+                                      unsigned_t stride, unsigned_t pad,
+                                      unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
                     group);
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth, unsigned kernel,
-                                      unsigned stride, unsigned pad,
-                                      unsigned group) {
-  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
+                                      size_t depth, unsigned_t kernel,
+                                      unsigned_t stride, unsigned_t pad,
+                                      unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(name, input, depth, kernels, strides, pads, group);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<unsigned> kernels,
-                                     llvm::ArrayRef<unsigned> strides,
-                                     llvm::ArrayRef<unsigned> pads) {
+                                     llvm::ArrayRef<unsigned_t> kernels,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -516,18 +516,18 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
-                                     unsigned kernel, unsigned stride,
-                                     unsigned pad) {
-  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
+                                     unsigned_t kernel, unsigned_t stride,
+                                     unsigned_t pad) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createMaxPool(name, input, kernels, strides, pads);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<unsigned> kernels,
-                                     llvm::ArrayRef<unsigned> strides,
-                                     llvm::ArrayRef<unsigned> pads) {
+                                     llvm::ArrayRef<unsigned_t> kernels,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
@@ -546,11 +546,11 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
-                                     unsigned kernel, unsigned stride,
-                                     unsigned pad) {
-  llvm::SmallVector<unsigned, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned, 2> kernels = {kernel, kernel};
+                                     unsigned_t kernel, unsigned_t stride,
+                                     unsigned_t pad) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createAvgPool(name, input, kernels, strides, pads);
 }
 
@@ -647,7 +647,7 @@ ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
 }
 
 TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
-                                         llvm::ArrayRef<unsigned> shuffle) {
+                                         llvm::ArrayRef<unsigned_t> shuffle) {
   ShapeVector shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -660,7 +660,7 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
 
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                 llvm::ArrayRef<size_t> newShape,
-                                unsigned axis) {
+                                unsigned_t axis) {
   const auto &origDims = input.dims();
 
   assert(axis + origDims.size() <= newShape.size() &&
@@ -739,7 +739,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
-                                   unsigned dimension) {
+                                   unsigned_t dimension) {
   for (int i = 1, e = inputs.size(); i < e; i++) {
     assert(sameSameShapeExceptDim(inputs[i].getType(), inputs[0].getType(),
                                   dimension) &&
@@ -768,7 +768,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
-                                   unsigned dimension, TypeRef outTy) {
+                                   unsigned_t dimension, TypeRef outTy) {
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto I : inputs) {
@@ -780,7 +780,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 }
 
 InsertTensorNode *Function::createTile(llvm::StringRef name, NodeValue input,
-                                       unsigned tiles, unsigned axis) {
+                                       unsigned_t tiles, unsigned_t axis) {
   assert(tiles > 0 && "Tiles must be non-zero.");
   assert(axis >= 0 && axis < input.dims().size() &&
          "Axis must fall in range of source dims.");
@@ -853,7 +853,7 @@ Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
   dims.insert(dims.begin() + kernel, group);
   Node *R1 = createReshape(name.str() + ".reshape1", input, dims);
 
-  std::vector<unsigned> transpose(dims.size());
+  std::vector<unsigned_t> transpose(dims.size());
   for (size_t i = 0; i < transpose.size(); i++)
     transpose[i] = i;
   std::swap(transpose[kernel], transpose[kernel + 1]);
@@ -931,13 +931,13 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 }
 
 ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
-                                     size_t axis) {
+                                     unsigned_t axis) {
   auto xDim = flattenCdr(input.getType()->dims(), axis);
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 
 void Function::createSplit(llvm::StringRef name, NodeValue input,
-                           size_t outputNum, size_t axis,
+                           unsigned_t outputNum, unsigned_t axis,
                            llvm::ArrayRef<size_t> split,
                            std::vector<Node *> &outputs) {
   auto inDims = input.dims();
@@ -966,11 +966,10 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
          "Total size of results must be equal to input size.");
 }
 
-BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
-                                                           NodeValue input,
-                                                           unsigned channelIdx,
-                                                           float epsilon,
-                                                           float momentum) {
+BatchNormalizationNode *
+Function::createBatchNormalization(llvm::StringRef name, NodeValue input,
+                                   unsigned_t channelIdx, float epsilon,
+                                   float momentum) {
   // Figure out how many channels are in the tensor.
   size_t channels = input.dims()[channelIdx];
 
@@ -998,15 +997,15 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
 
 BatchNormalizationNode *Function::createBatchNormalization(
     llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
-    NodeValue mean, NodeValue var, unsigned channelIdx, float epsilon,
+    NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
     float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
-    llvm::StringRef name, NodeValue input, unsigned halfWindowSize, float alpha,
-    float beta, float k) {
+    llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize,
+    float alpha, float beta, float k) {
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
                                                     alpha, beta, k));
@@ -1155,7 +1154,7 @@ Node *Function::createBatchMatMul(llvm::StringRef name, NodeValue lhs,
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
                                                        NodeValue batch,
-                                                       unsigned axis) {
+                                                       unsigned_t axis) {
   // Calculate the expected total number of elements in the output tensor based
   // on the number of elements in the batch divided by the axis dimension.
   const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
@@ -1168,14 +1167,14 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        NodeValue batch,
-                                                       unsigned axis) {
+                                                       unsigned_t axis) {
   auto outDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
   return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                           NodeValue batch, unsigned axis) {
+                                           NodeValue batch, unsigned_t axis) {
   // Use the same output type for both the batched reduce add and the
   // denominator splat. Only use outTy as the output of the final div.
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
@@ -1193,7 +1192,7 @@ DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name,
-                                           NodeValue batch, unsigned axis) {
+                                           NodeValue batch, unsigned_t axis) {
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto outTy = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
   return createBatchedReduceMean(name, outTy, batch, axis);
@@ -1333,7 +1332,7 @@ IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
-                               unsigned k) {
+                               unsigned_t k) {
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
@@ -1345,7 +1344,7 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
-                                   NodeValue indices, unsigned batchDims) {
+                                   NodeValue indices, unsigned_t batchDims) {
 
   auto dDims = data.dims();
   auto iDims = indices.dims();

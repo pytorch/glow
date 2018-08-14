@@ -384,7 +384,7 @@ void lowerMeanVarNormalizationNode(Function *F, MeanVarNormalizationNode &MVN) {
   if (channelIdx + 1 != in.dims().size()) {
     // If channelIdx is not the last, transform input tensor to shape:
     // {d_1, d_2, ... d_n, numChannels}
-    std::vector<unsigned> perm(in.dims().size());
+    std::vector<unsigned_t> perm(in.dims().size());
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = i;
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
@@ -467,7 +467,7 @@ void lowerBatchNormalizationGradNode(Function *F,
 
   // TODO: consider adding this functionality to the main operator set.
   if (channelIdx + 1 != inW.dims().size()) {
-    std::vector<unsigned> perm(inW.dims().size());
+    std::vector<unsigned_t> perm(inW.dims().size());
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = i;
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
@@ -541,10 +541,10 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // divided into equal groups of consecutive channels. These will be separately
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
-  llvm::ArrayRef<unsigned> kernels = BNG.getKernels();
-  llvm::ArrayRef<unsigned> pads = BNG.getPads();
-  llvm::ArrayRef<unsigned> strides = BNG.getStrides();
-  unsigned group = BNG.getGroup();
+  llvm::ArrayRef<unsigned_t> kernels = BNG.getKernels();
+  llvm::ArrayRef<unsigned_t> pads = BNG.getPads();
+  llvm::ArrayRef<unsigned_t> strides = BNG.getStrides();
+  unsigned_t group = BNG.getGroup();
   auto in = BNG.getInput();
   auto filter = BNG.getFilter();
   auto bias = BNG.getBias();
@@ -560,7 +560,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
                                                       outDims);
 
   std::vector<NodeValue> convs;
-  for (unsigned groupId = 0; groupId < group; groupId++) {
+  for (unsigned_t groupId = 0; groupId < group; groupId++) {
     auto *in_slice =
         F->createSlice(BNG.getName(), in, {0, 0, 0, groupId * inCperG},
                        {idim.n, idim.h, idim.w, (groupId + 1) * inCperG});

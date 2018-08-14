@@ -134,9 +134,11 @@ static void checkTypeIgnoreShape(NodeValue A, NodeValue B) {
 }
 
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
-                              NodeValue bias, llvm::ArrayRef<unsigned> kernels,
-                              llvm::ArrayRef<unsigned> strides,
-                              llvm::ArrayRef<unsigned> pads, size_t group) {
+                              NodeValue bias,
+                              llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> strides,
+                              llvm::ArrayRef<unsigned_t> pads,
+                              unsigned_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
   assert(src.getElementType() == bias.getElementType() && "Invalid Type");
@@ -158,7 +160,7 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   assert(odim.n == idim.n && odim.h == outSz.first && odim.w == outSz.second &&
          odim.c % group == 0 && "Invalid output dimensions");
 
-  auto filterDims = {odim.c, kdim.height, kdim.width, idim.c / group};
+  auto filterDims = {odim.c, kdim.height, kdim.width, idim.c / (size_t)group};
   assert(filter.getType()->dims().equals(filterDims) && "Invalid filter dims");
   (void)filterDims;
 
@@ -179,9 +181,9 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
 }
 
 static void verifyPool(NodeValue src, NodeValue dest,
-                       llvm::ArrayRef<unsigned> kernels,
-                       llvm::ArrayRef<unsigned> strides,
-                       llvm::ArrayRef<unsigned> pads) {
+                       llvm::ArrayRef<unsigned_t> kernels,
+                       llvm::ArrayRef<unsigned_t> strides,
+                       llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;
@@ -203,7 +205,7 @@ static void verifyPool(NodeValue src, NodeValue dest,
 static void verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue bias, NodeValue scale,
                                      NodeValue mean, NodeValue var,
-                                     size_t channel) {
+                                     unsigned_t channel) {
   checkSameType(dest, src);
 
   // Figure out how many channels are in the tensor.
