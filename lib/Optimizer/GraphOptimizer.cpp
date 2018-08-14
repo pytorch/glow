@@ -108,6 +108,17 @@ static void DCE(Function *F) {
   }
 }
 
+/// \returns true if the \p shuffle corresponds to an identity operation, false
+/// otherwise.
+static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
+  for (size_t i = 0, e = shuffle.size(); i < e; i++) {
+    if (shuffle[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// \returns true if the masks \p shuffle1 and shuffle2 are
 /// the inverse of on another. Applying both masks should result in the identity
 /// shuffle.
@@ -289,6 +300,17 @@ static bool sinkCode(Function *F) {
       TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
+    }
+
+    // Remove 'identity' transpose operations.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto mask = TR->getShuffle();
+
+      if (isIdentityShuffle(mask)) {
+        TR->getResult().replaceAllUsesOfWith(TR->getInput());
+        changed = true;
+        continue;
+      }
     }
 
     // Merge consecutive Transpose operations.
