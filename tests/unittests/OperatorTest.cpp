@@ -2980,7 +2980,7 @@ TEST_P(InterpAndCPU, DivSizeT) {
   }
 }
 
-TEST_P(Operator, SigmoidCrossEntropyWithLogits) {
+TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
   /*
     LOGITS  = [
       [
