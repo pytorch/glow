@@ -2953,6 +2953,99 @@ TEST_P(Operator, sliceReshape) {
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
+/// Check that the flatten operator produces 2D tensors of the right dimensions.
+TEST_P(Operator, Flatten) {
+  auto *tensor4D = mod_.createVariable(ElemKind::FloatTy, {3, 2, 4, 3}, "4D");
+  tensor4D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+
+  auto *reshape4Dto2DAxis1 = F_->createFlatten("flat4Dto2Da1", tensor4D, 1);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[0], 3);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[1], 24);
+
+  auto *reshape4Dto2DAxis2 = F_->createFlatten("flat4Dto2Da2", tensor4D, 2);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[0], 6);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[1], 12);
+
+  auto *reshape4Dto2DAxis3 = F_->createFlatten("flat4Dto2Da3", tensor4D, 3);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[0], 24);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[1], 3);
+
+  // Now, let us do the fifth (4) axis.
+  // This comes straight from caffe2 because flattening is
+  // supported for every axis up and including the rank of a tensor.
+  // The rank of this tensor is 4, so axis 4 is fine.
+  auto *reshape4Dto2DAxis4 = F_->createFlatten("flat4Dto2Da4", tensor4D, 4);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[0], 72);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[1], 1);
+
+  // This one is weird because we flatten something that is already flat, but
+  // again because flattening is supported for every axis up and including the
+  // rank of a tensor, 1D vector means we can flatten it on axis 1.
+  auto *tensor1D = mod_.createVariable(ElemKind::FloatTy, {15}, "1D");
+  tensor1D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+
+  auto *reshape1Dto2DAxis1 = F_->createFlatten("flat1Dto2D", tensor1D, 1);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[0], 15);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
+
+  // Save all the reshapes so that the optimizations won't kill the network.
+  auto *save1Dto2D = mod_.createVariable(ElemKind::FloatTy, {15, 1}, "1Dto2D");
+  F_->createSave("save1Dto2D", reshape1Dto2DAxis1, save1Dto2D);
+
+  auto *save4Dto2Da1 =
+      mod_.createVariable(ElemKind::FloatTy, {3, 24}, "4Dto2Da1");
+  F_->createSave("save4Dto2Da1", reshape4Dto2DAxis1, save4Dto2Da1);
+
+  auto *save4Dto2Da2 =
+      mod_.createVariable(ElemKind::FloatTy, {6, 12}, "4Dto2Da2");
+  F_->createSave("save4Dto2Da2", reshape4Dto2DAxis2, save4Dto2Da2);
+
+  auto *save4Dto2Da3 =
+      mod_.createVariable(ElemKind::FloatTy, {24, 3}, "4Dto2Da3");
+  F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3, save4Dto2Da3);
+
+  auto *save4Dto2Da4 =
+      mod_.createVariable(ElemKind::FloatTy, {72, 1}, "4Dto2Da4");
+  F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4, save4Dto2Da4);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  // Verify the reshapes have the same data as the original value.
+  auto tensor4DH = tensor4D->getPayload().getHandle();
+  auto save4Dto2Da1H = save4Dto2Da1->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da1H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da2H = save4Dto2Da2->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da2H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da3H = save4Dto2Da3->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da3H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da4H = save4Dto2Da4->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da4H.raw(i), 1E-5);
+  }
+
+  auto tensor1DH = tensor1D->getPayload().getHandle();
+  auto save1Dto2DH = save1Dto2D->getPayload().getHandle();
+  for (size_t i = 0; i < 15; i++) {
+    EXPECT_NEAR(tensor1DH.raw(i), save1Dto2DH.raw(i), 1E-5);
+  }
+}
+
 /// Check that div on IndexTy/size_t works.
 TEST_P(InterpAndCPU, DivSizeT) {
   auto *LHS = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "LHS");
