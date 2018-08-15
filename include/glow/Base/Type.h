@@ -155,14 +155,13 @@ struct ShapeHW {
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
 inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,
                                             unsigned_t n = 1) {
-  assert(1 <= n && n < dims.size());
+  assert(1 <= n && n <= dims.size());
   size_t first = dims[0];
   for (unsigned_t i = 1; i < n; i++) {
     first *= dims[i];
   }
-
-  size_t rest = dims[n];
-  for (unsigned_t i = n + 1; i < dims.size(); i++) {
+  size_t rest = 1;
+  for (unsigned_t i = n; i < dims.size(); i++) {
     rest *= dims[i];
   }
 
