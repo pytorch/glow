@@ -55,6 +55,15 @@ llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
                   llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
+llvm::cl::opt<llvm::Reloc::Model> relocModel(
+    "relocation-model",
+    llvm::cl::desc(
+        "Specify which relocation model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
+        clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(CPUBackendCat));
+
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -93,11 +102,17 @@ void LLVMIRGen::initTargetMachine(llvm::StringRef T,
   llvm::InitializeAllAsmPrinters();
 
   if (T.empty())
-    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
-        llvm::Triple(), "", getHostCpuName(), getMachineAttributes()));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(codeModel)
+                  .setRelocationModel(relocModel)
+                  .selectTarget(llvm::Triple(), "", getHostCpuName(),
+                                getMachineAttributes()));
   else
-    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
-        llvm::Triple(T), "", "", llvm::SmallVector<std::string, 0>()));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(codeModel)
+                  .setRelocationModel(relocModel)
+                  .selectTarget(llvm::Triple(T), "", "",
+                                llvm::SmallVector<std::string, 0>()));
 }
 
 std::string LLVMIRGen::getMainEntryName() const {
