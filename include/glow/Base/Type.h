@@ -366,6 +366,7 @@ private:
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
     for (size_t i = 0, e = dims.size(); i < e; i++) {
+      assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
     numSizes_ = dims.size();

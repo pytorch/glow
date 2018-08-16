@@ -105,7 +105,7 @@ TEST_P(CPUOnly, extract3Dtest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 100, 100});
   inputs.getHandle().initXavier(1, PRNG);
-  std::array<size_t, 4> S{{1, 95, 100}};
+  std::array<size_t, 3> S{{1, 95, 100}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
