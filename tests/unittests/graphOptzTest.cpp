@@ -289,11 +289,27 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+TEST_F(GraphOptz, removeIdentityTranspose) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
+  Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
+  Node *K = F_->createRELU("relu", T);
+  F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(K->getNthInput(0).getNode(), T);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(K->getNthInput(0).getNode(), A);
+}
+
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
-  Node *T2 = F_->createTranspose("transpose", T1, {0, 1, 2, 3});
+  Node *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
   Node *K = F_->createRELU("relu", T2);
   F_->createSave("ret", K);
 
