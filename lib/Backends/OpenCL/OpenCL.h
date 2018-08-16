@@ -20,7 +20,7 @@
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
-
+#include "glow/Graph/Node.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <unordered_map>
@@ -205,6 +205,14 @@ public:
     }
     return true;
   };
+
+  bool shouldLower(const Node *N) const override {
+    // The group convolution is supported in OpenCL slow convolution kernel.
+    if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+      return false;
+    return true;
+  }
+
   /// @}
 };
 

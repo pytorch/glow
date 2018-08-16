@@ -24,6 +24,7 @@ BB.newBackendSpecificInstr("OCLConvolution")
     .addMember(MemberType::VectorUnsigned, "Kernels")
     .addMember(MemberType::VectorUnsigned, "Strides")
     .addMember(MemberType::VectorUnsigned, "Pads")
+    .addMember(MemberType::Unsigned, "Group")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
 

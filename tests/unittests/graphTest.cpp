@@ -469,8 +469,7 @@ unsigned getConvNodeSize(BackendKind kind) {
 }
 
 // Check the unrolling grouped convolution opt status:
-// -- disabled for Interpreter and CPU backend,
-// -- enabled for openCL backend.
+// -- disabled for Interpreter, CPU and OpenCL backend,
 TEST(Graph, disableUnrollingGroupConv) {
   unsigned numberOfNodesInterpreter = getConvNodeSize(BackendKind::Interpreter);
   (void)numberOfNodesInterpreter;
@@ -482,7 +481,7 @@ TEST(Graph, disableUnrollingGroupConv) {
 
 #ifdef GLOW_WITH_OPENCL
   unsigned numberOfNodesOpenCL = getConvNodeSize(BackendKind::OpenCL);
-  EXPECT_GT(numberOfNodesOpenCL, numberOfNodesInterpreter);
+  EXPECT_EQ(numberOfNodesOpenCL, numberOfNodesInterpreter);
 #endif // GLOW_WITH_OPENCL
 }
 
