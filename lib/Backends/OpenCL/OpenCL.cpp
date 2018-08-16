@@ -399,6 +399,14 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   PaddingTLBR pads(CC->getPads());
   ShapeHW kdim(CC->getKernels());
   ShapeHW sdim(CC->getStrides());
+  unsigned group = CC->getGroup();
+  // So far, we don't support fast convolution kernel if group > 1.
+  // For group convolution, the slow convolution kernel should be invoked.
+  // The following assertion should be removed once the group > 1 is supported
+  // in fast convolution kernel.
+  assert(group == 1 && "Group Convolution is not supported by OpenCL backend's "
+                       "fast convolution kernel.");
+
   // Create options for compiling the program.
   // Don't use names M, N, K as they are defined in precompiled headers.
 
@@ -406,7 +414,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   // Number of spacial axes.
   addIntOption(options, "v_nax", 2);
   // Number of groups.
-  addIntOption(options, "v_g", 1);
+  addIntOption(options, "v_g", group);
   // Parameters for kernel size, padding and stride
   addIntOption(options, "v_k_0", kdim.height);
   addIntOption(options, "v_k_1", kdim.width);
@@ -501,7 +509,6 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   }
 
   // Compute proper parameters for global work and workgroups.
-  int group = 1;
   auto fw_wgs0 = wg_size[0];
   auto fw_wgs1 = wg_size[1];
   int fw_wptn = WPTN;
@@ -908,10 +915,6 @@ void OpenCLFunction::execute() {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
-
-      assert(CC->getGroup() == 1 &&
-             "Group Convolution is not supported by OpenCL backend.");
-
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(CC->getPads());
@@ -920,23 +923,24 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 1, kdim);
       setKernelArg(kernel, numArgs + 2, sdim);
       setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, odim);
-      setKernelArg(kernel, numArgs + 5, idim);
-      setKernelArg(kernel, numArgs + 6,
+      setKernelArg(kernel, numArgs + 4, CC->getGroup());
+      setKernelArg(kernel, numArgs + 5, odim);
+      setKernelArg(kernel, numArgs + 6, idim);
+      setKernelArg(kernel, numArgs + 7,
                    ShapeNHWC(CC->getFilter()->getType()->dims()));
       if (isQuantized) {
         auto srcTy = CC->getSrc()->getType();
         auto destTy = CC->getDest()->getType();
         auto filterTy = CC->getFilter()->getType();
         auto biasTy = CC->getBias()->getType();
-        setKernelArg(kernel, numArgs + 7, destTy->getOffset());
-        setKernelArg(kernel, numArgs + 8, destTy->getScale());
-        setKernelArg(kernel, numArgs + 9, srcTy->getOffset());
-        setKernelArg(kernel, numArgs + 10, srcTy->getScale());
-        setKernelArg(kernel, numArgs + 11, filterTy->getOffset());
-        setKernelArg(kernel, numArgs + 12, filterTy->getScale());
-        setKernelArg(kernel, numArgs + 13, biasTy->getOffset());
-        setKernelArg(kernel, numArgs + 14, biasTy->getScale());
+        setKernelArg(kernel, numArgs + 8, destTy->getOffset());
+        setKernelArg(kernel, numArgs + 9, destTy->getScale());
+        setKernelArg(kernel, numArgs + 10, srcTy->getOffset());
+        setKernelArg(kernel, numArgs + 11, srcTy->getScale());
+        setKernelArg(kernel, numArgs + 12, filterTy->getOffset());
+        setKernelArg(kernel, numArgs + 13, filterTy->getScale());
+        setKernelArg(kernel, numArgs + 14, biasTy->getOffset());
+        setKernelArg(kernel, numArgs + 15, biasTy->getScale());
       }
 
       // Use a 3D grid where the first dimension is the depth and the second
@@ -947,9 +951,6 @@ void OpenCLFunction::execute() {
     }
 
     if (auto *CG = dyn_cast<ConvolutionGradInst>(&I)) {
-      assert(CG->getGroup() == 1 &&
-             "Group Convolution is not supported by OpenCL backend.");
-
       auto *src = CG->getSrc();
       auto *filter = CG->getFilter();
       auto *destGrad = CG->getDestGrad();
@@ -969,10 +970,10 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 1, kdim);
       setKernelArg(kernel, numArgs + 2, sdim);
       setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, srcDim);
-      setKernelArg(kernel, numArgs + 5, destGradDim);
-      setKernelArg(kernel, numArgs + 6, filterGradDim);
-
+      setKernelArg(kernel, numArgs + 4, CG->getGroup());
+      setKernelArg(kernel, numArgs + 5, srcDim);
+      setKernelArg(kernel, numArgs + 6, destGradDim);
+      setKernelArg(kernel, numArgs + 7, filterGradDim);
       // Zero memory for the output buffers.
       fillBuffer(deviceBuffer_, tensors_[srcGrad], srcGrad->size(), 0,
                  srcGrad->getElementType());

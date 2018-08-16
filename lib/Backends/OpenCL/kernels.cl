@@ -755,11 +755,14 @@ __kernel void softmaxgradW(__global void *mem, cl_uint32_t origDest,
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
                            ShapeHW filterSizes, ShapeHW strides,
-                           PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
+                           PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+  size_t inChannelOffset = d / outCperG * inCperG;
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
@@ -782,9 +785,9 @@ __kernel void convolutionK(__global float *dest, __global float *src,
           continue;
         }
 
-        for (size_t fd = 0; fd < idim.c; fd++) {
+        for (size_t fd = 0; fd < inCperG; fd++) {
           sum += filter[getNHWC(filterDim, d, fx, fy, fd)] *
-                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)];
+                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)];
         }
       }
     }
@@ -797,10 +800,10 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
                            cl_uint32_t bias, ShapeHW filterSizes,
-                           ShapeHW strides, PaddingTLBR pads, ShapeNHWC odim,
+                           ShapeHW strides, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
-               strides, pads, odim, idim, filterDim);
+               strides, pads, group, odim, idim, filterDim);
 }
 
 __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
@@ -810,11 +813,14 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
                               float destScale, cl_int32_t srcOffset,
                               float srcScale, cl_int32_t filterOffset,
                               float filterScale, cl_int32_t biasOffset,
-                              float biasScale, PaddingTLBR pads, ShapeNHWC odim,
+                              float biasScale, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
                               ShapeNHWC idim, ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
+  size_t inCperG = idim.c / group;	
+  size_t outCperG = odim.c / group;
+  size_t inChannelOffset = d / outCperG * inCperG;
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
@@ -839,10 +845,10 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
           continue;
         }
 
-        for (size_t fd = 0; fd < idim.c; fd++) {
+        for (size_t fd = 0; fd < inCperG; fd++) {
           sum +=
               (filter[getNHWC(filterDim, d, fx, fy, fd)] - filterOffset) *
-              (src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd)] - srcOffset);
+              (src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)] - srcOffset);
         }
       }
     }
@@ -856,14 +862,14 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
 __kernel void
 convolution_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                 cl_uint32_t filter, cl_uint32_t bias, ShapeHW filterSizes,
-                ShapeHW strides, PaddingTLBR pads, ShapeNHWC odim,
+                ShapeHW strides, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
                 ShapeNHWC idim, ShapeNHWC filterDim, cl_int32_t destOffset,
                 float destScale, cl_int32_t srcOffset, float srcScale,
                 cl_int32_t filterOffset, float filterScale,
                 cl_int32_t biasOffset, float biasScale) {
   convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
                   strides, destOffset, destScale, srcOffset, srcScale,
-                  filterOffset, filterScale, biasOffset, biasScale, pads, odim,
+                  filterOffset, filterScale, biasOffset, biasScale, pads, group, odim,
                   idim, filterDim);
 }
 
@@ -872,12 +878,16 @@ __kernel void convolutiongradK(const __global float *inW,
                                const __global float *outG, __global float *inG,
                                __global float *filterG, __global float *biasG,
                                ShapeHW filterSizes, ShapeHW strides,
-                               PaddingTLBR pads, ShapeNHWC inWdims,
+                               PaddingTLBR pads, cl_uint32_t group, ShapeNHWC inWdims,
                                ShapeNHWC outGdims, ShapeNHWC filterGdims) {
+
   // ax and ay are coordinates in the tensor outG.
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
+  size_t inCperG = inWdims.c / group;
+  size_t outCperG = outGdims.c / group;
+  size_t inChannelOffset = d / outCperG * inCperG;
 
   typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
@@ -900,11 +910,11 @@ __kernel void convolutiongradK(const __global float *inW,
           continue;
         }
 
-        for (size_t fd = 0; fd < inWdims.c; fd++) {
+        for (size_t fd = 0; fd < inCperG; fd++) {
           atomicAdd(&filterG[getNHWC(filterGdims, d, fx, fy, fd)],
-                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)] *
+                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)] *
                         grad);
-          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd)],
+          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)],
                     filterW[getNHWC(filterGdims, d, fx, fy, fd)] * grad);
         }
       }
@@ -917,11 +927,11 @@ __kernel void convolutiongradW(__global void *mem, cl_uint32_t src,
                                cl_uint32_t filter, cl_uint32_t destGrad,
                                cl_uint32_t srcGrad, cl_uint32_t filterGrad,
                                cl_uint32_t biasGrad, ShapeHW filterSizes,
-                               ShapeHW strides, PaddingTLBR pads,
+                               ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
                                ShapeNHWC srcDim, ShapeNHWC destGradDim,
                                ShapeNHWC filterGradDim) {
   convolutiongradK(&mem[src], &mem[filter], &mem[destGrad], &mem[srcGrad],
-                   &mem[filterGrad], &mem[biasGrad], filterSizes, strides, pads,
+                   &mem[filterGrad], &mem[biasGrad], filterSizes, strides, pads, group,
                    srcDim, destGradDim, filterGradDim);
 }
 

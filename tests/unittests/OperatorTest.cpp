@@ -2278,7 +2278,7 @@ TEST_P(Operator, IntSplat) {
   }
 }
 
-TEST_P(InterpAndCPU, GroupConvolution) {
+TEST_P(Operator, GroupConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 8}, "input");
   auto IH = input->getHandle();
   for (size_t i = 0; i < 2 * 8; i++) {

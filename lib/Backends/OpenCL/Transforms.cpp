@@ -36,6 +36,11 @@ bool OCLBackend::transformPostLowering(Function *F,
   bool changed = false;
   for (auto &node : F->getNodes()) {
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
+      // TODO: OpenCL fast convolution kernel itself has some issue with group >
+      // 1, which will be investigated later. So far, if the group > 1, we just
+      // call the slow convolution kernel.
+      if (CN->getGroup() > 1)
+        continue;
       auto *NR = convertConvToNCHWConv<OCLConvolutionNode>(CN, F);
       NodeValue(&node, 0).replaceAllUsesOfWith(NR);
       changed = true;
