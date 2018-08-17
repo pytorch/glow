@@ -22,12 +22,22 @@
 
 using namespace glow;
 
-const size_t MemoryAllocator::npos = -1;
+/// The type of the address returned by MemoryAllocator::allocate should be at
+/// least 64-bit wide.
+static_assert(sizeof(decltype(MemoryAllocator::npos)) >= 8,
+              "Allocated addresses should be at least 64-bit wide");
 
-size_t MemoryAllocator::allocate(size_t size) {
+/// The type of the address returned by MemoryAllocator::allocate should be
+/// unsigned
+static_assert(std::is_unsigned<decltype(MemoryAllocator::npos)>{},
+              "Allocated addresses should be unsigned integers");
+
+const uint64_t MemoryAllocator::npos = -1;
+
+uint64_t MemoryAllocator::allocate(uint64_t size) {
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, TensorAlignment);
-  size_t prev = 0;
+  uint64_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= size) {
       allocations_.emplace(it, prev, prev + size);
@@ -49,7 +59,7 @@ size_t MemoryAllocator::allocate(size_t size) {
   return prev;
 }
 
-void MemoryAllocator::deallocate(size_t ptr) {
+void MemoryAllocator::deallocate(uint64_t ptr) {
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ == ptr) {
       allocations_.erase(it);

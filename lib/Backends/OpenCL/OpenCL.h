@@ -71,7 +71,7 @@ class OpenCLFunction final : public CompiledFunction {
   std::unique_ptr<IRFunction> F_;
   /// Maps values to on-device buffers. This list includes both weights and
   /// activations.
-  std::unordered_map<const Value *, size_t> tensors_;
+  std::unordered_map<const Value *, uint64_t> tensors_;
   /// Maps values to Tensors, that are *not* owned by this class.
   std::unordered_map<const Value *, Tensor *> externalTensors_;
   /// CL compute device id.
@@ -107,31 +107,31 @@ private:
   /// Copy the value from a device to a provided buffer.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
-  size_t copyValueFromDevice(const Value *v, void *buf = nullptr);
+  uint64_t copyValueFromDevice(const Value *v, void *buf = nullptr);
   /// Copy value from the provided buffer to the device.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
-  size_t copyValueToDevice(const Value *v, void *buf = nullptr);
+  uint64_t copyValueToDevice(const Value *v, void *buf = nullptr);
   /// Copy mutable weights to the device.
   /// \returns number of copied bytes.
-  size_t copyMutableWeightsToDevice();
+  uint64_t copyMutableWeightsToDevice();
   /// Copy constant weights to the device.
   /// \returns number of copied bytes.
-  size_t copyConstantWeightsToDevice();
+  uint64_t copyConstantWeightsToDevice();
   /// Copy mutable weights from the device.
   /// \returns number of copied bytes.
-  size_t copyMutableWeightsFromDevice();
+  uint64_t copyMutableWeightsFromDevice();
 
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
-  void fillBuffer(cl_mem buffer, size_t start, size_t len, float value,
+  void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
                   ElemKind elemKind);
 
   /// Execution a convolution instruction which uses NCHW format.
   void executeConvolution(const OCLConvolutionInst *CC);
   /// Allocate a device buffer of required \p size.
-  cl_mem allocDeviceBuffer(size_t size);
+  cl_mem allocDeviceBuffer(uint64_t size);
   /// Frees a device buffer.
   void freeDeviceBuffer(cl_mem buf);
 

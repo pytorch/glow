@@ -101,7 +101,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   MemoryAllocator activationsAllocator(0);
 
   // Maps activations and views to some offset within the heap.
-  llvm::DenseMap<const Value *, size_t> activationAddr;
+  llvm::DenseMap<const Value *, uint64_t> activationAddr;
 
   // Assign device-space addresses to the activations.
   for (const auto &I : F->getInstrs()) {
