@@ -25,6 +25,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
+
 using namespace glow;
 
 enum class ImageNormalizationMode {
@@ -135,28 +137,31 @@ int main(int argc, char **argv) {
   Tensor data;
   loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
 
-  // Create the model based on the input format, and set the Softmax save node
-  // expected to come at the end of image inference.
-  SaveNode *SM;
-  Variable *i0;
-  Variable *i1;
-  if (!loader.getCaffe2NetDescFilename().empty()) {
-    caffe2ModelLoader LD(
-        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {"data", "gpu_0/data"}, {&data, &data}, *loader.getFunction());
-    SM = LD.getSingleOutput();
-    i0 = LD.getVariableByName("gpu_0/data");
-    i1 = LD.getVariableByName("data");
-  } else {
-    ONNXModelLoader LD(loader.getOnnxModelFilename(),
-                       {"data_0", "gpu_0/data_0"}, {&data, &data},
-                       *loader.getFunction());
-    SM = LD.getSingleOutput();
-    i0 = LD.getVariableByName("gpu_0/data_0");
-    i1 = LD.getVariableByName("data_0");
-  }
+  // All of our ONNX and Caffe2 models may use one of two names for input.
+  constexpr char const *c2Inputs[2] = {"gpu_0/data", "data"};
+  constexpr char const *onnxInputs[2] = {"gpu_0/data_0", "data_0"};
 
-  // We want to have a way to reference the variable of SM node later, after 
+  // Create the model based on the input model format.
+  std::unique_ptr<ProtobufLoader> LD;
+  bool c2Model = !loader.getCaffe2NetDescFilename().empty();
+  if (c2Model) {
+    LD.reset(new caffe2ModelLoader(
+        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
+        c2Inputs, {&data, &data}, *loader.getFunction()));
+  } else {
+    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), onnxInputs,
+                                 {&data, &data}, *loader.getFunction()));
+  }
+  // Set the Softmax save node expected to come at the end of image inference.
+  SaveNode *SM = LD->getSingleOutput();
+
+  // Create Variables for both possible input names for flexibility for the
+  // input model. The input data is mapped to both names. Whichever Variable is
+  // unused will be removed in compile().
+  Variable *i0 = LD->getVariableByName(c2Model ? c2Inputs[0] : onnxInputs[0]);
+  Variable *i1 = LD->getVariableByName(c2Model ? c2Inputs[1] : onnxInputs[1]);
+
+  // We want to have a way to reference the variable of SM node later, after
   // it is removed when we finish the quantization.
   auto *SMVar = SM->getVariable();
 
