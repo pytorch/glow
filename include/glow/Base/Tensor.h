@@ -243,6 +243,9 @@ public:
 
     if (size()) {
       size_t count = size() * type_.getElementSize();
+      // We are allocating memory specifically for this tensor,
+      // thus, it owns it.
+      isUnowned_ = false;
       data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
       zero();
     }

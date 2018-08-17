@@ -399,6 +399,34 @@ TEST(Tensor, nonOwnedTensor) {
   H1.dump();
 }
 
+/// Check that we properly take ownership of
+/// the underlying memory when we reset the tensor
+/// shape. This test used to fail leak sanitizer.
+TEST(Tensor, nonOwnedTensorFollowedByReset) {
+  float raw_data = 0.;
+  Type F32Ty(ElemKind::FloatTy, {1});
+
+  // Create an unowned tensor.
+  Tensor T1(&raw_data, &F32Ty);
+
+  auto H1 = T1.getHandle<>();
+  EXPECT_EQ(int(H1.at({0})), 0);
+
+  Type F32x2Ty(ElemKind::FloatTy, {2});
+
+  // Resizing the tensor will trigger some memory allocation.
+  // Given the previous data was coming from outside, this
+  // tensor was unowned and we used to not reset that state
+  // as well and were leaking memory.
+  T1.reset(F32x2Ty);
+  H1 = T1.getHandle<>();
+  EXPECT_EQ(int(H1.at({0})), 0);
+  EXPECT_EQ(int(H1.at({1})), 0);
+
+  // When T1 gets delete the memory allocated through reset should
+  // be released.
+}
+
 /// Verify that accessing/modifying a tensor with offsets correctly modifies the
 /// underlying base Tensor's data. Transforms a 2D tensor:
 /// 0.0 0.0 0.0       0.0 0.0 1.0
