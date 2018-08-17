@@ -511,6 +511,22 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "SigmoidCrossEntropyWithLogits") {
+    auto logits = getNodeValueOrCreateVariableByName(op.input(0));
+    auto targets = getNodeValueOrCreateVariableByName(op.input(1));
+    Node *SCEL =
+        G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
+    addNodeAsOutput(op, SCEL);
+    return;
+  }
+
+  if (typeName == "AveragedLoss") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *node = G_.createBatchedReduceMean(opName, in, 0);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
@@ -637,7 +653,8 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       break;
     }
     case caffe2::TensorProto_DataType_INT32:
-    case caffe2::TensorProto_DataType_INT64: {
+    case caffe2::TensorProto_DataType_INT64:
+    case caffe2::TensorProto_DataType_BOOL: {
       T->reset(ElemKind::IndexTy, dims);
       auto TH = T->getHandle<size_t>();
       auto i = (dict.count("value") && dict["value"]->has_i())
