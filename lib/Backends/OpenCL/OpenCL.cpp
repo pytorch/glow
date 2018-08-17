@@ -211,7 +211,7 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
 static size_t
 setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
                         size_t nextKernelArgIdx,
-                        std::unordered_map<const Value *, size_t> &tensors) {
+                        std::unordered_map<const Value *, uint64_t> &tensors) {
   // Number of instruction operands.
   auto numArgs = I.getNumOperands();
   // The predicate of the instruction if available.
@@ -232,7 +232,7 @@ setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
-void OpenCLFunction::fillBuffer(cl_mem buffer, size_t start, size_t len,
+void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
                                 float value, ElemKind elemKind) {
   auto kernel = createKernel(getKernelName("splat", elemKind));
   setKernelArg(kernel, 0, buffer);
@@ -1288,8 +1288,8 @@ void OpenCLFunction::execute() {
                           << " bytes from OpenCL device\n");
 }
 
-size_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
-  size_t copiedBytes = 0;
+uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
+  uint64_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
   size_t sizeInBytes = v->getType()->getSizeInBytes();
@@ -1315,8 +1315,8 @@ size_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-size_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
-  size_t copiedBytes = 0;
+uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
+  uint64_t copiedBytes = 0;
   auto it = tensors_.find(v);
   assert(it != tensors_.end() && "Unknown value");
   size_t sizeInBytes = v->getType()->getSizeInBytes();
@@ -1344,8 +1344,8 @@ size_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-size_t OpenCLFunction::copyMutableWeightsToDevice() {
-  size_t copiedBytes = 0;
+uint64_t OpenCLFunction::copyMutableWeightsToDevice() {
+  uint64_t copiedBytes = 0;
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
       continue;
@@ -1361,8 +1361,8 @@ size_t OpenCLFunction::copyMutableWeightsToDevice() {
   return copiedBytes;
 }
 
-size_t OpenCLFunction::copyConstantWeightsToDevice() {
-  size_t copiedBytes = 0;
+uint64_t OpenCLFunction::copyConstantWeightsToDevice() {
+  uint64_t copiedBytes = 0;
   for (auto it : tensors_) {
     if (!externalTensors_.count(it.first)) {
       continue;
@@ -1378,7 +1378,7 @@ size_t OpenCLFunction::copyConstantWeightsToDevice() {
   return copiedBytes;
 }
 
-size_t OpenCLFunction::copyMutableWeightsFromDevice() {
+uint64_t OpenCLFunction::copyMutableWeightsFromDevice() {
   size_t copiedBytes = 0;
   clFinish(commands_);
 
@@ -1451,7 +1451,7 @@ void OpenCLFunction::allocateMemory() {
 
   // Ask the memory allocator how much memory is required. What was the high
   // watermark for this program.
-  size_t requiredSpace = allocator.getMaxMemoryUsage();
+  uint64_t requiredSpace = allocator.getMaxMemoryUsage();
   DEBUG_GLOW(llvm::dbgs() << "Allocated GPU memory block of size: "
                           << requiredSpace << "\n");
 
@@ -1472,8 +1472,8 @@ Tensor *OpenCLFunction::getTensor(const Value *v) const {
   return ie->second;
 }
 
-cl_mem OpenCLFunction::allocDeviceBuffer(size_t size) {
-  const size_t alignment = 128;
+cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
+  const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, alignment);
   auto buf =

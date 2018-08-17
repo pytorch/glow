@@ -25,17 +25,17 @@ namespace glow {
 class Segment {
 public:
   /// The allocation starts at this address.
-  size_t begin_;
+  uint64_t begin_;
   /// The allocation ends before this address (half-open interval).
-  size_t end_;
+  uint64_t end_;
 
-  Segment(size_t begin, size_t end) : begin_(begin), end_(end) {}
+  Segment(uint64_t begin, uint64_t end) : begin_(begin), end_(end) {}
 
   /// \returns the size of the interval.
-  size_t size() const { return end_ - begin_; }
+  uint64_t size() const { return end_ - begin_; }
 
   /// \returns True if the value \p idx falls within this segment.
-  bool contains(size_t idx) const { return idx >= begin_ && idx < end_; }
+  bool contains(uint64_t idx) const { return idx >= begin_ && idx < end_; }
 };
 
 /// Allocates segments of memory.
@@ -43,15 +43,15 @@ class MemoryAllocator {
   /// A list of live buffers.
   std::list<Segment> allocations_;
   /// The size of the memory region that we can allocate segments into.
-  size_t poolSize_;
+  uint64_t poolSize_;
   /// This is the high water mark for the allocated memory.
-  size_t maxMemoryAllocated_{0};
+  uint64_t maxMemoryAllocated_{0};
 
 public:
   /// A reserved value to mark invalid allocation.
-  static const size_t npos;
+  static const uint64_t npos;
 
-  explicit MemoryAllocator(size_t poolSize) : poolSize_(poolSize) {}
+  explicit MemoryAllocator(uint64_t poolSize) : poolSize_(poolSize) {}
 
   void reset() {
     maxMemoryAllocated_ = 0;
@@ -59,7 +59,7 @@ public:
   }
 
   /// \returns True if the value \p idx is within the currently allocated range.
-  bool contains(size_t idx) const {
+  bool contains(uint64_t idx) const {
     for (auto &s : allocations_) {
       if (s.contains(idx)) {
         return true;
@@ -71,13 +71,13 @@ public:
   /// Allocate a region of size \p size.
   /// \returns the allocated pointer, or MemoryAllocator::npos, if the
   /// allocation failed.
-  size_t allocate(size_t size);
+  uint64_t allocate(uint64_t size);
 
   /// Frees the allocation at \p ptr.
-  void deallocate(size_t ptr);
+  void deallocate(uint64_t ptr);
 
   /// \returns the high water mark for the allocated memory.
-  size_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
+  uint64_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
 };
 
 } // namespace glow
