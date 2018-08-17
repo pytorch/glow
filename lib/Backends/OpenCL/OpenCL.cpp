@@ -508,7 +508,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   int fw_wptm = WPTM;
   int fw_div_N = fw_wptn * fw_wgs0;
   int fw_div_M = fw_wptm * fw_wgs1;
-  int N_FW_ = idim.h * idim.w;
+  int N_FW_ = odim.h * odim.w;
   int M_FW_ = odim.c / group;
   size_t L;
   clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
@@ -522,12 +522,6 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   std::vector<size_t> global = {((N_FW_ - 1) / fw_div_N + 1) * fw_wgs0,
                                 ((M_FW_ - 1) / fw_div_M + 1) * fw_wgs1,
                                 idim.n * group};
-
-  // The global work for the N dimension (which covers all pixels) should be big
-  // enough to cover all outputs for the correctness.
-  if (global[0] * fw_div_N < odim.h * odim.w) {
-    global[0] = (odim.h * odim.w - 1) / fw_div_N + 1;
-  }
 
   enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
