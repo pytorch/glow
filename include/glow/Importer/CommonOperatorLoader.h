@@ -332,7 +332,7 @@ protected:
     unsigned_t k = loadInt(dict["k"]);
 
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
-    unsigned_t lastDim = in.dims().size() - 1;
+    int lastDim = in.dims().size() - 1;
     if (axis == -1) {
       axis = lastDim;
     }

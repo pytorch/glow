@@ -509,11 +509,11 @@ void ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       (void)shape;
 
       // Check if the number of dimensions is consistent.
-      assert(dims.size() == shape.dim_size() &&
+      assert(dims.size() == (size_t)shape.dim_size() &&
              "Mismatch between input image and ONNX input shape");
       // Allow batch dimensions to be different.
       for (size_t k = 1; k < dims.size(); k++) {
-        assert(dims[k] == shape.dim(k).dim_value() &&
+        assert(dims[k] == (size_t)shape.dim(k).dim_value() &&
                "Mismatch between input image and ONNX input shape");
       }
     }
