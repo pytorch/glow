@@ -31,33 +31,43 @@ TEST(onnx, importConv) {
 
   std::string NetFilename("tests/models/onnxModels/simpleConv.onnxtxt");
 
-  SaveNode *output;
+  SaveNode *graphOutputNode;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data}, *F);
-    output = onnxLD.getSingleOutput();
+    graphOutputNode = onnxLD.getSingleOutput();
   }
 
-  // ONNX importer loads a conv node and converts it to 3 ops:
-  // Transpose -> Conv -> Transpose
-  // A save node is added in the network as well. Therefore there are 4 nodes:
-  // Transpose -> Conv -> Transpose -> Save
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // ONNX importer loads a conv node and converts it to 4 ops:
+  // Transpose (input)   -> Conv -> Transpose
+  // Transpose (filter) ->
+  // A save node is added in the network as well. Therefore there are 5 nodes:
+  // Transpose (input)   -> Conv -> Transpose -> Save
+  // Transpose (filter) ->
+  // Note that in case the convolution filter is a constant tensor, the filter
+  // transpose node will be later optimized out by the optimizer.
+  EXPECT_EQ(F->getNodes().size(), 5);
   EXPECT_EQ(mod.getVars().size(), 4);
 
-  auto *node = output->getInput().getNode();
+  auto *node = graphOutputNode->getInput().getNode();
+
   EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
-  node = llvm::dyn_cast<TransposeNode>(node)->getInput().getNode();
-  EXPECT_TRUE(node->getKind() == Kinded::Kind::ConvolutionNodeKind);
-  node = llvm::dyn_cast<ConvolutionNode>(node)->getInput().getNode();
-  EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
+  auto *convNode = llvm::dyn_cast<TransposeNode>(node)->getInput().getNode();
+
+  EXPECT_TRUE(convNode->getKind() == Kinded::Kind::ConvolutionNodeKind);
+  auto *tInNode =
+      llvm::dyn_cast<ConvolutionNode>(convNode)->getInput().getNode();
+  auto *tFilterNode =
+      llvm::dyn_cast<ConvolutionNode>(convNode)->getFilter().getNode();
+  EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
+  EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
-  auto result = output->getVariable()->getHandle();
+  auto result = graphOutputNode->getVariable()->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
