@@ -192,6 +192,19 @@ target_link_libraries(GemmTest
                         testMain)
 add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
 LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
+
+add_executable(LLVMIRGenTest
+               LLVMIRGenTest.cpp)
+target_link_libraries(LLVMIRGenTest
+                      PRIVATE
+                        CPUBackend
+                        IR
+                        Support
+                        gtest
+                        testMain)
+target_include_directories(LLVMIRGenTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
+add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest)
+
 endif()
 
 add_executable(memoryAllocatorTest
