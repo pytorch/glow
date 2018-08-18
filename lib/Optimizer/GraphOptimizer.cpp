@@ -1725,6 +1725,28 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
+    // Combine Rescale down with Convolution node.
+    // Convolution(Rescale(X), F, B) -> Convolution(X, F, B).
+    // Convolution(X, Rescale(F), B) -> Convolution(X, F, B).
+    // Convolution(X, F, Rescale(B)) -> Convolution(X, F, B).
+    // ... and different combinations.
+    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
+      auto *rescaleX = dyn_cast<RescaleQuantizedNode>(CN->getInput());
+      auto *rescaleF = dyn_cast<RescaleQuantizedNode>(CN->getFilter());
+      auto *rescaleB = dyn_cast<RescaleQuantizedNode>(CN->getBias());
+      auto newX = rescaleX ? rescaleX->getInput() : CN->getInput();
+      auto newF = rescaleF ? rescaleF->getInput() : CN->getFilter();
+      auto newB = rescaleB ? rescaleB->getInput() : CN->getBias();
+      if (rescaleX || rescaleF || rescaleB) {
+        auto *newCN = F->createConv(
+            CN->getName(), newX, newF, newB, CN->getResult().getType(),
+            CN->getKernels(), CN->getStrides(), CN->getPads(), CN->getGroup());
+        CN->getResult().replaceAllUsesOfWith(newCN);
+        changed = true;
+      }
+      continue;
+    }
+
 // Combine Rescale down with Arithmetic node.
 //   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
 //   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).

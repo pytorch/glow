@@ -905,6 +905,37 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   EXPECT_EQ(max->getNthInput(0).getType(), rescaleOutTy);
 }
 
+TEST_F(GraphOptz, fuseRescaleIntoConv) {
+  // This test ensures the fact that fusing of rescale is done.
+  Variable *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input");
+  Variable *filter =
+      mod_.createVariable(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter");
+  Variable *bias =
+      mod_.createVariable(ElemKind::Int8QTy, {16}, 0.5, 10, "bias");
+
+  auto *rInput = F_->createRescaleQuantized(
+      "rescale", input,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.1, -25));
+  auto *rFilter = F_->createRescaleQuantized(
+      "rescale", filter,
+      mod_.uniqueType(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.2, 0));
+  auto *rBias = F_->createRescaleQuantized(
+      "rescale", bias, mod_.uniqueType(ElemKind::Int8QTy, {16}, 0.3, 25));
+  auto *CV = F_->createConv(
+      "conv", rInput, rFilter, rBias,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.7, -3), 5, 1, 2, 1);
+  auto *rCV = F_->createRescaleQuantized(
+      "rescale", CV,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.4, 37));
+  F_->createSave("save", rCV);
+
+  // All rescales must be fused into convolution.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+}
+
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
   Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
