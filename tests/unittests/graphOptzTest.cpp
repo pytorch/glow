@@ -911,19 +911,24 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
                                         "input", VisibilityKind::Public, true);
   input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
 
-  // slice -> rescale -> reshape -> rescale -> transpose -> save.
+  // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
   auto *rescale = F_->createRescaleQuantized(
       "rescale", slice, mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.4, 10));
-  auto *reshape = F_->createReshape("reshape", rescale, {1, 9});
+  auto *reshape = F_->createReshape("reshape", rescale, {1, 1, 3, 3});
   auto *rescale2 = F_->createRescaleQuantized(
-      "rescale", reshape, mod_.uniqueType(ElemKind::Int8QTy, {1, 9}, 0.3, 9));
-  auto *transpose = F_->createTranspose("transpose", rescale2, {1, 0});
-  F_->createSave("ret", transpose);
+      "rescale", reshape,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 3}, 0.3, 9));
+  auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
+  auto *maxpool =
+      F_->createMaxPool("maxpool", transpose, {3, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *save = F_->createSave("ret", maxpool);
 
-  EXPECT_EQ(F_->getNodes().size(), 6);
+  EXPECT_EQ(F_->getNodes().size(), 7);
   ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  // Check that rescale sank all the way down to the save node.
+  EXPECT_TRUE(llvm::dyn_cast<RescaleQuantizedNode>(save->getInput()));
 }
 
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {

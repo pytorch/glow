@@ -1708,6 +1708,28 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
+// Sink Rescale down with Pooling node.
+// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
+// Apply this transformation for AvgPool and MaxPool.
+#define SINK_DOWN_RESCALE_TO_POOLING_NODE(NODE_NAME_)                          \
+  if (auto *PN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
+    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {      \
+      auto *newPN = F->create##NODE_NAME_(PN->getName(), rescale->getInput(),  \
+                                          PN->getKernels(), PN->getStrides(),  \
+                                          PN->getPads());                      \
+      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(              \
+          rescale->getResult().getType(), PN->getResult().dims());             \
+      auto *newRescale =                                                       \
+          F->createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);  \
+      PN->getResult().replaceAllUsesOfWith(newRescale);                        \
+      changed = true;                                                          \
+    }                                                                          \
+    continue;                                                                  \
+  }
+    SINK_DOWN_RESCALE_TO_POOLING_NODE(AvgPool);
+    SINK_DOWN_RESCALE_TO_POOLING_NODE(MaxPool);
+#undef SINK_DOWN_RESCALE_TO_POOLING_NODE
+
     // Combine Rescale down with FullyConnected node.
     // FullyConnected(Rescale(X)) -> FullyConnected(X).
     if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
