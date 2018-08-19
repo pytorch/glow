@@ -149,8 +149,7 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       }
     } else if (in.has_raw_data()) {
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read((char *)T->getRawDataPointer<float>(),
-                    T->size() * sizeof(float));
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
     } else {
       llvm_unreachable("Unsupported Tensor format.");
     }
@@ -166,8 +165,7 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       }
     } else if (in.has_raw_data()) {
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read((char *)T->getRawDataPointer<size_t>(),
-                    T->size() * sizeof(int64_t));
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
     } else {
       llvm_unreachable("Unsupported Tensor format.");
     }

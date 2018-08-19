@@ -111,8 +111,7 @@ struct Vocabulary {
 /// Loads tensor of floats from binary file.
 void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
   std::ifstream file(filename.str(), std::ios::binary);
-  if (!file.read((char *)result.getRawDataPointer<float>(),
-                 result.size() * sizeof(float))) {
+  if (!file.read(result.getUnsafePtr(), result.size() * sizeof(float))) {
     std::cout << "Error reading file: " << filename.str() << '\n'
               << "Need to be downloaded by calling:\n"
               << "python ../glow/utils/download_test_db.py -d fr2en\n";

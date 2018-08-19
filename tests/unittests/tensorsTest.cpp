@@ -372,7 +372,7 @@ TEST(Tensor, nonOwnedTensor) {
   {
     // Create a view on T1 which makes it look like 2x2
     Tensor T2 = T1.getUnowned({2, 2});
-    EXPECT_EQ(T2.getRawDataPointer<float>(), T1.getRawDataPointer<float>());
+    EXPECT_EQ(T2.getUnsafePtr(), T1.getUnsafePtr());
     auto H2 = T2.getHandle<>();
     // Check that T2 has the same values as T1.
     EXPECT_EQ(int(H2.at({0, 0})), 1);
@@ -591,13 +591,16 @@ TEST(ZeroDimensionalTensor, handleAt) {
   Tensor T(ElemKind::FloatTy, {});
   auto H = T.getHandle<>();
   H.at({}) = 7.1;
-  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 7.1);
+  EXPECT_FLOAT_EQ(H.at({}), 7.1);
+  EXPECT_FLOAT_EQ(((float *)T.getUnsafePtr())[0], 7.1);
 }
 
 TEST(ZeroDimensionalTensor, handleAssign) {
   Tensor T(ElemKind::FloatTy, {});
-  T.getHandle<>() = {1.14};
-  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 1.14);
+  auto H = T.getHandle<>();
+  H = {1.14};
+  EXPECT_FLOAT_EQ(H.at({}), 1.14);
+  EXPECT_FLOAT_EQ(((float *)T.getUnsafePtr())[0], 1.14);
 }
 
 TEST(ZeroDimensionalTensor, compareAndDumpTwo) {

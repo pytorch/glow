@@ -103,18 +103,6 @@ public:
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
 
-  /// \returns a pointer to the raw data, of type \p ElemTy.
-  template <class ElemTy> ElemTy *getRawDataPointer() {
-    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<ElemTy *>(data_);
-  }
-
-  /// \returns a const pointer to the raw data, of type \p ElemTy.
-  template <class ElemTy> const ElemTy *getRawDataPointer() const {
-    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<const ElemTy *>(data_);
-  }
-
   /// Initialize an empty tensor.
   Tensor() = default;
 
@@ -373,6 +361,18 @@ public:
   template <class ElemTy = float> Handle<ElemTy> getHandle();
 
 private:
+  /// \returns a pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy> ElemTy *getRawDataPointer() {
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
+    return reinterpret_cast<ElemTy *>(data_);
+  }
+
+  /// \returns a const pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy> const ElemTy *getRawDataPointer() const {
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
+    return reinterpret_cast<const ElemTy *>(data_);
+  }
+
   template <class ElemTy>
   bool isEqualImpl(const Tensor &other, float allowedError) const {
     auto const *myData = getRawDataPointer<ElemTy>();
