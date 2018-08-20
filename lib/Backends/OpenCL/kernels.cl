@@ -1,5 +1,5 @@
 
- static const char* SHADER_CODE = R"(
+static const char *SHADER_CODE = R"(
 
 /// This type is always 32 bits.
 typedef unsigned cl_uint32_t;
@@ -513,36 +513,35 @@ __kernel void batchedaddW(__global void *mem, cl_uint32_t dest,
   batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
 }
 
-__kernel void batchedadd_i8K(__global cl_int8_t *dest, __global cl_int8_t *batch,
-                          __global cl_int8_t *slice, cl_uint32_t numSlice,
-                          cl_uint32_t sliceSize, cl_int32_t destOffset,
-                          cl_int32_t batchOffset, cl_int32_t sliceOffset,
-                          cl_int32_t batchPre, cl_int32_t batchPost,
-                          cl_int32_t batchScale, cl_int32_t slicePre,
-                          cl_int32_t slicePost, cl_int32_t sliceScale) {
+__kernel void batchedadd_i8K(__global cl_int8_t *dest,
+                             __global cl_int8_t *batch,
+                             __global cl_int8_t *slice, cl_uint32_t numSlice,
+                             cl_uint32_t sliceSize, cl_int32_t destOffset,
+                             cl_int32_t batchOffset, cl_int32_t sliceOffset,
+                             cl_int32_t batchPre, cl_int32_t batchPost,
+                             cl_int32_t batchScale, cl_int32_t slicePre,
+                             cl_int32_t slicePost, cl_int32_t sliceScale) {
   size_t s = get_global_id(0);
   for (size_t n = 0; n < numSlice; n++) {
-      cl_int32_t batchVal = batch[n * sliceSize + s] - batchOffset;
-      cl_int32_t sliceVal = slice[s] - sliceOffset;
-      cl_int32_t x = scale_i32i8(batchVal, batchPre, batchPost, batchScale, 0);
-      cl_int32_t y = scale_i32i8(sliceVal, slicePre, slicePost, sliceScale, 0);
-      dest[n * sliceSize + s] = clip(x + y + destOffset);
+    cl_int32_t batchVal = batch[n * sliceSize + s] - batchOffset;
+    cl_int32_t sliceVal = slice[s] - sliceOffset;
+    cl_int32_t x = scale_i32i8(batchVal, batchPre, batchPost, batchScale, 0);
+    cl_int32_t y = scale_i32i8(sliceVal, slicePre, slicePost, sliceScale, 0);
+    dest[n * sliceSize + s] = clip(x + y + destOffset);
   }
 }
 
 __kernel void batchedadd_i8W(__global void *mem, cl_uint32_t dest,
-                          cl_uint32_t batch, cl_uint32_t slice,
-                          cl_uint32_t numSlice, cl_uint32_t sliceSize,
-                          cl_int32_t destOffset, 
-                          QuantizationTransform32To8 batchScaleParams,
-                          QuantizationTransform32To8 sliceScaleParams) {
-  batchedadd_i8K(&mem[dest], &mem[batch], 
-                &mem[slice], numSlice, sliceSize,
-                destOffset, batchScaleParams.offset,
-                sliceScaleParams.offset, batchScaleParams.pre,
-                batchScaleParams.post, batchScaleParams.scale,
-                sliceScaleParams.pre, sliceScaleParams.post,
-                sliceScaleParams.scale);
+                             cl_uint32_t batch, cl_uint32_t slice,
+                             cl_uint32_t numSlice, cl_uint32_t sliceSize,
+                             cl_int32_t destOffset,
+                             QuantizationTransform32To8 batchScaleParams,
+                             QuantizationTransform32To8 sliceScaleParams) {
+  batchedadd_i8K(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize,
+                 destOffset, batchScaleParams.offset, sliceScaleParams.offset,
+                 batchScaleParams.pre, batchScaleParams.post,
+                 batchScaleParams.scale, sliceScaleParams.pre,
+                 sliceScaleParams.post, sliceScaleParams.scale);
 }
 
 /// Size of the tile to be used for matrix multiplication.
@@ -755,8 +754,8 @@ __kernel void softmaxgradW(__global void *mem, cl_uint32_t origDest,
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
                            ShapeHW filterSizes, ShapeHW strides,
-                           PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim, ShapeNHWC idim,
-                           ShapeNHWC filterDim) {
+                           PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
+                           ShapeNHWC idim, ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -787,7 +786,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
         for (size_t fd = 0; fd < inCperG; fd++) {
           sum += filter[getNHWC(filterDim, d, fx, fy, fd)] *
-                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)];
+                 src[getNHWC(idim, n, (size_t)ox, (size_t)oy,
+                             fd + inChannelOffset)];
         }
       }
     }
@@ -800,25 +800,24 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
                            cl_uint32_t bias, ShapeHW filterSizes,
-                           ShapeHW strides, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
-                           ShapeNHWC idim, ShapeNHWC filterDim) {
+                           ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
+                           ShapeNHWC odim, ShapeNHWC idim,
+                           ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
                strides, pads, group, odim, idim, filterDim);
 }
 
-__kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
-                              __global cl_int8_t *filter,
-                              __global cl_int8_t *bias, ShapeHW filterSizes,
-                              ShapeHW strides, cl_int32_t destOffset,
-                              float destScale, cl_int32_t srcOffset,
-                              float srcScale, cl_int32_t filterOffset,
-                              float filterScale, cl_int32_t biasOffset,
-                              float biasScale, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
-                              ShapeNHWC idim, ShapeNHWC filterDim) {
+__kernel void convolution_i8K(
+    __global cl_int8_t *dest, __global cl_int8_t *src,
+    __global cl_int8_t *filter, __global cl_int8_t *bias, ShapeHW filterSizes,
+    ShapeHW strides, cl_int32_t destOffset, float destScale,
+    cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
+    float filterScale, cl_int32_t biasOffset, float biasScale, PaddingTLBR pads,
+    cl_uint32_t group, ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
-  size_t inCperG = idim.c / group;	
+  size_t inCperG = idim.c / group;
   size_t outCperG = odim.c / group;
   size_t inChannelOffset = d / outCperG * inCperG;
 
@@ -846,9 +845,10 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
         }
 
         for (size_t fd = 0; fd < inCperG; fd++) {
-          sum +=
-              (filter[getNHWC(filterDim, d, fx, fy, fd)] - filterOffset) *
-              (src[getNHWC(idim, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)] - srcOffset);
+          sum += (filter[getNHWC(filterDim, d, fx, fy, fd)] - filterOffset) *
+                 (src[getNHWC(idim, n, (size_t)ox, (size_t)oy,
+                              fd + inChannelOffset)] -
+                  srcOffset);
         }
       }
     }
@@ -862,15 +862,15 @@ __kernel void convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
 __kernel void
 convolution_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                 cl_uint32_t filter, cl_uint32_t bias, ShapeHW filterSizes,
-                ShapeHW strides, PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
-                ShapeNHWC idim, ShapeNHWC filterDim, cl_int32_t destOffset,
-                float destScale, cl_int32_t srcOffset, float srcScale,
-                cl_int32_t filterOffset, float filterScale,
+                ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
+                ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim,
+                cl_int32_t destOffset, float destScale, cl_int32_t srcOffset,
+                float srcScale, cl_int32_t filterOffset, float filterScale,
                 cl_int32_t biasOffset, float biasScale) {
   convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
                   strides, destOffset, destScale, srcOffset, srcScale,
-                  filterOffset, filterScale, biasOffset, biasScale, pads, group, odim,
-                  idim, filterDim);
+                  filterOffset, filterScale, biasOffset, biasScale, pads, group,
+                  odim, idim, filterDim);
 }
 
 __kernel void convolutiongradK(const __global float *inW,
@@ -878,8 +878,9 @@ __kernel void convolutiongradK(const __global float *inW,
                                const __global float *outG, __global float *inG,
                                __global float *filterG, __global float *biasG,
                                ShapeHW filterSizes, ShapeHW strides,
-                               PaddingTLBR pads, cl_uint32_t group, ShapeNHWC inWdims,
-                               ShapeNHWC outGdims, ShapeNHWC filterGdims) {
+                               PaddingTLBR pads, cl_uint32_t group,
+                               ShapeNHWC inWdims, ShapeNHWC outGdims,
+                               ShapeNHWC filterGdims) {
 
   // ax and ay are coordinates in the tensor outG.
   size_t ax = get_global_id(0);
@@ -912,9 +913,11 @@ __kernel void convolutiongradK(const __global float *inW,
 
         for (size_t fd = 0; fd < inCperG; fd++) {
           atomicAdd(&filterG[getNHWC(filterGdims, d, fx, fy, fd)],
-                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)] *
+                    inW[getNHWC(inWdims, n, (size_t)ox, (size_t)oy,
+                                fd + inChannelOffset)] *
                         grad);
-          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy, fd + inChannelOffset)],
+          atomicAdd(&inG[getNHWC(inWdims, n, (size_t)ox, (size_t)oy,
+                                 fd + inChannelOffset)],
                     filterW[getNHWC(filterGdims, d, fx, fy, fd)] * grad);
         }
       }
@@ -927,12 +930,12 @@ __kernel void convolutiongradW(__global void *mem, cl_uint32_t src,
                                cl_uint32_t filter, cl_uint32_t destGrad,
                                cl_uint32_t srcGrad, cl_uint32_t filterGrad,
                                cl_uint32_t biasGrad, ShapeHW filterSizes,
-                               ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
-                               ShapeNHWC srcDim, ShapeNHWC destGradDim,
-                               ShapeNHWC filterGradDim) {
+                               ShapeHW strides, PaddingTLBR pads,
+                               cl_uint32_t group, ShapeNHWC srcDim,
+                               ShapeNHWC destGradDim, ShapeNHWC filterGradDim) {
   convolutiongradK(&mem[src], &mem[filter], &mem[destGrad], &mem[srcGrad],
-                   &mem[filterGrad], &mem[biasGrad], filterSizes, strides, pads, group,
-                   srcDim, destGradDim, filterGradDim);
+                   &mem[filterGrad], &mem[biasGrad], filterSizes, strides, pads,
+                   group, srcDim, destGradDim, filterGradDim);
 }
 
 __kernel void maxpoolK(__global float *dest, __global float *src,

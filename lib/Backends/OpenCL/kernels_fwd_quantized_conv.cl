@@ -5,7 +5,7 @@
 // sizes of workgroups, etc.
 //
 // The parameters of the kernel are:
-// 
+//
 // v_nax - Number of spacial axes.
 // v_g - Number of groups.
 // v_k_0, v_k_1 - dimensions of the kernel
@@ -31,8 +31,8 @@ static const char *FWD_CONV_QUANTIZED_CODE = R"(
 #define Dtype8 char8
 #define Dtype16 char16
 
-#define A_OFFSET(x) ((x)- a_offset)
-#define B_OFFSET(x) ((x)- b_offset)
+#define A_OFFSET(x) ((x)-a_offset)
+#define B_OFFSET(x) ((x)-b_offset)
 
 #define VEC_1_0(X) X
 #define VEC_2_0(X) X.x
@@ -72,23 +72,23 @@ static const char *FWD_CONV_QUANTIZED_CODE = R"(
 #define uint_tpc unsigned int
 
 // Input image size in pixels.
-#define v_imsi (v_imsi_0*v_imsi_1)
+#define v_imsi (v_imsi_0 * v_imsi_1)
 // Output image size in pixels.
-#define v_imso (v_imso_0*v_imso_1)
+#define v_imso (v_imso_0 * v_imso_1)
 // Input image batch offset.
-#define v_B_off  (v_fin*v_imsi)
+#define v_B_off (v_fin * v_imsi)
 // Output image batch offset.
-#define v_C_off (v_fout*v_imso)
+#define v_C_off (v_fout * v_imso)
 // Definitions used by the GEMM kernel.
 #define MG v_fout
-#define MM (v_fout/v_g)
+#define MM (v_fout / v_g)
 #define NN v_imso
-#define KG (v_fin*v_k_0*v_k_1)
-#define KK ((v_fin/v_g)*v_k_0*v_k_1)
+#define KG (v_fin * v_k_0 * v_k_1)
+#define KK ((v_fin / v_g) * v_k_0 * v_k_1)
 // The tile-size in dimension M.
-#define TSM (WPTM*workgroup_size_1)
+#define TSM (WPTM * workgroup_size_1)
 // The tile-size in dimension N.
-#define TSN (WPTN*workgroup_size_0)
+#define TSN (WPTN * workgroup_size_0)
 // The reduced tile-size in dimension M.
 #define RTSM workgroup_size_1
 // The reduced tile-size in dimension N.
@@ -97,28 +97,28 @@ static const char *FWD_CONV_QUANTIZED_CODE = R"(
 #ifdef LPTA
 #undef LPTA
 #endif
-#define LPTA ((TSK*TSM)/(RTSM*RTSN))
+#define LPTA ((TSK * TSM) / (RTSM * RTSN))
 // Loads per thread for B.
 #ifdef LPTB
 #undef LPTB
 #endif
-#define LPTB ((TSK*TSN)/(RTSM*RTSN))
+#define LPTB ((TSK * TSN) / (RTSM * RTSN))
 #ifdef v_num_tiles
 #undef v_num_tiles
 #endif
-#define v_num_tiles (((KK - 1)/(TSK*2) + 1)*2)
+#define v_num_tiles (((KK - 1) / (TSK * 2) + 1) * 2)
 
 /// Clips int into char.
 char clip(int val) { return (char)min(max(val, -128), 127); }
 
 __kernel
-__attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
-__attribute__((vec_type_hint(Dtype4)))
-void
-conv_forward_mem_i8(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
-                 unsigned bias_offset, unsigned im_out_offset,
-                 int a_offset, float a_scale, int b_offset, float b_scale,
-                 int c_offset, float c_scale, int d_offset, float d_scale) {
+    __attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
+    __attribute__((vec_type_hint(Dtype4))) void
+    conv_forward_mem_i8(__global void *mem, unsigned im_in_offset,
+                        unsigned wg_offset, unsigned bias_offset,
+                        unsigned im_out_offset, int a_offset, float a_scale,
+                        int b_offset, float b_scale, int c_offset,
+                        float c_scale, int d_offset, float d_scale) {
   __global const Dtype *im_in = &mem[im_in_offset];
   __global const Dtype *wg = &mem[wg_offset];
   __global const Dtype *bias = &mem[bias_offset];
@@ -267,7 +267,6 @@ conv_forward_mem_i8(__global void *mem, unsigned im_in_offset, unsigned wg_offse
               VEC_4_3(Areg) = A_OFFSET(Asub[row + 3 * RTSM][k]);
 #pragma unroll
 
-
               for (int_tp wn = 0; wn < WPTN / VWN; ++wn) {
                 VEC_4_0(Creg[wm * VWM + 0][wn]) +=
                     VEC_4_0(Areg) * VEC_4_0(Breg[wn]);
@@ -300,7 +299,7 @@ conv_forward_mem_i8(__global void *mem, unsigned im_in_offset, unsigned wg_offse
                 VEC_4_3(Creg[wm * VWM + 2][wn]) +=
                     VEC_4_2(Areg) * VEC_4_3(Breg[wn]);
                 VEC_4_3(Creg[wm * VWM + 3][wn]) +=
-                    VEC_4_3(Areg) * VEC_4_3(Breg[wn]); 
+                    VEC_4_3(Areg) * VEC_4_3(Breg[wn]);
               }
             }
           }
@@ -314,14 +313,16 @@ conv_forward_mem_i8(__global void *mem, unsigned im_in_offset, unsigned wg_offse
 #pragma unroll
     for (int_tp wm = 0; wm < WPTM; ++wm) {
       int_tp globalRow = offM + tidm + wm * RTSM;
-      int biasval = round((float)(Dptr[globalRow] - d_offset) * (d_scale / matMulScale));
+      int biasval =
+          round((float)(Dptr[globalRow] - d_offset) * (d_scale / matMulScale));
 #pragma unroll
       for (int_tp wn = 0; wn < WPTN; ++wn) {
         int_tp globalCol = offN + tidn + wn * RTSN;
         if (globalRow < MM && globalCol < NN) {
-          Cptr[globalRow * NN + globalCol] =
-              clip(round((float)(((int *)(&(Creg[wm][wn / VWN])))[wn % VWN] + biasval) * 
-              (matMulScale/c_scale) + c_offset));
+          Cptr[globalRow * NN + globalCol] = clip(round(
+              (float)(((int *)(&(Creg[wm][wn / VWN])))[wn % VWN] + biasval) *
+                  (matMulScale / c_scale) +
+              c_offset));
         }
       }
     }

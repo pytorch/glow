@@ -137,8 +137,7 @@ TEST(MemAlloc, dealloc) {
 #ifndef NDEBUG
   // Check that deallocating a non-allocated or already deallocated buffer
   // should result in an assertion failure.
-  ASSERT_DEATH_IF_SUPPORTED(MA.deallocate(handle3),
-                            "Unknown handle");
+  ASSERT_DEATH_IF_SUPPORTED(MA.deallocate(handle3), "Unknown handle");
 #endif
   // Check that after deallocating everything we start allocating from zero.
   EXPECT_EQ(MA.allocate(10, handle0), 0);
@@ -207,6 +206,7 @@ TEST(MemAlloc, testHandles) {
   // Define a set of handles to be used.
   void *handle1 = reinterpret_cast<void *>(1);
   void *handle2 = reinterpret_cast<void *>(2);
+  (void)handle2;
   void *handle3 = reinterpret_cast<void *>(3);
   // Allocate a block of memory p1, but do not associate any handle with it.
   auto p1 = MA.allocate(10, handle1);
@@ -234,8 +234,7 @@ TEST(MemAlloc, testHandles) {
   p1 = MA.allocate(10, handle1);
 #ifndef NDEBUG
   // Deallocating handle2 should result in an assertion failure.
-  ASSERT_DEATH_IF_SUPPORTED(MA.deallocate(handle2),
-                            "Unknown handle");
+  ASSERT_DEATH_IF_SUPPORTED(MA.deallocate(handle2), "Unknown handle");
 #endif
 }
 
