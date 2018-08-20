@@ -604,7 +604,7 @@ TEST_P(CPUOnly, groupConvTest) {
 
 /// This test targets the DKKC8 optimization.
 TEST_P(CPUOnly, nonSquarePaddingConvTest) {
-  std::array<size_t, 4> S{{1, 2, 1, 128}};
+  std::array<size_t, 4> S{{1, 4, 5, 128}};
   Tensor out1(ElemKind::FloatTy, S);
   Tensor out2(ElemKind::FloatTy, S);
   inferNonSquarePaddingConv(&out1, BackendKind::CPU);
