@@ -62,6 +62,8 @@ generateNodeQuantizationInfos(const Function *F,
 /// function based on \p quantizationInfos. This method converts to integer as
 /// many nodes as permitted by the backend \p EE. The new quantized function is
 /// called \p newFuncName. If no name is given the method will generate a name.
+/// This method clones original function \p F and caller is responsible
+/// for cleaning up/erasing original function \p F if needed.
 /// \returns a new quantized function.
 Function *
 quantizeFunction(const ExecutionEngine &EE,

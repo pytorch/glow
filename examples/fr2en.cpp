@@ -164,7 +164,13 @@ struct Model {
       auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
       // Quantize the graph based on the captured profile.
-      F_ = glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+      auto *Q =
+          glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+
+      // Erase the original function so that the redundant variables that are
+      // only referenced by the original function will be removed.
+      Q->getParent()->eraseFunction(F_);
+      F_ = Q;
     }
 
     EE_.compile(CompilationMode::Infer, F_);
