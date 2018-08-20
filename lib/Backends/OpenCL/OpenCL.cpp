@@ -1409,7 +1409,7 @@ void OpenCLFunction::allocateMemory() {
   for (auto it : externalTensors_) {
     Tensor *T = it.second;
     size_t sizeInBytes = T->getType().getSizeInBytes();
-    size_t addr = allocator.allocate(sizeInBytes);
+    size_t addr = allocator.allocate(sizeInBytes, it.first);
     // Associate the new buffer with the weight value.
     tensors_[it.first] = addr;
   }
@@ -1418,7 +1418,7 @@ void OpenCLFunction::allocateMemory() {
   for (const auto &I : F_->getInstrs()) {
     if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes);
+      size_t addr = allocator.allocate(numBytes, A);
       assert(!tensors_.count(A) && "Allocation already made!");
       tensors_[A] = addr;
       continue;
@@ -1444,7 +1444,7 @@ void OpenCLFunction::allocateMemory() {
     if (auto *D = llvm::dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(tensors_.count(A) && "Invalid deallocation!");
-      allocator.deallocate(tensors_[A]);
+      allocator.deallocate(A);
       continue;
     }
   }
