@@ -46,7 +46,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
     if (v->getVisibilityKind() == VisibilityKind::Public)
       continue;
     auto numBytes = w->getSizeInBytes();
-    size_t addr = constantWeightVarsAllocator.allocate(numBytes);
+    size_t addr = constantWeightVarsAllocator.allocate(numBytes, w);
     if (!reuseAddresses) {
       allocatedAddressed_[w] = addr;
     } else {
@@ -63,7 +63,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
     if (v->getVisibilityKind() != VisibilityKind::Public)
       continue;
     auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes);
+    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
     if (!reuseAddresses) {
       allocatedAddressed_[w] = addr;
     } else {
@@ -107,7 +107,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
-      size_t addr = activationsAllocator.allocate(numBytes);
+      size_t addr = activationsAllocator.allocate(numBytes, A);
       assert(!activationAddr.count(A) && "Allocation already made!");
       activationAddr[A] = addr;
       continue;
@@ -116,7 +116,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
     if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(activationAddr.count(A) && "Invalid deallocation!");
-      activationsAllocator.deallocate(activationAddr[A]);
+      activationsAllocator.deallocate(A);
       continue;
     }
   }
