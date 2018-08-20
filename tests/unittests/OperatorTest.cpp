@@ -867,6 +867,69 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+/// Check if the code generation of transposes
+/// is correct for tensors with 2 dimensions.
+/// Note: This assumes that Tensor::transpose is correct.
+TEST_P(Operator, Transpose2Dims) {
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {20, 13}, "A",
+                                VisibilityKind::Public);
+  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave("saveTranspose", tr);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor dest(ElemKind::FloatTy, {13, 20});
+  A->getPayload().transpose(&dest, {1, 0});
+  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(dest));
+}
+
+/// Check if the code generation of transposes
+/// is correct for tensors with 3 dimensions.
+/// Note: This assumes that Tensor::transpose is correct.
+TEST_P(Operator, Transpose3Dims) {
+  constexpr size_t dims[] = {20, 13, 7};
+  auto *A =
+      mod_.createVariable(ElemKind::FloatTy, dims, "A", VisibilityKind::Public);
+  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  int nbOfShuffle = 0;
+  SaveNode *savedTransposes[6];
+  unsigned_t shuffles[6][3];
+
+  for (unsigned_t i = 0; i < 3; ++i) {
+    for (unsigned_t j = 0; j < 3; ++j) {
+      if (j == i) {
+        continue;
+      }
+      for (unsigned_t k = 0; k < 3; ++k) {
+        if (k == j || k == i) {
+          continue;
+        }
+        shuffles[nbOfShuffle][0] = i;
+        shuffles[nbOfShuffle][1] = j;
+        shuffles[nbOfShuffle][2] = k;
+        auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
+        savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
+        ++nbOfShuffle;
+      }
+    }
+  }
+
+  // We should have exactly 6 possible permutations for 3 dimensions.
+  EXPECT_EQ(6, nbOfShuffle);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (int i = 0; i < 6; ++i) {
+    Tensor dest(ElemKind::FloatTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
+                                    dims[shuffles[i][2]]});
+    A->getPayload().transpose(&dest, shuffles[i]);
+    EXPECT_TRUE(savedTransposes[i]->getVariable()->getPayload().isEqual(dest));
+  }
+}
+
 /// Check that gather on IndexTy/size_t works.
 TEST_P(InterpAndCPU, GatherSizeT) {
   /*
