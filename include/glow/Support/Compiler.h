@@ -25,9 +25,10 @@
 #define GLOW_ASSERT(e)                                                         \
   ((void)((e) ? ((void)0) : GLOW_ASSERT_IMPL(#e, __FILE__, __LINE__)))
 #define GLOW_ASSERT_IMPL(e, file, line)                                        \
-  ((void)printf("%s:%u: failed assertion `%s'\n", file, line, e), abort())
+  ((void)fprintf(stderr, "%s:%u: failed assertion `%s'\n", file, line, e),     \
+   abort())
 
 #define GLOW_UNREACHABLE(msg)                                                  \
-  ((void)printf("%s:%u: %s\n", __FILE__, __LINE__, msg), abort())
+  ((void)fprintf(stderr, "%s:%u: %s\n", __FILE__, __LINE__, msg), abort())
 
 #endif // GLOW_SUPPORT_COMPILER_H
