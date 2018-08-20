@@ -159,7 +159,13 @@ void Loader::compile() {
     F_->setName("old");
 
     // Quantize the graph based on the captured profile.
-    F_ = quantization::quantizeFunction(EE_, quantizationInfos, F_, oldName);
+    auto *Q =
+        quantization::quantizeFunction(EE_, quantizationInfos, F_, oldName);
+
+    // Erase the original function so that the redundant variables that are only
+    // referenced by the original function will be removed.
+    Q->getParent()->eraseFunction(F_);
+    F_ = Q;
   }
 
   if (emittingBundle()) {

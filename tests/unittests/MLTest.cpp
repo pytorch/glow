@@ -908,8 +908,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto *TANH = F->createTanh("tanh", CV);
   auto *FCL = F->createFullyConnected("fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
-  auto *SN = F->createSave("ret", SM);
-  auto *resultVar = SN->getVariable();
+  auto *result = F->createSave("ret", SM);
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
@@ -939,7 +938,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
   EE.run({input}, {&testImages});
-  auto SMH = resultVar->getHandle<>();
+  auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
@@ -996,8 +995,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto *RL0 = F->createRELU("relu0", FC0);
   auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
-  auto *SN = F->createSave("ret", R);
-  auto *resultVar = SN->getVariable();
+  auto *result = F->createSave("ret", R);
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
@@ -1040,7 +1038,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EE.run({input}, {&testImages});
 
   // A handle to the projected result.
-  auto RH = resultVar->getHandle<>();
+  auto RH = result->getVariable()->getHandle<>();
   // A handle to the true label.
   auto LH = testLabels.getHandle<>();
 
