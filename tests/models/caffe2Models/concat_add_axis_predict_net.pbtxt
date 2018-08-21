@@ -1,0 +1,22 @@
+name: "concatx3add_axis"
+op {
+  input: "inputs_0"
+  input: "inputs_1"
+  input: "inputs_2"
+  output: "concat_result"
+  output: "split_info"
+  name: ""
+  type: "Concat"
+  arg {
+    name: "add_axis"
+    i: 1
+  }
+  arg {
+    name: "axis"
+    i: 1
+  }
+}
+external_input: "inputs_0"
+external_input: "inputs_1"
+external_input: "inputs_2"
+external_output: "concat_result"
