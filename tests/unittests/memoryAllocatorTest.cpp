@@ -302,3 +302,22 @@ TEST(MemAlloc, testEviction) {
   EXPECT_EQ(evicted[0], handle2);
   EXPECT_EQ(evicted[1], handle3);
 }
+
+TEST(MemAlloc, testGetSize) {
+  MemoryAllocator MA("test", 1024);
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  // Allocate two memory blocks and checks that the size of the allocated blocks
+  // is reported correctly.
+  MA.allocate(10, handle0);
+  EXPECT_EQ(MA.getSize(handle0), 10);
+  MA.allocate(200, handle1);
+  EXPECT_EQ(MA.getSize(handle1), 200);
+}
+
+TEST(MemAlloc, testGetMemorySize) {
+  MemoryAllocator MA1("test1", 1024);
+  EXPECT_EQ(MA1.getMemorySize(), 1024);
+  MemoryAllocator MA2("test1", 102);
+  EXPECT_EQ(MA2.getMemorySize(), 102);
+}

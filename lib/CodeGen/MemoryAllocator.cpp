@@ -46,13 +46,13 @@ const uint64_t MemoryAllocator::npos = -1;
 
 uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // Always allocate buffers properly aligned to hold values of any type.
-  size = alignedSize(size, TensorAlignment);
+  uint64_t segmentSize = alignedSize(size, TensorAlignment);
   uint64_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
-    if (it->begin_ - prev >= size) {
-      allocations_.emplace(it, prev, prev + size);
-      maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + size);
-      setHandle(prev, handle);
+    if (it->begin_ - prev >= segmentSize) {
+      allocations_.emplace(it, prev, prev + segmentSize);
+      maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
+      setHandle(prev, size, handle);
       return prev;
     }
     prev = it->end_;
@@ -61,13 +61,13 @@ uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // the new allocation to the end of the stack.
 
   // Check that we are not allocating memory beyond the pool size.
-  if (poolSize_ && (prev + size) > poolSize_) {
+  if (poolSize_ && (prev + segmentSize) > poolSize_) {
     return npos;
   }
 
-  allocations_.emplace_back(prev, prev + size);
-  maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + size);
-  setHandle(prev, handle);
+  allocations_.emplace_back(prev, prev + segmentSize);
+  maxMemoryAllocated_ = std::max(maxMemoryAllocated_, prev + segmentSize);
+  setHandle(prev, size, handle);
   return prev;
 }
 
@@ -143,7 +143,7 @@ void MemoryAllocator::deallocate(Handle handle) {
     if (it->begin_ == ptr) {
       allocations_.erase(it);
       addrToHandle_.erase(ptr);
-      handleToAddr_.erase(handle);
+      handleToAllocInfo_.erase(handle);
       return;
     }
   }
@@ -162,20 +162,26 @@ MemoryAllocator::Handle MemoryAllocator::getHandle(uint64_t address) const {
 }
 
 bool MemoryAllocator::hasAddress(Handle handle) const {
-  auto it = handleToAddr_.find(handle);
-  return it != handleToAddr_.end();
+  auto it = handleToAllocInfo_.find(handle);
+  return it != handleToAllocInfo_.end();
 }
 
 uint64_t MemoryAllocator::getAddress(Handle handle) const {
-  auto it = handleToAddr_.find(handle);
-  assert(it != handleToAddr_.end() && "Unknown handle");
-  return it->second;
+  auto it = handleToAllocInfo_.find(handle);
+  assert(it != handleToAllocInfo_.end() && "Unknown handle");
+  return it->second.begin_;
 }
 
-void MemoryAllocator::setHandle(uint64_t ptr, Handle handle) {
+uint64_t MemoryAllocator::getSize(Handle handle) const {
+  auto it = handleToAllocInfo_.find(handle);
+  assert(it != handleToAllocInfo_.end() && "Unknown handle");
+  return it->second.size();
+}
+
+void MemoryAllocator::setHandle(uint64_t ptr, uint64_t size, Handle handle) {
   // TODO: Check that ptr is an allocated address.
   assert(contains(ptr) && "The address is not allocated");
   assert(!hasHandle(ptr) && "The address has an associated handle already");
   addrToHandle_[ptr] = handle;
-  handleToAddr_[handle] = ptr;
+  handleToAllocInfo_.insert(std::make_pair(handle, Segment(ptr, ptr + size)));
 }
