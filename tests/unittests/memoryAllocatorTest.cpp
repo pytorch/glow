@@ -15,7 +15,6 @@
  */
 
 #include "glow/CodeGen/MemoryAllocator.h"
-#include "glow/IR/IR.h"
 
 #include "gtest/gtest.h"
 
