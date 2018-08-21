@@ -752,6 +752,10 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   // Calculate the size of each sample in the batch.
   size_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
 
+  // Calculate number of samples in the batch.
+  size_t batchSize = dataTy.dims()[batchDims];
+  (void)batchSize;
+
   // For each sample in the batch:
   for (size_t sample = 0; sample < numSamples; sample++) {
     size_t sampleStart = sample * dataSampleSize;
@@ -759,6 +763,7 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
     // For each slice (small fragment) that we copy from the source memory:
     for (size_t i = 0, end = indicesT->size(); i < end; i++) {
       size_t slice = indicesT->getHandle<size_t>().raw(i);
+      assert(slice < batchSize && "Invalid index seen during Gather operation");
       std::copy(
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * (slice + 1)],
