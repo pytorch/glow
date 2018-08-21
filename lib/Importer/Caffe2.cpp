@@ -270,6 +270,22 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = G_.createConcat(opName, inputs, channel);
 
+    unsigned_t addAxis = dict.count("add_axis") ? loadInt(dict["add_axis"]) : 0;
+
+    if (addAxis) {
+      // When add axis is used, this means we have to add a new dimension before
+      // the axis, instead of merging on the axis.
+      std::vector<size_t> outputDims = inputs[0].dims();
+      for (const auto &input : inputs) {
+        GLOW_ASSERT(input.dims().size() > channel &&
+                    "input should have at least #axis dims");
+        GLOW_ASSERT(
+            outputDims[channel] == input.dims()[channel] &&
+            "inputs need all to have the same dims for concat with add_axis");
+      }
+      outputDims.insert(outputDims.begin() + channel, numInputs);
+      node = G_.createReshape(opName, node, outputDims);
+    }
     // Concat has multiple outputs in Caffe2, but I believe the other output
     // (split_info) is not used for inference.
     nodeValueByName_[op.output(0)] = NodeValue(node, 0);
