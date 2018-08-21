@@ -53,7 +53,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   auto result = F->createSave("ret", matmul, outVar);
   EE.compile(CompilationMode::Infer, F);
   EE.run({lhsVar, rhsVar}, {lhs, rhs});
-  out->copyFrom(&result->getVariable()->getPayload());
+  out->assign(&result->getVariable()->getPayload());
 }
 
 TEST(Gemm, jitTest) {

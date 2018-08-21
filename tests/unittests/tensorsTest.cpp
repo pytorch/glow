@@ -67,7 +67,7 @@ TEST(Tensor, clone) {
   auto H = T.getHandle<>();
 
   Tensor v;
-  v.copyFrom(&T);
+  v.assign(&T);
   auto vH = v.getHandle<>();
 
   EXPECT_EQ(int(vH.at({0})), 1);

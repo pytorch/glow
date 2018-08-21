@@ -350,7 +350,7 @@ Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
                                  VisibilityKind visibility, bool trainable) {
   auto *V = createVariable(tensor.getElementType(), tensor.dims(), name,
                            visibility, trainable);
-  V->copyFrom(&tensor);
+  V->assign(&tensor);
   return V;
 }
 

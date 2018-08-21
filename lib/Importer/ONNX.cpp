@@ -285,7 +285,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       if (tensors_.count(biasTensorName)) {
         // Load the serialized bias vector.
         Tensor *b = getTensorByName(biasTensorName);
-        biasTensor.copyFrom(b);
+        biasTensor.assign(b);
       }
     }
     auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
@@ -394,10 +394,10 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto *node = G_.createBatchNormalization(opName, in, 1, epsilon);
 
     // Load the weights.
-    cast<Variable>(node->getScale())->copyFrom(scale);
-    cast<Variable>(node->getBias())->copyFrom(bias);
-    cast<Variable>(node->getMean())->copyFrom(mean);
-    cast<Variable>(node->getVar())->copyFrom(var);
+    cast<Variable>(node->getScale())->assign(scale);
+    cast<Variable>(node->getBias())->assign(bias);
+    cast<Variable>(node->getMean())->assign(mean);
+    cast<Variable>(node->getVar())->assign(var);
     addNodeAsOutput(op, node);
     return true;
   }
