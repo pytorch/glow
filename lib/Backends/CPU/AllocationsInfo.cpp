@@ -35,8 +35,8 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
                                          bool reuseAddresses) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
-  MemoryAllocator constantWeightVarsAllocator(0);
-  MemoryAllocator mutableWeightVarsAllocator(0);
+  MemoryAllocator constantWeightVarsAllocator("ConstantWeights", 0);
+  MemoryAllocator mutableWeightVarsAllocator("MutableWeights", 0);
 
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
@@ -98,7 +98,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Use a memory allocator with no upper bound on how much memory we can
   // allocate.
-  MemoryAllocator activationsAllocator(0);
+  MemoryAllocator activationsAllocator("Activations", 0);
 
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<const Value *, uint64_t> activationAddr;

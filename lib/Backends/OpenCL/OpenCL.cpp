@@ -1398,7 +1398,7 @@ uint64_t OpenCLFunction::copyMutableWeightsFromDevice() {
 
 void OpenCLFunction::allocateMemory() {
   /// The allocator assigns device memory addresses to the buffers.
-  MemoryAllocator allocator(0xFFFFFFFF);
+  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");

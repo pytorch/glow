@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
+#define DEBUG_TYPE "memory-allocator"
+
 #include "glow/CodeGen/MemoryAllocator.h"
+#include "glow/Support/Debug.h"
 #include "glow/Support/Memory.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 
@@ -82,6 +87,9 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
     }
     auto curHandle = getHandle(it->begin_);
     if (mustNotEvict.count(curHandle)) {
+      DEBUG_GLOW(llvm::dbgs()
+                 << "Cannot evict a buffer from '" << name_ << "' : "
+                 << "address: " << it->begin_ << " size: " << size << "\n");
       // The block cannot be evicted. Start looking after it.
       begin = it->end_;
       evictionCandidates.clear();
@@ -102,6 +110,10 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
     // Now evict all eviction candidates.
     for (auto &candidate : evictionCandidates) {
       auto &curHandle = candidate.second;
+      auto &segment = candidate.first;
+      DEBUG_GLOW(llvm::dbgs() << "Evict a buffer from the '" << name_ << "': "
+                              << "address: " << segment.begin_
+                              << " size: " << segment.size() << "\n");
       deallocate(curHandle);
       evicted.emplace_back(curHandle);
     }

@@ -22,7 +22,7 @@
 using namespace glow;
 
 TEST(MemAlloc, simple) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   void *handle = reinterpret_cast<void *>(1);
 
   // Can't allocate huge chunks.
@@ -36,7 +36,7 @@ TEST(MemAlloc, simple) {
 }
 
 TEST(MemAlloc, holes) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   void *handle0 = reinterpret_cast<void *>(0);
   void *handle1 = reinterpret_cast<void *>(1);
   void *handle2 = reinterpret_cast<void *>(2);
@@ -62,7 +62,7 @@ TEST(MemAlloc, holes) {
 
 /// Check some properties of the first-fit allocation strategy.
 TEST(MemAlloc, firstFitAllocation) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   void *handle = reinterpret_cast<void *>(10000);
   void *handle0 = reinterpret_cast<void *>(0);
   void *handle1 = reinterpret_cast<void *>(1);
@@ -107,7 +107,7 @@ TEST(MemAlloc, firstFitAllocation) {
 }
 
 TEST(MemAlloc, dealloc) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   void *handle0 = reinterpret_cast<void *>(0);
   void *handle1 = reinterpret_cast<void *>(1);
   void *handle2 = reinterpret_cast<void *>(2);
@@ -144,7 +144,7 @@ TEST(MemAlloc, dealloc) {
 }
 
 TEST(MemAlloc, dealloc2) {
-  MemoryAllocator MA(10000);
+  MemoryAllocator MA("test", 10000);
   std::vector<uint64_t> allocations;
 
   for (int i = 0; i < 100; i++) {
@@ -174,7 +174,7 @@ TEST(MemAlloc, dealloc2) {
 }
 
 TEST(MemAlloc, allocateToTheMax) {
-  MemoryAllocator MA(128);
+  MemoryAllocator MA("test", 128);
   void *handle0 = reinterpret_cast<void *>(0);
   void *handle1 = reinterpret_cast<void *>(1);
   auto p0 = MA.allocate(64, handle0);
@@ -190,7 +190,7 @@ TEST(MemAlloc, allocateToTheMax) {
 }
 
 TEST(MemAlloc, testContains) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   void *handle = reinterpret_cast<void *>(0);
 
   EXPECT_EQ(MA.allocate(200, handle), 0);
@@ -202,7 +202,7 @@ TEST(MemAlloc, testContains) {
 }
 
 TEST(MemAlloc, testHandles) {
-  MemoryAllocator MA(1000);
+  MemoryAllocator MA("test", 1000);
   // Define a set of handles to be used.
   void *handle1 = reinterpret_cast<void *>(1);
   void *handle2 = reinterpret_cast<void *>(2);
@@ -239,7 +239,7 @@ TEST(MemAlloc, testHandles) {
 }
 
 TEST(MemAlloc, testEviction) {
-  MemoryAllocator MA(1024);
+  MemoryAllocator MA("test", 1024);
   // Define a set of handles to be used.
   void *handle1 = reinterpret_cast<void *>(1);
   void *handle2 = reinterpret_cast<void *>(2);
