@@ -146,22 +146,18 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  glow::Module M;
-  auto *F = M.createFunction("check_compatibility");
-  std::unique_ptr<glow::onnxifi::ModelLoader> loader =
-      glow::onnxifi::ModelLoader::parse(onnxModel, onnxModelSize, *F);
+  std::unique_ptr<std::pair<glow::Kinded::Kind, glow::ElemKind>> operation =
+      glow::onnxifi::ModelLoader::parseOperator(onnxModel, onnxModelSize);
 
   // TODO: Make better error reporting.
-  if (!loader) {
+  if (!operation) {
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
-  // Make sure that every node from the parsed function F
-  // can be executed by the specific backend.
-  for (const auto &op : F->getNodes()) {
-    if (!glowBackendId->isOpSupported(op)) {
-      return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
-    }
+  // Make sure that the backend itself is capable of executing
+  // the operation.
+  if (!glowBackendId->isOpSupported(operation->first, operation->second)) {
+    return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR; 
   }
 
   return ONNXIFI_STATUS_SUCCESS;

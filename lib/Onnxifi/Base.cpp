@@ -22,9 +22,8 @@
 namespace glow {
 namespace onnxifi {
 
-bool BackendId::isOpSupported(const Node &node) {
-  // TODO: add support for node with multiple outputs.
-  return executionEngine_.isOpSupported(node.getKind(), node.getElementType(0));
+bool BackendId::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) {
+  return executionEngine_.isOpSupported(opKind, elementTy);
 }
 
 bool Event::signal() {

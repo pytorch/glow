@@ -36,8 +36,8 @@ class BackendId {
 public:
   explicit BackendId(int id) : id_(id) {}
 
-  /// Verify that given operation is supported by the backend.
-  bool isOpSupported(const glow::Node &node);
+  /// Verify that given operation kind is supported by the backend.
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
 
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return executionEngine_; }

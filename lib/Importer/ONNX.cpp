@@ -73,7 +73,7 @@ void ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
 }
 
 bool ONNXModelLoader::loadProto(
-    ONNX_NAMESPACE::GraphProto &net,
+    ONNX_NAMESPACE::ModelProto &net,
     google::protobuf::io::ZeroCopyInputStream &iStream) {
   // Construct and configure a Coded Input Stream
   google::protobuf::io::CodedInputStream codedStream(&iStream);
@@ -82,19 +82,18 @@ bool ONNXModelLoader::loadProto(
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
   ONNX_NAMESPACE::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
-  net = MP.graph();
-  setVersion(MP);
+  net = MP;
 
   return parseNet;
 }
 
-bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
+bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::ModelProto &net,
                                 const void *onnxModel, size_t onnxModelSize) {
   google::protobuf::io::ArrayInputStream arrayStream(onnxModel, onnxModelSize);
   return loadProto(net, arrayStream);
 }
 
-bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
+bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::ModelProto &net,
                                 const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
@@ -108,8 +107,7 @@ bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
                     std::istreambuf_iterator<char>());
     ONNX_NAMESPACE::ModelProto MP;
     bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
-    net = MP.graph();
-    setVersion(MP);
+    net = MP;
     return parseNet;
   }
 
@@ -525,19 +523,21 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<Tensor *> tensors, Function &F)
     : CommonOperatorLoader(tensorNames, tensors, F) {
   // The ONNX model that we are deserializing.
-  ONNX_NAMESPACE::GraphProto modelDef;
+  ONNX_NAMESPACE::ModelProto modelDef;
   if (!loadProto(modelDef, modelDescFilename)) {
     GLOW_ASSERT("Cannot load the network.");
   }
+  setVersion(modelDef);
 
-  checkInputs(modelDef, tensorNames, tensors);
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+  checkInputs(graphDef, tensorNames, tensors);
 
-  loadInitializers(modelDef);
-  if (!loadNetwork(modelDef)) {
+  loadInitializers(graphDef);
+  if (!loadNetwork(graphDef)) {
     GLOW_ASSERT("Cannot load the model.");
   }
 
-  if (!setOutputNodes(modelDef)) {
+  if (!setOutputNodes(graphDef)) {
     GLOW_ASSERT("Cannot load external outputs.");
   }
 }

@@ -107,43 +107,63 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
   std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
 
-  ONNX_NAMESPACE::GraphProto modelDef;
+  ONNX_NAMESPACE::ModelProto modelDef;
   if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
     return nullptr;
   }
+  loader->setVersion(modelDef);
 
-  loader->loadInputs(modelDef);
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+  loader->loadInputs(graphDef);
 
   if (!loader->loadWeights(weightsCount, weightDescriptors)) {
     return nullptr;
   }
 
-  if (!loader->loadNetwork(modelDef)) {
+  if (!loader->loadNetwork(graphDef)) {
     return nullptr;
   }
 
-  if (!loader->setOutputNodes(modelDef)) {
+  if (!loader->setOutputNodes(graphDef)) {
     return nullptr;
   }
 
   return loader;
 }
 
-std::unique_ptr<ModelLoader>
-ModelLoader::parse(const void *onnxModel, size_t onnxModelSize, Function &F) {
-  std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
+std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
+ModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
 
-  ONNX_NAMESPACE::GraphProto modelDef;
-  if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
+  ONNX_NAMESPACE::ModelProto modelDef;
+  if (ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
     return nullptr;
   }
 
-  loader->loadInputs(modelDef);
-  if (!loader->loadNetwork(modelDef)) {
+  ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
+
+  // Only single operator is allowed to be in the onnxModel.
+  if (graph.node_size() != 1) {
     return nullptr;
   }
 
-  return loader;
+  std::unique_ptr<std::pair<Kinded::Kind, ElemKind>> result;
+  const std::string &operation = graph.node(0).op_type();
+
+  // Quantized and non-quantized operations are handled by
+  // different ONNX operators, for now only handle fp32.
+  // TODO: Add more operators.
+  if (operation == "conv") {
+    result.reset(new std::pair<Kinded::Kind, ElemKind>(
+        Kinded::Kind::ConvolutionNodeKind, ElemKind::FloatTy));
+  } else if (operation == "Relu") {
+    result.reset(new std::pair<Kinded::Kind, ElemKind>(
+        Kinded::Kind::ReluNodeKind, ElemKind::FloatTy));
+  } else if (operation == "Softmax") {
+    result.reset(new std::pair<Kinded::Kind, ElemKind>(
+        Kinded::Kind::SoftMaxNodeKind, ElemKind::FloatTy));
+  }
+
+  return result;
 }
 
 } // namespace onnxifi

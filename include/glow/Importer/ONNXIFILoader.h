@@ -59,11 +59,13 @@ public:
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
-  /// \returns unique pointer to ModelLoader if \p onnxModel can be parsed,
-  /// e.g., the model is a valid ONNX model and Glow supports all of the
-  /// operators in the network. \returns nullptr otherwise.
-  static std::unique_ptr<ModelLoader> parse(const void *onnxModel,
-                                            size_t onnxModelSize, Function &F);
+  /// \returns nullptr if ONNX operator from the \p onnxModel is not
+  /// supported by the ONNX model parser.
+  /// \returns unique ptr to operation kind and element kind otherwise.
+  ///
+  /// \param onnxModel contains a single ONNX operator.
+  static std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
+  parseOperator(const void *onnxModel, size_t onnxModelSize);
 };
 
 } // namespace onnxifi
