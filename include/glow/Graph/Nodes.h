@@ -82,7 +82,7 @@ public:
     return getPayload().getHandle<ElemTy>();
   }
 
-  void copyFrom(const Tensor *t) { payload_.copyFrom(t); }
+  void assign(const Tensor *t) { payload_.assign(t); }
 
   /// \returns the output NodeValue from the Variable. Variables only have a
   /// single output.

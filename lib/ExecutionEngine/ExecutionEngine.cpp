@@ -123,7 +123,7 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   auto dim = input->dims();
   (void)dim;
   assert(t.dims() == dim && "Invalid slice size");
-  t.copyFrom(input);
+  t.assign(input);
 }
 
 std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,

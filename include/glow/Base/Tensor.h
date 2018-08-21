@@ -299,8 +299,8 @@ public:
     llvm_unreachable("unreachable");
   }
 
-  /// Update the content of the tensor from the tensor \p t.
-  void copyFrom(const Tensor *t) {
+  /// Update the content and type of the tensor from the tensor \p t.
+  void assign(const Tensor *t) {
     assert(this != t && "Copying to self");
     reset(t);
     size_t bufferSize = size() * type_.getElementSize();
@@ -362,7 +362,7 @@ public:
   /// Create a new copy of the current tensor.
   Tensor clone() const {
     Tensor slice;
-    slice.copyFrom(this);
+    slice.assign(this);
     return slice;
   }
 
