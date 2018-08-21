@@ -277,8 +277,6 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // the axis, instead of merging on the axis.
       std::vector<size_t> outputDims = inputs[0].dims();
       for (const auto &input : inputs) {
-        GLOW_ASSERT(input.dims().size() > channel &&
-                    "input should have at least #axis dims");
         GLOW_ASSERT(
             outputDims[channel] == input.dims()[channel] &&
             "inputs need all to have the same dims for concat with add_axis");
@@ -470,7 +468,18 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     assert(!transLHS && "Don't support transpose lhs for now.");
     bool transRHS = dict.count("trans_b") && (loadInt(dict["trans_b"]) == 1);
     if (transRHS) {
-      RHS = G_.createTranspose("RHS.transpose", RHS, {1, 0});
+      // The semantic of the transpose in that context is:
+      // swap the last two dimensions.
+      unsigned_t nbDims = RHS.dims().size();
+      GLOW_ASSERT(nbDims >= 2 && "C2 specs say rank of RHS must be >= 2");
+      std::vector<unsigned_t> shuffle;
+      unsigned_t i;
+      for (i = 0; i < nbDims - 2; ++i) {
+        shuffle.push_back(i);
+      }
+      shuffle.push_back(i + 1);
+      shuffle.push_back(i);
+      RHS = G_.createTranspose("RHS.transpose", RHS, shuffle);
     }
 
     Node *node = nullptr;

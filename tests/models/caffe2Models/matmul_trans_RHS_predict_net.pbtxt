@@ -1,0 +1,23 @@
+name: "matmul_trans_RHS"
+op {
+  input: "inputs_0"
+  input: "inputs_1"
+  output: "output"
+  name: ""
+  type: "BatchMatMul"
+  arg {
+    name: "broadcast"
+    i: 0
+  }
+  arg {
+    name: "trans_a"
+    i: 0
+  }
+  arg {
+    name: "trans_b"
+    i: 1
+  }
+}
+external_input: "inputs_0"
+external_input: "inputs_1"
+external_output: "output"

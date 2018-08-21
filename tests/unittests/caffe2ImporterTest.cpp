@@ -199,3 +199,65 @@ TEST(caffe2, concat) {
     columnsChecked += currentColumnWidth;
   }
 }
+
+/// Test loading a batched matmul with transpose on RHS.
+TEST(caffe2, batchedMatmulRHS) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/matmul_trans_RHS_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+  SaveNode *output;
+  Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
+  Tensor inputs_1(ElemKind::FloatTy, {10, 7});
+  inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"inputs_0", "inputs_1"}, {&inputs_0, &inputs_1},
+                               *F);
+    output = caffe2LD.getSingleOutput();
+  }
+  auto result = output->getVariable()->getHandle();
+  // Check that the shape of the output matches what Caffe2 expects.
+  std::vector<size_t> expectedDims = {3, 10, 10};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  // High level check on the content of the graph.
+  // We have 1 transpose, 1 matmul, 1 save, and 2 reshapes.
+  EXPECT_EQ(F->getNodes().size(), 5);
+  // With have 2 inputs and one outputs.
+  EXPECT_EQ(mod.getVars().size(), 3);
+  // Check that the graph has the expected shape,
+  // starting from the output.
+  // Batched matmul with broadcasted RHS are lowered
+  // to a regular matmul, where LHS is reshaped from
+  // a 3D tensor to a flattened matrix.
+  auto *reshapeResult =
+      llvm::dyn_cast<ReshapeNode>(output->getInput().getNode());
+  ASSERT_TRUE(reshapeResult);
+  auto *matmul =
+      llvm::dyn_cast<MatMulNode>(reshapeResult->getInput().getNode());
+  ASSERT_TRUE(matmul);
+  const size_t matmulDims[] = {30, 10};
+  EXPECT_EQ(matmul->dims(0), llvm::makeArrayRef(matmulDims));
+  auto *lhs = llvm::dyn_cast<ReshapeNode>(matmul->getLHS().getNode());
+  ASSERT_TRUE(lhs);
+  auto *lhsInput = lhs->getInput().getNode();
+  ASSERT_TRUE(llvm::isa<Variable>(lhsInput));
+  EXPECT_TRUE(llvm::cast<Variable>(lhsInput)->getPayload().isEqual(inputs_0));
+  auto *transpose = llvm::dyn_cast<TransposeNode>(matmul->getRHS().getNode());
+  ASSERT_TRUE(transpose);
+  ASSERT_TRUE(llvm::isa<Variable>(transpose->getInput().getNode()));
+  EXPECT_TRUE(llvm::cast<Variable>(transpose->getInput().getNode())
+                  ->getPayload()
+                  .isEqual(inputs_1));
+  // Check that the last two dimensions are swapped.
+  const unsigned_t shuffle[] = {1, 0};
+  EXPECT_EQ(transpose->getShuffle(), llvm::makeArrayRef(shuffle));
+  // We don't actually check that the output is correct, because this
+  // should be covered in the OperatorTest for MatMul already.
+}
