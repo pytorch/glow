@@ -197,6 +197,7 @@ public:
       case Kinded::Kind::SliceNodeKind:
       case Kinded::Kind::SplatNodeKind:
       case Kinded::Kind::SubNodeKind:
+      case Kinded::Kind::TopKInstKind:
       case Kinded::Kind::TransposeNodeKind:
         return true;
       default:

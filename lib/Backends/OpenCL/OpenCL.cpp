@@ -533,6 +533,39 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
 }
 
+/// This method is copied from InterpreterNodes.cpp. Please be aware that
+/// they should be in sync.
+template <typename T>
+static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
+  auto values = outW.getHandle<T>();
+  auto indices = indW.getHandle<size_t>();
+  auto in = inW.getHandle<T>();
+  size_t n = in.dims().back();
+
+  size_t in_p = 0, out_p = 0;
+  size_t tensor_end = in.size();
+  using pairType = std::pair<float, size_t>;
+  std::vector<pairType> buf(n);
+
+  while (in_p < tensor_end) {
+    for (size_t i = 0; i < n; i++) {
+      buf[i].first = in.raw(in_p++);
+      buf[i].second = i;
+    }
+    // NOTE: it's possible to do N + KlogK, while this version is NlogN
+    std::sort(buf.begin(), buf.end(), [](const pairType &a, const pairType &b) {
+      if (a.first != b.first)
+        return a.first > b.first;
+      return a.second < b.second;
+    });
+    for (size_t i = 0; i < k; i++) {
+      values.raw(out_p) = buf[i].first;
+      indices.raw(out_p) = buf[i].second;
+      out_p++;
+    }
+  }
+}
+
 void OpenCLFunction::execute() {
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
@@ -1215,6 +1248,34 @@ void OpenCLFunction::execute() {
       dumpImpl(&T);
       llvm::outs() << "\n";
       llvm::outs().flush();
+      continue;
+    }
+
+    // For TopKInst, we perform the computation on the host side, as sorting on
+    // GPU is complex and we may not get too much benefit from it. We copy the
+    // tensor from GPU memory to host memory, perform the computation, and then
+    // copy the results back to GPU memory.
+    if (auto *TK = dyn_cast<TopKInst>(&I)) {
+      clFinish(commands_);
+      auto *destDev = TK->getValues();
+      auto *indDev = TK->getIndices();
+      auto *srcDev = TK->getInput();
+      Tensor destT(destDev->getType());
+      Tensor indT(indDev->getType());
+      Tensor srcT(srcDev->getType());
+      size_t k = TK->getK();
+
+      copyValueFromDevice(srcDev, srcT.getUnsafePtr());
+      clFinish(commands_);
+
+      if (isQuantized) {
+        topK<int8_t>(destT, indT, srcT, k);
+      } else {
+        topK<float>(destT, indT, srcT, k);
+      }
+      copyValueToDevice(destDev, destT.getUnsafePtr());
+      copyValueToDevice(indDev, indT.getUnsafePtr());
+      clFinish(commands_);
       continue;
     }
 

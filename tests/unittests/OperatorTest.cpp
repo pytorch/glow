@@ -584,7 +584,7 @@ TEST_P(Operator, minElem) {
   }
 }
 
-TEST_P(InterpAndCPU, TopK) {
+TEST_P(Operator, TopK) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
   auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
