@@ -200,6 +200,7 @@ target_link_libraries(memoryAllocatorTest
                       PRIVATE
                         CodeGen
                         gtest
+                        Support
                         testMain)
 add_glow_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 

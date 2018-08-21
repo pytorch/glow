@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <list>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -56,7 +57,8 @@ public:
   /// A reserved value to mark invalid allocation.
   static const uint64_t npos;
 
-  explicit MemoryAllocator(uint64_t poolSize) : poolSize_(poolSize) {}
+  explicit MemoryAllocator(const std::string &name, uint64_t poolSize)
+      : name_(name), poolSize_(poolSize) {}
 
   void reset() {
     maxMemoryAllocated_ = 0;
@@ -113,7 +115,12 @@ public:
   /// \returns the high water mark for the allocated memory.
   uint64_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
 
+  /// \returns the name of the memory region.
+  const std::string &getName() const { return name_; }
+
 private:
+  /// The name of the memory region.
+  std::string name_;
   /// A list of live buffers.
   std::list<Segment> allocations_;
   /// The size of the memory region that we can allocate segments into.
