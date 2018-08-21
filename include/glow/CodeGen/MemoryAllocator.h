@@ -63,7 +63,7 @@ public:
   void reset() {
     maxMemoryAllocated_ = 0;
     allocations_.clear();
-    handleToAddr_.clear();
+    handleToAllocInfo_.clear();
     addrToHandle_.clear();
   }
 
@@ -105,6 +105,10 @@ public:
   /// \returns the address currently associated with the \p handle.
   uint64_t getAddress(Handle handle) const;
 
+  /// \returns the size of the allocated block currently associated with the \p
+  /// handle.
+  uint64_t getSize(Handle handle) const;
+
   /// \returns true if there is an address currently associated with the \p
   /// handle.
   bool hasAddress(Handle handle) const;
@@ -114,6 +118,10 @@ public:
 
   /// \returns the high water mark for the allocated memory.
   uint64_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
+
+  /// \returns the size of the whole memory region that we can allocate segments
+  /// into.
+  uint64_t getMemorySize() const { return poolSize_; }
 
   /// \returns the name of the memory region.
   const std::string &getName() const { return name_; }
@@ -129,8 +137,9 @@ private:
   uint64_t maxMemoryAllocated_{0};
   /// Maps allocated addresses to the currently associated handles.
   std::unordered_map<uint64_t, Handle> addrToHandle_;
-  /// Maps handles to allocated addresses currently associated with them.
-  std::unordered_map<Handle, uint64_t> handleToAddr_;
+  /// Maps handles to the allocation information about the memory block
+  /// currently associated with them.
+  std::unordered_map<Handle, Segment> handleToAllocInfo_;
 
   /// Tries to evict some entries that are not needed at the moment to free
   /// enough memory for the allocation of \p size bytes, but it is not allowed
@@ -139,8 +148,8 @@ private:
   /// candidates.
   void evictFirstFit(uint64_t size, const std::set<Handle> &mustNotEvict,
                      std::vector<Handle> &evicted);
-  /// Associates a \p handle with an allocated address \p ptr.
-  void setHandle(uint64_t ptr, Handle handle);
+  /// Associates a \p handle with an allocated address \p ptr and size \p size.
+  void setHandle(uint64_t ptr, uint64_t size, Handle handle);
 };
 
 } // namespace glow
