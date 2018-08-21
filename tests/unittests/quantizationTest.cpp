@@ -332,7 +332,7 @@ static Function *createGRUForQuantization(Module *M, llvm::StringRef funcName) {
   return F;
 }
 
-TEST_P(Quantization, end2endGRU) {
+TEST_P(Operator, end2endGRU) {
   // STEP1 - Generate the first network to record the quantization parameters.
   auto *mod = &interpreterEE.getModule();
   Function *F1 = createGRUForQuantization(mod, "main");
