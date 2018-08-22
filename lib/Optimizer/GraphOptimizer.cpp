@@ -160,7 +160,8 @@ static Node *simplifyNode(Node *node, Function *F) {
 #define COMMUTE_CONST_TO_RHS(NodeKind)                                         \
   if (auto *NN = dyn_cast<NodeKind##Node>(node))                               \
     if (isConstant(NN->getLHS()) && !isConstant(NN->getRHS())) {               \
-      return F->create##NodeKind(NN->getName(), NN->getRHS(), NN->getLHS());   \
+      return F->create##NodeKind(NN->getName(), NN->getResult().getType(),     \
+                                 NN->getRHS(), NN->getLHS());                  \
     }
 
   COMMUTE_CONST_TO_RHS(Add)
@@ -240,7 +241,11 @@ static bool sinkCode(Function *F) {
         continue;
       }
 
-      auto *NRL = F->createRELU(RL->getName(), TR->getInput());
+      // Keep the same quantization parameters for ReLU output, but
+      // change the shape to appropriate value.
+      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+          RL->getResult().getType(), TR->getInput().dims());
+      auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -399,7 +404,8 @@ static bool sinkCode(Function *F) {
       if (L && R) {
         auto *newCN = F->createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
-        auto *newRL = F->createRELU(L->getName(), newCN);
+        auto *newRL =
+            F->createRELU(L->getName(), newCN, CN->getResult().getType());
         CN->getResult().replaceAllUsesOfWith(newRL);
       }
     }
@@ -771,7 +777,9 @@ static void optimizePool(Function *F) {
       auto *NPL =
           F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernels(),
                            PL->getStrides(), PL->getPads());
-      auto *NRL = F->createRELU(RL->getName(), NPL);
+      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+          RL->getResult().getType(), NPL->getResult().dims());
+      auto *NRL = F->createRELU(RL->getName(), NPL, reluOutTy);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
     }
@@ -1845,7 +1853,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   optimizeReshape(F);
 
-  // Optimize things that are related to quantization.
+  // Optimize quantization related operators.
   optimizeQuantization(F);
 
   while (sinkRescaleQuantizedNode(F)) {

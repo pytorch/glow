@@ -247,8 +247,15 @@ static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
   checkSameShape(LHS, RHS);
 }
 
-static void verifyRelu(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
+static void verifyRelu(NodeValue result, NodeValue input) {
+  if (input.getType()->isQuantizedType()) {
+    assert(result.getType()->isQuantizedType());
+    checkSameShape(result, input);
+    assert(result.getType()->getOffset() == -128 &&
+           "Min fp32 value should be 0");
+  } else {
+    checkSameType(result, input);
+  }
 }
 
 static void verifyRegression(NodeValue src, NodeValue dest,

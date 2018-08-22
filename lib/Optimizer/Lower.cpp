@@ -182,7 +182,8 @@ void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
 void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
-  auto *relu = F->createMax("relu", zero, R.getInput());
+  auto *relu =
+      F->createMax("relu", R.getResult().getType(), zero, R.getInput());
   R.getResult().replaceAllUsesOfWith(relu);
 }
 

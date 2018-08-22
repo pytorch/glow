@@ -255,7 +255,13 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
+  /// Create a ReLU node with the given \p name and \p input.
+  /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
+
+  /// Create a ReLU node with the given \p name, \p input and
+  /// output type \p outTy.
+  ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 

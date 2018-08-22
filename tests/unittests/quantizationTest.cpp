@@ -138,6 +138,38 @@ TEST(Quantization, quantizeGraph) {
   EE.run({}, {});
 }
 
+/// Quantize ReLU node and make sure that quantized version
+/// has quantization parameters mapping to non-negative floating
+/// point range.
+TEST(Quantization, quantizeReLU) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 3}, "input",
+                                   VisibilityKind::Public);
+  auto *relu = F->createRELU("ReLU", input);
+  F->createSave("ret", relu);
+  // Make sure that offset quantization parameter of ReLU is set
+  // such that it produces non-negative floating point range.
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
+       {0.2f, -128}}};
+  F = quantization::quantizeFunction(EE, QI, F);
+  EE.compile(CompilationMode::Infer, F);
+
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  ASSERT_TRUE(llvm::isa<DequantizeNode>(save->getInput().getNode()));
+  auto *dequantize = llvm::cast<DequantizeNode>(save->getInput().getNode());
+  ASSERT_TRUE(llvm::isa<MaxNode>(dequantize->getInput().getNode()));
+
+  MaxNode *max = llvm::cast<MaxNode>(dequantize->getInput().getNode());
+  ASSERT_TRUE(max->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(max->getResult().getType()->getOffset(), -128);
+  EXPECT_EQ(max->getResult().getType()->getScale(), 0.2f);
+}
+
 /// Fills the tensor \p H with some stable random data with the seed \p seed
 /// and the range [-scale .. scale].
 static void fillStableRandomData(Handle<float> H, size_t seed,
