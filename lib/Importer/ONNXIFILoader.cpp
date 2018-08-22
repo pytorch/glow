@@ -43,6 +43,11 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
 void ModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.input()) {
+    // Skip static weights.
+    if (tensors_.count(in.name())) {
+      continue;
+    }
+
     Tensor *T = new Tensor();
     setTensorType(in.type(), T);
     auto *var =
@@ -114,11 +119,10 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
   loader->setVersion(modelDef);
 
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-  loader->loadInputs(graphDef);
-
   if (!loader->loadWeights(weightsCount, weightDescriptors)) {
     return nullptr;
   }
+  loader->loadInputs(graphDef);
 
   if (!loader->loadNetwork(graphDef)) {
     return nullptr;
