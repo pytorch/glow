@@ -122,8 +122,6 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
                           VisibilityKind::Private, true);
   Variable *bias = mod_.createVariable(ElemKind::FloatTy, {16}, "bias",
                                        VisibilityKind::Private, true);
-  filter->getPayload().init(Tensor::InitKind::Broadcast, 75, mod_.getPRNG());
-  bias->getPayload().init(Tensor::InitKind::Broadcast, 1.0, mod_.getPRNG());
 
   ConvolutionNode *CV = F_->createConv(
       "conv", A, filter, bias,
@@ -132,8 +130,6 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
                                        VisibilityKind::Private, true);
   Variable *gamma = mod_.createVariable(ElemKind::FloatTy, {16}, "gamma",
                                         VisibilityKind::Private, true);
-  beta->getPayload().init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
-  gamma->getPayload().init(Tensor::InitKind::Broadcast, 2, mod_.getPRNG());
 
   Variable *mean = mod_.createVariable(ElemKind::FloatTy, {16}, "mean");
   Variable *var = mod_.createVariable(ElemKind::FloatTy, {16}, "var");
@@ -853,7 +849,6 @@ TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
   Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
-  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
 
   auto *D = F_->createDequantize("dequantize", input);
 
@@ -881,7 +876,6 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   Variable *input =
       mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset, "input",
                           VisibilityKind::Public, true);
-  input->getPayload().init(Tensor::InitKind::Broadcast, 4, mod_.getPRNG());
 
   auto *max = F_->createMax("max", splat, input);
   F_->createSave("save", max);
@@ -974,7 +968,6 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
   Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
-  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
 
   // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
@@ -1000,7 +993,6 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
   Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
-  input->getPayload().init(Tensor::InitKind::Broadcast, 15, mod_.getPRNG());
 
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));

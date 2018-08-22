@@ -582,8 +582,6 @@ TEST(Graph, parentLink) {
   Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
                              VisibilityKind::Private, true);
 
-  V->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
-
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
   // Even when we create them from a module...
