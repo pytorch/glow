@@ -41,13 +41,24 @@ directory.
 $image-classifier image.png -image_mode=0to1 -m resnet50 -cpu -emit-bundle build/
 ```
 
-The command above would compile the neural network model from the
-`network_model_directory_name` and generate a bundle consisting of two files in
+The command above would compile the neural network model described by the files
+`init_net.pb` and `predict_net.pb` located in the `network_model_directory_name`
+directory and generate a bundle consisting of two files in
 the directory `output_directory_name`.
+`predict_net.pb` describes the network model using the protobuf format for the ONNX
+or the caffe2 representation. `init_net.pb` contains the weights that are used by the
+network using the protobuf format as well.
 
-The first file is named `network_model_name.o` and contains the compiled code of
-the network model. It is a regular object file that can be linked other files in
-your project.  The second file is named `network_model_name.weights` and
+The first generated file is named `network_model_name.o` and contains the compiled code
+of the network model. By default, this is a non-relocatable object file that
+can be linked with other files in your project. It is possible to control
+the relocation model with the command line option `-relocation-model=<mode>`.
+
+This option supports two modes:
+- `static`: (Default) Produce non-relocatable code.
+- `pic`: Produce position independent code.
+
+The second generated file is named `network_model_name.weights` and
 contains the weights required to run the compiled model.
 
 ## APIs exposed by bundles
