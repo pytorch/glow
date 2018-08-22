@@ -28,7 +28,6 @@
 #include <google/protobuf/text_format.h>
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 /// This is the maximum allowed protobuf size (2GB).
@@ -96,9 +95,9 @@ protected:
   /// The graph that we are constructing.
   Function &G_;
   /// Saves network nodes by name.
-  std::unordered_map<std::string, NodeValue> nodeValueByName_;
+  llvm::StringMap<NodeValue> nodeValueByName_;
   /// A list of weight tensors indexed by name.
-  std::unordered_map<std::string, Tensor *> tensors_;
+  llvm::StringMap<Tensor *> tensors_;
   /// A map from names of the external outputs of the network to SaveNodes.
   llvm::StringMap<SaveNode *> outputsByName_;
 
