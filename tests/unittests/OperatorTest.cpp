@@ -2298,6 +2298,7 @@ TEST_P(Operator, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
+  const int32_t reluOffset = -128;
   const int32_t offset = 5;
   const size_t size = 5;
 
@@ -2307,7 +2308,9 @@ TEST_P(Operator, IntRelu) {
 
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
   auto *rescale = F_->createRescaleQuantized("rescale", splat, rescaleTy);
-  auto *relu = F_->createRELU("relu", rescale);
+  auto *reluOutTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, reluOffset);
+  auto *relu = F_->createRELU("relu", rescale, reluOutTy);
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
   auto *save = F_->createSave("save", dequantize);

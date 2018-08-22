@@ -300,7 +300,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Relu")
       .addInput("Input")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");

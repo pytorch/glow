@@ -178,7 +178,11 @@ static Node *quantizeNode(Function *F, Node *node,
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
 
-    quantizedNode = F->createRELU(R->getName(), quantizedInputs[0]);
+    auto QT =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, R->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+
+    quantizedNode = F->createRELU(R->getName(), quantizedInputs[0], QT);
     break;
   }
   case Kinded::Kind::TransposeNodeKind: {
@@ -363,12 +367,11 @@ static llvm::SmallVector<TensorQuantizationParams, 6> getQuantizationParameters(
 }
 
 /// Some of the nodes need special post processing after quantization.
-/// For example, RELU node needs to have adjusted quantization parameters.
+/// For example, MaxPool node needs to have adjusted quantization parameters.
 static Node *
 postProcessQuantizedNode(Function *F, Node *quantizedNode,
                          llvm::ArrayRef<TensorQuantizationParams> qParams) {
-  if (quantizedNode->getKind() == Kinded::Kind::ReluNodeKind ||
-      quantizedNode->getKind() == Kinded::Kind::MaxPoolNodeKind ||
+  if (quantizedNode->getKind() == Kinded::Kind::MaxPoolNodeKind ||
       quantizedNode->getKind() == Kinded::Kind::AvgPoolNodeKind ||
       quantizedNode->getKind() == Kinded::Kind::GatherNodeKind) {
     // These nodes do not change {S,O} of the output, they use the same

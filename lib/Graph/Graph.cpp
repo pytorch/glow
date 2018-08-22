@@ -597,8 +597,13 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy) {
+  return addNode(new ReluNode(name, outTy, input));
+}
+
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
-  return addNode(new ReluNode(name, input));
+  return addNode(new ReluNode(name, input.getType(), input));
 }
 
 SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
