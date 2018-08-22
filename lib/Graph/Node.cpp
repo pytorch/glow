@@ -212,7 +212,7 @@ unsigned Node::getNumInputs() const {
     llvm_unreachable("Unhandled node");
   }
 }
-llvm::StringRef Node::getInputName(unsigned idx) const {
+std::string Node::getInputName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \

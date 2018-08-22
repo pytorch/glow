@@ -89,7 +89,7 @@ public:
   NodeValue getOutput() { return getNthResult(0); }
 
   unsigned getNumInputs() const;
-  llvm::StringRef getInputName(unsigned idx) const;
+  std::string getInputName(unsigned idx) const;
   NodeValue getNthInput(unsigned idx);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
