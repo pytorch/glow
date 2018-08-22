@@ -281,7 +281,7 @@ public:
 
   /// Getters/setters to access Node's inputs and outputs.
   unsigned getNumInputs() const;
-  llvm::StringRef getInputName(unsigned idx) const;
+  std::string getInputName(unsigned idx) const;
   NodeValue getNthInput(unsigned idx);
   const NodeValue getNthInput(unsigned idx) const;
   void setNthInput(unsigned idx, NodeValue val);

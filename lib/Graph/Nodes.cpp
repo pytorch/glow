@@ -55,7 +55,7 @@ void Variable::visit(const Node *parent, NodeWalker *visitor) const {
 //===----------------------------------------------------------------------===//
 unsigned Variable::getNumInputs() const { return 0; }
 
-llvm::StringRef Variable::getInputName(unsigned idx) const {
+std::string Variable::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 
