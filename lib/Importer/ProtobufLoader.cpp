@@ -112,7 +112,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
 }
 
 ProtobufLoader::~ProtobufLoader() {
-  for (auto it : tensors_) {
+  for (auto &it : tensors_) {
     delete it.second;
   }
 }
