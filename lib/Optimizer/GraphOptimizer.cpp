@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
@@ -153,32 +154,6 @@ bool isConstant(Node *N) { return isa<SplatNode>(N); }
 
 /// \returns the new simplified node or the original node.
 static Node *simplifyNode(Node *node, Function *F) {
-
-// Recursively simplify the operands of arithmetic nodes.
-#define SIMPLIFY_OPERANDS(NodeKind)                                            \
-  if (auto *NN = dyn_cast<NodeKind##Node>(node)) {                             \
-    Node *LHS = simplifyNode(NN->getLHS(), F);                                 \
-    if (LHS != NN->getLHS()) {                                                 \
-      return simplifyNode(                                                     \
-          F->create##NodeKind(NN->getName(), LHS, NN->getRHS()), F);           \
-    }                                                                          \
-    Node *RHS = simplifyNode(NN->getRHS(), F);                                 \
-    if (RHS != NN->getRHS()) {                                                 \
-      return simplifyNode(                                                     \
-          F->create##NodeKind(NN->getName(), NN->getLHS(), RHS), F);           \
-    }                                                                          \
-  }
-
-  SIMPLIFY_OPERANDS(Add)
-  SIMPLIFY_OPERANDS(Mul)
-  SIMPLIFY_OPERANDS(Div)
-  SIMPLIFY_OPERANDS(Sub)
-  SIMPLIFY_OPERANDS(Max)
-  SIMPLIFY_OPERANDS(Min)
-  SIMPLIFY_OPERANDS(CmpLTE)
-  SIMPLIFY_OPERANDS(CmpEQ)
-#undef SIMPLIFY_OPERANDS
-
 // Simplify commutative nodes by moving the constant operator to the right-hand
 // side.
 // Example:  C + X  =>  X + C
@@ -1149,21 +1124,39 @@ static void optimizeArithmeticNodes(Function *F) {
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
-  // Add all of the interesting nodes to the worklist.
-  for (auto &node : F->getNodes()) {
-    if (node.isArithmetic()) {
-      worklist.push_back(&node);
+  // Add all of the arithmetic nodes to the worklist, with a node's dependencies
+  // added after itself so they are processed before the node.
+  GraphPreOrderVisitor visitor(*F);
+  worklist.reserve(visitor.getPreOrder().size());
+  for (auto *N : visitor.getPreOrder()) {
+    if (N->isArithmetic()) {
+      worklist.push_back(N);
     }
   }
   while (!worklist.empty()) {
-    Node *node = worklist.back();
+    Node *N = worklist.back();
     worklist.pop_back();
 
-    auto *sn = simplifyNode(node, F);
-    if (sn != node) {
-      node->getNthResult(0).replaceAllUsesOfWith(sn);
-      // The simplified node could be further simplified.
-      worklist.push_back(sn);
+    auto *SN = simplifyNode(N, F);
+    if (SN != N) {
+      assert(N->getNumResults() == 1 &&
+             "All arithmetic nodes should have 1 result.");
+      N->getNthResult(0).replaceAllUsesOfWith(SN);
+
+      // The simplified node could be further simplified. Note that the
+      // simplified node might not be arithmetic; it could be a splat.
+      if (SN->isArithmetic()) {
+        worklist.push_back(SN);
+      }
+
+      // The simplified node's operands could be further simplified as well.
+      // Push them after the node so they are processed before the node.
+      for (size_t i = 0, e = SN->getNumInputs(); i < e; i++) {
+        Node *input = SN->getNthInput(i).getNode();
+        if (input->isArithmetic()) {
+          worklist.push_back(input);
+        }
+      }
       continue;
     }
   }
