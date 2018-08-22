@@ -600,6 +600,40 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   EXPECT_EQ(O->getInput().getNode(), input);
 }
 
+/// A test that verifies that arithmetic simplification works correctly when
+/// the parents need to be simplified prior to the node itself.
+TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
+  Variable *input1 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                         VisibilityKind::Public);
+  Variable *input2 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                         VisibilityKind::Public);
+
+  // This builds the expression: ((0 * I1) * (0 * I2)) = 0
+  // It should be simplified to simply the splat zero node being saved.
+
+  SplatNode *zero = F_->createSplat("zero", input1->getType(), 0.);
+
+  MulNode *mul1 = F_->createMul("mul1", zero, input1); // -> 0
+  MulNode *mul2 = F_->createMul("mul2", zero, input2); // -> 0
+
+  MulNode *mul3 = F_->createMul("mul3", mul1, mul2); // -> 0
+
+  SaveNode *O = F_->createSave("ret", mul3);
+
+  // Expect 1 splat, 3 muls, 1 save.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expect all muls to be optimized away, with 1 splat and 1 save left.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(O)) != F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(zero)) != F_->getNodes().end());
+  EXPECT_EQ(O->getInput().getNode(), zero);
+}
+
 /// Reverse the intrusive list of nodes. This custom implementation is required,
 /// because std::reverse cannot be used with LLVM's intrusive lists.
 static void reverse(NodesList &L) {
@@ -1204,4 +1238,59 @@ TEST_F(GraphOptz, VarsCSE) {
   // Verify that input3 only has a single user RN.
   ASSERT_TRUE(input3->getUsers().size() == 1);
   EXPECT_TRUE(input3->getUsers().begin()->getUser() == RN);
+}
+
+// Verify that constant input canonicalization works correctly when the
+// arithmetic nodes have multiple users.
+TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
+  Node *I1 = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input1",
+                                 VisibilityKind::Public, false);
+
+  Type t(ElemKind::FloatTy, {10, 10, 10});
+  Node *SN = F_->createSplat("one", &t, 1.0);
+
+  // The splat is a constant input to add1 and add2, and is their LHS input. We
+  // expect canonicalization to occur during optimization, moving the splat
+  // to the RHS for both. Note that add1 has multiple users: add2 and save1.
+  Node *AN1 = F_->createAdd("add1", SN, I1);
+  Node *AN2 = F_->createAdd("add2", SN, AN1);
+  SaveNode *SN1 = F_->createSave("save1", AN1);
+  SaveNode *SN2 = F_->createSave("save2", AN2);
+
+  // Five nodes in total: one splat, two adds, and two saves.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SplatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  // input1 has a single user before optimization.
+  EXPECT_EQ(I1->getUsers().size(), 1);
+
+  // Simplify nodes will canonicalize add1 and add2, and should replace all
+  // their users, without otherwise adding new nodes to the graph/changing the
+  // overall structure.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // We should have the same five nodes: one splat, two adds, and two saves.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SplatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  // Verify that both add nodes were canonicalized, and that the graph's shape
+  // is the same as prior to optimization other than canonicalization.
+  AddNode *newAN1 = llvm::dyn_cast<AddNode>(SN1->getInput().getNode());
+  ASSERT_TRUE(newAN1 != nullptr);
+  EXPECT_TRUE(llvm::isa<Variable>(newAN1->getLHS()));
+  EXPECT_TRUE(llvm::isa<SplatNode>(newAN1->getRHS()));
+
+  AddNode *newAN2 = llvm::dyn_cast<AddNode>(SN2->getInput().getNode());
+  ASSERT_TRUE(newAN2 != nullptr);
+  EXPECT_TRUE(llvm::isa<AddNode>(newAN2->getLHS()));
+  EXPECT_TRUE(llvm::isa<SplatNode>(newAN2->getRHS()));
+
+  EXPECT_EQ(newAN1, newAN2->getLHS());
+
+  // input1 should still have a single user after optimization.
+  EXPECT_EQ(I1->getUsers().size(), 1);
 }
