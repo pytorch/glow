@@ -79,6 +79,59 @@ public:
   }
 };
 
+/// A helper class for ordering the nodes in a pre-order order.
+struct PreOrderVisitor : NodeWalker {
+  /// A pre-order list of nodes.
+  std::vector<Node *> preOrder_;
+  /// A set of visited nodes.
+  std::unordered_set<const Node *> visited_;
+
+public:
+  bool shouldVisit(Node *parent, Node *N) override {
+    // Don't revisit nodes that we've already processed.
+    return !visited_.count(N);
+  }
+
+  bool shouldVisit(const Node *parent, const Node *N) override {
+    // Don't revisit nodes that we've already processed.
+    return !visited_.count(N);
+  }
+
+  explicit PreOrderVisitor() = default;
+
+  void pre(Node *parent, Node *N) override {
+    visited_.insert(N);
+    preOrder_.push_back(N);
+  }
+
+  /// \returns the order.
+  llvm::ArrayRef<Node *> getPreOrder() { return preOrder_; }
+};
+
+/// A helper class for ordering Graph nodes in a pre-order order.
+class GraphPreOrderVisitor : public PreOrderVisitor {
+  Function &G;
+  void visit() {
+    for (const auto *V : G.getParent()->getVars()) {
+      V->visit(nullptr, this);
+    }
+    // Start visiting all root nodes, i.e. nodes that do not have any users.
+    for (auto &N : G.getNodes()) {
+      if (N.getNumUsers() == 0)
+        N.visit(nullptr, this);
+    }
+  }
+
+public:
+  explicit GraphPreOrderVisitor(Function &G) : G(G) {}
+  /// \returns the order.
+  llvm::ArrayRef<Node *> getPreOrder() {
+    if (preOrder_.empty())
+      visit();
+    return preOrder_;
+  }
+};
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

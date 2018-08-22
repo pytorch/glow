@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
@@ -804,4 +805,86 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_EQ(values.getNumUsers(), 4);
   EXPECT_FALSE(values.hasOneUse());
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+}
+
+/// Verify that the pre-order visitor works correctly.
+TEST(Graph, PreOrderTest) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                      VisibilityKind::Public);
+  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                      VisibilityKind::Public);
+  SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
+  MulNode *mul1 = F->createMul("mul1", zero, input1);
+  MulNode *mul2 = F->createMul("mul2", zero, input2);
+  MulNode *mul3 = F->createMul("mul3", mul1, mul2);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
+
+  SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
+  AddNode *add1 = F->createAdd("add1", input2, one);
+  AddNode *add2 = F->createAdd("add2", add1, one);
+  AddNode *add3 = F->createAdd("add3", add2, one);
+  SaveNode *ret2 = F->createSave("ret2", add2);
+
+  GraphPreOrderVisitor visitor(*F);
+  auto order = visitor.getPreOrder();
+
+  ASSERT_EQ(order.size(), 14);
+  EXPECT_EQ(order[0], ret1);
+  EXPECT_EQ(order[1], mul3);
+  EXPECT_EQ(order[2], mul1);
+  EXPECT_EQ(order[3], zero);
+  EXPECT_EQ(order[4], input1);
+  EXPECT_EQ(order[5], mul2);
+  EXPECT_EQ(order[6], input2);
+  EXPECT_EQ(order[7], ret1->getOutput());
+  EXPECT_EQ(order[8], add3);
+  EXPECT_EQ(order[9], add2);
+  EXPECT_EQ(order[10], add1);
+  EXPECT_EQ(order[11], one);
+  EXPECT_EQ(order[12], ret2);
+  EXPECT_EQ(order[13], ret2->getOutput());
+}
+
+/// Verify that the post-order visitor works correctly.
+TEST(Graph, PostOrderTest) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                      VisibilityKind::Public);
+  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                      VisibilityKind::Public);
+  SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
+  MulNode *mul1 = F->createMul("mul1", zero, input1);
+  MulNode *mul2 = F->createMul("mul2", zero, input2);
+  MulNode *mul3 = F->createMul("mul3", mul1, mul2);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
+
+  SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
+  AddNode *add1 = F->createAdd("add1", input2, one);
+  AddNode *add2 = F->createAdd("add2", add1, one);
+  AddNode *add3 = F->createAdd("add3", add2, one);
+  SaveNode *ret2 = F->createSave("ret2", add2);
+
+  GraphPostOrderVisitor visitor(*F);
+  auto order = visitor.getPostOrder();
+
+  ASSERT_EQ(order.size(), 14);
+  EXPECT_EQ(order[0], zero);
+  EXPECT_EQ(order[1], input1);
+  EXPECT_EQ(order[2], mul1);
+  EXPECT_EQ(order[3], input2);
+  EXPECT_EQ(order[4], mul2);
+  EXPECT_EQ(order[5], mul3);
+  EXPECT_EQ(order[6], ret1->getOutput());
+  EXPECT_EQ(order[7], ret1);
+  EXPECT_EQ(order[8], one);
+  EXPECT_EQ(order[9], add1);
+  EXPECT_EQ(order[10], add2);
+  EXPECT_EQ(order[11], add3);
+  EXPECT_EQ(order[12], ret2->getOutput());
+  EXPECT_EQ(order[13], ret2);
 }
