@@ -152,18 +152,15 @@ int main(int argc, char **argv) {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), onnxInputs,
                                  {&data, &data}, *loader.getFunction()));
   }
-  // Set the Softmax save node expected to come at the end of image inference.
-  SaveNode *SM = LD->getSingleOutput();
+  // Get the Variable that the final expected Softmax writes into at the end of
+  // image inference.
+  Variable *SMVar = LD->getSingleOutput();
 
   // Create Variables for both possible input names for flexibility for the
   // input model. The input data is mapped to both names. Whichever Variable is
   // unused will be removed in compile().
   Variable *i0 = LD->getVariableByName(c2Model ? c2Inputs[0] : onnxInputs[0]);
   Variable *i1 = LD->getVariableByName(c2Model ? c2Inputs[1] : onnxInputs[1]);
-
-  // We want to have a way to reference the variable of SM node later, after
-  // it is removed when we finish the quantization.
-  auto *SMVar = SM->getVariable();
 
   assert(i0->getVisibilityKind() == VisibilityKind::Public);
   assert(i1->getVisibilityKind() == VisibilityKind::Public);

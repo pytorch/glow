@@ -98,8 +98,8 @@ protected:
   llvm::StringMap<NodeValue> nodeValueByName_;
   /// A list of weight tensors indexed by name.
   llvm::StringMap<Tensor *> tensors_;
-  /// A map from names of the external outputs of the network to SaveNodes.
-  llvm::StringMap<SaveNode *> outputsByName_;
+  /// A map from names of the external outputs of the network to Variables.
+  llvm::StringMap<Variable *> outputVarsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);
@@ -141,19 +141,19 @@ public:
 
   virtual ~ProtobufLoader();
 
-  /// \returns the single final output of the network. The function assumes
-  /// there is only one output, verified via assertion. For image
+  /// \returns the single final output Variable of the network. The function
+  /// assumes there is only one output, verified via assertion. For image
   /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
-  /// \pre outputsByName_.size() == 1
-  SaveNode *getSingleOutput() {
-    assert(outputsByName_.size() == 1);
-    return outputsByName_.begin()->second;
+  /// \pre outputVarsByName_.size() == 1
+  Variable *getSingleOutput() {
+    assert(outputVarsByName_.size() == 1);
+    return outputVarsByName_.begin()->second;
   }
 
-  /// \returns the SaveNode for the external output with \p name.
-  /// \pre outputsByName_.find(name) != outputsByName_.end()
-  SaveNode *getOutputByName(llvm::StringRef name) const;
+  /// \returns the Variable for the external output with \p name.
+  /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
+  Variable *getOutputByName(llvm::StringRef name) const;
 };
 
 } // namespace glow

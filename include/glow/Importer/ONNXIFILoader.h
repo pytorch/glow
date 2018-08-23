@@ -48,8 +48,8 @@ public:
   }
 
   /// \returns mapping between ONNX names and actual Glow output nodes.
-  const llvm::StringMap<SaveNode *> &getOutputVarsMapping() const {
-    return outputsByName_;
+  const llvm::StringMap<Variable *> &getOutputVarsMapping() const {
+    return outputVarsByName_;
   }
 
   /// \returns unique pointer to ModelLoader if \p onnxModel can be parsed

@@ -31,14 +31,14 @@ TEST(onnx, importConv) {
 
   std::string NetFilename("tests/models/onnxModels/simpleConv.onnxtxt");
 
-  SaveNode *graphOutputNode;
+  Variable *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data}, *F);
-    graphOutputNode = onnxLD.getSingleOutput();
+    graphOutputVar = onnxLD.getSingleOutput();
   }
 
   // ONNX importer loads a conv node and converts it to 4 ops:
@@ -52,7 +52,11 @@ TEST(onnx, importConv) {
   EXPECT_EQ(F->getNodes().size(), 5);
   EXPECT_EQ(mod.getVars().size(), 4);
 
-  auto *node = graphOutputNode->getInput().getNode();
+  auto &outputVarUsers = graphOutputVar->getUsers();
+  ASSERT_TRUE(outputVarUsers.size() == 1);
+  auto *saveNode = llvm::dyn_cast<SaveNode>(outputVarUsers.begin()->getUser());
+  ASSERT_TRUE(saveNode != nullptr);
+  auto *node = saveNode->getInput().getNode();
 
   EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
   auto *convNode = llvm::dyn_cast<TransposeNode>(node)->getInput().getNode();
@@ -67,7 +71,7 @@ TEST(onnx, importConv) {
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
-  auto result = graphOutputNode->getVariable()->getHandle();
+  auto result = graphOutputVar->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};

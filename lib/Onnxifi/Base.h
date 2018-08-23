@@ -116,7 +116,7 @@ private:
 
   /// Mapping between ONNX name for the output variable and Glow output
   /// node.
-  llvm::StringMap<SaveNode *> onnxNameToOutputNode_;
+  llvm::StringMap<Variable *> onnxNameToOutputNode_;
 
   /// Mapping between input var and the actual memory address.
   /// Inputs will be read from these addresses.
@@ -124,7 +124,7 @@ private:
 
   /// Mapping between output var and the actual memory address.
   /// Results must be written to these addresses.
-  llvm::DenseMap<SaveNode *, onnxPointer> outputNodeToBuffer_;
+  llvm::DenseMap<Variable *, onnxPointer> outputNodeToBuffer_;
 };
 
 typedef Graph *GraphPtr;

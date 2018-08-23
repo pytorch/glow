@@ -34,12 +34,12 @@ Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
   return tensors_[name];
 }
 
-SaveNode *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
-  assert(outputsByName_.count(name) &&
-         "There is no tensor registered with this name.");
-  auto it = outputsByName_.find(name);
-  assert(it != outputsByName_.end() &&
-         "No external output was registered with this name.");
+Variable *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
+  assert(outputVarsByName_.count(name) &&
+         "There is no Variable registered with this name.");
+  auto it = outputVarsByName_.find(name);
+  assert(it != outputVarsByName_.end() &&
+         "No external output Variable was registered with this name.");
   return it->second;
 }
 
