@@ -118,10 +118,33 @@ void LLVMIRGen::initTargetMachine(llvm::StringRef T,
 std::string LLVMIRGen::getMainEntryName() const {
   llvm::StringRef name =
       mainEntryName_.empty() ? "main" : F_->getGraph()->getName();
-  auto delimPos = name.rfind('/');
-  if (delimPos != llvm::StringRef::npos)
-    name = name.substr(delimPos + 1);
-  return name;
+
+  // The name may finish with '/' and taking the last token
+  // after '/' will produce an empty name.
+  // If that's the case, move to the next '/' to
+  // try to find a non-empty token.
+  size_t delimPos = name.size();
+  llvm::StringRef entryName;
+  do {
+    auto slashPos = name.rfind('/', delimPos);
+    if (slashPos != llvm::StringRef::npos) {
+      entryName = name.substr(slashPos + 1,
+                              /*length = end - start*/ delimPos - slashPos - 1);
+      delimPos = slashPos;
+    } else {
+      // There is no more slashes, the resulting name
+      // is from the beginning of the string to the last
+      // slash we found.
+      entryName = name.substr(0, delimPos);
+      break;
+    }
+  } while (entryName.empty() && delimPos != 0);
+
+  // The name looks like "////" just come up with a default name.
+  if (entryName.empty()) {
+    entryName = "main";
+  }
+  return entryName;
 }
 
 void LLVMIRGen::setMainEntryName(std::string name) { mainEntryName_ = name; }
