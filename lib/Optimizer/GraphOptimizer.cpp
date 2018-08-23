@@ -1853,6 +1853,11 @@ void glow::optimize(Function *F, CompilationMode mode) {
     optimizeQuantization(F);
   }
 
+  while (sinkCode(F)) {
+    // Perform Dead Code Elimination between rounds of code sinking.
+    DCE(F);
+  }
+
   // Perform Dead Code Elimination.
   DCE(F);
 }
