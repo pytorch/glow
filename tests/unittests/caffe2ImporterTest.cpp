@@ -32,7 +32,7 @@ TEST(caffe2, importConv) {
   std::string NetDescFilename("tests/models/caffe2Models/predict_net.pbtxt");
   std::string NetWeightFilename("tests/models/caffe2Models/init_net.pbtxt");
 
-  SaveNode *output;
+  Variable *output;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
@@ -45,7 +45,7 @@ TEST(caffe2, importConv) {
 
   EE.compile(CompilationMode::Infer, F);
   EE.run({}, {});
-  auto result = output->getVariable()->getHandle();
+  auto result = output->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
