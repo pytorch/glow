@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "llvm/ADT/StringSet.h"
+
 #include "glow/Importer/ONNXIFILoader.h"
 
 #include "onnx/onnx.pb.h"
@@ -135,39 +137,58 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
   return loader;
 }
 
-std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
-ModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
-
+bool ModelLoader::supportModel(const void *onnxModel, size_t onnxModelSize) {
   ONNX_NAMESPACE::ModelProto modelDef;
-  if (ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
+  if (!ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
+    return false;
   }
-
-  ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
-
-  // Only single operator is allowed to be in the onnxModel.
-  if (graph.node_size() != 1) {
-    return nullptr;
-  }
-
-  std::unique_ptr<std::pair<Kinded::Kind, ElemKind>> result;
-  const std::string &operation = graph.node(0).op_type();
 
   // Quantized and non-quantized operations are handled by
   // different ONNX operators, for now only handle fp32.
-  // TODO: Add more operators.
-  if (operation == "conv") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::ConvolutionNodeKind, ElemKind::FloatTy));
-  } else if (operation == "Relu") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::ReluNodeKind, ElemKind::FloatTy));
-  } else if (operation == "Softmax") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::SoftMaxNodeKind, ElemKind::FloatTy));
+  // TODO: Add more operators and merge the code path with
+  // ONNXModelLoader::loadOperator
+  static llvm::StringSet<> supported = {"Conv",
+                                        "Relu",
+                                        "Softmax",
+                                        "BatchNormalization",
+                                        "MaxPool",
+                                        "Sum",
+                                        "AveragePool",
+                                        "Gemm",
+                                        "Transpose",
+                                        "Concat",
+                                        "Unsqueeze",
+                                        "Squeeze",
+                                        "GlobalAveragePool",
+                                        "Constant",
+                                        "Sigmoid",
+                                        "Tanh",
+                                        "Shape",
+                                        "Sqrt",
+                                        "Reciprocal",
+                                        "LRN",
+                                        "Min",
+                                        "Max",
+                                        "Mul",
+                                        "Div",
+                                        "Add",
+                                        "Sub",
+                                        "Split",
+                                        "Reshape",
+                                        "Flatten",
+                                        "Dropout",
+                                        "TopK",
+                                        "ReduceMean",
+                                        "ReduceSum"};
+  ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
+  for (const auto& node: modelDef.graph().node()) {
+    if (!supported.count(node.op_type())) {
+      llvm::outs() << "Don't support ONNX node " << node.op_type() << "\n";
+      return false;    
+    }
   }
 
-  return result;
+  return true;;
 }
 
 } // namespace onnxifi

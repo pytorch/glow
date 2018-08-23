@@ -59,13 +59,12 @@ public:
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
-  /// \returns nullptr if ONNX operator from the \p onnxModel is not
-  /// supported by the ONNX model parser.
-  /// \returns unique ptr to operation kind and element kind otherwise.
+  /// \returns true if ONNX operators from the \p onnxModel is not
+  /// supported by the ONNX model parser. Otherwise, returns false
   ///
   /// \param onnxModel contains a single ONNX operator.
-  static std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
-  parseOperator(const void *onnxModel, size_t onnxModelSize);
+  //  \param onnxModelSize size of the serialized model string
+  static bool supportModel(const void *onnxModel, size_t onnxModelSize);
 };
 
 } // namespace onnxifi
