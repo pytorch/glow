@@ -74,7 +74,7 @@ TEST(caffe2, concatAddAxis) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  SaveNode *output;
+  Variable *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 7});
   Tensor inputs_2(ElemKind::FloatTy, {10, 7});
@@ -90,7 +90,7 @@ TEST(caffe2, concatAddAxis) {
     output = caffe2LD.getSingleOutput();
   }
 
-  auto result = output->getVariable()->getHandle();
+  auto result = output->getHandle();
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {10, 3, 7};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -105,7 +105,8 @@ TEST(caffe2, concatAddAxis) {
 
   // Check that the graph has the expected shape,
   // starting from the output.
-  auto *reshape = llvm::dyn_cast<ReshapeNode>(output->getInput().getNode());
+  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(reshape);
   auto *concat = llvm::dyn_cast<ConcatNode>(reshape->getInput());
   ASSERT_TRUE(concat);
@@ -142,7 +143,7 @@ TEST(caffe2, concat) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  SaveNode *output;
+  Variable *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 12});
   Tensor inputs_2(ElemKind::FloatTy, {10, 5});
@@ -158,7 +159,7 @@ TEST(caffe2, concat) {
     output = caffe2LD.getSingleOutput();
   }
 
-  auto result = output->getVariable()->getHandle();
+  auto result = output->getHandle();
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {10, 24};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -173,7 +174,8 @@ TEST(caffe2, concat) {
 
   // Check that the graph has the expected shape,
   // starting from the output.
-  auto *concat = llvm::dyn_cast<ConcatNode>(output->getInput());
+  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *concat = llvm::dyn_cast<ConcatNode>(saveNode->getInput());
   ASSERT_TRUE(concat);
   // We will check that the inputs are correct within
   // the next loop.
@@ -209,7 +211,7 @@ TEST(caffe2, batchedMatmulRHS) {
       "tests/models/caffe2Models/matmul_trans_RHS_predict_net.pbtxt");
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
-  SaveNode *output;
+  Variable *output;
   Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 7});
   inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
@@ -222,7 +224,7 @@ TEST(caffe2, batchedMatmulRHS) {
                                *F);
     output = caffe2LD.getSingleOutput();
   }
-  auto result = output->getVariable()->getHandle();
+  auto result = output->getHandle();
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {3, 10, 10};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -236,8 +238,9 @@ TEST(caffe2, batchedMatmulRHS) {
   // Batched matmul with broadcasted RHS are lowered
   // to a regular matmul, where LHS is reshaped from
   // a 3D tensor to a flattened matrix.
+  auto *saveNode = getSaveNodeFromVariable(output);
   auto *reshapeResult =
-      llvm::dyn_cast<ReshapeNode>(output->getInput().getNode());
+      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(reshapeResult);
   auto *matmul =
       llvm::dyn_cast<MatMulNode>(reshapeResult->getInput().getNode());

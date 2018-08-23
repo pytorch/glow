@@ -52,10 +52,7 @@ TEST(onnx, importConv) {
   EXPECT_EQ(F->getNodes().size(), 5);
   EXPECT_EQ(mod.getVars().size(), 4);
 
-  auto &outputVarUsers = graphOutputVar->getUsers();
-  ASSERT_TRUE(outputVarUsers.size() == 1);
-  auto *saveNode = llvm::dyn_cast<SaveNode>(outputVarUsers.begin()->getUser());
-  ASSERT_TRUE(saveNode != nullptr);
+  auto *saveNode = getSaveNodeFromVariable(graphOutputVar);
   auto *node = saveNode->getInput().getNode();
 
   EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
