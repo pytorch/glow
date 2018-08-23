@@ -48,4 +48,13 @@ unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   return count;
 }
 
+/// Helper function to get the save node from a Variable \p var.
+SaveNode *getSaveNodeFromVariable(Variable *var) {
+  auto &varUsers = var->getUsers();
+  assert(varUsers.size() == 1);
+  auto *saveNode = llvm::dyn_cast<SaveNode>(varUsers.begin()->getUser());
+  assert(saveNode != nullptr);
+  return saveNode;
+}
+
 } // namespace glow
