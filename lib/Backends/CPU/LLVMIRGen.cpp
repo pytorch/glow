@@ -116,12 +116,7 @@ void LLVMIRGen::initTargetMachine(llvm::StringRef T,
 }
 
 std::string LLVMIRGen::getMainEntryName() const {
-  llvm::StringRef name =
-      mainEntryName_.empty() ? "main" : F_->getGraph()->getName();
-  auto delimPos = name.rfind('/');
-  if (delimPos != llvm::StringRef::npos)
-    name = name.substr(delimPos + 1);
-  return name;
+  return mainEntryName_.empty() ? "main" : mainEntryName_;
 }
 
 void LLVMIRGen::setMainEntryName(std::string name) { mainEntryName_ = name; }
