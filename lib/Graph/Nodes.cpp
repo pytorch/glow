@@ -535,9 +535,9 @@ void SparseLengthsWeightedSumNode::verify() const {
          "Mismatched element types");
   assert(getWeights().getElementType() == getData().getElementType() &&
          "Mismatched element types");
-  assert(getIndices().getElementType() == ElemKind::IndexTy &&
+  assert(getIndices().getElementType() == ElemKind::Int64ITy &&
          "Indices must have index type");
-  assert(getLengths().getElementType() == ElemKind::IndexTy &&
+  assert(getLengths().getElementType() == ElemKind::Int64ITy &&
          "Lengths must have index type");
   assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
@@ -611,7 +611,7 @@ void TopKNode::verify() const {
 
 void GatherNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType());
-  assert(getIndices().getElementType() == ElemKind::IndexTy);
+  assert(getIndices().getElementType() == ElemKind::Int64ITy);
   assert(getResult().dims().size() ==
          getData().dims().size() + getIndices().dims().size() - 1);
   if (getResult().getType()->isQuantizedType()) {

@@ -97,7 +97,7 @@ TEST(IR, allInstrs) {
   IRFunction M(F);
   auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
-  auto T4 = mod.uniqueType(ElemKind::IndexTy, {1, 1});
+  auto T4 = mod.uniqueType(ElemKind::Int64ITy, {1, 1});
 
   {
     IRBuilder builder(&M);
@@ -114,7 +114,7 @@ TEST(IR, allInstrs) {
     auto *ComputationInfo =
         builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
 
-    auto *XY = builder.createWeightVar(ElemKind::IndexTy, {1, 12, 12, 3, 2});
+    auto *XY = builder.createWeightVar(ElemKind::Int64ITy, {1, 12, 12, 3, 2});
     auto *B0 = builder.createWeightVar(T2, "B0");
     auto *B1 =
         builder.createWeightVar(ElemKind::FloatTy, {32}, "B1", MK::Mutable);
@@ -180,7 +180,7 @@ TEST(IR, predicateIR) {
     IRBuilder builder(&M);
     auto *V1 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
     auto *V2 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
-    auto *P = builder.createWeightVar(ElemKind::IndexTy, {320}, "p1");
+    auto *P = builder.createWeightVar(ElemKind::Int64ITy, {320}, "p1");
 
     // Check that we can construct a new instruction.
     auto *CC = builder.createCopyInst("C", V1, V2);

@@ -1345,7 +1345,8 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   outDims.back() = k;
   auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
   return addNode(new TopKNode(
-      name, OT, getParent()->uniqueType(ElemKind::IndexTy, outDims), input, k));
+      name, OT, getParent()->uniqueType(ElemKind::Int64ITy, outDims), input,
+      k));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,

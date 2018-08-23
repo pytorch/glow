@@ -1280,14 +1280,14 @@ libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
     FloatTy,
     Int8QTy,
     Int32QTy,
-    IndexTy,
+    Int64ITy,
   };
   // Dump the content of a tensor.
   switch (elemKind) {
   case FloatTy:
     libjit_dump_tensor_impl((float *)tensor, tensorDim, numDimsTensor);
     break;
-  case IndexTy:
+  case Int64ITy:
     libjit_dump_tensor_impl((size_t *)tensor, tensorDim, numDimsTensor);
     break;
   default:

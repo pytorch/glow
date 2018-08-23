@@ -106,7 +106,7 @@ TEST_P(BackendTest, simpleInference) {
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                    VisibilityKind::Public);
 
-  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);

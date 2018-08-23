@@ -86,11 +86,11 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   Tensor inputs(ElemKind::FloatTy, shape);
   Tensor weights(ElemKind::FloatTy, {23, 23});
   Tensor bias(ElemKind::FloatTy, {23});
-  Tensor selected(ElemKind::IndexTy, {8, 1});
+  Tensor selected(ElemKind::Int64ITy, {8, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }
@@ -113,8 +113,8 @@ TEST(OpenCLCorrectnessTest, gatherTest) {
   Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
   data.getHandle().initXavier(1, PRNG);
 
-  Tensor indices(ElemKind::IndexTy, {nGathered});
-  auto indicesH = indices.getHandle<size_t>();
+  Tensor indices(ElemKind::Int64ITy, {nGathered});
+  auto indicesH = indices.getHandle<int64_t>();
   for (size_t i = 0; i < nGathered; i++) {
     indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
   }

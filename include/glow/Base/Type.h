@@ -180,7 +180,7 @@ enum class ElemKind : unsigned char {
   FloatTy,
   Int8QTy,
   Int32QTy,
-  IndexTy,
+  Int64ITy,
 };
 
 /// A class that represents a type of a tensor.
@@ -199,7 +199,7 @@ struct Type final {
   int32_t offset_{0};
 
   /// Specifies the element type of the tensor.
-  ElemKind elementType_{ElemKind::IndexTy};
+  ElemKind elementType_{ElemKind::Int64ITy};
 
   /// Initialize a new integer type with \p scale and \p offset.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
@@ -311,14 +311,14 @@ struct Type final {
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
-    case ElemKind::IndexTy:
-      return std::is_same<ElemTy, size_t>::value;
+    case ElemKind::Int64ITy:
+      return std::is_same<ElemTy, int64_t>::value;
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
 
   /// \returns true if the type of this Tensor is one of the integer types.
-  /// Notice that we don't consider IndexTy as an integer because we are not
+  /// Notice that we don't consider Int64ITy as an integer because we are not
   /// performing calculations on this type.
   bool isQuantizedType() const { return isType<int8_t>() || isType<int32_t>(); }
 
@@ -337,8 +337,8 @@ struct Type final {
       return sizeof(int8_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
-    case ElemKind::IndexTy:
-      return sizeof(size_t);
+    case ElemKind::Int64ITy:
+      return sizeof(int64_t);
     }
     GLOW_UNREACHABLE("Invalid type.");
   }

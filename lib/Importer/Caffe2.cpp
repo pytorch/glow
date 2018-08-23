@@ -508,7 +508,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     case caffe2::TensorProto_DataType_INT32:
     case caffe2::TensorProto_DataType_INT64: {
-      assert(in.getElementType() == ElemKind::IndexTy &&
+      assert(in.getElementType() == ElemKind::Int64ITy &&
              "Can only cast int to int.");
       break;
     }
@@ -613,11 +613,9 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         TH.raw(i++) = num;
       }
     } else if (dict["values"]->ints_size()) {
-      T->reset(ElemKind::IndexTy, dim);
-      auto TH = T->getHandle<size_t>();
+      T->reset(ElemKind::Int64ITy, dim);
+      auto TH = T->getHandle<int64_t>();
       for (auto num : dict["values"]->ints()) {
-        assert(0 <= num && num < (1LL << 32) &&
-               "Only uint32 integers are supported");
         TH.raw(i++) = num;
       }
     } else {
@@ -681,8 +679,8 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_INT32:
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
-      T->reset(ElemKind::IndexTy, dims);
-      auto TH = T->getHandle<size_t>();
+      T->reset(ElemKind::Int64ITy, dims);
+      auto TH = T->getHandle<int64_t>();
       auto i = (dict.count("value") && dict["value"]->has_i())
                    ? loadInt(dict["value"])
                    : 0;

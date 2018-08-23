@@ -726,7 +726,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = VarFrom(inputs);
-  auto *selected = mod.createVariable(ElemKind::IndexTy, {2, 1}, "selected");
+  auto *selected = mod.createVariable(ElemKind::Int64ITy, {2, 1}, "selected");
 
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected("fc", tr, 16);

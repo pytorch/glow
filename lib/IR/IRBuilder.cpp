@@ -66,7 +66,7 @@ MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY =
-      createAllocActivationInst("srcXY", ElemKind::IndexTy,
+      createAllocActivationInst("srcXY", ElemKind::Int64ITy,
                                 {idim.n, outSz.first, outSz.second, idim.c, 2});
 
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
@@ -138,12 +138,12 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
   // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::IndexTy,
+  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::Int64ITy,
                                             {inDims.back() * 2});
   createSplatInst("topk.zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst("topk.values", outTy);
   auto *indices =
-      createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
+      createAllocActivationInst("topk.indices", ElemKind::Int64ITy, outDims);
   return createTopKInst("topk", values, indices, input, scratch, k);
 }
 

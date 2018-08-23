@@ -203,8 +203,10 @@ int main(int argc, char **argv) {
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Lengths", "ElemKind::IndexTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   /// Adds the 'Slice' operand to each one of the slices in the batch.
@@ -381,7 +383,8 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addMember(MemberType::Unsigned, "BatchDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
       .autoIRGen();
 
   BB.newInstr("ScatterAssign")
@@ -389,7 +392,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Slices", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::IndexTy"});
+                  {"Indices", "ElemKind::Int64ITy"});
 
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing

@@ -75,9 +75,10 @@ protected:
 
     // This is statically known data, and so we create a Tensor for it and
     // register it in tensors_.
-    auto *T = new Tensor(ElemKind::IndexTy, {in.dims().size()});
+    auto *T = new Tensor(ElemKind::Int64ITy, {in.dims().size()});
     tensors_[opName] = T;
-    T->template getHandle<size_t>() = in.dims();
+    T->template getHandle<int64_t>() =
+        std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
     createAndRememberVariable(opName, *T);
   }
@@ -118,7 +119,7 @@ protected:
     // have an option for a selected input anyway. So I am creating this as a
     // placeholder which goes unused during inference.
     auto selected = G_.getParent()->createVariable(
-        ElemKind::IndexTy, {in.dims()[0], 1}, "selected",
+        ElemKind::Int64ITy, {in.dims()[0], 1}, "selected",
         VisibilityKind::Private, false);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
@@ -237,7 +238,7 @@ protected:
     std::vector<int64_t> requestedDims;
     if (op.input_size() > 1) {
       Tensor *constShapeTensor = getTensorByName(op.input(1));
-      auto TH = constShapeTensor->getHandle<size_t>();
+      auto TH = constShapeTensor->getHandle<int64_t>();
       for (size_t i = 0, e = constShapeTensor->size(); i != e; i++) {
         requestedDims.push_back(TH.at({i}));
       }

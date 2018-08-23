@@ -488,7 +488,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   Function *F = mod.createFunction("main");
   auto *P = mod.createVariable(ElemKind::FloatTy, {batchSize, 4}, "P",
                                VisibilityKind::Public, false);
-  auto *Y = mod.createVariable(ElemKind::IndexTy, {batchSize}, "Labels",
+  auto *Y = mod.createVariable(ElemKind::Int64ITy, {batchSize}, "Labels",
                                VisibilityKind::Public, false);
   auto *L = mod.createVariable(ElemKind::FloatTy, {1}, "L",
                                VisibilityKind::Public, false);
@@ -496,10 +496,10 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   F->createSave("ret", CE, L);
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
-  Tensor outputs(ElemKind::IndexTy, {batchSize});
+  Tensor outputs(ElemKind::Int64ITy, {batchSize});
 
   auto inputsH = inputs.getHandle();
-  auto outputsH = outputs.getHandle<size_t>();
+  auto outputsH = outputs.getHandle<int64_t>();
 
   inputsH.randomize(0.0, 1.0, mod.getPRNG());
   outputsH.at({0}) = 2;
