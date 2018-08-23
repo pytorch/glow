@@ -700,9 +700,14 @@ void ConcatNode::verify() const {
   auto dimension = getDim();
   (void)inputs;
   (void)dimension;
+  assert(!inputs.empty() && "Empty concat?!");
+  assert(inputs[0].dims().size() > dimension && "concat on invalid dimension");
 
+  size_t nbDims = inputs[0].dims().size();
   for (size_t i = 1; i < inputs.size(); i++) {
-    for (size_t j = 0; j < inputs[0].dims().size(); j++) {
+    assert(nbDims == inputs[i].dims().size() &&
+           "input #dims are incompatible between elements");
+    for (size_t j = 0; j < nbDims; j++) {
       if (j == dimension) {
         continue;
       }
