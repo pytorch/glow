@@ -137,37 +137,61 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
   return loader;
 }
 
-std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
+std::vector<std::pair<Kinded::Kind, ElemKind>>
 ModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
-
+  std::vector<std::pair<Kinded::Kind, ElemKind>> result;
   ONNX_NAMESPACE::ModelProto modelDef;
-  if (ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
+  if (!ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
+    return result;
   }
 
   ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
 
   // Only single operator is allowed to be in the onnxModel.
   if (graph.node_size() != 1) {
-    return nullptr;
+    return result;
   }
 
-  std::unique_ptr<std::pair<Kinded::Kind, ElemKind>> result;
   const std::string &operation = graph.node(0).op_type();
 
+#define ADD_OP_MAPPING(NODE_KIND_, ELEM_KIND_)                                 \
+  result.emplace_back(Kinded::Kind::NODE_KIND_, ElemKind::ELEM_KIND_);
+
+  // Single ONNX node can be represented by several Glow nodes,
+  // collect corresponding mapping in result vector.
   // Quantized and non-quantized operations are handled by
   // different ONNX operators, for now only handle fp32.
   // TODO: Add more operators.
-  if (operation == "conv") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::ConvolutionNodeKind, ElemKind::FloatTy));
+  if (operation == "BatchNormalization") {
+    ADD_OP_MAPPING(BatchNormalizationNodeKind, FloatTy);
+  } else if (operation == "Conv") {
+    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+    ADD_OP_MAPPING(ConvolutionNodeKind, FloatTy);
   } else if (operation == "Relu") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::ReluNodeKind, ElemKind::FloatTy));
+    ADD_OP_MAPPING(ReluNodeKind, FloatTy);
   } else if (operation == "Softmax") {
-    result.reset(new std::pair<Kinded::Kind, ElemKind>(
-        Kinded::Kind::SoftMaxNodeKind, ElemKind::FloatTy));
+    ADD_OP_MAPPING(SoftMaxNodeKind, FloatTy);
+    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+  } else if (operation == "Transpose") {
+    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+  } else if (operation == "MaxPool") {
+    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+    ADD_OP_MAPPING(MaxPoolNodeKind, FloatTy);
+  } else if (operation == "AveragePool") {
+    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+    ADD_OP_MAPPING(AvgPoolNodeKind, FloatTy);
+  } else if (operation == "Add") {
+    ADD_OP_MAPPING(AddNodeKind, FloatTy);
+  } else if (operation == "Reshape") {
+    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+  } else if (operation == "Sum") {
+    ADD_OP_MAPPING(AddNodeKind, FloatTy);
+  } else if (operation == "Gemm") {
+    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+    ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
   }
+#undef ADD_OP_MAPPING
 
   return result;
 }
