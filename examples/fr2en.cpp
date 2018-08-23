@@ -91,7 +91,7 @@ const unsigned HIDDEN_SIZE = EMBEDDING_SIZE * 3;
 /// vice versa.
 struct Vocabulary {
   std::vector<std::string> index2word_;
-  std::unordered_map<std::string, size_t> word2index_;
+  std::unordered_map<std::string, int64_t> word2index_;
 
   void addWord(llvm::StringRef word) {
     word2index_[word] = index2word_.size();
@@ -239,11 +239,11 @@ void Model::loadLanguages() {
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
-  input_ = mod.createVariable(ElemKind::IndexTy, {batchSize_, MAX_LENGTH},
+  input_ = mod.createVariable(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH},
                               "encoder.inputsentence", VisibilityKind::Public,
                               false);
   seqLength_ =
-      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "encoder.seqLength",
+      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "encoder.seqLength",
                          VisibilityKind::Public, false);
 
   Variable *hiddenInit =
@@ -300,10 +300,10 @@ void Model::loadEncoder() {
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
   Variable *input =
-      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input",
+      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "decoder.input",
                          VisibilityKind::Private, false);
   for (size_t i = 0; i < batchSize_; i++) {
-    input->getPayload().getHandle<size_t>().at({i}) = en_.word2index_["SOS"];
+    input->getPayload().getHandle<int64_t>().at({i}) = en_.word2index_["SOS"];
   }
 
   Variable *w_ih =
@@ -357,7 +357,7 @@ void Model::loadDecoder() {
   Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
                                     {MAX_LENGTH, batchSize_});
-  output_ = mod.createVariable(ElemKind::IndexTy, {MAX_LENGTH, batchSize_},
+  output_ = mod.createVariable(ElemKind::Int64ITy, {MAX_LENGTH, batchSize_},
                                "decoder.output", VisibilityKind::Public, false);
   F_->createSave("decoder.output", reshape, output_);
 }
@@ -367,8 +367,8 @@ void Model::loadDecoder() {
 /// 2) "Memory" of Encoder is written into memory of Decoder.
 ///    Now Decoder streams resulting translation word by word.
 void Model::translate(const std::vector<std::string> &batch) {
-  Tensor input(ElemKind::IndexTy, {batchSize_, MAX_LENGTH});
-  Tensor seqLength(ElemKind::IndexTy, {batchSize_});
+  Tensor input(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH});
+  Tensor seqLength(ElemKind::Int64ITy, {batchSize_});
   input.zero();
 
   for (size_t j = 0; j < batch.size(); j++) {
@@ -384,17 +384,18 @@ void Model::translate(const std::vector<std::string> &batch) {
     for (size_t i = 0; i < words.size(); i++) {
       auto iter = fr_.word2index_.find(words[i]);
       GLOW_ASSERT(iter != fr_.word2index_.end() && "Unknown word.");
-      input.getHandle<size_t>().at({j, i}) = iter->second;
+      input.getHandle<int64_t>().at({j, i}) = iter->second;
     }
-    seqLength.getHandle<size_t>().at({j}) = (words.size() - 1) + j * MAX_LENGTH;
+    seqLength.getHandle<int64_t>().at({j}) =
+        (words.size() - 1) + j * MAX_LENGTH;
   }
 
   EE_.run({input_, seqLength_}, {&input, &seqLength});
 
-  auto OH = output_->getPayload().getHandle<size_t>();
+  auto OH = output_->getPayload().getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
     for (unsigned i = 0; i < MAX_LENGTH; i++) {
-      size_t wordIdx = OH.at({i, j});
+      int64_t wordIdx = OH.at({i, j});
       if (wordIdx == en_.word2index_["EOS"])
         break;
 

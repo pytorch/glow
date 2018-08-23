@@ -270,7 +270,7 @@ TEST_P(Operator, end2end) {
 
 /// Fills the tensor \p H with some stable random integers with the seed \p seed
 /// and the range [0, scale).
-static void fillStableRandomIndex(Handle<size_t> H, size_t seed,
+static void fillStableRandomIndex(Handle<int64_t> H, size_t seed,
                                   size_t scale = 10) {
   for (size_t i = 0, e = H.size(); i < e; i++) {
     H.raw(i) = int(i * 1921 + seed) % scale;
@@ -294,9 +294,9 @@ static Function *createGRUForQuantization(Module *M, llvm::StringRef funcName) {
   fillStableRandomData(emb->getHandle(), 4565, 1);
 
   auto *input = F->getParent()->createVariable(
-      ElemKind::IndexTy, {batchSize, sequenceSize}, "input",
+      ElemKind::Int64ITy, {batchSize, sequenceSize}, "input",
       VisibilityKind::Public, false);
-  fillStableRandomIndex(input->getHandle<size_t>(), 7227, 10);
+  fillStableRandomIndex(input->getHandle<int64_t>(), 7227, 10);
 
   auto *hiddenInit = F->getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, embeddingSize}, "hiddenInit",
@@ -633,7 +633,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10}, "input");
-  auto *selected = mod.createVariable(ElemKind::IndexTy, {1, 10}, "selected");
+  auto *selected = mod.createVariable(ElemKind::Int64ITy, {1, 10}, "selected");
   auto *LRN =
       F->createLocalResponseNormalization("LRN", input, 2, 1.0, 0.0001, 0.75);
   auto *SM = F->createSoftMax("softmax", LRN, selected);

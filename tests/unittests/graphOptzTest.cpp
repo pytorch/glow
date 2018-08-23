@@ -56,7 +56,7 @@ TEST_F(GraphOptz, DCE) {
 
 TEST_F(GraphOptz, liveCodeNotEliminated) {
   Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = mod_.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
+  auto *Ex = mod_.createVariable(ElemKind::Int64ITy, {4, 1}, "Ex");
 
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);

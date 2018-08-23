@@ -178,7 +178,7 @@ TEST(Tensor, assignment) {
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
-  testAssignment<size_t>(Type{ElemKind::IndexTy, dim});
+  testAssignment<int64_t>(Type{ElemKind::Int64ITy, dim});
 }
 
 TEST(Tensor, concatTensors1D) {
@@ -630,8 +630,8 @@ TEST(ZeroDimensionalTensor, compareToNonZeroDimensional) {
 }
 
 TEST(ZeroDimensionalTensor, transpose) {
-  Tensor T(ElemKind::IndexTy, {});
-  T.getHandle<size_t>() = {15};
+  Tensor T(ElemKind::Int64ITy, {});
+  T.getHandle<int64_t>() = {15};
 
   Tensor TT;
   T.transpose(&TT, {});
@@ -643,7 +643,7 @@ TEST(Type, compare) {
   Type T1(ElemKind::FloatTy, {});
   Type T2(ElemKind::FloatTy, {});
   Type T3(ElemKind::FloatTy, {1});
-  Type T4(ElemKind::IndexTy, {});
+  Type T4(ElemKind::Int64ITy, {});
 
   EXPECT_TRUE(T1.isEqual(T2));
   EXPECT_FALSE(T1.isEqual(T3));

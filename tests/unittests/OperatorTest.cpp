@@ -99,12 +99,12 @@ TEST_P(InterpAndCPU, log) {
 }
 
 TEST_P(InterpAndCPU, CmpEQ) {
-  auto *X = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "X");
-  X->getPayload().getHandle<size_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
-                                         0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "Y");
-  Y->getPayload().getHandle<size_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
-                                         0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *X = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "X");
+  X->getPayload().getHandle<int64_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
+                                          0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "Y");
+  Y->getPayload().getHandle<int64_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
+                                          0, 1, 17, 876, 1000, 44444, 9999999};
 
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
   auto *save = F_->createSave("save", cmpEQ);
@@ -113,7 +113,7 @@ TEST_P(InterpAndCPU, CmpEQ) {
 
   EE_.run({}, {});
 
-  auto saveH = save->getVariable()->getHandle<size_t>();
+  auto saveH = save->getVariable()->getHandle<int64_t>();
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_FALSE(saveH.at({0, i}));
   }
@@ -610,7 +610,7 @@ TEST_P(Operator, minElem) {
 TEST_P(Operator, TopK) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
 
   inp->getPayload().getHandle() = {
       28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
@@ -626,7 +626,7 @@ TEST_P(Operator, TopK) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
   EXPECT_EQ(I.at({0, 0, 0}), 2);
@@ -655,7 +655,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
   auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {4, 1, 2}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {4, 1, 2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {4, 1, 2}, "indices");
 
   inp1->getPayload().getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
   inp2->getPayload().getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
@@ -678,7 +678,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 3);
   EXPECT_FLOAT_EQ(I.at({0, 0, 0}), 2);
@@ -754,7 +754,7 @@ TEST_P(Operator, matMul) {
 TEST_P(InterpAndCPU, TopK1) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 1}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 1}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 1}, "indices");
 
   inp->getPayload().getHandle() = {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
@@ -770,7 +770,7 @@ TEST_P(InterpAndCPU, TopK1) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
   EXPECT_EQ(I.at({0, 0, 0}), 1);
@@ -785,7 +785,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");
   auto *OV =
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 3}, 1.2, 5, "values");
-  auto *IV = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *IV = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
 
   INV->getPayload().getHandle<int8_t>() = {
       -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
@@ -801,7 +801,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EE_.run({}, {});
 
   auto VH = OV->getPayload().getHandle<int8_t>();
-  auto IH = IV->getPayload().getHandle<size_t>();
+  auto IH = IV->getPayload().getHandle<int64_t>();
 
   EXPECT_EQ(VH.at({0, 0, 0}), 8);
   EXPECT_EQ(IH.at({0, 0, 0}), 3);
@@ -852,13 +852,13 @@ TEST_P(Operator, Gather) {
     ]
   */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -953,7 +953,7 @@ TEST_P(Operator, Transpose3Dims) {
   }
 }
 
-/// Check that gather on IndexTy/size_t works.
+/// Check that gather on Int64ITy/size_t works.
 TEST_P(InterpAndCPU, GatherSizeT) {
   /*
     DATA  = [
@@ -980,14 +980,14 @@ TEST_P(InterpAndCPU, GatherSizeT) {
         ],
     ]
   */
-  auto *data = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
-  auto *result = mod_.createVariable(ElemKind::IndexTy, {2, 4, 2}, "result");
+  auto *data = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
+  auto *result = mod_.createVariable(ElemKind::Int64ITy, {2, 4, 2}, "result");
 
-  data->getPayload().getHandle<size_t>() = {
+  data->getPayload().getHandle<int64_t>() = {
       1, 2, 3, 4, 5, 6,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -998,7 +998,7 @@ TEST_P(InterpAndCPU, GatherSizeT) {
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
 
-  auto H = result->getPayload().getHandle<size_t>();
+  auto H = result->getPayload().getHandle<int64_t>();
 
   EXPECT_EQ(H.at({0, 0, 0}), 1);
   EXPECT_EQ(H.at({0, 0, 1}), 2);
@@ -1036,13 +1036,13 @@ TEST_P(Operator, BatchedGather) {
    ]
    */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 4}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       0,
       2,
   };
@@ -1066,12 +1066,12 @@ TEST_P(Operator, BatchedGather) {
 
 TEST_P(Operator, ScatterAssign) {
   auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
 
   data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  indices->getPayload().getHandle<size_t>() = {1, 3};
+  indices->getPayload().getHandle<int64_t>() = {1, 3};
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
@@ -1097,12 +1097,12 @@ TEST_P(Operator, ScatterAssign) {
 
 TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
 
   data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  indices->getPayload().getHandle<size_t>() = {1, 3};
+  indices->getPayload().getHandle<int64_t>() = {1, 3};
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
@@ -1391,11 +1391,11 @@ TEST_P(InterpAndCPU, IntFC) {
 
 TEST_P(InterpAndCPU, EntropyLossTest) {
   auto *P = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "P");
-  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2}, "Y");
+  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2}, "Y");
   auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");
 
   P->getPayload().getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
-  Y->getPayload().getHandle<size_t>() = {1, 2};
+  Y->getPayload().getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   F_->createSave("save", ceLoss, L);
   EE_.compile(CompilationMode::Infer, F_);
@@ -1816,35 +1816,35 @@ TEST_P(Operator, FCGradientCheck) {
 TEST_P(InterpAndCPU, concatVectors) {
   F_->setName("concatVectors");
 
-  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
+  auto *V1 = mod_.createVariable(ElemKind::Int64ITy, {10}, "V1",
                                  VisibilityKind::Public);
-  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
+  auto *V2 = mod_.createVariable(ElemKind::Int64ITy, {20}, "V2",
                                  VisibilityKind::Public);
-  auto *V3 = mod_.createVariable(ElemKind::IndexTy, {30}, "V3",
+  auto *V3 = mod_.createVariable(ElemKind::Int64ITy, {30}, "V3",
                                  VisibilityKind::Public);
 
   Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
   auto *result = F_->createSave("ret", L);
 
-  Tensor I1(ElemKind::IndexTy, {10});
-  Tensor I2(ElemKind::IndexTy, {20});
-  Tensor I3(ElemKind::IndexTy, {30});
+  Tensor I1(ElemKind::Int64ITy, {10});
+  Tensor I2(ElemKind::Int64ITy, {20});
+  Tensor I3(ElemKind::Int64ITy, {30});
 
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<size_t>().at({i}) = i;
+    I1.getHandle<int64_t>().at({i}) = i;
 
-    I2.getHandle<size_t>().at({i}) = i + 10;
-    I2.getHandle<size_t>().at({i + 10}) = i + 20;
-    I3.getHandle<size_t>().at({i}) = i + 30;
-    I3.getHandle<size_t>().at({i + 10}) = i + 40;
-    I3.getHandle<size_t>().at({i + 20}) = i + 50;
+    I2.getHandle<int64_t>().at({i}) = i + 10;
+    I2.getHandle<int64_t>().at({i + 10}) = i + 20;
+    I3.getHandle<int64_t>().at({i}) = i + 30;
+    I3.getHandle<int64_t>().at({i + 10}) = i + 40;
+    I3.getHandle<int64_t>().at({i + 20}) = i + 50;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
   EE_.run({V1, V2, V3}, {&I1, &I2, &I3});
-  auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
@@ -1858,9 +1858,9 @@ TEST_P(InterpAndCPU, concatVectors) {
 TEST_P(InterpAndCPU, concatVectorsRepeated) {
   F_->setName("concatVectors");
 
-  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
+  auto *V1 = mod_.createVariable(ElemKind::Int64ITy, {10}, "V1",
                                  VisibilityKind::Public);
-  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
+  auto *V2 = mod_.createVariable(ElemKind::Int64ITy, {20}, "V2",
                                  VisibilityKind::Public);
 
   // Alternate adding sequences of V1 and V2, so that the IRGen'd InsertTensors
@@ -1868,21 +1868,21 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
   auto *result = F_->createSave("ret", L);
 
-  Tensor I1(ElemKind::IndexTy, {10});
-  Tensor I2(ElemKind::IndexTy, {20});
+  Tensor I1(ElemKind::Int64ITy, {10});
+  Tensor I2(ElemKind::Int64ITy, {20});
 
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<size_t>().at({i}) = 1;
+    I1.getHandle<int64_t>().at({i}) = 1;
 
-    I2.getHandle<size_t>().at({i}) = 2;
-    I2.getHandle<size_t>().at({i + 10}) = 2;
+    I2.getHandle<int64_t>().at({i}) = 2;
+    I2.getHandle<int64_t>().at({i + 10}) = 2;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
   EE_.run({V1, V2}, {&I1, &I2});
-  auto outH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto outH = result->getVariable()->getPayload().getHandle<int64_t>();
   (void)outH;
 
   // Simply verify here that the values are in their correct places, based on
@@ -1899,7 +1899,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
 TEST_P(InterpAndCPU, sliceVectors) {
   F_->setName("sliceVectors");
 
-  auto *V = mod_.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+  auto *V = mod_.createVariable(ElemKind::Int64ITy, {3, 30}, "V",
                                 VisibilityKind::Public);
 
   Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
@@ -1910,23 +1910,23 @@ TEST_P(InterpAndCPU, sliceVectors) {
   auto *result2 = F_->createSave("ret2", S2);
   auto *result3 = F_->createSave("ret3", S3);
 
-  Tensor I(ElemKind::IndexTy, {3, 30});
+  Tensor I(ElemKind::Int64ITy, {3, 30});
 
   for (size_t j = 0; j < 30; j++) {
-    I.getHandle<size_t>().at({0, j}) = j;
-    I.getHandle<size_t>().at({1, j}) = j + 30;
-    I.getHandle<size_t>().at({2, j}) = j + 60;
+    I.getHandle<int64_t>().at({0, j}) = j;
+    I.getHandle<int64_t>().at({1, j}) = j + 30;
+    I.getHandle<int64_t>().at({2, j}) = j + 60;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output slices.
   EE_.run({V}, {&I});
-  auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH1 = result1->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH1;
-  auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH2 = result2->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH2;
-  auto RNWH3 = result3->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH3 = result3->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH3;
 
   EXPECT_EQ(3, RNWH1.dims()[0]);
@@ -1951,13 +1951,13 @@ TEST_P(InterpAndCPU, sliceVectors) {
 TEST_P(InterpAndCPU, sliceConcatVectors) {
   F_->setName("sliceConcatVectors");
 
-  auto *V = mod_.createVariable(ElemKind::IndexTy, {5, 4}, "V",
+  auto *V = mod_.createVariable(ElemKind::Int64ITy, {5, 4}, "V",
                                 VisibilityKind::Public);
 
-  Tensor I(ElemKind::IndexTy, {5, 4});
+  Tensor I(ElemKind::Int64ITy, {5, 4});
   for (size_t i = 0; i < 5; i++) {
     for (size_t j = 0; j < 4; j++) {
-      I.getHandle<size_t>().at({i, j}) = i * 100 + j;
+      I.getHandle<int64_t>().at({i, j}) = i * 100 + j;
     }
   }
 
@@ -1983,7 +1983,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
                                  {0, 1, 2, 3},         {100, 101, 102, 103},
                                  {200, 201, 202, 203}};
 
-  auto resultH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto resultH = result->getVariable()->getPayload().getHandle<int64_t>();
   EXPECT_EQ(7, resultH.dims()[0]);
   EXPECT_EQ(4, resultH.dims()[1]);
   for (size_t i = 0; i < 7; i++) {
@@ -2907,16 +2907,16 @@ TEST_P(InterpOnly, SparseLengthsSum) {
     ]
   */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {8}, "indices");
-  auto *lengths = mod_.createVariable(ElemKind::IndexTy, {5}, "lengths");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::Int64ITy, {5}, "lengths");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  lengths->getPayload().getHandle<size_t>() = {
+  lengths->getPayload().getHandle<int64_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -2945,8 +2945,8 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3}, "data");
   auto *weights = mod_.createVariable(ElemKind::FloatTy, {8}, "weights");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {8}, "indices");
-  auto *lengths = mod_.createVariable(ElemKind::IndexTy, {4}, "lengths");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::Int64ITy, {4}, "lengths");
 
   data->getPayload().getHandle() = {
       2.0,
@@ -2956,10 +2956,10 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   weights->getPayload().getHandle() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  lengths->getPayload().getHandle<size_t>() = {
+  lengths->getPayload().getHandle<int64_t>() = {
       3,
       0,
       3,
@@ -3135,13 +3135,13 @@ TEST_P(Operator, Flatten) {
   }
 }
 
-/// Check that div on IndexTy/size_t works.
+/// Check that div on Int64ITy/size_t works.
 TEST_P(InterpAndCPU, DivSizeT) {
-  auto *LHS = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "LHS");
-  auto *RHS = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "RHS");
-  auto *result = mod_.createVariable(ElemKind::IndexTy, {3, 2}, "result");
-  auto LHSH = LHS->getPayload().getHandle<size_t>();
-  auto RHSH = RHS->getPayload().getHandle<size_t>();
+  auto *LHS = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "LHS");
+  auto *RHS = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "RHS");
+  auto *result = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "result");
+  auto LHSH = LHS->getPayload().getHandle<int64_t>();
+  auto RHSH = RHS->getPayload().getHandle<int64_t>();
 
   LHSH = {10, 20, 30, 40, 50, 60};
   RHSH = {2, 20, 100, 41, 3, 59};
@@ -3153,7 +3153,7 @@ TEST_P(InterpAndCPU, DivSizeT) {
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
 
-  auto H = result->getPayload().getHandle<size_t>();
+  auto H = result->getPayload().getHandle<int64_t>();
 
   for (size_t i = 0; i < 3; i++) {
     for (size_t j = 0; j < 2; j++) {

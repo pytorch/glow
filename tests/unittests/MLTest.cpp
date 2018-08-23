@@ -279,7 +279,7 @@ unsigned numSamples = 230;
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
   auto C = coordinates.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
     float r = PRNG.nextRand() * 0.4;
@@ -320,7 +320,7 @@ TEST_P(MLTest, circle) {
   Function *F = mod.createFunction("circle");
   auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
                                VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1}, "S",
                                VisibilityKind::Public, false);
 
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
@@ -333,7 +333,7 @@ TEST_P(MLTest, circle) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
@@ -644,7 +644,7 @@ enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
 void generatePlayerData(Tensor &players, Tensor &labels,
                         unsigned numTrainPlayers, PseudoRNG &PRNG) {
   auto P = players.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
 
   // Auto generate height/weights for basketball players.
   for (size_t i = 0; i < numTrainPlayers / 2; i++) {
@@ -685,7 +685,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
                          VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {numTrainPlayers, 1}, "S",
                                VisibilityKind::Public, false);
 
   auto *FC = F->createFullyConnected("fc", A, numClasses);
@@ -696,7 +696,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
-  Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
+  Tensor labels(ElemKind::Int64ITy, {numTrainPlayers, 1});
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
@@ -813,7 +813,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 
   auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
                                VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "S",
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "S",
                                VisibilityKind::Public, false);
 
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
@@ -828,7 +828,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
 
   for (size_t i = 0; i < numSamples; i++) {
     float x = mod.getPRNG().nextRand();
@@ -836,7 +836,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     size_t label = (x < 0.0) ^ (y < 0.0);
     samples.getHandle<>().at({i, 0}) = x;
     samples.getHandle<>().at({i, 1}) = y;
-    labels.getHandle<size_t>().at({i, 0}) = label;
+    labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
   EE_.runBatch(500, {A, S}, {&samples, &labels});
@@ -861,7 +861,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 /// Generate images in two classes.
 /// A "line" is labeled as 0 and a "cross" is labeled as 1.
 static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
   images.zero();
@@ -901,7 +901,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto *input = mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1},
                                    "input", VisibilityKind::Public, false);
 
-  auto *ex = mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "exp",
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "exp",
                                 VisibilityKind::Public, false);
 
   auto *CV = F->createConv("conv", input, 1, 3, 1, 0, 1);
@@ -913,7 +913,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EE.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
@@ -935,12 +935,12 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EE.compile(CompilationMode::Infer, QP);
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
-  Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
+  Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
   EE.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
-    bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
+    bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
     auto crossWeight = SMH.at({i, 1});
     EXPECT_TRUE((isLine && lineWeight > crossWeight) ||
@@ -1097,7 +1097,7 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
          "Size of the tensors is incompatible");
   auto handleMatricesA = matricesA.getHandle<float>();
   auto handleMatricesB = matricesB.getHandle<float>();
-  auto handleExpected = expected.getHandle<size_t>();
+  auto handleExpected = expected.getHandle<int64_t>();
 
   handleMatricesA.randomize<int>(0, 1, PRNG);
   handleMatricesB.randomize<int>(0, 1, PRNG);
@@ -1149,7 +1149,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
       mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB",
                          VisibilityKind::Public, false);
   Variable *varExpected =
-      mod.createVariable(ElemKind::IndexTy, {TC.batchSize, 1}, "expected",
+      mod.createVariable(ElemKind::Int64ITy, {TC.batchSize, 1}, "expected",
                          VisibilityKind::Public, false);
 
   // Simply concatenating the matrices first would probability be as effective
@@ -1171,7 +1171,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   const unsigned numSamples = 50;
   Tensor matricesA(ElemKind::FloatTy, {numSamples, 3, 3});
   Tensor matricesB(ElemKind::FloatTy, {numSamples, 3, 3});
-  Tensor expected(ElemKind::IndexTy, {numSamples, 1});
+  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   generateMatrixRotationRecognitionData(matricesA, matricesB, expected, PRNG);
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
@@ -1201,7 +1201,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
     // Note that the two softmax outputs always sum to 1, so we only look at
     // one. Index one is true if there is a rotation.
     float value = RHtrain.at({i, 1});
-    bool hasRotation = expected.getHandle<size_t>().at({batchStartIdx + i, 0});
+    bool hasRotation = expected.getHandle<int64_t>().at({batchStartIdx + i, 0});
     if ((value > 0.5) != hasRotation) {
       ++errors;
     }

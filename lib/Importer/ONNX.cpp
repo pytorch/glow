@@ -154,8 +154,7 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       llvm_unreachable("Unsupported Tensor format.");
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-    // TODO: either switch IndexTy to be 64 bit, or switch to another type here
-    T->reset(ElemKind::IndexTy, dim);
+    T->reset(ElemKind::Int64ITy, dim);
 
     if (in.int64_data_size() > 0) {
       auto TH = T->getHandle<>();

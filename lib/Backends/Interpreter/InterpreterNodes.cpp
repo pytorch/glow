@@ -290,7 +290,7 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<size_t> *SXY,
+static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
                        llvm::ArrayRef<unsigned_t> filterSizes,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads) {
@@ -367,7 +367,7 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
-  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<int64_t>();
 
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
@@ -480,7 +480,7 @@ void InterpreterFunction::fwdMaxPoolWithXYGradInst(
 
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getTensor(I->getSrcXY())->getHandle<size_t>();
+  auto SXY = getTensor(I->getSrcXY())->getHandle<int64_t>();
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -611,7 +611,7 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
-  auto selectedH = getTensor(I->getSelected())->getHandle<size_t>();
+  auto selectedH = getTensor(I->getSelected())->getHandle<int64_t>();
 
   inG.clear();
 
@@ -628,11 +628,12 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
 void InterpreterFunction::fwdCrossEntropyLossInst(
     const CrossEntropyLossInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto labels = getTensor(I->getLabels())->getHandle<int64_t>();
   auto CE = getWeightHandle(I->getCE());
   auto dims = P.dims();
   for (size_t n = 0; n < dims[0]; ++n) {
-    auto y = labels.raw(n);
+    assert(labels.raw(n) >= 0 && "Cannot use negative index.");
+    size_t y = labels.raw(n);
     auto p_n = P.at({n, y});
     CE.at({0}) -= log(p_n);
   }
@@ -641,12 +642,13 @@ void InterpreterFunction::fwdCrossEntropyLossInst(
 void InterpreterFunction::fwdCrossEntropyLossGradInst(
     const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto Labels = getTensor(I->getLabels())->getHandle<size_t>();
+  auto Labels = getTensor(I->getLabels())->getHandle<int64_t>();
   auto PGrad = getWeightHandle(I->getPgrad());
   auto dims = PGrad.dims();
   PGrad.clear();
   for (size_t n = 0; n < dims[0]; ++n) {
-    auto y = Labels.raw(n);
+    assert(Labels.raw(n) >= 0 && "Cannot use negative index.");
+    size_t y = Labels.raw(n);
     PGrad.at({n, y}) = -1 / P.at({n, y}); // * CEGrad.at({0})
   }
 }
@@ -676,8 +678,8 @@ void InterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
 
-  if (k == ElemKind::IndexTy) {
-    return T->getHandle<size_t>().clear(I->getValue());
+  if (k == ElemKind::Int64ITy) {
+    return T->getHandle<int64_t>().clear(I->getValue());
   }
 
   if (k == ElemKind::FloatTy) {
@@ -707,7 +709,7 @@ void InterpreterFunction::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
     return OH.insertTensors(IH, I->getOffsets(), I->getCount(), I->getAxis()); \
   }
 
-  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
 #undef TYPED_INSERT
@@ -727,7 +729,7 @@ void InterpreterFunction::fwdExtractTensorInst(
     return IH.extractTensors(OH, I->getOffsets());                             \
   }
 
-  TYPED_INSERT(size_t, ElemKind::IndexTy);
+  TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy)
 #undef TYPED_INSERT
@@ -762,7 +764,7 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
 
     // For each slice (small fragment) that we copy from the source memory:
     for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-      size_t slice = indicesT->getHandle<size_t>().raw(i);
+      size_t slice = indicesT->getHandle<int64_t>().raw(i);
       assert(slice < batchSize && "Invalid index seen during Gather operation");
       std::copy(
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
@@ -785,7 +787,7 @@ void InterpreterFunction::fwdScatterAssignInst(
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
   for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-    size_t destDataIdx = indicesT->getHandle<size_t>().raw(i);
+    size_t destDataIdx = indicesT->getHandle<int64_t>().raw(i);
     std::copy(&slicesT->getUnsafePtr()[i * dataSliceSize],
               &slicesT->getUnsafePtr()[(i + 1) * dataSliceSize],
               &dataT->getUnsafePtr()[dataSliceSize * destDataIdx]);
@@ -1070,8 +1072,8 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
 
   auto *T = getTensor(I->getDest());
   switch (T->getElementType()) {
-  case ElemKind::IndexTy: {
-    DIV_LOOP(size_t);
+  case ElemKind::Int64ITy: {
+    DIV_LOOP(int64_t);
     return;
   }
   case ElemKind::FloatTy: {
@@ -1186,9 +1188,9 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
 }
 
 void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
-  auto outW = getWeightHandle<size_t>(I->getDest());
-  auto lhsW = getWeightHandle<size_t>(I->getLHS());
-  auto rhsW = getWeightHandle<size_t>(I->getRHS());
+  auto outW = getWeightHandle<int64_t>(I->getDest());
+  auto lhsW = getWeightHandle<int64_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int64_t>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) == rhsW.raw(i) ? 1 : 0;
   }
@@ -1491,8 +1493,8 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
 
   out->zero();
 
-  auto IH = indices->getHandle<size_t>();
-  auto LH = lengths->getHandle<size_t>();
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int64_t>();
 
   size_t segments = lengths->dims()[0];
   size_t totalLength = 0;
@@ -1529,7 +1531,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
 template <typename T>
 static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   auto values = outW->getHandle<T>();
-  auto indices = indW->getHandle<size_t>();
+  auto indices = indW->getHandle<int64_t>();
   auto in = inW->getHandle<T>();
   size_t n = in.dims().back();
 

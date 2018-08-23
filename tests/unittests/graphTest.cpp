@@ -49,7 +49,7 @@ TEST(Graph, simpleTestConv) {
   Function *F = MD.createFunction("F");
   IRFunction M(F);
   Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = MD.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
 
   K = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
@@ -289,7 +289,7 @@ TEST(Graph, quantizeGather) {
   auto *F = mod.createFunction("main");
   auto *input = mod.createVariable(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input",
                                    VisibilityKind::Public);
-  auto *indices = mod.createVariable(ElemKind::IndexTy, {1}, "index",
+  auto *indices = mod.createVariable(ElemKind::Int64ITy, {1}, "index",
                                      VisibilityKind::Public);
   auto *gather = F->createGather("gather", input, indices);
   F->createSave("ret", gather);
@@ -301,7 +301,7 @@ TEST(Graph, cloneTest) {
 
   Function *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
@@ -352,7 +352,7 @@ TEST(Graph, cloneTest2) {
 
   auto *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
@@ -421,9 +421,9 @@ TEST(Graph, nodesWithPredicates) {
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                    VisibilityKind::Public);
 
-  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
 
-  Variable *pred = mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
+  Variable *pred = mod.createVariable(ElemKind::Int64ITy, {1}, "predicate",
                                       VisibilityKind::Private, false);
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);

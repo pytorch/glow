@@ -241,8 +241,8 @@ void LLVMIRGen::initCodeGen() {
 llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
                                       const Value *val) {
   switch (val->getElementType()) {
-  case ElemKind::IndexTy:
-    return builder.getIntNTy(sizeof(size_t) * 8);
+  case ElemKind::Int64ITy:
+    return builder.getInt64Ty();
   case ElemKind::FloatTy:
     return builder.getFloatTy();
   case ElemKind::Int8QTy:
@@ -317,8 +317,8 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
-  case ElemKind::IndexTy:
-    T = sizeTTy->getPointerTo();
+  case ElemKind::Int64ITy:
+    T = llvm::Type::getInt64PtrTy(ctx_);
     break;
   default:
     llvm_unreachable("Unimplemented");
@@ -453,8 +453,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   switch (kind) {
   case ElemKind::FloatTy:
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
-  case ElemKind::IndexTy:
-    return builder.getIntN(sizeof(size_t) * 8, static_cast<size_t>(val));
+  case ElemKind::Int64ITy:
+    return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::Int32QTy:
@@ -508,7 +508,7 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
     return get("libjit_" + name + "_i8");
   case ElemKind::Int32QTy:
     return get("libjit_" + name + "_i32");
-  case ElemKind::IndexTy:
+  case ElemKind::Int64ITy:
     return get("libjit_" + name + "_u");
   default:
     GLOW_UNREACHABLE("Unsupported element type");

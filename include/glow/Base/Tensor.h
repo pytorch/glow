@@ -278,8 +278,8 @@ public:
       return isEqualImpl<int8_t>(other, allowedError);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError);
-    case ElemKind::IndexTy:
-      return isEqualImpl<size_t>(other, allowedError);
+    case ElemKind::Int64ITy:
+      return isEqualImpl<int64_t>(other, allowedError);
     }
 
     // This is to make compiler happy. It can never reach this point as switch

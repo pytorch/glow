@@ -34,8 +34,7 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
     T->reset(ElemKind::FloatTy, dim);
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT64) {
-    // TODO: either switch IndexTy to be 64 bit, or switch to another type here.
-    T->reset(ElemKind::IndexTy, dim);
+    T->reset(ElemKind::Int64ITy, dim);
   } else {
     assert(false && "Only float and index tensors are supported");
   }
@@ -76,13 +75,16 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     for (size_t i = 0; i < TH.size(); ++i) {
       TH.raw(i) = data[i];
     }
-  } else if (in.dataType == ONNXIFI_DATATYPE_UINT64) {
-    // TODO: either switch IndexTy to be 64 bit, or switch to another type here.
-    T->reset(ElemKind::IndexTy, dims);
+  } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
+             in.dataType == ONNXIFI_DATATYPE_INT64) {
+    const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
+    T->reset(ElemKind::Int64ITy, dims);
 
-    auto TH = T->getHandle<size_t>();
+    auto TH = T->getHandle<int64_t>();
     int64_t *data = (int64_t *)in.buffer;
     for (size_t i = 0; i < TH.size(); ++i) {
+      assert((inDataSigned || data[i] >= 0) &&
+             "Disallow overflow of loaded UINT64 data into Int64ITy.");
       TH.raw(i) = data[i];
     }
   } else {

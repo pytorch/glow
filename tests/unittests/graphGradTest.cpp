@@ -55,7 +55,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {10, 1}, "selected", VisibilityKind::Public, false);
+      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -85,7 +85,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *FCL1 = F->createFullyConnected("fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   Variable *selected = mod.createVariable(
-      ElemKind::IndexTy, {10, 1}, "selected", VisibilityKind::Public, false);
+      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 

@@ -128,7 +128,7 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
     return name + "_i8W";
   case ElemKind::Int32QTy:
     return name + "_i32W";
-  case ElemKind::IndexTy:
+  case ElemKind::Int64ITy:
     return name + "_uW";
   default:
     GLOW_ASSERT("Unsupported element type");
@@ -538,7 +538,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
 template <typename T>
 static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   auto values = outW.getHandle<T>();
-  auto indices = indW.getHandle<size_t>();
+  auto indices = indW.getHandle<int64_t>();
   auto in = inW.getHandle<T>();
   size_t n = in.dims().back();
 
