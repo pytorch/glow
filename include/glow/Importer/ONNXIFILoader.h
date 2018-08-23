@@ -59,12 +59,13 @@ public:
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
-  /// \returns nullptr if ONNX operator from the \p onnxModel is not
+  /// \returns empty std::vector if ONNX operator from the \p onnxModel is not
   /// supported by the ONNX model parser.
-  /// \returns unique ptr to operation kind and element kind otherwise.
+  /// \returns std::vector of Glow operation kind and element kind otherwise.
+  ///          It represents a mapping between ONNX node and Glow operations.
   ///
   /// \param onnxModel contains a single ONNX operator.
-  static std::unique_ptr<std::pair<Kinded::Kind, ElemKind>>
+  static std::vector<std::pair<Kinded::Kind, ElemKind>>
   parseOperator(const void *onnxModel, size_t onnxModelSize);
 };
 
