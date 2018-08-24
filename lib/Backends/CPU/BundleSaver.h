@@ -48,7 +48,11 @@ public:
   /// Ctor.
   explicit BundleSaver(const IRFunction *F);
   /// Save code bundle built for \p target to \p outputDir.
-  void save(llvm::StringRef target, llvm::StringRef outputDir);
+  /// Make \p networkName the function name for
+  /// the entry point of the network and prepend all generated
+  /// files with this name.
+  void save(llvm::StringRef target, llvm::StringRef outputDir,
+            llvm::StringRef networkName);
 };
 
 } // namespace glow

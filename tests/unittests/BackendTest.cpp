@@ -41,7 +41,7 @@ TEST(Interpreter, NotImplementedSave) {
   F->createSave("save", mod.createVariable(ElemKind::FloatTy, {2}, "A",
                                            VisibilityKind::Public, false));
 
-  EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
+  EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output", "network"), "");
 }
 
 TEST(Interpreter, profileQuantizationForANetwork) {

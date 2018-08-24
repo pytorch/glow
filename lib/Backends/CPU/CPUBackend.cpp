@@ -133,10 +133,10 @@ CPUBackend::compile(std::unique_ptr<IRFunction> IR) const {
   return llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
 
-void CPUBackend::save(std::unique_ptr<IRFunction> IR,
-                      llvm::StringRef outputDir) const {
+void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
+                      llvm::StringRef networkName) const {
   std::string tgt = target.empty() ? "" : target.getValue();
-  BundleSaver(IR.get()).save(tgt, outputDir);
+  BundleSaver(IR.get()).save(tgt, outputDir, networkName);
 }
 
 bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {

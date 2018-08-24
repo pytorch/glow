@@ -179,6 +179,7 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
-                           llvm::StringRef outputDir) {
-  backend_->save(generateIR(mode, F), outputDir);
+                           llvm::StringRef outputDir,
+                           llvm::StringRef networkName) {
+  backend_->save(generateIR(mode, F), outputDir, networkName);
 }
