@@ -176,11 +176,13 @@ inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
   return LHS.equals(RHS);
 }
 
+/// An enum representing the type used by the elements of a tensor. The types of
+/// Handles for these tensors should match the element kind.
 enum class ElemKind : unsigned char {
-  FloatTy,
-  Int8QTy,
-  Int32QTy,
-  Int64ITy,
+  FloatTy,  // 32-bit float type (float)
+  Int8QTy,  // 8-bit quantized type (int8_t)
+  Int32QTy, // 32-bit quantized type (int32_t)
+  Int64ITy, // 64-bit index type (int64_t)
 };
 
 /// A class that represents a type of a tensor.
