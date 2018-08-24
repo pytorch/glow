@@ -91,8 +91,10 @@ public:
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
 #if LLVM_VERSION_MAJOR > 6
+      SSP_(new SymbolStringPool()),
       ES_(SSP_),
       resolver_(createLegacyLookupResolver(
+          ES_,
           [this](const std::string &Name) -> JITSymbol {
             if (auto Sym = compileLayer_.findSymbol(Name, false))
               return Sym;
@@ -117,7 +119,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
-GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<Module> M) {
+GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
 // Add the set to the JIT with the resolver and a newly created
 // SectionMemoryManager.
 #if LLVM_VERSION_MAJOR > 6
