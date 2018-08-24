@@ -177,6 +177,7 @@ TEST(Tensor, assignment) {
   size_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
+  testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
   testAssignment<int64_t>(Type{ElemKind::Int64ITy, dim});
 }

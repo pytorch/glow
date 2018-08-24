@@ -247,6 +247,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getFloatTy();
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
+  case ElemKind::Int16QTy:
+    return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
   }
@@ -457,6 +459,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
     return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::Int16QTy:
+    return builder.getInt16(static_cast<int16_t>(val));
   case ElemKind::Int32QTy:
     return builder.getInt32(static_cast<int32_t>(val));
   }

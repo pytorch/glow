@@ -271,6 +271,8 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::Int16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
     return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
@@ -286,6 +288,8 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
     return dumpGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::Int16QTy:
+    return dumpGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
     return dumpGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
@@ -321,6 +325,12 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
   case ElemKind::Int8QTy: {
     auto srcH = src->getHandle<int8_t>();
     auto destH = dest->getHandle<int8_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::Int16QTy: {
+    auto srcH = src->getHandle<int16_t>();
+    auto destH = dest->getHandle<int16_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
@@ -362,7 +372,11 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     case ElemKind::Int8QTy: {
       getHandle<int8_t>().clear(val);
       break;
-    };
+    }
+    case ElemKind::Int16QTy: {
+      getHandle<int16_t>().clear(val);
+      break;
+    }
     case ElemKind::Int32QTy: {
       getHandle<int32_t>().clear(val);
       break;
@@ -384,7 +398,11 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     case ElemKind::Int8QTy: {
       getHandle<int8_t>().initXavier(val, PRNG);
       break;
-    };
+    }
+    case ElemKind::Int16QTy: {
+      getHandle<int16_t>().initXavier(val, PRNG);
+      break;
+    }
     case ElemKind::Int32QTy: {
       getHandle<int32_t>().initXavier(val, PRNG);
       break;

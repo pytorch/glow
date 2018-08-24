@@ -181,6 +181,7 @@ inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
 enum class ElemKind : unsigned char {
   FloatTy,  // 32-bit float type (float)
   Int8QTy,  // 8-bit quantized type (int8_t)
+  Int16QTy, // 16-bit quantized type (int16_t)
   Int32QTy, // 32-bit quantized type (int32_t)
   Int64ITy, // 64-bit index type (int64_t)
 };
@@ -311,6 +312,8 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
+    case ElemKind::Int16QTy:
+      return std::is_same<ElemTy, int16_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::Int64ITy:
@@ -322,7 +325,9 @@ struct Type final {
   /// \returns true if the type of this Tensor is one of the integer types.
   /// Notice that we don't consider Int64ITy as an integer because we are not
   /// performing calculations on this type.
-  bool isQuantizedType() const { return isType<int8_t>() || isType<int32_t>(); }
+  bool isQuantizedType() const {
+    return isType<int8_t>() || isType<int16_t>() || isType<int32_t>();
+  }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -337,6 +342,8 @@ struct Type final {
       return sizeof(float);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
+    case ElemKind::Int16QTy:
+      return sizeof(int16_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
     case ElemKind::Int64ITy:
@@ -355,6 +362,7 @@ struct Type final {
     static const char *names[] = {
         "float",
         "i8",
+        "i16",
         "i32",
         "index",
     };
