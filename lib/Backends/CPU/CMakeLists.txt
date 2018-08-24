@@ -78,6 +78,7 @@ target_link_libraries(CPUBackend
                         ${LLVM_TARGET_LIBRARIES}
                         LLVMCore
                         LLVMExecutionEngine
+                        LLVMOrcJIT
                         LLVMInterpreter
                         LLVMSupport
                         LLVMPasses)
