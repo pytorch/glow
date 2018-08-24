@@ -142,15 +142,15 @@ TEST_P(Operator, matmul) {
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
 }
 
-/// Test that the batch mat mul operator works as expected.
-TEST_P(Operator, batchmatmul) {
+/// Test that the broadcasted batch mat mul operator works as expected.
+TEST_P(Operator, BroadcastedBatchMatMul) {
   auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
   auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
   lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
   rhs->getPayload().getHandle() = {7, 10};
 
-  auto *R = F_->createBatchMatMul("BMM", lhs, rhs);
+  auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
 
   F_->createSave("save", R, result);
 
@@ -164,6 +164,29 @@ TEST_P(Operator, batchmatmul) {
   EXPECT_NEAR(H.at({1, 0, 0}), -27, 0.001);
   EXPECT_NEAR(H.at({1, 1, 0}), -61, 0.001);
   EXPECT_NEAR(H.at({1, 2, 0}), -95, 0.001);
+}
+
+TEST_P(Operator, ParallelBatchMatMul) {
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 2, 1}, "rhs");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
+  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
+  rhs->getPayload().getHandle() = {7, 10, 12, -1};
+
+  auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
+  EXPECT_NEAR(H.at({1, 0, 0}), -10, 0.001);
+  EXPECT_NEAR(H.at({1, 1, 0}), -32, 0.001);
+  EXPECT_NEAR(H.at({1, 2, 0}), -54, 0.001);
 }
 
 TEST_P(Operator, batchedReduceAdd) {

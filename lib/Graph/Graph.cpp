@@ -1118,10 +1118,10 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
   return createMatMul(name, ty, lhs, rhs);
 }
 
-Node *Function::createBatchMatMul(llvm::StringRef name, NodeValue lhs,
-                                  NodeValue rhs) {
+Node *Function::createBroadcastedBatchMatMul(llvm::StringRef name,
+                                             NodeValue lhs, NodeValue rhs) {
   assert(lhs.dims().size() == 3 && rhs.dims().size() == 2 &&
-         "Only supporting lhs 3d, rhs 2d for now.");
+         "Only supporting lhs 3d, rhs 2d for Broadcasted BatchMatMul.");
 
   // LHS = {numBatches, N, M}
   // RHS = {M, P}
@@ -1149,6 +1149,43 @@ Node *Function::createBatchMatMul(llvm::StringRef name, NodeValue lhs,
   // Reshape the result back to the expected batch output shape, with the first
   // dimension the number of batches.
   return createReshape(name.str() + ".reshapeResult", MMN, {numBatches, N, P});
+}
+
+Node *Function::createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                          NodeValue rhs) {
+  assert(lhs.dims().size() == 3 && rhs.dims().size() == 3 &&
+         "Only supporting lhs 3d, rhs 3d for Parallel BatchMatMul.");
+
+  // LHS = {numBatches, N, M}
+  // RHS = {numBatches, M, P}
+  // Multiply i-th LHS matrix {N, M} by i-th RHS matrix {M, P} to get final
+  // matrix
+  // {numBatches, N, P}
+  const auto numBatches = lhs.dims()[0];
+  const auto N = lhs.dims()[1];
+  const auto M = lhs.dims()[2];
+  const auto P = rhs.dims()[2];
+  assert((rhs.dims()[0] == numBatches) &&
+         "Batch matmul dimensions are invalid.");
+  assert((rhs.dims()[1] == M) && "Batch matmul dimensions are invalid.");
+
+  std::vector<NodeValue> MMS(numBatches);
+  for (size_t i = 0; i < numBatches; i++) {
+    auto *sliceA = createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
+                               {i, 0, 0}, {i + 1, N, M});
+    auto *sliceB = createSlice(name.str() + ".sliceB." + std::to_string(i), rhs,
+                               {i, 0, 0}, {i + 1, M, P});
+    auto *reshapeA =
+        createReshape(sliceA->getName().str() + ".reshape", sliceA, {N, M});
+    auto *reshapeB =
+        createReshape(sliceB->getName().str() + ".reshape", sliceB, {M, P});
+    MMS[i] = createMatMul(name.str() + ".MatMul." + std::to_string(i), reshapeA,
+                          reshapeB);
+  }
+
+  auto *concat = createConcat(name.str() + ".concat", MMS, 0);
+  return createReshape(name.str() + ".FinalReshape", concat,
+                       {numBatches, N, P});
 }
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
