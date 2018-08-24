@@ -72,7 +72,11 @@ public:
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to
   /// invoke the compile method before it.
-  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir);
+  /// Make \p networkName the function name for
+  /// the entry point of the network and prepend all generated
+  /// files with this name.
+  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
+            llvm::StringRef networkName);
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.

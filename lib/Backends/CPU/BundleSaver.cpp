@@ -254,10 +254,11 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateTensorViews(F_);
 }
 
-void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir) {
+void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir,
+                       llvm::StringRef networkName) {
   // Object files generation works properly only in small mode.
   irgen_.initTargetMachine(target, llvm::CodeModel::Model::Small);
-  irgen_.setMainEntryName(F_->getGraph()->getName());
+  irgen_.setMainEntryName(networkName);
   irgen_.setOutputDir(outputDir);
   irgen_.initCodeGen();
   // Perform the address assignment for activations and WeightVars.

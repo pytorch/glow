@@ -43,9 +43,12 @@ public:
   virtual std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR) const = 0;
 
-  /// Save the bundle for a later standalone execution.
-  virtual void save(std::unique_ptr<IRFunction> IR,
-                    llvm::StringRef outputDir) const {
+  /// Save the bundle for \p IR for a later standalone execution
+  /// in \p outputDir. Make \p networkName the function name for
+  /// the entry point of the network and prepend all generated
+  /// files with this name.
+  virtual void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
+                    llvm::StringRef networkName) const {
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }
 

@@ -170,7 +170,7 @@ void Loader::compile() {
 
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(CompilationMode::Infer, F_, emitBundle);
+    EE_.save(CompilationMode::Infer, F_, emitBundle, "net");
   } else {
     // Emit IR for the graph and compile it.
     EE_.compile(CompilationMode::Infer, F_);
