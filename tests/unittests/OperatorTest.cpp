@@ -3193,10 +3193,10 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
   auto *targets = mod_.createVariable(ElemKind::FloatTy, {2, 2, 3}, "targets");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
 
-  logits->getPayload().getHandle() = {1.0,  1.2, -0.5, 0.1, 0.6, 0.5,
-                                      -0.1, -2., 0.3,  1,   2,   3};
-  targets->getPayload().getHandle() = {0.7, 0.7, 0.7, -0.7, -0.99, 1.0,
-                                       0,   0,   0,   1,    2,     3};
+  logits->getPayload().getHandle() = {1.0f,  1.2f, -0.5f, 0.1f, 0.6f, 0.5f,
+                                      -0.1f, -2.f, 0.3f,  1.f,   2.f,   3.f};
+  targets->getPayload().getHandle() = {0.7f, 0.7f, 0.7f, -0.7f, -0.99f, 1.0f,
+                                       0.f,   0.f,   0.f,   1.f,    2.f,     3.f};
 
   auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
 
@@ -3207,10 +3207,10 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
 
   Tensor expected(ElemKind::FloatTy, {2, 2});
   expected.getHandle() = {
-      0.68687367,
-      0.97332054,
-      0.5418933,
-      -2.50374103,
+      0.68687367f,
+      0.97332054f,
+      0.5418933f,
+      -2.50374103f,
   };
 
   EXPECT_TRUE(expected.isEqual(result->getPayload()));
