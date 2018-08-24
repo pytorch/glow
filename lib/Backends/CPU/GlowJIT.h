@@ -28,6 +28,7 @@
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Mangler.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -46,7 +47,7 @@ private:
   TargetMachine &TM_;
   const DataLayout DL_;
 #if LLVM_VERSION_MAJOR > 6
-  SymbolStringPool SSP_;
+  std::shared_ptr<SymbolStringPool> SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
@@ -55,6 +56,7 @@ private:
 
 public:
   GlowJIT(llvm::TargetMachine &TM);
+  ~GlowJIT();
 
   TargetMachine &getTargetMachine() { return TM_; }
 
