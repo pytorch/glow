@@ -229,14 +229,14 @@ public:
       alignedFree(getData());
     type_ = T;
 
-    if (size()) {
-      size_t count = size() * type_.getElementSize();
-      // We are allocating memory specifically for this tensor,
-      // thus, it owns it.
-      isUnowned_ = false;
-      data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
-      zero();
-    }
+    // We are allocating memory specifically for this tensor, thus, it owns it.
+    isUnowned_ = false;
+
+    // Note: zero-dimensional tensors have size 1.
+    assert(size() > 0 && "Tensors must always have positive size.");
+    size_t count = size() * type_.getElementSize();
+    data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
+    zero();
   }
 
   ~Tensor() {
