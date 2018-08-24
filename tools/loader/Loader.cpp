@@ -24,6 +24,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -116,6 +117,15 @@ llvm::cl::opt<std::string>
     emitBundle("emit-bundle",
                llvm::cl::desc("Output directory for the bundle serialization"),
                llvm::cl::cat(loaderCat));
+
+/// Name of the network being bundled.
+llvm::cl::opt<std::string> networkName(
+    "network-name",
+    llvm::cl::desc("Name of the network being bundled. "
+                   "This name is used as both the function name "
+                   "of the entry point to the network "
+                   "and as a prefix for all the files that are generated."),
+    llvm::cl::cat(loaderCat));
 } // namespace
 
 bool glow::emittingBundle() { return !emitBundle.empty(); }
@@ -125,6 +135,42 @@ static bool commandLineIsInvalid() {
     llvm::errs() << "Loader: the -" << dumpProfileFileOpt.ArgStr << " and -"
                  << loadProfileFileOpt.ArgStr
                  << " options may not be specified together.\n";
+    return true;
+  }
+
+  if (emitBundle.getNumOccurrences()) {
+    if (networkName.getNumOccurrences()) {
+      if (networkName.empty()) {
+        llvm::errs() << "Loader: -" << networkName.ArgStr
+                     << " must not be empty.\n";
+        return true;
+      } // FIXME: else make sure networkName does not have any sequence of
+        // characters that could turn into evil stuff in the assembler.
+    } else {
+      // By default, use the last directory in the model path
+      // as the name of the network.
+      // Only do that when there is just one path specified.
+      if (modelPathOpt.size() == 1) {
+        for (auto it = llvm::sys::path::rbegin(modelPathOpt[0]),
+                  end = llvm::sys::path::rend(modelPathOpt[0]);
+             it != end; ++it) {
+          networkName = *it;
+          // Empty names are replaced by '.' (see Path.h in LLVM).
+          if (!networkName.empty() && networkName != ".") {
+            break;
+          }
+        }
+      }
+      if (networkName.empty()) {
+        llvm::errs() << "Loader: Use -" << networkName.ArgStr
+                     << " to specify a non-empty network name.\n";
+        return true;
+      }
+    }
+  } else if (networkName.getNumOccurrences()) {
+    llvm::errs() << "Loader: -" << networkName.ArgStr
+                 << " only makes sense when -" << emitBundle.ArgStr
+                 << " is used.\n";
     return true;
   }
   return false;
@@ -170,7 +216,7 @@ void Loader::compile() {
 
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(CompilationMode::Infer, F_, emitBundle, "net");
+    EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
     EE_.compile(CompilationMode::Infer, F_);
