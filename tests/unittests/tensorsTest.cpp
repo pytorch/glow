@@ -598,7 +598,7 @@ TEST(ZeroDimensionalTensor, handleAt) {
 TEST(ZeroDimensionalTensor, handleAssign) {
   Tensor T(ElemKind::FloatTy, {});
   auto H = T.getHandle<>();
-  H = {1.14};
+  H = {1.14f};
   EXPECT_FLOAT_EQ(H.at({}), 1.14);
   EXPECT_FLOAT_EQ(((float *)T.getUnsafePtr())[0], 1.14);
 }
