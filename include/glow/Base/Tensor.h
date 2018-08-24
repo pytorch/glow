@@ -276,6 +276,8 @@ public:
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
       return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::Int16QTy:
+      return isEqualImpl<int16_t>(other, allowedError);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError);
     case ElemKind::Int64ITy:
