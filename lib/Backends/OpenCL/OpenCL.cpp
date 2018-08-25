@@ -202,6 +202,41 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
+// sizeof(size_t) would be 4 on x86 platform or armeabi platform.
+// And in kernel.cl we defines ShapeNHWC ShapeNCHW PaddingTLBR ShapeHW to be tuple of uint64_t.
+// But the ShapeNHWC ShapeNCHW PaddingTLBR ShapeHW in Type.h are tuple of size_t.
+// this function are doing the convert work that convert tuple<size_t> to tuple<uint64_t>
+template <class T>
+void setKernelArgShape(cl_kernel kernel, unsigned argIdx, T shapeValue) {
+  const uint32_t shapeSize = sizeof(shapeValue) / sizeof(size_t);
+  uint64_t values[shapeSize];
+  for (int i = 0; i < shapeSize; ++i) {
+    values[i] = ((size_t *)&shapeValue)[i];
+  }
+  cl_int err = clSetKernelArg(kernel, argIdx, sizeof(values), &(values[0]));
+  GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNHWC value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNCHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, PaddingTLBR value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
 /// Set OpenCL \p kernel arguments using the buffer operands of the
 /// instruction \p I. The first of these arguments should be passed to the \p
 /// kernel at index \p nextKernelArgIdx. The \p tensors map provides a mapping
