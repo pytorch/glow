@@ -57,6 +57,14 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4710 /wd4711 /wd4514 /wd4571 /wd4820 /wd4774 /wd4625")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4526 /wd4061 /wd4365 /wd4242 /wd4996 /wd5026 /wd4626")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5027 /wd4668 /wd4305 /wd4826 /wd4574 /wd4946 /wd4125")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5027 /wd4668 /wd4305 /wd4826 /wd4574 /wd4946 /wd4125")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4647 /wd5045")
+endif()
+
 # Prefer LLVM 6.
 find_package(LLVM 6 CONFIG)
 # If LLVM 6 not found, try build with whatever is available.
@@ -92,9 +100,15 @@ if (GLOW_BUILD_TESTS)
 
   # Fetch the dependencies for all the tests.
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
+  get_property(GLOW_TEST_NAME_DEPENDS GLOBAL PROPERTY GLOW_TEST_NAME_DEPENDS)
 
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
-                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+  add_custom_target(
+    check
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C $<CONFIG>
+    DEPENDS ${GLOW_TEST_DEPENDS}
+    USES_TERMINAL
+  )
+  add_dependencies(check ${GLOW_TEST_NAME_DEPENDS})
 endif()
 
 add_custom_target(dependency_graph
