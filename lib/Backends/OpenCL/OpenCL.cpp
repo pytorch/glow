@@ -84,13 +84,24 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
     : F_(std::move(F)) {
+  cl_uint numPlatforms{0};
+  cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+  GLOW_ASSERT(numPlatforms > platformId &&
+              "Should have at least one platform for running OpenCL");
+  std::vector<cl_platform_id> platform_ids(numPlatforms);
+  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
+  cl_platform_id platform_id_used = platform_ids[platformId];
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+
   cl_uint num{0};
-  cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   GLOW_ASSERT(num > deviceId &&
-              "Should have at least one GPU for running OpenCL");
-  cl_device_id devices[num];
-  err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, num, devices, nullptr);
+              "Should have at least one GPU/CPU/FPGA for running OpenCL");
+  std::vector<cl_device_id> devices(num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num, devices.data(),
+                       nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
@@ -100,8 +111,15 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
+  std::string SHADER_CODE;
+  for (const char **SHADER_CODE_PTR = SHADER_CODE_LIST; *SHADER_CODE_PTR != NULL;
+       ++SHADER_CODE_PTR) {
+    SHADER_CODE.append(*SHADER_CODE_PTR);
+    SHADER_CODE.push_back('\n');
+  }
+
   /// Create the program from the source.
-  createProgram(SHADER_CODE, {}, commands_);
+  createProgram(SHADER_CODE.c_str(), {}, commands_);
   allocateMemory();
 }
 
@@ -232,7 +250,7 @@ setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
-void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
+void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, size_t len,
                                 float value, ElemKind elemKind) {
   auto kernel = createKernel(getKernelName("splat", elemKind));
   setKernelArg(kernel, 0, buffer);
