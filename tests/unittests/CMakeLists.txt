@@ -261,7 +261,7 @@ target_link_libraries(caffe2ImporterTest
                         testMain)
 add_glow_test(NAME caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImporterTest
-              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+              WORKING_DIRECTORY ${GLOW_BINARY_DIR})
 
 add_executable(onnxImporterTest
                onnxImporterTest.cpp)
@@ -274,7 +274,7 @@ target_link_libraries(onnxImporterTest
                         testMain)
 add_glow_test(NAME onnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest
-              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+              WORKING_DIRECTORY ${GLOW_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS
        ./tests/backendTest -optimize-ir=false &&
@@ -286,4 +286,4 @@ LIST(APPEND UNOPT_TESTS
        ./tests/graphGradTest -optimize-ir=false)
 
 add_custom_target(test_unopt ${UNOPT_TESTS}
-                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+                  WORKING_DIRECTORY ${GLOW_BINARY_DIR})
