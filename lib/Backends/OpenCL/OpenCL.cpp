@@ -272,7 +272,7 @@ void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
   setKernelArg(kernel, 0, buffer);
   setKernelArg<cl_uint>(kernel, 1, start);
   setKernelArg(kernel, 2, value);
-  enqueueKernel(commands_, kernel, deviceId_, {len}, kernelLaunches_);
+  enqueueKernel(commands_, kernel, deviceId_, {(size_t)len}, kernelLaunches_);
 }
 
 /// \returns the max local workgroup size for each dimension, under the
