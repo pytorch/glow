@@ -202,6 +202,37 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
+template<class T>
+void setKernelArgShape(cl_kernel kernel, unsigned argIdx, T shapeValue) {
+  const uint32_t shapeSize = sizeof(T) / sizeof(size_t);
+  uint64_t values[sizeof(T)/sizeof(size_t)];
+  for (int i = 0; i < shapeSize; ++i) {
+    values[i] = ((size_t *)&shapeValue)[i];
+  }
+  cl_int err = clSetKernelArg(kernel, argIdx, sizeof(values), &values[0]);
+  GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNHWC value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNCHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, PaddingTLBR value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template<>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
 /// Set OpenCL \p kernel arguments using the buffer operands of the
 /// instruction \p I. The first of these arguments should be passed to the \p
 /// kernel at index \p nextKernelArgIdx. The \p tensors map provides a mapping
