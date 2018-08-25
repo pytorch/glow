@@ -32,6 +32,7 @@
 #include "gtest/gtest.h"
 
 #include <string>
+#include <cctype>
 
 using namespace glow;
 using llvm::cast;

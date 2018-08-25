@@ -15,6 +15,7 @@
  */
 #include "ImporterTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/IR/IR.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNX.h"
 #include "gtest/gtest.h"
