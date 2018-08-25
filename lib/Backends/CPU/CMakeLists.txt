@@ -9,34 +9,30 @@ find_program(LLVM_LINK_BIN
                llvm-link-6.0
                llvm-link)
 
-add_library(CPURuntime
-            SHARED
-              libjit/libjit.cpp
-              libjit/libjit_conv.cpp
-              libjit/libjit_matmul.cpp)
-set_target_properties(CPURuntime
-                      PROPERTIES
-                        CXX_STANDARD 11)
-target_compile_options(CPURuntime
-                       PRIVATE
-                         -ffast-math
-                         -g0
-                         -emit-llvm
-                         -O0)
+set(CPURunttimeCompileOptions -ffast-math -g0 -emit-llvm -O0)
+set (CPURuntime_OBJS
+  ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit.bc.o
+  ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit_conv.bc.o
+  ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit_matmul.bc.o
+)
+
 # NOTE(abdulras) explicitly override the compiler and linker invocations with
-# custom rules.  The trailing `#` is the comment leader intended to nullify the
-# compile and link commands.  Doing this allows us to override the compiler
-# (driver) and the linker used for building the runtime which requires clang (to
-# emit LLVM IR for the LTO'ed AOT JIT runtime) and uses the `llvm-link` as the
-# linker to merge the object files.
-set_target_properties(CPURuntime
-                      PROPERTIES
-                        RULE_LAUNCH_COMPILE
-                          "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> # "
-                        RULE_LAUNCH_LINK
-                          "${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc <OBJECTS> # "
-                        OUTPUT_NAME
-                          libjit.bc)
+# custom rules.
+add_custom_command(
+  OUTPUT ${CPURuntime_OBJS}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime
+  COMMAND ${CLANG_BIN} -c libjit/libjit.cpp ${CPURunttimeCompileOptions} -o ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit.bc.o
+  COMMAND ${CLANG_BIN} -c libjit/libjit_conv.cpp ${CPURunttimeCompileOptions} -o ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit_conv.bc.o
+  COMMAND ${CLANG_BIN} -c libjit/libjit_matmul.cpp ${CPURunttimeCompileOptions} -o ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime/libjit_matmul.bc.o
+  DEPENDS libjit/libjit.cpp libjit/libjit_conv.cpp libjit/libjit_matmul.cpp
+  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+)
+
+add_custom_target(CPURuntime
+  COMMAND ${LLVM_LINK_BIN} -o ${GLOW_BINARY_DIR}/libjit.bc ${CPURuntime_OBJS}
+  DEPENDS ${CPURuntime_OBJS}
+  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+)
 
 add_library(CPURuntimeNative
               libjit/libjit.cpp
