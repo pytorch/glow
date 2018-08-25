@@ -9,3 +9,8 @@ target_link_libraries(onnxifi-glow
                       PUBLIC
                         ExecutionEngine
                         Importer)
+
+target_compile_definitions(onnxifi-glow
+  PRIVATE
+  ONNXIFI_BUILD_LIBRARY
+)
