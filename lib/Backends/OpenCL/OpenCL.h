@@ -125,7 +125,7 @@ private:
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
-  void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
+  void fillBuffer(cl_mem buffer, uint64_t start, size_t len, float value,
                   ElemKind elemKind);
 
   /// Execution a convolution instruction which uses NCHW format.

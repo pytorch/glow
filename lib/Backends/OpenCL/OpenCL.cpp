@@ -52,6 +52,9 @@ namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
 static llvm::cl::opt<unsigned>
+    platformId("platform", llvm::cl::desc("OpenCL platform to be used"),
+               llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
+static llvm::cl::opt<unsigned>
     deviceId("device", llvm::cl::desc("OpenCL device to be used"),
              llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
 static llvm::cl::opt<bool> doProfile("opencl-profile",
@@ -84,13 +87,24 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
     : F_(std::move(F)) {
+  cl_uint numPlatforms{0};
+  cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+  GLOW_ASSERT(numPlatforms > platformId &&
+              "Should have at least one platform for running OpenCL");
+  std::vector<cl_platform_id> platform_ids(numPlatforms);
+  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
+  cl_platform_id platform_id_used = platform_ids[platformId];
+  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+
   cl_uint num{0};
-  cl_int err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   GLOW_ASSERT(num > deviceId &&
-              "Should have at least one GPU for running OpenCL");
-  cl_device_id devices[num];
-  err = clGetDeviceIDs(nullptr, CL_DEVICE_TYPE_ALL, num, devices, nullptr);
+              "Should have at least one GPU/CPU/FPGA for running OpenCL");
+  std::vector<cl_device_id> devices(num);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num, devices.data(),
+                       nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
@@ -100,8 +114,15 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
+  std::string SHADER_CODE;
+  for (const char **SHADER_CODE_PTR = SHADER_CODE_LIST; *SHADER_CODE_PTR != NULL;
+       ++SHADER_CODE_PTR) {
+    SHADER_CODE.append(*SHADER_CODE_PTR);
+    SHADER_CODE.push_back('\n');
+  }
+
   /// Create the program from the source.
-  createProgram(SHADER_CODE, {}, commands_);
+  createProgram(SHADER_CODE.c_str(), {}, commands_);
   allocateMemory();
 }
 
@@ -202,6 +223,41 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
+// Resolve a inssue sizeof(size_t) would be 4 on x86
+// platform(or armeabi) And in OpenCL we defines ShapeNHWC ShapeNCHW
+// PaddingTLBR ShapeHW to be tuple of uint64_t,
+// we need to make the parameter to be consistence.
+template <class T>
+void setKernelArgShape(cl_kernel kernel, unsigned argIdx, T shapeValue) {
+  const uint32_t shapeSize = sizeof(shapeValue) / sizeof(size_t);
+  uint64_t values[shapeSize];
+  for (int i = 0; i < shapeSize; ++i) {
+    values[i] = ((size_t *)&shapeValue)[i];
+  }
+  cl_int err = clSetKernelArg(kernel, argIdx, sizeof(values), &values[0]);
+  GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNHWC value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeNCHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, PaddingTLBR value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
+template <>
+void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeHW value) {
+  setKernelArgShape(kernel, argIdx, value);
+}
+
 /// Set OpenCL \p kernel arguments using the buffer operands of the
 /// instruction \p I. The first of these arguments should be passed to the \p
 /// kernel at index \p nextKernelArgIdx. The \p tensors map provides a mapping
@@ -232,7 +288,7 @@ setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
-void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
+void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, size_t len,
                                 float value, ElemKind elemKind) {
   auto kernel = createKernel(getKernelName("splat", elemKind));
   setKernelArg(kernel, 0, buffer);

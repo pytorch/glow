@@ -39,7 +39,7 @@ inline void *alignedAlloc(size_t size, size_t align) {
 }
 
 /// Free aligned memory.
-inline void alignedFree(void *p) { free(p); }
+inline void alignedFree(void *p) { _aligned_free(p); }
 
 /// Rounds up \p size to the nearest \p alignment.
 inline size_t alignedSize(size_t size, size_t alignment) {

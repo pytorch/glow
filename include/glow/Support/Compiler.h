@@ -31,4 +31,13 @@
 #define GLOW_UNREACHABLE(msg)                                                  \
   ((void)fprintf(stderr, "%s:%u: %s\n", __FILE__, __LINE__, msg), abort())
 
+#ifdef _WIN32
+#define posix_memalign(p, a, s)                                                \
+  (((*(p)) = _aligned_malloc((s), (a))), *(p) ? 0 : errno)
+#endif
+
+#ifndef _WIN32
+#define _aligned_free(p) free(p)
+#endif
+
 #endif // GLOW_SUPPORT_COMPILER_H
