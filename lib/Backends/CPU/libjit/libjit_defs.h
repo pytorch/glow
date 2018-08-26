@@ -19,8 +19,15 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined(_MSC_VER)
+typedef __declspec(align(16)) float float4;
+typedef __declspec(align(32)) float float8;
+typedef __declspec(align(64)) float float16;
+#else
 typedef float float4 __attribute__((ext_vector_type(4)));
 typedef float float8 __attribute__((ext_vector_type(8)));
+typedef float float16 __attribute__((aligned(64)));
+#endif
 
 /// Loads a simd float8 value from \p ptr.
 #define LoadFloat8(PTR) *((const float8 *)(PTR))
