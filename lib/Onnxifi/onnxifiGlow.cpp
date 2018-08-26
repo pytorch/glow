@@ -16,6 +16,7 @@
 
 #include "Base.h"
 
+#include "glow/IR/IR.h"
 #include "glow/Importer/ONNXIFILoader.h"
 
 /**

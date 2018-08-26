@@ -17,6 +17,7 @@
 #include "OpenCL.h"
 
 #include "glow/Backends/LayoutConverter.h"
+#include "glow/IR/IR.h"
 #include "glow/Graph/Nodes.h"
 
 #include "llvm/Support/Casting.h"
