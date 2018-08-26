@@ -10,25 +10,38 @@ typedef int cl_int32_t;
 typedef char cl_int8_t;
 typedef unsigned char cl_uint8_t;
 
+/// Define a type cl_host_size_t exactly matching the type size_t used on the
+/// host size. This is required to e.g. properly pass struct parameters of
+/// types like ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the
+/// host side use size_t for their members and they should be defined on the
+/// OpenCL's side using integer types of the same width.
+#if SIZEOF_HOST_SIZE_T == 8
+typedef cl_uint64_t cl_host_size_t;
+#elif SIZEOF_HOST_SIZE_T == 4
+typedef cl_uint32_t cl_host_size_t;
+#else
+#error "Unsupported size of size_t on the host side"
+#endif 
+
 // The types of elements should be always matching the definitions of
 // ShapeNHWC in Type.h
 typedef struct {
-  cl_uint64_t n; // Number of samples
-  cl_uint64_t h; // Height
-  cl_uint64_t w; // Width
-  cl_uint64_t c; // Number of channels
+  cl_host_size_t n; // Number of samples
+  cl_host_size_t h; // Height
+  cl_host_size_t w; // Width
+  cl_host_size_t c; // Number of channels
 } ShapeNHWC;
 
 typedef struct {
-  cl_uint64_t n; // Number of samples
-  cl_uint64_t c; // Number of channels
-  cl_uint64_t h; // Height
-  cl_uint64_t w; // Width
+  cl_host_size_t n; // Number of samples
+  cl_host_size_t c; // Number of channels
+  cl_host_size_t h; // Height
+  cl_host_size_t w; // Width
 } ShapeNCHW;
 
 typedef struct {
-  cl_uint64_t height;
-  cl_uint64_t width;
+  cl_host_size_t height;
+  cl_host_size_t width;
 } ShapeHW;
 
 // Helper struct that contains the information for quantization.
@@ -42,10 +55,10 @@ typedef struct {
 // The types of elements should be always matching the definitions of
 // PaddingTLBR in Type.h
 typedef struct {
-  cl_uint64_t top;
-  cl_uint64_t left;
-  cl_uint64_t bottom;
-  cl_uint64_t right;
+  cl_host_size_t top;
+  cl_host_size_t left;
+  cl_host_size_t bottom;
+  cl_host_size_t right;
 } PaddingTLBR;
 
 #if defined(cl_khr_int32_base_atomics)
