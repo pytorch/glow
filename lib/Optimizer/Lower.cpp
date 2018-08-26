@@ -15,6 +15,7 @@
  */
 
 #include "glow/Backends/Backend.h"
+#include "glow/IR/IR.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"

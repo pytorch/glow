@@ -17,6 +17,7 @@
 #include "Loader.h"
 
 #include "glow/Base/Image.h"
+#include "glow/IR/IR.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2.h"
 #include "glow/Importer/ONNX.h"
