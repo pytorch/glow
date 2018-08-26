@@ -85,6 +85,19 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
+/// Add an macro definition with an integer value to the set of options.
+template <typename T>
+static void addIntOption(std::vector<std::string> &options,
+                         const std::string &name, const T value) {
+  options.push_back("-D" + name + "=" + std::to_string(value));
+}
+
+/// Add an macro definition with a string value to the set of options.
+static void addStringOption(std::vector<std::string> &options,
+                            const std::string &name, const std::string &value) {
+  options.push_back("-D" + name + "=" + value);
+}
+
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
     : F_(std::move(F)) {
   cl_uint numPlatforms{0};
@@ -114,8 +127,15 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
-  /// Create the program from the source.
-  createProgram(SHADER_CODE, {}, commands_);
+  std::vector<std::string> options;
+  // Configure the kernels by providing the size of size_t on the host size.
+  // This is required to e.g. properly pass struct parameters of types like
+  // ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the host side
+  // use size_t for their members and they should be defined on the OpenCL's
+  // side using integer types of the same width.
+  addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
+  // Create the program from the source.
+  createProgram(SHADER_CODE, options, commands_);
   allocateMemory();
 }
 
@@ -386,19 +406,6 @@ static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
                            k.first / 1000000.0,
                            (unsigned long)(k.first * 100 / total));
   }
-}
-
-/// Add an macro definition with an integer value to the set of options.
-template <typename T>
-static void addIntOption(std::vector<std::string> &options,
-                         const std::string &name, const T value) {
-  options.push_back("-D" + name + "=" + std::to_string(value));
-}
-
-/// Add an macro definition with a string value to the set of options.
-static void addStringOption(std::vector<std::string> &options,
-                            const std::string &name, const std::string &value) {
-  options.push_back("-D" + name + "=" + value);
 }
 
 void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
