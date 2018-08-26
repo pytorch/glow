@@ -223,10 +223,14 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
 
-template<class T>
+// Resolve a inssue sizeof(size_t) would be 4 on x86
+// platform(or armeabi) And in OpenCL we defines ShapeNHWC ShapeNCHW
+// PaddingTLBR ShapeHW to be tuple of uint64_t,
+// we need to make the parameter to be consistence.
+template <class T>
 void setKernelArgShape(cl_kernel kernel, unsigned argIdx, T shapeValue) {
-  const uint32_t shapeSize = sizeof(T) / sizeof(size_t);
-  uint64_t values[sizeof(T)/sizeof(size_t)];
+  const uint32_t shapeSize = sizeof(shapeValue) / sizeof(size_t);
+  uint64_t values[shapeSize];
   for (int i = 0; i < shapeSize; ++i) {
     values[i] = ((size_t *)&shapeValue)[i];
   }
@@ -249,7 +253,7 @@ void setKernelArg(cl_kernel kernel, unsigned argIdx, PaddingTLBR value) {
   setKernelArgShape(kernel, argIdx, value);
 }
 
-template<>
+template <>
 void setKernelArg(cl_kernel kernel, unsigned argIdx, ShapeHW value) {
   setKernelArgShape(kernel, argIdx, value);
 }
