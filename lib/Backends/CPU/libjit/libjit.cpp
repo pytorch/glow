@@ -46,7 +46,7 @@ static void libjit_dump_tensor_impl(ElemTy *tensor, size_t *dims,
   ElemTy mn = tensor[0];
 
   size_t size = 1;
-  size_t sliceSize[numDims];
+  LIBJIT_VLA(size_t, sliceSize, numDims);
   for (size_t i = 0; i < numDims; ++i) {
     size *= dims[i];
   }

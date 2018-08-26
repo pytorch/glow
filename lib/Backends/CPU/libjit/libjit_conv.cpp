@@ -60,10 +60,10 @@ void libjit_convDKKC8_convolve_channel(
   // scalar that represents the sum for (x,y..y+ywidth) and the filter. The
   // SIMD dimension represents multiple layers of the depth
   // (output channel).
-  float8 sum[numDepthRegs][ywidth];
+  LIBJIT_VLA(float8, sum, numDepthRegs * ywidth);
   for (unsigned wu = 0; wu < ywidth; wu++) {
     for (unsigned du = 0; du < numDepthRegs; du++) {
-      sum[du][wu] = 0;
+      sum[du * ywidth + wu] = 0;
     }
   }
 
@@ -72,7 +72,7 @@ void libjit_convDKKC8_convolve_channel(
   // For each input channel:
   for (size_t fd = 0; fd < numChannels; fd++) {
     // First, load and broadcast the scalar data from the input buffer.
-    float8 in8[ywidth];
+    LIBJIT_VLA(float8, in8, ywidth);
     for (unsigned wu = 0; wu < ywidth; wu++) {
       // Load a single pixel from the input image and broadcast it.
       auto inIdx = libjit_getXYZW(inWdims, sampleN, inX, inY + wu * stride,
@@ -88,7 +88,7 @@ void libjit_convDKKC8_convolve_channel(
         auto filterIdx = libjit_getXYZWQ(filterWdims, outChannel / 8 + du,
                                          filterX, filterY, fd, 0);
         float8 ff0 = LoadFloat8(&filterW[filterIdx]);
-        sum[du][wu] += ff0 * in8[wu];
+        sum[du * ywidth + wu] += ff0 * in8[wu];
       }
     }
   }
@@ -99,7 +99,7 @@ void libjit_convDKKC8_convolve_channel(
       // Add the partial sum to the tile.
       auto outIdx = libjit_getXYZW(outWdims, sampleN, outX, outY + wu,
                                    outChannel + du * 8);
-      AddFloat8(&outW[outIdx], sum[du][wu]);
+      AddFloat8(&outW[outIdx], sum[du * ywidth + wu]);
     }
   }
 }
@@ -356,7 +356,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                   // channel (D) values. The compiler should perform scalar
                   // replacement of aggregates and split this tiny array to
                   // registers.
-                  float sum[depthUnroll];
+                  LIBJIT_VLA(float, sum, depthUnroll);
                   for (unsigned i = 0; i < depthUnroll; i++) {
                     sum[i] = 0;
                   }
@@ -447,7 +447,7 @@ void libjit_convolution_i8(
         for (size_t ax = 0; ax < outWdims[1]; x += stride_h, ax++) {
           ssize_t y = -(ssize_t)pad_l;
           for (size_t ay = 0; ay < outWdims[2]; y += stride_w, ay++) {
-            int32_t sum[depthUnroll];
+            LIBJIT_VLA(int32_t, sum, depthUnroll);
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the bias to match the scale of the matrix multiplication.
