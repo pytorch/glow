@@ -57,8 +57,20 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-# Prefer LLVM 6.
-find_package(LLVM 6 CONFIG)
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4710 /wd4711 /wd4514 /wd4571 /wd4820 /wd4774 /wd4625")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4526 /wd4061 /wd4365 /wd4242 /wd4996 /wd5026 /wd4626")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5027 /wd4668 /wd4305 /wd4826 /wd4574 /wd4946 /wd4125")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5027 /wd4668 /wd4305 /wd4826 /wd4574 /wd4946 /wd4125")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4647 /wd5045")
+endif()
+
+if (NOT MSVC)
+  # Prefer LLVM 6.
+  find_package(LLVM 6 CONFIG)
+else()
+  set(LLVM_FOUND ON)
+endif()
 # If LLVM 6 not found, try build with whatever is available.
 if (NOT LLVM_FOUND)
   find_package(LLVM CONFIG)
@@ -87,14 +99,28 @@ if (GLOW_BUILD_EXAMPLES)
 endif()
 
 if (GLOW_BUILD_TESTS)
-  add_subdirectory(tests/googletest)
+  if(MSVC)
+    include_directories(
+      ${CMAKE_CURRENT_LIST_DIR}/../../utils/unittest/googletest/include
+      ${CMAKE_CURRENT_LIST_DIR}/../../utils/unittest/googletest
+      ${CMAKE_CURRENT_LIST_DIR}/../../utils/unittest/googlemock/include
+      ${CMAKE_CURRENT_LIST_DIR}/../../utils/unittest/googlemock
+    )
+  else()
+    add_subdirectory(tests/googletest)
+  endif()
   add_subdirectory(tests)
 
   # Fetch the dependencies for all the tests.
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
-
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
-                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+  get_property(GLOW_TEST_NAME_DEPENDS GLOBAL PROPERTY GLOW_TEST_NAME_DEPENDS)
+  add_custom_target(
+    check-glow
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C $<CONFIG>
+    DEPENDS ${GLOW_TEST_DEPENDS}
+    USES_TERMINAL
+  )
+  add_dependencies(check-glow ${GLOW_TEST_NAME_DEPENDS})
 endif()
 
 add_custom_target(dependency_graph
