@@ -228,8 +228,12 @@ static void verifyTanh(NodeValue src, NodeValue dest) {
 }
 
 static void verifySoftMax(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
-  assert(src.dims() == dest.dims() && "Invalid shape");
+  if (src.getType()->isQuantizedType()) {
+    assert(src.getElementType() == dest.getElementType());
+    checkSameShape(src, dest);
+  } else {
+    checkSameType(src, dest);
+  }
 }
 
 static void verifyCrossEntropyLoss(NodeValue P, NodeValue CE,

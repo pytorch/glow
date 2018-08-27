@@ -615,8 +615,12 @@ TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
 }
 
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
-                                     NodeValue selected) {
-  return addNode(new SoftMaxNode(name, input, selected));
+                                     NodeValue selected, TypeRef outTy) {
+  // By default, pick the input type
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SoftMaxNode(name, outTy, input, selected));
 }
 
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
