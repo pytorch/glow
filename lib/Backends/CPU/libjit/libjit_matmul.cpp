@@ -188,7 +188,7 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
   // perfectly-tiled portion, which we handly with a 4x16 dot-product kernel.
   // The ragged edges are (ideally) less critical, so we handle them with a call
   // to a general matrix-multiplication for odd sizes.
-  float packedA[m * k] __attribute__((aligned(64)));
+  float packedA[kc * nc] __attribute__((aligned(64)));
   if (pack) {
     pack_matrix_a<regsA>(m, k, &A(0, 0), lda, packedA);
   }
