@@ -32,6 +32,8 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "Shaders.h"
+
 using namespace glow;
 using llvm::format;
 
@@ -40,13 +42,6 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 typedef uint32_t cl_size_t;
-
-// This defines the string "SHADER_CODE".
-#include "kernels.cl"
-// This defines kernels for optimized convolutions.
-#include "kernels_fwd_conv.cl"
-// This defines kernels for quantized optimized convolutions.
-#include "kernels_fwd_quantized_conv.cl"
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
@@ -135,7 +130,7 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   // side using integer types of the same width.
   addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
   // Create the program from the source.
-  createProgram(SHADER_CODE, options, commands_);
+  createProgram(reinterpret_cast<const char *>(SHADER_CODE), options, commands_);
   allocateMemory();
 }
 
@@ -503,7 +498,9 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
 
   // Generate a tailor-made convolution kernel using the provided options based
   // on the parameters of the current convolution.
-  auto &programName = isQuantized ? FWD_CONV_QUANTIZED_CODE : FWD_CONV_CODE;
+  const char *programName =
+      isQuantized ? reinterpret_cast<const char *>(FWD_CONV_QUANTIZED_CODE)
+                  : reinterpret_cast<const char *>(FWD_CONV_CODE);
   auto prog = createProgram(programName, options, commands_);
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
