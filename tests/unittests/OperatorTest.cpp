@@ -1568,7 +1568,7 @@ TEST_P(Operator, QuantizedTranspose) {
 }
 
 TEST_P(Operator, QuantizedArithmeticUnrescaled) {
-  const size_t len = 100;
+  const size_t len = 1000;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div operations.
@@ -3194,9 +3194,9 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
 
   logits->getPayload().getHandle() = {1.0f,  1.2f, -0.5f, 0.1f, 0.6f, 0.5f,
-                                      -0.1f, -2.f, 0.3f,  1.f,   2.f,   3.f};
+                                      -0.1f, -2.f, 0.3f,  1.f,  2.f,  3.f};
   targets->getPayload().getHandle() = {0.7f, 0.7f, 0.7f, -0.7f, -0.99f, 1.0f,
-                                       0.f,   0.f,   0.f,   1.f,    2.f,     3.f};
+                                       0.f,  0.f,  0.f,  1.f,   2.f,    3.f};
 
   auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
 

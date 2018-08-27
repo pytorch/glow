@@ -116,8 +116,8 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   GLOW_ASSERT(num > deviceId &&
               "Should have at least one GPU/CPU/FPGA for running OpenCL");
   std::vector<cl_device_id> devices(num);
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num, devices.data(),
-                       nullptr);
+  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
+                       devices.data(), nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
@@ -660,20 +660,24 @@ void OpenCLFunction::execute() {
             isa<ElementMinInst>(I) || isa<ElementMaxInst>(I)) {
           int32_t destOffset = I.getOperand(0).first->getType()->getOffset();
           float destScale = I.getOperand(0).first->getType()->getScale();
+
+          auto LHSTy = I.getOperand(1).first->getType();
+          auto RHSTy = I.getOperand(2).first->getType();
+
           auto lhsScaleParams = quantization::quantizeScaleOffset32To8(
-              I.getOperand(1).first->getType()->getScale() / destScale,
-              I.getOperand(1).first->getType()->getOffset());
+              LHSTy->getScale() / destScale, LHSTy->getOffset());
           auto rhsScaleParams = quantization::quantizeScaleOffset32To8(
-              I.getOperand(2).first->getType()->getScale() / destScale,
-              I.getOperand(2).first->getType()->getOffset());
+              RHSTy->getScale() / destScale, RHSTy->getOffset());
           setKernelArg(kernel, ++numArgs, destOffset);
           setKernelArg(kernel, ++numArgs, lhsScaleParams);
           setKernelArg(kernel, ++numArgs, rhsScaleParams);
           if (isa<ElementMulInst>(I) || isa<ElementDivInst>(I)) {
-            auto resultScaleParams = quantization::quantizeScaleOffset32To8(
-                I.getOperand(1).first->getType()->getScale() *
-                    I.getOperand(2).first->getType()->getScale() / destScale,
-                0);
+            float resultScale =
+                isa<ElementMulInst>(I)
+                    ? LHSTy->getScale() * RHSTy->getScale() / destScale
+                    : LHSTy->getScale() / (RHSTy->getScale() * destScale);
+            auto resultScaleParams =
+                quantization::quantizeScaleOffset32To8(resultScale, 0);
             setKernelArg(kernel, ++numArgs, resultScaleParams);
           }
         }
