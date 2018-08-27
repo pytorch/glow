@@ -78,6 +78,7 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
   } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
              in.dataType == ONNXIFI_DATATYPE_INT64) {
     const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
+    (void)inDataSigned;
     T->reset(ElemKind::Int64ITy, dims);
 
     auto TH = T->getHandle<int64_t>();
