@@ -619,7 +619,7 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   // https://stats.stackexchange.com/questions/79454/softmax-layer-in-a-neural-network
   for (size_t n = 0; n < idim[0]; n++) {
     for (size_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedH.at({n, 0}) == i);
+      float delta = (selectedH.at({n, 0}) == (int64_t)i);
       inG.at({n, i}) = outW.at({n, i}) - delta;
     }
   }
