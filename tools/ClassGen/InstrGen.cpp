@@ -147,8 +147,7 @@ int main(int argc, char **argv) {
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"})
-      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("SoftMaxGrad")

@@ -270,7 +270,7 @@ public:
   LogNode *createLog(llvm::StringRef name, NodeValue input);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected);
+                             NodeValue selected, TypeRef outTy = nullptr);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,

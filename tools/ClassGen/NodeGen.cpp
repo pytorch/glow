@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
   BB.newNode("SoftMax")
       .addInput("Input")
       .addInput("Selected")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 

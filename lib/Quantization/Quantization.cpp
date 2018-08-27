@@ -329,8 +329,11 @@ static Node *quantizeNode(Function *F, Node *node,
     // SoftMax node has 2 inputs, but only one should be quantized.
     assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
     assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, SMN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
     quantizedNode = F->createSoftMax(SMN->getName(), quantizedInputs[0],
-                                     SMN->getSelected());
+                                     SMN->getSelected(), outTy);
     break;
   }
   default:
