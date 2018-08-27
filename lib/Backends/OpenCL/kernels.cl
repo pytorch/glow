@@ -318,13 +318,12 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   __kernel void name##_i8K(__global cl_int8_t *dest, __global cl_int8_t *lhs,  \
                            __global cl_int8_t *rhs, cl_int32_t destOffset,     \
                            cl_int32_t lhsOffset, cl_int32_t rhsOffset,         \
-                           cl_int32_t mulPre, cl_int32_t mulPost,              \
-                           cl_int32_t mulScale) {                              \
+                           cl_int32_t pre, cl_int32_t post, cl_int32_t scale) {\
     size_t i = get_global_id(0);                                               \
     cl_int32_t LHS = lhs[i] - lhsOffset;                                       \
     cl_int32_t RHS = rhs[i] - rhsOffset;                                       \
     dest[i] =                                                                  \
-        clip(scale_i32i8((body), mulPre, mulPost, mulScale, destOffset));      \
+        clip(scale_i32i8((body), pre, post, scale, destOffset));               \
   }                                                                            \
   __kernel void name##_i8W(                                                    \
       __global void *mem, cl_uint32_t dest, cl_uint32_t lhs, cl_uint32_t rhs,  \
