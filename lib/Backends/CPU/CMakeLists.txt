@@ -30,13 +30,8 @@ target_compile_options(CPURuntime
 # emit LLVM IR for the LTO'ed AOT JIT runtime) and uses the `llvm-link` as the
 # linker to merge the object files.
 set_target_properties(CPURuntime
-                      PROPERTIES
-                        RULE_LAUNCH_COMPILE
-                          "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> # "
-                        RULE_LAUNCH_LINK
-                          "${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc <OBJECTS> # "
-                        OUTPUT_NAME
-                          libjit.bc)
+                      PROPERTIES LINK_FLAGS "-Wl,-object_path_lto"
+                      OUTPUT_NAME libjit.bc)
 
 add_library(CPURuntimeNative
               libjit/libjit.cpp
@@ -55,7 +50,8 @@ add_library(CPUBackend
             LLVMIRGen.cpp
             CPUBackend.cpp)
 
-llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
+llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES
+								  ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
                       PRIVATE
                         Base
@@ -63,7 +59,9 @@ target_link_libraries(CPUBackend
                         Graph
                         IR
                         QuantizationBase
-                        LLVMAnalysis
+                        LLVMObject
+                        LLVMBitWriter
+						LLVMAnalysis
                         LLVMCodeGen
                         LLVMCore
                         LLVMipo
