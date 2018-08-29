@@ -70,9 +70,8 @@ static void DCE(Function *F) {
 
   // Remove unused nodes. Do not remove unused vars because they are the
   // interface to the user program.
-  bool changedLocally = true;
-  do {
-    changedLocally = false;
+  while (true) {
+    bool changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
       if (!shouldDeleteNode(&*it)) {
         ++it;
@@ -90,7 +89,10 @@ static void DCE(Function *F) {
       erasedNodes.pop_back();
     }
 
-  } while (changedLocally);
+    if (!changedLocally) {
+      break;
+    }
+  }
 
   // Delete unused variables.
   for (auto it = vars.begin(), e = vars.end(); it != e;) {
