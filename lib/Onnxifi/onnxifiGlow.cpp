@@ -156,7 +156,7 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
 
   // Make sure that the backend itself is capable of executing
   // the operation.
-  for(const auto &op : operations) {
+  for (const auto &op : operations) {
     if (!glowBackendId->isOpSupported(op.first, op.second)) {
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
     }
