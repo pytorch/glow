@@ -1149,6 +1149,43 @@ void libjit_avg_pool_grad_f(float *inG, const float *outG,
   }       // N
 }
 
+void libjit_rowwise_fullyconnected_i8(
+    int8_t *outW, const int8_t *inW, const int8_t *weightsW,
+    const int8_t *biasW, const size_t *outWdims, const size_t *inWdims,
+    const size_t *weightsWdims, const size_t *biasWdims, int32_t outOffset,
+    int32_t inOffset, int32_t biasOffset, float outScale, float inScale,
+    float biasScale) {
+  size_t row = weightsWdims[0];
+  size_t col = weightsWdims[1] - 8;
+  float weightsScale[row];
+  int32_t weightsOffset[row];
+  size_t index = 0;
+  for (size_t i = 0; i < row; i++) {
+    memcpy(&(weightsScale[i]), &weightsW[index + col], 4);
+    memcpy(&(weightsOffset[i]), &weightsW[index + col + 4], 4);
+    index += (col + 8);
+  }
+
+  for (size_t i = 0; i < outWdims[0]; i++) {
+    for (size_t j = 0; j < outWdims[1]; j++) {
+      float matMulScale = weightsScale[j] * inScale;
+      int32_t sum = 0;
+      for (size_t k = 0; k < inWdims[1]; k++) {
+        int32_t W = weightsW[j * weightsWdims[1] + k];
+        int32_t I = inW[i * inWdims[1] + k];
+        sum += (W - weightsOffset[j]) * (I - inOffset);
+      }
+      int32_t B =
+          roundl(float(biasW[j] - biasOffset) * (biasScale / matMulScale));
+      sum += B;
+
+      outW[i * outWdims[1] + j] = libjit_clip(
+          roundl(float(sum) * (matMulScale / outScale) + outOffset));
+    }
+  }
+  return;
+}
+
 void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
                         float scale, int32_t offset) {
   for (size_t i = 0; i < numElem; i++) {
@@ -1171,6 +1208,109 @@ void libjit_rescale_i8(int8_t *outW, const int8_t *inW, size_t numElem,
     int32_t s =
         libjit_scale_i32i8(inW[i] - inOffset, pre, post, scale, outOffset);
     outW[i] = libjit_clip(s);
+  }
+}
+
+// It is Asymmetric quantization mode.
+void libjit_choose_qParams(float min, float max, float *qScale,
+                           int32_t *qOffset) {
+
+  const int32_t qmin = std::numeric_limits<int8_t>::min();
+  const int32_t qmax = std::numeric_limits<int8_t>::max();
+
+  min = fmin(min, 0.f);
+  max = fmax(max, 0.f);
+
+  double scale = (max - min) / ((double)qmax - qmin);
+
+  if (scale == 0)
+    scale = 0.1;
+
+  assert(scale > 0 && "Scale must be non negative");
+
+  double zeroPointFromMin = qmin - min / scale;
+  double zeroPointFromMax = qmax - max / scale;
+  double zeroPointFromMinError = abs(qmin) + abs(min / scale);
+  double zeroPointFromMaxError = abs(qmax) + abs(max / scale);
+  double initialZeroPoint = zeroPointFromMinError < zeroPointFromMaxError
+                                ? zeroPointFromMin
+                                : zeroPointFromMax;
+
+  // For symmetric quantization, if min == -max, force the zero point to be 0.
+  float difference = abs(max + min);
+  if (difference <= std::numeric_limits<float>::epsilon()) {
+    initialZeroPoint = 0;
+  }
+
+  int32_t nudgedZeroPoint = 0;
+  if (initialZeroPoint < qmin) {
+    nudgedZeroPoint = qmin;
+  } else if (initialZeroPoint > qmax) {
+    nudgedZeroPoint = qmax;
+  } else {
+    nudgedZeroPoint = static_cast<int32_t>(round(initialZeroPoint));
+  }
+
+  *qScale = static_cast<float>(scale);
+  *qOffset = nudgedZeroPoint;
+}
+
+void libjit_get_rowwise_quanParams(float *scales, int32_t *offsets,
+                                   const float *inW, const size_t *idim) {
+  size_t idx = 0;
+  for (size_t i = 0; i < idim[0]; i++) {
+    float min = inW[idx];
+    float max = inW[idx];
+    for (size_t j = 0; j < idim[1]; j++) {
+      float val = inW[idx + j];
+      if (val > max)
+        max = val;
+      if (val < min)
+        min = val;
+    }
+    libjit_choose_qParams(min, max, &scales[i], &offsets[i]);
+    idx += idim[1];
+  }
+}
+
+void libjit_rowwisequantize_i8(int8_t *outW, const float *inW,
+                               const size_t *idim, const size_t *odim) {
+  size_t row = idim[0];
+  size_t col = idim[1];
+  size_t outIdx = 0;
+  size_t inIdx = 0;
+
+  float scales[row];
+  int32_t offsets[row];
+  libjit_get_rowwise_quanParams(scales, offsets, inW, idim);
+
+  for (size_t i = 0; i < row; i++) {
+    for (size_t j = 0; j < col; j++) {
+      int32_t result =
+          (int32_t)nearbyintf(inW[inIdx++] / scales[i] + offsets[i]);
+      outW[outIdx + j] = MAX(INT8_MIN, MIN(INT8_MAX, result));
+    }
+    memcpy(&outW[outIdx + col], &scales[i], 4);
+    memcpy(&outW[outIdx + col + 4], &offsets[i], 4);
+    outIdx += odim[1];
+  }
+}
+
+void libjit_rowwisedequantize_f(float *outW, const int8_t *inW,
+                                const size_t *idim, const size_t *odim) {
+  size_t row = odim[0];
+  size_t col = odim[1];
+  size_t inIdx = 0;
+  size_t outIdx = 0;
+  for (size_t i = 0; i < row; i++) {
+    float scale;
+    int32_t offset;
+    memcpy(&scale, &inW[inIdx + col], 4);
+    memcpy(&offset, &inW[inIdx + col + 4], 4);
+    for (size_t j = 0; j < col; j++) {
+      outW[outIdx++] = scale * (inW[inIdx + j] - offset);
+    }
+    inIdx += idim[1];
   }
 }
 

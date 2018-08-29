@@ -190,6 +190,17 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
          "Inconsistent bias/weights/dest sizes.");
 }
 
+static void verifyRowWiseFullyConnected(NodeValue src, NodeValue weights,
+                                        NodeValue bias, NodeValue dest) {
+  assert(src.dims()[0] == dest.dims()[0] &&
+         src.dims()[1] == weights.dims()[1] - 8 &&
+         "Mismatch on expected source dimensions");
+
+  assert(bias.dims()[0] == weights.dims()[0] &&
+         weights.dims()[0] == dest.dims()[1] &&
+         "Inconsistent bias/weights/dest sizes.");
+}
+
 static void verifyPool(NodeValue src, NodeValue dest,
                        llvm::ArrayRef<unsigned_t> kernels,
                        llvm::ArrayRef<unsigned_t> strides,
@@ -612,6 +623,30 @@ void RescaleQuantizedNode::verify() const {
   checkSameShape(getResult(), getInput());
 }
 
+void FloatToFused8BitRowwiseQuantizeNode::verify() const {
+  checkType(getResult(), ElemKind::Int8QTy);
+  checkType(getInput(), ElemKind::FloatTy);
+  auto idim = getInput().getType()->dims();
+  auto odim = getResult().getType()->dims();
+  (void)idim;
+  (void)odim;
+  assert(idim.size() == 2 && "Input must be 2 dims");
+  assert(odim.size() == 2 && "Output must be 2 dims");
+  assert(idim[0] == odim[0] && idim[1] + 8 == odim[1] && "Invalide shape");
+}
+
+void Fused8BitRowwiseQuantizedToFloatNode::verify() const {
+  checkType(getResult(), ElemKind::FloatTy);
+  checkType(getInput(), ElemKind::Int8QTy);
+  auto idim = getInput().getType()->dims();
+  auto odim = getResult().getType()->dims();
+  (void)idim;
+  (void)odim;
+  assert(idim.size() == 2 && "Input must be 2 dims");
+  assert(odim.size() == 2 && "Output must be 2 dims");
+  assert(idim[0] == odim[0] && idim[1] - 8 == odim[1] && "Invalide shape");
+}
+
 void TopKNode::verify() const {
   assert(getValues().dims() == getIndices().dims());
   if (getInput().getType()->isQuantizedType()) {
@@ -714,6 +749,10 @@ void FullyConnectedGradNode::verify() const {
   verifyFullyConnected(getGradOfInputNamedInput(), getGradOfInputNamedWeights(),
                        getGradOfInputNamedBias(),
                        getGradOfOriginalOutputNamedResult());
+}
+
+void RowWiseFullyConnectedNode::verify() const {
+  verifyRowWiseFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }
 
 void ConcatNode::verify() const {

@@ -185,6 +185,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::TanhNodeKind:
     case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
+      // case Kinded::Kind::RowWiseFullyConnectedNodeKind:
       return true;
     default:
       return false;

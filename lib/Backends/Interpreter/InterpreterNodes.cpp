@@ -549,6 +549,65 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
 //===----------------------------------------------------------------------===//
 //                       Activation functions
 //===----------------------------------------------------------------------===//
+void InterpreterFunction::fwdRowWiseFullyConnectedInst(
+    const RowWiseFullyConnectedInst *I) {
+  auto weightsT = getTensor(I->getWeights());
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto weightsW = getWeightHandle<int8_t>(I->getWeights());
+  auto biasW = getWeightHandle<int8_t>(I->getBias());
+
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+
+  auto inTy = inW.getType();
+  auto biasTy = biasW.getType();
+  auto outTy = outW.getType();
+
+  int32_t outOffset = outTy.getOffset();
+  int32_t inOffset = inTy.getOffset();
+  int32_t biasOffset = biasTy.getOffset();
+
+  float outScale = outTy.getScale();
+  float inScale = inTy.getScale();
+  float biasScale = biasTy.getScale();
+
+  // Get the scale and offset for each row of Weights.
+  int32_t weightsOffset[odim.width];
+  float weightsScale[odim.width];
+  size_t index = 0;
+  for (size_t i = 0; i < odim.width; i++) {
+    memcpy(&(weightsScale[i]), &weightsT->getUnsafePtr()[index + idim.width],
+           4);
+    memcpy(&(weightsOffset[i]),
+           &weightsT->getUnsafePtr()[index + idim.width + 4], 4);
+    index += (idim.width + 8);
+  }
+
+  outW.clear(0);
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      float matMulScale = weightsScale[j] * inScale;
+      int32_t sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        int32_t W = weightsW.at({j, k});
+        int32_t I = inW.at({i, k});
+        sum += (W - weightsOffset[j]) * (I - inOffset);
+      }
+      int32_t B = std::round(float(biasW.at({j}) - biasOffset) *
+                             (biasScale / matMulScale));
+      sum += B;
+
+      // Scale the result back to the expected destination scale.
+      outW.at({i, j}) = quantization::clip<int32_t, int8_t>(
+          std::round(float(sum) * (matMulScale / outScale) + outOffset));
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                       Activation functions
+//===----------------------------------------------------------------------===//
 
 void InterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
   auto inW = getWeightHandle(I->getSrc());
@@ -1677,6 +1736,70 @@ void InterpreterFunction::fwdRescaleQuantizedInst(
   for (size_t i = 0, e = destH.size(); i < e; ++i) {
     float val = quantization::dequantize(srcH.raw(i), srcQ);
     destH.raw(i) = quantization::quantize(val, destQ);
+  }
+}
+
+/// Quantize floating point tensor.
+void InterpreterFunction::fwdFloatToFused8BitRowwiseQuantizeInst(
+    const glow::FloatToFused8BitRowwiseQuantizeInst *I) {
+  auto srcTensor = getTensor(I->getSrc());
+  auto destTensor = getTensor(I->getDest());
+  auto srcH = srcTensor->getHandle<float>();
+  auto destH = destTensor->getHandle<int8_t>();
+  const auto src_rows = srcH.dims()[0];
+  const auto src_columns = srcH.dims()[1];
+  const auto dest_columns = destH.dims()[1];
+
+  for (size_t i = 0; i < src_rows; i++) {
+    // auto rSrc = srcH.extractSlice(i).getHandle<float>();
+    // auto res = rSrc.minMaxArg();
+    // float min = rSrc.raw(res.first);
+    // float max = rSrc.raw(res.second);
+    float min = srcH.at({i, 0});
+    float max = srcH.at({i, 0});
+    for (size_t j = 1; j < src_columns; j++) {
+      float val = srcH.at({i, j});
+      if (val > max)
+        max = val;
+      if (val < min)
+        min = val;
+    }
+
+    TensorQuantizationParams qParams =
+        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+
+    for (size_t j = 0; j < src_columns; j++) {
+      destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
+    }
+    memcpy(&destTensor->getUnsafePtr()[i * dest_columns + src_columns],
+           &(qParams.scale), 4);
+    memcpy(&destTensor->getUnsafePtr()[i * dest_columns + src_columns + 4],
+           &(qParams.offset), 4);
+  }
+}
+
+void InterpreterFunction::fwdFused8BitRowwiseQuantizedToFloatInst(
+    const glow::Fused8BitRowwiseQuantizedToFloatInst *I) {
+  auto srcT = getTensor(I->getSrc());
+  auto srcH = getWeightHandle<int8_t>(I->getSrc());
+  auto destH = getWeightHandle<float>(I->getDest());
+  ShapeHW idim(srcH.dims());
+  ShapeHW odim(destH.dims());
+  // Get the scale and offset for each row.
+  int32_t offset[idim.height];
+  float scale[idim.height];
+  size_t index = 0;
+  for (size_t i = 0; i < idim.height; i++) {
+    memcpy(&(scale[i]), &srcT->getUnsafePtr()[index + odim.width], 4);
+    memcpy(&(offset[i]), &srcT->getUnsafePtr()[index + odim.width + 4], 4);
+    index += idim.width;
+  }
+
+  for (size_t i = 0; i < odim.height; i++) {
+    TensorQuantizationParams params{scale[i], offset[i]};
+    for (size_t j = 0; j < odim.width; j++) {
+      destH.at({i, j}) = quantization::dequantize(srcH.at({i, j}), params);
+    }
   }
 }
 

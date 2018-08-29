@@ -267,6 +267,17 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
+  /// Create a row-wise fully connected node. This node is only used in
+  /// quantization. Parm \p input and \B are quantized in regular way, and \p W
+  /// is row-wise quantized with each row's quantized paramters(i.e. scale and
+  /// offset) stored in W in the follow format: | ... quantized int8 data...|
+  /// 32bit-float scale | 32bit-float offset| | number_of_columns         | 4B
+  /// |       4B          |
+  RowWiseFullyConnectedNode *createRowWiseFullyConnected(llvm::StringRef name,
+                                                         NodeValue input,
+                                                         Node *W, Node *B,
+                                                         TypeRef outTy);
+
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
@@ -534,6 +545,14 @@ public:
   /// Scale and Offset.
   RescaleQuantizedNode *createRescaleQuantized(llvm::StringRef name,
                                                NodeValue input, TypeRef outTy);
+
+  FloatToFused8BitRowwiseQuantizeNode *
+  createFloatToFused8BitRowwiseQuantize(llvm::StringRef name, NodeValue input,
+                                        TypeRef outTy);
+
+  Fused8BitRowwiseQuantizedToFloatNode *
+  createFused8BitRowwiseQuantizedToFloat(llvm::StringRef name, NodeValue input,
+                                         TypeRef outTy);
 
   /// Create a series of nodes that implement a weighted sum. \p data and \p
   /// weights should have the same number of elements. The nodes in \p weights

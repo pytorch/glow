@@ -1728,6 +1728,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::RowWiseFullyConnectedInstKind: {
+    auto *RI = cast<RowWiseFullyConnectedInst>(I);
+    auto *dest = RI->getDest();
+    auto *src = RI->getSrc();
+    auto *weights = RI->getWeights();
+    auto *bias = RI->getBias();
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *biasPtr = emitValueAddress(builder, bias);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *weightsDims = emitValueDims(builder, weights);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    auto *destTy = dest->getType();
+    auto *srcTy = src->getType();
+    auto *biasTy = bias->getType();
+
+    auto *destOffset = emitConstI32(builder, destTy->getOffset());
+    auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+    auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
+
+    auto *destScale = emitConstF32(builder, destTy->getScale());
+    auto *srcScale = emitConstF32(builder, srcTy->getScale());
+    auto *biasScale = emitConstF32(builder, biasTy->getScale());
+
+    auto *F = getFunction("rowwise_fullyconnected", dest->getElementType());
+
+    createCall(builder, F,
+               {destPtr, srcPtr, weightsPtr, biasPtr, destDims, srcDims,
+                weightsDims, biasDims, destOffset, srcOffset, biasOffset,
+                destScale, srcScale, biasScale});
+    break;
+  }
+
   case Kinded::Kind::QuantizeInstKind: {
     auto *QI = cast<QuantizeInst>(I);
     auto *dest = QI->getDest();
@@ -1785,6 +1823,32 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {destPtr, srcPtr, numElem, destOffset, srcOffset, preShift,
                 postShift, scale});
+    break;
+  }
+
+  case Kinded::Kind::FloatToFused8BitRowwiseQuantizeInstKind: {
+    auto *RQI = cast<FloatToFused8BitRowwiseQuantizeInst>(I);
+    auto *dest = RQI->getDest();
+    auto *src = RQI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *F = getFunction("rowwisequantize", dest->getElementType());
+    createCall(builder, F, {destPtr, srcPtr, srcDims, destDims});
+    break;
+  }
+
+  case Kinded::Kind::Fused8BitRowwiseQuantizedToFloatInstKind: {
+    auto *RDQI = cast<Fused8BitRowwiseQuantizedToFloatInst>(I);
+    auto *dest = RDQI->getDest();
+    auto *src = RDQI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *F = getFunction("rowwisedequantize", dest->getElementType());
+    createCall(builder, F, {destPtr, srcPtr, srcDims, destDims});
     break;
   }
 

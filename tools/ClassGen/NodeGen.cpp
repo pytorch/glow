@@ -102,6 +102,17 @@ int main(int argc, char **argv) {
                     "Weights tensor are multiplied, and then the Bias tensor "
                     "is added to it, producing the Output.");
 
+  BB.newNode("RowWiseFullyConnected")
+      .addInput("Input")
+      .addInput("Weights")
+      .addInput("Bias")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Creates a RowWiseFullyConnected node where the Input tensor and "
+          "Weights tensor are multiplied, and then the Bias tensor is added "
+          "to it, producing the Output. This node is regular quantized, but"
+          " the FC weights use channel-wise quantization.");
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -474,6 +485,27 @@ int main(int argc, char **argv) {
       .setDocstring("Rescale the input quantized tensor to a new Scale and "
                     "Offset. The new Scale and Offset are specified by the "
                     "output type passed to the constructor");
+
+  BB.newNode("FloatToFused8BitRowwiseQuantize")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Row-wise quantize floating point tensor. This operation "
+          "applies 8-bit row-wise quantization by determining the range "
+          "(maximum - minimum) and offset (minimum value) of each row in "
+          "the input matrix, and then scaling each element to an 8-bit "
+          "number.");
+
+  BB.newNode("Fused8BitRowwiseQuantizedToFloat")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "De-quantizes the result of the FloatToFused8BitRowwiseQuantized "
+          "opertor. The input is expected to encode the scale as a 32-bit "
+          "float in the second to the last 4 bytes of each row, followed by "
+          "the offset as a 32-bit int in the next 4 bytes, and the quantized "
+          "values in the preceding bytes of the row. The output is a matrix "
+          "containing only the values, but de-quantized.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
