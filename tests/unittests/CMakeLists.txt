@@ -238,7 +238,7 @@ target_link_libraries(onnxImporterTest
                         Importer
                         ExecutionEngine
                         gtest
-			testMain)
+                        testMain)
 add_glow_test(NAME onnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest
               WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
