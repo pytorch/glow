@@ -443,12 +443,23 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
     return;
   }
   if (numDims == 2) {
-    for (size_t x = 0; x < odim[0]; x++)
-      for (size_t y = 0; y < odim[1]; y++) {
-        SC[shuffle[0]] = x;
-        SC[shuffle[1]] = y;
-        outW[libjit_getXY(odim, x, y)] = inW[libjit_getXY(idim, SC[0], SC[1])];
+    const unsigned tileSize = 64;
+    // Transpose the 2d matrix one tile at a time. This access pattern ensures
+    // that the whole tile is kept in L1 cache. When scanning the whole row at
+    // once we invalidate many cache lines when we touch a single column.
+    for (size_t sx = 0; sx < odim[0]; sx+=tileSize) {
+      for (size_t sy = 0; sy < odim[1]; sy+=tileSize) {
+        // Process the inner tile:
+        for (size_t x = sx; x < MIN(sx + tileSize, odim[0]); x++) {
+          for (size_t y = sy; y < MIN(sy + tileSize, odim[1]); y++) {
+            SC[shuffle[0]] = x;
+            SC[shuffle[1]] = y;
+            outW[libjit_getXY(odim, x, y)] =
+                inW[libjit_getXY(idim, SC[0], SC[1])];
+          }
+        }
       }
+    }
     return;
   }
 }
