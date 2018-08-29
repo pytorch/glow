@@ -16,6 +16,8 @@
 #ifndef GLOW_BACKENDS_CPU_CPUBACKEND_H
 #define GLOW_BACKENDS_CPU_CPUBACKEND_H
 
+#include "AllocationsInfo.h"
+#include "LLVMIRGen.h"
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
 
@@ -30,7 +32,7 @@ namespace glow {
 llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
-class CPUBackend final : public Backend {
+class CPUBackend : public Backend {
 public:
   /// Ctor.
   CPUBackend() = default;
@@ -52,6 +54,13 @@ public:
 
   bool shouldLower(const Node *N) const override;
   /// @}
+
+protected:
+  /// Method that creates the LLVM IR generator. This gives the possibility to
+  /// create a backend that inherits from the CPU backend, while providing
+  /// a specific version of the LLVM IR generator derived from LLVMIRGen.
+  virtual std::unique_ptr<LLVMIRGen>
+  createIRGen(IRFunction *IR, AllocationsInfo &allocationsInfo) const;
 };
 
 } // namespace glow

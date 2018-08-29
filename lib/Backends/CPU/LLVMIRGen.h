@@ -80,6 +80,7 @@ struct DebugInfo {
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
+protected:
   /// The IR to generate code for.
   const IRFunction *F_;
   /// The LLVM context.
@@ -199,6 +200,8 @@ class LLVMIRGen {
   void emitDebugGlobalVariableForValue(const Value *val);
 
 public:
+  /// Destructor
+  virtual ~LLVMIRGen() {}
   /// Ctor.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName);
@@ -207,8 +210,8 @@ public:
   void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
-  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
-                              const glow::Instruction *I);
+  virtual void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
+                                      const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
   void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.
