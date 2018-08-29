@@ -50,7 +50,12 @@ onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
 
   // Glow represents a single backend.
   *numBackends = 1;
-  backendIDs[0] = new glow::onnxifi::BackendId(1);
+#ifdef GLOW_WITH_CPU
+  backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::CPU, 1);
+#else
+  backendIDs[0] =
+      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter, 1);
+#endif
 
   return ONNXIFI_STATUS_SUCCESS;
 }
