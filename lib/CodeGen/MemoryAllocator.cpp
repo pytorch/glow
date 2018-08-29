@@ -111,6 +111,7 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
     for (auto &candidate : evictionCandidates) {
       auto &curHandle = candidate.second;
       auto &segment = candidate.first;
+      (void)segment;
       DEBUG_GLOW(llvm::dbgs() << "Evict a buffer from the '" << name_ << "': "
                               << "address: " << segment.begin_
                               << " size: " << segment.size() << "\n");
