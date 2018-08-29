@@ -397,6 +397,11 @@ template <typename T>
 void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
                               const size_t *odim, const size_t *shuffle,
                               size_t numDims) {
+  // Transpose 2d matrices one tile at a time. This access pattern ensures
+  // that the whole tile is kept in L1 cache. When scanning the whole row at
+  // once we invalidate many cache lines when we touch a single column.
+  const unsigned tileSize = 64;
+
   // Source coordinate.
   size_t SC[5];
 
@@ -431,22 +436,28 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
     return;
   }
   if (numDims == 3) {
-    for (size_t x = 0; x < odim[0]; x++)
-      for (size_t y = 0; y < odim[1]; y++)
-        for (size_t z = 0; z < odim[2]; z++) {
-          SC[shuffle[0]] = x;
-          SC[shuffle[1]] = y;
-          SC[shuffle[2]] = z;
-          outW[libjit_getXYZ(odim, x, y, z)] =
-              inW[libjit_getXYZ(idim, SC[0], SC[1], SC[2])];
+    for (size_t x = 0; x < odim[0]; x++) {
+      // Process the tiles in the innermost two dimensions:
+      for (size_t sy = 0; sy < odim[1]; sy += tileSize) {
+        for (size_t sz = 0; sz < odim[2]; sz += tileSize) {
+          // Process the inner tile:
+          for (size_t y = sy; y < MIN(sy + tileSize, odim[1]); y++) {
+            for (size_t z = sz; z < MIN(sz + tileSize, odim[2]); z++) {
+              SC[shuffle[0]] = x;
+              SC[shuffle[1]] = y;
+              SC[shuffle[2]] = z;
+              outW[libjit_getXYZ(odim, x, y, z)] =
+                  inW[libjit_getXYZ(idim, SC[0], SC[1], SC[2])];
+            }
+          }
         }
+      }
+    }
     return;
   }
+
   if (numDims == 2) {
-    const unsigned tileSize = 64;
-    // Transpose the 2d matrix one tile at a time. This access pattern ensures
-    // that the whole tile is kept in L1 cache. When scanning the whole row at
-    // once we invalidate many cache lines when we touch a single column.
+    // Process the tiles in the matrix:
     for (size_t sx = 0; sx < odim[0]; sx+=tileSize) {
       for (size_t sy = 0; sy < odim[1]; sy+=tileSize) {
         // Process the inner tile:
