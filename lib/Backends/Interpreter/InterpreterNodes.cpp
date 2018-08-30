@@ -30,12 +30,6 @@ using namespace glow;
 //                       Convolution
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
-  auto inT = getTensor(I->getSrc());
-  auto outT = getTensor(I->getDest());
-  outT->copyRawFrom(inT);
-}
-
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
@@ -654,8 +648,15 @@ void InterpreterFunction::fwdCrossEntropyLossGradInst(
 }
 
 //===----------------------------------------------------------------------===//
-//                       Tensor shape (transpose/concat/...)
+//                       Tensor shape (copy/transpose/concat/...)
 //===----------------------------------------------------------------------===//
+
+void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
+  auto inT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  outT->copyRawFrom(inT);
+}
+
 void InterpreterFunction::fwdTransposeInst(const TransposeInst *I) {
   auto inT = getTensor(I->getSrc());
   (void)inT;
@@ -1251,6 +1252,10 @@ void InterpreterFunction::fwdElementSelectInst(
   }
 }
 
+//===----------------------------------------------------------------------===//
+//                       Mat Mul
+//===----------------------------------------------------------------------===//
+
 void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
@@ -1318,6 +1323,10 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
     }
   }
 }
+
+//===----------------------------------------------------------------------===//
+//                       Batched operations
+//===----------------------------------------------------------------------===//
 
 void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
@@ -1559,6 +1568,10 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+//                       Sorting operators
+//===----------------------------------------------------------------------===//
+
 void InterpreterFunction::fwdTopKInst(const TopKInst *I) {
   auto outW = getTensor(I->getValues());
   auto indW = getTensor(I->getIndices());
@@ -1584,6 +1597,10 @@ void InterpreterFunction::fwdDeallocActivationInst(
     const DeallocActivationInst *I) {
   deleteTensor(I->getSrc());
 }
+
+//===----------------------------------------------------------------------===//
+//                       Debug instructions
+//===----------------------------------------------------------------------===//
 
 /// Prints a value of the instruction's operand.
 /// In most cases it will be the name of the variable and the value of the
