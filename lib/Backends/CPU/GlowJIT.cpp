@@ -173,5 +173,5 @@ llvm::JITSymbol GlowJIT::findSymbol(const std::string name) {
   std::string mangledName;
   raw_string_ostream MangledNameStream(mangledName);
   Mangler::getNameWithPrefix(MangledNameStream, name, DL_);
-  return compileLayer_.findSymbol(MangledNameStream.str(), true);
+  return compileLayer_.findSymbol(MangledNameStream.str(), false);
 }
