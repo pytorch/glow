@@ -66,6 +66,9 @@ static std::vector<unsigned_t> getPads(const ArgumentDictionaryTy &dict) {
     pads[3] = loadInt(dict.at("pad_r"));
     return pads;
   }
+  if (dict.count("pads")) {
+    return getShape<unsigned_t>(dict.at("pads"));
+  }
   // Return default value 0 for pads.
   return {0, 0, 0, 0};
 }
