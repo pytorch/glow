@@ -293,8 +293,13 @@ void LLVMIRGen::performCodeGen() {
     llvm::SmallVector<char, 0> asmBuffer;
     llvm::raw_svector_ostream asmStream(asmBuffer);
     llvm::legacy::PassManager PM;
+#if LLVM_VERSION_MAJOR > 6
+    getTargetMachine().addPassesToEmitFile(
+        PM, asmStream, nullptr, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#else
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#endif
     PM.run(*llmodule_);
     llvm::outs() << asmStream.str();
   }

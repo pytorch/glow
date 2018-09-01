@@ -439,6 +439,10 @@ public:
   bool operator!=(const NodeValueIteratorImpl &other) const {
     return it_ != other.it_;
   }
+
+  bool operator==(const NodeValueIteratorImpl &other) const {
+    return it_ == other.it_;
+  }
 };
 
 } // namespace glow
