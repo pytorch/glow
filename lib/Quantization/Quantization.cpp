@@ -336,6 +336,30 @@ static Node *quantizeNode(Function *F, Node *node,
                                      SMN->getSelected(), outTy);
     break;
   }
+  case Kinded::Kind::BatchedReduceAddNodeKind: {
+    auto *BRAN = cast<BatchedReduceAddNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, BRAN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+    quantizedNode = F->createBatchedReduceAdd(
+        BRAN->getName(), outTy, quantizedInputs[0], BRAN->getAxis());
+    break;
+  }
+  case Kinded::Kind::MatMulNodeKind: {
+    auto *MMN = cast<MatMulNode>(node);
+    assert(quantizedInputs.size() == 2 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    auto outTy =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, MMN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+    quantizedNode = F->createMatMul(MMN->getName(), outTy, quantizedInputs[0],
+                                    quantizedInputs[1]);
+    break;
+  }
   default:
     GLOW_UNREACHABLE("The node type is not supported for quantization");
   }
