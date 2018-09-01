@@ -219,7 +219,10 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
   auto *CN = F->createConcat("concat", {S, B}, 0);
   auto *SP = F->createSplat("splat", B->getType(), 10.0);
   auto *O = F->createConcat("concat", {CN, SP}, 0);
-  F->createSave("save", O);
+  auto *TN = F->createTranspose("transpose", O, {1, 0});
+  auto *MMN = F->createMatMul("batchedreduceadd", O, TN);
+  auto *BRAN = F->createBatchedReduceAdd("batchedreduceadd", MMN, 0);
+  F->createSave("save", BRAN);
   return F;
 }
 
