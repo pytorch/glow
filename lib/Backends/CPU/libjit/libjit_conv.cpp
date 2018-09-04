@@ -113,8 +113,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t *filterSizes, size_t *strides, size_t *pads,
-    size_t group, size_t endChannelIndex) {
+    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *pads, size_t group, size_t endChannelIndex) {
   // The loops below look scary but the the idea is simple. We iterate over
   // the pixels in the output tensor and calculate the coordinate of the source
   // tensor. When we process the Y row we try to process [sizeGroupY] elements
@@ -208,8 +208,8 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t *filterSizes, size_t *strides, size_t *pads,
-    size_t group, size_t endChannelIndex) {
+    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *pads, size_t group, size_t endChannelIndex) {
 
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
@@ -257,8 +257,8 @@ extern "C" {
 void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
-                        const size_t *biasWdims, size_t *filterSizes,
-                        size_t *strides, size_t *pads, size_t group,
+                        const size_t *biasWdims, const size_t *filterSizes,
+                        const size_t *strides, const size_t *pads, size_t group,
                         unsigned pixelScanFirst, unsigned numDepthRegs,
                         unsigned sizeGroupY, unsigned depthStrips) {
   size_t inChannels = inWdims[3];
@@ -301,9 +301,9 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           const float *biasW, const size_t *outWdims,
                           const size_t *inWdims, const size_t *filterWdims,
-                          const size_t *biasWdims, size_t *filterSizes,
-                          size_t *strides, size_t *pads, size_t group,
-                          unsigned depthUnroll) {
+                          const size_t *biasWdims, const size_t *filterSizes,
+                          const size_t *strides, const size_t *pads,
+                          size_t group, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;
@@ -420,10 +420,11 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 void libjit_convolution_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, size_t *filterSizes, size_t *strides, size_t *pads,
-    size_t group, int32_t outOffset, int32_t inOffset, int32_t filterOffset,
-    int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
-    int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
+    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *pads, size_t group, int32_t outOffset, int32_t inOffset,
+    int32_t filterOffset, int32_t biasOffset, int32_t biasPre, int32_t biasPost,
+    int32_t biasScale, int32_t outPre, int32_t outPost, int32_t outScale,
+    unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;
@@ -517,7 +518,7 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                const float *filterW, const size_t *outGdims,
                                const size_t *inWdims, const size_t *filterGdims,
                                const size_t *kernels, const size_t *strides,
-                               const size_t *pads, const size_t group) {
+                               const size_t *pads, size_t group) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
   size_t p = sizeof(float);
