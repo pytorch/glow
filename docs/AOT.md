@@ -38,7 +38,7 @@ This document demonstrates how to produce a bundle for the host CPU using the
 directory.
 
 ```
-$image-classifier image.png -image_mode=0to1 -m resnet50 -cpu -emit-bundle build/
+$image-classifier image.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle build/
 ```
 
 The command above would compile the neural network model described by the files
@@ -163,7 +163,7 @@ The makefile provides the following targets:
 * `download_weights`: it downloads the Resnet50 network model in the Caffe2 format.
 * `build/resnet50.o`: it generates the bundle files using the Glow image-classifier as described above.
   The concrete command line looks like this:
-  `image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m resnet50 -cpu -emit-bundle build`
+  `image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle build`
   It reads the network model from `resnet50` and generates the `resnet50.o`
   and `resnet50.weights` files into the `build` directory.
 * `build/main.o`:  it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
@@ -186,9 +186,8 @@ To build and run the example, you just need to execute:
 
 This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
-`image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m resnet50
--load_profile=profile.yml -cpu -emit-bundle build`
+`image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -load_profile=profile.yml -cpu -emit-bundle build`
 
 The `profile.yml` itself is captured at a prior step by executing image-classifier with the `dump_profile` option:
-`image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m resnet50 -dump_profile=profile.yml`.
+`image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -dump_profile=profile.yml`.
 See the makefile for details.
