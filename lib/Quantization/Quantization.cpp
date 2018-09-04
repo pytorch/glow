@@ -416,7 +416,8 @@ postProcessQuantizedNode(Function *F, Node *quantizedNode,
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 Function *F, llvm::StringRef newFuncName) {
+                 Function *F, llvm::StringRef newFuncName,
+                 const KindSet &doNotQuantizeKinds) {
   std::string tmpName;
   if (newFuncName.empty()) {
     tmpName = std::string(F->getName()) + "_quantized";
@@ -439,6 +440,11 @@ quantizeFunction(const ExecutionEngine &EE,
   do {
     --nodeIt;
     Node *node = &*nodeIt;
+
+    // The caller may request some node kinds to not be quantized.
+    if (doNotQuantizeKinds.count(node->getKind())) {
+      continue;
+    }
 
     // Make sure that all inputs are floats and int8 operation is supported by
     // the backend. Not all backends support particular quantized operation and

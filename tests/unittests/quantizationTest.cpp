@@ -659,6 +659,259 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   EXPECT_TRUE(qSM->getInput().getType()->isQuantizedType());
 }
 
+/// Test option to disable quantization of specific node kinds in the graph.
+TEST(Quantization, quantizeGraphPartially) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *LHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs",
+                                 VisibilityKind::Private, true);
+  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
+                                 VisibilityKind::Private, true);
+  auto *result = mod.createVariable(ElemKind::FloatTy, {3, 3}, "result");
+  LHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+
+  auto *MMN = F->createMatMul("matmul", LHS, RHS);
+  auto *TN = F->createTanh("tanh", MMN);
+  F->createSave("ret", TN, result);
+
+  // Note that we are creating quantization info even for nodes that will not be
+  // quantized. This is how we expect quantizeFunction() to behave, as
+  // quantization profiling will still get a profile for these nodes.
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+  };
+
+  // Do not quantize any tanh nodes.
+  KindSet doNotQuantize;
+  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
+
+  auto *QF =
+      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  QF->getParent()->eraseFunction(F);
+  F = QF;
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the tanh is not quantized.
+    auto *TN = llvm::dyn_cast<TanhNode>(SN->getInput());
+    ASSERT_TRUE(TN);
+    EXPECT_TRUE(!TN->getResult().getType()->isQuantizedType());
+
+    // Verify that the input to the tanh is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(TN->getInput());
+    ASSERT_TRUE(DN);
+
+    // Verify that the matmul is quantized.
+    auto *MMN = llvm::dyn_cast<MatMulNode>(DN->getInput());
+    ASSERT_TRUE(MMN);
+    EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
+
+    // Verify that the variable inputs to the matmul are quantized.
+    auto *LHS = llvm::dyn_cast<Variable>(MMN->getLHS());
+    ASSERT_TRUE(LHS);
+    EXPECT_TRUE(LHS->getType()->isQuantizedType());
+
+    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    ASSERT_TRUE(RHS);
+    EXPECT_TRUE(RHS->getType()->isQuantizedType());
+  }
+}
+
+/// Test option to disable quantization of specific node kinds in the graph,
+/// where there are multiple of that node kind.
+TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *LHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs",
+                                 VisibilityKind::Private, true);
+  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
+                                 VisibilityKind::Private, true);
+  auto *result = mod.createVariable(ElemKind::FloatTy, {3, 3}, "result");
+  LHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+
+  auto *TNLHS = F->createTanh("tanh", LHS);
+  auto *MMN = F->createMatMul("matmul", TNLHS, RHS);
+  auto *TN = F->createTanh("tanh", MMN);
+  F->createSave("ret", TN, result);
+
+  // Note that we are creating quantization info even for nodes that will not be
+  // quantized. This is how we expect quantizeFunction() to behave, as
+  // quantization profiling will still get a profile for these nodes.
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(TNLHS->getName()),
+       {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+  };
+
+  // Do not quantize any tanh nodes.
+  KindSet doNotQuantize;
+  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
+
+  auto *QF =
+      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  QF->getParent()->eraseFunction(F);
+  F = QF;
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the tanh is not quantized.
+    auto *TN1 = llvm::dyn_cast<TanhNode>(SN->getInput());
+    ASSERT_TRUE(TN1);
+    EXPECT_TRUE(!TN1->getResult().getType()->isQuantizedType());
+
+    // Verify that the input to the tanh is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(TN1->getInput());
+    ASSERT_TRUE(DN);
+
+    // Verify that the matmul is quantized.
+    auto *MMN = llvm::dyn_cast<MatMulNode>(DN->getInput());
+    ASSERT_TRUE(MMN);
+    EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
+
+    // Verify that the LHS input is a quantize node.
+    auto *QN = llvm::dyn_cast<QuantizeNode>(MMN->getLHS());
+    ASSERT_TRUE(QN);
+
+    // Verify that the second tanh node is also not quantized.
+    auto *TN2 = llvm::dyn_cast<TanhNode>(QN->getInput());
+    ASSERT_TRUE(TN2);
+    EXPECT_TRUE(!TN2->getResult().getType()->isQuantizedType());
+
+    // Verify that the input variable to the tanh is not quantized.
+    auto *varTN2 = llvm::dyn_cast<Variable>(TN2->getInput());
+    ASSERT_TRUE(varTN2);
+    EXPECT_TRUE(!varTN2->getType()->isQuantizedType());
+
+    // Verify that the RHS input to the matmul is a quantized variable.
+    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    ASSERT_TRUE(RHS);
+    EXPECT_TRUE(RHS->getType()->isQuantizedType());
+  }
+}
+
+/// Test option to disable quantization of multiple specific node kinds in the
+/// graph.
+TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *LHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs",
+                                 VisibilityKind::Private, true);
+  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
+                                 VisibilityKind::Private, true);
+  auto *result = mod.createVariable(ElemKind::FloatTy, {3, 3}, "result");
+  LHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+
+  auto *MMN = F->createMatMul("matmul", LHS, RHS);
+  auto *CN = F->createAdd("concat", LHS, MMN);
+  auto *TN = F->createTanh("tanh", CN);
+  F->createSave("ret", TN, result);
+
+  // Note that we are creating quantization info even for nodes that will not be
+  // quantized. This is how we expect quantizeFunction() to behave, as
+  // quantization profiling will still get a profile for these nodes.
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(CN->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+  };
+
+  // Do not quantize any tanh or add nodes.
+  KindSet doNotQuantize;
+  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
+  doNotQuantize.insert(Kinded::Kind::AddNodeKind);
+
+  auto *QF =
+      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  QF->getParent()->eraseFunction(F);
+  F = QF;
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer, F);
+  EE.run({}, {});
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the tanh is not quantized.
+    auto *TN = llvm::dyn_cast<TanhNode>(SN->getInput());
+    ASSERT_TRUE(TN);
+    EXPECT_TRUE(!TN->getResult().getType()->isQuantizedType());
+
+    // Verify that the input to the tanh is a non-quantized add node.
+    auto *AN = llvm::dyn_cast<AddNode>(TN->getInput());
+    ASSERT_TRUE(AN);
+    EXPECT_TRUE(!TN->getResult().getType()->isQuantizedType());
+
+    // Verify that the LHS input to the AddNode is an unquantized variable.
+    auto varANLHS = llvm::dyn_cast<Variable>(AN->getLHS());
+    ASSERT_TRUE(varANLHS);
+    EXPECT_TRUE(!varANLHS->getType()->isQuantizedType());
+
+    // Verify that the RHS input to the AddNode is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(AN->getRHS());
+    ASSERT_TRUE(DN);
+
+    // Verify that the matmul is quantized.
+    auto *MMN = llvm::dyn_cast<MatMulNode>(DN->getInput());
+    ASSERT_TRUE(MMN);
+    EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
+
+    // Verify that the variable inputs to the matmul are quantized.
+    auto *LHS = llvm::dyn_cast<Variable>(MMN->getLHS());
+    ASSERT_TRUE(LHS);
+    EXPECT_TRUE(LHS->getType()->isQuantizedType());
+
+    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    ASSERT_TRUE(RHS);
+    EXPECT_TRUE(RHS->getType()->isQuantizedType());
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
 INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
