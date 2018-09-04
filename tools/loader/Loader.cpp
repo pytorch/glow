@@ -88,6 +88,16 @@ llvm::cl::opt<std::string> loadProfileFileOpt(
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
 
+llvm::cl::list<std::string> doNotQuantizeNodesOpt(
+    "do_not_quantize_nodes",
+    llvm::cl::desc(
+        "Use to specify the name of nodes (e.g. Add, Div, etc.) that should "
+        "not be quantized. All nodes of the listed kinds would not be "
+        "quantized; e.g. if Add is specififed and there are multiple Add nodes "
+        "in the input loaded model, none would be quantized."),
+    llvm::cl::value_desc("NodeNames (e.g. Add,Div)"), llvm::cl::ZeroOrMore,
+    llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
@@ -183,6 +193,17 @@ static bool commandLineIsInvalid() {
   return false;
 }
 
+/// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
+/// \p nodeName (e.g. Add).
+static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  if (nodeName == #NAME) {                                                     \
+    return Kinded::Kind::CLASS##Kind;                                          \
+  }
+#include "glow/AutoGenNodes.def"
+  GLOW_UNREACHABLE("Unknown node name.");
+}
+
 void Loader::compile() {
   // Handle the request to profile the graph in preperation for quantization.
   if (!dumpProfileFileOpt.empty()) {
@@ -211,9 +232,18 @@ void Loader::compile() {
     std::string oldName = F_->getName();
     F_->setName("old");
 
+    // By default, when quantizing loaded models, all nodes that can be
+    // quantized are quantized. However, some models that are loaded may need to
+    // keep higher precision for some nodes to prevent high accuracy loss. This
+    // set is passed into quantizeFunction() to prevent quantization.
+    KindSet doNotQuantizeKinds;
+    for (llvm::StringRef kindName : doNotQuantizeNodesOpt) {
+      doNotQuantizeKinds.insert(getKindFromNodeName(kindName));
+    }
+
     // Quantize the graph based on the captured profile.
-    auto *Q =
-        quantization::quantizeFunction(EE_, quantizationInfos, F_, oldName);
+    auto *Q = quantization::quantizeFunction(EE_, quantizationInfos, F_,
+                                             oldName, doNotQuantizeKinds);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.
