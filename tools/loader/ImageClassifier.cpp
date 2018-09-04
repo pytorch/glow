@@ -83,6 +83,12 @@ llvm::cl::opt<ImageNormalizationMode> imageMode(
 llvm::cl::alias imageModeA("i", llvm::cl::desc("Alias for -image_mode"),
                            llvm::cl::aliasopt(imageMode),
                            llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<std::string> modelInputName(
+    "model_input_name",
+    llvm::cl::desc("The name of the variable for the model's input image."),
+    llvm::cl::value_desc("string_name"), llvm::cl::Required,
+    llvm::cl::cat(imageLoaderCat));
 } // namespace
 
 /// Loads and normalizes all PNGs into a tensor in the NCHW 3x224x224 format.
@@ -137,9 +143,8 @@ int main(int argc, char **argv) {
   Tensor data;
   loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
 
-  // All of our ONNX and Caffe2 models may use one of two names for input.
-  constexpr char const *c2Inputs[2] = {"gpu_0/data", "data"};
-  constexpr char const *onnxInputs[2] = {"gpu_0/data_0", "data_0"};
+  // The image name that the model expects must be passed on the command line.
+  const char *inputName = modelInputName.c_str();
 
   // Create the model based on the input model format.
   std::unique_ptr<ProtobufLoader> LD;
@@ -147,10 +152,10 @@ int main(int argc, char **argv) {
   if (c2Model) {
     LD.reset(new caffe2ModelLoader(
         loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        c2Inputs, {&data, &data}, *loader.getFunction()));
+        {inputName}, {&data}, *loader.getFunction()));
   } else {
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), onnxInputs,
-                                 {&data, &data}, *loader.getFunction()));
+    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
+                                 {&data}, *loader.getFunction()));
   }
   // Get the Variable that the final expected Softmax writes into at the end of
   // image inference.
@@ -159,11 +164,8 @@ int main(int argc, char **argv) {
   // Create Variables for both possible input names for flexibility for the
   // input model. The input data is mapped to both names. Whichever Variable is
   // unused will be removed in compile().
-  Variable *i0 = LD->getVariableByName(c2Model ? c2Inputs[0] : onnxInputs[0]);
-  Variable *i1 = LD->getVariableByName(c2Model ? c2Inputs[1] : onnxInputs[1]);
-
-  assert(i0->getVisibilityKind() == VisibilityKind::Public);
-  assert(i1->getVisibilityKind() == VisibilityKind::Public);
+  Variable *inputImage = LD->getVariableByName(inputName);
+  assert(inputImage->getVisibilityKind() == VisibilityKind::Public);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -171,7 +173,7 @@ int main(int argc, char **argv) {
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference({i0, i1}, {&data, &data});
+    loader.runInference({inputImage}, {&data});
 
     // Print out the inferred image classification.
     Tensor &res = SMVar->getPayload();

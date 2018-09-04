@@ -71,7 +71,7 @@ into the ```profile.yaml``` file.
 This information can be used in the process of quantized conversion.
 For example, you can run the following command to capture profile for Resnet50.
 ```
-./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -dump_profile="profile.yaml"
+./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -dump_profile="profile.yaml"
 ```
 By default, the loader will produce quantized results using asymmetric ranges.
 That is ranges not necessarily centered on 0. The loader supports three modes
@@ -99,7 +99,7 @@ the graph.
 For example, you can run the following command to load the profile and quantize
 the graph.
 ```
-./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -load_profile="profile.yaml"
+./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -load_profile="profile.yaml"
 ```
 
 ## Compiler Optimizations
