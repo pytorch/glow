@@ -19,6 +19,7 @@
 #include "glow/Base/Type.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace glow {
@@ -107,6 +108,8 @@ enum class VisibilityKind {
   Public,  // The variable is visible from outside the graph.
   Private, // The variable isn't visible from outside the graph.
 };
+
+using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
 
 } // namespace glow
 
