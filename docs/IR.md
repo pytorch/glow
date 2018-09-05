@@ -263,3 +263,24 @@ usage.
 8. Low-level IR optimizations are performed.
 
 9. Backend-specific optimizations and code generation are performed.
+
+### Placeholders
+
+We are in the process of adding a new kind of variable: Placeholder. The
+motivation and plan for Placeholder variables are described in the issue #1334.
+
+The work on Placeholder variables is ongoing and the following tasks are still
+open:
+
+1. Teach the execution engine to bind tensors to the Placeholder nodes.
+
+2. Verify that dotty printing, dump() and debugging work well.
+
+3. Cleanup the APIs that are related to Variable and Placeholder and make them
+consistent.
+
+4. Change (some of) the unit tests to use the new Placeholder API.
+
+5. Make sure that our optimizations are correct when placeholder are used.
+
+
