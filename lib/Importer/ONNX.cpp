@@ -443,6 +443,15 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "MatMul") {
+    auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
+    auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
+
+    Node *node = G_.createMatMul(opName, LHS, RHS);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 

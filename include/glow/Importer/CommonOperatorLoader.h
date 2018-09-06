@@ -319,11 +319,8 @@ protected:
     addNodeAsOutput(op, node);
   }
 
-  void loadDropout(const OpType &op, ArgumentDictionaryTy &dict) {
+  void loadIdentity(const OpType &op, ArgumentDictionaryTy &dict) {
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
-    // Save the identity operation. Note the second output (mask) for Dropout in
-    // Caffe2 and ONNX is unused during inference, and our Dropout does not
-    // currently implement it, thus we do not call addNodeAsOutput() here.
     nodeValueByName_[op.output(0)] = NodeValue(in, 0);
   }
 
@@ -437,7 +434,14 @@ protected:
       return true;
     }
     if (typeName == "Dropout") {
-      loadDropout(op, dict);
+      // Save the identity operation. Note the second output (mask) for Dropout
+      // in Caffe2 and ONNX is unused during inference, and our Dropout does not
+      // currently implement it, thus we do not call addNodeAsOutput() here.
+      loadIdentity(op, dict);
+      return true;
+    }
+    if (typeName == "Identity") {
+      loadIdentity(op, dict);
       return true;
     }
     if (typeName == "TopK") {
