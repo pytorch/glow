@@ -62,7 +62,9 @@ Caffe2](https://caffe2.ai/docs/operators-catalogue.html#recurrentnetwork)), the
 input model must be unrolled to some maximum input and output length. These can
 be specified on the command line via `-min_output_len` and
 `-max_output_len`. Additionally, the beam search size can be specified via
-`-beam_size`.
+`-beam_size`. The default options for the `text-translator` match those for the
+en2gr model currently downloaded via `utils/download_caffe2_models.sh`
+(`-max_input_len=10`, `-max_output_len=14`, `-beam_size=6`).
 
 ## Caffe2 and ONNX Models
 

@@ -11,6 +11,7 @@ squeezenet
 vgg19
 zfnet512
 bvlc_alexnet
+en2gr
 EOF
 )
 
