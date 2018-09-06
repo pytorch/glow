@@ -78,12 +78,13 @@ public:
   void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName);
 
-  /// Runs the program in a forward pass. Update the nodes in \p nodes with the
-  /// values \p inputs.
+  /// Runs a single execution of the function. This method updates the variables
+  /// in \p nodes with the tensor content values \p inputs.
   void run(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
 
-  /// Train the network. Perform \p iterations in the training loop. Each
-  /// iteration does a full forward and backward pass of a whole batch.
+  /// Runs \p iterations iterations of the function. The method updates a local
+  /// counter and future invocations of this method continue running iterations
+  /// of the batch at the next available slice.
   /// The method updates the variables in \p vars with the tensors \p inputs.
   void runBatch(size_t iterations, llvm::ArrayRef<Variable *> vars,
                 llvm::ArrayRef<Tensor *> inputs);
