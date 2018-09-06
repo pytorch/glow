@@ -55,4 +55,4 @@ with open('predict_net.pb', 'wb') as f:
   f.write(net.SerializeToString());
 
 with open('init_net.pb', 'wb') as f:
-  f.write(net.SerializeToString())
+  f.write(weights.SerializeToString())
