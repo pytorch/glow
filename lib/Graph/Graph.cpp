@@ -2165,6 +2165,7 @@ void Function::verify() const {
       bool foundNode =
           std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end();
       (void)foundNode;
+      (void)isGraphStorageNode;
       assert((foundNode || isGraphStorageNode(input, this)) &&
              "Every node referenced by one of the graph nodes should be part of"
              "the graph");
