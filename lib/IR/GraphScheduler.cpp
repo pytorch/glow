@@ -222,8 +222,11 @@ void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   }
   ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
   CMSBScheduler.schedule();
+  auto numVars = G_->getParent()->getVars().size();
+  auto numPlaceholders = G_->getParent()->getPlaceholders().size();
+
   assert(CMSBScheduler.getSchedule().size() ==
-             G_->getNodes().size() + G_->getParent()->getVars().size() &&
+             G_->getNodes().size() + numPlaceholders + numVars &&
          "All graph nodes have to be scheduled");
 }
 
