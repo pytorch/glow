@@ -59,6 +59,13 @@ jobs:
       script:
         - ../.travis/run_coverage.sh
 
+    - env:
+        - TEST_NAME=CHECK_CLANG_FORMAT
+      before_install:
+        - sudo apt-get install -y clang-format-6.0
+      script:
+        - CLANG_COMMAND=/usr/bin/clang-format-6.0 ./utils/format.sh check
+
 script:
  - ninja all
  - CTEST_PARALLEL_LEVEL=2 travis_wait 20 ninja test
