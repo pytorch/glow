@@ -113,8 +113,15 @@ void ExecutionEngine::runBatch(size_t iterations,
 void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Storage *> vars,
                                                 llvm::ArrayRef<Tensor *> inputs,
                                                 size_t sampleIdx) {
-
   llvm::SmallVector<Placeholder *, 8> placeholders;
+
+  // This container saves the tensor slices that were extracted from the inputs.
+  // The tensors are alive during the lifetime of this function. These tensors
+  // must not move, and we must pass them as ArrayRef, so we allocate them here
+  // manually.
+  llvm::SmallVector<Tensor, 8> tempTensorViews;
+  // We need to pass the tensors as array ref, so we reference the static
+  // storage above, that's frozen during the execution of the program.
   llvm::SmallVector<Tensor *, 8> tensors;
 
   // Update the input variables.
@@ -129,7 +136,26 @@ void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Storage *> vars,
     // This is a placeholder that we need to make concrete during the execution
     // of the program.
     placeholders.push_back(cast<Placeholder>(vars[i]));
-    tensors.push_back(inputs[i]);
+
+    // Extract a tensor view from the input values. This has the same
+    // functionality as the logic in loadValueFromTensorSlice that copies the
+    // content of the tensor.
+    auto batchSize = inputs[i]->dims()[0];
+    auto startIdx = sampleIdx % batchSize;
+    auto phDims = placeholders[i]->dims();
+
+    // The start offset is all zeros except for the batch dimension.
+    std::vector<size_t> sliceOffset(inputs[i]->dims().size(), 0);
+    sliceOffset[0] = startIdx;
+
+    // Create the tensor view.
+    tempTensorViews.push_back(inputs[i]->getUnowned(phDims, sliceOffset));
+  }
+
+  // Save the pointer to the allocated tensor view, because the interface
+  // requires ArrayRef of tensors.
+  for (int i = 0, e = tempTensorViews.size(); i < e; i++) {
+    tensors.push_back(&tempTensorViews[i]);
   }
 
   // Run the network.
