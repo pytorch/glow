@@ -143,7 +143,7 @@ TEST_P(BackendTest, debugPrint) {
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto function = backend->compile(std::move(IR));
-  function->execute();
+  function->execute({}, {});
 }
 
 /// This test checks that we can compile a function without depending on the
@@ -171,6 +171,26 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
   EXPECT_NEAR(HX.at({1}), 4, 1E-5);
   EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+}
+
+TEST(Placeholder, simplePlaceholderValue) {
+  Tensor data{99.0, 35.0, 2.0, 3.0};
+
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
+  SaveNode *S = F->createSave("ret", input);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run({input}, {&data});
+
+  auto &res = S->getVariable()->getPayload();
+
+  res.getHandle().dump();
+  EXPECT_TRUE(res.isEqual(data));
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,

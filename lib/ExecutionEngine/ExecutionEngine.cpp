@@ -28,6 +28,8 @@
 
 using namespace glow;
 
+using llvm::cast;
+
 namespace {
 static llvm::cl::opt<std::string>
     dumpIRDAG("dump-ir-dag",
@@ -55,24 +57,39 @@ void ExecutionEngine::setBackend(Backend *backend) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
+void ExecutionEngine::run(llvm::ArrayRef<Storage *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   assert(function_ && "No function has been compiled");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
-  // Update the input variables.
+  llvm::SmallVector<Placeholder *, 8> placeholders;
+  llvm::SmallVector<Tensor *, 8> tensors;
+
+  // Update the input variables, or register placeholders.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    assert(vars[i]->getVisibilityKind() == VisibilityKind::Public &&
-           "Trying to update a private variable");
-    loadValueFromTensor(vars[i], inputs[i]);
+    // This is a variable. In here we override the content of the tensor with
+    // the requested tensor.
+    // Note: When we finish the migration to Placeholder this code needs to be
+    // removed because it's not threadsafe. See issue #1334.
+    if (Variable *V = llvm::dyn_cast<Variable>(vars[i])) {
+      assert(V->getVisibilityKind() == VisibilityKind::Public &&
+             "Trying to update a private variable");
+      loadValueFromTensor(V, inputs[i]);
+      continue;
+    }
+
+    // This is a placeholder that we need to make concrete during the execution
+    // of the program.
+    placeholders.push_back(cast<Placeholder>(vars[i]));
+    tensors.push_back(inputs[i]);
   }
 
-  function_->execute();
+  function_->execute(placeholders, tensors);
 }
 
 void ExecutionEngine::runBatch(size_t iterations,
-                               llvm::ArrayRef<Variable *> vars,
+                               llvm::ArrayRef<Storage *> vars,
                                llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
@@ -93,16 +110,30 @@ void ExecutionEngine::runBatch(size_t iterations,
   }
 }
 
-void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
+void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Storage *> vars,
                                                 llvm::ArrayRef<Tensor *> inputs,
                                                 size_t sampleIdx) {
+
+  llvm::SmallVector<Placeholder *, 8> placeholders;
+  llvm::SmallVector<Tensor *, 8> tensors;
+
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
+    // Note: When we finish the migration to Placeholder this code needs to be
+    // removed because it's not threadsafe. See issue #1334.
+    if (Variable *V = llvm::dyn_cast<Variable>(vars[i])) {
+      loadValueFromTensorSlice(V, inputs[i], sampleIdx);
+      continue;
+    }
+
+    // This is a placeholder that we need to make concrete during the execution
+    // of the program.
+    placeholders.push_back(cast<Placeholder>(vars[i]));
+    tensors.push_back(inputs[i]);
   }
 
   // Run the network.
-  function_->execute();
+  function_->execute(placeholders, tensors);
 }
 
 void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,

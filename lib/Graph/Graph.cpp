@@ -2106,6 +2106,24 @@ static void verifyNodeInput(const Node &N, size_t idx) {
       "Any node referencing another node N be in the use-list of the node N");
 }
 
+/// \returns True if \p n is a storage node (variable or placeholder) of the
+/// function \p F.
+static bool isGraphStorageNode(Node *n, const Function *F) {
+  auto &vars = F->getParent()->getVars();
+  auto &placeholders = F->getParent()->getPlaceholders();
+
+  if (Variable *V = dyn_cast<Variable>(n)) {
+    return std::find(vars.begin(), vars.end(), V) != vars.end();
+  }
+
+  if (Placeholder *P = dyn_cast<Placeholder>(n)) {
+    return std::find(placeholders.begin(), placeholders.end(), P) !=
+           placeholders.end();
+  }
+
+  return false;
+}
+
 void Function::verify() const {
   std::unordered_map<std::string, const Node *> NameToNode;
 
@@ -2137,9 +2155,6 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
-  const auto &vars = getParent()->getVars();
-  (void)vars;
-
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
@@ -2147,10 +2162,12 @@ void Function::verify() const {
       (void)input;
       // Verify each input of N.
       verifyNodeInput(N, idx);
-      assert((std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end() ||
-              std::find(vars.begin(), vars.end(), input) != vars.end()) &&
-             "Every node referenced by one of the graph"
-             " nodes should be part of the graph");
+      bool foundNode =
+          std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end();
+      (void)foundNode;
+      assert((foundNode || isGraphStorageNode(input, this)) &&
+             "Every node referenced by one of the graph nodes should be part of"
+             "the graph");
     }
   }
 
