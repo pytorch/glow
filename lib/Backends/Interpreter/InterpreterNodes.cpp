@@ -361,7 +361,7 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
-  auto SXY = getTensor(I->getSrcXY())->getHandle<int64_t>();
+  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
 
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
@@ -474,7 +474,7 @@ void InterpreterFunction::fwdMaxPoolWithXYGradInst(
 
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getTensor(I->getSrcXY())->getHandle<int64_t>();
+  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -605,7 +605,7 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
-  auto selectedH = getTensor(I->getSelected())->getHandle<int64_t>();
+  auto selectedH = getWeightHandle<int64_t>(I->getSelected());
 
   inG.clear();
 
@@ -622,7 +622,7 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
 void InterpreterFunction::fwdCrossEntropyLossInst(
     const CrossEntropyLossInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto labels = getTensor(I->getLabels())->getHandle<int64_t>();
+  auto labels = getWeightHandle<int64_t>(I->getLabels());
   auto CE = getWeightHandle(I->getCE());
   auto dims = P.dims();
   for (size_t n = 0; n < dims[0]; ++n) {
@@ -636,7 +636,7 @@ void InterpreterFunction::fwdCrossEntropyLossInst(
 void InterpreterFunction::fwdCrossEntropyLossGradInst(
     const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto Labels = getTensor(I->getLabels())->getHandle<int64_t>();
+  auto Labels = getWeightHandle<int64_t>(I->getLabels());
   auto PGrad = getWeightHandle(I->getPgrad());
   auto dims = PGrad.dims();
   PGrad.clear();
@@ -1258,10 +1258,10 @@ void InterpreterFunction::fwdElementSelectInst(
 
 void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhs = getTensor(I->getLHS())->getHandle<int8_t>();
-    auto rhs = getTensor(I->getRHS())->getHandle<int8_t>();
+    auto lhs = getWeightHandle<int8_t>(I->getLHS());
+    auto rhs = getWeightHandle<int8_t>(I->getRHS());
 
-    auto dest = getTensor(I->getDest())->getHandle<int8_t>();
+    auto dest = getWeightHandle<int8_t>(I->getDest());
 
     auto destDim = dest.dims();
     auto lhsDim = lhs.dims();
@@ -1330,9 +1330,9 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 
 void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
-    auto batch = getTensor(I->getBatch())->getHandle<int8_t>();
-    auto slice = getTensor(I->getSlice())->getHandle<int8_t>();
-    auto dest = getTensor(I->getDest())->getHandle<int8_t>();
+    auto batch = getWeightHandle<int8_t>(I->getBatch());
+    auto slice = getWeightHandle<int8_t>(I->getSlice());
+    auto dest = getWeightHandle<int8_t>(I->getDest());
 
     auto batchTy = I->getBatch()->getType();
     auto sliceTy = I->getSlice()->getType();
