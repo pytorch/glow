@@ -16,7 +16,12 @@
 #ifndef GLOW_BACKENDS_COMPILEDFUNCTION_H
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
+#include "llvm/ADT/ArrayRef.h"
+
 namespace glow {
+
+class Placeholder;
+class Tensor;
 
 /// Interface for executing a compiled function.
 class CompiledFunction {
@@ -24,8 +29,10 @@ public:
   /// Dtor.
   virtual ~CompiledFunction() = default;
 
-  /// Execute the network.
-  virtual void execute() = 0;
+  /// Execute the network. The backing tensors in \p tensors are mapped to the
+  /// placeholders of \p placeholders for the invocation of the program.
+  virtual void execute(llvm::ArrayRef<Placeholder *> placeholders,
+                       llvm::ArrayRef<Tensor *> tensors) = 0;
 };
 
 } // end namespace glow

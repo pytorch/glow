@@ -60,7 +60,7 @@ public:
 
   /// Runs inference, unless emit bundle mode is enabled. If inference is run
   /// then it will \return true, else false.
-  void runInference(llvm::ArrayRef<Variable *> variables,
+  void runInference(llvm::ArrayRef<Storage *> variables,
                     llvm::ArrayRef<Tensor *> tensors);
 
   /// Create the Loader driver object, and parse/verify the command line

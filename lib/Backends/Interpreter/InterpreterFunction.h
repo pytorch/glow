@@ -54,7 +54,8 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  void execute() override;
+  void execute(llvm::ArrayRef<Placeholder *> placeholders,
+               llvm::ArrayRef<Tensor *> tensors) override;
   ///@}
 
 private:
