@@ -36,6 +36,11 @@ enum class ImageNormalizationMode {
   kneg128to127, // Values are in the range: -128 .. 127
 };
 
+enum class ImageLayout {
+  NCHW,
+  NHWC,
+};
+
 ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
   return llvm::StringSwitch<ImageNormalizationMode>(str)
       .Case("neg1to1", ImageNormalizationMode::kneg1to1)
@@ -83,6 +88,19 @@ llvm::cl::opt<ImageNormalizationMode> imageMode(
 llvm::cl::alias imageModeA("i", llvm::cl::desc("Alias for -image_mode"),
                            llvm::cl::aliasopt(imageMode),
                            llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<ImageLayout>
+    imageLayout("image_layout",
+                llvm::cl::desc("Specify which image layout to use"),
+                llvm::cl::Optional, llvm::cl::cat(imageLoaderCat),
+                llvm::cl::values(clEnumValN(ImageLayout::NCHW, "NCHW",
+                                            "Use NCHW image layout"),
+                                 clEnumValN(ImageLayout::NHWC, "NHWC",
+                                            "Use NHWC image layout")),
+                llvm::cl::init(ImageLayout::NCHW));
+llvm::cl::alias imageLayoutA("l", llvm::cl::desc("Alias for -image_layout"),
+                             llvm::cl::aliasopt(imageLayout),
+                             llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<std::string> modelInputName(
     "model_input_name",
@@ -142,6 +160,17 @@ int main(int argc, char **argv) {
   // Load and process the image data into the data Tensor.
   Tensor data;
   loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
+
+  // For ONNX graphs with input in NHWC layout, we transpose the data.
+  switch (imageLayout) {
+  case ImageLayout::NCHW:
+    break;
+  case ImageLayout::NHWC:
+    Tensor dataNHWC;
+    data.transpose(&dataNHWC, NCHW2NHWC);
+    data = std::move(dataNHWC);
+    break;
+  }
 
   // The image name that the model expects must be passed on the command line.
   const char *inputName = modelInputName.c_str();
