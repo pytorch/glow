@@ -46,12 +46,10 @@ TEST_P(MLTest, trainASimpleNetwork) {
   Function *F = mod.createFunction("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, 4}, "A", VisibilityKind::Public,
-                         Variable::TrainKind::None);
-  auto *E =
-      mod.createVariable(ElemKind::FloatTy, {1, 4}, "E", VisibilityKind::Public,
-                         Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                               VisibilityKind::Public, false);
+  auto *E = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
+                               VisibilityKind::Public, false);
 
   Node *O = F->createFullyConnected("fc1", A, 10);
   O = F->createSigmoid("sig1", O);
@@ -98,12 +96,10 @@ TEST_P(MLTest, simpleRegression) {
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("simpleRegression");
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
+                               VisibilityKind::Public, false);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
+                                VisibilityKind::Public, false);
   Node *O = F->createFullyConnected("fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
@@ -151,12 +147,10 @@ TEST_P(MLTest, learnXor) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnXor");
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
+                               VisibilityKind::Public, false);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex",
+                                VisibilityKind::Public, false);
 
   Node *O = F->createFullyConnected("fc1", A, 6);
   O = F->createTanh("tanh1", O);
@@ -219,12 +213,10 @@ TEST_P(MLTest, learnLog) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnLog");
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
+                               VisibilityKind::Public, false);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
+                                VisibilityKind::Public, false);
 
   Node *O = F->createFullyConnected("fc1", A, 4);
   O = F->createTanh("tanh1", O);
@@ -287,7 +279,7 @@ unsigned numSamples = 230;
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
   auto C = coordinates.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
 
   for (size_t i = 0; i < numSamples / 2; i++) {
     float r = PRNG.nextRand() * 0.4;
@@ -326,12 +318,10 @@ TEST_P(MLTest, circle) {
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("circle");
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *S =
-      mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "S",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
+                               VisibilityKind::Public, false);
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1}, "S",
+                               VisibilityKind::Public, false);
 
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
@@ -343,7 +333,7 @@ TEST_P(MLTest, circle) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
@@ -413,21 +403,18 @@ TEST_P(MLTest, learnSingleValueConcat) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnSingleValueConcat");
 
-  auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
+                                VisibilityKind::Public, false);
 
   // Left side of the network:
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
+                               VisibilityKind::Public, false);
   Node *L = F->createFullyConnected("fc1", A, width);
   L = F->createSigmoid("", L);
 
   // Right side of the network:
-  auto *B =
-      mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *B = mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
+                               VisibilityKind::Public, false);
   Node *R = F->createFullyConnected("fc2", B, width);
   R = F->createSigmoid("sig", R);
 
@@ -494,12 +481,10 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned NumElements = 4;
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  auto *X =
-      mod.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements}, "X",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *Y =
-      mod.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *X = mod.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements},
+                               "X", VisibilityKind::Public, false);
+  auto *Y = mod.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
+                               VisibilityKind::Public, false);
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced;
@@ -578,12 +563,12 @@ TEST_P(MLTest, learnSqrt2) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("Square root of 2");
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {1}, "A", VisibilityKind::Public,
-                         Variable::TrainKind::Broadcast, 1);
-  auto *Ex =
-      mod.createVariable(ElemKind::FloatTy, {1}, "Ex", VisibilityKind::Public,
-                         Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {1}, "A",
+                               VisibilityKind::Public, true);
+  A->getPayload().init(Tensor::InitKind::Broadcast, 1, mod.getPRNG());
+
+  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1}, "Ex",
+                                VisibilityKind::Public, false);
   Ex->getPayload().getHandle() = {2};
 
   Node *O = F->createMul("Mult", A, A);
@@ -630,12 +615,11 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   }
 
   // Create a variable with 1 input, which is a real number.
-  auto *inputX =
-      mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                    VisibilityKind::Public, false);
   auto *expectedY =
       mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "expected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
 
   FullyConnectedNode *FC = F->createFullyConnected("fc", inputX, 1);
   Node *R = F->createRegression("reg", FC, expectedY);
@@ -660,7 +644,7 @@ enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
 void generatePlayerData(Tensor &players, Tensor &labels,
                         unsigned numTrainPlayers, PseudoRNG &PRNG) {
   auto P = players.getHandle<>();
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
 
   // Auto generate height/weights for basketball players.
   for (size_t i = 0; i < numTrainPlayers / 2; i++) {
@@ -700,10 +684,9 @@ TEST_P(MLTest, classifyPlayerSport) {
 
   auto *A =
       mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *S =
-      mod.createVariable(ElemKind::IndexTy, {numTrainPlayers, 1}, "S",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {numTrainPlayers, 1}, "S",
+                               VisibilityKind::Public, false);
 
   auto *FC = F->createFullyConnected("fc", A, numClasses);
   auto *SM = F->createSoftMax("softmax", FC, S);
@@ -713,7 +696,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
-  Tensor labels(ElemKind::IndexTy, {numTrainPlayers, 1});
+  Tensor labels(ElemKind::Int64ITy, {numTrainPlayers, 1});
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
@@ -775,13 +758,12 @@ TEST_P(MLTest, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  auto *inputX =
-      mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
+                                    VisibilityKind::Public, false);
 
   auto *expectedY =
       mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "expected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
 
   FullyConnectedNode *FC1 = F->createFullyConnected("fc1", inputX, 10);
   Node *O = F->createSigmoid("sigmoid1", FC1);
@@ -829,12 +811,10 @@ TEST_P(MLTest, nonLinearClassifier) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("nonLinearClassifier");
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *S =
-      mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "S",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
+                               VisibilityKind::Public, false);
+  auto *S = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "S",
+                               VisibilityKind::Public, false);
 
   auto *FCL0 = F->createFullyConnected("fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
@@ -848,7 +828,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
 
   for (size_t i = 0; i < numSamples; i++) {
     float x = mod.getPRNG().nextRand();
@@ -856,7 +836,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     size_t label = (x < 0.0) ^ (y < 0.0);
     samples.getHandle<>().at({i, 0}) = x;
     samples.getHandle<>().at({i, 1}) = y;
-    labels.getHandle<size_t>().at({i, 0}) = label;
+    labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
   EE_.runBatch(500, {A, S}, {&samples, &labels});
@@ -881,7 +861,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 /// Generate images in two classes.
 /// A "line" is labeled as 0 and a "cross" is labeled as 1.
 static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
-  auto L = labels.getHandle<size_t>();
+  auto L = labels.getHandle<int64_t>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
   images.zero();
@@ -918,13 +898,11 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("convNetForImageRecognition");
 
-  auto *input =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *input = mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1},
+                                   "input", VisibilityKind::Public, false);
 
-  auto *ex =
-      mod.createVariable(ElemKind::IndexTy, {batchSize, 1}, "exp",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "exp",
+                                VisibilityKind::Public, false);
 
   auto *CV = F->createConv("conv", input, 1, 3, 1, 0, 1);
   auto *TANH = F->createTanh("tanh", CV);
@@ -935,7 +913,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EE.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
-  Tensor labels(ElemKind::IndexTy, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
@@ -957,12 +935,12 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EE.compile(CompilationMode::Infer, QP);
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
-  Tensor testLabels(ElemKind::IndexTy, {batchSize, 1});
+  Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
   EE.run({input}, {&testImages});
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
-    bool isLine = testLabels.getHandle<size_t>().at({i, 0}) == 0;
+    bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
     auto crossWeight = SMH.at({i, 1});
     EXPECT_TRUE((isLine && lineWeight > crossWeight) ||
@@ -1005,12 +983,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *input =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 10, 10, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *ex =
-      mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "coordinates",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *input = mod.createVariable(ElemKind::FloatTy, {batchSize, 10, 10, 1},
+                                   "input", VisibilityKind::Public, false);
+  auto *ex = mod.createVariable(ElemKind::FloatTy, {batchSize, 2},
+                                "coordinates", VisibilityKind::Public, false);
 
   // A simple single-layer FC network could solve this program but we use a two
   // layer FC network to give the compiler something slightly more complex to
@@ -1121,7 +1097,7 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
          "Size of the tensors is incompatible");
   auto handleMatricesA = matricesA.getHandle<float>();
   auto handleMatricesB = matricesB.getHandle<float>();
-  auto handleExpected = expected.getHandle<size_t>();
+  auto handleExpected = expected.getHandle<int64_t>();
 
   handleMatricesA.randomize<int>(0, 1, PRNG);
   handleMatricesB.randomize<int>(0, 1, PRNG);
@@ -1168,13 +1144,13 @@ TEST_P(MLTest, matrixRotationRecognition) {
   Function *F = mod.createFunction("MatrixRotationRecognition");
   Variable *varMatricesA =
       mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
   Variable *varMatricesB =
       mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
   Variable *varExpected =
-      mod.createVariable(ElemKind::IndexTy, {TC.batchSize, 1}, "expected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+      mod.createVariable(ElemKind::Int64ITy, {TC.batchSize, 1}, "expected",
+                         VisibilityKind::Public, false);
 
   // Simply concatenating the matrices first would probability be as effective
   // but we want to build something more complex than a straight chain of
@@ -1195,7 +1171,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   const unsigned numSamples = 50;
   Tensor matricesA(ElemKind::FloatTy, {numSamples, 3, 3});
   Tensor matricesB(ElemKind::FloatTy, {numSamples, 3, 3});
-  Tensor expected(ElemKind::IndexTy, {numSamples, 1});
+  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   generateMatrixRotationRecognitionData(matricesA, matricesB, expected, PRNG);
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
@@ -1225,7 +1201,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
     // Note that the two softmax outputs always sum to 1, so we only look at
     // one. Index one is true if there is a rotation.
     float value = RHtrain.at({i, 1});
-    bool hasRotation = expected.getHandle<size_t>().at({batchStartIdx + i, 0});
+    bool hasRotation = expected.getHandle<int64_t>().at({batchStartIdx + i, 0});
     if ((value > 0.5) != hasRotation) {
       ++errors;
     }

@@ -50,9 +50,12 @@ public:
 
   ~ExecutionEngine();
 
-  // Set the code generator kind to \p backendKind. New code will be generated
-  // using this backend.
+  /// Set the code generator kind to \p backendKind. New code will be generated
+  /// using this backend.
   void setBackend(BackendKind backendKind);
+
+  /// Set the code generator to a custom \p backend.
+  void setBackend(Backend *backend);
 
   /// \returns the internal graph.
   Module &getModule() { return M_; }
@@ -69,7 +72,11 @@ public:
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to
   /// invoke the compile method before it.
-  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir);
+  /// Make \p networkName the function name for
+  /// the entry point of the network and prepend all generated
+  /// files with this name.
+  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
+            llvm::StringRef networkName);
 
   /// Runs the program in a forward pass. Update the nodes in \p nodes with the
   /// values \p inputs.

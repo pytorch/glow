@@ -24,62 +24,29 @@
 
 #include <string>
 
-namespace onnx {
+namespace ONNX_NAMESPACE {
 class AttributeProto;
 class NodeProto;
 class GraphProto;
 class ModelProto;
-} // namespace onnx
+} // namespace ONNX_NAMESPACE
 
 namespace glow {
 
 /// Loads ONNX models.
 class ONNXModelLoader
-    : public CommonOperatorLoader<onnx::NodeProto, onnx::AttributeProto> {
+    : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
+                                  ONNX_NAMESPACE::AttributeProto> {
   /// Get the broadcast attribute based on different ONNX op versions.
   bool getBroadcast(const ArgumentDictionaryTy &dict) override;
 
-  /// Set ir verion and op version.
-  void setVersion(onnx::ModelProto MP);
-
-  /// Load the network operators from the GraphProto.
-  /// \returns true if network can be loaded.
-  bool loadNetwork(onnx::GraphProto &net);
-
-  /// Set the root_ as an output node.
-  void setOutputNode(onnx::GraphProto &net);
-
   /// Load the network initializers from the GraphProto.
-  void loadInitializers(onnx::GraphProto &net);
-
-  /// Load the inputs from the GraphProto. This is useful when the
-  /// initializers are not available.
-  void loadInputs(onnx::GraphProto &net);
+  void loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
   /// \returns true if operator \p op can be loaded.
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  bool loadOperator(const onnx::NodeProto &op);
-
-  /// \returns true if \p net can be constructed from the content of the
-  /// file \p filename.
-  /// Loads GraphProto \p net from the file containing serialized protobuf.
-  bool loadProto(onnx::GraphProto &net, const std::string &filename);
-
-  /// \returns true if \p net can be constructed from the in-memory
-  /// serialized protobuf.
-  /// Loads GraphProto \p net from the in-memory serialized protobuf \p
-  /// onnxModel with the model size \p onnxModelSize.
-  bool loadProto(onnx::GraphProto &net, const void *onnxModel,
-                 size_t onnxModelSize);
-
-  /// \returns true if GraphProto \p net can be loaded from the stream \p
-  /// iStream.
-  bool loadProto(onnx::GraphProto &net,
-                 google::protobuf::io::ZeroCopyInputStream &iStream);
-
-  /// Creates a ONNX model loader to build \p F.
-  ONNXModelLoader(Function &F);
+  bool loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// ONNX model ir_version;
   size_t irVersion_;
@@ -87,7 +54,48 @@ class ONNXModelLoader
   /// ONNX model op_version;
   size_t opsetVersion_;
 
+protected:
+  /// Creates a ONNX model loader to build \p F.
+  ONNXModelLoader(Function &F);
+
+  /// Load the network operators from the GraphProto.
+  /// \returns true if network can be loaded.
+  bool loadNetwork(ONNX_NAMESPACE::GraphProto &net);
+
+  /// Set the output nodes of the network \p net. Initializes the map from the
+  /// names of the outputs to the save nodes that save each output.
+  /// \returns true if output nodes were found.
+  bool setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
+
+  /// Set ir verion and op version.
+  void setVersion(ONNX_NAMESPACE::ModelProto MP);
+
+  /// \returns true if ModelProto \p net can be loaded from the stream \p
+  /// iStream.
+  static bool loadProto(ONNX_NAMESPACE::ModelProto &net,
+                        google::protobuf::io::ZeroCopyInputStream &iStream);
+
 public:
+  /// \returns true if ModelProto \p net can be constructed from the content
+  /// of the file \p filename.
+  /// Loads ModelProto \p net from the file containing serialized protobuf.
+  static bool loadProto(ONNX_NAMESPACE::ModelProto &net,
+                        const std::string &filename);
+
+  /// \returns true if ModelProto \p net can be constructed from the in-memory
+  /// serialized protobuf.
+  /// Loads ModelProto \p net from the in-memory serialized protobuf \p
+  /// onnxModel with the model size \p onnxModelSize.
+  static bool loadProto(ONNX_NAMESPACE::ModelProto &net, const void *onnxModel,
+                        size_t onnxModelSize);
+
+  /// Checks that the inputs tensors are compatible with the inputs declared in
+  /// the ONNX model. The input tensors in \p tensors are stored with the names
+  /// in the list of names \p tensorNames.
+  void checkInputs(ONNX_NAMESPACE::GraphProto &net,
+                   llvm::ArrayRef<const char *> tensorNames,
+                   llvm::ArrayRef<Tensor *> tensors);
+
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The tensors in \p tensors are stored with the names in the list of names
@@ -95,12 +103,6 @@ public:
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<Tensor *> tensors, Function &F);
-
-  /// \returns unique pointer to ONNXModelLoader if \p onnxModel can be parsed,
-  /// e.g., the model is a valid ONNX model and Glow supports all of the
-  /// operators in the network. \returns nullptr otherwise.
-  static std::unique_ptr<ONNXModelLoader>
-  parse(const void *onnxModel, size_t onnxModelSize, Function &F);
 };
 
 } // namespace glow

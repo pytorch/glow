@@ -38,8 +38,8 @@ using NodesList = llvm::iplist<glow::Node>;
 using NodesPtrList = std::list<glow::Node *>;
 /// List of Functions.
 using FunctionList = std::list<Function *>;
-/// List of Variables.
 using VariablesList = std::list<Variable *>;
+using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 
 class Module final {
@@ -53,6 +53,8 @@ class Module final {
   llvm::StringSet<> uniqueVariableNames_{};
   /// A list of variables that the Module owns.
   VariablesList vars_;
+  /// A list of placeholder nodes that the Module owns.
+  PlaceholderList placeholders_;
   /// Deterministic PRNG used to initialize weights in this module.
   PseudoRNG PRNG_;
 
@@ -67,11 +69,10 @@ public:
                                     llvm::StringSet<> &stringTable);
 
   /// Inserts the variable \p V to the list of variables.
-  Variable *addVar(Variable *V) {
-    V->setName(uniqueName(V->getName(), uniqueVariableNames_));
-    vars_.push_back(V);
-    return V;
-  }
+  Variable *addVar(Variable *V);
+
+  /// Inserts the placeholder node \p ph to the list of variables.
+  Placeholder *addPlaceholder(Placeholder *ph);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -117,27 +118,37 @@ public:
 
   const VariablesList &getVars() const { return vars_; }
 
+  /// \returns the list of placeholders that the Module owns.
+  PlaceholderList &getPlaceholders() { return placeholders_; }
+
+  const PlaceholderList &getPlaceholders() const { return placeholders_; }
+
   /// @name High-level Variable builders.
   ///@{
 
-  Variable *
-  createVariable(TypeRef T, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                 llvm::StringRef name);
 
-  Variable *
-  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name);
 
-  Variable *
-  createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                 int32_t offset, llvm::StringRef name,
-                 VisibilityKind visibility = VisibilityKind::Private,
-                 Variable::TrainKind train = Variable::TrainKind::Broadcast,
-                 float val = 0.0);
+  Variable *createVariable(TypeRef T, llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
+
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+                           llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
+
+  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+                           int32_t offset, llvm::StringRef name,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
+
+  Variable *createVariable(llvm::StringRef name, const Tensor &tensor,
+                           VisibilityKind visibility = VisibilityKind::Private,
+                           bool isTrainable = true);
+
   ///@}
 
   /// Verify the correctness of the Module.
@@ -157,6 +168,12 @@ public:
 
   /// Dump a dotty graph that depicts the Module.
   void dumpDAG(const char *dotFilename);
+
+  /// Erase all of the functions from the module.
+  void eraseFunctions();
+
+  /// Erase a function \p F from the module.
+  void eraseFunction(Function *F);
 };
 
 /// Represents the compute graph.
@@ -187,40 +204,52 @@ public:
     return N;
   }
 
+  /// Get the pseudo-random number generator used by this module.
+  PseudoRNG &getPRNG() { return getParent()->getPRNG(); }
+
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, size_t kernel, size_t stride,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              size_t depth, llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> strides,
+                              llvm::ArrayRef<unsigned_t> pads,
+                              unsigned_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              size_t kernel, size_t stride,
-                              llvm::ArrayRef<size_t> pads, size_t group);
+                              llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> strides,
+                              llvm::ArrayRef<unsigned_t> pads,
+                              unsigned_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, size_t kernel, size_t stride,
-                              size_t pad, size_t group);
+                              size_t depth, unsigned_t kernel,
+                              unsigned_t stride, unsigned_t pad,
+                              unsigned_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
-                              size_t kernel, size_t stride, size_t pad,
-                              size_t group);
+                              unsigned_t kernel, unsigned_t stride,
+                              unsigned_t pad, unsigned_t group);
 
-  PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride,
-                             llvm::ArrayRef<size_t> pads);
+  MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
+                             llvm::ArrayRef<unsigned_t> kernels,
+                             llvm::ArrayRef<unsigned_t> strides,
+                             llvm::ArrayRef<unsigned_t> pads);
 
-  PoolMaxNode *createPoolMax(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+  MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
+                             unsigned_t kernel, unsigned_t stride,
+                             unsigned_t pad);
 
-  PoolAvgNode *createPoolAvg(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride,
-                             llvm::ArrayRef<size_t> pads);
+  AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
+                             llvm::ArrayRef<unsigned_t> kernels,
+                             llvm::ArrayRef<unsigned_t> strides,
+                             llvm::ArrayRef<unsigned_t> pads);
 
-  PoolAvgNode *createPoolAvg(llvm::StringRef name, NodeValue input,
-                             size_t kernel, size_t stride, size_t pad);
+  AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
+                             unsigned_t kernel, unsigned_t stride,
+                             unsigned_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Variable *W,
@@ -237,7 +266,13 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
+  /// Create a ReLU node with the given \p name and \p input.
+  /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
+
+  /// Create a ReLU node with the given \p name, \p input and
+  /// output type \p outTy.
+  ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
@@ -246,7 +281,7 @@ public:
   LogNode *createLog(llvm::StringRef name, NodeValue input);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected);
+                             NodeValue selected, TypeRef outTy = nullptr);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
@@ -255,35 +290,40 @@ public:
   RegressionNode *createRegression(llvm::StringRef name, NodeValue input,
                                    NodeValue expected);
 
+  /// Creates a node, which computes sigmoid cross entropy between two inputs.
+  SigmoidCrossEntropyWithLogitsNode *
+  createSigmoidCrossEntropyWithLogits(llvm::StringRef name, NodeValue logits,
+                                      NodeValue targets);
+
   ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
                              UnsignedArrayRef shape);
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
-                                 llvm::ArrayRef<unsigned> shuffle);
+                                 llvm::ArrayRef<unsigned_t> shuffle);
 
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
   /// which defines the offset from the leading dimension under which
   /// broadcasting is performed.
   Node *createBroadcast(llvm::StringRef name, NodeValue input,
-                        UnsignedArrayRef newShape, unsigned axis);
+                        UnsignedArrayRef newShape, unsigned_t axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,
                            llvm::ArrayRef<NodeValue> inputs,
-                           unsigned dimension);
+                           unsigned_t dimension);
 
   /// Create concat node with the given return type \p outTy.
   ConcatNode *createConcat(llvm::StringRef name,
-                           llvm::ArrayRef<NodeValue> inputs, unsigned dimension,
-                           TypeRef outTy);
+                           llvm::ArrayRef<NodeValue> inputs,
+                           unsigned_t dimension, TypeRef outTy);
 
   /// Create an insert tensor node that implements a tile with provided \p name,
   /// \p input, \p tiles, and \p axis. For example, an input tensor {{1,2,3,4}}
   /// of dimension 1x4 with tiles = 2 and axis = 0 would result in an output
   /// tensor {{1,2,3,4}, {1,2,3,4}} of dimension 2x4.
   InsertTensorNode *createTile(llvm::StringRef name, NodeValue input,
-                               unsigned tiles, unsigned axis);
+                               unsigned_t tiles, unsigned_t axis);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
@@ -314,27 +354,33 @@ public:
   ReshapeNode *createExpandDims(llvm::StringRef name, NodeValue input,
                                 llvm::ArrayRef<size_t> axes);
 
+  /// Flattens the input tensor into a 2D matrix. If input tensor has shape
+  /// (d_0, d_1, ... d_n) then the output will have shape:
+  /// (d_0 X d_1 ... d_(axis-1), d_axis X d_(axis+1) ... X d_n).
+  ReshapeNode *createFlatten(llvm::StringRef name, NodeValue input,
+                             unsigned_t axis);
+
   /// Create \p outputNum slice nodes of \p input. Slices happen along dimension
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
-  void createSplit(llvm::StringRef name, NodeValue input, size_t outputNum,
-                   size_t axis, llvm::ArrayRef<size_t> split,
+  void createSplit(llvm::StringRef name, NodeValue input, unsigned_t outputNum,
+                   unsigned_t axis, llvm::ArrayRef<size_t> split,
                    std::vector<Node *> &outputs);
 
   BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
                                                    NodeValue input,
-                                                   size_t channelIdx = 0,
+                                                   unsigned_t channelIdx = 0,
                                                    float epsilon = 1e-5,
                                                    float momentum = 0.9);
 
   BatchNormalizationNode *
   createBatchNormalization(llvm::StringRef name, NodeValue input,
                            NodeValue beta, NodeValue gamma, NodeValue mean,
-                           NodeValue var, size_t channelIdx = 0,
+                           NodeValue var, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
   LocalResponseNormalizationNode *createLocalResponseNormalization(
-      llvm::StringRef name, NodeValue input, size_t halfWindowSize = 2,
+      llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
@@ -350,9 +396,10 @@ public:
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpLTE);
   ARITHMETIC_FUN_DECL(CmpEQ);
+  ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
-  PowNode *createPow(llvm::StringRef name, NodeValue Base, float exp);
+  PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,
                            NodeValue RHS);
@@ -367,26 +414,42 @@ public:
   MatMulNode *createMatMul(llvm::StringRef name, TypeRef outTy, NodeValue lhs,
                            NodeValue rhs);
 
+  /// \p lhs is a 3d matrix, where the leading dimension is the batch size. \p
+  /// rhs is a 2d matrix, which every batch from \p lhs (a 2d matrix) is
+  /// multiplied by. This is implemented via reshaping \p lhs to be a 2d matrix,
+  /// multiplying by \p rhs, and then reshaping the result back to 3d.
+  Node *createBroadcastedBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                     NodeValue rhs);
+
+  /// \p lhs and \p rhs are 3d matrices, where the leading dimension is the
+  /// batch size. For each batch element number i, lhs.slice(i) is multiplied by
+  /// rhs.slice(i). This is implemented by unrolling loop over batch size and
+  /// issuing multiple slice, reshape and matmul instructions, and then
+  /// concatenating results and bringing them back to 3d shape.
+  Node *createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                  NodeValue rhs);
+
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
-                                               NodeValue batch, size_t axis);
+                                               NodeValue batch,
+                                               unsigned_t axis);
 
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                TypeRef outTy, NodeValue batch,
-                                               size_t axis);
+                                               unsigned_t axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
   /// a DivNode with a SplatNode of the length of the \p axis
   /// dimension. \returns the final DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, size_t axis);
+                                   NodeValue batch, unsigned_t axis);
 
   /// Implements a batched reduce mean of the \p batch on the provided \p axis
   /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
   /// SplatNode of the length of the \p axis dimension. \returns the final
   /// DivNode.
   DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
-                                   size_t axis);
+                                   unsigned_t axis);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
@@ -400,10 +463,17 @@ public:
   /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
   /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
   /// to len(Indices).
-  SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue indices,
-                                               NodeValue lengths);
+  SparseLengthsWeightedSumNode *createSparseLengthsSum(llvm::StringRef name,
+                                                       NodeValue data,
+                                                       NodeValue indices,
+                                                       NodeValue lengths);
+
+  /// Same as SparseLengthsSum, but i-th slice is multiplied by weights[i].
+  /// len(weights) must be equal to len(indices).
+  SparseLengthsWeightedSumNode *
+  createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
+                                 NodeValue weights, NodeValue indices,
+                                 NodeValue lengths);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
@@ -432,14 +502,14 @@ public:
   IntLookupTableNode *createIntSigmoid(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy);
 
-  TopKNode *createTopK(llvm::StringRef name, NodeValue input, size_t k);
+  TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k);
 
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the
   /// batch, and the result is the concatenation of the operation on each sample
   /// in the batch.
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
-                           NodeValue indices, unsigned batchDims = 0);
+                           NodeValue indices, unsigned_t batchDims = 0);
 
   /// Copies each slice from \p slices into \p data at the corresponding index
   /// in \p indices, and \returns this new version of data. For example, given

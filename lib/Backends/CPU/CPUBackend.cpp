@@ -47,7 +47,8 @@ namespace {
 /// propagate them into relative addressing computations and the like and
 /// produce a very efficient code that uses absolute addressing whenever
 /// possible.
-static void emitJitMain(AllocationsInfo &allocationsInfo, LLVMIRGen &irgen) {
+static void emitJitMain(LLVMIRGen &irgen) {
+  AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(voidTy, {}, false);
   auto *func =
@@ -114,29 +115,36 @@ static void *allocateJITMemory(const IRFunction *F,
 
 } // end namespace
 
+std::unique_ptr<LLVMIRGen>
+CPUBackend::createIRGen(IRFunction *IR,
+                        AllocationsInfo &allocationsInfo) const {
+  LLVMIRGen *irgen = new LLVMIRGen(IR, allocationsInfo, "");
+  return std::unique_ptr<LLVMIRGen>(irgen);
+}
+
 std::unique_ptr<CompiledFunction>
 CPUBackend::compile(std::unique_ptr<IRFunction> IR) const {
   AllocationsInfo allocationsInfo;
-  LLVMIRGen irgen(IR.get(), allocationsInfo, "");
-  irgen.initTargetMachine(target.empty() ? "" : target.getValue(),
-                          llvm::CodeModel::Model::Large);
-  irgen.initCodeGen();
+  std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
+  irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
+                           llvm::CodeModel::Model::Large);
+  irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
-  auto heap = allocateJITMemory(IR.get(), allocationsInfo);
+  auto heap = allocateJITMemory(IR.get(), irgen->getAllocationsInfo());
   // Create the jitmain function to be invoked by JIT.
-  emitJitMain(allocationsInfo, irgen);
+  emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
-  irgen.performCodeGen();
+  irgen->performCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen.getTargetMachine());
-  JIT->addModule(irgen.borrowModule());
+  auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
+  JIT->addModule(irgen->borrowModule());
   return llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
 
-void CPUBackend::save(std::unique_ptr<IRFunction> IR,
-                      llvm::StringRef outputDir) const {
+void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
+                      llvm::StringRef networkName) const {
   std::string tgt = target.empty() ? "" : target.getValue();
-  BundleSaver(IR.get()).save(tgt, outputDir);
+  BundleSaver(IR.get()).save(tgt, outputDir, networkName);
 }
 
 bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
@@ -156,8 +164,8 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
     case Kinded::Kind::MulNodeKind:
-    case Kinded::Kind::PoolAvgNodeKind:
-    case Kinded::Kind::PoolMaxNodeKind:
+    case Kinded::Kind::AvgPoolNodeKind:
+    case Kinded::Kind::MaxPoolNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::ReluNodeKind:
     case Kinded::Kind::RescaleQuantizedNodeKind:

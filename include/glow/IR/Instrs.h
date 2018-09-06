@@ -68,6 +68,6 @@ public:
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:
-#include "AutoGenInstr.h"
+#include "glow/AutoGenInstr.h"
 
 #endif // GLOW_IR_INSTRS_H

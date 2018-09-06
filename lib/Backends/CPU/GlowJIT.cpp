@@ -30,6 +30,7 @@ static llvm::cl::opt<bool> dumpJITSymbolInfo(
     llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
     llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
+#if LLVM_VERSION_MAJOR <= 6
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.
 class NotifyLoadedFunctor {
@@ -83,17 +84,47 @@ public:
     dumpSymbolInfo(*loadedObj, objInfo);
   }
 };
+#endif
+
 } // namespace
 
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
+#if LLVM_VERSION_MAJOR > 6
+      ES_(SSP_),
+      resolver_(createLegacyLookupResolver(
+          [this](const std::string &Name) -> JITSymbol {
+            if (auto Sym = compileLayer_.findSymbol(Name, false))
+              return Sym;
+            else if (auto Err = Sym.takeError())
+              return std::move(Err);
+            if (auto SymAddr =
+                    RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+              return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+            return nullptr;
+          },
+          [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
+      objectLayer_(ES_,
+                   [this](llvm::orc::VModuleKey) {
+                     return RTDyldObjectLinkingLayer::Resources{
+                         std::make_shared<SectionMemoryManager>(), resolver_};
+                   }),
+#else
       objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); },
                    NotifyLoadedFunctor(this)),
-      compileLayer_(objectLayer_, SimpleCompiler(TM)) {
+#endif
+      compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
 GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<Module> M) {
+// Add the set to the JIT with the resolver and a newly created
+// SectionMemoryManager.
+#if LLVM_VERSION_MAJOR > 6
+  auto K = ES_.allocateVModule();
+  cantFail(compileLayer_.addModule(K, std::move(M)));
+  return K;
+#else
   // Build our symbol resolver:
   // Lambda 1: Look back into the JIT itself to find symbols that are part of
   //           the same "logical dylib".
@@ -110,9 +141,12 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<Module> M) {
         return JITSymbol(nullptr);
       });
 
-  // Add the set to the JIT with the resolver we created above and a newly
-  // created SectionMemoryManager.
   return cantFail(compileLayer_.addModule(std::move(M), std::move(resolver)));
+#endif
+}
+
+void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {
+  cantFail(compileLayer_.removeModule(H));
 }
 
 llvm::JITSymbol GlowJIT::findSymbol(const std::string name) {
@@ -120,8 +154,4 @@ llvm::JITSymbol GlowJIT::findSymbol(const std::string name) {
   raw_string_ostream MangledNameStream(mangledName);
   Mangler::getNameWithPrefix(MangledNameStream, name, DL_);
   return compileLayer_.findSymbol(MangledNameStream.str(), true);
-}
-
-void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {
-  cantFail(compileLayer_.removeModule(H));
 }

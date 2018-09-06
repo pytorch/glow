@@ -55,6 +55,15 @@ llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
                   llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
 
+llvm::cl::opt<llvm::Reloc::Model> relocModel(
+    "relocation-model",
+    llvm::cl::desc(
+        "Specify which relocation model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
+        clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(CPUBackendCat));
+
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -93,20 +102,21 @@ void LLVMIRGen::initTargetMachine(llvm::StringRef T,
   llvm::InitializeAllAsmPrinters();
 
   if (T.empty())
-    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
-        llvm::Triple(), "", getHostCpuName(), getMachineAttributes()));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(codeModel)
+                  .setRelocationModel(relocModel)
+                  .selectTarget(llvm::Triple(), "", getHostCpuName(),
+                                getMachineAttributes()));
   else
-    TM_.reset(llvm::EngineBuilder().setCodeModel(codeModel).selectTarget(
-        llvm::Triple(T), "", "", llvm::SmallVector<std::string, 0>()));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(codeModel)
+                  .setRelocationModel(relocModel)
+                  .selectTarget(llvm::Triple(T), "", "",
+                                llvm::SmallVector<std::string, 0>()));
 }
 
 std::string LLVMIRGen::getMainEntryName() const {
-  llvm::StringRef name =
-      mainEntryName_.empty() ? "main" : F_->getGraph()->getName();
-  auto delimPos = name.rfind('/');
-  if (delimPos != llvm::StringRef::npos)
-    name = name.substr(delimPos + 1);
-  return name;
+  return mainEntryName_.empty() ? "main" : mainEntryName_;
 }
 
 void LLVMIRGen::setMainEntryName(std::string name) { mainEntryName_ = name; }
@@ -137,6 +147,12 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
   using llvm::sys::path::parent_path;
 
   llvm::SMDiagnostic error;
+
+  auto *envPath = getenv("GLOW_LIBJIT_PATH");
+  if (envPath != nullptr) {
+    return llvm::parseIRFile(envPath, error, *ctx);
+  }
+
   // Figure out the location of the current executable.
   auto mainExec =
       llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
@@ -220,12 +236,14 @@ void LLVMIRGen::initCodeGen() {
 llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
                                       const Value *val) {
   switch (val->getElementType()) {
-  case ElemKind::IndexTy:
-    return builder.getIntNTy(sizeof(size_t) * 8);
+  case ElemKind::Int64ITy:
+    return builder.getInt64Ty();
   case ElemKind::FloatTy:
     return builder.getFloatTy();
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
+  case ElemKind::Int16QTy:
+    return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
   }
@@ -283,7 +301,7 @@ void LLVMIRGen::performCodeGen() {
 }
 
 llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
-                                         glow::Value *val) {
+                                         const glow::Value *val) {
   assert(allocationsInfo_.allocatedAddressed_.count(val) &&
          "Value address was not allocated");
   auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
@@ -296,8 +314,8 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
-  case ElemKind::IndexTy:
-    T = sizeTTy->getPointerTo();
+  case ElemKind::Int64ITy:
+    T = llvm::Type::getInt64PtrTy(ctx_);
     break;
   default:
     llvm_unreachable("Unimplemented");
@@ -360,12 +378,17 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
   return constArrayVar;
 }
 
-llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
-                                       llvm::ArrayRef<size_t> vals) {
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
   auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
-    elems.push_back(llvm::ConstantInt::get(SizeTType, I));
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<size_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(SizeTType, (size_t)I));
   }
   return emitConstArray(builder, elems, SizeTType);
 }
@@ -396,13 +419,13 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
 }
 
 llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
-                                      glow::Value *val) {
+                                      const glow::Value *val) {
   auto dims = val->dims();
-  return emitConstArray(builder, dims);
+  return emitConstSizeTArray(builder, dims);
 }
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
-                                      glow::Value *val) {
+                                      const glow::Value *val) {
   return builder.getIntN(sizeof(size_t) * 8, val->size());
 }
 
@@ -427,10 +450,12 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   switch (kind) {
   case ElemKind::FloatTy:
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
-  case ElemKind::IndexTy:
-    return builder.getIntN(sizeof(size_t) * 8, static_cast<size_t>(val));
+  case ElemKind::Int64ITy:
+    return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
     return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::Int16QTy:
+    return builder.getInt16(static_cast<int16_t>(val));
   case ElemKind::Int32QTy:
     return builder.getInt32(static_cast<int32_t>(val));
   }
@@ -482,7 +507,7 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
     return get("libjit_" + name + "_i8");
   case ElemKind::Int32QTy:
     return get("libjit_" + name + "_i32");
-  case ElemKind::IndexTy:
+  case ElemKind::Int64ITy:
     return get("libjit_" + name + "_u");
   default:
     GLOW_UNREACHABLE("Unsupported element type");
@@ -967,12 +992,12 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto rhsScaleParams = quantization::quantizeScaleOffset32To8(            \
           rhsTy->getScale() / destScale, rhsTy->getOffset());                  \
                                                                                \
-      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);               \
-      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);             \
-      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);           \
-      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);               \
-      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);             \
-      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);           \
+      auto *lhsPre = emitConstI32(builder, lhsScaleParams.pre);                \
+      auto *lhsPost = emitConstI32(builder, lhsScaleParams.post);              \
+      auto *lhsScale = emitConstI32(builder, lhsScaleParams.scale);            \
+      auto *rhsPre = emitConstI32(builder, rhsScaleParams.pre);                \
+      auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);              \
+      auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);            \
                                                                                \
       auto *stackedOpCall = createCall(builder, F,                             \
                                        {loopCount, lhsPtr, rhsPtr, destOffset, \
@@ -994,6 +1019,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
     ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
     ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
+    ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
   case Kinded::Kind::ElementCmpLTEInstKind: {
@@ -1164,37 +1190,15 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
+      auto *elementTy = getElementType(builder, dest);
       auto *stackedOpCall =
           createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
-                                         loopCount, "buffer.element.addr");
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
+                                         "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     }
     break;
   }
-
-#define ARITHMETIC_BINARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, SRC_,        \
-                                           VALUE_)                             \
-  case Kinded::Kind::INST_NAME_##InstKind: {                                   \
-    auto *AN = cast<INST_NAME_##Inst>(I);                                      \
-    auto *dest = AN->getDest();                                                \
-    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);  \
-    auto *val = emitConstF32(builder, AN->get##VALUE_());                      \
-    auto *lhsPtr =                                                             \
-        emitBufferAddress(builder, AN->get##SRC_(), kernel, bufferToArgNum);   \
-    auto *F = getFunction(FUN_NAME_ "_kernel", dest->getElementType());        \
-    auto *elementTy = getElementType(builder, dest);                           \
-    auto *pointerNull =                                                        \
-        llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-    auto *stackedOpCall =                                                      \
-        createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});         \
-    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
-                                       loopCount, "buffer.element.addr");      \
-    builder.CreateStore(stackedOpCall, destAddr);                              \
-    break;                                                                     \
-  }
-    ARITHMETIC_BINARY_OP_WITH_IMM_CASE(ElementPow, "element_pow", Base, Exp);
-#undef ARITHMETIC_BINARY_OP_WITH_IMM_CASE
 
   default:
 #ifndef NDEBUG
@@ -1316,8 +1320,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     ShapeVector eDestDims = eBatchDims;
     eDestDims[BR->getAxis()] = 1;
 
-    auto *batchDims = emitConstArray(builder, eBatchDims);
-    auto *destDims = emitConstArray(builder, eDestDims);
+    auto *batchDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eDestDims));
 
     auto *F = getFunction("batchedreduceadd", dest->getElementType());
 
@@ -1367,9 +1373,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernel = emitConstSizeT(builder, CI->getKernel());
-    auto *stride = emitConstSizeT(builder, CI->getStride());
-    auto *pads = emitConstArray(builder, CI->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CI->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CI->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     const char *kernelName = "convolution";
@@ -1424,14 +1430,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
-                  srcDims,    filterDims, biasDims,   kernel,    stride,
+                  srcDims,    filterDims, biasDims,   kernels,   strides,
                   pads,       group,      destOffset, srcOffset, filterOffset,
                   biasOffset, biasPre,    biasPost,   biasScale, outPre,
                   outPost,    outScale,   unrollD});
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                  filterDims, biasDims, kernel, stride, pads, group, unrollD});
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  unrollD});
     }
     break;
   }
@@ -1452,9 +1459,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterDims = emitValueDims(builder, filter);
     auto *biasDims = emitValueDims(builder, bias);
 
-    auto *kernel = emitConstSizeT(builder, CI->getKernel());
-    auto *stride = emitConstSizeT(builder, CI->getStride());
-    auto *pads = emitConstArray(builder, CI->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CI->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CI->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
 
     size_t inChannels = src->dims()[3];
@@ -1501,7 +1508,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     createCall(builder, F,
                {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                filterDims, biasDims, kernel, stride, pads, group,
+                filterDims, biasDims, kernels, strides, pads, group,
                 pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
                 depthStripsVal});
     break;
@@ -1524,16 +1531,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcDims = emitValueDims(builder, src);
     auto *filterGradDims = emitValueDims(builder, filterGrad);
 
-    auto *kernel = emitConstSizeT(builder, CG->getKernel());
-    auto *stride = emitConstSizeT(builder, CG->getStride());
-    auto *pads = emitConstArray(builder, CG->getPads());
+    auto *kernels = emitConstSizeTArray(builder, CG->getKernels());
+    auto *strides = emitConstSizeTArray(builder, CG->getStrides());
+    auto *pads = emitConstSizeTArray(builder, CG->getPads());
     auto *group = emitConstSizeT(builder, CG->getGroup());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcPtr, filterGradPtr, biasGradPtr,
-                filterPtr, destGradDims, srcDims, filterGradDims, kernel,
-                stride, pads, group});
+                filterPtr, destGradDims, srcDims, filterGradDims, kernels,
+                strides, pads, group});
     break;
   }
 
@@ -1600,8 +1607,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::PoolMaxInstKind: {
-    auto *PM = cast<PoolMaxInst>(I);
+  case Kinded::Kind::MaxPoolInstKind: {
+    auto *PM = cast<MaxPoolInst>(I);
     auto *dest = PM->getDest();
     auto *src = PM->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1610,18 +1617,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PM->getKernel());
-    auto *stride = emitConstSizeT(builder, PM->getStride());
-    auto *pads = emitConstArray(builder, PM->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PM->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PM->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PM->getPads());
 
-    auto *F = getFunction("pool_max", dest->getElementType());
+    auto *F = getFunction("max_pool", dest->getElementType());
     createCall(builder, F,
-               {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
+               {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
     break;
   }
 
-  case Kinded::Kind::PoolMaxWithXYInstKind: {
-    auto *PMXY = cast<PoolMaxWithXYInst>(I);
+  case Kinded::Kind::MaxPoolWithXYInstKind: {
+    auto *PMXY = cast<MaxPoolWithXYInst>(I);
     auto *dest = PMXY->getDest();
     auto *src = PMXY->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1631,19 +1638,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PMXY->getKernel());
-    auto *stride = emitConstSizeT(builder, PMXY->getStride());
-    auto *pads = emitConstArray(builder, PMXY->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PMXY->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PMXY->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PMXY->getPads());
 
-    auto *F = getFunction("pool_max_xy", dest->getElementType());
+    auto *F = getFunction("max_pool_xy", dest->getElementType());
     createCall(
         builder, F,
-        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernel, stride, pads});
+        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernels, strides, pads});
     break;
   }
 
-  case Kinded::Kind::PoolMaxWithXYGradInstKind: {
-    auto *PMG = cast<PoolMaxWithXYGradInst>(I);
+  case Kinded::Kind::MaxPoolWithXYGradInstKind: {
+    auto *PMG = cast<MaxPoolWithXYGradInst>(I);
     auto *srcGrad = PMG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
@@ -1652,14 +1659,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
-    auto *F = getFunction("pool_max_xy_grad", srcGrad->getElementType());
+    auto *F = getFunction("max_pool_xy_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
     break;
   }
 
-  case Kinded::Kind::PoolAvgInstKind: {
-    auto *PA = cast<PoolAvgInst>(I);
+  case Kinded::Kind::AvgPoolInstKind: {
+    auto *PA = cast<AvgPoolInst>(I);
     auto *dest = PA->getDest();
     auto *src = PA->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
@@ -1668,40 +1675,41 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
 
-    auto *kernel = emitConstSizeT(builder, PA->getKernel());
-    auto *stride = emitConstSizeT(builder, PA->getStride());
-    auto *pads = emitConstArray(builder, PA->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PA->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PA->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PA->getPads());
 
     if (src->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      // Reduce resulting scale by a factor of PA->getKernel() * PA->getKernel()
-      // since each subtensor value is divided by the area of kernel.
+      // Reduce resulting scale by a factor of PA->getKernels()[0] *
+      // PA->getKernels()[1] since each subtensor value is divided by the area
+      // of kernel.
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
           srcTy->getScale() / destTy->getScale() /
-              (PA->getKernel() * PA->getKernel()),
+              (PA->getKernels()[0] * PA->getKernels()[1]),
           destTy->getOffset());
       auto *outPre = emitConstI32(builder, outScaleParam.pre);
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
-      auto *F = getFunction("pool_avg", dest->getElementType());
+      auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads,
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
                   destOffset, srcOffset, outPre, outPost, outScale});
       break;
     } else {
-      auto *F = getFunction("pool_avg", dest->getElementType());
+      auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernel, stride, pads});
+                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
       break;
     }
   }
 
-  case Kinded::Kind::PoolAvgGradInstKind: {
-    auto *PAG = cast<PoolAvgGradInst>(I);
+  case Kinded::Kind::AvgPoolGradInstKind: {
+    auto *PAG = cast<AvgPoolGradInst>(I);
     auto *srcGrad = PAG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PAG->getDestGrad());
@@ -1709,14 +1717,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PAG->getDest());
 
-    auto *kernel = emitConstSizeT(builder, PAG->getKernel());
-    auto *stride = emitConstSizeT(builder, PAG->getStride());
-    auto *pads = emitConstArray(builder, PAG->getPads());
+    auto *kernels = emitConstSizeTArray(builder, PAG->getKernels());
+    auto *strides = emitConstSizeTArray(builder, PAG->getStrides());
+    auto *pads = emitConstSizeTArray(builder, PAG->getPads());
 
-    auto *F = getFunction("pool_avg_grad", srcGrad->getElementType());
-    createCall(
-        builder, F,
-        {srcGradPtr, destGradPtr, srcGradDims, destDims, kernel, stride, pads});
+    auto *F = getFunction("avg_pool_grad", srcGrad->getElementType());
+    createCall(builder, F,
+               {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
+                strides, pads});
     break;
   }
 
@@ -1846,7 +1854,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       shuffSizeT.push_back((size_t)D);
     }
 
-    auto *shuffle = emitConstArray(builder, shuffSizeT);
+    auto *shuffle =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(shuffSizeT));
     auto *len = emitConstSizeT(builder, TI->getShuffle().size());
 
     auto *F = getFunction("transpose", dest->getElementType());
@@ -1874,7 +1883,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDimsSize =
         emitConstSizeT(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsPtr = emitConstSizeTArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
     auto *count = emitConstSizeT(builder, ITI->getCount());
     auto *axis = emitConstSizeT(builder, ITI->getAxis());
@@ -1905,7 +1914,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *destDimsSize =
         emitConstSizeT(builder, dest->getType()->dims().size());
     auto *srcDimsSize = emitConstSizeT(builder, src->getType()->dims().size());
-    auto *offsetsPtr = emitConstArray(builder, offsets);
+    auto *offsetsPtr = emitConstSizeTArray(builder, offsets);
     auto *offsetsArraySize = emitConstSizeT(builder, offsets.size());
 
     // Don't specialize the offsetPtr because we typically generate lots of

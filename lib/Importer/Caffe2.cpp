@@ -21,7 +21,7 @@
 
 #include "llvm/Support/Casting.h"
 
-#include "caffe.pb.h"
+#include "glow/caffe.pb.h"
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
@@ -49,14 +49,14 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
+static std::vector<unsigned_t> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
     int pad = loadInt(dict.at("pad"));
-    std::vector<size_t> pads(4, pad);
+    std::vector<unsigned_t> pads(4, pad);
     return pads;
   }
   if (dict.count("pad_t")) {
-    std::vector<size_t> pads(4);
+    std::vector<unsigned_t> pads(4);
     pads[0] = loadInt(dict.at("pad_t"));
     assert(dict.count("pad_l") && "missing pad_l");
     pads[1] = loadInt(dict.at("pad_l"));
@@ -66,12 +66,15 @@ static std::vector<size_t> getPads(const ArgumentDictionaryTy &dict) {
     pads[3] = loadInt(dict.at("pad_r"));
     return pads;
   }
+  if (dict.count("pads")) {
+    return getShape<unsigned_t>(dict.at("pads"));
+  }
   // Return default value 0 for pads.
   return {0, 0, 0, 0};
 }
 
 /// Translates the "order" field of dictionary \p dict into a channel number.
-static unsigned getChannel(const ArgumentDictionaryTy &dict) {
+static unsigned_t getChannel(const ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
   auto orderIt = dict.find("order");
   if (orderIt != dict.end()) {
@@ -85,17 +88,24 @@ static unsigned getChannel(const ArgumentDictionaryTy &dict) {
   GLOW_ASSERT(false && "Invalid order field");
 }
 
-unsigned getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
-                   unsigned defaultValue) {
+static std::vector<unsigned_t> getSizeHW(ArgumentDictionaryTy &dict,
+                                         const std::string &name,
+                                         unsigned_t defaultValue) {
   if (dict.count(name)) {
-    return loadInt(dict[name]);
+    int value = loadInt(dict[name]);
+    std::vector<unsigned_t> result(2, value);
+    return result;
   }
   if (dict.count(name + "_h") && dict.count(name + "_w")) {
-    assert(loadInt(dict[name + "_h"]) == loadInt(dict[name + "_w"]) &&
-           "Unsupported size: _h and _w must be equal.");
-    return loadInt(dict[name + "_h"]);
+    std::vector<unsigned_t> result(2);
+    result[0] = loadInt(dict[name + "_h"]);
+    result[1] = loadInt(dict[name + "_w"]);
+    return result;
   }
-  return defaultValue;
+  if (dict.count(name + "s")) {
+    return getShape<unsigned_t>(dict.at(name + "s"));
+  }
+  return {defaultValue, defaultValue};
 }
 
 bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
@@ -139,12 +149,12 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv") {
     // Load the inputs:
-    int stride = getSizeHW(dict, "stride", 1);
-    std::vector<size_t> pads = getPads(dict);
-    unsigned kernel = getSizeHW(dict, "kernel", 0);
-    unsigned group = dict.count("group") ? loadInt(dict["group"]) : 1;
+    std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
+    std::vector<unsigned_t> pads = getPads(dict);
+    std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
+    unsigned_t group = dict.count("group") ? loadInt(dict["group"]) : 1;
 
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
 
     // Transpose the weights to the right format. Glow expects to read the
@@ -159,7 +169,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
-    auto *filter = createVariable("conv.filter", wtag);
+    auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
 
     // Construct the Bias field.
     Tensor biasTensor(ElemKind::FloatTy, {depth});
@@ -171,10 +181,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (tensors_.count(biasTensorName)) {
         // Load the serialized bias vector.
         Tensor *b = getTensorByName(biasTensorName);
-        biasTensor.copyFrom(b);
+        biasTensor.assign(b);
       }
     }
-    auto *bias = createVariable("conv.bias", biasTensor);
+    auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
 
     // Caffe passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -182,13 +192,13 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernel, stride,
-                               pads, group);
+    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
+                               strides, pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -198,40 +208,34 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
     // Load the inputs:
-    auto *in = getOrCreateVariableByName(op.input(0));
-    int stride = getSizeHW(dict, "stride", 1);
-    unsigned kernel = getSizeHW(dict, "kernel", 0);
-    std::vector<size_t> pads = getPads(dict);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
+    std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
+    std::vector<unsigned_t> pads = getPads(dict);
 
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // If 'global_pooling' is set then the operation will pool over the size of
-    // the input by doing: kernel = height/width.
+    // the input by doing: kernels = {height, width}.
     if (dict.count("global_pooling")) {
-      auto Ty = in->getType(0);
-      kernel = Ty->dims()[3];
+      auto Ty = in.getType();
+      kernels[0] = Ty->dims()[2];
+      kernels[1] = Ty->dims()[3];
     }
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createPoolMax(opName, tr, kernel, stride, pads);
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
     } else {
-      node = G_.createPoolAvg(opName, tr, kernel, stride, pads);
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
     return;
   }
 
-  if (typeName == "Dropout") {
-    auto *in = getOrCreateVariableByName(op.input(0));
-    // Save the identity operation:
-    addNodeAsOutput(op, in);
-    return;
-  }
-
   if (typeName == "SpatialBN") {
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     auto *scale = getTensorByName(op.input(1));
     auto *bias = getTensorByName(op.input(2));
     auto *mean = getTensorByName(op.input(3));
@@ -246,10 +250,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G_.createBatchNormalization(opName, in, channel, epsilon);
 
     // Load the weights.
-    cast<Variable>(node->getScale())->copyFrom(scale);
-    cast<Variable>(node->getBias())->copyFrom(bias);
-    cast<Variable>(node->getMean())->copyFrom(mean);
-    cast<Variable>(node->getVar())->copyFrom(var);
+    cast<Variable>(node->getScale())->assign(scale);
+    cast<Variable>(node->getBias())->assign(bias);
+    cast<Variable>(node->getMean())->assign(mean);
+    cast<Variable>(node->getVar())->assign(var);
 
     addNodeAsOutput(op, node);
     return;
@@ -260,29 +264,47 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
-      inputs.push_back(getOrCreateVariableByName(op.input(i)));
+      inputs.push_back(getNodeValueOrCreateVariableByName(op.input(i)));
     }
 
-    auto channel = getChannel(dict);
+    // If axis exists it takes priority over channel.
+    unsigned_t channel =
+        dict.count("axis") ? loadInt(dict["axis"]) : getChannel(dict);
+
     Node *node = G_.createConcat(opName, inputs, channel);
 
-    addNodeAsOutput(op, node);
+    unsigned_t addAxis = dict.count("add_axis") ? loadInt(dict["add_axis"]) : 0;
+
+    if (addAxis) {
+      // When add axis is used, this means we have to add a new dimension before
+      // the axis, instead of merging on the axis.
+      std::vector<size_t> outputDims = inputs[0].dims();
+      for (const auto &input : inputs) {
+        GLOW_ASSERT(
+            outputDims[channel] == input.dims()[channel] &&
+            "inputs need all to have the same dims for concat with add_axis");
+      }
+      outputDims.insert(outputDims.begin() + channel, numInputs);
+      node = G_.createReshape(opName, node, outputDims);
+    }
+    // Concat has multiple outputs in Caffe2, but I believe the other output
+    // (split_info) is not used for inference.
+    nodeValueByName_[op.output(0)] = NodeValue(node, 0);
     return;
   }
 
   if (typeName == "FC") {
     // Load the inputs:
-    auto *in = getOrCreateVariableByName(op.input(0));
-    if (in->getType(0)->dims().size() > 2) {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    if (in.getType()->dims().size() > 2) {
       size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
-      auto xDim = flattenCdr(in->getType(0)->dims(), axis);
-      in = G_.createReshape("fc.in", in, {xDim.first, xDim.second});
+      in = G_.createFlatten("fc.in", in, axis);
     }
 
     // Load weights.
     Tensor *w = getTensorByName(op.input(1));
     Tensor *b = getTensorByName(op.input(2));
-    size_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
+    unsigned_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
     // matrix size if necessay and then transpose it back.
@@ -307,7 +329,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "ChannelShuffle") {
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
 
     size_t group = loadInt(dict["group"]);
     size_t kernel = loadInt(dict["kernel"]);
@@ -318,25 +340,26 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Squeeze") {
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
     addNodeAsOutput(op, node);
     return;
   }
 
-  if (typeName == "Gather") {
-    auto *data = getOrCreateVariableByName(op.input(0));
-    auto *indices = getOrCreateVariableByName(op.input(1));
+  if (typeName == "Gather" || typeName == "BatchGather") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+    auto indices = getNodeValueOrCreateVariableByName(op.input(1));
+    size_t batchDims = typeName == "Gather" ? 0 : 1;
 
-    Node *GN = G_.createGather(opName, data, indices);
+    Node *GN = G_.createGather(opName, data, indices, batchDims);
     addNodeAsOutput(op, GN);
     return;
   }
 
   if (typeName == "Log") {
     // Load the inputs:
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     // Create the log:
     auto *R = G_.createLog(opName, in);
     addNodeAsOutput(op, R);
@@ -344,17 +367,17 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "EQ") {
-    auto *in0 = getOrCreateVariableByName(op.input(0));
-    auto *in1 = getOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
     auto *node = G_.createCmpEQ(opName, in0, in1);
     addNodeAsOutput(op, node);
     return;
   }
 
   if (typeName == "Tile") {
-    auto *in = getOrCreateVariableByName(op.input(0));
-    unsigned tiles = loadInt(dict["tiles"]);
-    unsigned axis = loadInt(dict["axis"]);
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    unsigned_t tiles = loadInt(dict["tiles"]);
+    unsigned_t axis = loadInt(dict["axis"]);
 
     auto *node = G_.createTile(opName, in, tiles, axis);
     addNodeAsOutput(op, node);
@@ -365,22 +388,38 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Glow frees memory automatically.
     return;
   }
+  if (typeName == "StopGradient") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    // Currently Caffe2 importer only supports inference.
+    addNodeAsOutput(op, in);
+    return;
+  }
 
   if (typeName == "Transpose") {
     return loadTranspose(op, dict, "axes");
   }
 
   if (typeName == "SparseLengthsSum") {
-    auto *in0 = getOrCreateVariableByName(op.input(0));
-    auto *in1 = getOrCreateVariableByName(op.input(1));
-    auto *in2 = getOrCreateVariableByName(op.input(2));
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto in2 = getNodeValueOrCreateVariableByName(op.input(2));
     auto *node = G_.createSparseLengthsSum(opName, in0, in1, in2);
     addNodeAsOutput(op, node);
     return;
   }
 
+  if (typeName == "SparseLengthsWeightedSum") {
+    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto in2 = getNodeValueOrCreateVariableByName(op.input(2));
+    auto in3 = getNodeValueOrCreateVariableByName(op.input(3));
+    auto *node = G_.createSparseLengthsWeightedSum(opName, in0, in1, in2, in3);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "ExpandDims") {
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createExpandDims(opName, in, dims);
     addNodeAsOutput(op, node);
@@ -389,8 +428,137 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU") {
     // Glow does not support MKL now, just pass these two ops.
-    auto *in = getOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
     addNodeAsOutput(op, in);
+    return;
+  }
+
+  if (typeName == "Slice") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+
+    auto starts = getShape<ssize_t>(dict["starts"]);
+    auto ends = getShape<ssize_t>(dict["ends"]);
+
+    std::vector<size_t> newStarts, newEnds;
+    assert(starts.size() == ends.size());
+    for (size_t i = 0; i < starts.size(); i++) {
+      ssize_t newStart = starts[i];
+      if (newStart == -1) {
+        newStart = data.dims()[i];
+      }
+      assert(newStart >= 0 && "Indices should never be negative.");
+      newStarts.push_back(newStart);
+
+      ssize_t newEnd = ends[i];
+      if (newEnd == -1) {
+        newEnd = data.dims()[i];
+      }
+      assert(newEnd >= 0 && "Indices should never be negative.");
+      newEnds.push_back(newEnd);
+    }
+
+    Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+    addNodeAsOutput(op, SN);
+    return;
+  }
+
+  if (typeName == "MatMul" || typeName == "BatchMatMul") {
+    auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
+    auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
+
+    bool transLHS = dict.count("trans_a") && (loadInt(dict["trans_a"]) == 1);
+    (void)transLHS;
+    assert(!transLHS && "Don't support transpose lhs for now.");
+    bool transRHS = dict.count("trans_b") && (loadInt(dict["trans_b"]) == 1);
+    if (transRHS) {
+      // The semantic of the transpose in that context is:
+      // swap the last two dimensions.
+      unsigned_t nbDims = RHS.dims().size();
+      GLOW_ASSERT(nbDims >= 2 && "C2 specs say rank of RHS must be >= 2");
+      std::vector<unsigned_t> shuffle;
+      unsigned_t i;
+      for (i = 0; i < nbDims - 2; ++i) {
+        shuffle.push_back(i);
+      }
+      shuffle.push_back(i + 1);
+      shuffle.push_back(i);
+      RHS = G_.createTranspose("RHS.transpose", RHS, shuffle);
+    }
+
+    Node *node = nullptr;
+
+    // BatchMatMul sometimes is actually just a matmul, depending on dimensions
+    // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
+    if (typeName == "BatchMatMul" && LHS.dims().size() == 3) {
+      // BatchMatMul can be either multiplication of K matrices and another
+      // K matrices, or broadcasted multiplication of K matrices and one other
+      // matrix.
+      if (RHS.dims().size() == 3) {
+        node = G_.createParallelBatchMatMul(opName, LHS, RHS);
+      } else {
+        node = G_.createBroadcastedBatchMatMul(opName, LHS, RHS);
+      }
+    } else {
+      node = G_.createMatMul(opName, LHS, RHS);
+    }
+
+    addNodeAsOutput(op, node);
+    return;
+  }
+
+  if (typeName == "Cast") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    int to = loadInt(dict["to"]);
+
+    switch (to) {
+    case caffe2::TensorProto_DataType_FLOAT: {
+      assert(in.getElementType() == ElemKind::FloatTy &&
+             "Can only cast float to float.");
+      break;
+    }
+    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT64: {
+      assert(in.getElementType() == ElemKind::Int64ITy &&
+             "Can only cast int to int.");
+      break;
+    }
+    default:
+      llvm_unreachable("Unsupported Cast type.");
+    }
+
+    addNodeAsOutput(op, in);
+    return;
+  }
+
+  if (typeName == "ScatterAssign") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+    auto indices = getNodeValueOrCreateVariableByName(op.input(1));
+    auto slices = getNodeValueOrCreateVariableByName(op.input(2));
+
+    Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
+    addNodeAsOutput(op, SAN);
+    return;
+  }
+
+  if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
+      typeName == "GivenTensorInt64Fill") {
+    loadWeight(op);
+    return;
+  }
+
+  if (typeName == "SigmoidCrossEntropyWithLogits") {
+    auto logits = getNodeValueOrCreateVariableByName(op.input(0));
+    auto targets = getNodeValueOrCreateVariableByName(op.input(1));
+    Node *SCEL =
+        G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
+    addNodeAsOutput(op, SCEL);
+    return;
+  }
+
+  if (typeName == "AveragedLoss") {
+    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto *node = G_.createBatchedReduceMean(opName, in, 0);
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -406,137 +574,181 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
 
   assert(net.external_output_size() &&
          "Network needs external outputs defined.");
-  auto *r = getNodeByName(net.external_output(0));
-  root_ = G_.createSave("output", r);
+
+  for (int i = 0; i < net.external_output_size(); i++) {
+    auto &outputName = net.external_output(i);
+    auto r = getNodeValueByName(outputName);
+    auto *SN = G_.createSave("save_" + outputName, r);
+    outputVarsByName_[outputName] = SN->getVariable();
+  }
+}
+
+void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
+  ArgumentDictionaryTy dict = loadArgumentMap(op);
+  const std::string &typeName = op.type();
+
+  /// Load tensors with values:
+  if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
+      typeName == "GivenTensorInt64Fill") {
+    /*
+     output: "conv1_w"
+     name: ""
+     type: "GivenTensorFill"
+     arg {
+     name: "shape"
+     ints: 96
+     ints: 3
+     ints: 11
+     ints: 11
+     }
+     arg {
+     name: "values"
+     floats: -0.028315347
+     */
+
+    auto *T = new Tensor();
+    for (auto &o : op.output()) {
+      tensors_[o] = T;
+    }
+
+    auto dim = getShape(dict["shape"]);
+
+    size_t i = 0;
+    if (dict["values"]->floats_size()) {
+      assert(typeName != "GivenTensorIntFill" &&
+             typeName != "GivenTensorInt64Fill");
+      T->reset(ElemKind::FloatTy, dim);
+      auto TH = T->getHandle<>();
+      for (auto num : dict["values"]->floats()) {
+        TH.raw(i++) = num;
+      }
+    } else if (dict["values"]->ints_size()) {
+      T->reset(ElemKind::Int64ITy, dim);
+      auto TH = T->getHandle<int64_t>();
+      for (auto num : dict["values"]->ints()) {
+        TH.raw(i++) = num;
+      }
+    } else {
+      unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
+    }
+
+    assert(i == T->size() && "The number of serialized values does not "
+                             "match the size of the tensor.");
+    return;
+  }
+
+  // Load tensors with constant fill:
+  if (typeName == "ConstantFill") {
+    /*
+     output: "data"
+     name: ""
+     type: "ConstantFill"
+     arg {
+     name: "shape"
+     ints: 1
+     }
+     */
+
+    const auto &name = op.output(0);
+    // If the tensor is pre-populated by the user of this class then we don't
+    // need to allocate a new tensor.
+    if (tensors_.count(name)) {
+      return;
+    }
+
+    auto *T = new Tensor();
+    tensors_[name] = T;
+
+    // The shape is set either the shape argument, or from another input
+    // tensor. Shape takes priority over input.
+    std::vector<size_t> dims;
+    if (dict.count("shape")) {
+      dims = getShape(dict["shape"]);
+    } else {
+      assert(op.input_size() > 0 &&
+             "If no shape provided, must have input shape.");
+      // It must be registered as a tensor because it must be statically set
+      // already, as shapes must be statically known.
+      auto *in = getTensorByName(op.input(0));
+      dims = in->dims();
+    }
+
+    int to = dict.count("dtype") ? loadInt(dict["dtype"])
+                                 : caffe2::TensorProto_DataType_FLOAT;
+
+    switch (to) {
+    case caffe2::TensorProto_DataType_FLOAT: {
+      T->reset(ElemKind::FloatTy, dims);
+      auto TH = T->getHandle<float>();
+      auto f = (dict.count("value") && dict["value"]->has_f())
+                   ? loadFloat(dict["value"])
+                   : 0.0f;
+      TH.clear(f);
+      break;
+    }
+    case caffe2::TensorProto_DataType_INT32:
+    case caffe2::TensorProto_DataType_INT64:
+    case caffe2::TensorProto_DataType_BOOL: {
+      T->reset(ElemKind::Int64ITy, dims);
+      auto TH = T->getHandle<int64_t>();
+      auto i = (dict.count("value") && dict["value"]->has_i())
+                   ? loadInt(dict["value"])
+                   : 0;
+      TH.clear(i);
+      break;
+    }
+    default:
+      llvm_unreachable("Unsupported datatype for ConstantFill.");
+    }
+
+    return;
+  }
+
+  if (typeName == "UniformFill") {
+    /*
+     output: "fc/w"
+     name: ""
+     type: "UniformFill"
+     arg {
+       name: "max"
+       f: 0.25
+     }
+     arg {
+       name: "shape"
+       ints: 1
+       ints: 16
+     }
+     arg {
+       name: "min"
+       f: -0.25
+     }
+    */
+    const auto &name = op.output(0);
+    auto *T = new Tensor();
+    tensors_[name] = T;
+    auto dim = getShape(dict["shape"]);
+    T->reset(ElemKind::FloatTy, dim);
+    auto TH = T->getHandle<>();
+    float tensorMin = loadFloat(dict["min"]);
+    float tensorMax = loadFloat(dict["max"]);
+
+#ifndef NDEBUG
+    llvm::outs() << "The model contains UniformFill operator, which generates"
+                 << " random numbers. This could be source of discrepancy.\n";
+#endif // NDEBUG
+    // Uniformly generate random numbers in [tensorMin; tensorMax).
+    for (size_t i = 0, e = T->size(); i != e; i++) {
+      TH.raw(i) = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
+    }
+    return;
+  }
+
+  unexpectedNodeError(op, "Unsupported weight kind");
 }
 
 void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
-    ArgumentDictionaryTy dict = loadArgumentMap(op);
-    const std::string &typeName = op.type();
-
-    /// Load tensors with values:
-    if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
-        typeName == "GivenTensorInt64Fill") {
-      /*
-       output: "conv1_w"
-       name: ""
-       type: "GivenTensorFill"
-       arg {
-       name: "shape"
-       ints: 96
-       ints: 3
-       ints: 11
-       ints: 11
-       }
-       arg {
-       name: "values"
-       floats: -0.028315347
-       */
-
-      auto *T = new Tensor();
-      for (auto &o : op.output()) {
-        tensors_[o] = T;
-      }
-
-      auto dim = getShape(dict["shape"]);
-
-      size_t i = 0;
-      if (dict["values"]->floats_size()) {
-        assert(typeName != "GivenTensorIntFill" &&
-               typeName != "GivenTensorInt64Fill");
-        T->reset(ElemKind::FloatTy, dim);
-        auto TH = T->getHandle<>();
-        for (auto num : dict["values"]->floats()) {
-          TH.raw(i++) = num;
-        }
-      } else if (dict["values"]->ints_size()) {
-        T->reset(ElemKind::IndexTy, dim);
-        auto TH = T->getHandle<size_t>();
-        for (auto num : dict["values"]->ints()) {
-          assert(0 <= num && num < (1LL << 32) &&
-                 "Only uint32 integers are supported");
-          TH.raw(i++) = num;
-        }
-      } else {
-        unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
-      }
-
-      assert(i == T->size() && "The number of serialized values does not "
-                               "match the size of the tensor.");
-      continue;
-    }
-
-    // Load tensors with constant fill:
-    if (typeName == "ConstantFill") {
-      /*
-       output: "data"
-       name: ""
-       type: "ConstantFill"
-       arg {
-       name: "shape"
-       ints: 1
-       }
-       */
-
-      const auto &name = op.output(0);
-      // If the tensor is pre-populated by the user of this class then we don't
-      // need to allocate a new tensor.
-      if (tensors_.count(name)) {
-        continue;
-      }
-
-      auto *T = new Tensor();
-      tensors_[name] = T;
-
-      auto dim = getShape(dict["shape"]);
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
-      TH.clear();
-      continue;
-    }
-
-    if (typeName == "UniformFill") {
-      /*
-       output: "fc/w"
-       name: ""
-       type: "UniformFill"
-       arg {
-         name: "max"
-         f: 0.25
-       }
-       arg {
-         name: "shape"
-         ints: 1
-         ints: 16
-       }
-       arg {
-         name: "min"
-         f: -0.25
-       }
-      */
-      const auto &name = op.output(0);
-      auto *T = new Tensor();
-      tensors_[name] = T;
-      auto dim = getShape(dict["shape"]);
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
-      float tensorMin = loadFloat(dict["min"]);
-      float tensorMax = loadFloat(dict["max"]);
-
-#ifndef NDEBUG
-      llvm::outs() << "The model contains UniformFill operator, which generates"
-                   << " random numbers. This could be source of discrepancy.\n";
-#endif // NDEBUG
-      // Uniformly generate random numbers in [tensorMin; tensorMax).
-      for (size_t i = 0, e = T->size(); i != e; i++) {
-        TH.raw(i) =
-            G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
-      }
-      continue;
-    }
-
-    unexpectedNodeError(op, "Unsupported weight kind");
+    loadWeight(op);
   }
 }
 

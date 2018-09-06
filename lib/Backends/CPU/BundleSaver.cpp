@@ -147,7 +147,11 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
               "Could not open the output file for saving the bundle code");
   if (fileName.endswith(".bc")) {
     // Emit the bitcode file.
+#if LLVM_VERSION_MAJOR > 6
+    llvm::WriteBitcodeToFile(M, outputFile);
+#else
     llvm::WriteBitcodeToFile(&M, outputFile);
+#endif
   } else if (fileName.endswith(".o")) {
     // Emit the object file.
     llvm::legacy::PassManager PM;
@@ -250,10 +254,11 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateTensorViews(F_);
 }
 
-void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir) {
+void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir,
+                       llvm::StringRef networkName) {
   // Object files generation works properly only in small mode.
   irgen_.initTargetMachine(target, llvm::CodeModel::Model::Small);
-  irgen_.setMainEntryName(F_->getGraph()->getName());
+  irgen_.setMainEntryName(networkName);
   irgen_.setOutputDir(outputDir);
   irgen_.initCodeGen();
   // Perform the address assignment for activations and WeightVars.

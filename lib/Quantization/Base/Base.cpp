@@ -150,6 +150,23 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   min = std::min(min, 0.f);
   max = std::max(max, 0.f);
 
+  if (schema == quantization::Schema::SymmetricWithUInt8) {
+    // Check if the range we try to encode is purely positive.
+    // If not, we cannot use the UInt8 mapping and we fall back
+    // to the symmetric schema.
+    if (min >= 0.f) {
+      // By construction we always have zero to our range.
+      // Since min is >= 0 and 0 is in our range, min is
+      // actually zero.
+      // Therefore zero is going to be mapped to the first
+      // element of the quantized range -128 and thus the
+      // offset is going to be -128.
+      assert(min <= std::numeric_limits<float>::epsilon() &&
+             "Our range should start at zero");
+    } else {
+      schema = quantization::Schema::Symmetric;
+    }
+  }
   if (schema == quantization::Schema::Symmetric) {
     // Check which end saturates the output dynamic range earlier
     // and extend the other end to map the zero-point to quantized 0.
@@ -208,6 +225,16 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   }
 
   TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
+  // The only valid offset for symmetric quantization is 0.
+  assert((result.offset == 0 || schema != quantization::Schema::Symmetric) &&
+         "Symmetric quantization should be centered on 0");
+  // The only valid offsets for symmetric quantization with uint8 support are 0
+  // and -128.
+  // When we use the symmetric property we actually go update the schema in use,
+  // thus 0 is already covered by the previous assert.
+  assert((result.offset == -128 ||
+          schema != quantization::Schema::SymmetricWithUInt8) &&
+         "Symmetric quantization should be centered on 0");
   return result;
 }
 

@@ -22,6 +22,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
@@ -51,14 +52,19 @@ Function *Module::createFunction(llvm::StringRef name) {
 }
 
 Module::~Module() {
-  for (auto *F : functions_) {
-    delete F;
-  }
+  eraseFunctions();
 
-  for (auto it = vars_.begin(), e = vars_.end(); it != e;) {
-    auto cur = it++;
-    eraseVariable(*cur);
+  for (auto it = vars_.begin(), e = vars_.end(); it != e; it++) {
+    Variable *v = *it;
+    delete v;
   }
+  for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
+       it++) {
+    Placeholder *p = *it;
+    delete p;
+  }
+  vars_.clear();
+  placeholders_.clear();
 }
 
 void Module::verify() const {
@@ -104,7 +110,7 @@ protected:
     if (N->getNumInputs()) {
       std::vector<std::string> names(N->getNumInputs());
       for (size_t i = 0; i < names.size(); i++) {
-        names[i] = N->getInputName(i).str();
+        names[i] = N->getInputName(i);
       }
       dumpLabelForRow(names, os);
       os << "|";
@@ -243,10 +249,9 @@ public:
 
 // TODO: consider refactoring boilerplate code to new trait: DottyPrintable<ADP>
 void Module::dumpDAG() {
-  std::string buffer;
-  llvm::raw_string_ostream stream(buffer);
-  stream << "dotty_graph_dump_" << this << ".dot";
-  dumpDAG(stream.str().c_str());
+  llvm::SmallString<64> dotPath;
+  llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
+  dumpDAG(dotPath);
 }
 
 void Module::dumpDAG(llvm::StringRef dotFilename) {
@@ -264,6 +269,19 @@ void Module::dumpDAG(llvm::StringRef dotFilename) {
 
 void Module::dumpDAG(const char *dotFilename) {
   dumpDAG(llvm::StringRef(dotFilename));
+}
+
+void Module::eraseFunctions() {
+  while (!functions_.empty()) {
+    eraseFunction(*functions_.begin());
+  }
+}
+
+void Module::eraseFunction(Function *F) {
+  auto it = std::find(functions_.begin(), functions_.end(), F);
+  assert(it != functions_.end() && "Function is not part of a module");
+  functions_.erase(it);
+  delete F;
 }
 
 Function::~Function() {
@@ -314,28 +332,44 @@ static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
 //                       Node builders
 //===----------------------------------------------------------------------===//
 
-Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT, visibility, train, val, getPRNG()));
+  return addPlaceholder(new Placeholder(name, FT));
+}
+
+Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                       llvm::StringRef name) {
+  auto FT = uniqueType(T, dims);
+  return createPlaceholder(FT, name);
+}
+
+Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
+                                 VisibilityKind visibility, bool isTrainable) {
+  auto FT = uniqueType(*T);
+  return addVar(new Variable(name, FT, visibility, isTrainable));
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+                                 VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(T, dims);
-  return createVariable(FT, name, visibility, train, val);
+  return createVariable(FT, name, visibility, isTrainable);
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility,
-                                 Variable::TrainKind train, float val) {
+                                 VisibilityKind visibility, bool isTrainable) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createVariable(FT, name, visibility, train, val);
+  return createVariable(FT, name, visibility, isTrainable);
+}
+
+Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
+                                 VisibilityKind visibility, bool trainable) {
+  auto *V = createVariable(tensor.getElementType(), tensor.dims(), name,
+                           visibility, trainable);
+  V->assign(&tensor);
+  return V;
 }
 
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
@@ -373,13 +407,30 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
   llvm_unreachable("Unable to find a unique a name.");
 }
 
+Variable *Module::addVar(Variable *V) {
+  V->setName(uniqueName(V->getName(), uniqueVariableNames_));
+  vars_.push_back(V);
+  return V;
+}
+
+Placeholder *Module::addPlaceholder(Placeholder *ph) {
+  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
+  placeholders_.push_back(ph);
+  return ph;
+}
+
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth, size_t kernel,
-                                      size_t stride,
-                                      llvm::ArrayRef<size_t> pads,
-                                      size_t group) {
+                                      size_t depth,
+                                      llvm::ArrayRef<unsigned_t> kernels,
+                                      llvm::ArrayRef<unsigned_t> strides,
+                                      llvm::ArrayRef<unsigned_t> pads,
+                                      unsigned_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
+  ShapeHW kdim(kernels);
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
          "buffer too small for selected stride");
 
   assert(group > 0 && "group should be larger than 0");
@@ -388,119 +439,149 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
 
   // Calculate the size and allocate the output buffer.
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
 
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Allocate the Filter and Bias tensors.
-  std::array<size_t, 4> filterDim = {{depth, kernel, kernel, idim.c / group}};
-  size_t fanIn = kernel * kernel * idim.c;
+  std::array<size_t, 4> filterDim = {
+      {depth, kdim.height, kdim.width, idim.c / group}};
+  size_t fanIn = kdim.height * kdim.width * idim.c;
   auto *filter = getParent()->createVariable(
-      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private,
-      Variable::TrainKind::Xavier, fanIn);
+      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private, true);
+
+  filter->getPayload().init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
   auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
-                                           VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast, 0.1);
+                                           VisibilityKind::Private, true);
+
+  bias->getPayload().init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pads, group));
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
+                                     strides, pads, group));
 }
 
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
-                           size_t kernel, size_t stride,
-                           llvm::ArrayRef<size_t> pads, size_t group) {
+                           llvm::ArrayRef<unsigned_t> kernels,
+                           llvm::ArrayRef<unsigned_t> strides,
+                           llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  assert(idim.w >= kernel && idim.h >= kernel &&
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
          "buffer too small for selected stride");
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
   (void)idim;
 
   auto filterDims = filter.dims();
-  assert(filterDims[0] % group == 0 && filterDims[1] == kernel &&
-         filterDims[2] == kernel && filterDims[3] == idim.c / group &&
+  assert(filterDims[0] % group == 0 && filterDims[1] == kdim.height &&
+         filterDims[2] == kdim.width && filterDims[3] == idim.c / group &&
          "Invalid filter dims");
   (void)filterDims;
 
   assert(bias.getType()->size() == filterDims[0] && "Invalid bias size");
 }
 
-ConvolutionNode *
-Function::createConv(llvm::StringRef name, NodeValue input, NodeValue filter,
-                     NodeValue bias, TypeRef outTy, size_t kernel,
-                     size_t stride, llvm::ArrayRef<size_t> pads, size_t group) {
-  assertConvDims(input, filter, bias, kernel, stride, pads, group);
+ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
+                                      NodeValue filter, NodeValue bias,
+                                      TypeRef outTy,
+                                      llvm::ArrayRef<unsigned_t> kernels,
+                                      llvm::ArrayRef<unsigned_t> strides,
+                                      llvm::ArrayRef<unsigned_t> pads,
+                                      unsigned_t group) {
+  assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernel,
-                                     stride, pads, group));
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
+                                     strides, pads, group));
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
-                                      TypeRef outTy, size_t kernel,
-                                      size_t stride, size_t pad, size_t group) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createConv(name, input, filter, bias, outTy, kernel, stride, pads,
+                                      TypeRef outTy, unsigned_t kernel,
+                                      unsigned_t stride, unsigned_t pad,
+                                      unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
                     group);
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth, size_t kernel,
-                                      size_t stride, size_t pad, size_t group) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createConv(name, input, depth, kernel, stride, pads, group);
+                                      size_t depth, unsigned_t kernel,
+                                      unsigned_t stride, unsigned_t pad,
+                                      unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConv(name, input, depth, kernels, strides, pads, group);
 }
 
-PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride,
-                                     llvm::ArrayRef<size_t> pads) {
+MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<unsigned_t> kernels,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
-  assert((idim.w + pdim.left + pdim.right) >= kernel &&
-         (idim.h + pdim.top + pdim.bottom) >= kernel &&
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
          "buffer too small for selected stride");
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolMaxNode(name, OT, input, kernel, stride, pads));
+  return addNode(new MaxPoolNode(name, OT, input, kernels, strides, pads));
 }
 
-PoolMaxNode *Function::createPoolMax(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride, size_t pad) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createPoolMax(name, input, kernel, stride, pads);
+MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
+                                     unsigned_t kernel, unsigned_t stride,
+                                     unsigned_t pad) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createMaxPool(name, input, kernels, strides, pads);
 }
 
-PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride,
-                                     llvm::ArrayRef<size_t> pads) {
+AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<unsigned_t> kernels,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
-  assert((idim.w + pdim.left + pdim.right) >= kernel &&
-         (idim.h + pdim.top + pdim.bottom) >= kernel &&
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
          "buffer too small for selected stride");
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new PoolAvgNode(name, OT, input, kernel, stride, pads));
+  return addNode(new AvgPoolNode(name, OT, input, kernels, strides, pads));
 }
 
-PoolAvgNode *Function::createPoolAvg(llvm::StringRef name, NodeValue input,
-                                     size_t kernel, size_t stride, size_t pad) {
-  llvm::SmallVector<size_t, 4> pads = {pad, pad, pad, pad};
-  return createPoolAvg(name, input, kernel, stride, pads);
+AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
+                                     unsigned_t kernel, unsigned_t stride,
+                                     unsigned_t pad) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createAvgPool(name, input, kernels, strides, pads);
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
@@ -531,21 +612,28 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W = getParent()->createVariable(
-      T->getElementType(), {idim.second, outDepth}, "weights",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, fanIn);
+  auto *W =
+      getParent()->createVariable(T->getElementType(), {idim.second, outDepth},
+                                  "weights", VisibilityKind::Private, true);
 
   auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
-                                        VisibilityKind::Private,
-                                        Variable::TrainKind::Broadcast, 0.1);
+                                        VisibilityKind::Private, true);
+
+  W->getPayload().init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  B->getPayload().init(Tensor::InitKind::Broadcast, .1, getPRNG());
 
   auto OT =
       getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
+ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy) {
+  return addNode(new ReluNode(name, outTy, input));
+}
+
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
-  return addNode(new ReluNode(name, input));
+  return addNode(new ReluNode(name, input.getType(), input));
 }
 
 SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
@@ -557,8 +645,12 @@ TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
 }
 
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
-                                     NodeValue selected) {
-  return addNode(new SoftMaxNode(name, input, selected));
+                                     NodeValue selected, TypeRef outTy) {
+  // By default, pick the input type
+  if (!outTy) {
+    outTy = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SoftMaxNode(name, outTy, input, selected));
 }
 
 CrossEntropyLossNode *Function::createCrossEntropyLoss(llvm::StringRef name,
@@ -574,6 +666,17 @@ RegressionNode *Function::createRegression(llvm::StringRef name,
   return addNode(new RegressionNode(name, input, expected));
 }
 
+SigmoidCrossEntropyWithLogitsNode *
+Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
+                                              NodeValue logits,
+                                              NodeValue targets) {
+  assert(logits.dims().size() > 1);
+  std::vector<size_t> outDims(logits.dims().begin(), logits.dims().end() - 1);
+  auto ty = getParent()->uniqueTypeWithNewShape(logits.getType(), outDims);
+  return addNode(
+      new SigmoidCrossEntropyWithLogitsNode(name, ty, logits, targets));
+}
+
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
@@ -583,7 +686,7 @@ ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
 }
 
 TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
-                                         llvm::ArrayRef<unsigned> shuffle) {
+                                         llvm::ArrayRef<unsigned_t> shuffle) {
   ShapeVector shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -596,11 +699,11 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
 
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                 llvm::ArrayRef<size_t> newShape,
-                                unsigned axis) {
-  assert(axis >= 0 && axis < newShape.size() &&
-         "Axis must fit inside the newShape.");
-
+                                unsigned_t axis) {
   const auto &origDims = input.dims();
+
+  assert(axis + origDims.size() <= newShape.size() &&
+         "Axis must fit inside the newShape.");
 
   // Iterate over the new shape; if the original shape had a dimension here
   // (when considering the axis) then verify the dimension either matches the
@@ -619,7 +722,7 @@ Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
         reshapeDims[i] = 1;
       } else {
         // Incompatible dimensions for broadcasting
-        assert(false && "Cannot broadcast with these dimensions.");
+        llvm_unreachable("Cannot broadcast with these dimensions.");
       }
     } else {
       // Will broadcast this dimension to size from newShape.
@@ -675,7 +778,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
-                                   unsigned dimension) {
+                                   unsigned_t dimension) {
   for (int i = 1, e = inputs.size(); i < e; i++) {
     assert(sameSameShapeExceptDim(inputs[i].getType(), inputs[0].getType(),
                                   dimension) &&
@@ -704,7 +807,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 
 ConcatNode *Function::createConcat(llvm::StringRef name,
                                    llvm::ArrayRef<NodeValue> inputs,
-                                   unsigned dimension, TypeRef outTy) {
+                                   unsigned_t dimension, TypeRef outTy) {
   std::vector<NodeValue> ops;
   ops.reserve(inputs.size());
   for (auto I : inputs) {
@@ -716,7 +819,7 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 }
 
 InsertTensorNode *Function::createTile(llvm::StringRef name, NodeValue input,
-                                       unsigned tiles, unsigned axis) {
+                                       unsigned_t tiles, unsigned_t axis) {
   assert(tiles > 0 && "Tiles must be non-zero.");
   assert(axis >= 0 && axis < input.dims().size() &&
          "Axis must fall in range of source dims.");
@@ -789,7 +892,7 @@ Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
   dims.insert(dims.begin() + kernel, group);
   Node *R1 = createReshape(name.str() + ".reshape1", input, dims);
 
-  std::vector<unsigned> transpose(dims.size());
+  std::vector<unsigned_t> transpose(dims.size());
   for (size_t i = 0; i < transpose.size(); i++)
     transpose[i] = i;
   std::swap(transpose[kernel], transpose[kernel + 1]);
@@ -844,7 +947,7 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
 
   // The total number of dimensions in the new shape is equal to the original
   // shape size plus the uniqued new shape axes, which represents where to
-  // insert dimensions of 1 into the ouput tensor's shape.
+  // insert dimensions of 1 into the output tensor's shape.
   const size_t totalNumNewDims = shapeAxes.size() + inDims.size();
   assert(totalNumNewDims <= max_tensor_dimensions &&
          "New expanded shape has too many dimensions.");
@@ -866,8 +969,14 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
   return createReshape(name.str() + ".expanddims", input, newDims);
 }
 
+ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
+                                     unsigned_t axis) {
+  auto xDim = flattenCdr(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
 void Function::createSplit(llvm::StringRef name, NodeValue input,
-                           size_t outputNum, size_t axis,
+                           unsigned_t outputNum, unsigned_t axis,
                            llvm::ArrayRef<size_t> split,
                            std::vector<Node *> &outputs) {
   auto inDims = input.dims();
@@ -896,28 +1005,30 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
          "Total size of results must be equal to input size.");
 }
 
-BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
-                                                           NodeValue input,
-                                                           size_t channelIdx,
-                                                           float epsilon,
-                                                           float momentum) {
+BatchNormalizationNode *
+Function::createBatchNormalization(llvm::StringRef name, NodeValue input,
+                                   unsigned_t channelIdx, float epsilon,
+                                   float momentum) {
   // Figure out how many channels are in the tensor.
   size_t channels = input.dims()[channelIdx];
 
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent()->createVariable(ElemKind::FloatTy, {channels},
-                                           "beta", VisibilityKind::Private,
-                                           Variable::TrainKind::Broadcast, 0.);
-  auto *gamma = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "gamma", VisibilityKind::Private,
-      Variable::TrainKind::Broadcast, 1.0);
+  auto *beta = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "beta", VisibilityKind::Private, true);
 
-  auto *mean = getParent()->createVariable(ElemKind::FloatTy, {channels},
-                                           "mean", VisibilityKind::Private,
-                                           Variable::TrainKind::None);
-  auto *variance = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "variance", VisibilityKind::Private,
-      Variable::TrainKind::None);
+  beta->getPayload().init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+
+  auto *gamma = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "gamma", VisibilityKind::Private, true);
+
+  gamma->getPayload().init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
+
+  auto *mean = getParent()->createVariable(
+      ElemKind::FloatTy, {channels}, "mean", VisibilityKind::Private, false);
+
+  auto *variance =
+      getParent()->createVariable(ElemKind::FloatTy, {channels}, "variance",
+                                  VisibilityKind::Private, false);
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
@@ -925,15 +1036,15 @@ BatchNormalizationNode *Function::createBatchNormalization(llvm::StringRef name,
 
 BatchNormalizationNode *Function::createBatchNormalization(
     llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
-    NodeValue mean, NodeValue var, size_t channelIdx, float epsilon,
+    NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
     float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
 LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
-    llvm::StringRef name, NodeValue input, size_t halfWindowSize, float alpha,
-    float beta, float k) {
+    llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize,
+    float alpha, float beta, float k) {
   // The output tensor is of the same shape as the input tensor.
   return addNode(new LocalResponseNormalizationNode(name, input, halfWindowSize,
                                                     alpha, beta, k));
@@ -957,32 +1068,46 @@ ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
+ARITHMETIC_FUN_DEF(Pow);
 #undef ARITHMETIC_FUN_DEF
+
+/// This helper function is used only by the functions creating boolean
+/// operations like createCmpEQ and createCmpLTE to compute their output types.
+/// The output type is computed based on the type \p T of the operand of the
+/// logical operation. In case of a quantized type we provide concrete scale and
+/// offset for the type as we know that the output of a boolean operation could
+/// be only 0 or 1.
+///
+/// \returns the output type for a boolean operation.
+static TypeRef getResultTypeOfBooleanOp(Module &M, TypeRef T) {
+  TypeRef OT;
+  if (T->isQuantizedType()) {
+    OT = M.uniqueType(T->getElementType(), T->dims(), 1.0, 0);
+  } else {
+    OT = M.uniqueType(*T);
+  }
+  return OT;
+}
 
 // For the quantized CmpLTE instruction, we require that the scale params be
 // (1.0, 0), so that the actual value and comparison value match.
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT;
-  if (LHS.getType()->isQuantizedType()) {
-    OT = getParent()->uniqueType(LHS.getType()->getElementType(), LHS.dims(),
-                                 1.0, 0);
-  } else {
-    OT = getParent()->uniqueType(*LHS.getType());
-  }
+  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
 }
 
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  auto OT = getParent()->uniqueType(*LHS.getType());
+  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
-PowNode *Function::createPow(llvm::StringRef name, NodeValue Base, float exp) {
-  return addNode(new PowNode(name, Base.getType(), Base, exp));
+PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
+  auto *SP = createSplat(name, base.getType(), exp);
+  return createPow(name, base, SP);
 }
 
 LogNode *Function::createLog(llvm::StringRef name, NodeValue input) {
@@ -1032,10 +1157,80 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
   return createMatMul(name, ty, lhs, rhs);
 }
 
+Node *Function::createBroadcastedBatchMatMul(llvm::StringRef name,
+                                             NodeValue lhs, NodeValue rhs) {
+  assert(lhs.dims().size() == 3 && rhs.dims().size() == 2 &&
+         "Only supporting lhs 3d, rhs 2d for Broadcasted BatchMatMul.");
+
+  // LHS = {numBatches, N, M}
+  // RHS = {M, P}
+  // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
+  // {numBatches, N, P}
+  const auto numBatches = lhs.dims()[0];
+  const auto N = lhs.dims()[1];
+  const auto M = lhs.dims()[2];
+  const auto P = rhs.dims()[1];
+  assert((rhs.dims()[0] == M) && "Batch matmul dimensions are invalid.");
+
+  // Reshape the LHS to be a two-dimensional matrix, where each batch
+  // is essentially concatenated onto itself in the 0th dimension.
+  auto *reshapeLHS =
+      createReshape(name.str() + ".reshapeLHS", lhs, {numBatches * N, M});
+
+  // Perform a normal matmul, implementing the batch matmul.
+  auto *MMN = createMatMul(name, reshapeLHS, rhs);
+
+  assert(MMN->getResult().dims()[0] == (numBatches * N) &&
+         "Incorrect resulting dimension for batch matmul");
+  assert(MMN->getResult().dims()[1] == P &&
+         "Incorrect resulting dimension for batch matmul");
+
+  // Reshape the result back to the expected batch output shape, with the first
+  // dimension the number of batches.
+  return createReshape(name.str() + ".reshapeResult", MMN, {numBatches, N, P});
+}
+
+Node *Function::createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                          NodeValue rhs) {
+  assert(lhs.dims().size() == 3 && rhs.dims().size() == 3 &&
+         "Only supporting lhs 3d, rhs 3d for Parallel BatchMatMul.");
+
+  // LHS = {numBatches, N, M}
+  // RHS = {numBatches, M, P}
+  // Multiply i-th LHS matrix {N, M} by i-th RHS matrix {M, P} to get final
+  // matrix
+  // {numBatches, N, P}
+  const auto numBatches = lhs.dims()[0];
+  const auto N = lhs.dims()[1];
+  const auto M = lhs.dims()[2];
+  const auto P = rhs.dims()[2];
+  assert((rhs.dims()[0] == numBatches) &&
+         "Batch matmul dimensions are invalid.");
+  assert((rhs.dims()[1] == M) && "Batch matmul dimensions are invalid.");
+
+  std::vector<NodeValue> MMS(numBatches);
+  for (size_t i = 0; i < numBatches; i++) {
+    auto *sliceA = createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
+                               {i, 0, 0}, {i + 1, N, M});
+    auto *sliceB = createSlice(name.str() + ".sliceB." + std::to_string(i), rhs,
+                               {i, 0, 0}, {i + 1, M, P});
+    auto *reshapeA =
+        createReshape(sliceA->getName().str() + ".reshape", sliceA, {N, M});
+    auto *reshapeB =
+        createReshape(sliceB->getName().str() + ".reshape", sliceB, {M, P});
+    MMS[i] = createMatMul(name.str() + ".MatMul." + std::to_string(i), reshapeA,
+                          reshapeB);
+  }
+
+  auto *concat = createConcat(name.str() + ".concat", MMS, 0);
+  return createReshape(name.str() + ".FinalReshape", concat,
+                       {numBatches, N, P});
+}
+
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
                                                        NodeValue batch,
-                                                       size_t axis) {
+                                                       unsigned_t axis) {
   // Calculate the expected total number of elements in the output tensor based
   // on the number of elements in the batch divided by the axis dimension.
   const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
@@ -1048,14 +1243,14 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
 
 BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        NodeValue batch,
-                                                       size_t axis) {
+                                                       unsigned_t axis) {
   auto outDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
   return createBatchedReduceAdd(name, OT, batch, axis);
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                           NodeValue batch, size_t axis) {
+                                           NodeValue batch, unsigned_t axis) {
   // Use the same output type for both the batched reduce add and the
   // denominator splat. Only use outTy as the output of the final div.
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
@@ -1073,7 +1268,7 @@ DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
 }
 
 DivNode *Function::createBatchedReduceMean(llvm::StringRef name,
-                                           NodeValue batch, size_t axis) {
+                                           NodeValue batch, unsigned_t axis) {
   auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
   auto outTy = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
   return createBatchedReduceMean(name, outTy, batch, axis);
@@ -1090,20 +1285,30 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
-SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
-                                                       NodeValue data,
-                                                       NodeValue indices,
-                                                       NodeValue lengths) {
+SparseLengthsWeightedSumNode *
+Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
+                                 NodeValue indices, NodeValue lengths) {
+  auto ty =
+      getParent()->uniqueTypeWithNewShape(data.getType(), {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return createSparseLengthsWeightedSum(name, data, ones, indices, lengths);
+}
+
+SparseLengthsWeightedSumNode *
+Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
+                                         NodeValue weights, NodeValue indices,
+                                         NodeValue lengths) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
+  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
+                                                  indices, lengths));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = getParent()->createVariable(
-      input.getType(), name, VisibilityKind::Public, Variable::TrainKind::None);
+  auto *dest = getParent()->createVariable(input.getType(), name,
+                                           VisibilityKind::Public, false);
 
   return addNode(new SaveNode(name, input, dest));
 }
@@ -1117,19 +1322,19 @@ QuantizationProfileNode *
 Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram = getParent()->createVariable(
-      ElemKind::FloatTy, {numberOfBuckets}, "histogram",
-      VisibilityKind::Private, Variable::TrainKind::None);
+  auto *histogram =
+      getParent()->createVariable(ElemKind::FloatTy, {numberOfBuckets},
+                                  "histogram", VisibilityKind::Private, false);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = getParent()->createVariable(
-      ElemKind::FloatTy, {2}, "computationInfo", VisibilityKind::Private,
-      Variable::TrainKind::None);
+  auto *computationInfo =
+      getParent()->createVariable(ElemKind::FloatTy, {2}, "computationInfo",
+                                  VisibilityKind::Private, false);
 
-  return addNode(
-      new QuantizationProfileNode(name, input, histogram, computationInfo,
-                                  input->getName().str(), input.getResNo()));
+  return addNode(new QuantizationProfileNode(
+      name, input, histogram, computationInfo, input.getNode()->getName().str(),
+      input.getResNo()));
 }
 
 IntLookupTableNode *
@@ -1138,8 +1343,7 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                TypeRef outTy) {
   auto *mapping = getParent()->createVariable(
       ElemKind::Int8QTy, {initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping", VisibilityKind::Private,
-      Variable::TrainKind::None);
+      outTy->getOffset(), "mapping", VisibilityKind::Private, false);
   mapping->getHandle<int8_t>() = initValues;
 
   return addNode(new IntLookupTableNode(name, outTy, input, mapping));
@@ -1204,7 +1408,7 @@ IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
-                               size_t k) {
+                               unsigned_t k) {
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
@@ -1212,11 +1416,12 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   outDims.back() = k;
   auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
   return addNode(new TopKNode(
-      name, OT, getParent()->uniqueType(ElemKind::IndexTy, outDims), input, k));
+      name, OT, getParent()->uniqueType(ElemKind::Int64ITy, outDims), input,
+      k));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
-                                   NodeValue indices, unsigned batchDims) {
+                                   NodeValue indices, unsigned_t batchDims) {
 
   auto dDims = data.dims();
   auto iDims = indices.dims();
@@ -1323,29 +1528,37 @@ void Function::createSimpleRNN(llvm::StringRef namePrefix,
   // Initialize the state to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, nameBase + ".initial_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   float b = 0.1;
   auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bhh",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bhh = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".Bhh",
+                                          VisibilityKind::Private, true);
   auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
-  auto *Bxh = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bxh",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+
+  auto *Bxh = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".Bxh",
+                                          VisibilityKind::Private, true);
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bhy = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".Bhy",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bhy = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                          nameBase + ".Bhy",
+                                          VisibilityKind::Private, true);
+
+  Whh->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bhh->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Wxh->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Bxh->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bhy->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   // Un-roll backpropogation through time as a loop with the shared parameters.
   for (unsigned t = 0; t < timeSteps; t++) {
@@ -1378,7 +1591,7 @@ void Function::createGRU(llvm::StringRef namePrefix,
   // Initialize the state to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
 
   HInit->getPayload().zero();
   Node *Ht = HInit;
@@ -1394,53 +1607,72 @@ void Function::createGRU(llvm::StringRef namePrefix,
   float bUpdate = 0.1;
   auto *Wxz = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxz",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whz = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whz",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bz1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bUpdate);
-  auto *Bz2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bUpdate);
+      VisibilityKind::Private, true);
+  auto *Bz1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bz1",
+                                          VisibilityKind::Private, true);
+  auto *Bz2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bz2",
+                                          VisibilityKind::Private, true);
+
+  Wxz->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whz->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bz1->getPayload().init(glow::Tensor::InitKind::Broadcast, bUpdate, getPRNG());
+  Bz2->getPayload().init(glow::Tensor::InitKind::Broadcast, bUpdate, getPRNG());
+
+  // Reset gate.
   float bReset = -1.0;
-  // reset gate
   auto *Wxr = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxr",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whr = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whr",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Br1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bReset);
-  auto *Br2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bReset);
+      VisibilityKind::Private, true);
+  auto *Br1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".br1",
+                                          VisibilityKind::Private, true);
+  auto *Br2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".br2",
+                                          VisibilityKind::Private, true);
+
+  Wxr->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whr->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Br1->getPayload().init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
+  Br2->getPayload().init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
 
   // hidden state
   float b = 0.1;
   auto *Wxh = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whh = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bh1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
-  auto *Bh2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *Bh1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bh1",
+                                          VisibilityKind::Private, true);
+  auto *Bh2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bh2",
+                                          VisibilityKind::Private, true);
 
-  // output layer
+  Wxh->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whh->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bh1->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  Bh2->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  // Output Layer.
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *By = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                         nameBase + ".by",
+                                         VisibilityKind::Private, true);
+
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  By->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   auto ty = getParent()->uniqueType(ElemKind::FloatTy, {batchSize, hiddenSize});
   auto *Ones = createSplat(nameBase + ".ones", ty, 1.0);
@@ -1511,13 +1743,13 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   // Initialize the hidden and cell states to zero.
   auto *HInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_hidden_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   HInit->getPayload().zero();
   Node *Ht = HInit;
 
   auto *CInit = getParent()->createVariable(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state",
-      VisibilityKind::Public, Variable::TrainKind::None);
+      VisibilityKind::Public, false);
   CInit->getPayload().zero();
   Node *Ct = CInit;
 
@@ -1536,69 +1768,93 @@ void Function::createLSTM(llvm::StringRef namePrefix,
   float bForget = 1.0;
   auto *Wxf = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxf",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whf = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whf",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bf1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bForget);
-  auto *Bf2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bForget);
+      VisibilityKind::Private, true);
+  auto *Bf1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bf1",
+                                          VisibilityKind::Private, true);
+  auto *Bf2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bf2",
+                                          VisibilityKind::Private, true);
+
+  Wxf->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whf->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bf1->getPayload().init(glow::Tensor::InitKind::Broadcast, bForget, getPRNG());
+  Bf2->getPayload().init(glow::Tensor::InitKind::Broadcast, bForget, getPRNG());
+
   // input gate
   float bInput = 0.1;
   auto *Wxi = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxi",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whi = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whi",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bi1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bInput);
-  auto *Bi2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bInput);
+      VisibilityKind::Private, true);
+  auto *Bi1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bi1",
+                                          VisibilityKind::Private, true);
+  auto *Bi2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bi2",
+                                          VisibilityKind::Private, true);
+
+  Wxi->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whi->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bi1->getPayload().init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
+  Bi2->getPayload().init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
 
   // output gate
   float bOutput = 0.1;
   auto *Wxo = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxo",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Who = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Who",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bo1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bOutput);
-  auto *Bo2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bOutput);
+      VisibilityKind::Private, true);
+  auto *Bo1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bo1",
+                                          VisibilityKind::Private, true);
+  auto *Bo2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bo2",
+                                          VisibilityKind::Private, true);
+
+  Wxo->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Who->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bo1->getPayload().init(glow::Tensor::InitKind::Broadcast, bOutput, getPRNG());
+  Bo2->getPayload().init(glow::Tensor::InitKind::Broadcast, bOutput, getPRNG());
 
   // cell state
   float bCell = 0.1;
   auto *Wxc = getParent()->createVariable(
       ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxc",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, inputSize);
+      VisibilityKind::Private, true);
   auto *Whc = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whc",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *Bc1 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc1",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
-  auto *Bc2 = getParent()->createVariable(
-      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc2",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, bCell);
+      VisibilityKind::Private, true);
+  auto *Bc1 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bc1",
+                                          VisibilityKind::Private, true);
+  auto *Bc2 = getParent()->createVariable(ElemKind::FloatTy, {hiddenSize},
+                                          nameBase + ".bc2",
+                                          VisibilityKind::Private, true);
+
+  Wxc->getPayload().init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  Whc->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  Bc1->getPayload().init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
+  Bc2->getPayload().init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
 
   // output layer
   float b = 0.1;
   auto *Why = getParent()->createVariable(
       ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why",
-      VisibilityKind::Private, Variable::TrainKind::Xavier, hiddenSize);
-  auto *By = getParent()->createVariable(
-      ElemKind::FloatTy, {outputSize}, nameBase + ".by",
-      VisibilityKind::Private, Variable::TrainKind::Broadcast, b);
+      VisibilityKind::Private, true);
+  auto *By = getParent()->createVariable(ElemKind::FloatTy, {outputSize},
+                                         nameBase + ".by",
+                                         VisibilityKind::Private, true);
+
+  Why->getPayload().init(glow::Tensor::InitKind::Xavier, hiddenSize, getPRNG());
+  By->getPayload().init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
@@ -1687,8 +1943,9 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       auto pred = N->getPredicate();
       size_t resNo = pred.getResNo();
       std::ostringstream edge;
-      edge << uniqueVertexName(pred) << ":" << pred->getOutputName(resNo).str()
-           << " -> " << uniqueVertexName(N) << ":w";
+      edge << uniqueVertexName(pred) << ":"
+           << pred.getNode()->getOutputName(resNo).str() << " -> "
+           << uniqueVertexName(N) << ":w";
       dumpEdgeStyle(N, 0, pred, edge);
       edges_.insert(edge.str());
       visitNode(pred);
@@ -1700,7 +1957,7 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
 
       std::ostringstream edge;
       edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
-           << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i).str();
+           << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i);
       dumpEdgeStyle(N, i, to, edge);
       edges_.insert(edge.str());
 
@@ -1721,10 +1978,9 @@ public:
 };
 
 void Function::dumpDAG() {
-  std::string buffer;
-  llvm::raw_string_ostream stream(buffer);
-  stream << "dotty_graph_dump_" << this << ".dot";
-  dumpDAG(stream.str().c_str());
+  llvm::SmallString<64> dotPath;
+  llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
+  dumpDAG(dotPath);
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
@@ -1932,6 +2188,29 @@ void Function::verify() const {
       assert(varToFirstDef == variablesWrittenTo.end() &&
              "Variable has more than one write");
       variablesWrittenTo[var] = &N;
+    }
+  }
+
+  // Now check that the variables that are written to are either:
+  // - Written by a save node, or
+  // - Are only used by the node that writes them
+  // If this check fails, that means we have implicit memory
+  // dependencies that may not be honored by the scheduler.
+  // Either the input IR is incorrect or the scheduler needs
+  // fixing.
+  for (const std::pair<const Variable *, const Node *> &varToWrite :
+       variablesWrittenTo) {
+    if (isa<SaveNode>(varToWrite.second)) {
+      continue;
+    }
+    for (const NodeUse &use : varToWrite.first->getUsers()) {
+      const Node *user = use.getUser();
+      // Ignore users outside this function.
+      if (user->getParent() != this) {
+        continue;
+      }
+      assert(user == varToWrite.second &&
+             "Implicit read after write memory dependency may not be honored");
     }
   }
 }

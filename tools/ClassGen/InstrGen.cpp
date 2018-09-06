@@ -81,41 +81,41 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Filter", OperandKind::In)
       .addOperand("Bias", OperandKind::In)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
-      .addMember(MemberType::SizeT, "Group")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "Bias"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  // PoolMax version caching XY coordinates to speedup gradient-based
+  // MaxPool version caching XY coordinates to speedup gradient-based
   // computations.
-  BB.newInstr("PoolMaxWithXY")
+  BB.newInstr("MaxPoolWithXY")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("SrcXY", OperandKind::Out)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
 
-  BB.newInstr("PoolMax")
+  BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
-  BB.newInstr("PoolAvg")
+  BB.newInstr("AvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Scale", OperandKind::Out)
-      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Unsigned, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
@@ -147,8 +147,7 @@ int main(int argc, char **argv) {
   BB.newInstr("SoftMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .inplaceOperand({"Dest", "Src"})
-      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("SoftMaxGrad")
@@ -191,20 +190,23 @@ int main(int argc, char **argv) {
   BB.newInstr("BatchedReduceAdd")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Axis")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
-  BB.newInstr("SparseLengthsSum")
+  BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::IndexTy"});
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
@@ -289,11 +291,11 @@ int main(int argc, char **argv) {
 
   BB.newInstr("ElementPow")
       .addOperand("Dest", OperandKind::Out)
-      .addOperand("Base", OperandKind::In)
-      .addMember(MemberType::Float, "Exp")
-      .inplaceOperand({"Dest", "Base"})
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
       .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Base"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Pow");
 
   BB.newInstr("ElementLog")
@@ -365,8 +367,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::VectorSizeT, "Offsets")
-      .addMember(MemberType::SizeT, "Count")
-      .addMember(MemberType::SizeT, "Axis");
+      .addMember(MemberType::Unsigned, "Count")
+      .addMember(MemberType::Unsigned, "Axis");
 
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
@@ -380,7 +382,8 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addMember(MemberType::Unsigned, "BatchDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "ElemKind::IndexTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
       .autoIRGen();
 
   BB.newInstr("ScatterAssign")
@@ -388,7 +391,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Slices", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::IndexTy"});
+                  {"Indices", "ElemKind::Int64ITy"});
 
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
@@ -451,7 +454,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .addOperand("Scratch", OperandKind::InOut)
-      .addMember(MemberType::SizeT, "K")
+      .addMember(MemberType::Unsigned, "K")
       .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 

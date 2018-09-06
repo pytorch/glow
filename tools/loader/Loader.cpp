@@ -24,6 +24,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -71,10 +72,14 @@ llvm::cl::opt<std::string> dumpProfileFileOpt(
 llvm::cl::opt<quantization::Schema> quantizationSchema(
     "quantization-schema",
     llvm::cl::desc("Specify which quantization schema to use"),
-    llvm::cl::values(clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
-                                "Use asymmetric ranges"),
-                     clEnumValN(quantization::Schema::Symmetric, "symmetric",
-                                "Use symmetric ranges")),
+    llvm::cl::values(
+        clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
+                   "Use asymmetric ranges"),
+        clEnumValN(quantization::Schema::Symmetric, "symmetric",
+                   "Use symmetric ranges"),
+        clEnumValN(quantization::Schema::SymmetricWithUInt8,
+                   "symmetric_with_uint8",
+                   "Use symmetric ranges with potentially uint8 ranges")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
@@ -82,6 +87,16 @@ llvm::cl::opt<std::string> loadProfileFileOpt(
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
+
+llvm::cl::list<std::string> doNotQuantizeNodesOpt(
+    "do_not_quantize_nodes",
+    llvm::cl::desc(
+        "Use to specify the name of nodes (e.g. Add, Div, etc.) that should "
+        "not be quantized. All nodes of the listed kinds would not be "
+        "quantized; e.g. if Add is specififed and there are multiple Add nodes "
+        "in the input loaded model, none would be quantized."),
+    llvm::cl::value_desc("NodeNames (e.g. Add,Div)"), llvm::cl::ZeroOrMore,
+    llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
@@ -112,7 +127,23 @@ llvm::cl::opt<std::string>
     emitBundle("emit-bundle",
                llvm::cl::desc("Output directory for the bundle serialization"),
                llvm::cl::cat(loaderCat));
+
+/// Name of the network being bundled.
+llvm::cl::opt<std::string> networkName(
+    "network-name",
+    llvm::cl::desc("Name of the network being bundled. "
+                   "This name is used as both the function name "
+                   "of the entry point to the network "
+                   "and as a prefix for all the files that are generated."),
+    llvm::cl::cat(loaderCat));
 } // namespace
+
+llvm::StringRef Loader::getModelOptPath() {
+  assert(modelPathOpt.size() == 1 &&
+         llvm::sys::fs::is_directory(*modelPathOpt.begin()) &&
+         "Model path must be a single directory.");
+  return modelPathOpt[0];
+}
 
 bool glow::emittingBundle() { return !emitBundle.empty(); }
 
@@ -123,7 +154,54 @@ static bool commandLineIsInvalid() {
                  << " options may not be specified together.\n";
     return true;
   }
+
+  if (emitBundle.getNumOccurrences()) {
+    if (networkName.getNumOccurrences()) {
+      if (networkName.empty()) {
+        llvm::errs() << "Loader: -" << networkName.ArgStr
+                     << " must not be empty.\n";
+        return true;
+      } // FIXME: else make sure networkName does not have any sequence of
+        // characters that could turn into evil stuff in the assembler.
+    } else {
+      // By default, use the last directory in the model path
+      // as the name of the network.
+      // Only do that when there is just one path specified.
+      if (modelPathOpt.size() == 1) {
+        for (auto it = llvm::sys::path::rbegin(modelPathOpt[0]),
+                  end = llvm::sys::path::rend(modelPathOpt[0]);
+             it != end; ++it) {
+          networkName = *it;
+          // Empty names are replaced by '.' (see Path.h in LLVM).
+          if (!networkName.empty() && networkName != ".") {
+            break;
+          }
+        }
+      }
+      if (networkName.empty()) {
+        llvm::errs() << "Loader: Use -" << networkName.ArgStr
+                     << " to specify a non-empty network name.\n";
+        return true;
+      }
+    }
+  } else if (networkName.getNumOccurrences()) {
+    llvm::errs() << "Loader: -" << networkName.ArgStr
+                 << " only makes sense when -" << emitBundle.ArgStr
+                 << " is used.\n";
+    return true;
+  }
   return false;
+}
+
+/// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
+/// \p nodeName (e.g. Add).
+static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  if (nodeName == #NAME) {                                                     \
+    return Kinded::Kind::CLASS##Kind;                                          \
+  }
+#include "glow/AutoGenNodes.def"
+  GLOW_UNREACHABLE("Unknown node name.");
 }
 
 void Loader::compile() {
@@ -154,13 +232,28 @@ void Loader::compile() {
     std::string oldName = F_->getName();
     F_->setName("old");
 
+    // By default, when quantizing loaded models, all nodes that can be
+    // quantized are quantized. However, some models that are loaded may need to
+    // keep higher precision for some nodes to prevent high accuracy loss. This
+    // set is passed into quantizeFunction() to prevent quantization.
+    KindSet doNotQuantizeKinds;
+    for (llvm::StringRef kindName : doNotQuantizeNodesOpt) {
+      doNotQuantizeKinds.insert(getKindFromNodeName(kindName));
+    }
+
     // Quantize the graph based on the captured profile.
-    F_ = quantization::quantizeFunction(EE_, quantizationInfos, F_, oldName);
+    auto *Q = quantization::quantizeFunction(EE_, quantizationInfos, F_,
+                                             oldName, doNotQuantizeKinds);
+
+    // Erase the original function so that the redundant variables that are only
+    // referenced by the original function will be removed.
+    Q->getParent()->eraseFunction(F_);
+    F_ = Q;
   }
 
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(CompilationMode::Infer, F_, emitBundle);
+    EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
     EE_.compile(CompilationMode::Infer, F_);

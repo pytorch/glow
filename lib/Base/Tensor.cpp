@@ -185,7 +185,7 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
     }
 
   } else {
-    assert(false && "Invalid tensor size");
+    llvm_unreachable("Invalid tensor size");
   }
 }
 
@@ -195,7 +195,7 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 template <class ElemTy>
 static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  size_t *srcCoor, size_t *destCoor,
-                                 llvm::ArrayRef<unsigned> shuffle,
+                                 llvm::ArrayRef<unsigned_t> shuffle,
                                  unsigned depth = 0) {
   if (depth == shuffle.size()) {
     auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
@@ -206,7 +206,7 @@ static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 
   // Iterate over one dimension and continue recursively to the next dim.
   for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
-    unsigned swizzledDepth = shuffle[depth];
+    unsigned_t swizzledDepth = shuffle[depth];
     srcCoor[swizzledDepth] = x;
     destCoor[depth] = x;
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle, depth + 1);
@@ -220,7 +220,7 @@ static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
 template <class ElemTy>
 static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                 llvm::ArrayRef<unsigned> shuffle) {
+                                 llvm::ArrayRef<unsigned_t> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[max_tensor_dimensions];
   size_t destCoorArr[max_tensor_dimensions] = {0};
@@ -255,7 +255,7 @@ static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 
 template <class ElemTy>
 static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                llvm::ArrayRef<unsigned> shuffle) {
+                                llvm::ArrayRef<unsigned_t> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
     size_t srcCoor[max_tensor_dimensions];
@@ -271,10 +271,12 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::Int16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
     return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
-  case ElemKind::IndexTy:
-    return dumpAsciiGenericImpl(T->getHandle<size_t>(), os);
+  case ElemKind::Int64ITy:
+    return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
   }
 }
 
@@ -286,17 +288,19 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
     return dumpGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::Int16QTy:
+    return dumpGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
     return dumpGenericImpl(T->getHandle<int32_t>(), os);
-  case ElemKind::IndexTy:
-    return dumpGenericImpl(T->getHandle<size_t>(), os);
+  case ElemKind::Int64ITy:
+    return dumpGenericImpl(T->getHandle<int64_t>(), os);
   }
 }
 
 void glow::dumpImpl(Tensor *T) { dumpImpl(T, llvm::outs()); }
 
 void glow::genericTranspose(Tensor *src, Tensor *dest,
-                            llvm::ArrayRef<unsigned> shuffle) {
+                            llvm::ArrayRef<unsigned_t> shuffle) {
   assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
 
   size_t newSizes[max_tensor_dimensions];
@@ -324,15 +328,21 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
+  case ElemKind::Int16QTy: {
+    auto srcH = src->getHandle<int16_t>();
+    auto destH = dest->getHandle<int16_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   case ElemKind::Int32QTy: {
     auto srcH = src->getHandle<int32_t>();
     auto destH = dest->getHandle<int32_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
-  case ElemKind::IndexTy: {
-    auto srcH = src->getHandle<size_t>();
-    auto destH = dest->getHandle<size_t>();
+  case ElemKind::Int64ITy: {
+    auto srcH = src->getHandle<int64_t>();
+    auto destH = dest->getHandle<int64_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
@@ -345,4 +355,64 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
     newDims.push_back(1);
   }
   return newDims;
+}
+
+void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
+  switch (init) {
+  case InitKind::Zero:
+    zero();
+    break;
+
+  case InitKind::Broadcast: {
+    switch (getElementType()) {
+    case ElemKind::FloatTy: {
+      getHandle<float>().clear(val);
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      getHandle<int8_t>().clear(val);
+      break;
+    }
+    case ElemKind::Int16QTy: {
+      getHandle<int16_t>().clear(val);
+      break;
+    }
+    case ElemKind::Int32QTy: {
+      getHandle<int32_t>().clear(val);
+      break;
+    }
+    case ElemKind::Int64ITy: {
+      getHandle<int64_t>().clear(val);
+      break;
+    }
+    }
+    break;
+  }
+
+  case InitKind::Xavier: {
+    switch (getElementType()) {
+    case ElemKind::FloatTy: {
+      getHandle<float>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      getHandle<int8_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int16QTy: {
+      getHandle<int16_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int32QTy: {
+      getHandle<int32_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int64ITy: {
+      getHandle<int64_t>().initXavier(val, PRNG);
+      break;
+    }
+    }
+    break;
+  }
+  }
 }

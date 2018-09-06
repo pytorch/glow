@@ -42,7 +42,7 @@ llvm::cl::opt<BackendKind> executionBackend(
 unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   /// Load the MNIST database into 4D tensor of images and 2D tensor of labels.
   imageInputs.reset(ElemKind::FloatTy, {50000u, 28, 28, 1});
-  labelInputs.reset(ElemKind::IndexTy, {50000u, 1});
+  labelInputs.reset(ElemKind::Int64ITy, {50000u, 1});
 
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
@@ -67,7 +67,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
   size_t idx = 0;
 
-  auto LIH = labelInputs.getHandle<size_t>();
+  auto LIH = labelInputs.getHandle<int64_t>();
   auto IIH = imageInputs.getHandle<>();
 
   for (unsigned w = 0; w < mnistNumImages; w++) {
@@ -112,20 +112,20 @@ void testMNIST() {
 
   Variable *A =
       mod.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+                         VisibilityKind::Public, false);
 
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
-  auto *MP0 = F->createPoolMax("pool", RL0, 3, 3, 0);
+  auto *MP0 = F->createMaxPool("pool", RL0, 3, 3, 0);
 
   auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
-  auto *MP1 = F->createPoolMax("pool", RL1, 3, 3, 0);
+  auto *MP1 = F->createMaxPool("pool", RL1, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
   Variable *selected =
-      mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "selected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1}, "selected",
+                         VisibilityKind::Public, false);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
 
   auto *result = F->createSave("return", SM);
@@ -153,7 +153,7 @@ void testMNIST() {
   llvm::outs() << "Validating.\n";
   EE.compile(CompilationMode::Infer, F);
 
-  auto LIH = labelInputs.getHandle<size_t>();
+  auto LIH = labelInputs.getHandle<int64_t>();
 
   // Check how many examples out of eighty previously unseen digits we can
   // classify correctly.
@@ -169,9 +169,9 @@ void testMNIST() {
 
     for (unsigned i = 0; i < minibatchSize; i++) {
       auto T = res.getHandle<>().extractSlice(i);
-      size_t guess = T.getHandle<>().minMaxArg().second;
+      int64_t guess = T.getHandle<>().minMaxArg().second;
 
-      size_t correct = LIH.at({minibatchSize * iter + i, 0});
+      int64_t correct = LIH.at({minibatchSize * iter + i, 0});
       rightAnswer += (guess == correct);
 
       if (iter == numIterations) {

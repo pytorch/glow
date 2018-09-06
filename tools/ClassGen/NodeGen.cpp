@@ -37,7 +37,9 @@ int main(int argc, char **argv) {
   //                    Input/Output nodes
   //===--------------------------------------------------------------------===//
 
+  BB.declareNode("Storage");
   BB.declareNode("Variable");
+  BB.declareNode("Placeholder");
 
   BB.newNode("Save")
       .addInput("Input")
@@ -60,35 +62,35 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Filter")
       .addInput("Bias")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
-      .addMember(MemberType::SizeT, "Group")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernel, Stride, Pads, "
+                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group.");
 
-  BB.newNode("PoolMax")
+  BB.newNode("MaxPool")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs a Max Pool operation on the Input given provided "
-                    "Kernel, Stride, and Pads.");
+                    "Kernels, Strides, and Pads.");
 
-  BB.newNode("PoolAvg")
+  BB.newNode("AvgPool")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "Kernel")
-      .addMember(MemberType::SizeT, "Stride")
-      .addMember(MemberType::VectorSizeT, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs an Average Pool operation on the Input given "
-                    "provided Kernel, Stride, and Pads.");
+                    "provided Kernels, Strides, and Pads.");
 
   BB.newNode("FullyConnected")
       .addInput("Input")
@@ -110,7 +112,7 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addInput("Mean")
       .addInput("Var")
-      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Epsilon")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Input.getType()")
@@ -124,7 +126,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Mean")
       .addInput("Var")
-      .addMember(MemberType::SizeT, "ChannelIdx")
+      .addMember(MemberType::Unsigned, "ChannelIdx")
       .addMember(MemberType::Float, "Momentum")
       .addResult("Mean.getType()", "NewMean")
       .addResult("Var.getType()", "NewVar")
@@ -133,7 +135,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("LocalResponseNormalization")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "HalfWindowSize")
+      .addMember(MemberType::Unsigned, "HalfWindowSize")
       .addMember(MemberType::Float, "Alpha")
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
@@ -150,7 +152,7 @@ int main(int argc, char **argv) {
   BB.newNode("SoftMax")
       .addInput("Input")
       .addInput("Selected")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs SoftMax normalization on the Input tensor.");
 
@@ -168,6 +170,12 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring(
           "Takes an Input tensor and creates a regression output layer.");
+
+  BB.newNode("SigmoidCrossEntropyWithLogits")
+      .addInput("Logits")
+      .addInput("Targets")
+      .addResultFromCtorArg()
+      .setDocstring("Computes the sigmoid cross entropy between two inputs.");
 
   //===--------------------------------------------------------------------===//
   //                      Arithmetic
@@ -229,10 +237,10 @@ int main(int argc, char **argv) {
                     "RHS operands. Inputs must be integer.");
 
   BB.newNode("Pow")
-      .addInput("Base")
-      .addMember(MemberType::Float, "Exp")
+      .addInput("LHS")
+      .addInput("RHS")
       .addResultFromCtorArg()
-      .setDocstring("Performs elementwise pow(Base, Exp).");
+      .setDocstring("Performs elementwise pow(LHS, RHS).");
 
   // clang-format off
   BB.newNode("Log")
@@ -266,14 +274,15 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Axis")
       .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
-  BB.newNode("SparseLengthsSum")
+  BB.newNode("SparseLengthsWeightedSum")
       .addInput("Data")
+      .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
       .addResultFromCtorArg()
@@ -282,7 +291,10 @@ int main(int argc, char **argv) {
                     "len(Lengths) entries: first Lengths[0] slices are "
                     "aggregated to Result[0], next Lengths[1] slices are "
                     "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
-                    "equal to len(Indices).");
+                    "equal to len(Indices). Before doing aggregation, each "
+                    "individual slice is scaled by its weight: Result[0] = "
+                    "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
+                    "It implies that len(Weights) == len(Indices).");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
@@ -290,7 +302,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Relu")
       .addInput("Input")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
@@ -347,8 +359,8 @@ int main(int argc, char **argv) {
       .addInput("Big")
       .addInput("Small")
       .addMember(MemberType::VectorSizeT, "Start")
-      .addMember(MemberType::SizeT, "Count")
-      .addMember(MemberType::SizeT, "Axis")
+      .addMember(MemberType::Unsigned, "Count")
+      .addMember(MemberType::Unsigned, "Axis")
       .addResult("Big.getType()")
       .setDocstring("Insert tensor Small into tensor Big given indices Start. "
                     "Small is inserted Count times along Axis. The resulting "
@@ -459,8 +471,9 @@ int main(int argc, char **argv) {
   BB.newNode("RescaleQuantized")
       .addInput("Input")
       .addResultFromCtorArg()
-      .setDocstring("Rescale input quantized tensor to a new Scale and "
-                    "Offset.");
+      .setDocstring("Rescale the input quantized tensor to a new Scale and "
+                    "Offset. The new Scale and Offset are specified by the "
+                    "output type passed to the constructor");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used by RNN
@@ -468,7 +481,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("TopK")
       .addInput("Input")
-      .addMember(MemberType::SizeT, "K")
+      .addMember(MemberType::Unsigned, "K")
       .addResultFromCtorArg("Values")
       .addResultFromCtorArg("Indices")
       .setDocstring("Finds the top K maximal elements for each vector in the "

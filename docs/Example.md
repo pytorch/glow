@@ -28,17 +28,17 @@ Variable *A = mod.createVariable(
 // Construct LeNet.
 auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
 auto *RL0 = F->createRELU("relu", CV0);
-auto *MP0 = F->createPoolMax("pool", RL0, 3, 3, 0);
+auto *MP0 = F->createMaxPool("pool", RL0, 3, 3, 0);
 
 auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2, 1);
 auto *RL1 = F->createRELU("relu", CV1);
-auto *MP1 = F->createPoolMax("pool", RL1, 3, 3, 0);
+auto *MP1 = F->createMaxPool("pool", RL1, 3, 3, 0);
 
 auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
 
 // Declare output: an index (0-9) indicating which digit is seen.
 Variable *selected = mod.createVariable(
-    ElemKind::IndexTy, {minibatchSize, 1}, "selected",
+    ElemKind::Int64ITy, {minibatchSize, 1}, "selected",
     VisibilityKind::Public, Variable::TrainKind::None);
 auto *SM = F->createSoftMax("sm", FCL1, selected);
 
@@ -101,14 +101,14 @@ code {
   0 %conv__4.res = allocactivation  { Ty: float<8 x 28 x 28 x 16>} // size: 401408 // Users: @in 3, @out 4, @out 1
   1 %conv__4 = convolution @out %conv__4.res, @in %input__1, @in %filter__2, @in %bias__3 { Kernel: 5, Stride: 1, Pads: [2, 2, 2, 2], Depth: 16, Group: 1}
   2 %pool.res = allocactivation  { Ty: float<8 x 9 x 9 x 16>} // size: 41472 // Users: @in 7, @out 5, @out 3, @out 8, @in 5
-  3 %pool__149 = poolmax @out %pool.res, @in %conv__4.res { Kernel: 3, Stride: 3, Pads: [0, 0, 0, 0]}
+  3 %pool__149 = maxpool @out %pool.res, @in %conv__4.res { Kernel: 3, Stride: 3, Pads: [0, 0, 0, 0]}
   4 %dealloc = deallocactivation @out %conv__4.res // size: 401408
   5 %relu__160 = cpumaxsplat @out %pool.res, @in %pool.res { SplatValue: 0.000000e+00}
   6 %conv__9.res = allocactivation  { Ty: float<8 x 9 x 9 x 16>} // size: 41472 // Users: @in 10, @out 11, @out 7
   7 %conv__9 = convolution @out %conv__9.res, @in %pool.res, @in %filter__7, @in %bias__8 { Kernel: 5, Stride: 1, Pads: [2, 2, 2, 2], Depth: 16, Group: 1}
   8 %dealloc0 = deallocactivation @out %pool.res // size: 41472
   9 %pool.res0 = allocactivation  { Ty: float<8 x 3 x 3 x 16>} // size: 4608 // Users: @in 13, @out 12, @out 10, @out 16, @in 12
-  10 %pool__151 = poolmax @out %pool.res0, @in %conv__9.res { Kernel: 3, Stride: 3, Pads: [0, 0, 0, 0]}
+  10 %pool__151 = maxpool @out %pool.res0, @in %conv__9.res { Kernel: 3, Stride: 3, Pads: [0, 0, 0, 0]}
   11 %dealloc1 = deallocactivation @out %conv__9.res // size: 41472
   12 %relu__161 = cpumaxsplat @out %pool.res0, @in %pool.res0 { SplatValue: 0.000000e+00}
   13 %tensorview.reshape = tensorview @in %pool.res0 { Ty: float<8 x 144>} // Users: @in 15

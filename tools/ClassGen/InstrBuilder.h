@@ -22,6 +22,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -70,8 +71,10 @@ class InstrBuilder {
   /// Stores the decl and body of a new public method that will be added to the
   /// class.
   std::vector<std::pair<std::string, std::string>> extraMethods_;
-  /// A list of operands that are declared as 'inplace' operands.
-  std::vector<std::string> inplaceOperands_;
+  /// A list of list of operands that are declared as 'inplace' operands.
+  /// Each list depicts the 'inplace' operands for one output.
+  /// The output is the first element of the related list.
+  std::list<std::vector<std::string>> inplaceOperands_;
   /// A list of (VerifyKind, {op1, op2, ...}) pairs. Each pair represents a
   /// specific kind of verification to apply on the list of operands.
   std::vector<std::pair<VerifyKind, std::vector<std::string>>>
@@ -150,8 +153,16 @@ public:
   /// the operand \p lst[0].
   InstrBuilder &inplaceOperand(llvm::ArrayRef<llvm::StringRef> lst) {
     assert(lst.size() > 1 && "Not enough operands");
-    assert(!inplaceOperands_.size() && "Initializing field twice");
-    inplaceOperands_.insert(inplaceOperands_.begin(), lst.begin(), lst.end());
+    inplaceOperands_.emplace_back(lst.begin(), lst.end());
+    // Check that the output parameter is described at most once.
+    for (auto it = inplaceOperands_.begin(), end = inplaceOperands_.end();
+         it != end; ++it) {
+      for (auto secondIt = std::next(it); secondIt != end; ++secondIt) {
+        assert(getOperandIndexByName((*it)[0]) !=
+                   getOperandIndexByName((*secondIt)[0]) &&
+               "Inplace operands for output appears more than once");
+      }
+    }
     return *this;
   }
 

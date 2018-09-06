@@ -19,14 +19,14 @@
 void OCLConvolutionNode::verify() const {
   ShapeNCHW idim(getInput().getType()->dims());
   ShapeNCHW odim(getResult().getType()->dims());
-  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernel(),
-                                           getStride(), getPads());
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernels(),
+                                           getStrides(), getPads());
   ShapeNCHW exp(idim.n, getBias().dims()[0], outSz.first, outSz.second);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");
 }
 
-void OCLPoolAvgNode::verify() const {}
+void OCLAvgPoolNode::verify() const {}
 
-void OCLPoolMaxNode::verify() const {}
+void OCLMaxPoolNode::verify() const {}
 #endif // GLOW_WITH_OPENCL

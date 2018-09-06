@@ -94,13 +94,12 @@ void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
 }
 
 void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
-  auto xDim = flattenCdr(FC.getInput().getType()->dims());
-  auto wDim = FC.getWeights().dims();
-  auto *X = F->createReshape("fc.1X", FC.getInput(), {xDim.first, xDim.second});
+  auto *X = F->createFlatten("fc.1X", FC.getInput(), 1);
 
+  auto W = FC.getWeights();
   TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult().getType(), {xDim.first, wDim[1]});
-  auto *mul = F->createMatMul("fc.dot", outTy, X, FC.getWeights());
+      FC.getResult().getType(), {X->getResult().dims()[0], W.dims()[1]});
+  auto *mul = F->createMatMul("fc.dot", outTy, X, W);
 
   auto add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
                                  FC.getBias());
@@ -116,7 +115,6 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
-  auto xDims = flattenCdr(FCG.getInput().dims());
 
   // dx = dout * w.T
   auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
@@ -125,8 +123,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedInput().replaceAllUsesOfWith(dx);
 
   // dw = xT * dout.
-  Node *x2 =
-      F->createReshape("fcg.x", FCG.getInput(), {xDims.first, xDims.second});
+  Node *x2 = F->createFlatten("fcg.x", FCG.getInput(), 1);
   auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
   auto *dw = F->createMatMul("fcg.dot", x2T, dout);
   FCG.getGradOfInputNamedWeights().replaceAllUsesOfWith(dw);
@@ -185,7 +182,8 @@ void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
 void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
-  auto *relu = F->createMax("relu", zero, R.getInput());
+  auto *relu =
+      F->createMax("relu", R.getResult().getType(), zero, R.getInput());
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
@@ -308,8 +306,8 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
   // OptimizationStochasticGradientDescent/
   if (momentum > 0.0) {
     Variable *Gsum = F->getParent()->createVariable(
-        W->getType(0), "gsum", VisibilityKind::Private,
-        Variable::TrainKind::Broadcast, 0);
+        W.getType(), "gsum", VisibilityKind::Private, true);
+    Gsum->getPayload().zero();
 
     auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
     auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);
@@ -387,7 +385,7 @@ void lowerMeanVarNormalizationNode(Function *F, MeanVarNormalizationNode &MVN) {
   if (channelIdx + 1 != in.dims().size()) {
     // If channelIdx is not the last, transform input tensor to shape:
     // {d_1, d_2, ... d_n, numChannels}
-    std::vector<unsigned> perm(in.dims().size());
+    std::vector<unsigned_t> perm(in.dims().size());
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = i;
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
@@ -470,7 +468,7 @@ void lowerBatchNormalizationGradNode(Function *F,
 
   // TODO: consider adding this functionality to the main operator set.
   if (channelIdx + 1 != inW.dims().size()) {
-    std::vector<unsigned> perm(inW.dims().size());
+    std::vector<unsigned_t> perm(inW.dims().size());
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = i;
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
@@ -544,16 +542,16 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // divided into equal groups of consecutive channels. These will be separately
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
-  unsigned kernel = BNG.getKernel();
-  llvm::ArrayRef<size_t> pads = BNG.getPads();
-  unsigned stride = BNG.getStride();
-  unsigned group = BNG.getGroup();
+  llvm::ArrayRef<unsigned_t> kernels = BNG.getKernels();
+  llvm::ArrayRef<unsigned_t> pads = BNG.getPads();
+  llvm::ArrayRef<unsigned_t> strides = BNG.getStrides();
+  unsigned_t group = BNG.getGroup();
   auto in = BNG.getInput();
   auto filter = BNG.getFilter();
   auto bias = BNG.getBias();
 
   ShapeNHWC idim = ShapeNHWC(in.dims());
-
+  ShapeHW kdim(kernels);
   unsigned inCperG = idim.c / group;
   unsigned outCperG = filter.dims()[0] / group;
 
@@ -563,20 +561,61 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
                                                       outDims);
 
   std::vector<NodeValue> convs;
-  for (unsigned groupId = 0; groupId < group; groupId++) {
+  for (unsigned_t groupId = 0; groupId < group; groupId++) {
     auto *in_slice =
         F->createSlice(BNG.getName(), in, {0, 0, 0, groupId * inCperG},
                        {idim.n, idim.h, idim.w, (groupId + 1) * inCperG});
-    auto *filter_slice =
-        F->createSlice(BNG.getName(), filter, {groupId * outCperG, 0, 0, 0},
-                       {(groupId + 1) * outCperG, kernel, kernel, inCperG});
+    auto *filter_slice = F->createSlice(
+        BNG.getName(), filter, {groupId * outCperG, 0, 0, 0},
+        {(groupId + 1) * outCperG, kdim.height, kdim.width, inCperG});
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
     convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
-                                  bias_slice, outTy, kernel, stride, pads, 1));
+                                  bias_slice, outTy, kernels, strides, pads,
+                                  1));
   }
   auto result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
+}
+
+void lowerSigmoidCrossEntropyWithLogitsNode(
+    Function *F, SigmoidCrossEntropyWithLogitsNode &SCEL) {
+  // Following Caffe2 implementation closely to lower this Node.
+  // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
+
+  auto lgt = SCEL.getLogits();
+  auto tgt = SCEL.getTargets();
+
+  // Element-wise transformation:
+  // max(lgt, 0) - lgt * tgt + log(1 + exp(-abs(x)))
+
+  auto *zeroSplat = F->createSplat("zeroSplat", lgt.getType(), 0.0);
+  auto *oneSplat = F->createSplat("oneSplat", lgt.getType(), 1.0);
+  auto *expSplat = F->createSplat("oneSplat", lgt.getType(), exp(1.0));
+
+  auto *cmp0lgt = F->createCmpLTE("cmp.0.lgt", zeroSplat, lgt);
+
+  // (tgt - (lgt >= 0))
+  auto *coeff = F->createSelect("select", cmp0lgt,
+                                F->createSub("tgt.m1", tgt, oneSplat), tgt);
+
+  // exp(lgt >= 0 ? -lgt : lgt)
+  auto *expArg = F->createSelect("exp.arg", cmp0lgt,
+                                 F->createSub("neg.lgt", zeroSplat, lgt), lgt);
+
+  // (1 + exp(expArg))
+  auto *logArg =
+      F->createAdd("log.arg", oneSplat, F->createPow("exp", expSplat, expArg));
+
+  // log(logArg) - lgt * coeff
+  auto *sigmoidXent =
+      F->createSub("sigmoid.xent.pointwise", F->createLog("log", logArg),
+                   F->createMul("lhs", lgt, coeff));
+
+  auto *reducedSigmoidXent = F->createBatchedReduceMean(
+      "sigmoid.xent.lowered", sigmoidXent, lgt.dims().size() - 1);
+
+  SCEL.getResult().replaceAllUsesOfWith(reducedSigmoidXent);
 }
 
 void glow::lower(Function *F, const Backend &B) {
@@ -619,6 +658,8 @@ void glow::lower(Function *F, const Backend &B) {
       lowerMeanVarNormalizationNode(F, *MVN);
     } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
       lowerBatchNormalizationGradNode(F, *BNG);
+    } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
+      lowerSigmoidCrossEntropyWithLogitsNode(F, *SCEL);
     } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
       if (CN->getGroup() > 1)
         lowerGroupConvolutionNode(F, *CN);

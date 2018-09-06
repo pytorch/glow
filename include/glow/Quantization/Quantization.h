@@ -62,11 +62,16 @@ generateNodeQuantizationInfos(const Function *F,
 /// function based on \p quantizationInfos. This method converts to integer as
 /// many nodes as permitted by the backend \p EE. The new quantized function is
 /// called \p newFuncName. If no name is given the method will generate a name.
+/// This method clones original function \p F and caller is responsible for
+/// cleaning up/erasing original function \p F if needed. Any nodes of kinds
+/// contained in \p doNotQuantizeKinds will not be quantized, even if a profile
+/// was gathered for them and the backend supports the quantized operation.
 /// \returns a new quantized function.
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 Function *F, llvm::StringRef newFuncName = "");
+                 Function *F, llvm::StringRef newFuncName = "",
+                 const KindSet &doNotQuantizeKinds = {});
 
 } // namespace quantization
 } // namespace glow

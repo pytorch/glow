@@ -176,7 +176,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << ";\n}\n";
 
-  os << "\nllvm::StringRef " << name_
+  os << "\nstd::string " << name_
      << "Node::getInputName(unsigned idx) const {\n";
   for (size_t i = 0; i < nodeInputs_.size(); i++) {
     os << "  if (idx == " << i << ") { return \"" << nodeInputs_[i]
@@ -377,16 +377,17 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
      << "Node::visit(Node *parent, NodeWalker *visitor) {\n"
      << "  if (!visitor->shouldVisit(parent, this)) { return; }\n"
      << "  visitor->pre(parent, this);\n"
-     << "  if (hasPredicate()) getPredicate()->visit(this, visitor);\n";
+     << "if (hasPredicate())\n"
+     << " getPredicate().getNode()->visit(this, visitor);\n";
 
   for (const auto &op : nodeInputs_) {
-    os << "  get" << op << "()->visit(this, visitor);\n";
+    os << "  get" << op << "().getNode()->visit(this, visitor);\n";
   }
 
   for (const auto &op : members_) {
     if (op.first == MemberType::VectorNodeValue) {
       os << "  for (auto &I : " << op.second
-         << "_) { I->visit(this, visitor); }\n";
+         << "_) { I.getNode()->visit(this, visitor); }\n";
     }
   }
 
@@ -416,7 +417,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   emitSettersGetters(os);
 
   os << "  unsigned getNumInputs() const;\n"
-     << "  llvm::StringRef getInputName(unsigned idx) const;\n"
+     << "  std::string getInputName(unsigned idx) const;\n"
      << "  NodeValue getNthInput(unsigned idx);\n"
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"

@@ -21,74 +21,23 @@
 
 using namespace glow;
 
-void Variable::initPayload(PseudoRNG &PRNG) {
-  payload_.reset(*getType());
-
-  switch (getTrainKind()) {
-  case TrainKind::None:
-    break;
-
-  case TrainKind::Broadcast: {
-    switch (payload_.getElementType()) {
-    case ElemKind::FloatTy: {
-      payload_.getHandle<float>().clear(val_);
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().clear(val_);
-      break;
-    };
-    case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().clear(val_);
-      break;
-    }
-    case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().clear(val_);
-      break;
-    }
-    }
-    break;
-  }
-
-  case TrainKind::Xavier: {
-    switch (payload_.getElementType()) {
-    case ElemKind::FloatTy: {
-      payload_.getHandle<float>().initXavier(val_, PRNG);
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      payload_.getHandle<int8_t>().initXavier(val_, PRNG);
-      break;
-    };
-    case ElemKind::Int32QTy: {
-      payload_.getHandle<int32_t>().initXavier(val_, PRNG);
-      break;
-    }
-    case ElemKind::IndexTy: {
-      payload_.getHandle<size_t>().initXavier(val_, PRNG);
-      break;
-    }
-    }
-    break;
-  }
-  }
-}
-
-/// Equality predicate for variables.
-bool Variable::isEqual(const Variable &other) const {
-  /// A variable should be equal only to itself!
+bool Storage::isEqual(const Storage &other) const {
+  /// A storage should be equal only to itself!
   return this == &other;
 }
 
 llvm::hash_code Variable::getHash() const {
-  return llvm::hash_combine(getName(), getTrainKind(), getType(),
-                            toBinary(val_));
+  return llvm::hash_combine(getName(), isTraining(), getType());
+}
+
+llvm::hash_code Placeholder::getHash() const {
+  return llvm::hash_combine(getName());
 }
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
 
-void Variable::visit(Node *parent, NodeWalker *visitor) {
+void Storage::visit(Node *parent, NodeWalker *visitor) {
   if (!visitor->shouldVisit(parent, this)) {
     return;
   }
@@ -96,7 +45,7 @@ void Variable::visit(Node *parent, NodeWalker *visitor) {
   visitor->post(parent, this);
 }
 
-void Variable::visit(const Node *parent, NodeWalker *visitor) const {
+void Storage::visit(const Node *parent, NodeWalker *visitor) const {
   if (!visitor->shouldVisit(parent, this)) {
     return;
   }
@@ -107,37 +56,30 @@ void Variable::visit(const Node *parent, NodeWalker *visitor) const {
 //===----------------------------------------------------------------------===//
 //                     Edge getters methods
 //===----------------------------------------------------------------------===//
-unsigned Variable::getNumInputs() const { return 0; }
+unsigned Storage::getNumInputs() const { return 0; }
 
-llvm::StringRef Variable::getInputName(unsigned idx) const {
+std::string Storage::getInputName(unsigned idx) const {
   llvm_unreachable("Invalid index");
 }
 
-NodeValue Variable::getNthInput(unsigned idx) {
+NodeValue Storage::getNthInput(unsigned idx) {
   llvm_unreachable("Invalid index");
 }
 
-llvm::StringRef Variable::getOutputName(unsigned idx) const {
+llvm::StringRef Storage::getOutputName(unsigned idx) const {
   if (idx == 0) {
     return "Output";
   }
   llvm_unreachable("Invalid index");
 }
 
-bool Variable::hasSideEffects() const { return false; }
+bool Storage::hasSideEffects() const { return false; }
 
-Node *Variable::clone() const {
-  llvm_unreachable("variables can't be cloned.");
-}
+Node *Storage::clone() const { llvm_unreachable("variables can't be cloned."); }
 
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
-
-static const char *getVariableTrainKindStr(Variable::TrainKind kind) {
-  const char *names[] = {"none", "broadcast", "xavier", nullptr};
-  return names[static_cast<int>(kind)];
-}
 
 static const char *getVariableVisibilityKindStr(VisibilityKind kind) {
   const char *names[] = {"public", "private", nullptr};
@@ -149,10 +91,16 @@ std::string Variable::getDebugDesc() const {
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("visibility", getVariableVisibilityKindStr(visibility_));
-  if (train_ != Variable::TrainKind::None) {
-    db.addParam("init", getVariableTrainKindStr(train_)).addParam("val", val_);
-  }
+  db.addParam("train", isTraining());
   db.addParam("users", getNumUsers());
+  return db;
+}
+
+std::string Placeholder::getDebugDesc() const {
+  DescriptionBuilder db(getKindName());
+  db.addParam("name", quote(getName()))
+      .addParam("output", *getType())
+      .addParam("users", getNumUsers());
   return db;
 }
 
@@ -160,25 +108,46 @@ std::string Variable::getDebugDesc() const {
 //                       Nodes verification
 //===----------------------------------------------------------------------===//
 
-/// Check that the type of the first operand matches the type of the second
-/// operand.
+/// Check that the type of the first operand \p A matches the type of the second
+/// operand \p B.
 static void checkSameType(NodeValue A, NodeValue B) {
   assert(A.getType() == B.getType() && "Invalid type");
 }
 
-/// Check that the shape of the first operand matches the shape of the second
-/// operand.
+/// Check that the shape of the first operand \p A matches the shape of the
+/// second operand \p B.
 static void checkSameShape(NodeValue A, NodeValue B) {
   assert(A.dims() == B.dims() && "Invalid shape");
 }
 
+/// Check that the element type of the operand \p A matches expected type \p
+/// expected Type.
 static void checkType(NodeValue A, ElemKind expectedType) {
   assert(A.getElementType() == expectedType && "Invalid type");
 }
 
+/// Check that the type of the first operand \p A matches the type of the second
+/// operand \p B but ignore the actual shape. Use only element type and
+/// quantization parameters in comparison.
+static void checkTypeIgnoreShape(NodeValue A, NodeValue B) {
+  assert(A.getElementType() == B.getElementType() && "Invalid element type");
+  assert(A.getType()->isQuantizedType() == B.getType()->isQuantizedType() &&
+         "Invalid mix of quantized and non quantized types");
+
+  if (A.getType()->isQuantizedType()) {
+    assert(A.getType()->getScale() == B.getType()->getScale() &&
+           "Invalid scale");
+    assert(A.getType()->getOffset() == B.getType()->getOffset() &&
+           "Invalid offset");
+  }
+}
+
 static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
-                              NodeValue bias, size_t kernel, size_t stride,
-                              llvm::ArrayRef<size_t> pads, size_t group) {
+                              NodeValue bias,
+                              llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> strides,
+                              llvm::ArrayRef<unsigned_t> pads,
+                              unsigned_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
   assert(src.getElementType() == bias.getElementType() && "Invalid Type");
@@ -187,19 +156,20 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   ShapeNHWC odim(dest.getType()->dims());
   PaddingTLBR pdim(pads);
   (void)pdim;
-  assert((idim.w + pdim.left + pdim.right) >= kernel &&
-         (idim.h + pdim.top + pdim.bottom) >= kernel &&
+  ShapeHW kdim(kernels);
+  assert((idim.w + pdim.left + pdim.right) >= kdim.height &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.width &&
          "buffer too small for selected stride");
 
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   (void)outSz;
   assert(odim.n == idim.n && odim.h == outSz.first && odim.w == outSz.second &&
          odim.c % group == 0 && "Invalid output dimensions");
 
-  auto filterDims = {odim.c, kernel, kernel, idim.c / group};
+  auto filterDims = {odim.c, kdim.height, kdim.width, idim.c / (size_t)group};
   assert(filter.getType()->dims().equals(filterDims) && "Invalid filter dims");
   (void)filterDims;
 
@@ -219,28 +189,32 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
          "Inconsistent bias/weights/dest sizes.");
 }
 
-static void verifyPool(NodeValue src, NodeValue dest, size_t kernel,
-                       size_t stride, llvm::ArrayRef<size_t> pads) {
+static void verifyPool(NodeValue src, NodeValue dest,
+                       llvm::ArrayRef<unsigned_t> kernels,
+                       llvm::ArrayRef<unsigned_t> strides,
+                       llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
   (void)odim;
   PaddingTLBR pdim(pads);
   (void)pdim;
-  assert((idim.w + pdim.left + pdim.right) >= kernel &&
-         (idim.h + pdim.top + pdim.bottom) >= kernel &&
+  ShapeHW kdim(kernels);
+  assert((idim.w + pdim.left + pdim.right) >= kdim.height &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.width &&
          "buffer too small for selected stride");
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   (void)exp;
   assert(exp == odim && "Unexpected output dimensions");
+  checkTypeIgnoreShape(src, dest);
 }
 
 static void verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue bias, NodeValue scale,
                                      NodeValue mean, NodeValue var,
-                                     size_t channel) {
+                                     unsigned_t channel) {
   checkSameType(dest, src);
 
   // Figure out how many channels are in the tensor.
@@ -263,8 +237,12 @@ static void verifyTanh(NodeValue src, NodeValue dest) {
 }
 
 static void verifySoftMax(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
-  assert(src.dims() == dest.dims() && "Invalid shape");
+  if (src.getType()->isQuantizedType()) {
+    assert(src.getElementType() == dest.getElementType());
+    checkSameShape(src, dest);
+  } else {
+    checkSameType(src, dest);
+  }
 }
 
 static void verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
@@ -282,8 +260,15 @@ static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
   checkSameShape(LHS, RHS);
 }
 
-static void verifyRelu(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
+static void verifyRelu(NodeValue result, NodeValue input) {
+  if (input.getType()->isQuantizedType()) {
+    assert(result.getType()->isQuantizedType());
+    checkSameShape(result, input);
+    assert(result.getType()->getOffset() == -128 &&
+           "Min fp32 value should be 0");
+  } else {
+    checkSameType(result, input);
+  }
 }
 
 static void verifyRegression(NodeValue src, NodeValue dest,
@@ -293,8 +278,8 @@ static void verifyRegression(NodeValue src, NodeValue dest,
 }
 
 void ConvolutionNode::verify() const {
-  verifyConvolution(getInput(), getResult(), getFilter(), getBias(), Kernel_,
-                    Stride_, Pads_, Group_);
+  verifyConvolution(getInput(), getResult(), getFilter(), getBias(), Kernels_,
+                    Strides_, Pads_, Group_);
 }
 
 /// Verify that types of an input and its gradient are the same.
@@ -319,31 +304,31 @@ void ConvolutionGradNode::verify() const {
   verifyConvolution(getGradOfInputNamedInput(),
                     getGradOfOriginalOutputNamedResult(),
                     getGradOfInputNamedFilter(), getGradOfInputNamedBias(),
-                    Kernel_, Stride_, Pads_, Group_);
+                    Kernels_, Strides_, Pads_, Group_);
 }
 
-void PoolMaxNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pads_);
+void MaxPoolNode::verify() const {
+  verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }
 
-void PoolAvgNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernel_, Stride_, Pads_);
+void AvgPoolNode::verify() const {
+  verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }
 
-void PoolMaxGradNode::verify() const {
+void MaxPoolGradNode::verify() const {
   verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
   verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
                                  getGradOfOriginalOutputNamedResult());
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernel_, Stride_, Pads_);
+             Kernels_, Strides_, Pads_);
 }
 
-void PoolAvgGradNode::verify() const {
+void AvgPoolGradNode::verify() const {
   verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
   verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
                                  getGradOfOriginalOutputNamedResult());
   verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernel_, Stride_, Pads_);
+             Kernels_, Strides_, Pads_);
 }
 
 void MatMulNode::verify() const {
@@ -513,6 +498,7 @@ VERIFY_ARITHMETIC(Div);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
 VERIFY_ARITHMETIC(CmpEQ);
+VERIFY_ARITHMETIC(Pow);
 #undef VERIFY_ARITHMETIC
 
 void CmpLTENode::verify() const {
@@ -554,18 +540,23 @@ void BatchedAddNode::verify() const {
 void BatchedReduceAddNode::verify() const {
   assert(getResult().getElementType() == getBatch().getElementType() &&
          "Mismatched element types");
-  assert(getBatch().dims().size() > 1 && "Invalid shape");
+  assert(getBatch().dims().size() > 0 && "Invalid shape");
 }
 
-void SparseLengthsSumNode::verify() const {
+void SparseLengthsWeightedSumNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType() &&
          "Mismatched element types");
-  assert(getIndices().getElementType() == ElemKind::IndexTy &&
+  assert(getWeights().getElementType() == getData().getElementType() &&
+         "Mismatched element types");
+  assert(getIndices().getElementType() == ElemKind::Int64ITy &&
          "Indices must have index type");
-  assert(getLengths().getElementType() == ElemKind::IndexTy &&
+  assert(getLengths().getElementType() == ElemKind::Int64ITy &&
          "Lengths must have index type");
   assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
+  assert(getWeights().dims().size() == 1 && "Weights must be 1D vector");
+  assert(getWeights().dims()[0] == getIndices().dims()[0] &&
+         "Weights and Indices must have the same size");
 }
 
 void SGDNode::verify() const {
@@ -633,7 +624,7 @@ void TopKNode::verify() const {
 
 void GatherNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType());
-  assert(getIndices().getElementType() == ElemKind::IndexTy);
+  assert(getIndices().getElementType() == ElemKind::Int64ITy);
   assert(getResult().dims().size() ==
          getData().dims().size() + getIndices().dims().size() - 1);
   if (getResult().getType()->isQuantizedType()) {
@@ -670,8 +661,6 @@ void ScatterAssignNode::verify() const {
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
-void PowNode::verify() const { checkSameType(getResult(), getBase()); }
-
 void LogNode::verify() const { checkSameType(getInput(), getResult()); }
 
 void SelectNode::verify() const {
@@ -706,6 +695,11 @@ void RegressionGradNode::verify() const {
                    getGradOfInputNamedExpected());
 }
 
+void SigmoidCrossEntropyWithLogitsNode::verify() const {
+  assert(getResult().getElementType() == getLogits().getElementType());
+  checkSameType(getLogits(), getTargets());
+}
+
 void FullyConnectedNode::verify() const {
   verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }
@@ -726,9 +720,14 @@ void ConcatNode::verify() const {
   auto dimension = getDim();
   (void)inputs;
   (void)dimension;
+  assert(!inputs.empty() && "Empty concat?!");
+  assert(inputs[0].dims().size() > dimension && "concat on invalid dimension");
 
+  size_t nbDims = inputs[0].dims().size();
   for (size_t i = 1; i < inputs.size(); i++) {
-    for (size_t j = 0; j < inputs[0].dims().size(); j++) {
+    assert(nbDims == inputs[i].dims().size() &&
+           "input #dims are incompatible between elements");
+    for (size_t j = 0; j < nbDims; j++) {
       if (j == dimension) {
         continue;
       }

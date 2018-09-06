@@ -39,10 +39,9 @@ TEST(Interpreter, NotImplementedSave) {
   // Create a few nodes to make sure IR can be normally generated.
   Function *F = mod.createFunction("main");
   F->createSave("save", mod.createVariable(ElemKind::FloatTy, {2}, "A",
-                                           VisibilityKind::Public,
-                                           Variable::TrainKind::None));
+                                           VisibilityKind::Public, false));
 
-  EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output"), "");
+  EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output", "network"), "");
 }
 
 TEST(Interpreter, profileQuantizationForANetwork) {
@@ -107,19 +106,19 @@ TEST_P(BackendTest, simpleInference) {
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                    VisibilityKind::Public);
 
-  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
+  auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
   auto *CV1 = F->createConv("conv2", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu2", CV1);
-  auto *MP1 = F->createPoolMax("pool2", RL1, 2, 2, 0);
+  auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
 
   auto *CV2 = F->createConv("conv3", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu3", CV2);
-  auto *MP2 = F->createPoolMax("pool3", RL2, 2, 2, 0);
+  auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
@@ -135,10 +134,8 @@ TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
   Function *F = mod.createFunction("main");
-  auto *IV =
-      mod.createVariable(&input.getType(), "input", VisibilityKind::Public,
-                         Variable::TrainKind::None);
-  IV->copyFrom(&input);
+  auto *IV = mod.createVariable("input", input, VisibilityKind::Public, false);
+  (void)IV;
 
   auto IR = llvm::make_unique<IRFunction>(F);
   IR->generateIR();
@@ -147,6 +144,33 @@ TEST_P(BackendTest, debugPrint) {
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto function = backend->compile(std::move(IR));
   function->execute();
+}
+
+/// This test checks that we can compile a function without depending on the
+/// graph representation. We compile some function and then delete the function.
+/// Later we execute the code and check that things work.
+TEST_P(BackendTest, decoupleCodegenFromGraph) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  auto *X = mod.createVariable(ElemKind::FloatTy, {3}, "X");
+  X->getPayload().getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  Variable *res = save->getVariable();
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Erase all of the functions to ensure that the compiled code does not
+  // depend on the graph.
+  mod.eraseFunctions();
+
+  // We can run the compiled code without having the graph representation
+  // around.
+  EE_.run({}, {});
+
+  auto HX = res->getPayload().getHandle();
+  EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+  EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+  EXPECT_NEAR(HX.at({2}), 9, 1E-5);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,

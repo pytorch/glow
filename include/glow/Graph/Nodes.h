@@ -28,63 +28,27 @@
 
 namespace glow {
 
-class Variable : public Node {
+// Storage is the base class for Variables, which are bound to tensors, and
+// Placeholder nodes which are unbound.
+class Storage : public Node {
 public:
-  /// Specifies the kind of training and initialization for the variable.
-  /// Nodes that are marked as 'none' are not modified during the training
-  /// process. Other nodes are trained with the inititial value specified by
-  /// this enum.
-  enum class TrainKind {
-    None,      // The variable is not trainable. It is initialized to zero.
-    Broadcast, // Broadcast a single value to all elements.
-    Xavier,    // Init the variable with random values using the Xavier method.
-  };
+  Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
 
-private:
-  /// The value to use during initialization. This can be the value to splat or
-  /// a parameter to specify the range of the random values.
-  float val_;
-  /// Specifies if the variable is trainable and how it's initialized.
-  TrainKind train_;
-  /// Specifies the visibility of the variable.
-  VisibilityKind visibility_;
-  /// The tensor payload that the variable holds.
-  Tensor payload_;
+  /// \return the single output value of the node.
+  NodeValue getOutput() { return getNthResult(0); }
 
-  /// Initialize the content of the tensor.
-  /// Payload is initialized to zero for 'None' TrainKind, and user
-  /// of the graph is responsible for updating the tensor externally.
-  void initPayload(PseudoRNG &PRNG);
-
-public:
-  /// Create a new variable and initialize its payload.
-  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
-           TrainKind train, float val, PseudoRNG &PRNG)
-      : Node(Kinded::Kind::VariableKind, name), val_(val), train_(train),
-        visibility_(visibility) {
-    addResult(Ty);
-    initPayload(PRNG);
-  }
-
-  Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Node(Kinded::Kind::VariableKind, name), val_(0.0),
-        train_(TrainKind::None), visibility_(visibility),
-        payload_(std::move(payload)) {
-    addResult(&payload_.getType());
-  }
-
-  /// \returns True if the Variable is initialized to be in training mode.
-  bool isTraining() const { return train_ != TrainKind::None; }
-
-  /// \returns True if the Variable is private.
-  bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
-
-  static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::VariableKind;
-  }
-
-  /// \returns the original training mode of the variable.
-  TrainKind getTrainKind() const { return train_; }
+  /// Declare the standard Node methods.
+  /// @{
+  void visit(Node *parent, NodeWalker *visitor);
+  void visit(const Node *parent, NodeWalker *visitor) const;
+  bool isEqual(const Storage &other) const;
+  unsigned getNumInputs() const;
+  std::string getInputName(unsigned idx) const;
+  NodeValue getNthInput(unsigned idx);
+  llvm::StringRef getOutputName(unsigned idx) const;
+  bool hasSideEffects() const;
+  Node *clone() const;
+  /// @}
 
   /// \returns result type of the variable.
   TypeRef getType() const { return Node::getType(0); }
@@ -95,48 +59,95 @@ public:
   llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
   /// @}
 
-  /// \returns the value used during initialization.
-  float getValue() const { return val_; }
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::VariableKind ||
+           k->getKind() == Kinded::Kind::PlaceholderKind;
+  }
+};
+
+class Variable : public Storage {
+  /// Specifies if the variable is trainable.
+  bool isTrainable_;
+  /// Specifies the visibility of the variable.
+  VisibilityKind visibility_;
+  /// The tensor payload that the variable holds.
+  Tensor payload_;
+
+public:
+  /// Create a new variable and initialize its payload.
+  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
+           bool isTrainable)
+      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(isTrainable),
+        visibility_(visibility) {
+    addResult(Ty);
+    payload_.reset(*Ty);
+  }
+
+  Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
+      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(false),
+        visibility_(visibility), payload_(std::move(payload)) {
+    addResult(&payload_.getType());
+  }
+
+  /// \returns True if the Variable is initialized to be in training mode.
+  bool isTraining() const { return isTrainable_; }
+
+  /// \returns True if the Variable is private.
+  bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::VariableKind;
+  }
 
   /// \returns the visibility of the variable.
   VisibilityKind getVisibilityKind() const { return visibility_; }
 
   Tensor &getPayload() { return payload_; }
 
+  const Tensor &getPayload() const { return payload_; }
+
   template <class ElemTy = float> Handle<ElemTy> getHandle() {
     return getPayload().getHandle<ElemTy>();
   }
 
-  void copyFrom(const Tensor *t) { payload_.copyFrom(t); }
+  void assign(const Tensor *t) { payload_.assign(t); }
 
-  /// \returns the output NodeValue from the Variable. Variables only have a
-  /// single output.
-  NodeValue getOutput() { return getNthResult(0); }
-
-  unsigned getNumInputs() const;
-  llvm::StringRef getInputName(unsigned idx) const;
-  NodeValue getNthInput(unsigned idx);
-  llvm::StringRef getOutputName(unsigned idx) const;
-  bool hasSideEffects() const;
   std::string getDebugDesc() const;
-  Node *clone() const;
 
-  void visit(Node *parent, NodeWalker *visitor);
-  void visit(const Node *parent, NodeWalker *visitor) const;
+  llvm::hash_code getHash() const;
+};
 
-  bool isEqual(const Variable &other) const;
+/// Placeholder nodes are unbound-storage. The content tensors are attached to
+/// this node at runtime. Placeholders are used as inputs and output nodes to
+/// the network.
+class Placeholder : public Storage {
+public:
+  /// Create a new placeholder variable.
+  Placeholder(llvm::StringRef name, TypeRef Ty)
+      : Storage(Kinded::Kind::PlaceholderKind, name) {
+    addResult(Ty);
+  }
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::PlaceholderKind;
+  }
+
+  std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;
 };
 
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
-inline std::pair<size_t, size_t>
-calculateConvPoolOutputDims(size_t sx, size_t sy, size_t filterSize,
-                            size_t stride, llvm::ArrayRef<size_t> pads) {
+inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
+    size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
   PaddingTLBR pdim(pads);
-  size_t outsx = ((sx + pdim.top + pdim.bottom - filterSize) / stride + 1);
-  size_t outsy = ((sy + pdim.left + pdim.right - filterSize) / stride + 1);
+  ShapeHW kdim(kernels);
+  ShapeHW sdim(strides);
+  size_t outsx =
+      ((sx + pdim.top + pdim.bottom - kdim.height) / sdim.height + 1);
+  size_t outsy = ((sy + pdim.left + pdim.right - kdim.width) / sdim.width + 1);
   return {outsx, outsy};
 }
 
@@ -163,7 +174,7 @@ llvm::hash_code hash_value(const glow::NodeHandle &T);
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:
-#include "AutoGenNodes.h"
+#include "glow/AutoGenNodes.h"
 
 namespace glow {
 
@@ -197,12 +208,12 @@ public:
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return asImpl().visit##CLASS(static_cast<CLASS *>(N),                      \
                                  std::forward<ArgTys>(args)...);
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 
 #define DEF_INSTR(CLASS, NAME) case glow::Kinded::Kind::CLASS##Kind:
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME) DEF_INSTR(CLASS, NAME)
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
       llvm_unreachable(
           "Not reachable, values and instructions are not handled here");
@@ -217,7 +228,7 @@ public:
     asImpl().post(N, args...);                                                 \
     return Ret;                                                                \
   }
-#include "AutoGenNodes.def"
+#include "glow/AutoGenNodes.def"
 };
 
 } // namespace glow

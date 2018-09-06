@@ -86,11 +86,11 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   Tensor inputs(ElemKind::FloatTy, shape);
   Tensor weights(ElemKind::FloatTy, {23, 23});
   Tensor bias(ElemKind::FloatTy, {23});
-  Tensor selected(ElemKind::IndexTy, {8, 1});
+  Tensor selected(ElemKind::Int64ITy, {8, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }
@@ -105,38 +105,6 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(OpenCLCorrectnessTest, convGradTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
-  Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
-  Tensor bias1(ElemKind::FloatTy, {3});
-  Tensor kernel2(ElemKind::FloatTy, {2, 2, 2, 1});
-  Tensor bias2(ElemKind::FloatTy, {2});
-  Tensor selected(ElemKind::IndexTy, {9, 1});
-  inputs.getHandle().initXavier(1, PRNG);
-  kernel1.getHandle().randomize(-1.0, 1.4, PRNG);
-  bias1.getHandle().randomize(-0.2, 0.5, PRNG);
-  kernel2.getHandle().randomize(-1.8, 2.3, PRNG);
-  bias2.getHandle().randomize(-0.5, 1.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
-  for (size_t i = 0; i < 9; i++) {
-    selectedH.raw(i) = PRNG.nextRandInt(0, 29);
-  }
-  std::array<size_t, 4> S1{{9, 6, 10, 1}};
-  llvm::ArrayRef<size_t> shape1(S1);
-  std::array<size_t, 2> S2{{9, 30}};
-  llvm::ArrayRef<size_t> shape2(S2);
-  Tensor out1(ElemKind::FloatTy, shape2);
-  Tensor out2(ElemKind::FloatTy, shape2);
-
-  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out1, BackendKind::OpenCL);
-  trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST(OpenCLCorrectnessTest, gatherTest) {
   PseudoRNG PRNG;
   constexpr size_t nSlices = 16;
@@ -145,8 +113,8 @@ TEST(OpenCLCorrectnessTest, gatherTest) {
   Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
   data.getHandle().initXavier(1, PRNG);
 
-  Tensor indices(ElemKind::IndexTy, {nGathered});
-  auto indicesH = indices.getHandle<size_t>();
+  Tensor indices(ElemKind::Int64ITy, {nGathered});
+  auto indicesH = indices.getHandle<int64_t>();
   for (size_t i = 0; i < nGathered; i++) {
     indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
   }

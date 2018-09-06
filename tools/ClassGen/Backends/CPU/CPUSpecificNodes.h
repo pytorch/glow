@@ -25,14 +25,14 @@ BB.newNode("CPUConvDKKC8")
     .addInput("Input")
     .addInput("Filter")
     .addInput("Bias")
-    .addMember(MemberType::SizeT, "Kernel")
-    .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::VectorSizeT, "Pads")
-    .addMember(MemberType::SizeT, "Group")
+    .addMember(MemberType::VectorUnsigned, "Kernels")
+    .addMember(MemberType::VectorUnsigned, "Strides")
+    .addMember(MemberType::VectorUnsigned, "Pads")
+    .addMember(MemberType::Unsigned, "Group")
     .addResultFromCtorArg()
     .setDocstring("This is a cpu-specific convolution implementation where the "
                   "filter is transposed to the shape [D/8, K, K, C, 8]");
 
-BB.includeBackendSpecificVerification("CPUSpecificNodesVerification.h");
+BB.includeBackendSpecificVerification("glow/CPUSpecificNodesVerification.h");
 
 #endif // GLOW_WITH_CPU

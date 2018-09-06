@@ -114,7 +114,7 @@ void InterpreterFunction::execute() {
   // Dispatch the interpreter on each instruction in the program:
   for (const auto &I : F_->getInstrs()) {
     switch (I.getKind()) {
-#include "AutoGenInstr.def"
+#include "glow/AutoGenInstr.def"
 
     default:
       llvm_unreachable("Invalid instruction.");

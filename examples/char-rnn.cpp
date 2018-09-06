@@ -88,7 +88,7 @@ static void loadText(Tensor &inputText, Tensor &nextChar, llvm::StringRef text,
   auto S = idim[1];
 
   auto IH = inputText.getHandle();
-  auto NH = nextChar.getHandle<size_t>();
+  auto NH = nextChar.getHandle<int64_t>();
 
   // Fill the tensor with slices from the sentence with an offset of 1.
   // Example:
@@ -158,12 +158,12 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
                                size_t numSteps, size_t hiddenSize) {
   Function *F = mod.createFunction("main");
 
-  Variable *X = mod.createVariable(
-      ElemKind::FloatTy, {minibatchSize, numSteps, 128}, "input",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                   "expected", VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+  Variable *X =
+      mod.createVariable(ElemKind::FloatTy, {minibatchSize, numSteps, 128},
+                         "input", VisibilityKind::Public, false);
+  Variable *Y =
+      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, numSteps},
+                         "expected", VisibilityKind::Public, false);
   std::vector<Node *> slicesX;
   std::vector<Node *> expectedX;
 
@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
   auto *Y = mod.getVariableByName("expected");
 
   Tensor thisCharTrain(ElemKind::FloatTy, {batchSize, numSteps, 128});
-  Tensor nextCharTrain(ElemKind::IndexTy, {batchSize, numSteps});
+  Tensor nextCharTrain(ElemKind::Int64ITy, {batchSize, numSteps});
   loadText(thisCharTrain, nextCharTrain, text, true);
 
   // Run this number of iterations over the input. On each iteration: train the
@@ -243,7 +243,7 @@ int main(int argc, char **argv) {
 
     // Load a few characters to start the text that we generate.
     Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});
-    Tensor nextCharInfer(ElemKind::IndexTy, {minibatchSize, numSteps});
+    Tensor nextCharInfer(ElemKind::Int64ITy, {minibatchSize, numSteps});
     loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
 
     auto *res = llvm::cast<SaveNode>(F->getNodeByName("result"));

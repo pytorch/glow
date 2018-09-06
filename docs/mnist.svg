@@ -173,7 +173,7 @@
 <path fill="#fa8072" stroke="#000000" stroke-width="2" d="M419.5,-497.5C419.5,-497.5 575.8496,-497.5 575.8496,-497.5 581.8496,-497.5 587.8496,-503.5 587.8496,-509.5 587.8496,-509.5 587.8496,-649.5 587.8496,-649.5 587.8496,-655.5 581.8496,-661.5 575.8496,-661.5 575.8496,-661.5 419.5,-661.5 419.5,-661.5 413.5,-661.5 407.5,-655.5 407.5,-649.5 407.5,-649.5 407.5,-509.5 407.5,-509.5 407.5,-503.5 413.5,-497.5 419.5,-497.5"/>
 <text text-anchor="middle" x="497.2759" y="-646.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input</text>
 <polyline fill="none" stroke="#000000" stroke-width="2" points="407.5,-639.5 587.8496,-639.5 "/>
-<text text-anchor="start" x="415.5" y="-624.3" font-family="Times,serif" font-size="14.00" fill="#000000">PoolMax</text>
+<text text-anchor="start" x="415.5" y="-624.3" font-family="Times,serif" font-size="14.00" fill="#000000">MaxPool</text>
 <text text-anchor="start" x="415.5" y="-610.3" font-family="Times,serif" font-size="14.00" fill="#000000">name : pool__11</text>
 <text text-anchor="start" x="415.5" y="-596.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input : float&lt;8 x 9 x 9 x 16&gt;</text>
 <text text-anchor="start" x="415.5" y="-582.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 3</text>
@@ -314,7 +314,7 @@
 <path fill="#fa8072" stroke="#000000" stroke-width="2" d="M211.6138,-1100.5C211.6138,-1100.5 375.7358,-1100.5 375.7358,-1100.5 381.7358,-1100.5 387.7358,-1106.5 387.7358,-1112.5 387.7358,-1112.5 387.7358,-1252.5 387.7358,-1252.5 387.7358,-1258.5 381.7358,-1264.5 375.7358,-1264.5 375.7358,-1264.5 211.6138,-1264.5 211.6138,-1264.5 205.6138,-1264.5 199.6138,-1258.5 199.6138,-1252.5 199.6138,-1252.5 199.6138,-1112.5 199.6138,-1112.5 199.6138,-1106.5 205.6138,-1100.5 211.6138,-1100.5"/>
 <text text-anchor="middle" x="293.3896" y="-1249.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input</text>
 <polyline fill="none" stroke="#000000" stroke-width="2" points="199.6138,-1242.5 387.7358,-1242.5 "/>
-<text text-anchor="start" x="207.6138" y="-1227.3" font-family="Times,serif" font-size="14.00" fill="#000000">PoolMax</text>
+<text text-anchor="start" x="207.6138" y="-1227.3" font-family="Times,serif" font-size="14.00" fill="#000000">MaxPool</text>
 <text text-anchor="start" x="207.6138" y="-1213.3" font-family="Times,serif" font-size="14.00" fill="#000000">name : pool__6</text>
 <text text-anchor="start" x="207.6138" y="-1199.3" font-family="Times,serif" font-size="14.00" fill="#000000">Input : float&lt;8 x 28 x 28 x 16&gt;</text>
 <text text-anchor="start" x="207.6138" y="-1185.3" font-family="Times,serif" font-size="14.00" fill="#000000">Kernel : 3</text>

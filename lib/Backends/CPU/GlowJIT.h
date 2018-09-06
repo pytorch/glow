@@ -23,6 +23,7 @@
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/DataLayout.h"
@@ -44,19 +45,28 @@ class GlowJIT {
 private:
   TargetMachine &TM_;
   const DataLayout DL_;
+#if LLVM_VERSION_MAJOR > 6
+  SymbolStringPool SSP_;
+  ExecutionSession ES_;
+  std::shared_ptr<SymbolResolver> resolver_;
+#endif
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
 
 public:
-  using ModuleHandle = decltype(compileLayer_)::ModuleHandleT;
-
   GlowJIT(llvm::TargetMachine &TM);
 
   TargetMachine &getTargetMachine() { return TM_; }
 
-  ModuleHandle addModule(std::unique_ptr<Module> M);
-
   JITSymbol findSymbol(const std::string name);
+
+#if LLVM_VERSION_MAJOR > 6
+  using ModuleHandle = orc::VModuleKey;
+#else
+  using ModuleHandle = decltype(compileLayer_)::ModuleHandleT;
+#endif
+
+  ModuleHandle addModule(std::unique_ptr<Module> M);
 
   void removeModule(ModuleHandle H);
 };

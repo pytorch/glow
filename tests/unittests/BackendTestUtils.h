@@ -67,16 +67,16 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
 void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind);
 
-void inferPoolAvgNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolAvgNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);
 
-void inferPoolMaxNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void trainPoolMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
+void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);
@@ -100,6 +100,10 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind);
 void inferGroupConv(Tensor *out, BackendKind kind);
 
 void inferNonSquarePaddingConv(Tensor *out, BackendKind kind);
+
+void inferNonSquareKernelConv(Tensor *out, BackendKind kind);
+
+void inferNonSquareStrideConv(Tensor *out, BackendKind kind);
 
 void inferConvDKKC8(Tensor *out, BackendKind kind);
 
@@ -132,5 +136,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
                      BackendKind kind);
 
 void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind);
+
+void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind);
 
 } // namespace glow

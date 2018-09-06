@@ -69,10 +69,10 @@ void testCIFAR10() {
 
   /// Load the CIFAR database into a 4d tensor.
   Tensor images(ElemKind::FloatTy, {cifarNumImages, 32, 32, 3});
-  Tensor labels(ElemKind::IndexTy, {cifarNumImages, 1});
+  Tensor labels(ElemKind::Int64ITy, {cifarNumImages, 1});
   size_t idx = 0;
 
-  auto labelsH = labels.getHandle<size_t>();
+  auto labelsH = labels.getHandle<int64_t>();
   auto imagesH = images.getHandle<>();
   for (unsigned w = 0; w < cifarNumImages; w++) {
     labelsH.at({w, 0}) = static_cast<uint8_t>(dbInput.get());
@@ -105,25 +105,23 @@ void testCIFAR10() {
   Function *F = mod.createFunction("main");
 
   // Create the input layer:
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
-  auto *E =
-      mod.createVariable(ElemKind::IndexTy, {minibatchSize, 1}, "expected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
+                               "input", VisibilityKind::Public, false);
+  auto *E = mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1},
+                               "expected", VisibilityKind::Public, false);
 
   // Create the rest of the network.
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
-  auto *MP0 = F->createPoolMax("pool", RL0, 2, 2, 0);
+  auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
 
   auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
-  auto *MP1 = F->createPoolMax("pool", RL1, 2, 2, 0);
+  auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
 
   auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu", CV2);
-  auto *MP2 = F->createPoolMax("pool", RL2, 2, 2, 0);
+  auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *SM = F->createSoftMax("softmax", FCL1, E);

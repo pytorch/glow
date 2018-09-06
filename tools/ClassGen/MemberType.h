@@ -24,7 +24,7 @@ enum class MemberType : unsigned {
   TypeRef,
   Float,
   Unsigned,
-  SizeT,
+  Boolean,
   String,
   VectorFloat,
   VectorUnsigned,
@@ -35,11 +35,11 @@ enum class MemberType : unsigned {
 inline const char *getReturnTypename(MemberType type) {
   const char *returnTypes[] = {"TypeRef",
                                "float",
-                               "unsigned",
-                               "size_t",
+                               "unsigned_t",
+                               "bool",
                                "llvm::StringRef",
                                "llvm::ArrayRef<float>",
-                               "llvm::ArrayRef<unsigned>",
+                               "llvm::ArrayRef<unsigned_t>",
                                "llvm::ArrayRef<size_t>",
                                "NodeValueArrayRef",
                                nullptr};
@@ -49,11 +49,11 @@ inline const char *getReturnTypename(MemberType type) {
 inline const char *getStorageTypename(MemberType type) {
   const char *storageTypes[] = {"TypeRef",
                                 "float",
-                                "unsigned",
-                                "size_t",
+                                "unsigned_t",
+                                "bool",
                                 "std::string",
                                 "std::vector<float>",
-                                "std::vector<unsigned>",
+                                "std::vector<unsigned_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeHandle>",
                                 nullptr};
@@ -63,11 +63,11 @@ inline const char *getStorageTypename(MemberType type) {
 inline const char *getCtorArgTypename(MemberType type) {
   const char *ctorArgTypes[] = {"TypeRef",
                                 "float",
-                                "unsigned",
-                                "size_t",
+                                "unsigned_t",
+                                "bool",
                                 "std::string",
                                 "std::vector<float>",
-                                "std::vector<unsigned>",
+                                "std::vector<unsigned_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeValue>",
                                 nullptr};

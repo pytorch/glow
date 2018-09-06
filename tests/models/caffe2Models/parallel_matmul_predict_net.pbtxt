@@ -1,0 +1,12 @@
+name: "parallel_matmul"
+op {
+  input: "inputs_0"
+  input: "inputs_1"
+  output: "output"
+  name: ""
+  type: "BatchMatMul"
+}
+external_input: "inputs_0"
+external_input: "inputs_1"
+external_output: "output"
+

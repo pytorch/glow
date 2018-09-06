@@ -91,7 +91,7 @@ const unsigned HIDDEN_SIZE = EMBEDDING_SIZE * 3;
 /// vice versa.
 struct Vocabulary {
   std::vector<std::string> index2word_;
-  std::unordered_map<std::string, size_t> word2index_;
+  std::unordered_map<std::string, int64_t> word2index_;
 
   void addWord(llvm::StringRef word) {
     word2index_[word] = index2word_.size();
@@ -111,8 +111,7 @@ struct Vocabulary {
 /// Loads tensor of floats from binary file.
 void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
   std::ifstream file(filename.str(), std::ios::binary);
-  if (!file.read((char *)result.getRawDataPointer<float>(),
-                 result.size() * sizeof(float))) {
+  if (!file.read(result.getUnsafePtr(), result.size() * sizeof(float))) {
     std::cout << "Error reading file: " << filename.str() << '\n'
               << "Need to be downloaded by calling:\n"
               << "python ../glow/utils/download_test_db.py -d fr2en\n";
@@ -164,7 +163,13 @@ struct Model {
       auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
       // Quantize the graph based on the captured profile.
-      F_ = glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+      auto *Q =
+          glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+
+      // Erase the original function so that the redundant variables that are
+      // only referenced by the original function will be removed.
+      Q->getParent()->eraseFunction(F_);
+      F_ = Q;
     }
 
     EE_.compile(CompilationMode::Infer, F_);
@@ -176,10 +181,9 @@ private:
 
   Variable *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
     auto &mod = EE_.getModule();
-    Variable *result =
-        mod.createVariable(ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
-                           "embedding." + langPrefix.str(),
-                           VisibilityKind::Private, Variable::TrainKind::None);
+    Variable *result = mod.createVariable(
+        ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
+        "embedding." + langPrefix.str(), VisibilityKind::Private, false);
     loadMatrixFromFile("fr2en/" + langPrefix.str() + "_embedding.bin",
                        result->getPayload());
     return result;
@@ -235,32 +239,32 @@ void Model::loadLanguages() {
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
-  input_ = mod.createVariable(ElemKind::IndexTy, {batchSize_, MAX_LENGTH},
+  input_ = mod.createVariable(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH},
                               "encoder.inputsentence", VisibilityKind::Public,
-                              Variable::TrainKind::None);
+                              false);
   seqLength_ =
-      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "encoder.seqLength",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "encoder.seqLength",
+                         VisibilityKind::Public, false);
 
-  Variable *hiddenInit = mod.createVariable(
-      ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE}, "encoder.hiddenInit",
-      VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *hiddenInit =
+      mod.createVariable(ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE},
+                         "encoder.hiddenInit", VisibilityKind::Private, false);
   hiddenInit->getPayload().zero();
 
   Node *hidden = hiddenInit;
 
-  Variable *w_ih = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih",
-      VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *w_ih =
+      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
+                         "encoder.w_ih", VisibilityKind::Private, false);
   Variable *b_ih =
       mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
-                         VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *w_hh = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh",
-      VisibilityKind::Private, Variable::TrainKind::None);
+                         VisibilityKind::Private, false);
+  Variable *w_hh =
+      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
+                         "encoder.w_hh", VisibilityKind::Private, false);
   Variable *b_hh =
       mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
-                         VisibilityKind::Private, Variable::TrainKind::None);
+                         VisibilityKind::Private, false);
   loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
   loadMatrixFromFile("fr2en/encoder_b_ih.bin", b_ih->getPayload());
   loadMatrixFromFile("fr2en/encoder_w_hh.bin", w_hh->getPayload());
@@ -296,30 +300,30 @@ void Model::loadEncoder() {
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
   Variable *input =
-      mod.createVariable(ElemKind::IndexTy, {batchSize_}, "decoder.input",
-                         VisibilityKind::Private, Variable::TrainKind::None);
+      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "decoder.input",
+                         VisibilityKind::Private, false);
   for (size_t i = 0; i < batchSize_; i++) {
-    input->getPayload().getHandle<size_t>().at({i}) = en_.word2index_["SOS"];
+    input->getPayload().getHandle<int64_t>().at({i}) = en_.word2index_["SOS"];
   }
 
-  Variable *w_ih = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih",
-      VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *w_ih =
+      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
+                         "decoder.w_ih", VisibilityKind::Private, false);
   Variable *b_ih =
       mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
-                         VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *w_hh = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh",
-      VisibilityKind::Private, Variable::TrainKind::None);
+                         VisibilityKind::Private, false);
+  Variable *w_hh =
+      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
+                         "decoder.w_hh", VisibilityKind::Private, false);
   Variable *b_hh =
       mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
-                         VisibilityKind::Private, Variable::TrainKind::None);
+                         VisibilityKind::Private, false);
   Variable *out_w = mod.createVariable(
       ElemKind::FloatTy, {EMBEDDING_SIZE, en_.index2word_.size()},
-      "decoder.out_w", VisibilityKind::Private, Variable::TrainKind::None);
-  Variable *out_b = mod.createVariable(
-      ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b",
-      VisibilityKind::Private, Variable::TrainKind::None);
+      "decoder.out_w", VisibilityKind::Private, false);
+  Variable *out_b =
+      mod.createVariable(ElemKind::FloatTy, {en_.index2word_.size()},
+                         "decoder.out_b", VisibilityKind::Private, false);
   loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
   loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
   loadMatrixFromFile("fr2en/decoder_w_hh.bin", w_hh->getPayload());
@@ -353,9 +357,8 @@ void Model::loadDecoder() {
   Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
                                     {MAX_LENGTH, batchSize_});
-  output_ = mod.createVariable(ElemKind::IndexTy, {MAX_LENGTH, batchSize_},
-                               "decoder.output", VisibilityKind::Public,
-                               Variable::TrainKind::None);
+  output_ = mod.createVariable(ElemKind::Int64ITy, {MAX_LENGTH, batchSize_},
+                               "decoder.output", VisibilityKind::Public, false);
   F_->createSave("decoder.output", reshape, output_);
 }
 
@@ -364,8 +367,8 @@ void Model::loadDecoder() {
 /// 2) "Memory" of Encoder is written into memory of Decoder.
 ///    Now Decoder streams resulting translation word by word.
 void Model::translate(const std::vector<std::string> &batch) {
-  Tensor input(ElemKind::IndexTy, {batchSize_, MAX_LENGTH});
-  Tensor seqLength(ElemKind::IndexTy, {batchSize_});
+  Tensor input(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH});
+  Tensor seqLength(ElemKind::Int64ITy, {batchSize_});
   input.zero();
 
   for (size_t j = 0; j < batch.size(); j++) {
@@ -381,17 +384,18 @@ void Model::translate(const std::vector<std::string> &batch) {
     for (size_t i = 0; i < words.size(); i++) {
       auto iter = fr_.word2index_.find(words[i]);
       GLOW_ASSERT(iter != fr_.word2index_.end() && "Unknown word.");
-      input.getHandle<size_t>().at({j, i}) = iter->second;
+      input.getHandle<int64_t>().at({j, i}) = iter->second;
     }
-    seqLength.getHandle<size_t>().at({j}) = (words.size() - 1) + j * MAX_LENGTH;
+    seqLength.getHandle<int64_t>().at({j}) =
+        (words.size() - 1) + j * MAX_LENGTH;
   }
 
   EE_.run({input_, seqLength_}, {&input, &seqLength});
 
-  auto OH = output_->getPayload().getHandle<size_t>();
+  auto OH = output_->getPayload().getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
     for (unsigned i = 0; i < MAX_LENGTH; i++) {
-      size_t wordIdx = OH.at({i, j});
+      int64_t wordIdx = OH.at({i, j});
       if (wordIdx == en_.word2index_["EOS"])
         break;
 

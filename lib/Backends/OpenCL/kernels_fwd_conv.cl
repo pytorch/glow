@@ -10,7 +10,7 @@
 // sizes of workgroups, etc.
 //
 // The parameters of the kernel are:
-// 
+//
 // v_nax - Number of spacial axes.
 // v_g - Number of groups.
 // v_k_0, v_k_1 - dimensions of the kernel
@@ -28,7 +28,7 @@
 // VWN - vector width in dimension N.
 // VWM - vector width in dimension M.
 
-static const char* FWD_CONV_CODE = R"(
+static const char *FWD_CONV_CODE = R"(
 #define Dtype float
 #define Dtype1 float
 #define Dtype2 float2
@@ -74,23 +74,23 @@ static const char* FWD_CONV_CODE = R"(
 #define uint_tpc unsigned int
 
 // Input image size in pixels.
-#define v_imsi (v_imsi_0*v_imsi_1)
+#define v_imsi (v_imsi_0 * v_imsi_1)
 // Output image size in pixels.
-#define v_imso (v_imso_0*v_imso_1)
+#define v_imso (v_imso_0 * v_imso_1)
 // Input image batch offset.
-#define v_B_off  (v_fin*v_imsi)
+#define v_B_off (v_fin * v_imsi)
 // Output image batch offset.
-#define v_C_off (v_fout*v_imso)
+#define v_C_off (v_fout * v_imso)
 // Definitions used by the GEMM kernel.
 #define MG v_fout
-#define MM (v_fout/v_g)
+#define MM (v_fout / v_g)
 #define NN v_imso
-#define KG (v_fin*v_k_0*v_k_1)
-#define KK ((v_fin/v_g)*v_k_0*v_k_1)
+#define KG (v_fin * v_k_0 * v_k_1)
+#define KK ((v_fin / v_g) * v_k_0 * v_k_1)
 // The tile-size in dimension M.
-#define TSM (WPTM*workgroup_size_1)
+#define TSM (WPTM * workgroup_size_1)
 // The tile-size in dimension N.
-#define TSN (WPTN*workgroup_size_0)
+#define TSN (WPTN * workgroup_size_0)
 // The reduced tile-size in dimension M.
 #define RTSM workgroup_size_1
 // The reduced tile-size in dimension N.
@@ -99,23 +99,23 @@ static const char* FWD_CONV_CODE = R"(
 #ifdef LPTA
 #undef LPTA
 #endif
-#define LPTA ((TSK*TSM)/(RTSM*RTSN))
+#define LPTA ((TSK * TSM) / (RTSM * RTSN))
 // Loads per thread for B.
 #ifdef LPTB
 #undef LPTB
 #endif
-#define LPTB ((TSK*TSN)/(RTSM*RTSN))
+#define LPTB ((TSK * TSN) / (RTSM * RTSN))
 #ifdef v_num_tiles
 #undef v_num_tiles
 #endif
-#define v_num_tiles (((KK - 1)/(TSK*2) + 1)*2)
+#define v_num_tiles (((KK - 1) / (TSK * 2) + 1) * 2)
 
 __kernel
-__attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
-__attribute__((vec_type_hint(Dtype4)))
-void
-conv_forward_mem(__global void *mem, unsigned im_in_offset, unsigned wg_offset,
-                 unsigned bias_offset, unsigned im_out_offset) {
+    __attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
+    __attribute__((vec_type_hint(Dtype4))) void
+    conv_forward_mem(__global void *mem, unsigned im_in_offset,
+                     unsigned wg_offset, unsigned bias_offset,
+                     unsigned im_out_offset) {
   __global const Dtype *im_in = &mem[im_in_offset];
   __global const Dtype *wg = &mem[wg_offset];
   __global const Dtype *bias = &mem[bias_offset];

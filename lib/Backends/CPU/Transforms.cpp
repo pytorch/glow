@@ -60,7 +60,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   assert(dims.size() == 4 && "Invalid filter size");
   auto *filter8 = M->createVariable(
       filterTy->getElementType(), {dims[0] / 8, dims[1], dims[2], dims[3], 8},
-      filter->getName(), VisibilityKind::Private, Variable::TrainKind::None);
+      filter->getName(), VisibilityKind::Private, false);
 
   auto F8H = filter8->getHandle();
   auto FH = filter->getHandle();
@@ -76,14 +76,48 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
   return F->addNode(new CPUConvDKKC8Node(
       CN->getName(), CN->getResult().getType(), CN->getInput(), filter8,
-      CN->getBias(), CN->getKernel(), CN->getStride(), CN->getPads(), group));
+      CN->getBias(), CN->getKernels(), CN->getStrides(), CN->getPads(), group));
+}
+
+/// Merge Max and Splat nodes into target-specific CPUMaxSplat node.
+/// For quantized network, sinkRescaleQuantizedNode transformation might have
+/// merged Rescale into Max node. In this case we need to pull it out, since
+/// CPUMaxSplat requires input and output to be quantized the same way.
+static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
+  SplatNode *splat;
+  NodeValue input;
+
+  // One of the inputs must be Splat.
+  if ((splat = dyn_cast<SplatNode>(MN->getLHS()))) {
+    input = MN->getRHS();
+  } else if ((splat = dyn_cast<SplatNode>(MN->getRHS()))) {
+    input = MN->getLHS();
+  } else {
+    return nullptr;
+  }
+
+  // Pull out Rescale (for quantized types only).
+  if (input.getType() != MN->getResult().getType()) {
+    assert(input.getType()->isQuantizedType() &&
+           MN->getResult().getType()->isQuantizedType() &&
+           "Types should be quantized");
+    auto *RS = F->createRescaleQuantized(MN->getName(), input,
+                                         MN->getResult().getType());
+    input = NodeValue(RS, 0);
+  }
+
+  assert(input.getType() == splat->getResult().getType() &&
+         "Both inputs of Max node must have the same type");
+
+  return F->addNode(
+      new CPUMaxSplatNode(MN->getName(), input, splat->getValue()));
 }
 
 bool CPUBackend::transformPostLowering(Function *F,
                                        CompilationMode mode) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
-
+    // Try to replace generic convolution with cpu-optimized version.
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       if (Node *NCN = optimizeCPUConv(CN, F)) {
         NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
@@ -91,17 +125,10 @@ bool CPUBackend::transformPostLowering(Function *F,
         continue;
       }
     }
+
+    // Merge Max and Splat nodes into CPUMaxSplat.
     if (auto *MN = dyn_cast<MaxNode>(&node)) {
-      if (auto *splat = dyn_cast<SplatNode>(MN->getLHS())) {
-        auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getRHS(),
-                                                  splat->getValue()));
-        NodeValue(&node, 0).replaceAllUsesOfWith(MSN);
-        changed = true;
-        continue;
-      }
-      if (auto *splat = dyn_cast<SplatNode>(MN->getRHS())) {
-        auto MSN = F->addNode(new CPUMaxSplatNode(MN->getName(), MN->getLHS(),
-                                                  splat->getValue()));
+      if (Node *MSN = optimizeCPUMaxSplat(MN, F)) {
         NodeValue(&node, 0).replaceAllUsesOfWith(MSN);
         changed = true;
         continue;

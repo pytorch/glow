@@ -23,8 +23,8 @@ void CPUMaxSplatNode::verify() const {
 void CPUConvDKKC8Node::verify() const {
   ShapeNHWC idim(getInput().getType()->dims());
   ShapeNHWC odim(getResult().getType()->dims());
-  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernel(),
-                                           getStride(), getPads());
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernels(),
+                                           getStrides(), getPads());
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, getBias().dims()[0]);
   (void)exp;
   assert(exp == odim && "Invalid output dimensions");

@@ -1,4 +1,3 @@
-
 add_library(Support
               Debug.cpp
               Random.cpp
@@ -6,4 +5,3 @@ add_library(Support
 target_link_libraries(Support
                       INTERFACE
                         LLVMSupport)
-

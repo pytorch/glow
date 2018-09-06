@@ -67,7 +67,7 @@ TEST(Tensor, clone) {
   auto H = T.getHandle<>();
 
   Tensor v;
-  v.copyFrom(&T);
+  v.assign(&T);
   auto vH = v.getHandle<>();
 
   EXPECT_EQ(int(vH.at({0})), 1);
@@ -177,8 +177,9 @@ TEST(Tensor, assignment) {
   size_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
+  testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
-  testAssignment<size_t>(Type{ElemKind::IndexTy, dim});
+  testAssignment<int64_t>(Type{ElemKind::Int64ITy, dim});
 }
 
 TEST(Tensor, concatTensors1D) {
@@ -372,7 +373,7 @@ TEST(Tensor, nonOwnedTensor) {
   {
     // Create a view on T1 which makes it look like 2x2
     Tensor T2 = T1.getUnowned({2, 2});
-    EXPECT_EQ(T2.getRawDataPointer<float>(), T1.getRawDataPointer<float>());
+    EXPECT_EQ(T2.getUnsafePtr(), T1.getUnsafePtr());
     auto H2 = T2.getHandle<>();
     // Check that T2 has the same values as T1.
     EXPECT_EQ(int(H2.at({0, 0})), 1);
@@ -397,6 +398,34 @@ TEST(Tensor, nonOwnedTensor) {
 
   // Check that T1 is still alive
   H1.dump();
+}
+
+/// Check that we properly take ownership of
+/// the underlying memory when we reset the tensor
+/// shape. This test used to fail leak sanitizer.
+TEST(Tensor, nonOwnedTensorFollowedByReset) {
+  float raw_data = 0.;
+  Type F32Ty(ElemKind::FloatTy, {1});
+
+  // Create an unowned tensor.
+  Tensor T1(&raw_data, &F32Ty);
+
+  auto H1 = T1.getHandle<>();
+  EXPECT_EQ(int(H1.at({0})), 0);
+
+  Type F32x2Ty(ElemKind::FloatTy, {2});
+
+  // Resizing the tensor will trigger some memory allocation.
+  // Given the previous data was coming from outside, this
+  // tensor was unowned and we used to not reset that state
+  // as well and were leaking memory.
+  T1.reset(F32x2Ty);
+  H1 = T1.getHandle<>();
+  EXPECT_EQ(int(H1.at({0})), 0);
+  EXPECT_EQ(int(H1.at({1})), 0);
+
+  // When T1 gets delete the memory allocated through reset should
+  // be released.
 }
 
 /// Verify that accessing/modifying a tensor with offsets correctly modifies the
@@ -563,13 +592,16 @@ TEST(ZeroDimensionalTensor, handleAt) {
   Tensor T(ElemKind::FloatTy, {});
   auto H = T.getHandle<>();
   H.at({}) = 7.1;
-  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 7.1);
+  EXPECT_FLOAT_EQ(H.at({}), 7.1);
+  EXPECT_FLOAT_EQ(((float *)T.getUnsafePtr())[0], 7.1);
 }
 
 TEST(ZeroDimensionalTensor, handleAssign) {
   Tensor T(ElemKind::FloatTy, {});
-  T.getHandle<>() = {1.14};
-  EXPECT_FLOAT_EQ(T.getRawDataPointer<float>()[0], 1.14);
+  auto H = T.getHandle<>();
+  H = {1.14f};
+  EXPECT_FLOAT_EQ(H.at({}), 1.14);
+  EXPECT_FLOAT_EQ(((float *)T.getUnsafePtr())[0], 1.14);
 }
 
 TEST(ZeroDimensionalTensor, compareAndDumpTwo) {
@@ -599,8 +631,8 @@ TEST(ZeroDimensionalTensor, compareToNonZeroDimensional) {
 }
 
 TEST(ZeroDimensionalTensor, transpose) {
-  Tensor T(ElemKind::IndexTy, {});
-  T.getHandle<size_t>() = {15};
+  Tensor T(ElemKind::Int64ITy, {});
+  T.getHandle<int64_t>() = {15};
 
   Tensor TT;
   T.transpose(&TT, {});
@@ -612,7 +644,7 @@ TEST(Type, compare) {
   Type T1(ElemKind::FloatTy, {});
   Type T2(ElemKind::FloatTy, {});
   Type T3(ElemKind::FloatTy, {1});
-  Type T4(ElemKind::IndexTy, {});
+  Type T4(ElemKind::Int64ITy, {});
 
   EXPECT_TRUE(T1.isEqual(T2));
   EXPECT_FALSE(T1.isEqual(T3));

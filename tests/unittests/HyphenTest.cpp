@@ -31,6 +31,7 @@
 
 #include "gtest/gtest.h"
 
+#include <cctype>
 #include <string>
 
 using namespace glow;
@@ -260,11 +261,10 @@ struct HyphenNetwork {
 
   HyphenNetwork(Module &mod, TrainingConfig &conf)
       : input_(mod.createVariable(ElemKind::FloatTy, {conf.batchSize, 6, 27},
-                                  "input", VisibilityKind::Public,
-                                  Variable::TrainKind::None)),
-        expected_(mod.createVariable(ElemKind::IndexTy, {conf.batchSize, 1},
+                                  "input", VisibilityKind::Public, false)),
+        expected_(mod.createVariable(ElemKind::Int64ITy, {conf.batchSize, 1},
                                      "expected", VisibilityKind::Public,
-                                     Variable::TrainKind::None)),
+                                     false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
     Node *n;
 
@@ -342,9 +342,9 @@ TEST(HyphenTest, network) {
 
   // Convert words and hyphens to a tensor representation.
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
-  Tensor expected(ElemKind::IndexTy, {numSamples, 1});
+  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   auto inputHandle = inputs.getHandle<float>();
-  auto expectedHandle = expected.getHandle<size_t>();
+  auto expectedHandle = expected.getHandle<int64_t>();
   for (size_t i = 0; i != numSamples; i++) {
     mapLetterWindow(words[i], i, inputHandle);
     expectedHandle.at({i, 0}) = hyphens[i];

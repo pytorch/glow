@@ -80,6 +80,7 @@ struct DebugInfo {
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
+protected:
   /// The IR to generate code for.
   const IRFunction *F_;
   /// The LLVM context.
@@ -121,10 +122,12 @@ class LLVMIRGen {
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
+                                const glow::Value *val);
   /// Generates LLVM IR that computes the size of the tensor of \p val using
   /// \p builder. The size type is native to the machine (size_t).
-  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueSize(llvm::IRBuilder<> &builder,
+                             const glow::Value *val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
   /// Generates LLVM IR that materializes the constant \p val.
@@ -137,9 +140,11 @@ class LLVMIRGen {
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
                          glow::ElemKind kind);
-  /// Generates LLVM IR that materializes the constant array \p vals.
-  llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
-                              llvm::ArrayRef<size_t> vals);
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// it will cast non-size_t types T into size_t.
+  template <typename T>
+  llvm::Value *emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                   llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Elements
   /// of vals have the type \p elemTy.
@@ -148,7 +153,8 @@ class LLVMIRGen {
                               llvm::Type *elemTy);
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
-  llvm::Value *emitValueDims(llvm::IRBuilder<> &builder, glow::Value *val);
+  llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
+                             const glow::Value *val);
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
@@ -194,6 +200,8 @@ class LLVMIRGen {
   void emitDebugGlobalVariableForValue(const Value *val);
 
 public:
+  /// Destructor
+  virtual ~LLVMIRGen() {}
   /// Ctor.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName);
@@ -202,8 +210,8 @@ public:
   void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
-  void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
-                              const glow::Instruction *I);
+  virtual void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
+                                      const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
   void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.

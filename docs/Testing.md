@@ -19,28 +19,57 @@ set.
 ## Model Loader
 
 We test the correctness of the Glow implementation by loading Caffe2 and ONNX
-models and executing them end-to-end. The program 'image-classifier' loads a model,
-a png file, and runs a single pass of inference. If everything goes right the
-output of the program is identical to the output of the original (Caffe2 or
-ONNX) model. Unfortunately, the models do not usually describe what the input
-format should be. Should the pixels be
+models and executing them end-to-end.
+
+### Image Classification
+
+The program `image-classifier` loads a model, a png file, and runs a single pass
+of inference. If everything goes right the output of the program is identical to
+the output of the original (Caffe2 or ONNX) model. Unfortunately, the models do
+not usually describe what the input format should be. Should the pixels be
 between zero and one, or negative 128 to positive 128? The user needs to be
 aware of these things when running the models. The script in the directory
 'utils/' downloads a number of pre-trained networks that we can use for testing.
 
 The Glow build scripts copy a few sample images and a run script that tests the
-image-classifier program. The script can be executed with the command:
+`image-classifier` program. The script can be executed with the command:
 
   ```
   build$./tests/images/run.sh
   ```
 
+### Text Translation
+
+The program `text-translator` loads a text translation model, reads a line from
+stdin in a source language, and then prints the translation to the command line
+in the destination language. The text translation model should be specified by a
+directory via `-m`, containing the source and destination dictionaries
+(`src_dictionary.txt` and `dst_dictionary.txt`), as well as the protobuf files
+for the model. A backend can be optionally specified, just like for the
+`image-classifier`.
+
+```
+$ ./bin/text-translator -m en2gr -cpu
+
+Enter a sentence in English to translate to German: My favorite sport is basketball .
+mein Lieblingssport ist Basketball .
+```
+
+This program expects a sequence-to-sequence model with beam search. Because Glow
+currently does not support models that contain control flow (e.g. the
+[RecurrentNetwork operator from
+Caffe2](https://caffe2.ai/docs/operators-catalogue.html#recurrentnetwork)), the
+input model must be unrolled to some maximum input and output length. These can
+be specified on the command line via `-min_output_len` and
+`-max_output_len`. Additionally, the beam search size can be specified via
+`-beam_size`.
+
 ## Caffe2 and ONNX Models
 
-The `image-classifier` program loads pre-trained models from protobuf file (either
-Caffe2 or ONNX). These pre-trained models are downloaded via
-`download_caffe2_models.sh` and `download_onnx_models.sh` scripts located in
-`utils/`.
+Model loader programs (e.g. `image-classifier` and `text-translator`) load
+pre-trained models from protobuf file (either Caffe2 or ONNX). These pre-trained
+models are downloaded via `download_caffe2_models.sh` and
+`download_onnx_models.sh` scripts located in `utils/`.
 
 There is a more general way to run a pre-trained model, not related to images.
 The `model-runner` program loads and runs a self-contained model, i.e. a model,

@@ -97,7 +97,7 @@ TEST(IR, allInstrs) {
   IRFunction M(F);
   auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
-  auto T4 = mod.uniqueType(ElemKind::IndexTy, {1, 1});
+  auto T4 = mod.uniqueType(ElemKind::Int64ITy, {1, 1});
 
   {
     IRBuilder builder(&M);
@@ -114,7 +114,7 @@ TEST(IR, allInstrs) {
     auto *ComputationInfo =
         builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
 
-    auto *XY = builder.createWeightVar(ElemKind::IndexTy, {1, 12, 12, 3, 2});
+    auto *XY = builder.createWeightVar(ElemKind::Int64ITy, {1, 12, 12, 3, 2});
     auto *B0 = builder.createWeightVar(T2, "B0");
     auto *B1 =
         builder.createWeightVar(ElemKind::FloatTy, {32}, "B1", MK::Mutable);
@@ -130,8 +130,9 @@ TEST(IR, allInstrs) {
     XY->setName("srcXY");
 
     builder.createCopyInst("", I1, I0);
-    builder.createConvolutionInst("", I3, I1, F0, B0, 7, 2, {3, 3, 3, 3}, 1);
-    builder.createPoolMaxInst("", I4, I0, 7, 2, {3, 3, 3, 3});
+    builder.createConvolutionInst("", I3, I1, F0, B0, {7, 7}, {2, 2},
+                                  {3, 3, 3, 3}, 1);
+    builder.createMaxPoolInst("", I4, I0, {7, 7}, {2, 2}, {3, 3, 3, 3});
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
     builder.createSoftMaxInst("", I1, I0);
@@ -155,15 +156,16 @@ TEST(IR, casting) {
     auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
     auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
     auto *sig = bb.createSigmoidInst("sigmoid", res, input);
-    auto *pool = bb.createPoolAvgOp(sig->getDest(), 7, 2, {3, 3, 3, 3});
+    auto *pool =
+        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3});
 
-    EXPECT_EQ(isa<PoolAvgInst>(pool), true);
-    EXPECT_EQ(isa<PoolAvgInst>(input), false);
+    EXPECT_EQ(isa<AvgPoolInst>(pool), true);
+    EXPECT_EQ(isa<AvgPoolInst>(input), false);
     EXPECT_EQ(isa<SigmoidInst>(sig), true);
     EXPECT_EQ(isa<SigmoidInst>(pool), false);
 
-    EXPECT_NE(dyn_cast<PoolAvgInst>(pool), nullptr);
-    EXPECT_EQ(dyn_cast<PoolAvgInst>(pool), pool);
+    EXPECT_NE(dyn_cast<AvgPoolInst>(pool), nullptr);
+    EXPECT_EQ(dyn_cast<AvgPoolInst>(pool), pool);
 
     EXPECT_NE(dyn_cast<WeightVar>(input), nullptr);
     EXPECT_EQ(dyn_cast<WeightVar>(input), input);
@@ -178,7 +180,7 @@ TEST(IR, predicateIR) {
     IRBuilder builder(&M);
     auto *V1 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
     auto *V2 = builder.createWeightVar(ElemKind::FloatTy, {320, 200});
-    auto *P = builder.createWeightVar(ElemKind::IndexTy, {320}, "p1");
+    auto *P = builder.createWeightVar(ElemKind::Int64ITy, {320}, "p1");
 
     // Check that we can construct a new instruction.
     auto *CC = builder.createCopyInst("C", V1, V2);

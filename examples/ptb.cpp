@@ -125,9 +125,9 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   // input words. To limit the size of the data we use an upper bound on the
   // vocabulary size.
   inputWords.reset(ElemKind::FloatTy, {numSequences, vocabSize * numSteps});
-  targetWords.reset(ElemKind::IndexTy, {numSequences, numSteps});
+  targetWords.reset(ElemKind::Int64ITy, {numSequences, numSteps});
   auto IIH = inputWords.getHandle<>();
-  auto TIH = targetWords.getHandle<size_t>();
+  auto TIH = targetWords.getHandle<int64_t>();
   for (unsigned batch = 0; batch < minibatchSize; batch++) {
     for (unsigned iter = 0; iter < numBatches; iter++) {
       size_t sequence = batch + iter * minibatchSize;
@@ -199,12 +199,12 @@ void testPTB() {
   Function *F = mod.createFunction("main");
   llvm::outs() << "Building\n";
 
-  Variable *X = mod.createVariable(
-      ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  Variable *Y = mod.createVariable(ElemKind::IndexTy, {minibatchSize, numSteps},
-                                   "selected", VisibilityKind::Public,
-                                   Variable::TrainKind::None);
+  Variable *X = mod.createVariable(ElemKind::FloatTy,
+                                   {minibatchSize, vocabSize * numSteps},
+                                   "input", VisibilityKind::Public, false);
+  Variable *Y =
+      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, numSteps},
+                         "selected", VisibilityKind::Public, false);
 
   std::vector<Node *> slicesX;
 
@@ -263,7 +263,7 @@ void testPTB() {
                              {minibatchSize, vocabSize * numSteps});
       inputWordsBatch.copyConsecutiveSlices(&inputWords, minibatchSize * batch);
 
-      Tensor targetWordsBatch(ElemKind::IndexTy, {minibatchSize, numSteps});
+      Tensor targetWordsBatch(ElemKind::Int64ITy, {minibatchSize, numSteps});
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
@@ -273,7 +273,7 @@ void testPTB() {
         for (unsigned int i = 0; i < minibatchSize; i++) {
           auto T =
               res.getHandle<float>().extractSlice(step * minibatchSize + i);
-          size_t correct = targetWords.getHandle<std::size_t>().at(
+          size_t correct = targetWords.getHandle<int64_t>().at(
               {minibatchSize * batch + i, step});
           float soft_guess = -std::log(T.getHandle<float>().at({correct}));
           perplexity += soft_guess;

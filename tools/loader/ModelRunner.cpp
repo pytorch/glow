@@ -22,6 +22,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <memory>
+
 using namespace glow;
 
 int main(int argc, char **argv) {
@@ -30,16 +32,16 @@ int main(int argc, char **argv) {
   Loader loader(argc, argv);
 
   // Create the model based on the input net, and get SaveNode for the output.
-  ProtobufLoader *LD;
+  std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
-    LD = new caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
-                               loader.getCaffe2NetWeightFilename(), {}, {},
-                               *loader.getFunction());
+    LD.reset(new caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
+                                   loader.getCaffe2NetWeightFilename(), {}, {},
+                                   *loader.getFunction()));
   } else {
-    LD = new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
-                             *loader.getFunction());
+    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
+                                 *loader.getFunction()));
   }
-  SaveNode *output = LD->getRoot();
+  Variable *output = LD->getSingleOutput();
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -52,7 +54,7 @@ int main(int argc, char **argv) {
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 
     // Print out the result of output operator.
-    output->getVariable()->getPayload().getHandle().dump();
+    output->getPayload().getHandle().dump();
   }
 
   return 0;

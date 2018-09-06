@@ -41,23 +41,21 @@ TEST(GraphAutoGrad, autoGrad) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A =
-      mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
+                                   VisibilityKind::Public, false);
 
   auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createPoolMax("pool1", RL0, 3, 3, 0);
+  auto *MP0 = F->createMaxPool("pool1", RL0, 3, 3, 0);
 
   auto *CV1 = F->createConv("conv2", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("conv23", CV1);
-  auto *MP1 = F->createPoolMax("pool2", RL1, 3, 3, 0);
+  auto *MP1 = F->createMaxPool("pool2", RL1, 3, 3, 0);
 
   auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected =
-      mod.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *selected = mod.createVariable(
+      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -81,15 +79,13 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A =
-      mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
+                                   VisibilityKind::Public, false);
   auto *CV0 = F->createLocalResponseNormalization("LRN", A);
   auto *FCL1 = F->createFullyConnected("fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected =
-      mod.createVariable(ElemKind::IndexTy, {10, 1}, "selected",
-                         VisibilityKind::Public, Variable::TrainKind::None);
+  Variable *selected = mod.createVariable(
+      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -128,9 +124,8 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   EXPECT_EQ(M.getVars().size(), 3);
 
-  Node *label =
-      M.createVariable(ElemKind::FloatTy, {1}, "label", VisibilityKind::Public,
-                       Variable::TrainKind::None);
+  Node *label = M.createVariable(ElemKind::FloatTy, {1}, "label",
+                                 VisibilityKind::Public, false);
   Node *reg = F->createRegression("reg", AplusB_F, label);
   F->createSave("return", reg);
 

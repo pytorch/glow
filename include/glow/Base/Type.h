@@ -36,6 +36,12 @@ using TypeRef = const Type *;
 
 constexpr unsigned max_tensor_dimensions = 6;
 
+/// This type is used to implement the Node and Instruction builder's
+/// MemberType::Unsigned and MemberType::VectorUnsigned. Thus it should be used
+/// when handling members of these classes, e.g. a convolution Node/Instr's
+/// getGroup() (Unsigned), or getKernels() (UnsignedVector).
+using unsigned_t = uint32_t;
+
 using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
@@ -44,7 +50,7 @@ struct ShapeNHWC {
   size_t w; // Width
   size_t c; // Number of Channels
 
-  explicit ShapeNHWC(llvm::ArrayRef<size_t> shape) {
+  template <typename T> explicit ShapeNHWC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     h = shape[1];
@@ -119,7 +125,7 @@ struct PaddingTLBR {
   size_t bottom;
   size_t right;
 
-  explicit PaddingTLBR(llvm::ArrayRef<size_t> pads) {
+  template <typename T> explicit PaddingTLBR(llvm::ArrayRef<T> pads) {
     assert(pads.size() == 4 && "Invalid padding");
     top = pads[0];
     left = pads[1];
@@ -132,18 +138,30 @@ struct PaddingTLBR {
   }
 };
 
+struct ShapeHW {
+  size_t height;
+  size_t width;
+
+  template <typename T> explicit ShapeHW(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 2 && "Invalid shape");
+    height = shape[0];
+    width = shape[1];
+  }
+
+  bool isSquare() const { return height == width; }
+};
+
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
 inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,
-                                            size_t n = 1) {
-  assert(1 <= n && n < dims.size());
+                                            unsigned_t n = 1) {
+  assert(1 <= n && n <= dims.size());
   size_t first = dims[0];
-  for (size_t i = 1; i < n; i++) {
+  for (unsigned_t i = 1; i < n; i++) {
     first *= dims[i];
   }
-
-  size_t rest = dims[n];
-  for (size_t i = n + 1; i < dims.size(); i++) {
+  size_t rest = 1;
+  for (unsigned_t i = n; i < dims.size(); i++) {
     rest *= dims[i];
   }
 
@@ -158,11 +176,14 @@ inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
   return LHS.equals(RHS);
 }
 
+/// An enum representing the type used by the elements of a tensor. The types of
+/// Handles for these tensors should match the element kind.
 enum class ElemKind : unsigned char {
-  FloatTy,
-  Int8QTy,
-  Int32QTy,
-  IndexTy,
+  FloatTy,  // 32-bit float type (float)
+  Int8QTy,  // 8-bit quantized type (int8_t)
+  Int16QTy, // 16-bit quantized type (int16_t)
+  Int32QTy, // 32-bit quantized type (int32_t)
+  Int64ITy, // 64-bit index type (int64_t)
 };
 
 /// A class that represents a type of a tensor.
@@ -181,7 +202,7 @@ struct Type final {
   int32_t offset_{0};
 
   /// Specifies the element type of the tensor.
-  ElemKind elementType_{ElemKind::IndexTy};
+  ElemKind elementType_{ElemKind::Int64ITy};
 
   /// Initialize a new integer type with \p scale and \p offset.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
@@ -258,7 +279,7 @@ struct Type final {
   /// \returns the number of elements in the tensor.
   size_t size() const {
     size_t s = 1;
-    for (unsigned i = 0; i < numSizes_; i++) {
+    for (unsigned char i = 0; i < numSizes_; i++) {
       s *= size_t(sizes_[i]);
     }
 
@@ -269,10 +290,10 @@ struct Type final {
   /// size of the slice starting at \p startDim. For example, the tensor with
   /// the shape [10, 10, 3] and startDim 1 would have the size 30, because this
   /// is the size of the slice [10, 3] that starts at index 1.
-  size_t getSliceSize(unsigned startDim) const {
+  size_t getSliceSize(unsigned char startDim) const {
     assert(startDim <= numSizes_ && "Invalid start dim");
     size_t s = 1;
-    for (unsigned i = startDim; i < numSizes_; i++) {
+    for (unsigned char i = startDim; i < numSizes_; i++) {
       s *= size_t(sizes_[i]);
     }
     return s;
@@ -291,18 +312,22 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
+    case ElemKind::Int16QTy:
+      return std::is_same<ElemTy, int16_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
-    case ElemKind::IndexTy:
-      return std::is_same<ElemTy, size_t>::value;
+    case ElemKind::Int64ITy:
+      return std::is_same<ElemTy, int64_t>::value;
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
 
   /// \returns true if the type of this Tensor is one of the integer types.
-  /// Notice that we don't consider IndexTy as an integer because we are not
+  /// Notice that we don't consider Int64ITy as an integer because we are not
   /// performing calculations on this type.
-  bool isQuantizedType() const { return isType<int8_t>() || isType<int32_t>(); }
+  bool isQuantizedType() const {
+    return isType<int8_t>() || isType<int16_t>() || isType<int32_t>();
+  }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -317,10 +342,12 @@ struct Type final {
       return sizeof(float);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
+    case ElemKind::Int16QTy:
+      return sizeof(int16_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
-    case ElemKind::IndexTy:
-      return sizeof(size_t);
+    case ElemKind::Int64ITy:
+      return sizeof(int64_t);
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
@@ -333,10 +360,7 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",
-        "i8",
-        "i32",
-        "index",
+        "float", "i8", "i16", "i32", "index",
     };
     return names[(int)Ty];
   }
@@ -348,6 +372,7 @@ private:
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
     for (size_t i = 0, e = dims.size(); i < e; i++) {
+      assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
     numSizes_ = dims.size();

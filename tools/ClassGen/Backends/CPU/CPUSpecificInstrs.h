@@ -28,12 +28,12 @@ BB.newBackendSpecificInstr("CPUConvDKKC8")
     .addOperand("Src", OperandKind::In)
     .addOperand("Filter", OperandKind::In)
     .addOperand("Bias", OperandKind::In)
-    .addMember(MemberType::SizeT, "Kernel")
-    .addMember(MemberType::SizeT, "Stride")
-    .addMember(MemberType::VectorSizeT, "Pads")
-    .addMember(MemberType::SizeT, "Group")
+    .addMember(MemberType::VectorUnsigned, "Kernels")
+    .addMember(MemberType::VectorUnsigned, "Strides")
+    .addMember(MemberType::VectorUnsigned, "Pads")
+    .addMember(MemberType::Unsigned, "Group")
     .autoIRGen();
 
-BB.includeBackendSpecificVerification("CPUSpecificInstrsVerification.h");
+BB.includeBackendSpecificVerification("glow/CPUSpecificInstrsVerification.h");
 
 #endif // GLOW_WITH_CPU

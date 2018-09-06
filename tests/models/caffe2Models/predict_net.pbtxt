@@ -1,0 +1,25 @@
+name: "conv_test"
+op {
+  input: "data"
+  input: "conv_w"
+  input: "conv_b"
+  output: "conv_out"
+  type: "Conv"
+  arg {
+    name: "kernel"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "group"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+}
+external_output: "conv_out"

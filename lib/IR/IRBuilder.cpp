@@ -55,39 +55,40 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
-PoolMaxWithXYInst *
-IRBuilder::createPoolMaxWithXYOp(Value *input, size_t kernel, size_t stride,
-                                 llvm::ArrayRef<size_t> pads) {
+MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
+    Value *input, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
 
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY =
-      createAllocActivationInst("srcXY", ElemKind::IndexTy,
+      createAllocActivationInst("srcXY", ElemKind::Int64ITy,
                                 {idim.n, outSz.first, outSz.second, idim.c, 2});
 
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
-  return createPoolMaxWithXYInst("pool", dest, input, srcXY, kernel, stride,
+  return createMaxPoolWithXYInst("pool", dest, input, srcXY, kernels, strides,
                                  pads);
 }
-PoolAvgInst *IRBuilder::createPoolAvgOp(Value *input, size_t kernel,
-                                        size_t stride,
-                                        llvm::ArrayRef<size_t> pads) {
+AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
+                                        llvm::ArrayRef<unsigned_t> kernels,
+                                        llvm::ArrayRef<unsigned_t> strides,
+                                        llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
   auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernel, stride, pads);
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst("pool.res", outTy);
 
-  return createPoolAvgInst("pool", dest, input, kernel, stride, pads);
+  return createAvgPoolInst("pool", dest, input, kernels, strides, pads);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
@@ -137,12 +138,12 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
   // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::IndexTy,
+  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::Int64ITy,
                                             {inDims.back() * 2});
   createSplatInst("topk.zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst("topk.values", outTy);
   auto *indices =
-      createAllocActivationInst("topk.indices", ElemKind::IndexTy, outDims);
+      createAllocActivationInst("topk.indices", ElemKind::Int64ITy, outDims);
   return createTopKInst("topk", values, indices, input, scratch, k);
 }
 

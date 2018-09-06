@@ -41,9 +41,15 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
 ExecutionEngine::ExecutionEngine(BackendKind backendKind)
     : backend_(createBackend(backendKind)) {}
 
-// Set the code generator kind to \p backendKind.
+/// Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   backend_.reset(createBackend(backendKind));
+  function_.reset();
+}
+
+/// Set the code generator kind to \p backend.
+void ExecutionEngine::setBackend(Backend *backend) {
+  backend_.reset(backend);
   function_.reset();
 }
 
@@ -117,7 +123,7 @@ void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   auto dim = input->dims();
   (void)dim;
   assert(t.dims() == dim && "Invalid slice size");
-  t.copyFrom(input);
+  t.assign(input);
 }
 
 std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
@@ -173,6 +179,7 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F) {
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
-                           llvm::StringRef outputDir) {
-  backend_->save(generateIR(mode, F), outputDir);
+                           llvm::StringRef outputDir,
+                           llvm::StringRef networkName) {
+  backend_->save(generateIR(mode, F), outputDir, networkName);
 }

@@ -44,17 +44,21 @@ class InterpAndCPU : public Operator {};
 
 class InterpOnly : public Operator {};
 
-TEST_P(InterpAndCPU, pow) {
+TEST_P(Operator, pow) {
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
   auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
+  auto *Exp = mod_.createVariable(ElemKind::FloatTy, {2}, "Exp");
   X->getPayload().getHandle() = {5, 0.1f, -3};
   Y->getPayload().getHandle() = {2, 100};
+  Exp->getPayload().getHandle() = {2, -1};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
+  auto *Pow3 = F_->createPow("Pow3", Y, Exp);
 
   auto *Save1 = F_->createSave("save", Pow1);
   auto *Save2 = F_->createSave("save", Pow2);
+  auto *Save3 = F_->createSave("save", Pow3);
 
   EE_.compile(CompilationMode::Infer, F_);
 
@@ -68,6 +72,10 @@ TEST_P(InterpAndCPU, pow) {
   auto HY = llvm::cast<Variable>(Save2->getOutput())->getPayload().getHandle();
   EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
+
+  auto HZ = llvm::cast<Variable>(Save3->getOutput())->getPayload().getHandle();
+  EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
+  EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
 TEST_P(InterpAndCPU, log) {
@@ -91,12 +99,12 @@ TEST_P(InterpAndCPU, log) {
 }
 
 TEST_P(InterpAndCPU, CmpEQ) {
-  auto *X = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "X");
-  X->getPayload().getHandle<size_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
-                                         0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2, 7}, "Y");
-  Y->getPayload().getHandle<size_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
-                                         0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *X = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "X");
+  X->getPayload().getHandle<int64_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
+                                          0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "Y");
+  Y->getPayload().getHandle<int64_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
+                                          0, 1, 17, 876, 1000, 44444, 9999999};
 
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
   auto *save = F_->createSave("save", cmpEQ);
@@ -105,7 +113,7 @@ TEST_P(InterpAndCPU, CmpEQ) {
 
   EE_.run({}, {});
 
-  auto saveH = save->getVariable()->getHandle<size_t>();
+  auto saveH = save->getVariable()->getHandle<int64_t>();
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_FALSE(saveH.at({0, i}));
   }
@@ -132,6 +140,53 @@ TEST_P(Operator, matmul) {
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
+}
+
+/// Test that the broadcasted batch mat mul operator works as expected.
+TEST_P(Operator, BroadcastedBatchMatMul) {
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
+  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
+  rhs->getPayload().getHandle() = {7, 10};
+
+  auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
+  EXPECT_NEAR(H.at({1, 0, 0}), -27, 0.001);
+  EXPECT_NEAR(H.at({1, 1, 0}), -61, 0.001);
+  EXPECT_NEAR(H.at({1, 2, 0}), -95, 0.001);
+}
+
+TEST_P(Operator, ParallelBatchMatMul) {
+  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
+  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 2, 1}, "rhs");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
+  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
+  rhs->getPayload().getHandle() = {7, 10, 12, -1};
+
+  auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
+  EXPECT_NEAR(H.at({1, 0, 0}), -10, 0.001);
+  EXPECT_NEAR(H.at({1, 1, 0}), -32, 0.001);
+  EXPECT_NEAR(H.at({1, 2, 0}), -54, 0.001);
 }
 
 TEST_P(Operator, batchedReduceAdd) {
@@ -552,10 +607,10 @@ TEST_P(Operator, minElem) {
   }
 }
 
-TEST_P(InterpAndCPU, TopK) {
+TEST_P(Operator, TopK) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
 
   inp->getPayload().getHandle() = {
       28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
@@ -571,7 +626,7 @@ TEST_P(InterpAndCPU, TopK) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
   EXPECT_EQ(I.at({0, 0, 0}), 2);
@@ -600,7 +655,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
   auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {4, 1, 2}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {4, 1, 2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {4, 1, 2}, "indices");
 
   inp1->getPayload().getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
   inp2->getPayload().getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
@@ -623,7 +678,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 3);
   EXPECT_FLOAT_EQ(I.at({0, 0, 0}), 2);
@@ -699,7 +754,7 @@ TEST_P(Operator, matMul) {
 TEST_P(InterpAndCPU, TopK1) {
   auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
   auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 1}, "values");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {3, 1, 1}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 1}, "indices");
 
   inp->getPayload().getHandle() = {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
@@ -715,7 +770,7 @@ TEST_P(InterpAndCPU, TopK1) {
   EE_.run({}, {});
 
   auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<size_t>();
+  auto I = indices->getPayload().getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
   EXPECT_EQ(I.at({0, 0, 0}), 1);
@@ -730,7 +785,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");
   auto *OV =
       mod_.createVariable(ElemKind::Int8QTy, {3, 1, 3}, 1.2, 5, "values");
-  auto *IV = mod_.createVariable(ElemKind::IndexTy, {3, 1, 3}, "indices");
+  auto *IV = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
 
   INV->getPayload().getHandle<int8_t>() = {
       -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
@@ -746,7 +801,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EE_.run({}, {});
 
   auto VH = OV->getPayload().getHandle<int8_t>();
-  auto IH = IV->getPayload().getHandle<size_t>();
+  auto IH = IV->getPayload().getHandle<int64_t>();
 
   EXPECT_EQ(VH.at({0, 0, 0}), 8);
   EXPECT_EQ(IH.at({0, 0, 0}), 3);
@@ -797,13 +852,13 @@ TEST_P(Operator, Gather) {
     ]
   */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2, 4}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -835,6 +890,135 @@ TEST_P(Operator, Gather) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
+/// Check if the code generation of transposes
+/// is correct for tensors with 2 dimensions.
+/// Note: This assumes that Tensor::transpose is correct.
+TEST_P(Operator, Transpose2Dims) {
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {20, 13}, "A",
+                                VisibilityKind::Public);
+  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave("saveTranspose", tr);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor dest(ElemKind::FloatTy, {13, 20});
+  A->getPayload().transpose(&dest, {1, 0});
+  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(dest));
+}
+
+/// Check if the code generation of transposes
+/// is correct for tensors with 3 dimensions.
+/// Note: This assumes that Tensor::transpose is correct.
+TEST_P(Operator, Transpose3Dims) {
+  constexpr size_t dims[] = {20, 13, 7};
+  auto *A =
+      mod_.createVariable(ElemKind::FloatTy, dims, "A", VisibilityKind::Public);
+  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  int nbOfShuffle = 0;
+  SaveNode *savedTransposes[6];
+  unsigned_t shuffles[6][3];
+
+  for (unsigned_t i = 0; i < 3; ++i) {
+    for (unsigned_t j = 0; j < 3; ++j) {
+      if (j == i) {
+        continue;
+      }
+      for (unsigned_t k = 0; k < 3; ++k) {
+        if (k == j || k == i) {
+          continue;
+        }
+        shuffles[nbOfShuffle][0] = i;
+        shuffles[nbOfShuffle][1] = j;
+        shuffles[nbOfShuffle][2] = k;
+        auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
+        savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
+        ++nbOfShuffle;
+      }
+    }
+  }
+
+  // We should have exactly 6 possible permutations for 3 dimensions.
+  EXPECT_EQ(6, nbOfShuffle);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  for (int i = 0; i < 6; ++i) {
+    Tensor dest(ElemKind::FloatTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
+                                    dims[shuffles[i][2]]});
+    A->getPayload().transpose(&dest, shuffles[i]);
+    EXPECT_TRUE(savedTransposes[i]->getVariable()->getPayload().isEqual(dest));
+  }
+}
+
+/// Check that gather on Int64ITy/size_t works.
+TEST_P(InterpAndCPU, GatherSizeT) {
+  /*
+    DATA  = [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+    ]
+    INDICES = [
+        [0, 1, 0, 1],
+        [1, 2, 2, 0],
+    ]
+    OUTPUT = [
+        [
+            [1, 2],
+            [3, 4],
+            [1, 2],
+            [3, 4],
+        ],
+        [
+            [3, 4],
+            [5, 6],
+            [5, 6],
+            [1, 2],
+        ],
+    ]
+  */
+  auto *data = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "data");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
+  auto *result = mod_.createVariable(ElemKind::Int64ITy, {2, 4, 2}, "result");
+
+  data->getPayload().getHandle<int64_t>() = {
+      1, 2, 3, 4, 5, 6,
+  };
+  indices->getPayload().getHandle<int64_t>() = {
+      0, 1, 0, 1, 1, 2, 2, 0,
+  };
+
+  auto R = F_->createGather("gather", data, indices);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle<int64_t>();
+
+  EXPECT_EQ(H.at({0, 0, 0}), 1);
+  EXPECT_EQ(H.at({0, 0, 1}), 2);
+  EXPECT_EQ(H.at({0, 1, 0}), 3);
+  EXPECT_EQ(H.at({0, 1, 1}), 4);
+  EXPECT_EQ(H.at({0, 2, 0}), 1);
+  EXPECT_EQ(H.at({0, 2, 1}), 2);
+  EXPECT_EQ(H.at({0, 3, 0}), 3);
+  EXPECT_EQ(H.at({0, 3, 1}), 4);
+
+  EXPECT_EQ(H.at({1, 0, 0}), 3);
+  EXPECT_EQ(H.at({1, 0, 1}), 4);
+  EXPECT_EQ(H.at({1, 1, 0}), 5);
+  EXPECT_EQ(H.at({1, 1, 1}), 6);
+  EXPECT_EQ(H.at({1, 2, 0}), 5);
+  EXPECT_EQ(H.at({1, 2, 1}), 6);
+  EXPECT_EQ(H.at({1, 3, 0}), 1);
+  EXPECT_EQ(H.at({1, 3, 1}), 2);
+}
+
 TEST_P(Operator, BatchedGather) {
   /*
    DATA  = [
@@ -852,13 +1036,13 @@ TEST_P(Operator, BatchedGather) {
    ]
    */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 4}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "result");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       0,
       2,
   };
@@ -882,12 +1066,12 @@ TEST_P(Operator, BatchedGather) {
 
 TEST_P(Operator, ScatterAssign) {
   auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
 
   data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  indices->getPayload().getHandle<size_t>() = {1, 3};
+  indices->getPayload().getHandle<int64_t>() = {1, 3};
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
@@ -913,19 +1097,19 @@ TEST_P(Operator, ScatterAssign) {
 
 TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {2}, "indices");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
   auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
   auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
 
   data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  indices->getPayload().getHandle<size_t>() = {1, 3};
+  indices->getPayload().getHandle<int64_t>() = {1, 3};
   slices->getPayload().getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
-  auto dataTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale,
-                                qParams.offset);
-  auto slicesTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale,
-                                  qParams.offset);
+  auto dataTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
+  auto slicesTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale, qParams.offset);
 
   auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
@@ -975,7 +1159,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
       fpResult->getVariable()->getPayload()));
 }
 
-TEST_P(InterpAndCPU, IntMatMul) {
+TEST_P(Operator, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
@@ -1103,8 +1287,8 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto *biasq = F->createQuantize("bias.q", bias, biasTy);
 
   auto *convq =
-      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernel(),
-                    conv->getStride(), conv->getPads(), 1);
+      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernels(),
+                    conv->getStrides(), conv->getPads(), 1);
   auto *dequantRes = F->createDequantize("dequant", convq);
 
   // Subtract the results of the convolution from the quantized convolution.
@@ -1207,11 +1391,11 @@ TEST_P(InterpAndCPU, IntFC) {
 
 TEST_P(InterpAndCPU, EntropyLossTest) {
   auto *P = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "P");
-  auto *Y = mod_.createVariable(ElemKind::IndexTy, {2}, "Y");
+  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2}, "Y");
   auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");
 
   P->getPayload().getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
-  Y->getPayload().getHandle<size_t>() = {1, 2};
+  Y->getPayload().getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   F_->createSave("save", ceLoss, L);
   EE_.compile(CompilationMode::Infer, F_);
@@ -1223,12 +1407,11 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 40);
+                                    "input", VisibilityKind::Public, true);
+  auto *output = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4,
+                                     "output", VisibilityKind::Public, false);
 
-  auto *output =
-      mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4, "output",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  input->getPayload().init(Tensor::InitKind::Broadcast, 40, mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
   auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
@@ -1261,24 +1444,18 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
                                 VisibilityKind::Public);
   auto *C = mod_.createVariable(ElemKind::FloatTy, {len}, "C",
                                 VisibilityKind::Public);
-  auto *O1 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O2 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O3 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O4 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O5 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O6 =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O1 = mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
+                                 VisibilityKind::Public, false);
+  auto *O2 = mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
+                                 VisibilityKind::Public, false);
+  auto *O3 = mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
+                                 VisibilityKind::Public, false);
+  auto *O4 = mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
+                                 VisibilityKind::Public, false);
+  auto *O5 = mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
+                                 VisibilityKind::Public, false);
+  auto *O6 = mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
+                                 VisibilityKind::Public, false);
 
   auto AH = A->getHandle();
   auto BH = B->getHandle();
@@ -1391,7 +1568,7 @@ TEST_P(Operator, QuantizedTranspose) {
 }
 
 TEST_P(Operator, QuantizedArithmeticUnrescaled) {
-  const size_t len = 100;
+  const size_t len = 1000;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div operations.
@@ -1415,24 +1592,24 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   auto *QC =
       mod_.createVariable(ElemKind::Int8QTy, {len}, TQC->getScale(),
                           TQC->getOffset(), "QC", VisibilityKind::Public);
-  auto *O1 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO1->getScale(), TO1->getOffset(), "Max",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O2 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO2->getScale(), TO2->getOffset(), "Min",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O3 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO3->getScale(), TO3->getOffset(), "Add",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O4 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO4->getScale(), TO4->getOffset(), "Sub",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O5 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO5->getScale(), TO5->getOffset(), "Mul",
-      VisibilityKind::Public, Variable::TrainKind::None);
-  auto *O6 = mod_.createVariable(
-      ElemKind::Int8QTy, {len}, TO6->getScale(), TO6->getOffset(), "Div",
-      VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O1 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO1->getScale(),
+                                 TO1->getOffset(), "Max",
+                                 VisibilityKind::Public, false);
+  auto *O2 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO2->getScale(),
+                                 TO2->getOffset(), "Min",
+                                 VisibilityKind::Public, false);
+  auto *O3 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO3->getScale(),
+                                 TO3->getOffset(), "Add",
+                                 VisibilityKind::Public, false);
+  auto *O4 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO4->getScale(),
+                                 TO4->getOffset(), "Sub",
+                                 VisibilityKind::Public, false);
+  auto *O5 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO5->getScale(),
+                                 TO5->getOffset(), "Mul",
+                                 VisibilityKind::Public, false);
+  auto *O6 = mod_.createVariable(ElemKind::Int8QTy, {len}, TO6->getScale(),
+                                 TO6->getOffset(), "Div",
+                                 VisibilityKind::Public, false);
 
   auto QAH = QA->getHandle<int8_t>();
   auto QBH = QB->getHandle<int8_t>();
@@ -1509,9 +1686,8 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   auto *QD =
       mod_.createVariable(ElemKind::Int8QTy, {len}, TQD->getScale(),
                           TQD->getOffset(), "QD", VisibilityKind::Public);
-  auto *Out =
-      mod_.createVariable(ElemKind::Int8QTy, {len}, 1.5, -2, "out",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *Out = mod_.createVariable(ElemKind::Int8QTy, {len}, 1.5, -2, "out",
+                                  VisibilityKind::Public, false);
 
   auto QAH = QA->getHandle<int8_t>();
   auto QBH = QB->getHandle<int8_t>();
@@ -1519,10 +1695,10 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   auto QDH = QD->getHandle<int8_t>();
   auto OH = Out->getHandle<int8_t>();
 
-  QAH.randomize(-129, 128, mod_.getPRNG());
-  QBH.randomize(-129, 128, mod_.getPRNG());
-  QCH.randomize(-129, 128, mod_.getPRNG());
-  QDH.randomize(-129, 128, mod_.getPRNG());
+  QAH.randomize(-128, 127, mod_.getPRNG());
+  QBH.randomize(-128, 127, mod_.getPRNG());
+  QCH.randomize(-128, 127, mod_.getPRNG());
+  QDH.randomize(-128, 127, mod_.getPRNG());
 
   // Apply comparison and selection quantized.
   Node *cmpLTE = F_->createCmpLTE("cmpLTE", QA, QB);
@@ -1562,9 +1738,8 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
                                 VisibilityKind::Public);
-  auto *O =
-      mod_.createVariable(ElemKind::FloatTy, {len}, "Out",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *O = mod_.createVariable(ElemKind::FloatTy, {len}, "Out",
+                                VisibilityKind::Public, false);
 
   auto AH = A->getPayload().getHandle();
   auto OH = O->getPayload().getHandle();
@@ -1609,18 +1784,18 @@ TEST_P(Operator, FCGradientCheck) {
   // with reference values.
   TrainingConfig TC;
 
-  auto *A =
-      mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  auto *B =
-      mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
+                                VisibilityKind::Public, false);
+  auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
+                                VisibilityKind::Public, false);
   auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1}, "X",
-                                VisibilityKind::Public,
-                                Variable::TrainKind::Broadcast, -1.26274);
-  auto *Y =
-      mod_.createVariable(ElemKind::FloatTy, {1}, "Y", VisibilityKind::Public,
-                          Variable::TrainKind::Broadcast, 0.10000);
+                                VisibilityKind::Public, true);
+  auto *Y = mod_.createVariable(ElemKind::FloatTy, {1}, "Y",
+                                VisibilityKind::Public, true);
+
+  X->getPayload().init(Tensor::InitKind::Broadcast, -1.26274, mod_.getPRNG());
+  Y->getPayload().init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
+
   auto *FC = F_->createFullyConnected("fc", A, X, Y);
   auto *S = F_->createRegression("reg", FC, B);
   F_->createSave("ret", S);
@@ -1641,35 +1816,35 @@ TEST_P(Operator, FCGradientCheck) {
 TEST_P(InterpAndCPU, concatVectors) {
   F_->setName("concatVectors");
 
-  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
+  auto *V1 = mod_.createVariable(ElemKind::Int64ITy, {10}, "V1",
                                  VisibilityKind::Public);
-  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
+  auto *V2 = mod_.createVariable(ElemKind::Int64ITy, {20}, "V2",
                                  VisibilityKind::Public);
-  auto *V3 = mod_.createVariable(ElemKind::IndexTy, {30}, "V3",
+  auto *V3 = mod_.createVariable(ElemKind::Int64ITy, {30}, "V3",
                                  VisibilityKind::Public);
 
   Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
   auto *result = F_->createSave("ret", L);
 
-  Tensor I1(ElemKind::IndexTy, {10});
-  Tensor I2(ElemKind::IndexTy, {20});
-  Tensor I3(ElemKind::IndexTy, {30});
+  Tensor I1(ElemKind::Int64ITy, {10});
+  Tensor I2(ElemKind::Int64ITy, {20});
+  Tensor I3(ElemKind::Int64ITy, {30});
 
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<size_t>().at({i}) = i;
+    I1.getHandle<int64_t>().at({i}) = i;
 
-    I2.getHandle<size_t>().at({i}) = i + 10;
-    I2.getHandle<size_t>().at({i + 10}) = i + 20;
-    I3.getHandle<size_t>().at({i}) = i + 30;
-    I3.getHandle<size_t>().at({i + 10}) = i + 40;
-    I3.getHandle<size_t>().at({i + 20}) = i + 50;
+    I2.getHandle<int64_t>().at({i}) = i + 10;
+    I2.getHandle<int64_t>().at({i + 10}) = i + 20;
+    I3.getHandle<int64_t>().at({i}) = i + 30;
+    I3.getHandle<int64_t>().at({i + 10}) = i + 40;
+    I3.getHandle<int64_t>().at({i + 20}) = i + 50;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
   EE_.run({V1, V2, V3}, {&I1, &I2, &I3});
-  auto RNWH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH = result->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
@@ -1683,9 +1858,9 @@ TEST_P(InterpAndCPU, concatVectors) {
 TEST_P(InterpAndCPU, concatVectorsRepeated) {
   F_->setName("concatVectors");
 
-  auto *V1 = mod_.createVariable(ElemKind::IndexTy, {10}, "V1",
+  auto *V1 = mod_.createVariable(ElemKind::Int64ITy, {10}, "V1",
                                  VisibilityKind::Public);
-  auto *V2 = mod_.createVariable(ElemKind::IndexTy, {20}, "V2",
+  auto *V2 = mod_.createVariable(ElemKind::Int64ITy, {20}, "V2",
                                  VisibilityKind::Public);
 
   // Alternate adding sequences of V1 and V2, so that the IRGen'd InsertTensors
@@ -1693,21 +1868,21 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
   auto *result = F_->createSave("ret", L);
 
-  Tensor I1(ElemKind::IndexTy, {10});
-  Tensor I2(ElemKind::IndexTy, {20});
+  Tensor I1(ElemKind::Int64ITy, {10});
+  Tensor I2(ElemKind::Int64ITy, {20});
 
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<size_t>().at({i}) = 1;
+    I1.getHandle<int64_t>().at({i}) = 1;
 
-    I2.getHandle<size_t>().at({i}) = 2;
-    I2.getHandle<size_t>().at({i + 10}) = 2;
+    I2.getHandle<int64_t>().at({i}) = 2;
+    I2.getHandle<int64_t>().at({i + 10}) = 2;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
   EE_.run({V1, V2}, {&I1, &I2});
-  auto outH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto outH = result->getVariable()->getPayload().getHandle<int64_t>();
   (void)outH;
 
   // Simply verify here that the values are in their correct places, based on
@@ -1724,7 +1899,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
 TEST_P(InterpAndCPU, sliceVectors) {
   F_->setName("sliceVectors");
 
-  auto *V = mod_.createVariable(ElemKind::IndexTy, {3, 30}, "V",
+  auto *V = mod_.createVariable(ElemKind::Int64ITy, {3, 30}, "V",
                                 VisibilityKind::Public);
 
   Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
@@ -1735,23 +1910,23 @@ TEST_P(InterpAndCPU, sliceVectors) {
   auto *result2 = F_->createSave("ret2", S2);
   auto *result3 = F_->createSave("ret3", S3);
 
-  Tensor I(ElemKind::IndexTy, {3, 30});
+  Tensor I(ElemKind::Int64ITy, {3, 30});
 
   for (size_t j = 0; j < 30; j++) {
-    I.getHandle<size_t>().at({0, j}) = j;
-    I.getHandle<size_t>().at({1, j}) = j + 30;
-    I.getHandle<size_t>().at({2, j}) = j + 60;
+    I.getHandle<int64_t>().at({0, j}) = j;
+    I.getHandle<int64_t>().at({1, j}) = j + 30;
+    I.getHandle<int64_t>().at({2, j}) = j + 60;
   }
 
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output slices.
   EE_.run({V}, {&I});
-  auto RNWH1 = result1->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH1 = result1->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH1;
-  auto RNWH2 = result2->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH2 = result2->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH2;
-  auto RNWH3 = result3->getVariable()->getPayload().getHandle<size_t>();
+  auto RNWH3 = result3->getVariable()->getPayload().getHandle<int64_t>();
   (void)RNWH3;
 
   EXPECT_EQ(3, RNWH1.dims()[0]);
@@ -1776,13 +1951,13 @@ TEST_P(InterpAndCPU, sliceVectors) {
 TEST_P(InterpAndCPU, sliceConcatVectors) {
   F_->setName("sliceConcatVectors");
 
-  auto *V = mod_.createVariable(ElemKind::IndexTy, {5, 4}, "V",
+  auto *V = mod_.createVariable(ElemKind::Int64ITy, {5, 4}, "V",
                                 VisibilityKind::Public);
 
-  Tensor I(ElemKind::IndexTy, {5, 4});
+  Tensor I(ElemKind::Int64ITy, {5, 4});
   for (size_t i = 0; i < 5; i++) {
     for (size_t j = 0; j < 4; j++) {
-      I.getHandle<size_t>().at({i, j}) = i * 100 + j;
+      I.getHandle<int64_t>().at({i, j}) = i * 100 + j;
     }
   }
 
@@ -1808,7 +1983,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
                                  {0, 1, 2, 3},         {100, 101, 102, 103},
                                  {200, 201, 202, 203}};
 
-  auto resultH = result->getVariable()->getPayload().getHandle<size_t>();
+  auto resultH = result->getVariable()->getPayload().getHandle<int64_t>();
   EXPECT_EQ(7, resultH.dims()[0]);
   EXPECT_EQ(4, resultH.dims()[1]);
   for (size_t i = 0; i < 7; i++) {
@@ -2142,10 +2317,11 @@ TEST_P(InterpAndCPU, Split) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 3}), 12);
 }
 
-TEST_P(InterpAndCPU, IntRelu) {
+TEST_P(Operator, IntRelu) {
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
+  const int32_t reluOffset = -128;
   const int32_t offset = 5;
   const size_t size = 5;
 
@@ -2155,7 +2331,9 @@ TEST_P(InterpAndCPU, IntRelu) {
 
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
   auto *rescale = F_->createRescaleQuantized("rescale", splat, rescaleTy);
-  auto *relu = F_->createRELU("relu", rescale);
+  auto *reluOutTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, reluOffset);
+  auto *relu = F_->createRELU("relu", rescale, reluOutTy);
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
   auto *save = F_->createSave("save", dequantize);
@@ -2169,7 +2347,7 @@ TEST_P(InterpAndCPU, IntRelu) {
   }
 }
 
-TEST_P(InterpAndCPU, IntSplat) {
+TEST_P(Operator, IntSplat) {
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;
@@ -2189,7 +2367,7 @@ TEST_P(InterpAndCPU, IntSplat) {
   }
 }
 
-TEST_P(InterpAndCPU, GroupConvolution) {
+TEST_P(Operator, GroupConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 8}, "input");
   auto IH = input->getHandle();
   for (size_t i = 0; i < 2 * 8; i++) {
@@ -2244,22 +2422,20 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
     IH.raw(i) = i + 1;
   }
 
-  auto filter =
-      mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {2, 2, 2, 1}, "filter",
+                                    VisibilityKind::Public, false);
   auto FH = filter->getHandle();
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     FH.raw(i) = pow(2.0, i);
   }
-  auto *zeroBias =
-      mod_.createVariable(ElemKind::FloatTy, {2}, "bias",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {2}, "bias",
+                                       VisibilityKind::Public, false);
   zeroBias->getPayload().zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
 
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
-                                       2, 1, {0, 2, 1, 3}, 1);
+                                       {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2276,8 +2452,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, 2, 1,
-                        {0, 0, 0, 0}, 1);
+  CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
+                        {1, 1}, {0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
@@ -2296,7 +2472,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createPoolAvg("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2311,7 +2487,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  Pool = refF->createPoolAvg("pool1", input1, 2, 1, 0);
+  Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
@@ -2330,7 +2506,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
-  auto *Pool = F_->createPoolMax("pool", input, 2, 1, {0, 2, 1, 3});
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run({}, {});
@@ -2345,13 +2521,45 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
     }
 
   Function *refF = mod_.createFunction("mainRef");
-  Pool = refF->createPoolMax("pool1", input1, 2, 1, 0);
+  Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run({}, {});
   Tensor &result1 = S->getVariable()->getPayload();
 
   EXPECT_TRUE(result.isEqual(result1));
+}
+
+TEST_P(Operator, Int8AvgPool) {
+  auto *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
+  input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  auto result = S->getVariable()->getHandle<int8_t>();
+  Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
+  out.getHandle<int8_t>() = {2, 3, 5, 6};
+  for (size_t i = 0; i < 2 * 2; i++) {
+    EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
+  }
+}
+
+TEST_P(Operator, Int8MaxPool) {
+  auto *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0, "input");
+  input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  auto result = S->getVariable()->getHandle<int8_t>();
+  Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
+  out.getHandle<int8_t>() = {4, 5, 7, 8};
+  for (size_t i = 0; i < 2 * 2; i++) {
+    EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
+  }
 }
 
 TEST_P(InterpAndCPU, Int8Tanh) {
@@ -2387,6 +2595,142 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   for (size_t i = 0; i < size; i++) {
     EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
   }
+}
+
+/// Check Non-square kernel for conv.
+TEST_P(Operator, NonSquareKernelConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {1, 2, 3, 1}, "filter",
+                                    VisibilityKind::Public, false);
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 1 * 2 * 3; i++) {
+    FH.raw(i) = i + 1;
+  }
+
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {1}, "bias",
+                                       VisibilityKind::Public, false);
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {106, 127, 190, 211, 274, 295};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square kernel for AveragePool.
+TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {4, 5, 8, 9, 12, 13};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square kernel for MaxPool.
+TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {7, 8, 11, 12, 15, 16};
+  for (size_t i = 0; i < 6; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for conv.
+TEST_P(Operator, NonSquareStrideConvolution) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter = mod_.createVariable(ElemKind::FloatTy, {1, 2, 2, 1}, "filter",
+                                    VisibilityKind::Public, false);
+  auto FH = filter->getHandle();
+  for (size_t i = 0; i < 1 * 2 * 2; i++) {
+    FH.raw(i) = i + 1;
+  }
+
+  auto *zeroBias = mod_.createVariable(ElemKind::FloatTy, {1}, "bias",
+                                       VisibilityKind::Public, false);
+  zeroBias->getPayload().zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 2, 1});
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {44, 64, 41, 47};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for AveragePool.
+TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {3.5, 5.5, 6.75, 7.75};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-square stride for MaxPool.
+TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");
+  auto IH = input->getHandle();
+  for (size_t i = 0; i < 4 * 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
+  auto *S = F_->createSave("save", Pool);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+  Tensor &result = S->getVariable()->getPayload();
+
+  static const float ref[] = {6, 8, 14, 16};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
 TEST_P(InterpAndCPU, Int8Sigmoid) {
@@ -2494,7 +2838,7 @@ TEST_P(Operator, testBatchAdd) {
 }
 
 /// Tests quantized batched-add arithmetic.
-TEST_P(InterpAndCPU, testQuantizedBatchAdd) {
+TEST_P(Operator, testQuantizedBatchAdd) {
   unsigned numSlices = 10;
   auto *input = mod_.createVariable(ElemKind::FloatTy, {numSlices, 10, 10},
                                     "input", VisibilityKind::Public);
@@ -2563,16 +2907,16 @@ TEST_P(InterpOnly, SparseLengthsSum) {
     ]
   */
   auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::IndexTy, {8}, "indices");
-  auto *lengths = mod_.createVariable(ElemKind::IndexTy, {5}, "lengths");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::Int64ITy, {5}, "lengths");
 
   data->getPayload().getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  indices->getPayload().getHandle<size_t>() = {
+  indices->getPayload().getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  lengths->getPayload().getHandle<size_t>() = {
+  lengths->getPayload().getHandle<int64_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -2589,6 +2933,287 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(InterpOnly, SparseLengthsWeightedSum) {
+  /*
+    DATA  =   [2.0, -0.5, 13]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  auto *data = mod_.createVariable(ElemKind::FloatTy, {3}, "data");
+  auto *weights = mod_.createVariable(ElemKind::FloatTy, {8}, "weights");
+  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {8}, "indices");
+  auto *lengths = mod_.createVariable(ElemKind::Int64ITy, {4}, "lengths");
+
+  data->getPayload().getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+  weights->getPayload().getHandle() = {
+      3, 1, 0, 0, 0, 0, 2, -0.5,
+  };
+  indices->getPayload().getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  lengths->getPayload().getHandle<int64_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                              lengths);
+  auto S = F_->createSave("save", R);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
+  Tensor expected(ElemKind::FloatTy, {4});
+  expected.getHandle() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into tensor
+/// views stacked onto each other.
+TEST_P(Operator, sliceReshape) {
+  auto *X = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "X");
+  auto *resultSX = mod_.createVariable(ElemKind::FloatTy, {1, 3}, "resultSX",
+                                       VisibilityKind::Public);
+  auto *resultSSX = mod_.createVariable(ElemKind::FloatTy, {1, 1}, "resultSSX",
+                                        VisibilityKind::Public);
+  auto *resultRSX = mod_.createVariable(ElemKind::FloatTy, {3}, "resultRSX",
+                                        VisibilityKind::Public);
+  auto *resultRSSX = mod_.createVariable(ElemKind::FloatTy, {1}, "resultRSSX",
+                                         VisibilityKind::Public);
+
+  auto XH = X->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 3; j++) {
+      XH.at({i, j}) = i * 3 + j;
+    }
+  }
+
+  // Do an assortment of slices/reshapes stacked on top of each other.
+  auto *SX = F_->createSlice("sliceX", X, {2, 0}, {3, 3});
+  auto *RSX = F_->createReshape("reshapeSX", SX, {3});
+  auto *SSX = F_->createSlice("sliceSliceX", SX, {0, 2}, {1, 3});
+  auto *RSSX = F_->createReshape("reshapeSliceSliceX", SSX, {1});
+
+  F_->createSave("saveSX", SX, resultSX);
+  F_->createSave("saveRSX", RSX, resultRSX);
+  F_->createSave("saveSSX", SSX, resultSSX);
+  F_->createSave("saveRSSX", RSSX, resultRSSX);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  // Verify the slice has the same data as the original X.
+  auto SXH = resultSX->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_NEAR(SXH.at({0, i}), XH.at({2, i}), 1E-5);
+  }
+
+  // Verify the reshaped slice has the same data as the slice.
+  auto RSXH = resultRSX->getPayload().getHandle();
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_NEAR(SXH.at({0, i}), RSXH.at({i}), 1E-5);
+  }
+
+  // Verify the slice of the slice has the same data as the slice.
+  auto SSXH = resultSSX->getPayload().getHandle();
+  EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
+
+  // Verify the reshape of the slice of the slice has the same data as the slice
+  // of the slice.
+  auto RSSXH = resultRSSX->getPayload().getHandle();
+  EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
+}
+
+/// Check that the flatten operator produces 2D tensors of the right dimensions.
+TEST_P(Operator, Flatten) {
+  auto *tensor4D = mod_.createVariable(ElemKind::FloatTy, {3, 2, 4, 3}, "4D");
+  tensor4D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+
+  auto *reshape4Dto2DAxis1 = F_->createFlatten("flat4Dto2Da1", tensor4D, 1);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[0], 3);
+  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[1], 24);
+
+  auto *reshape4Dto2DAxis2 = F_->createFlatten("flat4Dto2Da2", tensor4D, 2);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[0], 6);
+  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[1], 12);
+
+  auto *reshape4Dto2DAxis3 = F_->createFlatten("flat4Dto2Da3", tensor4D, 3);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[0], 24);
+  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[1], 3);
+
+  // Now, let us do the fifth (4) axis.
+  // This comes straight from caffe2 because flattening is
+  // supported for every axis up and including the rank of a tensor.
+  // The rank of this tensor is 4, so axis 4 is fine.
+  auto *reshape4Dto2DAxis4 = F_->createFlatten("flat4Dto2Da4", tensor4D, 4);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0).size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[0], 72);
+  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[1], 1);
+
+  // This one is weird because we flatten something that is already flat, but
+  // again because flattening is supported for every axis up and including the
+  // rank of a tensor, 1D vector means we can flatten it on axis 1.
+  auto *tensor1D = mod_.createVariable(ElemKind::FloatTy, {15}, "1D");
+  tensor1D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+
+  auto *reshape1Dto2DAxis1 = F_->createFlatten("flat1Dto2D", tensor1D, 1);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[0], 15);
+  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
+
+  // Save all the reshapes so that the optimizations won't kill the network.
+  auto *save1Dto2D = mod_.createVariable(ElemKind::FloatTy, {15, 1}, "1Dto2D");
+  F_->createSave("save1Dto2D", reshape1Dto2DAxis1, save1Dto2D);
+
+  auto *save4Dto2Da1 =
+      mod_.createVariable(ElemKind::FloatTy, {3, 24}, "4Dto2Da1");
+  F_->createSave("save4Dto2Da1", reshape4Dto2DAxis1, save4Dto2Da1);
+
+  auto *save4Dto2Da2 =
+      mod_.createVariable(ElemKind::FloatTy, {6, 12}, "4Dto2Da2");
+  F_->createSave("save4Dto2Da2", reshape4Dto2DAxis2, save4Dto2Da2);
+
+  auto *save4Dto2Da3 =
+      mod_.createVariable(ElemKind::FloatTy, {24, 3}, "4Dto2Da3");
+  F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3, save4Dto2Da3);
+
+  auto *save4Dto2Da4 =
+      mod_.createVariable(ElemKind::FloatTy, {72, 1}, "4Dto2Da4");
+  F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4, save4Dto2Da4);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run({}, {});
+
+  // Verify the reshapes have the same data as the original value.
+  auto tensor4DH = tensor4D->getPayload().getHandle();
+  auto save4Dto2Da1H = save4Dto2Da1->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da1H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da2H = save4Dto2Da2->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da2H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da3H = save4Dto2Da3->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da3H.raw(i), 1E-5);
+  }
+
+  auto save4Dto2Da4H = save4Dto2Da4->getPayload().getHandle();
+  for (size_t i = 0; i < 72; i++) {
+    EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da4H.raw(i), 1E-5);
+  }
+
+  auto tensor1DH = tensor1D->getPayload().getHandle();
+  auto save1Dto2DH = save1Dto2D->getPayload().getHandle();
+  for (size_t i = 0; i < 15; i++) {
+    EXPECT_NEAR(tensor1DH.raw(i), save1Dto2DH.raw(i), 1E-5);
+  }
+}
+
+/// Check that div on Int64ITy/size_t works.
+TEST_P(InterpAndCPU, DivSizeT) {
+  auto *LHS = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "LHS");
+  auto *RHS = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "RHS");
+  auto *result = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "result");
+  auto LHSH = LHS->getPayload().getHandle<int64_t>();
+  auto RHSH = RHS->getPayload().getHandle<int64_t>();
+
+  LHSH = {10, 20, 30, 40, 50, 60};
+  RHSH = {2, 20, 100, 41, 3, 59};
+
+  auto R = F_->createDiv("div", LHS, RHS);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  auto H = result->getPayload().getHandle<int64_t>();
+
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 2; j++) {
+      EXPECT_EQ(LHSH.at({i, j}) / RHSH.at({i, j}), H.at({i, j}));
+    }
+  }
+}
+
+TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
+  /*
+    LOGITS  = [
+      [
+        [1.0, 1.2, -0.5],
+        [0.1, 0.6, 0.5],
+      ],
+      [
+        [-0.1, -2., 0.3],
+        [1, 2, 3],
+      ],
+    ]
+    TARGETS = [
+      [
+        [0.7, 0.7, 0.7],
+        [-0.7, -0.99, 1.0],
+      ],
+      [
+        [0, 0, 0],
+        [1, 2, 3],
+      ],
+    ]
+    OUTPUT = [
+      [ 0.68687367,  0.97332054],
+      [ 0.5418933,  -2.50374103],
+    ]
+  */
+  auto *logits = mod_.createVariable(ElemKind::FloatTy, {2, 2, 3}, "logits");
+  auto *targets = mod_.createVariable(ElemKind::FloatTy, {2, 2, 3}, "targets");
+  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
+
+  logits->getPayload().getHandle() = {1.0f,  1.2f, -0.5f, 0.1f, 0.6f, 0.5f,
+                                      -0.1f, -2.f, 0.3f,  1.f,  2.f,  3.f};
+  targets->getPayload().getHandle() = {0.7f, 0.7f, 0.7f, -0.7f, -0.99f, 1.0f,
+                                       0.f,  0.f,  0.f,  1.f,   2.f,    3.f};
+
+  auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
+
+  F_->createSave("save", R, result);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run({}, {});
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle() = {
+      0.68687367f,
+      0.97332054f,
+      0.5418933f,
+      -2.50374103f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result->getPayload()));
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,

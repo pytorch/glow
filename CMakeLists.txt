@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.7)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
@@ -8,10 +7,13 @@ enable_testing()
 
 option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
+option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
+option(GLOW_BUILD_TESTS "Build the tests" ON)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
@@ -41,7 +43,7 @@ include_directories(BEFORE
 include_directories(${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-file(GLOB_RECURSE header_files include/*.h tools/*.h src/*.h)
+file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
@@ -77,19 +79,24 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/onnx")
   message(FATAL_ERROR "No onnx git submodule. Run: git submodule update --init --recursive")
 endif()
 
-add_subdirectory(tests/googletest/)
-
 add_subdirectory(lib)
-add_subdirectory(examples)
 add_subdirectory(tools)
-add_subdirectory(tests)
+
+if (GLOW_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+
+if (GLOW_BUILD_TESTS)
+  add_subdirectory(tests/googletest)
+  add_subdirectory(tests)
+
+  # Fetch the dependencies for all the tests.
+  get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
+
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
+                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+endif()
 
 add_custom_target(dependency_graph
                   "${CMAKE_COMMAND}" "--graphviz=dependency_graph" .
                   WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-
-# Fetch the dependencies for all the tests.
-get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
-
-add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
-                    DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)

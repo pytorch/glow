@@ -52,12 +52,14 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  PoolMaxWithXYInst *createPoolMaxWithXYOp(Value *input, size_t kernel,
-                                           size_t stride,
-                                           llvm::ArrayRef<size_t> pads);
+  MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input,
+                                           llvm::ArrayRef<unsigned_t> kernels,
+                                           llvm::ArrayRef<unsigned_t> strides,
+                                           llvm::ArrayRef<unsigned_t> pads);
 
-  PoolAvgInst *createPoolAvgOp(Value *input, size_t kernel, size_t stride,
-                               llvm::ArrayRef<size_t> pads);
+  AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned_t> kernels,
+                               llvm::ArrayRef<unsigned_t> strides,
+                               llvm::ArrayRef<unsigned_t> pads);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
 
@@ -94,7 +96,7 @@ public:
                                                  llvm::ArrayRef<size_t> dims);
 
 // Import the auto-generated instruction creation methods:
-#include "AutoGenIRBuilder.h"
+#include "glow/AutoGenIRBuilder.h"
 
   ///@}
 

@@ -34,54 +34,58 @@ Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
   return tensors_[name];
 }
 
-Node *ProtobufLoader::getNodeByNameOrNull(llvm::StringRef name) const {
-  auto it = nodeByName_.find(name);
-  if (it != nodeByName_.end()) {
+Variable *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
+  assert(outputVarsByName_.count(name) &&
+         "There is no Variable registered with this name.");
+  auto it = outputVarsByName_.find(name);
+  assert(it != outputVarsByName_.end() &&
+         "No external output Variable was registered with this name.");
+  return it->second;
+}
+
+NodeValue
+ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
+  auto it = nodeValueByName_.find(name);
+  if (it != nodeValueByName_.end()) {
     return it->second;
   }
 
-  return nullptr;
+  return NodeValue(nullptr);
 }
 
-Node *ProtobufLoader::getNodeByName(llvm::StringRef name) const {
+NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "No node under that name");
-  auto *node = getNodeByNameOrNull(name);
-  assert(node && "Null is under that name??");
+  auto node = getNodeValueByNameOrNullNodeValue(name);
+  assert(node.getNode() && "Null is under that name??");
   return node;
 }
 
-Node *ProtobufLoader::createVariable(llvm::StringRef name, const Tensor &tensor,
-                                     VisibilityKind visibilityKind,
-                                     Variable::TrainKind trainKind) {
-  auto *V = G_.getParent()->createVariable(
-      tensor.getElementType(), tensor.dims(), name, visibilityKind, trainKind);
-  V->copyFrom(&tensor);
-  return V;
-}
-
-Node *ProtobufLoader::createAndRememberVariable(llvm::StringRef name,
-                                                const Tensor &tensor,
-                                                VisibilityKind visibilityKind,
-                                                Variable::TrainKind trainKind) {
+Variable *ProtobufLoader::createAndRememberVariable(
+    llvm::StringRef name, const Tensor &tensor, VisibilityKind visibilityKind) {
   assert(!hasNodeByName(name) && "Creating an already existing node?!");
-  Node *node = createVariable(name, tensor, visibilityKind, trainKind);
-  nodeByName_[name] = node;
+  // Note: We do not support training from models loaded from protos, so
+  // trainable is always set to false here.
+  Variable *node = G_.getParent()->createVariable(name, tensor, visibilityKind,
+                                                  /* trainable */ false);
+  nodeValueByName_[name] = NodeValue(node, 0);
+
   return node;
 }
 
-Node *ProtobufLoader::getOrCreateVariableByName(llvm::StringRef name) {
-  auto *node = getNodeByNameOrNull(name);
-  if (node) {
+NodeValue
+ProtobufLoader::getNodeValueOrCreateVariableByName(llvm::StringRef name) {
+  auto node = getNodeValueByNameOrNullNodeValue(name);
+  if (node.getNode()) {
     return node;
   }
 
   Tensor *T = getTensorByName(name);
-  return createAndRememberVariable(name, *T);
+  return NodeValue(createAndRememberVariable(name, *T), 0);
 }
 
 Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
   assert(hasNodeByName(name) && "Variable was not created");
-  auto *node = getNodeByName(name);
+  auto *node = getNodeValueByName(name).getNode();
 
   assert(llvm::isa<Variable>(node) && "Node is not a variable");
 
@@ -89,7 +93,7 @@ Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
-  return getNodeByNameOrNull(name) != nullptr;
+  return getNodeValueByNameOrNullNodeValue(name).getNode() != nullptr;
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
@@ -103,13 +107,12 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   for (unsigned i = 0; i < tensorNames.size(); i++) {
     assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
     createAndRememberVariable(tensorNames[i], *tensors[i],
-                              VisibilityKind::Public,
-                              Variable::TrainKind::None);
+                              VisibilityKind::Public);
   }
 }
 
 ProtobufLoader::~ProtobufLoader() {
-  for (auto it : tensors_) {
+  for (auto &it : tensors_) {
     delete it.second;
   }
 }

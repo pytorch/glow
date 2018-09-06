@@ -212,7 +212,7 @@ class FunctionSpecializer {
     specializedF->setName(specializedName);
     // No need to explicitly emit a debug info for the specialized function. If
     // the original function had it, the cloner would have automatically copied
-    // it into the specialized function. And if the original fuction did not
+    // it into the specialized function. And if the original function did not
     // have any debug info, then its specialization should not have any debug
     // info either.
     DEBUG_GLOW(llvm::dbgs() << "\n\nCreated specialized function "

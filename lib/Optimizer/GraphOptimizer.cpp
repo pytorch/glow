@@ -17,13 +17,22 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 
 #include <unordered_map>
 #include <unordered_set>
+
+llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
+llvm::cl::opt<unsigned> constVarDedupSizeOpt(
+    "const_var_dedup_size",
+    llvm::cl::desc(
+        "Max number of elements allowed for deduplicating constant variables"),
+    llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
 using llvm::cast;
@@ -61,9 +70,8 @@ static void DCE(Function *F) {
 
   // Remove unused nodes. Do not remove unused vars because they are the
   // interface to the user program.
-  bool changedLocally = true;
-  do {
-    changedLocally = false;
+  while (true) {
+    bool changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
       if (!shouldDeleteNode(&*it)) {
         ++it;
@@ -81,7 +89,10 @@ static void DCE(Function *F) {
       erasedNodes.pop_back();
     }
 
-  } while (changedLocally);
+    if (!changedLocally) {
+      break;
+    }
+  }
 
   // Delete unused variables.
   for (auto it = vars.begin(), e = vars.end(); it != e;) {
@@ -100,11 +111,22 @@ static void DCE(Function *F) {
   }
 }
 
+/// \returns true if the \p shuffle corresponds to an identity operation, false
+/// otherwise.
+static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
+  for (size_t i = 0, e = shuffle.size(); i < e; i++) {
+    if (shuffle[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// \returns true if the masks \p shuffle1 and shuffle2 are
 /// the inverse of on another. Applying both masks should result in the identity
 /// shuffle.
-static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
-                              llvm::ArrayRef<unsigned> shuffle2) {
+static bool isIdentityShuffle(llvm::ArrayRef<unsigned_t> shuffle1,
+                              llvm::ArrayRef<unsigned_t> shuffle2) {
 
   if (shuffle1.size() != shuffle2.size()) {
     return false;
@@ -112,7 +134,7 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle1,
 
   // Check if the combined masks are the identity mask.
   for (unsigned i = 0, e = shuffle1.size(); i < e; i++) {
-    unsigned idx = shuffle2[shuffle1[i]];
+    unsigned_t idx = shuffle2[shuffle1[i]];
     if (idx != i) {
       return false;
     }
@@ -134,39 +156,14 @@ bool isConstant(Node *N) { return isa<SplatNode>(N); }
 
 /// \returns the new simplified node or the original node.
 static Node *simplifyNode(Node *node, Function *F) {
-
-// Recursively simplify the operands of arithmetic nodes.
-#define SIMPLIFY_OPERANDS(NodeKind)                                            \
-  if (auto *NN = dyn_cast<NodeKind##Node>(node)) {                             \
-    Node *LHS = simplifyNode(NN->getLHS(), F);                                 \
-    if (LHS != NN->getLHS()) {                                                 \
-      return simplifyNode(                                                     \
-          F->create##NodeKind(NN->getName(), LHS, NN->getRHS()), F);           \
-    }                                                                          \
-    Node *RHS = simplifyNode(NN->getRHS(), F);                                 \
-    if (RHS != NN->getRHS()) {                                                 \
-      return simplifyNode(                                                     \
-          F->create##NodeKind(NN->getName(), NN->getLHS(), RHS), F);           \
-    }                                                                          \
-  }
-
-  SIMPLIFY_OPERANDS(Add)
-  SIMPLIFY_OPERANDS(Mul)
-  SIMPLIFY_OPERANDS(Div)
-  SIMPLIFY_OPERANDS(Sub)
-  SIMPLIFY_OPERANDS(Max)
-  SIMPLIFY_OPERANDS(Min)
-  SIMPLIFY_OPERANDS(CmpLTE)
-  SIMPLIFY_OPERANDS(CmpEQ)
-#undef SIMPLIFY_OPERANDS
-
 // Simplify commutative nodes by moving the constant operator to the right-hand
 // side.
 // Example:  C + X  =>  X + C
 #define COMMUTE_CONST_TO_RHS(NodeKind)                                         \
   if (auto *NN = dyn_cast<NodeKind##Node>(node))                               \
     if (isConstant(NN->getLHS()) && !isConstant(NN->getRHS())) {               \
-      return F->create##NodeKind(NN->getName(), NN->getRHS(), NN->getLHS());   \
+      return F->create##NodeKind(NN->getName(), NN->getResult().getType(),     \
+                                 NN->getRHS(), NN->getLHS());                  \
     }
 
   COMMUTE_CONST_TO_RHS(Add)
@@ -224,8 +221,8 @@ static bool sinkCode(Function *F) {
 
       // Figure out where we transposed the channel index for batch
       // normalization.
-      unsigned idx = BN->getChannelIdx();
-      unsigned newChannelIdx = TR->getShuffle()[idx];
+      unsigned_t idx = BN->getChannelIdx();
+      unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
       auto *NewBN = F->createBatchNormalization(
           BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
@@ -246,7 +243,11 @@ static bool sinkCode(Function *F) {
         continue;
       }
 
-      auto *NRL = F->createRELU(RL->getName(), TR->getInput());
+      // Keep the same quantization parameters for ReLU output, but
+      // change the shape to appropriate value.
+      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+          RL->getResult().getType(), TR->getInput().dims());
+      auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
       RL->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -281,6 +282,17 @@ static bool sinkCode(Function *F) {
       TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
+    }
+
+    // Remove 'identity' transpose operations.
+    if (auto *TR = dyn_cast<TransposeNode>(node)) {
+      auto mask = TR->getShuffle();
+
+      if (isIdentityShuffle(mask)) {
+        TR->getResult().replaceAllUsesOfWith(TR->getInput());
+        changed = true;
+        continue;
+      }
     }
 
     // Merge consecutive Transpose operations.
@@ -345,6 +357,15 @@ static bool sinkCode(Function *F) {
 
 #define ARITHMETIC_CASE(NODE_NAME_)                                            \
   case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
+    newAN = F->create##NODE_NAME_(                                             \
+        node->getName(),                                                       \
+        F->getParent()->uniqueTypeWithNewShape(                                \
+            node->getType(0), LTR->getInput().getType()->dims()),              \
+        LTR->getInput(), RTR->getInput());                                     \
+    break;
+
+#define BOOLEAN_OP_CASE(NODE_NAME_)                                            \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
     newAN = F->create##NODE_NAME_(node->getName(), LTR->getInput(),            \
                                   RTR->getInput());                            \
     break;
@@ -356,11 +377,12 @@ static bool sinkCode(Function *F) {
         ARITHMETIC_CASE(Div);
         ARITHMETIC_CASE(Max);
         ARITHMETIC_CASE(Min);
-        ARITHMETIC_CASE(CmpLTE);
-        ARITHMETIC_CASE(CmpEQ);
+        BOOLEAN_OP_CASE(CmpLTE);
+        BOOLEAN_OP_CASE(CmpEQ);
       default:
         llvm_unreachable("Unhandled node");
       }
+#undef BOOLEAN_OP_CASE
 #undef ARITHMETIC_CASE
 
       changed = true;
@@ -384,7 +406,8 @@ static bool sinkCode(Function *F) {
       if (L && R) {
         auto *newCN = F->createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
-        auto *newRL = F->createRELU(L->getName(), newCN);
+        auto *newRL =
+            F->createRELU(L->getName(), newCN, CN->getResult().getType());
         CN->getResult().replaceAllUsesOfWith(newRL);
       }
     }
@@ -411,8 +434,8 @@ static bool sinkCode(Function *F) {
 
       // Figure out where we transposed the channel index for batch
       // normalization.
-      unsigned idx = CN->getDim();
-      unsigned newChannelIdx = L->getShuffle()[idx];
+      unsigned_t idx = CN->getDim();
+      unsigned_t newChannelIdx = L->getShuffle()[idx];
 
       auto *newCN = F->createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
@@ -550,7 +573,7 @@ static void mergeMatMul(Function *F) {
 /// \returns True if the two slices \p A and \p B access consecutive spacial
 /// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50) are
 /// consecutive but Slice(0..10) Slice(20..30) are not.
-static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
+static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   // The slices must extract from the same input.
   if (A->getInput().getNode() != B->getInput().getNode()) {
     return false;
@@ -595,7 +618,7 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned dim) {
 /// \returns True if a group of slices that span the whole input was found. The
 /// order of the slices is recorded in \p order.
 static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
-                                    unsigned dimension,
+                                    unsigned_t dimension,
                                     std::vector<SliceNode *> &order) {
   // This is the 'last' slice to be found in the sequence of slices.
   SliceNode *lastSlice = nullptr;
@@ -739,7 +762,7 @@ static void optimizePool(Function *F) {
     // nodes does not give us much. However, reordering the buffers allows us to
     // reuse the memory buffer of the pool operation and potentially save
     // memory.
-    if (auto *PL = dyn_cast<PoolMaxNode>(&node)) {
+    if (auto *PL = dyn_cast<MaxPoolNode>(&node)) {
       auto *RL = dyn_cast<ReluNode>(PL->getInput());
 
       if (!RL) {
@@ -754,9 +777,11 @@ static void optimizePool(Function *F) {
       }
 
       auto *NPL =
-          F->createPoolMax(PL->getName(), RL->getInput(), PL->getKernel(),
-                           PL->getStride(), PL->getPads());
-      auto *NRL = F->createRELU(RL->getName(), NPL);
+          F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernels(),
+                           PL->getStrides(), PL->getPads());
+      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+          RL->getResult().getType(), NPL->getResult().dims());
+      auto *NRL = F->createRELU(RL->getName(), NPL, reluOutTy);
       PL->getResult().replaceAllUsesOfWith(NRL);
       continue;
     }
@@ -889,7 +914,7 @@ static void optimizeBatchNorm(Function *F) {
 /// \returns true if all dimensions of the \p input tensors are the same except
 /// for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
-                                       size_t dimension) {
+                                       unsigned_t dimension) {
   for (size_t i = 1; i < inputs.size(); i++) {
     for (size_t j = 0; j < inputs[0].dims().size(); j++) {
       if (j == dimension) {
@@ -1023,7 +1048,7 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
     return NodeValue(nullptr);
   }
   auto *newCN = F->createConcat(CN->getName(), newConcatInputs, dim);
-  return F->createReshape(CN->getInputs().front()->getName(), newCN,
+  return F->createReshape(CN->getInputs().front().getNode()->getName(), newCN,
                           CN->getResult().dims());
 }
 
@@ -1109,21 +1134,39 @@ static void optimizeArithmeticNodes(Function *F) {
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
-  // Add all of the interesting nodes to the worklist.
-  for (auto &node : F->getNodes()) {
-    if (node.isArithmetic()) {
-      worklist.push_back(&node);
+  // Add all of the arithmetic nodes to the worklist, with a node's dependencies
+  // added after itself so they are processed before the node.
+  GraphPreOrderVisitor visitor(*F);
+  worklist.reserve(visitor.getPreOrder().size());
+  for (auto *N : visitor.getPreOrder()) {
+    if (N->isArithmetic()) {
+      worklist.push_back(N);
     }
   }
   while (!worklist.empty()) {
-    Node *node = worklist.back();
+    Node *N = worklist.back();
     worklist.pop_back();
 
-    auto *sn = simplifyNode(node, F);
-    if (sn != node) {
-      node->getNthResult(0).replaceAllUsesOfWith(sn);
-      // The simplified node could be further simplified.
-      worklist.push_back(sn);
+    auto *SN = simplifyNode(N, F);
+    if (SN != N) {
+      assert(N->getNumResults() == 1 &&
+             "All arithmetic nodes should have 1 result.");
+      N->getNthResult(0).replaceAllUsesOfWith(SN);
+
+      // The simplified node could be further simplified. Note that the
+      // simplified node might not be arithmetic; it could be a splat.
+      if (SN->isArithmetic()) {
+        worklist.push_back(SN);
+      }
+
+      // The simplified node's operands could be further simplified as well.
+      // Push them after the node so they are processed before the node.
+      for (size_t i = 0, e = SN->getNumInputs(); i < e; i++) {
+        Node *input = SN->getNthInput(i).getNode();
+        if (input->isArithmetic()) {
+          worklist.push_back(input);
+        }
+      }
       continue;
     }
   }
@@ -1144,9 +1187,9 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV = F->getParent()->createVariable(
-        TN->getResult().getType(), V->getName(), V->getVisibilityKind(),
-        V->getTrainKind(), V->getValue());
+    auto *NV =
+        F->getParent()->createVariable(TN->getResult().getType(), V->getName(),
+                                       V->getVisibilityKind(), V->isTraining());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1219,14 +1262,121 @@ struct CSEVisitor : NodeWalker {
   }
 };
 
+/// A helper type for hashing Variable pointers when they are used as keys in
+/// hash maps for deduplication. The hash is based on the type of the Variable
+/// (element type, dimensions), as well as a constant number of elements from
+/// the Variable to balance collisions with hash calclulation time.
+struct VarsHasherDedup {
+  size_t operator()(Variable *V) const {
+    auto hash = llvm::hash_value(V->getType());
+    auto &T = V->getPayload();
+    // Only use the first 8 elements in the hash. It's likely that if two
+    // tensors have different content they will diverge quickly. Fall back to
+    // full equality check in VarsEqDedup.
+    constexpr size_t maxNumEls = 8;
+    size_t numEls = std::min(T.getType().size(), maxNumEls);
+    size_t bufSize = T.getType().getElementSize() * numEls;
+    auto *data = T.getUnsafePtr();
+    for (size_t i = 0; i < bufSize; i++) {
+      hash = llvm::hash_combine(hash, data[i]);
+    }
+    return hash;
+  }
+};
+
+/// A helper type implementing the Variable equality predicate that can be used
+/// when Variable pointers are used as keys in hash maps for deduplication. It
+/// is assumed the Visibility and training mode are the same, as deduplication
+/// only inserts if Private and None, respectively.
+struct VarsEqDedup {
+  bool operator()(const Variable *lhs, const Variable *rhs) const {
+    // Only consider Vars for deduplication if they have the same type. The
+    // train kind and visibility must already be the same.
+    if (lhs->getType() != rhs->getType()) {
+      return false;
+    }
+    assert(lhs->getVisibilityKind() == rhs->getVisibilityKind() &&
+           "Should only be comparing Variables with same VisibilityKind.");
+    assert(lhs->isTraining() == rhs->isTraining() &&
+           "Should only be comparing Variables with same training mode.");
+    // Only combine Vars if their data matches exactly, so allowed error is 0.0.
+    return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
+  }
+};
+
 } // namespace
+
+/// \returns true if Variable \p V is written into, either as a result, or as an
+/// overwritten input.
+static bool hasWriters(Variable *V) {
+  for (auto &U : V->getUsers()) {
+    auto *N = U.getUser();
+
+    // See if V is used as a result anywhere.
+    for (unsigned i = 0; i < N->getNumResults(); i++)
+      if (V == N->getNthResult(i))
+        return true;
+
+    // See if V is used as an overwritten input anywhere.
+    for (unsigned i = 0; i < N->getNumInputs(); i++)
+      if (N->isOverwrittenNthInput(i))
+        if (V == N->getNthInput(i))
+          return true;
+  }
+  return false;
+}
+
+/// Deduplicates constant variables in the Module \p M. Applicable constant
+/// variables for deduplication must have the same data, have
+/// VisibilityKind::Private, not trainable, and have no writers.
+static void deduplicateConstants(Module *M) {
+  // Map from Variables to other Variables that are equivalent for purposes of
+  // deduplication.
+  std::unordered_map<Variable *, Variable *, VarsHasherDedup, VarsEqDedup>
+      duplicateVars;
+
+  for (auto &V : M->getVars()) {
+    // Only perform deduplication on vars of small enough size. Otherwise just
+    // skip them. constVarDedupSizeOpt defaults to 256 as a heuristic, to keep
+    // compile time reasonable.
+    size_t maxNumEls = constVarDedupSizeOpt;
+    size_t numEls = V->getType()->size();
+    if (numEls > maxNumEls) {
+      continue;
+    }
+
+    // Only perform deduplication on private vars that have no train kind.
+    if (V->getVisibilityKind() != VisibilityKind::Private || V->isTraining()) {
+      continue;
+    }
+
+    // Only perform deduplication on vars that have no writers.
+    if (hasWriters(V)) {
+      continue;
+    }
+
+    // Try to find a var that has the same data as the current one.
+    auto foundI = duplicateVars.find(V);
+    if (foundI == duplicateVars.end()) {
+      // No node equivalent to the current one has been seen yet. Remember this
+      // variable, so that the next occurrence can be replaced by this one.
+      duplicateVars.emplace(V, V);
+      assert(duplicateVars.find(V) != duplicateVars.end());
+      continue;
+    }
+    Variable *foundV = foundI->second;
+    assert(V != foundV && "Variables should not be visited multiple times.");
+
+    // Replace current var by a found var, which is equivalent to it.
+    V->getOutput().replaceAllUsesOfWith(foundV);
+  }
+}
 
 /// Common Subexpression Elimination.
 static void CSE(Function *F) {
   CSEVisitor visitor;
 
-  // No need to perform CSE on variables because
-  // all variables are distinct from each other.
+  deduplicateConstants(F->getParent());
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
@@ -1382,7 +1532,7 @@ static void optimizeQuantization(Function *F) {
         // Create a new variable NV to hold the quantized result.
         auto *NV = F->getParent()->createVariable(
             Q->getResult().getType(), V->getName(), V->getVisibilityKind(),
-            V->getTrainKind(), 1.0);
+            false);
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
         auto destHandle = NV->getHandle<int8_t>();
@@ -1457,7 +1607,7 @@ static void optimizeQuantization(Function *F) {
         // return type.
         auto *newCN = F->createConv(
             CN->getName(), CN->getInput(), CN->getFilter(), CN->getBias(),
-            RS->getResult().getType(), CN->getKernel(), CN->getStride(),
+            RS->getResult().getType(), CN->getKernels(), CN->getStrides(),
             CN->getPads(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
         continue;
@@ -1561,6 +1711,28 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
+// Sink Rescale down with Pooling node.
+// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
+// Apply this transformation for AvgPool and MaxPool.
+#define SINK_DOWN_RESCALE_TO_POOLING_NODE(NODE_NAME_)                          \
+  if (auto *PN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
+    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {      \
+      auto *newPN = F->create##NODE_NAME_(PN->getName(), rescale->getInput(),  \
+                                          PN->getKernels(), PN->getStrides(),  \
+                                          PN->getPads());                      \
+      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(              \
+          rescale->getResult().getType(), PN->getResult().dims());             \
+      auto *newRescale =                                                       \
+          F->createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);  \
+      PN->getResult().replaceAllUsesOfWith(newRescale);                        \
+      changed = true;                                                          \
+    }                                                                          \
+    continue;                                                                  \
+  }
+    SINK_DOWN_RESCALE_TO_POOLING_NODE(AvgPool);
+    SINK_DOWN_RESCALE_TO_POOLING_NODE(MaxPool);
+#undef SINK_DOWN_RESCALE_TO_POOLING_NODE
+
     // Combine Rescale down with FullyConnected node.
     // FullyConnected(Rescale(X)) -> FullyConnected(X).
     if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
@@ -1575,6 +1747,28 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       FC->getResult().replaceAllUsesOfWith(newFC);
 
       changed = true;
+      continue;
+    }
+
+    // Combine Rescale down with Convolution node.
+    // Convolution(Rescale(X), F, B) -> Convolution(X, F, B).
+    // Convolution(X, Rescale(F), B) -> Convolution(X, F, B).
+    // Convolution(X, F, Rescale(B)) -> Convolution(X, F, B).
+    // ... and different combinations.
+    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
+      auto *rescaleX = dyn_cast<RescaleQuantizedNode>(CN->getInput());
+      auto *rescaleF = dyn_cast<RescaleQuantizedNode>(CN->getFilter());
+      auto *rescaleB = dyn_cast<RescaleQuantizedNode>(CN->getBias());
+      auto newX = rescaleX ? rescaleX->getInput() : CN->getInput();
+      auto newF = rescaleF ? rescaleF->getInput() : CN->getFilter();
+      auto newB = rescaleB ? rescaleB->getInput() : CN->getBias();
+      if (rescaleX || rescaleF || rescaleB) {
+        auto *newCN = F->createConv(
+            CN->getName(), newX, newF, newB, CN->getResult().getType(),
+            CN->getKernels(), CN->getStrides(), CN->getPads(), CN->getGroup());
+        CN->getResult().replaceAllUsesOfWith(newCN);
+        changed = true;
+      }
       continue;
     }
 
@@ -1661,7 +1855,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   optimizeReshape(F);
 
-  // Optimize things that are related to quantization.
+  // Optimize quantization related operators.
   optimizeQuantization(F);
 
   while (sinkRescaleQuantizedNode(F)) {

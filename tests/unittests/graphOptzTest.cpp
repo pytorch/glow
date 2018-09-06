@@ -56,7 +56,7 @@ TEST_F(GraphOptz, DCE) {
 
 TEST_F(GraphOptz, liveCodeNotEliminated) {
   Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = mod_.createVariable(ElemKind::IndexTy, {4, 1}, "Ex");
+  auto *Ex = mod_.createVariable(ElemKind::Int64ITy, {4, 1}, "Ex");
 
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);
@@ -77,9 +77,8 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
@@ -91,9 +90,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   SaveNode *ret = F_->createSave("ret", BN);
@@ -117,25 +115,22 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Variable *filter = mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3},
-                                         "filter", VisibilityKind::Private,
-                                         Variable::TrainKind::Broadcast, 75);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
+  Variable *filter =
+      mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3}, "filter",
+                          VisibilityKind::Private, true);
   Variable *bias = mod_.createVariable(ElemKind::FloatTy, {16}, "bias",
-                                       VisibilityKind::Private,
-                                       Variable::TrainKind::Broadcast, 1.0);
+                                       VisibilityKind::Private, true);
+
   ConvolutionNode *CV = F_->createConv(
       "conv", A, filter, bias,
       mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
-  float filterValue = llvm::cast<Variable>(CV->getFilter())->getValue();
   Variable *beta = mod_.createVariable(ElemKind::FloatTy, {16}, "beta",
-                                       VisibilityKind::Private,
-                                       Variable::TrainKind::Broadcast, 0.0);
+                                       VisibilityKind::Private, true);
   Variable *gamma = mod_.createVariable(ElemKind::FloatTy, {16}, "gamma",
-                                        VisibilityKind::Private,
-                                        Variable::TrainKind::Broadcast, 2.0);
+                                        VisibilityKind::Private, true);
+
   Variable *mean = mod_.createVariable(ElemKind::FloatTy, {16}, "mean");
   Variable *var = mod_.createVariable(ElemKind::FloatTy, {16}, "var");
 
@@ -158,19 +153,11 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
   EXPECT_EQ(batchNorm, BN);
   EXPECT_TRUE(batchNorm && batchNorm->getInput() &&
               batchNorm->getInput().getNode() == CV);
-
-  // Make sure that we didn't temper the values in the filter
-  // given we had more than one use for it.
-  auto filterH = filter->getHandle<>();
-  for (size_t i = 0, e = filterH.size(); i < e; ++i) {
-    EXPECT_EQ(filterH.raw(i), filterValue);
-  }
 }
 
 TEST_F(GraphOptz, transposePrivateVariable) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Private, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Private, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
@@ -180,9 +167,8 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
@@ -194,9 +180,8 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                VisibilityKind::Public, false);
 
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
@@ -210,9 +195,8 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
   Node *O = F_->createSave("ret", BN);
@@ -230,9 +214,8 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
   Node *O = F_->createSave("ret", K);
@@ -250,9 +233,8 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
   Node *O = F_->createSave("ret", SI);
@@ -270,9 +252,8 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowTanh) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
   Node *O = F_->createSave("ret", TN);
@@ -290,9 +271,8 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
 }
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T2);
@@ -305,12 +285,27 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+TEST_F(GraphOptz, removeIdentityTranspose) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
+  Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
+  Node *K = F_->createRELU("relu", T);
+  F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(K->getNthInput(0).getNode(), T);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(K->getNthInput(0).getNode(), A);
+}
+
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
-  Node *T2 = F_->createTranspose("transpose", T1, {0, 1, 2, 3});
+  Node *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
   Node *K = F_->createRELU("relu", T2);
   F_->createSave("ret", K);
 
@@ -322,12 +317,10 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
@@ -346,12 +339,10 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 }
 
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
@@ -369,12 +360,10 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
@@ -393,11 +382,10 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
 }
 
 TEST_F(GraphOptz, poolBelowReluSwapped) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -412,11 +400,10 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolAvg("pool", R, 1, 10, 20);
+  Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -425,17 +412,16 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolAvgNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<AvgPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Node *A =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                VisibilityKind::Public, false);
   Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createPoolMax("pool", R, 1, 10, 20);
+  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave("ret", PL);
   F_->createSave("ret", R);
 
@@ -445,7 +431,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
 
   // Expecting Pool->Output (no swap).
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<PoolMaxNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  EXPECT_TRUE(llvm::isa<MaxPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 }
@@ -466,18 +452,14 @@ struct IsSameNodeAddress {
 };
 
 TEST_F(GraphOptz, mergeConcatNodes) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A3 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A4 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
+  Node *A3 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+                                 VisibilityKind::Public, false);
+  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+                                 VisibilityKind::Public, false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
@@ -525,12 +507,10 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 }
 
 TEST_F(GraphOptz, CSE) {
-  Node *A1 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                          VisibilityKind::Public, Variable::TrainKind::None);
-  Node *A2 =
-      mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                          VisibilityKind::Public, Variable::TrainKind::None);
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                 VisibilityKind::Public, false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
@@ -614,6 +594,40 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   EXPECT_EQ(F_->getNodes().size(), 1);
 
   EXPECT_EQ(O->getInput().getNode(), input);
+}
+
+/// A test that verifies that arithmetic simplification works correctly when
+/// the parents need to be simplified prior to the node itself.
+TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
+  Variable *input1 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                         VisibilityKind::Public);
+  Variable *input2 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                         VisibilityKind::Public);
+
+  // This builds the expression: ((0 * I1) * (0 * I2)) = 0
+  // It should be simplified to simply the splat zero node being saved.
+
+  SplatNode *zero = F_->createSplat("zero", input1->getType(), 0.);
+
+  MulNode *mul1 = F_->createMul("mul1", zero, input1); // -> 0
+  MulNode *mul2 = F_->createMul("mul2", zero, input2); // -> 0
+
+  MulNode *mul3 = F_->createMul("mul3", mul1, mul2); // -> 0
+
+  SaveNode *O = F_->createSave("ret", mul3);
+
+  // Expect 1 splat, 3 muls, 1 save.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expect all muls to be optimized away, with 1 splat and 1 save left.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(O)) != F_->getNodes().end());
+  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(zero)) != F_->getNodes().end());
+  EXPECT_EQ(O->getInput().getNode(), zero);
 }
 
 /// Reverse the intrusive list of nodes. This custom implementation is required,
@@ -719,7 +733,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
 
   // The second input of A3 shoule be a splat node with a shape of R3.
   auto *SN = llvm::dyn_cast<SplatNode>(
-      llvm::dyn_cast<SaveNode>(O)->getInput()->getNthInput(1));
+      llvm::dyn_cast<SaveNode>(O)->getInput().getNode()->getNthInput(1));
   EXPECT_TRUE(SN);
   EXPECT_TRUE(SN->getResult().getType()->dims().equals(reshape));
 
@@ -833,9 +847,9 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+
   auto *D = F_->createDequantize("dequantize", input);
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
@@ -859,9 +873,10 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, 0.0);
 
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 4);
+  Variable *input =
+      mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset, "input",
+                          VisibilityKind::Public, true);
+
   auto *max = F_->createMax("max", splat, input);
   F_->createSave("save", max);
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -918,31 +933,67 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   EXPECT_EQ(max->getNthInput(0).getType(), rescaleOutTy);
 }
 
+TEST_F(GraphOptz, fuseRescaleIntoConv) {
+  // This test ensures the fact that fusing of rescale is done.
+  Variable *input =
+      mod_.createVariable(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input");
+  Variable *filter =
+      mod_.createVariable(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter");
+  Variable *bias =
+      mod_.createVariable(ElemKind::Int8QTy, {16}, 0.5, 10, "bias");
+
+  auto *rInput = F_->createRescaleQuantized(
+      "rescale", input,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.1, -25));
+  auto *rFilter = F_->createRescaleQuantized(
+      "rescale", filter,
+      mod_.uniqueType(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.2, 0));
+  auto *rBias = F_->createRescaleQuantized(
+      "rescale", bias, mod_.uniqueType(ElemKind::Int8QTy, {16}, 0.3, 25));
+  auto *CV = F_->createConv(
+      "conv", rInput, rFilter, rBias,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.7, -3), 5, 1, 2, 1);
+  auto *rCV = F_->createRescaleQuantized(
+      "rescale", CV,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.4, 37));
+  F_->createSave("save", rCV);
+
+  // All rescales must be fused into convolution.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+}
+
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
-  // slice -> rescale -> reshape -> rescale -> transpose -> save.
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+
+  // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
   auto *rescale = F_->createRescaleQuantized(
       "rescale", slice, mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.4, 10));
-  auto *reshape = F_->createReshape("reshape", rescale, {1, 9});
+  auto *reshape = F_->createReshape("reshape", rescale, {1, 1, 3, 3});
   auto *rescale2 = F_->createRescaleQuantized(
-      "rescale", reshape, mod_.uniqueType(ElemKind::Int8QTy, {1, 9}, 0.3, 9));
-  auto *transpose = F_->createTranspose("transpose", rescale2, {1, 0});
-  F_->createSave("ret", transpose);
+      "rescale", reshape,
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 3}, 0.3, 9));
+  auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
+  auto *maxpool =
+      F_->createMaxPool("maxpool", transpose, {3, 3}, {1, 1}, {0, 0, 0, 0});
+  auto *save = F_->createSave("ret", maxpool);
 
-  EXPECT_EQ(F_->getNodes().size(), 6);
+  EXPECT_EQ(F_->getNodes().size(), 7);
   ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  // Check that rescale sank all the way down to the save node.
+  EXPECT_TRUE(llvm::dyn_cast<RescaleQuantizedNode>(save->getInput()));
 }
 
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
-  Node *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                    "input", VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 15);
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, true);
+
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
   auto *add = F_->createAdd("add", rescale1, rescale1);
@@ -1104,12 +1155,134 @@ TEST_F(GraphOptz, concatReshapes) {
 
   // The first input of addNode should be a Reshape node now, with the same
   // result shape of concatNode1.
-  auto *newRN = llvm::dyn_cast<ReshapeNode>(O->getInput()->getNthInput(0));
+  auto *newRN =
+      llvm::dyn_cast<ReshapeNode>(O->getInput().getNode()->getNthInput(0));
   ASSERT_TRUE(newRN);
   EXPECT_TRUE(newRN->getResult().getType()->dims().equals(outputShape));
 
   // The input of newRN should be a ConcatNode now.
-  auto *newCN =
-      llvm::dyn_cast<ConcatNode>(O->getInput()->getNthInput(0)->getNthInput(0));
+  auto *newCN = llvm::dyn_cast<ConcatNode>(
+      O->getInput().getNode()->getNthInput(0).getNode()->getNthInput(0));
   ASSERT_TRUE(newCN);
+}
+
+/// Check that Variable CSE works correctly, combining small Variables that have
+/// the same data.
+TEST_F(GraphOptz, VarsCSE) {
+  // Create three variables that are Private, are not trainable, and have no
+  // writers. The first two variables have the same data, and so should be
+  // combined via variable CSE. The third variable differs by the last value,
+  // and so should not be combined.
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
+                                     VisibilityKind::Private, false);
+  auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
+                                     VisibilityKind::Private, false);
+  auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
+                                     VisibilityKind::Private, false);
+  input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};
+
+  // Input them each to different nodes, so node CSE does not change them.
+  auto *TN = F_->createTanh("tanh", input1);
+  auto *SN = F_->createSigmoid("sigmoid", input2);
+  auto *RN = F_->createRELU("relu", input3);
+  auto *CN = F_->createConcat("concat", {TN, SN, RN}, /* axis */ 0);
+  F_->createSave("ret", CN);
+
+  // Initially there are four variables: inputs 1, 2, and 3, and the variable
+  // for the save.
+  EXPECT_EQ(mod_.getVars().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Now only three variables are left; input1 and input2 have been combined,
+  // but input3 has not.
+  EXPECT_EQ(mod_.getVars().size(), 3);
+
+  // Verify that only one of input1 and input2 exists, and that input3 still
+  // exists.
+  Variable *varOneOrTwo = nullptr;
+  bool foundVarThree = false;
+  for (auto *V : mod_.getVars()) {
+    if (V == input1 || V == input2) {
+      EXPECT_TRUE(varOneOrTwo == nullptr);
+      varOneOrTwo = V;
+    } else if (V == input3) {
+      foundVarThree = true;
+    }
+  }
+  EXPECT_TRUE(varOneOrTwo != nullptr);
+  EXPECT_TRUE(foundVarThree);
+
+  // Verify that the users of the inputs are updated correctly.
+  EXPECT_TRUE(TN->getInput().getNode() == varOneOrTwo);
+  EXPECT_TRUE(SN->getInput().getNode() == varOneOrTwo);
+  EXPECT_TRUE(RN->getInput().getNode() == input3);
+
+  // Verify that whichever input1/input2 is left over has two users TN and SN.
+  EXPECT_TRUE(varOneOrTwo->getUsers().size() == 2);
+  for (auto &U : varOneOrTwo->getUsers()) {
+    auto *N = U.getUser();
+    EXPECT_TRUE(N == TN || N == SN);
+  }
+
+  // Verify that input3 only has a single user RN.
+  ASSERT_TRUE(input3->getUsers().size() == 1);
+  EXPECT_TRUE(input3->getUsers().begin()->getUser() == RN);
+}
+
+// Verify that constant input canonicalization works correctly when the
+// arithmetic nodes have multiple users.
+TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
+  Node *I1 = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input1",
+                                 VisibilityKind::Public, false);
+
+  Type t(ElemKind::FloatTy, {10, 10, 10});
+  Node *SN = F_->createSplat("one", &t, 1.0);
+
+  // The splat is a constant input to add1 and add2, and is their LHS input. We
+  // expect canonicalization to occur during optimization, moving the splat
+  // to the RHS for both. Note that add1 has multiple users: add2 and save1.
+  Node *AN1 = F_->createAdd("add1", SN, I1);
+  Node *AN2 = F_->createAdd("add2", SN, AN1);
+  SaveNode *SN1 = F_->createSave("save1", AN1);
+  SaveNode *SN2 = F_->createSave("save2", AN2);
+
+  // Five nodes in total: one splat, two adds, and two saves.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SplatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  // input1 has a single user before optimization.
+  EXPECT_EQ(I1->getUsers().size(), 1);
+
+  // Simplify nodes will canonicalize add1 and add2, and should replace all
+  // their users, without otherwise adding new nodes to the graph/changing the
+  // overall structure.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // We should have the same five nodes: one splat, two adds, and two saves.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SplatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  // Verify that both add nodes were canonicalized, and that the graph's shape
+  // is the same as prior to optimization other than canonicalization.
+  AddNode *newAN1 = llvm::dyn_cast<AddNode>(SN1->getInput().getNode());
+  ASSERT_TRUE(newAN1 != nullptr);
+  EXPECT_TRUE(llvm::isa<Variable>(newAN1->getLHS()));
+  EXPECT_TRUE(llvm::isa<SplatNode>(newAN1->getRHS()));
+
+  AddNode *newAN2 = llvm::dyn_cast<AddNode>(SN2->getInput().getNode());
+  ASSERT_TRUE(newAN2 != nullptr);
+  EXPECT_TRUE(llvm::isa<AddNode>(newAN2->getLHS()));
+  EXPECT_TRUE(llvm::isa<SplatNode>(newAN2->getRHS()));
+
+  EXPECT_EQ(newAN1, newAN2->getLHS());
+
+  // input1 should still have a single user after optimization.
+  EXPECT_EQ(I1->getUsers().size(), 1);
 }

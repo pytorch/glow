@@ -38,7 +38,7 @@ struct AllocationsInfo {
   /// numberOffsets_[valueNumbers_[v]]
 
   /// Maps Values in the module to their offsets.
-  llvm::DenseMap<const Value *, size_t> allocatedAddressed_;
+  llvm::DenseMap<const Value *, uint64_t> allocatedAddressed_;
   /// Amount of memory to be allocated for constant WeightVars.
   size_t constantWeightVarsMemSize_{0};
   /// Amount of memory to be allocated for mutable WeightVars.

@@ -5,6 +5,15 @@ target_link_libraries(testMain
                         LLVMSupport
                         gtest)
 
+add_executable(partitionTest
+               partitionTest.cpp)
+target_link_libraries(partitionTest
+                      PRIVATE
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_glow_test(partitionTest ${GLOW_BINARY_DIR}/tests/partitionTest)
+
 add_executable(tensorsTest
                tensorsTest.cpp)
 target_link_libraries(tensorsTest
@@ -81,7 +90,6 @@ target_link_libraries(operatorTest
                         gtest
                         testMain)
 add_glow_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest)
-
 
 add_executable(graphTest
                graphTest.cpp)
@@ -162,7 +170,10 @@ target_link_libraries(BackendCorrectnessTest
                         Support
                         gtest
                         testMain)
-add_glow_test(BackendCorrectnessTest ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+
+add_glow_test(BackendCorrectnessTest
+              ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
+
 LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
@@ -181,6 +192,19 @@ target_link_libraries(GemmTest
                         testMain)
 add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
 LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
+
+add_executable(LLVMIRGenTest
+               LLVMIRGenTest.cpp)
+target_link_libraries(LLVMIRGenTest
+                      PRIVATE
+                        CPUBackend
+                        IR
+                        Support
+                        gtest
+                        testMain)
+target_include_directories(LLVMIRGenTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
+add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest)
+
 endif()
 
 add_executable(memoryAllocatorTest
@@ -189,9 +213,35 @@ target_link_libraries(memoryAllocatorTest
                       PRIVATE
                         CodeGen
                         gtest
+                        Support
                         testMain)
 add_glow_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest)
 
+add_executable(caffe2ImporterTest
+               caffe2ImporterTest.cpp)
+target_link_libraries(caffe2ImporterTest
+                      PRIVATE
+                        Graph
+                        Importer
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_glow_test(NAME caffe2ImporterTest 
+              COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImporterTest
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(onnxImporterTest
+               onnxImporterTest.cpp)
+target_link_libraries(onnxImporterTest
+                      PRIVATE
+                        Graph
+                        Importer
+                        ExecutionEngine
+                        gtest
+                        testMain)
+add_glow_test(NAME onnxImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS
        ./tests/backendTest -optimize-ir=false &&
@@ -204,3 +254,4 @@ LIST(APPEND UNOPT_TESTS
 
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+

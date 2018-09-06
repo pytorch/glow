@@ -19,7 +19,10 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
+
+#include "llvm/ADT/SmallPtrSet.h"
 
 #include "gtest/gtest.h"
 
@@ -46,7 +49,7 @@ TEST(Graph, simpleTestConv) {
   Function *F = MD.createFunction("F");
   IRFunction M(F);
   Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = MD.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = MD.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
 
   K = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
@@ -83,15 +86,15 @@ TEST(Graph, useList) {
   // Therefore those checks are currently inverted but should be
   // fixed eventually.
   // Test with implicit temporary NodeValue.
-  EXPECT_TRUE(conv->getFilter()->hasOneUse());
-  EXPECT_EQ(conv->getFilter()->getNumUsers(), 1);
+  EXPECT_TRUE(conv->getFilter().getNode()->hasOneUse());
+  EXPECT_EQ(conv->getFilter().getNode()->getNumUsers(), 1);
 
   // Test with explicit temporary NodeValue.
   Node *nodeFilter;
   {
     NodeValue tmp = conv->getFilter();
-    EXPECT_TRUE(tmp->hasOneUse());
-    EXPECT_EQ(tmp->getNumUsers(), 1);
+    EXPECT_TRUE(tmp.getNode()->hasOneUse());
+    EXPECT_EQ(tmp.getNode()->getNumUsers(), 1);
     nodeFilter = tmp.getNode();
     // Test with NodeValue still around.
     EXPECT_TRUE(nodeFilter->hasOneUse());
@@ -106,7 +109,7 @@ TEST(Graph, useList) {
   {
     NodeValue tmpConvRes(conv, 0);
     EXPECT_EQ(conv->getNumUsers(), 0);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 0);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 0);
   }
 
   // Add a couple of uses to conv and make sure it reflects on its use list.
@@ -119,10 +122,10 @@ TEST(Graph, useList) {
 
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_TRUE(tmpConvRes->hasOneUse());
+    EXPECT_TRUE(tmpConvRes.getNode()->hasOneUse());
     EXPECT_TRUE(conv->hasOneUse());
     EXPECT_EQ(conv->getNumUsers(), 1);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 1);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 1);
   }
 
   F->createSave("Save", conv, K);
@@ -134,10 +137,10 @@ TEST(Graph, useList) {
 
   {
     NodeValue tmpConvRes(conv, 0);
-    EXPECT_FALSE(tmpConvRes->hasOneUse());
+    EXPECT_FALSE(tmpConvRes.getNode()->hasOneUse());
     EXPECT_FALSE(conv->hasOneUse());
     EXPECT_EQ(conv->getNumUsers(), 2);
-    EXPECT_EQ(tmpConvRes->getNumUsers(), 2);
+    EXPECT_EQ(tmpConvRes.getNode()->getNumUsers(), 2);
   }
 }
 
@@ -154,8 +157,8 @@ TEST(Graph, useListIteration) {
   // Check the number of users for different nodes.
   EXPECT_EQ(K->getNumUsers(), 2);
   EXPECT_EQ(conv1->getNumUsers(), 0);
-  EXPECT_TRUE(conv2->getFilter()->hasOneUse());
-  EXPECT_EQ(conv1->getFilter()->getNumUsers(), 1);
+  EXPECT_TRUE(conv2->getFilter().getNode()->hasOneUse());
+  EXPECT_EQ(conv1->getFilter().getNode()->getNumUsers(), 1);
   // Check that the first user of K is conv1.
   EXPECT_EQ(K->getUsers().begin()->getUser(), conv1);
   // Check that the second user of K is conv2.
@@ -230,28 +233,28 @@ TEST(Graph, simpleQuant) {
   auto *F = MD.createFunction("main");
 
   unsigned depth = 16;
-  unsigned kernel = 5;
-  llvm::SmallVector<size_t, 4> pads = {0, 0, 0, 0};
-  unsigned step = 1;
+  llvm::SmallVector<unsigned_t, 2> kernels = {5, 5};
+  llvm::SmallVector<unsigned_t, 4> pads = {0, 0, 0, 0};
+  llvm::SmallVector<unsigned_t, 2> steps = {1, 1};
   unsigned width = 224;
 
   auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
                                   2, "Input", VisibilityKind::Public);
 
   // Calculate the size and allocate the output buffer.
-  std::array<size_t, 4> filterDim = {{depth, kernel, kernel, 3}};
+  std::array<size_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
   auto *filter = MD.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
                                    VisibilityKind::Private);
   auto *bias = MD.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
                                  VisibilityKind::Private);
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculateConvPoolOutputDims(width, width, kernel, step, pads);
+  auto outSz = calculateConvPoolOutputDims(width, width, kernels, steps, pads);
   std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
-      F->createConv("conv", input, filter, bias, t, kernel, step, pads, 1);
+      F->createConv("conv", input, filter, bias, t, kernels, steps, pads, 1);
 
   auto s = conv->getResult().getType()->size();
   auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
@@ -286,7 +289,7 @@ TEST(Graph, quantizeGather) {
   auto *F = mod.createFunction("main");
   auto *input = mod.createVariable(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input",
                                    VisibilityKind::Public);
-  auto *indices = mod.createVariable(ElemKind::IndexTy, {1}, "index",
+  auto *indices = mod.createVariable(ElemKind::Int64ITy, {1}, "index",
                                      VisibilityKind::Public);
   auto *gather = F->createGather("gather", input, indices);
   F->createSave("ret", gather);
@@ -298,7 +301,7 @@ TEST(Graph, cloneTest) {
 
   Function *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
@@ -349,7 +352,7 @@ TEST(Graph, cloneTest2) {
 
   auto *F = M.createFunction("main");
   Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::IndexTy, {4, 1}, "select");
+  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
   Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
@@ -371,8 +374,9 @@ TEST(Graph, NodeValue) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
-                                    VisibilityKind::Public,
-                                    Variable::TrainKind::Broadcast, 3.0);
+                                    VisibilityKind::Public, true);
+  inputX->getPayload().init(Tensor::InitKind::Broadcast, 3.0, mod.getPRNG());
+
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
   a = F->createAdd("x8", a, a);
@@ -386,6 +390,26 @@ TEST(Graph, NodeValue) {
       24);
 }
 
+/// Check that by deleting one function, the variables that refernced
+/// by this function, will reduce its number of uses by one.
+TEST(Graph, deleteFunction) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F1 = mod.createFunction("f1");
+  auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
+                                    VisibilityKind::Public, true);
+  F1->createLog("log1", inputX);
+  Function *F2 = mod.createFunction("f2");
+  F2->createLog("log2", inputX);
+  // We check the number of user of inputX to be 2 as only F1 and F2 are
+  // using it.
+  EXPECT_EQ(inputX->getNumUsers(), 2);
+  // Erase this function here to see if we can see the number of user of inputX
+  // reduce to 1.
+  mod.eraseFunction(F1);
+  EXPECT_EQ(inputX->getNumUsers(), 1);
+}
+
 TEST(Graph, nodesWithPredicates) {
   ExecutionEngine EE;
 
@@ -397,15 +421,14 @@ TEST(Graph, nodesWithPredicates) {
   auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                    VisibilityKind::Public);
 
-  auto *ex = mod.createVariable(ElemKind::IndexTy, {1, 1}, "exp");
+  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
 
-  Variable *pred =
-      mod.createVariable(ElemKind::IndexTy, {1}, "predicate",
-                         VisibilityKind::Private, Variable::TrainKind::None);
+  Variable *pred = mod.createVariable(ElemKind::Int64ITy, {1}, "predicate",
+                                      VisibilityKind::Private, false);
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
-  auto *MP0 = F->createPoolMax("pool1", RL0, 2, 2, 0);
+  auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
   CV0->setPredicate(pred);
   RL0->setPredicate(pred);
@@ -447,8 +470,7 @@ unsigned getConvNodeSize(BackendKind kind) {
 }
 
 // Check the unrolling grouped convolution opt status:
-// -- disabled for Interpreter and CPU backend,
-// -- enabled for openCL backend.
+// -- disabled for Interpreter, CPU and OpenCL backend,
 TEST(Graph, disableUnrollingGroupConv) {
   unsigned numberOfNodesInterpreter = getConvNodeSize(BackendKind::Interpreter);
   (void)numberOfNodesInterpreter;
@@ -460,7 +482,7 @@ TEST(Graph, disableUnrollingGroupConv) {
 
 #ifdef GLOW_WITH_OPENCL
   unsigned numberOfNodesOpenCL = getConvNodeSize(BackendKind::OpenCL);
-  EXPECT_GT(numberOfNodesOpenCL, numberOfNodesInterpreter);
+  EXPECT_EQ(numberOfNodesOpenCL, numberOfNodesInterpreter);
 #endif // GLOW_WITH_OPENCL
 }
 
@@ -473,13 +495,14 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
-  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
-                                  Variable::TrainKind::Broadcast, 0.0);
+                               VisibilityKind::Public, true);
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
+  auto *zero =
+      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
 
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
+  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
@@ -516,14 +539,15 @@ TEST(Graph, schedulingOfSaves) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
-  auto *zero = mod.createVariable(A->getType(), "zero", VisibilityKind::Public,
-                                  Variable::TrainKind::Broadcast, 0.0);
+                               VisibilityKind::Public, true);
+  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
+  auto *zero =
+      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
   F->createSave("resetA", zero, A);
 
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public,
-                               Variable::TrainKind::Xavier, 1.0);
+  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
@@ -556,8 +580,8 @@ TEST(Graph, parentLink) {
 
   auto &mod = EE.getModule();
   Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
-                             VisibilityKind::Private,
-                             Variable::TrainKind::Broadcast, 0, mod.getPRNG());
+                             VisibilityKind::Private, true);
+
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
   // Even when we create them from a module...
@@ -595,4 +619,283 @@ TEST(Graph, parentLink) {
   // cleaned at the end of the test.
   F->addNode(clonedAddNode);
   EXPECT_EQ(clonedAddNode->getParent(), F);
+}
+
+/// Check that Cmp nodes are created with proper output types.
+TEST(Graph, cmpOutputTypes) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  // Define two different quntized types.
+  auto qType1 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
+  auto qType2 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.4, 5);
+  // Define two variables of quantized types.
+  Variable *qv1 = mod.createVariable(qType1, "V1", VisibilityKind::Private);
+  Variable *qv2 = mod.createVariable(qType2, "V2", VisibilityKind::Private);
+  // Create cmp nodes using quantized inputs.
+  auto *cmpNode1 = F->createCmpEQ("cmpeq", qv1, qv2);
+  auto *cmpNode2 = F->createCmpLTE("cmplte", qv1, qv2);
+  // Check that the output type of cmp nodes is quantized, has scale 1.0 and
+  // offset 0.
+  EXPECT_TRUE(cmpNode1->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode1->getResult().getType()->getScale(), 1.0);
+  EXPECT_EQ(cmpNode1->getResult().getType()->getOffset(), 0);
+  EXPECT_TRUE(cmpNode2->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode2->getResult().getType()->getScale(), 1.0);
+  EXPECT_EQ(cmpNode2->getResult().getType()->getOffset(), 0);
+
+  // Define a non-quantized type.
+  auto nqType3 = F->getParent()->uniqueType(ElemKind::FloatTy, {1, 3});
+  // Define two variables of non-quantized types.
+  Variable *nqv3 = mod.createVariable(nqType3, "V3", VisibilityKind::Private);
+  Variable *nqv4 = mod.createVariable(nqType3, "V4", VisibilityKind::Private);
+  // Create cmp nodes using non-quantized inputs.
+  auto *cmpNode3 = F->createCmpEQ("cmpeq", nqv3, nqv4);
+  auto *cmpNode4 = F->createCmpLTE("cmplte", nqv3, nqv4);
+  // Check that output of cmp nodes is a non-quantized type matching the type of
+  // inputs.
+  EXPECT_FALSE(cmpNode3->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode3->getResult().getType(), nqv3->getType());
+  EXPECT_FALSE(cmpNode4->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(cmpNode4->getResult().getType(), nqv3->getType());
+}
+
+/// Check that the users of value are equal to expectedUsers.
+static bool
+hasAllTheseUses(const llvm::SmallPtrSetImpl<const Node *> &expectedUsers,
+                const NodeValue &value) {
+  llvm::SmallPtrSet<const Node *, 4> uses;
+  for (const NodeUse &use : value.getUsers()) {
+    const Node *user = use.getUser();
+    if (!expectedUsers.count(user)) {
+      // We found a user that wasn't on the list.
+      return false;
+    }
+    uses.insert(user);
+  }
+  return expectedUsers.size() == uses.size();
+}
+
+/// Check that our uses lists are correct for nodes with multiple results.
+TEST(Graph, usesListsWithSeveralResult) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
+                                   VisibilityKind::Public, true);
+  auto *topK = F->createTopK("topK", input, 12);
+  EXPECT_EQ(topK->getNumUsers(), 0);
+
+  NodeValue values = topK->getValues();
+  NodeValue indices = topK->getIndices();
+  llvm::SmallPtrSet<const Node *, 4> savesOfValues;
+  llvm::SmallPtrSet<const Node *, 4> savesOfIndices;
+
+  EXPECT_EQ(indices.getNumUsers(), 0);
+  EXPECT_EQ(values.getNumUsers(), 0);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Now add a user to only one result of the topK node.
+  savesOfValues.insert(F->createSave("saveValues1", values));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(topK->getNumUsers(), 1);
+
+  // Each result should have its own use list.
+  EXPECT_EQ(indices.getNumUsers(), 0);
+  EXPECT_EQ(values.getNumUsers(), 1);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_TRUE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add a user to the other result of the topK node.
+  savesOfIndices.insert(F->createSave("saveIndices1", indices));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(topK->getNumUsers(), 2);
+
+  // Each result should have its own use list.
+  EXPECT_EQ(indices.getNumUsers(), 1);
+  EXPECT_EQ(values.getNumUsers(), 1);
+
+  EXPECT_TRUE(indices.hasOneUse());
+  EXPECT_TRUE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add a couple more users of values and indices.
+  // Interleaves the insertions in the uses list for both values and indices.
+  savesOfValues.insert(F->createSave("saveValues2", values));
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfIndices.insert(F->createSave("saveIndices2", indices));
+
+  EXPECT_EQ(topK->getNumUsers(), 5);
+
+  EXPECT_EQ(indices.getNumUsers(), 2);
+  EXPECT_EQ(values.getNumUsers(), 3);
+
+  EXPECT_FALSE(indices.hasOneUse());
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfIndices, indices));
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+}
+
+/// Check that our uses lists are correct when accessed through
+/// NodeValue.
+TEST(Graph, usesListsThroughNodeValues) {
+  ExecutionEngine EE;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
+                                   VisibilityKind::Public, true);
+  auto *reLU = F->createRELU("reLU", input);
+  EXPECT_EQ(reLU->getNumUsers(), 0);
+
+  NodeValue values = reLU->getResult();
+  llvm::SmallPtrSet<const Node *, 4> savesOfValues;
+
+  EXPECT_EQ(values.getNumUsers(), 0);
+
+  EXPECT_FALSE(values.hasOneUse());
+
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Now add a user to only one result of the reLU node.
+  savesOfValues.insert(F->createSave("saveValues1", values));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(reLU->getNumUsers(), 1);
+
+  // The NodeValue should match.
+  EXPECT_EQ(values.getNumUsers(), 1);
+  EXPECT_TRUE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add one more use.
+  savesOfValues.insert(F->createSave("saveValues2", values));
+
+  // The whole node should inherit the uses of each of its results.
+  EXPECT_EQ(reLU->getNumUsers(), 2);
+
+  EXPECT_EQ(values.getNumUsers(), 2);
+  EXPECT_FALSE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+
+  // Add a couple more users.
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfValues.insert(F->createSave("saveValues4", values));
+
+  EXPECT_EQ(reLU->getNumUsers(), 4);
+
+  EXPECT_EQ(values.getNumUsers(), 4);
+  EXPECT_FALSE(values.hasOneUse());
+  EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
+}
+
+/// Verify that the pre-order visitor works correctly.
+TEST(Graph, PreOrderTest) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                      VisibilityKind::Public);
+  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                      VisibilityKind::Public);
+  SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
+  MulNode *mul1 = F->createMul("mul1", zero, input1);
+  MulNode *mul2 = F->createMul("mul2", zero, input2);
+  MulNode *mul3 = F->createMul("mul3", mul1, mul2);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
+
+  SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
+  AddNode *add1 = F->createAdd("add1", input2, one);
+  AddNode *add2 = F->createAdd("add2", add1, one);
+  AddNode *add3 = F->createAdd("add3", add2, one);
+  SaveNode *ret2 = F->createSave("ret2", add2);
+
+  GraphPreOrderVisitor visitor(*F);
+  auto order = visitor.getPreOrder();
+
+  ASSERT_EQ(order.size(), 14);
+  EXPECT_EQ(order[0], ret1);
+  EXPECT_EQ(order[1], mul3);
+  EXPECT_EQ(order[2], mul1);
+  EXPECT_EQ(order[3], zero);
+  EXPECT_EQ(order[4], input1);
+  EXPECT_EQ(order[5], mul2);
+  EXPECT_EQ(order[6], input2);
+  EXPECT_EQ(order[7], ret1->getOutput());
+  EXPECT_EQ(order[8], add3);
+  EXPECT_EQ(order[9], add2);
+  EXPECT_EQ(order[10], add1);
+  EXPECT_EQ(order[11], one);
+  EXPECT_EQ(order[12], ret2);
+  EXPECT_EQ(order[13], ret2->getOutput());
+}
+
+/// Verify that the post-order visitor works correctly.
+TEST(Graph, PostOrderTest) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
+                                      VisibilityKind::Public);
+  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
+                                      VisibilityKind::Public);
+  SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
+  MulNode *mul1 = F->createMul("mul1", zero, input1);
+  MulNode *mul2 = F->createMul("mul2", zero, input2);
+  MulNode *mul3 = F->createMul("mul3", mul1, mul2);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
+
+  SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
+  AddNode *add1 = F->createAdd("add1", input2, one);
+  AddNode *add2 = F->createAdd("add2", add1, one);
+  AddNode *add3 = F->createAdd("add3", add2, one);
+  SaveNode *ret2 = F->createSave("ret2", add2);
+
+  GraphPostOrderVisitor visitor(*F);
+  auto order = visitor.getPostOrder();
+
+  ASSERT_EQ(order.size(), 14);
+  EXPECT_EQ(order[0], zero);
+  EXPECT_EQ(order[1], input1);
+  EXPECT_EQ(order[2], mul1);
+  EXPECT_EQ(order[3], input2);
+  EXPECT_EQ(order[4], mul2);
+  EXPECT_EQ(order[5], mul3);
+  EXPECT_EQ(order[6], ret1->getOutput());
+  EXPECT_EQ(order[7], ret1);
+  EXPECT_EQ(order[8], one);
+  EXPECT_EQ(order[9], add1);
+  EXPECT_EQ(order[10], add2);
+  EXPECT_EQ(order[11], add3);
+  EXPECT_EQ(order[12], ret2->getOutput());
+  EXPECT_EQ(order[13], ret2);
+}
+
+TEST(Graph, placeholder) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select");
+
+  K = F->createFullyConnected("FC", K, 10); 
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
 }

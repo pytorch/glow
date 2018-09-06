@@ -21,13 +21,13 @@
 #include "glow/Graph/Graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <google/protobuf/text_format.h>
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 /// This is the maximum allowed protobuf size (2GB).
@@ -95,11 +95,11 @@ protected:
   /// The graph that we are constructing.
   Function &G_;
   /// Saves network nodes by name.
-  std::unordered_map<std::string, Node *> nodeByName_;
+  llvm::StringMap<NodeValue> nodeValueByName_;
   /// A list of weight tensors indexed by name.
-  std::unordered_map<std::string, Tensor *> tensors_;
-  /// The external output of the network.
-  SaveNode *root_{nullptr};
+  llvm::StringMap<Tensor *> tensors_;
+  /// A map from names of the external outputs of the network to Variables.
+  llvm::StringMap<Variable *> outputVarsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);
@@ -107,35 +107,27 @@ protected:
   /// Create a new variable \p name initialized with \p tensor.
   /// \returns The newly created variable.
   /// \pre !hasNodeByName(name)
-  Node *createAndRememberVariable(
+  Variable *createAndRememberVariable(
       llvm::StringRef name, const Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private,
-      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
+      VisibilityKind visibilityKind = VisibilityKind::Private);
 
-  /// \returns the node that was registered with the name \p name or nullptr
-  /// if no node has been registered with this name.
-  Node *getNodeByNameOrNull(llvm::StringRef name) const;
-
-  /// Create a new variable \p name initialized with \p tensor.
-  /// \returns the newly created variable.
-  Node *createVariable(
-      llvm::StringRef name, const Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private,
-      Variable::TrainKind trainKind = Variable::TrainKind::Broadcast);
+  /// \returns the NodeValue that was registered with the name \p name or
+  /// a nullptr wrapped in a NodeValue if no node has been registered with this
+  /// name.
+  NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
 
 public:
-  /// \returns the node that was registered with the name \p name.
+  /// \returns the NodeValue that was registered with the name \p name.
   /// \pre hasNodeByName(name)
-  Node *getNodeByName(llvm::StringRef name) const;
+  NodeValue getNodeValueByName(llvm::StringRef name) const;
 
-  /// \returns the node that was registered with the name \p name or create a
-  /// new Variable node for a tensor with this name.
-  /// In case a new variable is created, this method registers
-  /// it under \p name.
-  Node *getOrCreateVariableByName(llvm::StringRef name);
+  /// \returns the NodeValue that was registered with the name \p name or create
+  /// a new Variable node for a tensor with this name. In case a new variable is
+  /// created, this method registers it under \p name.
+  NodeValue getNodeValueOrCreateVariableByName(llvm::StringRef name);
 
   /// \returns The variable registered under \p name.
-  /// \pre isa<Variable>(getNodeByName(name))
+  /// \pre isa<Variable>(getNodeValueByName(name).getNode())
   Variable *getVariableByName(llvm::StringRef name) const;
 
   /// \returns True if the node that's registered using \p name exists.
@@ -149,9 +141,19 @@ public:
 
   virtual ~ProtobufLoader();
 
-  /// \returns the output of the network. This is usually the result of the last
+  /// \returns the single final output Variable of the network. The function
+  /// assumes there is only one output, verified via assertion. For image
+  /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
-  SaveNode *getRoot() { return root_; }
+  /// \pre outputVarsByName_.size() == 1
+  Variable *getSingleOutput() {
+    assert(outputVarsByName_.size() == 1);
+    return outputVarsByName_.begin()->second;
+  }
+
+  /// \returns the Variable for the external output with \p name.
+  /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
+  Variable *getOutputByName(llvm::StringRef name) const;
 };
 
 } // namespace glow

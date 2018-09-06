@@ -18,6 +18,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <list>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace glow {
 
@@ -25,41 +29,46 @@ namespace glow {
 class Segment {
 public:
   /// The allocation starts at this address.
-  size_t begin_;
+  uint64_t begin_;
   /// The allocation ends before this address (half-open interval).
-  size_t end_;
+  uint64_t end_;
 
-  Segment(size_t begin, size_t end) : begin_(begin), end_(end) {}
+  Segment(uint64_t begin, uint64_t end) : begin_(begin), end_(end) {}
 
   /// \returns the size of the interval.
-  size_t size() const { return end_ - begin_; }
+  uint64_t size() const { return end_ - begin_; }
 
   /// \returns True if the value \p idx falls within this segment.
-  bool contains(size_t idx) const { return idx >= begin_ && idx < end_; }
+  bool contains(uint64_t idx) const { return idx >= begin_ && idx < end_; }
 };
 
 /// Allocates segments of memory.
+/// Each allocation is associated with a user-defined handle, typically
+/// representing a client-specific object, e.g. a handle can be a `Value *` and
+/// represent a value whose payload is going to be stored in the allocated
+/// memory block. This simplifies the clients of MemoryAllocator and allows them
+/// to use higher-level client-side objects instead of raw allocated addresses
+/// to refer to the allocated memory blocks.
 class MemoryAllocator {
-  /// A list of live buffers.
-  std::list<Segment> allocations_;
-  /// The size of the memory region that we can allocate segments into.
-  size_t poolSize_;
-  /// This is the high water mark for the allocated memory.
-  size_t maxMemoryAllocated_{0};
-
 public:
-  /// A reserved value to mark invalid allocation.
-  static const size_t npos;
+  /// Type that should be used as a handle.
+  using Handle = const void *;
 
-  explicit MemoryAllocator(size_t poolSize) : poolSize_(poolSize) {}
+  /// A reserved value to mark invalid allocation.
+  static const uint64_t npos;
+
+  explicit MemoryAllocator(const std::string &name, uint64_t poolSize)
+      : name_(name), poolSize_(poolSize) {}
 
   void reset() {
     maxMemoryAllocated_ = 0;
     allocations_.clear();
+    handleToAllocInfo_.clear();
+    addrToHandle_.clear();
   }
 
   /// \returns True if the value \p idx is within the currently allocated range.
-  bool contains(size_t idx) const {
+  bool contains(uint64_t idx) const {
     for (auto &s : allocations_) {
       if (s.contains(idx)) {
         return true;
@@ -68,16 +77,79 @@ public:
     return false;
   }
 
-  /// Allocate a region of size \p size.
+  /// Allocate a region of size \p size and associate a \p handle with it.
   /// \returns the allocated pointer, or MemoryAllocator::npos, if the
   /// allocation failed.
-  size_t allocate(size_t size);
+  uint64_t allocate(uint64_t size, Handle handle);
 
-  /// Frees the allocation at \p ptr.
-  void deallocate(size_t ptr);
+  /// Allocate a region of size \p size and associate a handle \p Handle with
+  /// it. If the allocation is not possible, the allocator should try to evict
+  /// some entries that are not needed at the moment, but it is not allowed to
+  /// evict any entries from \p mustNotEvict set. All evicted entries are stored
+  /// in the \p evicted set.
+  ///
+  /// \returns the allocated pointer, or MemoryAllocator::npos, if the
+  /// allocation failed.
+  uint64_t allocate(uint64_t size, Handle handle,
+                    const std::set<Handle> &mustNotEvict,
+                    std::vector<Handle> &evicted);
+
+  /// \returns the handle currently associated with the allocation at \p
+  /// address.
+  Handle getHandle(uint64_t ptr) const;
+
+  /// \returns true if there is a handle currently associated with the
+  /// allocation at \p address.
+  bool hasHandle(uint64_t ptr) const;
+
+  /// \returns the address currently associated with the \p handle.
+  uint64_t getAddress(Handle handle) const;
+
+  /// \returns the size of the allocated block currently associated with the \p
+  /// handle.
+  uint64_t getSize(Handle handle) const;
+
+  /// \returns true if there is an address currently associated with the \p
+  /// handle.
+  bool hasAddress(Handle handle) const;
+
+  /// Frees the allocation associated with \p handle.
+  void deallocate(Handle handle);
 
   /// \returns the high water mark for the allocated memory.
-  size_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
+  uint64_t getMaxMemoryUsage() const { return maxMemoryAllocated_; }
+
+  /// \returns the size of the whole memory region that we can allocate segments
+  /// into.
+  uint64_t getMemorySize() const { return poolSize_; }
+
+  /// \returns the name of the memory region.
+  const std::string &getName() const { return name_; }
+
+private:
+  /// The name of the memory region.
+  std::string name_;
+  /// A list of live buffers.
+  std::list<Segment> allocations_;
+  /// The size of the memory region that we can allocate segments into.
+  uint64_t poolSize_;
+  /// This is the high water mark for the allocated memory.
+  uint64_t maxMemoryAllocated_{0};
+  /// Maps allocated addresses to the currently associated handles.
+  std::unordered_map<uint64_t, Handle> addrToHandle_;
+  /// Maps handles to the allocation information about the memory block
+  /// currently associated with them.
+  std::unordered_map<Handle, Segment> handleToAllocInfo_;
+
+  /// Tries to evict some entries that are not needed at the moment to free
+  /// enough memory for the allocation of \p size bytes, but it is not allowed
+  /// to evict any entries from \p mustNotEvict set. All evicted entries are
+  /// stored in the \p evicted set. Uses first-fit approach for finding eviction
+  /// candidates.
+  void evictFirstFit(uint64_t size, const std::set<Handle> &mustNotEvict,
+                     std::vector<Handle> &evicted);
+  /// Associates a \p handle with an allocated address \p ptr and size \p size.
+  void setHandle(uint64_t ptr, uint64_t size, Handle handle);
 };
 
 } // namespace glow

@@ -37,7 +37,7 @@ template <class ElemTy> class Handle;
 class Tensor;
 
 void genericTranspose(Tensor *src, Tensor *dest,
-                      llvm::ArrayRef<unsigned> shuffle);
+                      llvm::ArrayRef<unsigned_t> shuffle);
 
 /// Helper function that \returns a ShapeVector of those dimensions in \p
 /// currDims expanded with dimension = 1 until the maximum tensor dimension is
@@ -47,6 +47,15 @@ ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
+public:
+  /// Specifies the kind initialization for the tensor.
+  enum class InitKind {
+    Zero,      // The tensor is initialized to zero.
+    Broadcast, // Broadcast a single value to all elements.
+    Xavier,    // Init the variable with random values using the Xavier method.
+  };
+
+private:
   /// A pointer to the tensor data.
   char *data_{nullptr};
 
@@ -93,18 +102,6 @@ public:
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
-
-  /// \returns a pointer to the raw data, of type \p ElemTy.
-  template <class ElemTy> ElemTy *getRawDataPointer() {
-    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<ElemTy *>(data_);
-  }
-
-  /// \returns a const pointer to the raw data, of type \p ElemTy.
-  template <class ElemTy> const ElemTy *getRawDataPointer() const {
-    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
-    return reinterpret_cast<const ElemTy *>(data_);
-  }
 
   /// Initialize an empty tensor.
   Tensor() = default;
@@ -154,6 +151,11 @@ public:
 
   Tensor(const Tensor &other) = delete;
   Tensor &operator=(const Tensor &other) = delete;
+
+  /// Initialize the content of the tensor using the \p init method. The value
+  /// \p val is the initialization parameter. \p PRNG is used to generate
+  /// random numbers.
+  void init(InitKind init, float val, PseudoRNG &PRNG);
 
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional
@@ -227,11 +229,14 @@ public:
       alignedFree(getData());
     type_ = T;
 
-    if (size()) {
-      size_t count = size() * type_.getElementSize();
-      data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
-      zero();
-    }
+    // We are allocating memory specifically for this tensor, thus, it owns it.
+    isUnowned_ = false;
+
+    // Note: zero-dimensional tensors have size 1.
+    assert(size() > 0 && "Tensors must always have positive size.");
+    size_t count = size() * type_.getElementSize();
+    data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
+    zero();
   }
 
   ~Tensor() {
@@ -271,10 +276,12 @@ public:
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
       return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::Int16QTy:
+      return isEqualImpl<int16_t>(other, allowedError);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError);
-    case ElemKind::IndexTy:
-      return isEqualImpl<size_t>(other, allowedError);
+    case ElemKind::Int64ITy:
+      return isEqualImpl<int64_t>(other, allowedError);
     }
 
     // This is to make compiler happy. It can never reach this point as switch
@@ -282,8 +289,8 @@ public:
     llvm_unreachable("unreachable");
   }
 
-  /// Update the content of the tensor from the tensor \p t.
-  void copyFrom(const Tensor *t) {
+  /// Update the content and type of the tensor from the tensor \p t.
+  void assign(const Tensor *t) {
     assert(this != t && "Copying to self");
     reset(t);
     size_t bufferSize = size() * type_.getElementSize();
@@ -338,14 +345,14 @@ public:
 
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
-  void transpose(Tensor *dest, llvm::ArrayRef<unsigned> shuffle) {
+  void transpose(Tensor *dest, llvm::ArrayRef<unsigned_t> shuffle) {
     genericTranspose(this, dest, shuffle);
   }
 
   /// Create a new copy of the current tensor.
   Tensor clone() const {
     Tensor slice;
-    slice.copyFrom(this);
+    slice.assign(this);
     return slice;
   }
 
@@ -356,6 +363,18 @@ public:
   template <class ElemTy = float> Handle<ElemTy> getHandle();
 
 private:
+  /// \returns a pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy> ElemTy *getRawDataPointer() {
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
+    return reinterpret_cast<ElemTy *>(data_);
+  }
+
+  /// \returns a const pointer to the raw data, of type \p ElemTy.
+  template <class ElemTy> const ElemTy *getRawDataPointer() const {
+    assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
+    return reinterpret_cast<const ElemTy *>(data_);
+  }
+
   template <class ElemTy>
   bool isEqualImpl(const Tensor &other, float allowedError) const {
     auto const *myData = getRawDataPointer<ElemTy>();

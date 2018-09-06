@@ -94,8 +94,8 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
   }
 
     CONVERT_TO_GRAD_NODE(ConvolutionNode)
-    CONVERT_TO_GRAD_NODE(PoolMaxNode)
-    CONVERT_TO_GRAD_NODE(PoolAvgNode)
+    CONVERT_TO_GRAD_NODE(MaxPoolNode)
+    CONVERT_TO_GRAD_NODE(AvgPoolNode)
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
     CONVERT_TO_GRAD_NODE(SoftMaxNode)
@@ -139,7 +139,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Generate the reverse shuffle.
       auto shuffle = TN->getShuffle();
-      std::vector<unsigned> reverseShuffle(shuffle.begin(), shuffle.end());
+      std::vector<unsigned_t> reverseShuffle(shuffle.begin(), shuffle.end());
       for (unsigned int i = 0; i < shuffle.size(); i++) {
         reverseShuffle[shuffle[i]] = i;
       }
@@ -172,7 +172,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // We start extracting the shape at (0,0, ... ).
       std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
-      unsigned dim = CC->getDim();
+      unsigned_t dim = CC->getDim();
       for (auto &N : inputs) {
         auto *X = new SliceNode("extract", N.getType(), outputG, offsets);
         toAppend.push_back(X);

@@ -58,8 +58,8 @@ TEST_P(BackendCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
   llvm::ArrayRef<size_t> shape(S);
   Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);
   Tensor slice(ElemKind::Int8QTy, {1, 1, 2}, 1.4, 5);
-  batch.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  slice.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  batch.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  slice.getHandle<int8_t>().randomize(-128, 127, PRNG);
   Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
   Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
 
@@ -105,10 +105,8 @@ TEST_P(CPUOnly, extract3Dtest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 100, 100});
   inputs.getHandle().initXavier(1, PRNG);
-  std::array<size_t, 4> S{{1, 95, 100}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1(ElemKind::FloatTy, shape);
-  Tensor out2(ElemKind::FloatTy, shape);
+  Tensor out1;
+  Tensor out2;
 
   inferExtract3D(&inputs, &out1, BackendKind::CPU);
   inferExtract3D(&inputs, &out2, BackendKind::Interpreter);
@@ -121,8 +119,8 @@ TEST_P(CPUOnly, quantizedConvTest) {
   Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
   Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);
   Tensor bias(ElemKind::Int8QTy, {10}, 0.5, -4);
-  inputs.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  kernel.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  inputs.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  kernel.getHandle<int8_t>().randomize(-128, 127, PRNG);
   bias.getHandle<int8_t>().randomize(-11, 8, PRNG);
   std::array<size_t, 4> S{{20, 15, 12, 10}};
   llvm::ArrayRef<size_t> shape(S);
@@ -137,18 +135,18 @@ TEST_P(CPUOnly, quantizedConvTest) {
 
 TEST_P(BackendCorrectnessTest, convGradTest) {
   PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {9, 8, 9, 4});
-  Tensor kernel1(ElemKind::FloatTy, {3, 3, 3, 4});
+  Tensor inputs(ElemKind::FloatTy, {9, 8, 5, 4});
+  Tensor kernel1(ElemKind::FloatTy, {3, 5, 3, 4});
   Tensor bias1(ElemKind::FloatTy, {3});
   Tensor kernel2(ElemKind::FloatTy, {2, 2, 2, 1});
   Tensor bias2(ElemKind::FloatTy, {2});
-  Tensor selected(ElemKind::IndexTy, {9, 1});
+  Tensor selected(ElemKind::Int64ITy, {9, 1});
   inputs.getHandle().initXavier(1, PRNG);
   kernel1.getHandle().randomize(-1.0, 1.4, PRNG);
   bias1.getHandle().randomize(-0.2, 0.5, PRNG);
   kernel2.getHandle().randomize(-1.8, 2.3, PRNG);
   bias2.getHandle().randomize(-0.5, 1.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 9; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 29);
   }
@@ -156,8 +154,8 @@ TEST_P(BackendCorrectnessTest, convGradTest) {
   llvm::ArrayRef<size_t> shape1(S1);
   std::array<size_t, 2> S2{{9, 30}};
   llvm::ArrayRef<size_t> shape2(S2);
-  Tensor out1(ElemKind::FloatTy, shape2);
-  Tensor out2(ElemKind::FloatTy, shape2);
+  Tensor out1;
+  Tensor out2;
 
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
                shape2, &out1, backendKind_);
@@ -175,14 +173,14 @@ TEST_P(BackendCorrectnessTest, gatherTest) {
   Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
   data.getHandle().initXavier(1, PRNG);
 
-  Tensor indices(ElemKind::IndexTy, {nGathered});
-  auto indicesH = indices.getHandle<size_t>();
+  Tensor indices(ElemKind::Int64ITy, {nGathered});
+  auto indicesH = indices.getHandle<int64_t>();
   for (size_t i = 0; i < nGathered; i++) {
     indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
   }
 
-  Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
-  Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
+  Tensor out1;
+  Tensor out2;
 
   inferGatherNet(&data, &indices, &out1, backendKind_);
   inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
@@ -208,11 +206,11 @@ TEST_P(CPUOnly, localResponseNormalizationGradTest) {
   Tensor inputs(ElemKind::FloatTy, {5, 4, 7, 3});
   Tensor weights(ElemKind::FloatTy, {84, 180});
   Tensor bias(ElemKind::FloatTy, {180});
-  Tensor selected(ElemKind::IndexTy, {5, 1});
+  Tensor selected(ElemKind::Int64ITy, {5, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(-2.0, 3.0, PRNG);
   bias.getHandle().randomize(-1.0, 1.3, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 5; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 179);
   }
@@ -333,8 +331,8 @@ TEST_P(CPUOnly, quantizedMatMulTest) {
   PseudoRNG PRNG;
   Tensor lhs(ElemKind::Int8QTy, {10, 9}, 2.7, 31);
   Tensor rhs(ElemKind::Int8QTy, {9, 8}, 3.2, -12);
-  lhs.getHandle<int8_t>().randomize(-129, 128, PRNG);
-  rhs.getHandle<int8_t>().randomize(-129, 128, PRNG);
+  lhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  rhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
   std::array<size_t, 2> S{{10, 8}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);
@@ -380,29 +378,29 @@ TEST_P(BackendCorrectnessTest, minTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolAvgTest) {
+TEST_P(BackendCorrectnessTest, AvgPoolTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {14, 12, 19, 7});
   inputs.getHandle().initXavier(1, PRNG);
   Tensor out1;
   Tensor out2;
 
-  inferPoolAvgNet(&inputs, &out1, backendKind_);
-  inferPoolAvgNet(&inputs, &out2, BackendKind::Interpreter);
+  inferAvgPoolNet(&inputs, &out1, backendKind_);
+  inferAvgPoolNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, poolAvgGradTest) {
+TEST_P(CPUOnly, AvgPoolGradTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
   Tensor weights(ElemKind::FloatTy, {126, 72});
   Tensor bias(ElemKind::FloatTy, {72});
-  Tensor selected(ElemKind::IndexTy, {5, 1});
+  Tensor selected(ElemKind::Int64ITy, {5, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(-0.3, 0.6, PRNG);
   bias.getHandle().randomize(-0.2, 0.1, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 5; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 17);
   }
@@ -410,40 +408,40 @@ TEST_P(CPUOnly, poolAvgGradTest) {
   llvm::ArrayRef<size_t> shape1(S1);
   std::array<size_t, 2> S2{{5, 18}};
   llvm::ArrayRef<size_t> shape2(S2);
-  Tensor out1(ElemKind::FloatTy, shape2);
-  Tensor out2(ElemKind::FloatTy, shape2);
+  Tensor out1;
+  Tensor out2;
 
-  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+  trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
                   backendKind_);
-  trainPoolAvgNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
+  trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolMaxTest) {
+TEST_P(BackendCorrectnessTest, MaxPoolTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 53, 71, 14});
   inputs.getHandle().initXavier(1, PRNG);
   Tensor out1;
   Tensor out2;
 
-  inferPoolMaxNet(&inputs, &out1, backendKind_);
-  inferPoolMaxNet(&inputs, &out2, BackendKind::Interpreter);
+  inferMaxPoolNet(&inputs, &out1, backendKind_);
+  inferMaxPoolNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, poolMaxGradTest) {
+TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {4, 8, 7, 2});
   Tensor weights(ElemKind::FloatTy, {112, 84});
   Tensor bias(ElemKind::FloatTy, {84});
-  Tensor selected(ElemKind::IndexTy, {4, 1});
+  Tensor selected(ElemKind::Int64ITy, {4, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(-0.1, 0.7, PRNG);
   bias.getHandle().randomize(-0.3, 0.1, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 4; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 31);
   }
@@ -451,12 +449,12 @@ TEST_P(BackendCorrectnessTest, poolMaxGradTest) {
   llvm::ArrayRef<size_t> shape1(S1);
   std::array<size_t, 2> S2{{4, 32}};
   llvm::ArrayRef<size_t> shape2(S2);
-  Tensor out1(ElemKind::FloatTy, shape2);
-  Tensor out2(ElemKind::FloatTy, shape2);
+  Tensor out1;
+  Tensor out2;
 
-  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
+  trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
                   backendKind_);
-  trainPoolMaxNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
+  trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -489,8 +487,8 @@ TEST_P(BackendCorrectnessTest, quantizeTest) {
   inputs.getHandle().randomize(-10000.0, 5000.0, PRNG);
   float scale{4500.0 / 128};
   int32_t offset{-2500};
-  Tensor out1(ElemKind::FloatTy, shape);
-  Tensor out2(ElemKind::FloatTy, shape);
+  Tensor out1;
+  Tensor out2;
 
   inferQuantizeNet(&inputs, scale, offset, &out1, backendKind_);
   inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
@@ -527,8 +525,8 @@ TEST_P(BackendCorrectnessTest, reshapeTest) {
 }
 
 TEST_P(BackendCorrectnessTest, reshapeIndexTest) {
-  Tensor inputs(ElemKind::IndexTy, {12, 6, 8, 12});
-  auto H = inputs.getHandle<size_t>();
+  Tensor inputs(ElemKind::Int64ITy, {12, 6, 8, 12});
+  auto H = inputs.getHandle<int64_t>();
   for (size_t i = 0; i < H.size(); i++) {
     H.raw(i) = i;
   }
@@ -604,20 +602,38 @@ TEST_P(CPUOnly, groupConvTest) {
 
 /// This test targets the DKKC8 optimization.
 TEST_P(CPUOnly, nonSquarePaddingConvTest) {
-  std::array<size_t, 4> S{{1, 2, 1, 128}};
-  Tensor out1(ElemKind::FloatTy, S);
-  Tensor out2(ElemKind::FloatTy, S);
+  Tensor out1;
+  Tensor out2;
   inferNonSquarePaddingConv(&out1, BackendKind::CPU);
   inferNonSquarePaddingConv(&out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
+/// This non-square kernel test targets the DKKC8 optimization.
+TEST_P(CPUOnly, nonSquareKernelConvTest) {
+  Tensor out1;
+  Tensor out2;
+  inferNonSquareKernelConv(&out1, BackendKind::CPU);
+  inferNonSquareKernelConv(&out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
+/// This non-square stride test targets the DKKC8 optimization.
+TEST_P(CPUOnly, nonSquareStrideConvTest) {
+  Tensor out1;
+  Tensor out2;
+  inferNonSquareStrideConv(&out1, BackendKind::CPU);
+  inferNonSquareStrideConv(&out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
+}
+
 /// This test targets the DKKC8 opt correctionimization.
 TEST_P(CPUOnly, convDKKC8Test) {
-  std::array<size_t, 4> S{{3, 3, 3, 192}};
-  Tensor out1(ElemKind::FloatTy, S);
-  Tensor out2(ElemKind::FloatTy, S);
+  Tensor out1;
+  Tensor out2;
   inferConvDKKC8(&out1, BackendKind::CPU);
   inferConvDKKC8(&out2, BackendKind::Interpreter);
   EXPECT_TRUE(out1.isEqual(out2));
@@ -626,9 +642,9 @@ TEST_P(CPUOnly, convDKKC8Test) {
 TEST_P(BackendCorrectnessTest, softmaxTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {14, 19});
-  Tensor selected(ElemKind::IndexTy, {14, 1});
+  Tensor selected(ElemKind::Int64ITy, {14, 1});
   inputs.getHandle().initXavier(1, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 14; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 18);
   }
@@ -648,16 +664,16 @@ TEST_P(BackendCorrectnessTest, softmaxGradTest) {
   Tensor inputs(ElemKind::FloatTy, shape);
   Tensor weights(ElemKind::FloatTy, {23, 23});
   Tensor bias(ElemKind::FloatTy, {23});
-  Tensor selected(ElemKind::IndexTy, {8, 1});
+  Tensor selected(ElemKind::Int64ITy, {8, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<size_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }
-  Tensor out1(ElemKind::FloatTy, shape);
-  Tensor out2(ElemKind::FloatTy, shape);
+  Tensor out1;
+  Tensor out2;
 
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, backendKind_);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
@@ -768,6 +784,19 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
   inferTinyResnet(&input, &out2, weights, backendKind_);
 
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
+}
+
+// Test MaxSplat transformation in CPU backend.
+TEST_P(CPUOnly, maxSplatTest) {
+  PseudoRNG PRNG;
+  Tensor input(ElemKind::Int8QTy, {5, 5}, 0.001, -10);
+  input.getHandle<int8_t>().randomize(-128, 127, PRNG);
+  Tensor out1, out2;
+
+  inferMaxSplat(&input, &out1, backendKind_);
+  inferMaxSplat(&input, &out2, BackendKind::Interpreter);
+
+  EXPECT_TRUE(out1.isEqual(out2));
 }
 
 #ifdef GLOW_WITH_CPU

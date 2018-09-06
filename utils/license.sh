@@ -2,11 +2,13 @@
 
 # Adds the Apache 2.0 license to any source file that doesn't already have it.
 
+set -euo pipefail
+
 function add_license () {
     input=$1
     temp=$(mktemp)
-    if ! grep -q 'Apache License' $input; then
-        cat - $input > $temp <<EOF
+    if ! grep -q 'Apache License' "$input"; then
+        cat - "$input" > "$temp" <<EOF
 /**
  * Copyright (c) 2017-present, Facebook, Inc.
  *
@@ -23,7 +25,7 @@ function add_license () {
  * limitations under the License.
  */
 EOF
-        mv $temp $input
+        mv "$temp" "$input"
     fi
 }
 
@@ -31,5 +33,5 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR/.."
 
 for i in $(find . -name '*.cpp' -o -name '*.h' | grep -v /googletest/ ); do
-    add_license $i
+    add_license "$i"
 done
