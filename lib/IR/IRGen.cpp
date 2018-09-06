@@ -79,7 +79,7 @@ public:
 
   /// \returns the generated instruction for the node \p N.
   Value *valueForNode(NodeValue N) {
-    if (auto *V = dyn_cast<Variable>(N)) {
+    if (auto *V = dyn_cast<Storage>(N)) {
       auto &map = F_->getVariableMap();
       return map[V];
     }
@@ -90,7 +90,7 @@ public:
   }
   /// Saves the generated IR in \p v for the node \p N.
   void registerIR(NodeValue N, Value *v) {
-    if (auto *V = dyn_cast<Variable>(N)) {
+    if (auto *V = dyn_cast<Storage>(N)) {
       auto &map = F_->getVariableMap();
       map[V] = v;
       return;
@@ -370,6 +370,15 @@ public:
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          WeightVar::MutabilityKind::Mutable,
                                          V->getVisibilityKind());
+      W->setName(N->getName());
+      registerIR(N, W);
+      break;
+    }
+    case glow::Kinded::Kind::PlaceholderKind: {
+      auto *P = cast<Placeholder>(N);
+      auto *W = builder_.createWeightVar(P->getType(), P->getName(),
+                                         WeightVar::MutabilityKind::Mutable,
+                                         VisibilityKind::Public);
       W->setName(N->getName());
       registerIR(N, W);
       break;
