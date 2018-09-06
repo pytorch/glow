@@ -224,7 +224,8 @@ void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   CMSBScheduler.schedule();
   auto numVars = G_->getParent()->getVars().size();
   auto numPlaceholders = G_->getParent()->getPlaceholders().size();
-
+  (void)numVars;
+  (void)numPlaceholders;
   assert(CMSBScheduler.getSchedule().size() ==
              G_->getNodes().size() + numPlaceholders + numVars &&
          "All graph nodes have to be scheduled");
