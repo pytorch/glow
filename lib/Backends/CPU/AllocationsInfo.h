@@ -53,11 +53,11 @@ struct AllocationsInfo {
   uint8_t *baseActivationsAddress_{nullptr};
 
   /// Assign offsets to all WeightVars of \p M.
-  /// If the \p reuseAddresses is true, simply reuse the addresses already used
+  /// If the \p absoluteAddr is true, simply reuse the addresses already used
   /// by the payloads of tensors corresponding to those WeightVars as offsets.
-  /// This is useful in a JIT setup. If \p reuseAddresses is false, then all the
+  /// This is useful in a JIT setup. If \p absoluteAddr is false, then all the
   /// WeightVars will get new offsets assigned.
-  void allocateWeightVars(const IRFunction *F, bool reuseAddresses);
+  void allocateWeightVars(const IRFunction *F, bool absoluteAddr);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be
   /// performed by the client based on the information provided by the

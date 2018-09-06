@@ -32,7 +32,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 void AllocationsInfo::allocateWeightVars(const IRFunction *F,
-                                         bool reuseAddresses) {
+                                         bool absoluteAddr) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
   MemoryAllocator constantWeightVarsAllocator("ConstantWeights", 0);
@@ -47,7 +47,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
       continue;
     auto numBytes = w->getSizeInBytes();
     size_t addr = constantWeightVarsAllocator.allocate(numBytes, w);
-    if (!reuseAddresses) {
+    if (!absoluteAddr) {
       allocatedAddressed_[w] = addr;
     } else {
       // Reuse the address used by the payload.
@@ -64,7 +64,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
       continue;
     auto numBytes = w->getSizeInBytes();
     size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
-    if (!reuseAddresses) {
+    if (!absoluteAddr) {
       allocatedAddressed_[w] = addr;
     } else {
       // Reuse the address used by the payload.
