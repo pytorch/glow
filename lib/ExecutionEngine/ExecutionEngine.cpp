@@ -77,9 +77,13 @@ void ExecutionEngine::run() {
 /// inputs. The data starts at slice \p sampleIdx and wraps around until the
 /// data in \p v is filled. All dimensions, except for the first (batch)
 /// dimension must be identical.
-static void updateInputs(llvm::ArrayRef<Variable *> vars,
-                                      llvm::ArrayRef<Tensor *> inputs,
-                                      size_t sampleIdx) {
+void ExecutionEngine::updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
+                                               llvm::ArrayRef<Tensor *> inputs,
+                                               size_t sampleIdx) {
+  assert(!inputs.empty() && "No inputs");
+  assert(inputs.size() == vars.size() &&
+         "The number of inputs does not match the number of variables");
+
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
     assert(vars[i] && "Invalid value");
@@ -98,26 +102,19 @@ void ExecutionEngine::runBatch(size_t iterations,
                                llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
-  assert(function_ && "No function has been compiled");
-  assert(!inputs.empty() && "No inputs");
-  assert(inputs.size() == vars.size() &&
-         "The number of inputs does not match the number of variables");
-
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->getType()->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
     // Pick up one slice from the input tensors, and load it into corresponding
     // network Variables. Then, run a single pass over the network.
-    updateInputs(vars, inputs, trainCounter);
+    updateVariablesFromBatch(vars, inputs, trainCounter);
 
     // Run the network.
-    function_->execute();
+    run();
     trainCounter += batchSize;
   }
 }
-
-
 
 void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   assert(v && "Invalid value");
