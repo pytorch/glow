@@ -33,7 +33,7 @@ using namespace glow;
 // This is the floating point implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<unsigned_t> filterSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
 
   auto inW = getWeightHandle(inV);
@@ -43,7 +43,7 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
-  ShapeHW kdim(filterSizes);
+  ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
@@ -99,7 +99,7 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 // This is the quantized i8 implementation of Convolution.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
-    llvm::ArrayRef<unsigned_t> filterSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
@@ -108,7 +108,7 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
-  ShapeHW kdim(filterSizes);
+  ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
@@ -192,19 +192,19 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
 }
 
 void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  auto filterSizes = I->getKernels();
+  auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdConvolutionInst_I8Impl(I->getSrc(), I->getDest(), I->getFilter(),
-                              I->getBias(), filterSizes, strides, pads, group);
+                              I->getBias(), kernelSizes, strides, pads, group);
     return;
   }
 
   fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
-                               I->getBias(), filterSizes, strides, pads, group);
+                               I->getBias(), kernelSizes, strides, pads, group);
 }
 
 void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
@@ -285,7 +285,7 @@ void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
 //===----------------------------------------------------------------------===//
 template <class T>
 static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
-                       llvm::ArrayRef<unsigned_t> filterSizes,
+                       llvm::ArrayRef<unsigned_t> kernelSizes,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC odim(outW->dims());
@@ -293,7 +293,7 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
   Handle<T> inHandle = inW->getHandle<T>();
   Handle<T> outHandle = outW->getHandle<T>();
   PaddingTLBR pdim(pads);
-  ShapeHW kdim(filterSizes);
+  ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
   // For each input in the batch:
