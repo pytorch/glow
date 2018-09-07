@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 namespace llvm {
 class raw_ostream;
@@ -244,6 +245,34 @@ struct Type final {
     return offset_;
   }
 
+  /// \returns the floating point value range that covers a quantized type (min
+  /// first, max second).
+  std::pair<float, float> getQuantizedValueRange() const {
+    assert(isQuantizedType() &&
+           "Can't get the quantized value range of a float type");
+
+    int64_t low = 0, high = 0;
+    switch (elementType_) {
+    case ElemKind::Int32QTy:
+      low = INT32_MIN;
+      high = INT32_MAX;
+      break;
+    case ElemKind::Int16QTy:
+      low = INT16_MIN;
+      high = INT16_MAX;
+      break;
+    case ElemKind::Int8QTy:
+      low = INT8_MIN;
+      high = INT8_MAX;
+      break;
+    default:;
+    }
+
+    float lowFloat = (low - offset_) * scale_;
+    float highFloat = (high - offset_) * scale_;
+    return std::make_pair(lowFloat, highFloat);
+  }
+
   /// \returns true if \p other is the same type.
   bool isEqual(const Type &other) const {
     // Element type must be the same.
@@ -366,8 +395,8 @@ struct Type final {
   }
 
 private:
-  /// Setup the internals of type that store the dimensions. This method is used
-  /// by the constructor.
+  /// Setup the internals of type that store the dimensions. This method is
+  /// used by the constructor.
   void initDims(llvm::ArrayRef<size_t> dims) {
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
