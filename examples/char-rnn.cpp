@@ -234,8 +234,8 @@ int main(int argc, char **argv) {
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
-    EE.runBatch(batchSize / minibatchSize, {X, Y},
-                {&thisCharTrain, &nextCharTrain});
+    runBatch(EE, batchSize / minibatchSize, {X, Y},
+             {&thisCharTrain, &nextCharTrain});
     llvm::outs() << ".\n";
 
     //// Use the trained network to generate some text ////
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
     // Generate a sentence by running inference over and over again.
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
-      EE.updateVariables({X}, {&currCharInfer});
+      updateVariables({X}, {&currCharInfer});
       EE.run();
 
       // Pick a char at random from the softmax distribution.

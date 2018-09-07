@@ -146,7 +146,7 @@ void testMNIST() {
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    EE.runBatch(numIterations, {A, selected}, {&imageInputs, &labelInputs});
+    runBatch(EE, numIterations, {A, selected}, {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }
@@ -163,7 +163,7 @@ void testMNIST() {
 
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
     sample.copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
-    EE.updateVariables({A}, {&sample});
+    updateVariables({A}, {&sample});
     EE.run();
 
     Tensor &res = result->getVariable()->getPayload();
