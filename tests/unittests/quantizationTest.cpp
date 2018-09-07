@@ -135,7 +135,7 @@ TEST(Quantization, quantizeGraph) {
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
 }
 
 /// Quantize ReLU node and make sure that quantized version
@@ -243,7 +243,7 @@ TEST_P(Operator, end2end) {
   interpreterEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  interpreterEE.run({}, {});
+  interpreterEE.run();
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -254,7 +254,7 @@ TEST_P(Operator, end2end) {
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
-  backendSpecificEE.run({}, {});
+  backendSpecificEE.run();
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = result1->getVariable()->getHandle();
@@ -378,7 +378,7 @@ TEST_P(Operator, end2endGRU) {
   interpreterEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  interpreterEE.run({}, {});
+  interpreterEE.run();
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -389,7 +389,7 @@ TEST_P(Operator, end2endGRU) {
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
-  backendSpecificEE.run({}, {});
+  backendSpecificEE.run();
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = result1->getVariable()->getHandle();
@@ -421,7 +421,7 @@ TEST(Quantization, rescaleSameType) {
 
   EXPECT_EQ(F->getNodes().size(), 3);
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   EXPECT_EQ(F->getNodes().size(), 2);
 
   auto RH = result->getVariable()->getHandle();
@@ -445,7 +445,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
 
   EXPECT_EQ(F->getNodes().size(), 4);
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   EXPECT_EQ(F->getNodes().size(), 1);
 
   auto RH = result->getVariable()->getHandle();
@@ -698,7 +698,7 @@ TEST(Quantization, quantizeGraphPartially) {
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -777,7 +777,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -866,7 +866,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
 
   {
     // Verify that the output variable is not quantized, and that it has a

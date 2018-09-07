@@ -65,7 +65,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  EE.run({A}, {&inputs});
+  EE.updateVariables({A}, {&inputs});
+  EE.run();
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
@@ -90,7 +91,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  EE.run({A}, {&inputs});
+  EE.updateVariables({A}, {&inputs});
+  EE.run();
   min = CI.raw(0);
   max = CI.raw(1);
   EXPECT_NEAR(0.2, min, 0.00001);
@@ -127,7 +129,8 @@ TEST_P(BackendTest, simpleInference) {
 
   EE_.compile(CompilationMode::Infer, F);
 
-  EE_.run({input}, {&inputs});
+  EE_.updateVariables({input}, {&inputs});
+  EE_.run();
 }
 
 TEST_P(BackendTest, debugPrint) {
@@ -165,7 +168,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
 
   // We can run the compiled code without having the graph representation
   // around.
-  EE_.run({}, {});
+  EE_.run();
 
   auto HX = res->getPayload().getHandle();
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);

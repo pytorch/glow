@@ -67,7 +67,7 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   auto result = graphOutputVar->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,

@@ -163,7 +163,8 @@ void testMNIST() {
 
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
     sample.copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
-    EE.run({A}, {&sample});
+    EE.updateVariables({A}, {&sample});
+    EE.run();
 
     Tensor &res = result->getVariable()->getPayload();
 

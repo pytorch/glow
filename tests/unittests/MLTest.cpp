@@ -72,7 +72,9 @@ TEST_P(MLTest, trainASimpleNetwork) {
   // Testing the output vector.
 
   EE_.compile(CompilationMode::Infer, F);
-  EE_.run({A}, {&inputs});
+  EE_.updateVariables({A}, {&inputs});
+  EE_.run();
+
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -126,7 +128,8 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    EE_.run({A}, {&inputs});
+    EE_.updateVariables({A}, {&inputs});
+    EE_.run();
 
     auto resH = result->getVariable()->getPayload().getHandle<>();
     (void)resH;
@@ -190,7 +193,9 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  EE_.run({A}, {&trainingSet});
+  EE_.updateVariables({A}, {&trainingSet});
+  EE_.run();
+
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
@@ -263,7 +268,9 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
 
-  EE_.run({A}, {&testSet});
+  EE_.updateVariables({A}, {&testSet});
+  EE_.run();
+
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   // Test the output:
@@ -350,7 +357,8 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      EE_.run({A}, {&sample});
+      EE_.updateVariables({A}, {&sample});
+      EE_.run();
 
       auto SMH = result->getVariable()->getPayload().getHandle<>();
       auto A = SMH.at({0, 0});
@@ -373,7 +381,9 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    EE_.run({A}, {&sample});
+    EE_.updateVariables({A}, {&sample});
+    EE_.run();
+
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -384,7 +394,8 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    EE_.run({A}, {&sample});
+    EE_.updateVariables({A}, {&sample});
+    EE_.run();
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -437,7 +448,8 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  EE_.run({A}, {&inputs});
+  EE_.updateVariables({A}, {&inputs});
+  EE_.run();
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -538,7 +550,9 @@ void testRNNCell(TCellGenerator cell) {
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run({X}, {&inputs});
+  EE.updateVariables({X}, {&inputs});
+  EE.run();
+
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
 
@@ -580,7 +594,8 @@ TEST_P(MLTest, learnSqrt2) {
 
   // Train the network:
   for (int i = 0; i < 50; i++) {
-    EE_.run({}, {});
+    EE_.run();
+    EE_.run();
   }
 
   float res = A->getPayload().getHandle().at({0});
@@ -718,7 +733,8 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  EE_.run({A}, {&testPlayersTensor});
+  EE_.updateVariables({A}, {&testPlayersTensor});
+  EE_.run();
 
   for (size_t i = 0; i < testPlayers.size(); i++) {
     auto SMH = result->getVariable()->getPayload().getHandle<>();
@@ -788,7 +804,8 @@ TEST_P(MLTest, learnSinus) {
   }
 
   EE_.compile(CompilationMode::Infer, F);
-  EE_.run({inputX}, {&tensorX});
+  EE_.updateVariables({inputX}, {&tensorX});
+  EE_.run();
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
@@ -852,7 +869,8 @@ TEST_P(MLTest, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    EE_.run({A}, {&T});
+    EE_.updateVariables({A}, {&T});
+    EE_.run();
     auto RH = result->getVariable()->getPayload().getHandle<>();
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
@@ -937,7 +955,8 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  EE.run({input}, {&testImages});
+  EE.updateVariables({input}, {&testImages});
+  EE.run();
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
@@ -1035,7 +1054,8 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
-  EE.run({input}, {&testImages});
+  EE.updateVariables({input}, {&testImages});
+  EE.run();
 
   // A handle to the projected result.
   auto RH = result->getVariable()->getHandle<>();
@@ -1193,7 +1213,9 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  EE_.run({varMatricesA, varMatricesB}, {&batchMatricesA, &batchMatricesB});
+  EE_.updateVariables({varMatricesA, varMatricesB},
+                      {&batchMatricesA, &batchMatricesB});
+  EE_.run();
 
   unsigned errors = 0;
   // Check each output in the batch.

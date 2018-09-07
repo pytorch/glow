@@ -390,7 +390,8 @@ void Model::translate(const std::vector<std::string> &batch) {
         (words.size() - 1) + j * MAX_LENGTH;
   }
 
-  EE_.run({input_, seqLength_}, {&input, &seqLength});
+  EE_.updateVariables({input_, seqLength_}, {&input, &seqLength});
+  EE_.run();
 
   auto OH = output_->getPayload().getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
