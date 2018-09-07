@@ -89,19 +89,6 @@ public:
   void runBatch(size_t iterations, llvm::ArrayRef<Variable *> vars,
                 llvm::ArrayRef<Tensor *> inputs);
 
-private:
-  /// Update the inputs for all variables \p vars with data from the inputs \p
-  /// inputs at offset \p sampleIdx. Then perform a run of the network.
-  void updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
-                                 llvm::ArrayRef<Tensor *> inputs,
-                                 size_t sampleIdx);
-
-  /// Update the content of the tensor \p v with some slices that from \p input.
-  /// The data starts at slice \p sampleIdx and wraps around until the
-  /// data in \p v is filled. All dimensions, except for the first (batch)
-  /// dimension must be identical.
-  void loadValueFromTensorSlice(Variable *v, Tensor *input, size_t sampleIdx);
-
   // Update the content of the tensor \p v with \p input.
   void loadValueFromTensor(Variable *v, Tensor *input);
 };
