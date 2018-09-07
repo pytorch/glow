@@ -28,12 +28,11 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
     os << " O:";
     os << type.getOffset();
     os << ']';
-    float low = (-128 - type.getOffset()) * type.getScale();
-    float high = (127 - type.getOffset()) * type.getScale();
+    auto valueRange = type.getQuantizedValueRange();
     os << "[";
-    llvm::write_double(os, low, llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, valueRange.first, llvm::FloatStyle::Fixed, 3);
     os << ",";
-    llvm::write_double(os, high, llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, valueRange.second, llvm::FloatStyle::Fixed, 3);
     os << "]";
   }
 
