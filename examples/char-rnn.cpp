@@ -227,6 +227,10 @@ int main(int argc, char **argv) {
   Tensor nextCharTrain(ElemKind::Int64ITy, {batchSize, numSteps});
   loadText(thisCharTrain, nextCharTrain, text, true);
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   // Run this number of iterations over the input. On each iteration: train the
   // network on the whole input and then generate some sample text.
   for (unsigned i = 0; i < numEpochs; i++) {
@@ -234,7 +238,7 @@ int main(int argc, char **argv) {
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
-    runBatch(EE, batchSize / minibatchSize, {X, Y},
+    runBatch(EE, batchSize / minibatchSize, sampleCounter, {X, Y},
              {&thisCharTrain, &nextCharTrain});
     llvm::outs() << ".\n";
 

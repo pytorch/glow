@@ -1784,6 +1784,10 @@ TEST_P(Operator, FCGradientCheck) {
   // with reference values.
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "A",
                                 VisibilityKind::Public, false);
   auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "B",
@@ -1807,7 +1811,7 @@ TEST_P(Operator, FCGradientCheck) {
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
   EE_.compile(CompilationMode::Train, DF);
-  runBatch(EE_, 3, {A, B}, {&initA, &initB});
+  runBatch(EE_, 3, sampleCounter, {A, B}, {&initA, &initB});
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);

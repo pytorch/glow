@@ -102,10 +102,16 @@ void updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
 /// Runs \p iterations iterations of the compiled function. The method updates a
 /// global counter and future invocations of this method continue running
 /// iterations of the batch at the next available slice.
+///
 /// The method updates the variables in \p vars with the tensors \p inputs. The
 /// shape of the slice has to be identical to the shape of slices in the batch.
 /// All dimensions, except for the first (batch) dimension must be identical.
-void runBatch(ExecutionEngine &EE, size_t iterations,
+///
+/// The variable \p sampleCounter is consumed and updated by the function. This
+/// variable records the number of samples that were consumed by the network in
+/// previous iterations. The next input to be loaded is
+/// (sampleCounter % batchsize).
+void runBatch(ExecutionEngine &EE, size_t iterations, size_t &sampleCounter,
               llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
 
 } // namespace glow

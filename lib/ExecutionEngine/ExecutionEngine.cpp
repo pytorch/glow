@@ -105,27 +105,19 @@ void glow::updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
 }
 
 void glow::runBatch(ExecutionEngine &EE, size_t iterations,
-                    llvm::ArrayRef<Variable *> vars,
+                    size_t &sampleCounter, llvm::ArrayRef<Variable *> vars,
                     llvm::ArrayRef<Tensor *> inputs) {
-  // This is a legacy helper function that helps to train batches of images.
-  // This variable is really a global variable that keeps track of the last
-  // sample in the batch, as we call the runBatch API several times. This is not
-  // a great solution because invocation of different unit tests rely on the
-  // same counter. We should get rid of this variable in favor of a different
-  // method to keep track of the training counter.
-  static size_t trainCounter = 0;
-
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = vars[0]->getType()->dims()[0];
 
   for (size_t i = 0; i < iterations; i++) {
     // Pick up one slice from the input tensors, and load it into corresponding
     // network Variables. Then, run a single pass over the network.
-    glow::updateVariablesFromBatch(vars, inputs, trainCounter);
+    glow::updateVariablesFromBatch(vars, inputs, sampleCounter);
 
     // Run the network.
     EE.run();
-    trainCounter += batchSize;
+    sampleCounter += batchSize;
   }
 }
 

@@ -39,6 +39,10 @@ class MLTest : public TestRunnerBase {};
 TEST_P(MLTest, trainASimpleNetwork) {
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   // Learning a single input vector.
   TC.learningRate = 0.05;
 
@@ -67,7 +71,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE_, 1000, {A, E}, {&inputs, &expected});
+  runBatch(EE_, 1000, sampleCounter, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
@@ -84,6 +88,10 @@ TEST_P(MLTest, trainASimpleNetwork) {
 
 TEST_P(MLTest, simpleRegression) {
   TrainingConfig TC;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   // Testing the regression layer. This test takes the first element from the
   // input vector, adds one to it and places the result in the second element of
@@ -118,7 +126,7 @@ TEST_P(MLTest, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    runBatch(EE_, 1, {A, Ex}, {&inputs, &expected});
+    runBatch(EE_, 1, sampleCounter, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -142,6 +150,10 @@ TEST_P(MLTest, learnXor) {
   TrainingConfig TC;
 
   unsigned numInputs = 10;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   // Learning a single input vector.
   TC.learningRate = 0.05;
@@ -181,7 +193,7 @@ TEST_P(MLTest, learnXor) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, 2500, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, 2500, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -209,6 +221,10 @@ TEST_P(MLTest, learnXor) {
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
   TrainingConfig TC;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   unsigned numInputs = 50;
   unsigned batchSize = 5;
@@ -250,7 +266,7 @@ TEST_P(MLTest, learnLog) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, 1000, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, 1000, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -315,6 +331,10 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 TEST_P(MLTest, circle) {
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   unsigned minibatchSize = 11;
 
   // Testing the softmax layer.
@@ -344,7 +364,7 @@ TEST_P(MLTest, circle) {
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, 4000, {A, S}, {&coordinates, &labels});
+  runBatch(EE_, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -406,6 +426,10 @@ TEST_P(MLTest, circle) {
 TEST_P(MLTest, learnSingleValueConcat) {
   unsigned width = 6;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   // Learning a single input vector.
   TrainingConfig TC;
   TC.momentum = 0.9;
@@ -443,7 +467,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, 1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+  runBatch(EE_, 1000, sampleCounter, {A, B, Ex}, {&inputs, &inputs, &expected});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -481,6 +505,10 @@ using TCellGenerator = void (*)(Function *, const std::vector<Node *> &,
 
 void testRNNCell(TCellGenerator cell) {
   TrainingConfig TC;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   ExecutionEngine EE;
   // Learning a single input vector.
@@ -545,7 +573,7 @@ void testRNNCell(TCellGenerator cell) {
   }
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE, 1000, {X, Y}, {&inputs, &expected});
+  runBatch(EE, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F);
@@ -609,6 +637,10 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   // m * x + b is approximately equal to y.
   unsigned numSamples = 500;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.1;
   TC.batchSize = numSamples;
 
@@ -647,7 +679,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  runBatch(EE_, 100, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, 100, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Testing trained m and b:
   EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
@@ -691,6 +723,10 @@ TEST_P(MLTest, classifyPlayerSport) {
 
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.05;
   TC.batchSize = numTrainPlayers;
 
@@ -715,7 +751,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, 2000, {A, S}, {&players, &labels});
+  runBatch(EE_, 2000, sampleCounter, {A, S}, {&players, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -745,6 +781,10 @@ TEST_P(MLTest, classifyPlayerSport) {
 
 TEST_P(MLTest, learnSinus) {
   TrainingConfig TC;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   // Try to learn the sin(x) function.
   float epsilon = 0.1;
@@ -791,7 +831,7 @@ TEST_P(MLTest, learnSinus) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
-  runBatch(EE_, 2700, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, 2700, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
@@ -819,6 +859,10 @@ TEST_P(MLTest, nonLinearClassifier) {
   // (-1, 1) and classify according to XOR of the sign bit.
   unsigned batchSize = 46;
   unsigned numSamples = 230;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
 
   TrainingConfig TC;
   TC.learningRate = 0.01;
@@ -856,7 +900,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
-  runBatch(EE_, 500, {A, S}, {&samples, &labels});
+  runBatch(EE_, 500, sampleCounter, {A, S}, {&samples, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -908,6 +952,10 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TrainingConfig TC;
   TC.learningRate = 0.01;
   TC.batchSize = batchSize;
@@ -935,12 +983,12 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, 500, {input, ex}, {&images, &labels});
+  runBatch(EE, 500, sampleCounter, {input, ex}, {&images, &labels});
 
   // Profiling:
   Function *PF = glow::profileQuantization(F);
   EE.compile(CompilationMode::Infer, PF);
-  runBatch(EE, 100, {input}, {&images});
+  runBatch(EE, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -994,6 +1042,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   const unsigned numSamples = 1000;
   const unsigned batchSize = 10;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TrainingConfig TC;
   TC.learningRate = 0.01;
   TC.batchSize = batchSize;
@@ -1024,7 +1076,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, 400, {input, ex}, {&images, &labels});
+  runBatch(EE, 400, sampleCounter, {input, ex}, {&images, &labels});
 
   // -- STEP2 - Profile and quantize the network. --
 
@@ -1033,7 +1085,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EE.compile(CompilationMode::Infer, PF);
 
   // Run the graph to capture the profile.
-  runBatch(EE, 100, {input}, {&images});
+  runBatch(EE, 100, sampleCounter, {input}, {&images});
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -1159,6 +1211,10 @@ TEST_P(MLTest, matrixRotationRecognition) {
   TC.learningRate = 0.15;
   TC.batchSize = 17;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   Module &mod = EE_.getModule();
   PseudoRNG &PRNG = mod.getPRNG();
   Function *F = mod.createFunction("MatrixRotationRecognition");
@@ -1196,7 +1252,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
-  runBatch(EE_, 200, {varMatricesA, varMatricesB, varExpected},
+  runBatch(EE_, 200, sampleCounter, {varMatricesA, varMatricesB, varExpected},
            {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
