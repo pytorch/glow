@@ -267,7 +267,7 @@ void Loader::compile() {
   }
 }
 
-void Loader::runInference(llvm::ArrayRef<Storage *> variables,
+void Loader::runInference(llvm::ArrayRef<Variable *> variables,
                           llvm::ArrayRef<Tensor *> tensors) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");

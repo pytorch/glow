@@ -28,8 +28,6 @@
 
 using namespace glow;
 
-using llvm::cast;
-
 namespace {
 static llvm::cl::opt<std::string>
     dumpIRDAG("dump-ir-dag",
@@ -57,39 +55,24 @@ void ExecutionEngine::setBackend(Backend *backend) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void ExecutionEngine::run(llvm::ArrayRef<Storage *> vars,
+void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   assert(function_ && "No function has been compiled");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
-  llvm::SmallVector<Placeholder *, 8> placeholders;
-  llvm::SmallVector<Tensor *, 8> tensors;
-
-  // Update the input variables, or register placeholders.
+  // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    // This is a variable. In here we override the content of the tensor with
-    // the requested tensor.
-    // Note: When we finish the migration to Placeholder this code needs to be
-    // removed because it's not threadsafe. See issue #1334.
-    if (Variable *V = llvm::dyn_cast<Variable>(vars[i])) {
-      assert(V->getVisibilityKind() == VisibilityKind::Public &&
-             "Trying to update a private variable");
-      loadValueFromTensor(V, inputs[i]);
-      continue;
-    }
-
-    // This is a placeholder that we need to make concrete during the execution
-    // of the program.
-    placeholders.push_back(cast<Placeholder>(vars[i]));
-    tensors.push_back(inputs[i]);
+    assert(vars[i]->getVisibilityKind() == VisibilityKind::Public &&
+           "Trying to update a private variable");
+    loadValueFromTensor(vars[i], inputs[i]);
   }
 
-  function_->execute(placeholders, tensors);
+  function_->execute();
 }
 
 void ExecutionEngine::runBatch(size_t iterations,
-                               llvm::ArrayRef<Storage *> vars,
+                               llvm::ArrayRef<Variable *> vars,
                                llvm::ArrayRef<Tensor *> inputs) {
   static size_t trainCounter = 0;
 
@@ -110,56 +93,16 @@ void ExecutionEngine::runBatch(size_t iterations,
   }
 }
 
-void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Storage *> vars,
+void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
                                                 llvm::ArrayRef<Tensor *> inputs,
                                                 size_t sampleIdx) {
-  llvm::SmallVector<Placeholder *, 8> placeholders;
-
-  // This container saves the tensor slices that were extracted from the inputs.
-  // The tensors are alive during the lifetime of this function. These tensors
-  // must not move, and we must pass them as ArrayRef, so we allocate them here
-  // manually.
-  llvm::SmallVector<Tensor, 8> tempTensorViews;
-  // We need to pass the tensors as array ref, so we reference the static
-  // storage above, that's frozen during the execution of the program.
-  llvm::SmallVector<Tensor *, 8> tensors;
-
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
-    // Note: When we finish the migration to Placeholder this code needs to be
-    // removed because it's not threadsafe. See issue #1334.
-    if (Variable *V = llvm::dyn_cast<Variable>(vars[i])) {
-      loadValueFromTensorSlice(V, inputs[i], sampleIdx);
-      continue;
-    }
-
-    // This is a placeholder that we need to make concrete during the execution
-    // of the program.
-    placeholders.push_back(cast<Placeholder>(vars[i]));
-
-    // Extract a tensor view from the input values. This has the same
-    // functionality as the logic in loadValueFromTensorSlice that copies the
-    // content of the tensor.
-    auto batchSize = inputs[i]->dims()[0];
-    auto startIdx = sampleIdx % batchSize;
-    auto phDims = placeholders[i]->dims();
-
-    // The start offset is all zeros except for the batch dimension.
-    std::vector<size_t> sliceOffset(inputs[i]->dims().size(), 0);
-    sliceOffset[0] = startIdx;
-
-    // Create the tensor view.
-    tempTensorViews.push_back(inputs[i]->getUnowned(phDims, sliceOffset));
-  }
-
-  // Save the pointer to the allocated tensor view, because the interface
-  // requires ArrayRef of tensors.
-  for (int i = 0, e = tempTensorViews.size(); i < e; i++) {
-    tensors.push_back(&tempTensorViews[i]);
+    loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
   }
 
   // Run the network.
-  function_->execute(placeholders, tensors);
+  function_->execute();
 }
 
 void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,

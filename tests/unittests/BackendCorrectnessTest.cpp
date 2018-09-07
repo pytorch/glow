@@ -304,7 +304,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  backend.compile(std::move(M))->execute({}, {});
+  backend.compile(std::move(M))->execute();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

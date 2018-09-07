@@ -31,6 +31,10 @@ InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F)
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();
   }
+
+  for (auto *W : F_->getWeights()) {
+    getOrCreateTensor(W);
+  }
 }
 
 InterpreterFunction::~InterpreterFunction() {
@@ -98,15 +102,7 @@ void InterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-void InterpreterFunction::execute(llvm::ArrayRef<Placeholder *> placeholders,
-                                  llvm::ArrayRef<Tensor *> tensors) {
-  // Register the placeholder values with the corresponding backing tensor.
-  // Note: the current implementation is not thread safe. See issue #1334.
-  for (int i = 0, e = placeholders.size(); i < e; i++) {
-    auto *w = F_->getWeightForNode(placeholders[i]);
-    externalTensors_[w] = tensors[i];
-  }
-
+void InterpreterFunction::execute() {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
