@@ -78,9 +78,13 @@ public:
   void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName);
 
-  /// Runs a single execution of the function. This method updates the variables
-  /// in \p nodes with the tensor content values \p inputs.
-  void run(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
+  /// This method updates the variables in \p nodes with the tensor content
+  /// values \p inputs.
+  void updateVariables(llvm::ArrayRef<Variable *> vars,
+                       llvm::ArrayRef<Tensor *> inputs);
+
+  /// Runs a single execution of the function.
+  void run();
 
   /// Runs \p iterations iterations of the function. The method updates a local
   /// counter and future invocations of this method continue running iterations

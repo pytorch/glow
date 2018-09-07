@@ -277,7 +277,8 @@ void Loader::runInference(llvm::ArrayRef<Variable *> variables,
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterationsOpt; i++) {
-    EE_.run(variables, tensors);
+    EE_.updateVariables(variables, tensors);
+    EE_.run();
   }
   if (timeOpt) {
     timer.stopTimer();

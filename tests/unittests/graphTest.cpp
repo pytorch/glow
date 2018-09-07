@@ -383,7 +383,7 @@ TEST(Graph, NodeValue) {
   auto S = F->createSave("Save", a);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
 
   EXPECT_EQ(
       llvm::cast<Variable>(S->getOutput())->getPayload().getHandle().raw(0),
@@ -440,7 +440,8 @@ TEST(Graph, nodesWithPredicates) {
   F->createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({input}, {&inputs});
+  EE.updateVariables({input}, {&inputs});
+  EE.run();
 }
 
 // Return the number of ConvolutionNode after lower.
@@ -513,7 +514,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   Tensor AOrig = A->getPayload().clone();
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   auto *ret = saveNode->getVariable();
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = B->getPayload().getHandle<>();
@@ -557,7 +558,7 @@ TEST(Graph, schedulingOfSaves) {
   Tensor AOrig = A->getPayload().clone();
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   auto *ret = saveNode->getVariable();
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = B->getHandle<>();

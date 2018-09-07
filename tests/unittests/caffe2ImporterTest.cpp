@@ -44,7 +44,7 @@ TEST(caffe2, importConv) {
   }
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   auto result = output->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
@@ -96,7 +96,7 @@ TEST(caffe2, concatAddAxis) {
   EXPECT_TRUE(result.dims().vec() == expectedDims);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   // High level check on the content of the graph.
   // We have 1 reshape, 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -165,7 +165,7 @@ TEST(caffe2, concat) {
   EXPECT_TRUE(result.dims().vec() == expectedDims);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run({}, {});
+  EE.run();
   // High level check on the content of the graph.
   // We have 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 2);

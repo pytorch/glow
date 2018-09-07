@@ -114,12 +114,15 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
 
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    EE.run({inputVar}, {inputs});
+    EE.updateVariables({inputVar}, {inputs});
+    EE.run();
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    EE.run({inputVar}, {inputs});
+    EE.updateVariables({inputVar}, {inputs});
+    EE.run();
+
     auto minusLoss = computeL2Loss(outputs, &res);
 
     // Restore value back.
@@ -515,20 +518,24 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      EE_.run({P, Y}, {&inputs, &outputs});
+      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      EE_.run();
       L->getPayload().zero();
       auto x = inputsH.raw(j);
       auto g = gradP.raw(j);
       inputsH.raw(j) = x + stepSize;
-      EE_.run({P, Y}, {&inputs, &outputs});
+      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      EE_.run();
       auto lp = L->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       L->getPayload().zero();
-      EE_.run({P, Y}, {&inputs, &outputs});
+      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      EE_.run();
       auto lm = L->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      EE_.run({P, Y}, {&inputs, &outputs});
+      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      EE_.run();
       EXPECT_NEAR(diff, g, delta);
     }
   }

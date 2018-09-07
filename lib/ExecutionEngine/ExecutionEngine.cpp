@@ -55,9 +55,8 @@ void ExecutionEngine::setBackend(Backend *backend) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
-                          llvm::ArrayRef<Tensor *> inputs) {
-  assert(function_ && "No function has been compiled");
+void ExecutionEngine::updateVariables(llvm::ArrayRef<Variable *> vars,
+                                      llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
@@ -67,7 +66,10 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
            "Trying to update a private variable");
     loadValueFromTensor(vars[i], inputs[i]);
   }
+}
 
+void ExecutionEngine::run() {
+  assert(function_ && "No function has been compiled");
   function_->execute();
 }
 

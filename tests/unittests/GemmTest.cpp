@@ -52,7 +52,9 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
   auto result = F->createSave("ret", matmul, outVar);
   EE.compile(CompilationMode::Infer, F);
-  EE.run({lhsVar, rhsVar}, {lhs, rhs});
+  EE.updateVariables({lhsVar, rhsVar}, {lhs, rhs});
+  EE.run();
+
   out->assign(&result->getVariable()->getPayload());
 }
 
