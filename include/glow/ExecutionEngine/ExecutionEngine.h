@@ -83,6 +83,14 @@ public:
   void updateVariables(llvm::ArrayRef<Variable *> vars,
                        llvm::ArrayRef<Tensor *> inputs);
 
+  /// Update the content of the tensors \p vars with some slices that from \p
+  /// inputs. The data starts at slice \p sampleIdx and wraps around until the
+  /// data in \p v is filled. All dimensions, except for the first (batch)
+  /// dimension must be identical.
+  void updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
+                                llvm::ArrayRef<Tensor *> inputs,
+                                size_t sampleIdx);
+
   /// Runs a single execution of the function.
   void run();
 
