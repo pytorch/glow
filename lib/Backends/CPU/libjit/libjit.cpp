@@ -458,8 +458,8 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
 
   if (numDims == 2) {
     // Process the tiles in the matrix:
-    for (size_t sx = 0; sx < odim[0]; sx+=tileSize) {
-      for (size_t sy = 0; sy < odim[1]; sy+=tileSize) {
+    for (size_t sx = 0; sx < odim[0]; sx += tileSize) {
+      for (size_t sy = 0; sy < odim[1]; sy += tileSize) {
         // Process the inner tile:
         for (size_t x = sx; x < MIN(sx + tileSize, odim[0]); x++) {
           for (size_t y = sy; y < MIN(sy + tileSize, odim[1]); y++) {
