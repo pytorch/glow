@@ -2155,6 +2155,9 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
+  const auto &vars = getParent()->getVars();
+  (void)vars;
+
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {

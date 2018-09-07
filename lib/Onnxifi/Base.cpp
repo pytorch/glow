@@ -68,7 +68,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
 onnxStatus Graph::run() {
   // Copy tensors from the input addresses to the Glow tensors.
   llvm::SmallVector<Tensor *, 4> tensors;
-  llvm::SmallVector<Storage *, 4> vars;
+  llvm::SmallVector<Variable *, 4> vars;
   for (auto inputVar : inputVarToBuffer_) {
     auto *var = inputVar.first;
     auto *type = var->getType();

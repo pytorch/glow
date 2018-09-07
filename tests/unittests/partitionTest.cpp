@@ -35,7 +35,7 @@ protected:
 };
 
 /// Execute a graph of functions serially, which is the simplest approach.
-static void executeSerial(const FunctionDAG &G, llvm::ArrayRef<Storage *> vars,
+static void executeSerial(const FunctionDAG &G, llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   for (auto *F : G.getFunctions()) {
     ExecutionEngine EE;

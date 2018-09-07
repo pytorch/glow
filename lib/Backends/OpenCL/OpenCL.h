@@ -98,8 +98,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute(llvm::ArrayRef<Placeholder *> placeholders,
-               llvm::ArrayRef<Tensor *> tensors) override;
+  void execute() override;
   ///@}
 
 private:

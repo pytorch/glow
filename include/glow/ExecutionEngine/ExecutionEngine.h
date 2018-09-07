@@ -80,19 +80,19 @@ public:
 
   /// Runs a single execution of the function. This method updates the variables
   /// in \p nodes with the tensor content values \p inputs.
-  void run(llvm::ArrayRef<Storage *> vars, llvm::ArrayRef<Tensor *> inputs);
+  void run(llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
 
   /// Runs \p iterations iterations of the function. The method updates a local
   /// counter and future invocations of this method continue running iterations
   /// of the batch at the next available slice.
   /// The method updates the variables in \p vars with the tensors \p inputs.
-  void runBatch(size_t iterations, llvm::ArrayRef<Storage *> vars,
+  void runBatch(size_t iterations, llvm::ArrayRef<Variable *> vars,
                 llvm::ArrayRef<Tensor *> inputs);
 
 private:
   /// Update the inputs for all variables \p vars with data from the inputs \p
   /// inputs at offset \p sampleIdx. Then perform a run of the network.
-  void updateInputsAndRunNetwork(llvm::ArrayRef<Storage *> vars,
+  void updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
                                  llvm::ArrayRef<Tensor *> inputs,
                                  size_t sampleIdx);
 

@@ -143,7 +143,7 @@ TEST_P(BackendTest, debugPrint) {
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto function = backend->compile(std::move(IR));
-  function->execute({}, {});
+  function->execute();
 }
 
 /// This test checks that we can compile a function without depending on the
@@ -171,59 +171,6 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
   EXPECT_NEAR(HX.at({1}), 4, 1E-5);
   EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-}
-
-/// Check that we can pass information to the execution engine using Placeholder
-/// variables and read it back using Save nodes (in variables).
-TEST(Placeholder, simplePlaceholderValue) {
-  Tensor data{99.0, 35.0, 2.0, 3.0};
-
-  ExecutionEngine EE{BackendKind::Interpreter};
-  auto &mod = EE.getModule();
-
-  Function *F = mod.createFunction("main");
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
-  SaveNode *S = F->createSave("ret", input);
-
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run({input}, {&data});
-
-  auto &res = S->getVariable()->getPayload();
-  EXPECT_TRUE(res.isEqual(data));
-}
-
-/// Check that we can pass information to the execution engine using Placeholder
-/// variables and the runBatch API.
-TEST(Placeholder, runBatchTest) {
-  // The input contains two slices of 4 floats each.
-  Tensor data(ElemKind::FloatTy, {4, 4});
-  // Fill the array with the pattern: [0 1 2 3; 10, 11, 12, 13; 20 21 22 23 ...]
-  for (size_t i = 0; i < 4; i++) {
-    for (size_t j = 0; j < 4; j++) {
-      data.getHandle().at({i, j}) = i * 10 + j;
-    }
-  }
-
-  ExecutionEngine EE{BackendKind::Interpreter};
-  auto &mod = EE.getModule();
-
-  Function *F = mod.createFunction("main");
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "input");
-  SaveNode *S = F->createSave("ret", input);
-
-  EE.compile(CompilationMode::Infer, F);
-
-  // Run the batch for 2 iterations:
-  EE.runBatch(2, {input}, {&data});
-
-  Tensor expected{10, 11, 12, 13};
-  auto EH = expected.getHandle();
-  auto RH = S->getVariable()->getPayload().getHandle();
-
-  for (size_t i = 0; i < 4; i++) {
-    EXPECT_EQ(RH.raw(i), EH.raw(i));
-  }
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
