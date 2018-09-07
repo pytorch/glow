@@ -71,6 +71,26 @@ void ExecutionEngine::run(llvm::ArrayRef<Variable *> vars,
   function_->execute();
 }
 
+/// Update the content of the tensors \p vars with some slices that from \p
+/// inputs. The data starts at slice \p sampleIdx and wraps around until the
+/// data in \p v is filled. All dimensions, except for the first (batch)
+/// dimension must be identical.
+static void updateInputs(llvm::ArrayRef<Variable *> vars,
+                                      llvm::ArrayRef<Tensor *> inputs,
+                                      size_t sampleIdx) {
+  // Update the input variables.
+  for (int i = 0, e = vars.size(); i < e; i++) {
+    assert(vars[i] && "Invalid value");
+    auto &t = vars[i]->getPayload();
+
+    auto dim = inputs[i]->dims();
+    assert(t.dims().drop_front() == dim.drop_front() && "Invalid slice size");
+    // Extract the n'th slice, that must be a tensor.
+    size_t slc = sampleIdx % dim[0];
+    t.copyConsecutiveSlices(inputs[i], slc);
+  }
+}
+
 void ExecutionEngine::runBatch(size_t iterations,
                                llvm::ArrayRef<Variable *> vars,
                                llvm::ArrayRef<Tensor *> inputs) {
@@ -87,35 +107,15 @@ void ExecutionEngine::runBatch(size_t iterations,
   for (size_t i = 0; i < iterations; i++) {
     // Pick up one slice from the input tensors, and load it into corresponding
     // network Variables. Then, run a single pass over the network.
-    updateInputsAndRunNetwork(vars, inputs, trainCounter);
+    updateInputs(vars, inputs, trainCounter);
 
+    // Run the network.
+    function_->execute();
     trainCounter += batchSize;
   }
 }
 
-void ExecutionEngine::updateInputsAndRunNetwork(llvm::ArrayRef<Variable *> vars,
-                                                llvm::ArrayRef<Tensor *> inputs,
-                                                size_t sampleIdx) {
-  // Update the input variables.
-  for (int i = 0, e = vars.size(); i < e; i++) {
-    loadValueFromTensorSlice(vars[i], inputs[i], sampleIdx);
-  }
 
-  // Run the network.
-  function_->execute();
-}
-
-void ExecutionEngine::loadValueFromTensorSlice(Variable *v, Tensor *input,
-                                               size_t sampleIdx) {
-  assert(v && "Invalid value");
-  auto &t = v->getPayload();
-
-  auto dim = input->dims();
-  assert(t.dims().drop_front() == dim.drop_front() && "Invalid slice size");
-  // Extract the n'th slice, that must be a tensor.
-  size_t slc = sampleIdx % dim[0];
-  t.copyConsecutiveSlices(input, slc);
-}
 
 void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
   assert(v && "Invalid value");
