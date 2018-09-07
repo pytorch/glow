@@ -113,7 +113,7 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *biasWdims, const size_t *kernelSizes, const size_t *strides,
     const size_t *pads, size_t group, size_t endChannelIndex) {
   // The loops below look scary but the the idea is simple. We iterate over
   // the pixels in the output tensor and calculate the coordinate of the source
@@ -125,8 +125,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // For each element in the convolution-filter:
   for (size_t fx = 0; fx < kernel_h; fx++) {
     for (size_t fy = 0; fy < kernel_w; fy++) {
@@ -208,15 +208,15 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
     unsigned depthStrips, unsigned sizeGroupY, size_t numChannels, float *outW,
     const float *inW, const float *filterW, const float *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *biasWdims, const size_t *kernelSizes, const size_t *strides,
     const size_t *pads, size_t group, size_t endChannelIndex) {
 
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // For each (x,y) step in the input/output tensor:
   for (size_t outx = 0; outx < outWdims[1]; outx++) {
     for (size_t outy = 0; outy < outWdims[2]; outy++) {
@@ -257,7 +257,7 @@ extern "C" {
 void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                         const float *biasW, const size_t *outWdims,
                         const size_t *inWdims, const size_t *filterWdims,
-                        const size_t *biasWdims, const size_t *filterSizes,
+                        const size_t *biasWdims, const size_t *kernelSizes,
                         const size_t *strides, const size_t *pads, size_t group,
                         unsigned pixelScanFirst, unsigned numDepthRegs,
                         unsigned sizeGroupY, unsigned depthStrips) {
@@ -290,7 +290,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
         // Perform the convolution for each pixel.
         eachPixelConv(n, d, numDepthRegs, depthStrips, sizeGroupY, inCperG,
                       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims,
-                      biasWdims, filterSizes, strides, pads, g,
+                      biasWdims, kernelSizes, strides, pads, g,
                       endChannelIndex);
 
       } // For each D (the depth, or the output channel).
@@ -301,7 +301,7 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
 void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           const float *biasW, const size_t *outWdims,
                           const size_t *inWdims, const size_t *filterWdims,
-                          const size_t *biasWdims, const size_t *filterSizes,
+                          const size_t *biasWdims, const size_t *kernelSizes,
                           const size_t *strides, const size_t *pads,
                           size_t group, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
@@ -316,8 +316,8 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // The size of the input-channel tile. High channel count allow for SIMD
   // parallelism but create register pressure. Low channel count reduces the
   // memory pressure and allows things to fit in cache, but require additional
@@ -420,7 +420,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 void libjit_convolution_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, const size_t *filterSizes, const size_t *strides,
+    const size_t *biasWdims, const size_t *kernelSizes, const size_t *strides,
     const size_t *pads, size_t group, int32_t outOffset, int32_t inOffset,
     int32_t filterOffset, int32_t biasOffset, int32_t biasPre, int32_t biasPost,
     int32_t biasScale, int32_t outPre, int32_t outPost, int32_t outScale,
@@ -433,8 +433,8 @@ void libjit_convolution_i8(
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
     // For each group of input channels:

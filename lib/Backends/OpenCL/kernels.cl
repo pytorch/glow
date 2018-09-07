@@ -765,7 +765,7 @@ __kernel void softmaxgradW(__global void *mem, cl_uint32_t origDest,
 
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
-                           ShapeHW filterSizes, ShapeHW strides,
+                           ShapeHW kernelSizes, ShapeHW strides,
                            PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
                            ShapeNHWC idim, ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
@@ -785,8 +785,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
     // For each element in the convolution-filter:
     float sum = 0;
-    for (size_t fx = 0; fx < filterSizes.height; fx++) {
-      for (size_t fy = 0; fy < filterSizes.width; fy++) {
+    for (size_t fx = 0; fx < kernelSizes.height; fx++) {
+      for (size_t fy = 0; fy < kernelSizes.width; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -811,17 +811,17 @@ __kernel void convolutionK(__global float *dest, __global float *src,
 
 __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
-                           cl_uint32_t bias, ShapeHW filterSizes,
+                           cl_uint32_t bias, ShapeHW kernelSizes,
                            ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
                            ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
-  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
+  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
                strides, pads, group, odim, idim, filterDim);
 }
 
 __kernel void convolution_i8K(
     __global cl_int8_t *dest, __global cl_int8_t *src,
-    __global cl_int8_t *filter, __global cl_int8_t *bias, ShapeHW filterSizes,
+    __global cl_int8_t *filter, __global cl_int8_t *bias, ShapeHW kernelSizes,
     ShapeHW strides, cl_int32_t destOffset, float destScale,
     cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
     float filterScale, cl_int32_t biasOffset, float biasScale, PaddingTLBR pads,
@@ -845,8 +845,8 @@ __kernel void convolution_i8K(
 
     // For each element in the convolution-filter:
     cl_int32_t sum = 0;
-    for (size_t fx = 0; fx < filterSizes.height; fx++) {
-      for (size_t fy = 0; fy < filterSizes.width; fy++) {
+    for (size_t fx = 0; fx < kernelSizes.height; fx++) {
+      for (size_t fy = 0; fy < kernelSizes.width; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -873,13 +873,13 @@ __kernel void convolution_i8K(
 
 __kernel void
 convolution_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                cl_uint32_t filter, cl_uint32_t bias, ShapeHW filterSizes,
+                cl_uint32_t filter, cl_uint32_t bias, ShapeHW kernelSizes,
                 ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
                 ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim,
                 cl_int32_t destOffset, float destScale, cl_int32_t srcOffset,
                 float srcScale, cl_int32_t filterOffset, float filterScale,
                 cl_int32_t biasOffset, float biasScale) {
-  convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], filterSizes,
+  convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
                   strides, destOffset, destScale, srcOffset, srcScale,
                   filterOffset, filterScale, biasOffset, biasScale, pads, group,
                   odim, idim, filterDim);
@@ -889,7 +889,7 @@ __kernel void convolutiongradK(const __global float *inW,
                                const __global float *filterW,
                                const __global float *outG, __global float *inG,
                                __global float *filterG, __global float *biasG,
-                               ShapeHW filterSizes, ShapeHW strides,
+                               ShapeHW kernelSizes, ShapeHW strides,
                                PaddingTLBR pads, cl_uint32_t group,
                                ShapeNHWC inWdims, ShapeNHWC outGdims,
                                ShapeNHWC filterGdims) {
@@ -913,8 +913,8 @@ __kernel void convolutiongradK(const __global float *inW,
   for (size_t n = 0; n < outGdims.n; n++) {
     float grad = outG[getNHWC(outGdims, n, ax, ay, d)];
 
-    for (size_t fx = 0; fx < filterSizes.height; fx++) {
-      for (size_t fy = 0; fy < filterSizes.width; fy++) {
+    for (size_t fx = 0; fx < kernelSizes.height; fx++) {
+      for (size_t fy = 0; fy < kernelSizes.width; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -941,17 +941,17 @@ __kernel void convolutiongradK(const __global float *inW,
 __kernel void convolutiongradW(__global void *mem, cl_uint32_t src,
                                cl_uint32_t filter, cl_uint32_t destGrad,
                                cl_uint32_t srcGrad, cl_uint32_t filterGrad,
-                               cl_uint32_t biasGrad, ShapeHW filterSizes,
+                               cl_uint32_t biasGrad, ShapeHW kernelSizes,
                                ShapeHW strides, PaddingTLBR pads,
                                cl_uint32_t group, ShapeNHWC srcDim,
                                ShapeNHWC destGradDim, ShapeNHWC filterGradDim) {
   convolutiongradK(&mem[src], &mem[filter], &mem[destGrad], &mem[srcGrad],
-                   &mem[filterGrad], &mem[biasGrad], filterSizes, strides, pads,
+                   &mem[filterGrad], &mem[biasGrad], kernelSizes, strides, pads,
                    group, srcDim, destGradDim, filterGradDim);
 }
 
 __kernel void maxpoolK(__global float *dest, __global float *src,
-                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t kernelSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -968,8 +968,8 @@ __kernel void maxpoolK(__global float *dest, __global float *src,
     bool first = true;
 
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
+    for (size_t fx = 0; fx < kernelSize; fx++) {
+      for (size_t fy = 0; fy < kernelSize; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -992,9 +992,9 @@ __kernel void maxpoolK(__global float *dest, __global float *src,
 }
 
 __kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t kernelSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  maxpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  maxpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
 }
 
 /// Macro to define a kernel for oclmaxpool. The body of
@@ -1003,7 +1003,7 @@ __kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 /// \p type the type of the tensor elements and of the return value
 #define DEFINE_OPENCL_MAXPOOL_KERNEL(name, type)                               \
   __kernel void name##K(__global type *dest, __global type *src,               \
-                        cl_uint32_t filterSize, cl_uint32_t stride,            \
+                        cl_uint32_t kernelSize, cl_uint32_t stride,            \
                         PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {    \
     size_t ax = get_global_id(0);                                              \
     size_t ay = get_global_id(1);                                              \
@@ -1017,8 +1017,8 @@ __kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       type maxVal = 0;                                                         \
       bool first = true;                                                       \
       /* For each element in the convolution-filter: */                        \
-      for (size_t fx = 0; fx < filterSize; fx++) {                             \
-        for (size_t fy = 0; fy < filterSize; fy++) {                           \
+      for (size_t fx = 0; fx < kernelSize; fx++) {                             \
+        for (size_t fy = 0; fy < kernelSize; fy++) {                           \
           ssize_t ox = x + fx;                                                 \
           ssize_t oy = y + fy;                                                 \
           /* Ignore index access below zero (this is due to padding). */       \
@@ -1037,9 +1037,9 @@ __kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     }                                                                          \
   }                                                                            \
   __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t src, \
-                        cl_uint32_t filterSize, cl_uint32_t stride,            \
+                        cl_uint32_t kernelSize, cl_uint32_t stride,            \
                         PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {    \
-    name##K(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);      \
+    name##K(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);      \
   }
 DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool, float)
 DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool_i8, char)
@@ -1047,7 +1047,7 @@ DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool_i8, char)
 
 __kernel void maxpoolwithxyK(__global float *dest, __global float *src,
                              __global cl_uint64_t *srcXY,
-                             cl_uint32_t filterSize, cl_uint32_t stride,
+                             cl_uint32_t kernelSize, cl_uint32_t stride,
                              PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -1066,8 +1066,8 @@ __kernel void maxpoolwithxyK(__global float *dest, __global float *src,
     size_t maxY = y;
 
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
+    for (size_t fx = 0; fx < kernelSize; fx++) {
+      for (size_t fy = 0; fy < kernelSize; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -1097,16 +1097,16 @@ __kernel void maxpoolwithxyK(__global float *dest, __global float *src,
 
 __kernel void maxpoolwithxyW(__global void *mem, cl_uint32_t dest,
                              cl_uint32_t src, cl_uint32_t srcXY,
-                             cl_uint32_t filterSize, cl_uint32_t stride,
+                             cl_uint32_t kernelSize, cl_uint32_t stride,
                              PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  maxpoolwithxyK(&mem[dest], &mem[src], &mem[srcXY], filterSize, stride, pads,
+  maxpoolwithxyK(&mem[dest], &mem[src], &mem[srcXY], kernelSize, stride, pads,
                  odim, idim);
 }
 
 __kernel void
 maxpoolwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
                    __global float *destGrad, __global float *srcGrad,
-                   cl_uint32_t filterSize, cl_uint32_t stride, PaddingTLBR pads,
+                   cl_uint32_t kernelSize, cl_uint32_t stride, PaddingTLBR pads,
                    ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
   size_t n = get_global_id(0);
 
@@ -1136,15 +1136,15 @@ maxpoolwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
 
 __kernel void maxpoolwithxygradW(__global void *mem, cl_uint32_t dest,
                                  cl_uint32_t srcXY, cl_uint32_t destGrad,
-                                 cl_uint32_t srcGrad, cl_uint32_t filterSize,
+                                 cl_uint32_t srcGrad, cl_uint32_t kernelSize,
                                  cl_uint32_t stride, PaddingTLBR pads,
                                  ShapeNHWC srcGradDim, ShapeNHWC destDim) {
   maxpoolwithxygradK(&mem[dest], &mem[srcXY], &mem[destGrad], &mem[srcGrad],
-                     filterSize, stride, pads, srcGradDim, destDim);
+                     kernelSize, stride, pads, srcGradDim, destDim);
 }
 
 __kernel void avgpoolK(__global float *dest, __global float *src,
-                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t kernelSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -1155,14 +1155,14 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
   ssize_t x = -(ssize_t)pads.top + ax * stride;
   ssize_t y = -(ssize_t)pads.left + ay * stride;
 
-  float filterArea = filterSize * filterSize;
+  float filterArea = kernelSize * kernelSize;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
+    for (size_t fx = 0; fx < kernelSize; fx++) {
+      for (size_t fy = 0; fy < kernelSize; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -1180,13 +1180,13 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
 }
 
 __kernel void avgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                       cl_uint32_t filterSize, cl_uint32_t stride,
+                       cl_uint32_t kernelSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  avgpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  avgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
 }
 
 __kernel void oclavgpoolK(__global float *dest, __global float *src,
-                          cl_uint32_t filterSize, cl_uint32_t stride,
+                          cl_uint32_t kernelSize, cl_uint32_t stride,
                           PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
@@ -1197,14 +1197,14 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
   ssize_t x = -(ssize_t)pads.top + ax * stride;
   ssize_t y = -(ssize_t)pads.left + ay * stride;
 
-  float filterArea = filterSize * filterSize;
+  float filterArea = kernelSize * kernelSize;
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
     // For each element in the convolution-filter:
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
+    for (size_t fx = 0; fx < kernelSize; fx++) {
+      for (size_t fy = 0; fy < kernelSize; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -1222,13 +1222,13 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
 }
 
 __kernel void oclavgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                          cl_uint32_t filterSize, cl_uint32_t stride,
+                          cl_uint32_t kernelSize, cl_uint32_t stride,
                           PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
-  oclavgpoolK(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim);
+  oclavgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
 }
 
 __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
-                             cl_uint32_t filterSize, cl_uint32_t stride,
+                             cl_uint32_t kernelSize, cl_uint32_t stride,
                              PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim,
                              cl_int32_t srcOffset, cl_int32_t destOffset,
                              cl_int32_t destPre, cl_int32_t destPost,
@@ -1244,8 +1244,8 @@ __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
     cl_int32_t sumVal = 0;
-    for (size_t fx = 0; fx < filterSize; fx++) {
-      for (size_t fy = 0; fy < filterSize; fy++) {
+    for (size_t fx = 0; fx < kernelSize; fx++) {
+      for (size_t fy = 0; fy < kernelSize; fy++) {
         ssize_t ox = x + fx;
         ssize_t oy = y + fy;
 
@@ -1266,12 +1266,12 @@ __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
 }
 
 __kernel void oclavgpool_i8W(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t src, cl_uint32_t filterSize,
+                             cl_uint32_t src, cl_uint32_t kernelSize,
                              cl_uint32_t stride, PaddingTLBR pads,
                              ShapeNCHW odim, ShapeNCHW idim,
                              cl_int32_t srcOffset,
                              QuantizationTransform32To8 destScaleParams) {
-  oclavgpool_i8K(&mem[dest], &mem[src], filterSize, stride, pads, odim, idim,
+  oclavgpool_i8K(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim,
                  srcOffset, destScaleParams.offset, destScaleParams.pre,
                  destScaleParams.post, destScaleParams.scale);
 }

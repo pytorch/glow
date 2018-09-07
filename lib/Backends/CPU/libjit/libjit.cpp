@@ -477,14 +477,14 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
 
 template <typename T>
 void libjit_max_pool_generic(const T *inW, T *outW, const size_t *inWdims,
-                             const size_t *outWdims, size_t *filterSizes,
+                             const size_t *outWdims, size_t *kernelSizes,
                              size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // For each sample in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
     // For each (x,y) step in the input/output tensor:
@@ -961,15 +961,15 @@ void libjit_local_response_normalization_grad_f(
 }
 
 void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
-                        const size_t *outWdims, size_t *filterSizes,
+                        const size_t *outWdims, size_t *kernelSizes,
                         size_t *strides, size_t *pads) {
-  libjit_max_pool_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
+  libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
                           pads);
 }
 void libjit_max_pool_f(const float *inW, float *outW, const size_t *inWdims,
-                       const size_t *outWdims, size_t *filterSizes,
+                       const size_t *outWdims, size_t *kernelSizes,
                        size_t *strides, size_t *pads) {
-  libjit_max_pool_generic(inW, outW, inWdims, outWdims, filterSizes, strides,
+  libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
                           pads);
 }
 
@@ -1017,7 +1017,7 @@ void libjit_max_pool_xy_grad_f(float *inG, const float *outG,
 }
 
 void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
-                        const size_t *outWdims, size_t *filterSizes,
+                        const size_t *outWdims, size_t *kernelSizes,
                         size_t *strides, size_t *pads, int32_t outOffset,
                         int32_t inOffset, int32_t outPre, int32_t outPost,
                         int32_t outScale) {
@@ -1025,8 +1025,8 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {
     // For each (x,y) step in the input/output tensor:
@@ -1063,14 +1063,14 @@ void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
 }
 
 void libjit_avg_pool_f(const float *inW, float *outW, const size_t *inWdims,
-                       const size_t *outWdims, size_t *filterSizes,
+                       const size_t *outWdims, size_t *kernelSizes,
                        size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
   size_t stride_w = strides[1];
-  size_t kernel_h = filterSizes[0];
-  size_t kernel_w = filterSizes[1];
+  size_t kernel_h = kernelSizes[0];
+  size_t kernel_w = kernelSizes[1];
   float filterArea = kernel_h * kernel_w;
   // For each input in the batch:
   for (size_t n = 0; n < outWdims[0]; n++) {

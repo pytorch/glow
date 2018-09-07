@@ -92,12 +92,12 @@ private:
 
   void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
                                  Value *biasV,
-                                 llvm::ArrayRef<unsigned_t> filterSizes,
+                                 llvm::ArrayRef<unsigned_t> kernelSizes,
                                  llvm::ArrayRef<unsigned_t> strides,
                                  llvm::ArrayRef<unsigned_t> pads, size_t group);
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV,
-                                    llvm::ArrayRef<unsigned_t> filterSizes,
+                                    llvm::ArrayRef<unsigned_t> kernelSizes,
                                     llvm::ArrayRef<unsigned_t> strides,
                                     llvm::ArrayRef<unsigned_t> pads,
                                     size_t group);
