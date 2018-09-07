@@ -267,7 +267,7 @@ void testPTB() {
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
-      EE.runBatch(1, {X, Y}, {&inputWordsBatch, &targetWordsBatch});
+      runBatch(EE, 1, {X, Y}, {&inputWordsBatch, &targetWordsBatch});
       Tensor &res = result->getVariable()->getPayload();
       for (size_t step = 0; step < numSteps; step++) {
         for (unsigned int i = 0; i < minibatchSize; i++) {

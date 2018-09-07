@@ -440,7 +440,7 @@ TEST(Graph, nodesWithPredicates) {
   F->createSave("ret", SM);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.updateVariables({input}, {&inputs});
+  updateVariables({input}, {&inputs});
   EE.run();
 }
 

@@ -67,12 +67,12 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
-  EE_.runBatch(1000, {A, E}, {&inputs, &expected});
+  runBatch(EE_, 1000, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
   EE_.compile(CompilationMode::Infer, F);
-  EE_.updateVariables({A}, {&inputs});
+  updateVariables({A}, {&inputs});
   EE_.run();
 
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
@@ -118,7 +118,7 @@ TEST_P(MLTest, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    EE_.runBatch(1, {A, Ex}, {&inputs, &expected});
+    runBatch(EE_, 1, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -128,7 +128,7 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    EE_.updateVariables({A}, {&inputs});
+    updateVariables({A}, {&inputs});
     EE_.run();
 
     auto resH = result->getVariable()->getPayload().getHandle<>();
@@ -181,7 +181,7 @@ TEST_P(MLTest, learnXor) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  EE_.runBatch(2500, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, 2500, {A, Ex}, {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -193,7 +193,7 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  EE_.updateVariables({A}, {&trainingSet});
+  updateVariables({A}, {&trainingSet});
   EE_.run();
 
   auto resH = result->getVariable()->getPayload().getHandle<>();
@@ -250,7 +250,7 @@ TEST_P(MLTest, learnLog) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  EE_.runBatch(1000, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, 1000, {A, Ex}, {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -268,7 +268,7 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
 
-  EE_.updateVariables({A}, {&testSet});
+  updateVariables({A}, {&testSet});
   EE_.run();
 
   auto resH = result->getVariable()->getPayload().getHandle<>();
@@ -344,7 +344,7 @@ TEST_P(MLTest, circle) {
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
-  EE_.runBatch(4000, {A, S}, {&coordinates, &labels});
+  runBatch(EE_, 4000, {A, S}, {&coordinates, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -357,7 +357,7 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      EE_.updateVariables({A}, {&sample});
+      updateVariables({A}, {&sample});
       EE_.run();
 
       auto SMH = result->getVariable()->getPayload().getHandle<>();
@@ -381,7 +381,7 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    EE_.updateVariables({A}, {&sample});
+    updateVariables({A}, {&sample});
     EE_.run();
 
     auto SMH = result->getVariable()->getPayload().getHandle<>();
@@ -394,7 +394,7 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    EE_.updateVariables({A}, {&sample});
+    updateVariables({A}, {&sample});
     EE_.run();
     auto SMH = result->getVariable()->getPayload().getHandle<>();
     auto A = SMH.at({0, 0});
@@ -443,12 +443,12 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  EE_.runBatch(1000, {A, B, Ex}, {&inputs, &inputs, &expected});
+  runBatch(EE_, 1000, {A, B, Ex}, {&inputs, &inputs, &expected});
 
   EE_.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  EE_.updateVariables({A}, {&inputs});
+  updateVariables({A}, {&inputs});
   EE_.run();
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
   (void)RNWH;
@@ -545,12 +545,12 @@ void testRNNCell(TCellGenerator cell) {
   }
 
   // Train the network. Learn 1000 batches.
-  EE.runBatch(1000, {X, Y}, {&inputs, &expected});
+  runBatch(EE, 1000, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.updateVariables({X}, {&inputs});
+  updateVariables({X}, {&inputs});
   EE.run();
 
   auto RNWH = result->getVariable()->getPayload().getHandle<>();
@@ -647,7 +647,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  EE_.runBatch(100, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, 100, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Testing trained m and b:
   EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
@@ -715,7 +715,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
-  EE_.runBatch(2000, {A, S}, {&players, &labels});
+  runBatch(EE_, 2000, {A, S}, {&players, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -733,7 +733,7 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  EE_.updateVariables({A}, {&testPlayersTensor});
+  updateVariables({A}, {&testPlayersTensor});
   EE_.run();
 
   for (size_t i = 0; i < testPlayers.size(); i++) {
@@ -791,7 +791,7 @@ TEST_P(MLTest, learnSinus) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
-  EE_.runBatch(2700, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, 2700, {inputX, expectedY}, {&tensorX, &tensorY});
 
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
@@ -804,7 +804,7 @@ TEST_P(MLTest, learnSinus) {
   }
 
   EE_.compile(CompilationMode::Infer, F);
-  EE_.updateVariables({inputX}, {&tensorX});
+  updateVariables({inputX}, {&tensorX});
   EE_.run();
   auto resH = result->getVariable()->getPayload().getHandle<>();
 
@@ -856,7 +856,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
-  EE_.runBatch(500, {A, S}, {&samples, &labels});
+  runBatch(EE_, 500, {A, S}, {&samples, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -869,7 +869,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    EE_.updateVariables({A}, {&T});
+    updateVariables({A}, {&T});
     EE_.run();
     auto RH = result->getVariable()->getPayload().getHandle<>();
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
@@ -935,12 +935,12 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
-  EE.runBatch(500, {input, ex}, {&images, &labels});
+  runBatch(EE, 500, {input, ex}, {&images, &labels});
 
   // Profiling:
   Function *PF = glow::profileQuantization(F);
   EE.compile(CompilationMode::Infer, PF);
-  EE.runBatch(100, {input}, {&images});
+  runBatch(EE, 100, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -955,7 +955,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  EE.updateVariables({input}, {&testImages});
+  updateVariables({input}, {&testImages});
   EE.run();
   auto SMH = result->getVariable()->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
@@ -1024,7 +1024,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(images, labels, mod.getPRNG());
 
   // Training:
-  EE.runBatch(400, {input, ex}, {&images, &labels});
+  runBatch(EE, 400, {input, ex}, {&images, &labels});
 
   // -- STEP2 - Profile and quantize the network. --
 
@@ -1033,7 +1033,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EE.compile(CompilationMode::Infer, PF);
 
   // Run the graph to capture the profile.
-  EE.runBatch(100, {input}, {&images});
+  runBatch(EE, 100, {input}, {&images});
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -1054,7 +1054,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
-  EE.updateVariables({input}, {&testImages});
+  updateVariables({input}, {&testImages});
   EE.run();
 
   // A handle to the projected result.
@@ -1196,8 +1196,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
-  EE_.runBatch(200, {varMatricesA, varMatricesB, varExpected},
-               {&matricesA, &matricesB, &expected});
+  runBatch(EE_, 200, {varMatricesA, varMatricesB, varExpected},
+           {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
   EE_.compile(CompilationMode::Infer, F);
@@ -1213,8 +1213,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  EE_.updateVariables({varMatricesA, varMatricesB},
-                      {&batchMatricesA, &batchMatricesB});
+  updateVariables({varMatricesA, varMatricesB},
+                  {&batchMatricesA, &batchMatricesB});
   EE_.run();
 
   unsigned errors = 0;

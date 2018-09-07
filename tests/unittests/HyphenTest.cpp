@@ -299,7 +299,7 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      EE.updateVariables({input_}, {&batchInputs});
+      updateVariables({input_}, {&batchInputs});
       EE.run();
 
       // Check each output in the batch.
@@ -359,7 +359,7 @@ TEST(HyphenTest, network) {
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train, net.train_);
-  EE.runBatch(1000, {net.input_, net.expected_}, {&inputs, &expected});
+  runBatch(EE, 1000, {net.input_, net.expected_}, {&inputs, &expected});
 
   // Now test inference on the trained network.
   // Note that we have probably overfitted the data, so we expect 100% accuracy.

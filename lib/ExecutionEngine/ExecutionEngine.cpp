@@ -55,16 +55,23 @@ void ExecutionEngine::setBackend(Backend *backend) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void ExecutionEngine::updateVariables(llvm::ArrayRef<Variable *> vars,
-                                      llvm::ArrayRef<Tensor *> inputs) {
+void glow::updateVariables(llvm::ArrayRef<Variable *> vars,
+                           llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
 
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
+    assert(vars[i] && "Invalid value");
     assert(vars[i]->getVisibilityKind() == VisibilityKind::Public &&
            "Trying to update a private variable");
-    loadValueFromTensor(vars[i], inputs[i]);
+    auto &t = vars[i]->getPayload();
+    auto dim = inputs[i]->dims();
+    (void)dim;
+    assert(t.dims() == dim &&
+           t.getElementType() == inputs[i]->getElementType() &&
+           "Mismatch on Variable and Tensor types.");
+    t.assign(inputs[i]);
   }
 }
 
@@ -73,13 +80,13 @@ void ExecutionEngine::run() {
   function_->execute();
 }
 
-/// Update the content of the tensors \p vars with some slices that from \p
+/// Update the content of the tensors \p vars with some slices that are from \p
 /// inputs. The data starts at slice \p sampleIdx and wraps around until the
 /// data in \p v is filled. All dimensions, except for the first (batch)
 /// dimension must be identical.
-void ExecutionEngine::updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
-                                               llvm::ArrayRef<Tensor *> inputs,
-                                               size_t sampleIdx) {
+void glow::updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
+                                    llvm::ArrayRef<Tensor *> inputs,
+                                    size_t sampleIdx) {
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == vars.size() &&
          "The number of inputs does not match the number of variables");
@@ -97,9 +104,15 @@ void ExecutionEngine::updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
   }
 }
 
-void ExecutionEngine::runBatch(size_t iterations,
-                               llvm::ArrayRef<Variable *> vars,
-                               llvm::ArrayRef<Tensor *> inputs) {
+void glow::runBatch(ExecutionEngine &EE, size_t iterations,
+                    llvm::ArrayRef<Variable *> vars,
+                    llvm::ArrayRef<Tensor *> inputs) {
+  // This is a legacy helper function that helps to train batches of images.
+  // This variable is really a global variable that keeps track of the last
+  // sample in the batch, as we call the runBatch API several times. This is not
+  // a great solution because invocation of different unit tests rely on the
+  // same counter. We should get rid of this variable in favor of a different
+  // method to keep track of the training counter.
   static size_t trainCounter = 0;
 
   // This is the size of one batch (the number of samples in the batch).
@@ -108,21 +121,12 @@ void ExecutionEngine::runBatch(size_t iterations,
   for (size_t i = 0; i < iterations; i++) {
     // Pick up one slice from the input tensors, and load it into corresponding
     // network Variables. Then, run a single pass over the network.
-    updateVariablesFromBatch(vars, inputs, trainCounter);
+    glow::updateVariablesFromBatch(vars, inputs, trainCounter);
 
     // Run the network.
-    run();
+    EE.run();
     trainCounter += batchSize;
   }
-}
-
-void ExecutionEngine::loadValueFromTensor(Variable *v, Tensor *input) {
-  assert(v && "Invalid value");
-  auto &t = v->getPayload();
-  auto dim = input->dims();
-  (void)dim;
-  assert(t.dims() == dim && "Invalid slice size");
-  t.assign(input);
 }
 
 std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,

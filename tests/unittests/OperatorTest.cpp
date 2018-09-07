@@ -1807,7 +1807,7 @@ TEST_P(Operator, FCGradientCheck) {
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
   EE_.compile(CompilationMode::Train, DF);
-  EE_.runBatch(3, {A, B}, {&initA, &initB});
+  runBatch(EE_, 3, {A, B}, {&initA, &initB});
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
   EXPECT_NEAR(Y->getPayload().getHandle().raw(0), 0.01656, 1E-5);
@@ -1843,7 +1843,7 @@ TEST_P(InterpAndCPU, concatVectors) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
-  EE_.updateVariables({V1, V2, V3}, {&I1, &I2, &I3});
+  updateVariables({V1, V2, V3}, {&I1, &I2, &I3});
   EE_.run();
 
   auto RNWH = result->getVariable()->getPayload().getHandle<int64_t>();
@@ -1883,7 +1883,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
-  EE_.updateVariables({V1, V2}, {&I1, &I2});
+  updateVariables({V1, V2}, {&I1, &I2});
   EE_.run();
 
   auto outH = result->getVariable()->getPayload().getHandle<int64_t>();
@@ -1925,7 +1925,7 @@ TEST_P(InterpAndCPU, sliceVectors) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output slices.
-  EE_.updateVariables({V}, {&I});
+  updateVariables({V}, {&I});
   EE_.run();
 
   auto RNWH1 = result1->getVariable()->getPayload().getHandle<int64_t>();
@@ -1982,7 +1982,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.updateVariables({V}, {&I});
+  updateVariables({V}, {&I});
   EE_.run();
 
   const size_t expected[7][4] = {{300, 301, 302, 303}, {400, 401, 402, 403},
@@ -2022,7 +2022,7 @@ TEST_P(InterpAndCPU, Tile) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.updateVariables({V}, {&VT});
+  updateVariables({V}, {&VT});
   EE_.run();
 
   // Testing the output vector with axis 0.
@@ -2071,7 +2071,7 @@ TEST_P(InterpAndCPU, QuantizedTile) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.updateVariables({V}, {&VT});
+  updateVariables({V}, {&VT});
   EE_.run();
 
   // Testing the output vector with axis 0.

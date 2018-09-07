@@ -88,7 +88,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
-  EE.runBatch(300, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, 300, {inputVar, expVar}, {inputs, outputs});
 
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
@@ -101,7 +101,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   gradVar->getPayload().zero();
 
   // Train the network just once to record the values of gradient for inputVar.
-  EE.runBatch(1, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, 1, {inputVar, expVar}, {inputs, outputs});
 
   // Compile the original network in inference mode.
   EE.compile(CompilationMode::Infer, &F);
@@ -114,13 +114,13 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
 
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    EE.updateVariables({inputVar}, {inputs});
+    updateVariables({inputVar}, {inputs});
     EE.run();
     auto plusLoss = computeL2Loss(outputs, &res);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    EE.updateVariables({inputVar}, {inputs});
+    updateVariables({inputVar}, {inputs});
     EE.run();
 
     auto minusLoss = computeL2Loss(outputs, &res);
@@ -518,23 +518,23 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      updateVariables({P, Y}, {&inputs, &outputs});
       EE_.run();
       L->getPayload().zero();
       auto x = inputsH.raw(j);
       auto g = gradP.raw(j);
       inputsH.raw(j) = x + stepSize;
-      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      updateVariables({P, Y}, {&inputs, &outputs});
       EE_.run();
       auto lp = L->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       L->getPayload().zero();
-      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      updateVariables({P, Y}, {&inputs, &outputs});
       EE_.run();
       auto lm = L->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      EE_.updateVariables({P, Y}, {&inputs, &outputs});
+      updateVariables({P, Y}, {&inputs, &outputs});
       EE_.run();
       EXPECT_NEAR(diff, g, delta);
     }
