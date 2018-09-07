@@ -258,6 +258,10 @@ void testPTB() {
     float perplexity = 0;
     size_t perplexityWordsCount = 0;
 
+    // This variable records the number of the next sample to be used for
+    // training.
+    size_t sampleCounter = 0;
+
     for (unsigned batch = 0; batch < numBatches; batch++) {
       Tensor inputWordsBatch(ElemKind::FloatTy,
                              {minibatchSize, vocabSize * numSteps});
@@ -267,7 +271,8 @@ void testPTB() {
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
-      runBatch(EE, 1, {X, Y}, {&inputWordsBatch, &targetWordsBatch});
+      runBatch(EE, 1, sampleCounter, {X, Y},
+               {&inputWordsBatch, &targetWordsBatch});
       Tensor &res = result->getVariable()->getPayload();
       for (size_t step = 0; step < numSteps; step++) {
         for (unsigned int i = 0; i < minibatchSize; i++) {

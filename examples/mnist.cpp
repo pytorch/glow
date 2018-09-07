@@ -138,6 +138,10 @@ void testMNIST() {
 
   llvm::outs() << "Training.\n";
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   for (int epoch = 0; epoch < 60; epoch++) {
     llvm::outs() << "Training - epoch #" << epoch << "\n";
 
@@ -146,7 +150,8 @@ void testMNIST() {
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    runBatch(EE, numIterations, {A, selected}, {&imageInputs, &labelInputs});
+    runBatch(EE, numIterations, sampleCounter, {A, selected},
+             {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }

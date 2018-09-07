@@ -129,6 +129,10 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.03;
   TC.momentum = 0.3;
   TC.L2Decay = 0.01;
@@ -151,7 +155,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
-  runBatch(EE, 8, {var1, var2}, {inputs, selected});
+  runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F);
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
@@ -195,6 +199,10 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.06;
   TC.momentum = 0.1;
   TC.L2Decay = 0.01;
@@ -214,10 +222,10 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
-  runBatch(EE, 8, {var1, var2}, {inputs, selected});
+  runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
 
   EE.compile(CompilationMode::Infer, F);
-  runBatch(EE, 1, {var1, var2}, {inputs, selected});
+  runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
   out->assign(&result->getVariable()->getPayload());
 }
 
@@ -300,6 +308,10 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.01;
   TC.momentum = 0.4;
   TC.L2Decay = 0.01;
@@ -319,7 +331,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
-  runBatch(EE, 10, {var1, var2}, {inputs, selected});
+  runBatch(EE, 10, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F);
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
@@ -346,6 +358,10 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.03;
   TC.momentum = 0.3;
   TC.L2Decay = 0.003;
@@ -365,9 +381,9 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
-  runBatch(EE, 7, {var1, var2}, {inputs, selected});
+  runBatch(EE, 7, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F);
-  runBatch(EE, 1, {var1, var2}, {inputs, selected});
+  runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
   out->assign(&result->getVariable()->getPayload());
 }
 
@@ -646,6 +662,10 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   TC.learningRate = 0.003;
   TC.momentum = 0.7;
   TC.L2Decay = 0.001;
@@ -662,7 +682,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
-  runBatch(EE, 30, {var1, var2}, {inputs, selected});
+  runBatch(EE, 30, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F);
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();

@@ -135,6 +135,10 @@ void testCIFAR10() {
 
   llvm::outs() << "Training.\n";
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   for (int iter = 0; iter < 100000; iter++) {
     llvm::outs() << "Training - iteration #" << iter << "\n";
 
@@ -143,7 +147,7 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    runBatch(EE, reportRate, {A, E}, {&images, &labels});
+    runBatch(EE, reportRate, sampleCounter, {A, E}, {&images, &labels});
 
     unsigned score = 0;
 

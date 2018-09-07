@@ -82,13 +82,17 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   TrainingConfig TC;
   auto &F = *EE.getModule().getFunction("main");
 
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
   // Create a function that trains the network.
   Function *TF = glow::differentiate(&F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
-  runBatch(EE, 300, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, 300, sampleCounter, {inputVar, expVar}, {inputs, outputs});
 
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
@@ -101,7 +105,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   gradVar->getPayload().zero();
 
   // Train the network just once to record the values of gradient for inputVar.
-  runBatch(EE, 1, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, 1, sampleCounter, {inputVar, expVar}, {inputs, outputs});
 
   // Compile the original network in inference mode.
   EE.compile(CompilationMode::Infer, &F);
