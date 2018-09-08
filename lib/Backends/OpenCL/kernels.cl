@@ -1,6 +1,3 @@
-
-static const char *SHADER_CODE = R"(
-
 /// This type is always 32 bits.
 typedef unsigned cl_uint32_t;
 /// This type is always 64 bits.
@@ -1425,5 +1422,3 @@ __kernel void scatterassignW(__global void *mem, cl_uint32_t data,
                              cl_uint32_t sliceSize) {
   scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
-
-)";

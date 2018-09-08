@@ -23,7 +23,6 @@
 // VWN - vector width in dimension N.
 // VWM - vector width in dimension M.
 
-static const char *FWD_CONV_QUANTIZED_CODE = R"(
 #define Dtype char
 #define Dtype1 char
 #define Dtype2 char2
@@ -328,4 +327,3 @@ __kernel
     }
   }
 }
-)";
