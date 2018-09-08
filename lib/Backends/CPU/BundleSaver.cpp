@@ -250,7 +250,8 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
-  allocationsInfo_.allocateWeightVars(F_, false);
+  PlaceholderMap empty;
+  allocationsInfo_.allocateWeightVars(F_, empty, false);
   allocationsInfo_.allocateTensorViews(F_);
 }
 

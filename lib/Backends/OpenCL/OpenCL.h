@@ -92,7 +92,8 @@ class OpenCLFunction final : public CompiledFunction {
 
 public:
   /// Ctor.
-  explicit OpenCLFunction(std::unique_ptr<IRFunction> F);
+  explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
+                          const PlaceholderMap &placeholders);
 
   /// @name CompiledFunction interface
   ///@{
@@ -103,7 +104,7 @@ public:
 
 private:
   /// Allocate memory for the tensors.
-  void allocateMemory();
+  void allocateMemory(const PlaceholderMap &placeholders);
   /// Copy the value from a device to a provided buffer.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.

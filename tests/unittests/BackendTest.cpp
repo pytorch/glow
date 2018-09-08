@@ -179,15 +179,14 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
 
 /// Check that we can pass information to the execution engine using Placeholder
 /// variables and read it back using Save nodes (in variables).
-TEST(Placeholder, simplePlaceholderValue) {
+TEST_P(BackendTest, simplePlaceholderValue) {
   Tensor data{99.0, 35.0, 2.0, 3.0};
-  ExecutionEngine EE{BackendKind::Interpreter};
-  auto &mod = EE.getModule();
+  auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
   SaveNode *S = F->createSave("ret", input);
-  EE.compile(CompilationMode::Infer, F, {input}, {&data});
-  EE.run();
+  EE_.compile(CompilationMode::Infer, F, {input}, {&data});
+  EE_.run();
   auto &res = S->getVariable()->getPayload();
   EXPECT_TRUE(res.isEqual(data));
 }

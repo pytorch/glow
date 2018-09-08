@@ -16,6 +16,8 @@
 #ifndef GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 #define GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 
+#include "glow/Backends/CompiledFunction.h"
+
 #include "llvm/IR/Module.h"
 
 #include <functional>
@@ -52,12 +54,15 @@ struct AllocationsInfo {
   /// Base address of activations.
   uint8_t *baseActivationsAddress_{nullptr};
 
-  /// Assign offsets to all WeightVars of \p M.
+  /// Assign offsets to all of the variables in the module \p M and to the
+  /// placeholders \p placeholders.
   /// If the \p absoluteAddr is true, simply reuse the addresses already used
   /// by the payloads of tensors corresponding to those WeightVars as offsets.
   /// This is useful in a JIT setup. If \p absoluteAddr is false, then all the
   /// WeightVars will get new offsets assigned.
-  void allocateWeightVars(const IRFunction *F, bool absoluteAddr);
+  void allocateWeightVars(const IRFunction *F,
+                          const PlaceholderMap &placeholders,
+                          bool absoluteAddr);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be
   /// performed by the client based on the information provided by the
