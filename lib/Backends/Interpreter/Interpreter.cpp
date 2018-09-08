@@ -24,8 +24,9 @@
 using namespace glow;
 
 std::unique_ptr<CompiledFunction>
-Interpreter::compile(std::unique_ptr<IRFunction> IR) const {
-  return llvm::make_unique<InterpreterFunction>(std::move(IR));
+Interpreter::compile(std::unique_ptr<IRFunction> IR,
+                     const PlaceholderMap &placeholders) const {
+  return llvm::make_unique<InterpreterFunction>(std::move(IR), placeholders);
 }
 
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {

@@ -169,8 +169,19 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
   return IR;
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  function_ = backend_->compile(generateIR(mode, F));
+void ExecutionEngine::compile(CompilationMode mode, Function *F,
+                              llvm::ArrayRef<Placeholder *> placeholders,
+                              llvm::ArrayRef<Tensor *> inputs) {
+  PlaceholderMap pmap;
+  assert(placeholders.size() == inputs.size() &&
+         "Invalid number of placeholders");
+
+  for (size_t i = 0, e = placeholders.size(); i < e; i++) {
+    pmap[placeholders[i]] = inputs[i];
+  }
+
+  auto IR = generateIR(mode, F);
+  function_ = backend_->compile(std::move(IR), pmap);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,

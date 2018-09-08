@@ -24,16 +24,21 @@
 
 using namespace glow;
 
-InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F)
+InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
+                                         const PlaceholderMap &placeholders)
     : F_(std::move(F)) {
+
+  // Register the concrete tensors that back the placeholder tensors.
+  for (auto &ph : placeholders) {
+    auto *w = F_->getWeightForNode(ph.first);
+    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    externalTensors_[w] = ph.second;
+  }
+
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();
-  }
-
-  for (auto *W : F_->getWeights()) {
-    getOrCreateTensor(W);
   }
 }
 

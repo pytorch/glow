@@ -48,7 +48,8 @@ class InterpreterFunction final : public CompiledFunction {
   std::unordered_map<const Value *, Tensor *> externalTensors_;
 
 public:
-  InterpreterFunction(std::unique_ptr<IRFunction> F);
+  InterpreterFunction(std::unique_ptr<IRFunction> F,
+                      const PlaceholderMap &placeholders);
 
   /// \name CompiledFunction interface
   ///@{

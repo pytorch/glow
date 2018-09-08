@@ -123,7 +123,8 @@ CPUBackend::createIRGen(IRFunction *IR,
 }
 
 std::unique_ptr<CompiledFunction>
-CPUBackend::compile(std::unique_ptr<IRFunction> IR) const {
+CPUBackend::compile(std::unique_ptr<IRFunction> IR,
+                    const PlaceholderMap &placeholders) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
   irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
