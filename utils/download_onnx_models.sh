@@ -15,3 +15,9 @@ for modelname in lenet_mnist; do
   wget -nc http://fb-glow-assets.s3.amazonaws.com/models/$modelname.tar.gz
   tar -xzvf $modelname.tar.gz
 done
+
+for modelname in googlenet_v1_slim googlenet_v4_slim resnet50_tf; do
+  mkdir $modelname
+  wget -nc -P $modelname \
+      http://fb-glow-assets.s3.amazonaws.com/models/$modelname.onnx
+done
