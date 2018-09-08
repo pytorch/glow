@@ -615,8 +615,9 @@ public:
     backend_.reset(createBackend(BackendKind::Interpreter));
   }
   std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR) const override {
-    return backend_->compile(std::move(IR));
+  compile(std::unique_ptr<IRFunction> IR,
+          const PlaceholderMap &placeholders) const override {
+    return backend_->compile(std::move(IR), placeholders);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||

@@ -171,7 +171,8 @@ public:
   ~OCLBackend() override = default;
 
   std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR) const override;
+  compile(std::unique_ptr<IRFunction> IR,
+          const PlaceholderMap &placeholders) const override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) const override;
 

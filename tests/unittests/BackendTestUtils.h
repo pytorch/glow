@@ -26,7 +26,8 @@ class MockBackend : public Backend {
     void execute() override {}
   };
   std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR) const override {
+  compile(std::unique_ptr<IRFunction> IR,
+          const PlaceholderMap &placeholders) const override {
     return llvm::make_unique<MockFunction>();
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {

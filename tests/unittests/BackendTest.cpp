@@ -145,7 +145,8 @@ TEST_P(BackendTest, debugPrint) {
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  auto function = backend->compile(std::move(IR));
+  PlaceholderMap empty;
+  auto function = backend->compile(std::move(IR), empty);
   function->execute();
 }
 
@@ -174,6 +175,21 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
   EXPECT_NEAR(HX.at({1}), 4, 1E-5);
   EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+}
+
+/// Check that we can pass information to the execution engine using Placeholder
+/// variables and read it back using Save nodes (in variables).
+TEST(Placeholder, simplePlaceholderValue) {
+  Tensor data{99.0, 35.0, 2.0, 3.0};
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
+  SaveNode *S = F->createSave("ret", input);
+  EE.compile(CompilationMode::Infer, F, {input}, {&data});
+  EE.run();
+  auto &res = S->getVariable()->getPayload();
+  EXPECT_TRUE(res.isEqual(data));
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,

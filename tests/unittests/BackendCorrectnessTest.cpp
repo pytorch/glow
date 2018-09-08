@@ -239,8 +239,9 @@ class MockCPUBackend : public Backend {
 public:
   MockCPUBackend() { backend_.reset(createBackend(BackendKind::CPU)); }
   std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR) const override {
-    return backend_->compile(std::move(IR));
+  compile(std::unique_ptr<IRFunction> IR,
+          const PlaceholderMap &placeholders) const override {
+    return backend_->compile(std::move(IR), placeholders);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
@@ -304,7 +305,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  backend.compile(std::move(M))->execute();
+  PlaceholderMap empty;
+  backend.compile(std::move(M), empty)->execute();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

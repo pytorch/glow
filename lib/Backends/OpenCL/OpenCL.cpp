@@ -1571,6 +1571,7 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compile(std::unique_ptr<IRFunction> IR) const {
+OCLBackend::compile(std::unique_ptr<IRFunction> IR,
+                    const PlaceholderMap &placeholders) const {
   return llvm::make_unique<OpenCLFunction>(std::move(IR));
 }

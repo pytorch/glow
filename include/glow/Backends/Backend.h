@@ -39,9 +39,12 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Generate code for input function \param IR.
+  /// Generate code for input function \param IR. \p placeholders is a list of
+  /// Placeholders that are mapped to the concrete input tensor for the
+  /// specific function.
   virtual std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR) const = 0;
+  compile(std::unique_ptr<IRFunction> IR,
+          const PlaceholderMap &placeholders) const = 0;
 
   /// Save the bundle for \p IR for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for

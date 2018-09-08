@@ -16,7 +16,15 @@
 #ifndef GLOW_BACKENDS_COMPILEDFUNCTION_H
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
+#include <unordered_map>
+
 namespace glow {
+
+class Placeholder;
+class Tensor;
+
+/// Maps placeholders to the tensors that back them.
+using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
 
 /// Interface for executing a compiled function.
 class CompiledFunction {
