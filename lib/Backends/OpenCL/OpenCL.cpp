@@ -98,7 +98,8 @@ static void addStringOption(std::vector<std::string> &options,
   options.push_back("-D" + name + "=" + value);
 }
 
-OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
+OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
+                               const PlaceholderMap &placeholders)
     : F_(std::move(F)) {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -136,7 +137,7 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F)
   addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
   // Create the program from the source.
   createProgram(SHADER_CODE, options, commands_);
-  allocateMemory();
+  allocateMemory(placeholders);
 }
 
 OpenCLFunction::~OpenCLFunction() {
@@ -1482,13 +1483,22 @@ uint64_t OpenCLFunction::copyMutableWeightsFromDevice() {
   return copiedBytes;
 }
 
-void OpenCLFunction::allocateMemory() {
-  /// The allocator assigns device memory addresses to the buffers.
+void OpenCLFunction::allocateMemory(const PlaceholderMap &placeholders) {
+  // The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
+
+  // Register the bound locations of the variables.
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();
+  }
+
+  // Register the bound locations of the placeholders.
+  for (auto PH : placeholders) {
+    auto *w = F_->getWeightForNode(PH.first);
+    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    externalTensors_[w] = PH.second;
   }
 
   // Assign device-space addresses to the weights.
@@ -1573,5 +1583,5 @@ void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 std::unique_ptr<CompiledFunction>
 OCLBackend::compile(std::unique_ptr<IRFunction> IR,
                     const PlaceholderMap &placeholders) const {
-  return llvm::make_unique<OpenCLFunction>(std::move(IR));
+  return llvm::make_unique<OpenCLFunction>(std::move(IR), placeholders);
 }

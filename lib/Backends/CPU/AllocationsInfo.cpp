@@ -32,6 +32,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 void AllocationsInfo::allocateWeightVars(const IRFunction *F,
+                                         const PlaceholderMap &placeholders,
                                          bool absoluteAddr) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
@@ -70,6 +71,21 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
       // Reuse the address used by the payload.
       allocatedAddressed_[w] =
           v->getPayload().getUnsafePtr() - static_cast<char *>(nullptr);
+    }
+  }
+
+  // Allocate addresses for the Placeholders.
+  for (auto PH : placeholders) {
+    assert(isa<WeightVar>(F->getWeightForNode(PH.first)));
+    auto *w = cast<WeightVar>(F->getWeightForNode(PH.first));
+    auto numBytes = w->getSizeInBytes();
+    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+    if (!absoluteAddr) {
+      allocatedAddressed_[w] = addr;
+    } else {
+      // Reuse the address used by the payload.
+      allocatedAddressed_[w] =
+          PH.second->getUnsafePtr() - static_cast<char *>(nullptr);
     }
   }
 
@@ -196,6 +212,14 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
                     : ValueKind::MutableWeight;
     valueNumbers_[w] = std::make_pair(kind, valueIdx++);
   }
+
+  // Assign numbers to all placeholders.
+  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+    assert(isa<WeightVar>(F->getWeightForNode(v)));
+    auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    valueNumbers_[w] = std::make_pair(ValueKind::MutableWeight, valueIdx++);
+  }
+
   // Assign numbers to all activations and tensorviews.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
