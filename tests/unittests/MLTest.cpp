@@ -15,6 +15,7 @@
  */
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/IR/IR.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Quantization/Quantization.h"
 

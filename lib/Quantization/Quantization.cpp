@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/IR/IR.h"
 #include "glow/Quantization/Quantization.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
