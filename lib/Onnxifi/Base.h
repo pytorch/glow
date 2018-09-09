@@ -113,6 +113,11 @@ private:
   BackendPtr backendPtr_;
   Function *function_;
 
+  /// This is the compilation context that represents a single thread.
+  /// TODO: Once we finish the migration to placeholders we'll need to manage
+  /// the state properly.
+  Context ctx_;
+
   /// Mapping between ONNX name for the input variable and Glow variable.
   llvm::StringMap<Variable *> onnxNameToInputVar_;
 

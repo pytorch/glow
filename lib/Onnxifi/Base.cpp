@@ -60,7 +60,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxNameToOutputNode_ = loader->getOutputVarsMapping();
 
   // Emit IR for the graph and compile it.
-  backendPtr_->getEE().compile(CompilationMode::Infer, function_);
+  backendPtr_->getEE().compile(CompilationMode::Infer, function_, ctx_);
 
   return ONNXIFI_STATUS_SUCCESS;
 }

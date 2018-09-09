@@ -80,6 +80,8 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
                       Variable *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
   TrainingConfig TC;
+  Context ctx;
+
   auto &F = *EE.getModule().getFunction("main");
 
   // This variable records the number of the next sample to be used for
@@ -88,7 +90,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
 
   // Create a function that trains the network.
   Function *TF = glow::differentiate(&F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
@@ -98,7 +100,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   // table instead of updating them.
   VariableGradientsList varGrads;
   Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
-  EE.compile(CompilationMode::Train, recordNet);
+  EE.compile(CompilationMode::Train, recordNet, ctx);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(varGrads, inputVar);
@@ -108,7 +110,7 @@ void performGradCheck(ExecutionEngine &EE, SaveNode *result, Variable *inputVar,
   runBatch(EE, 1, sampleCounter, {inputVar, expVar}, {inputs, outputs});
 
   // Compile the original network in inference mode.
-  EE.compile(CompilationMode::Infer, &F);
+  EE.compile(CompilationMode::Infer, &F, ctx);
 
   auto analyticalGradsH = gradVar->getPayload().getHandle();
   auto inputsH = inputs->getHandle<>();
@@ -490,6 +492,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   const float stepSize = 1e-4;
   const float delta = 0.015;
   TrainingConfig TC;
+  Context ctx;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -515,7 +518,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
 
   VariableGradientsList varGrads;
   Function *TF = glow::differentiate(F, TC, "record", &varGrads);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   auto gradP = getGrad(varGrads, P)->getHandle();
 

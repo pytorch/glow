@@ -26,6 +26,7 @@ namespace glow {
 
 class IRFunction;
 class Node;
+class Context;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -43,8 +44,7 @@ public:
   /// Placeholders that are mapped to the concrete input tensor for the
   /// specific function.
   virtual std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const = 0;
+  compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const = 0;
 
   /// Save the bundle for \p IR for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for

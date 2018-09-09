@@ -188,6 +188,7 @@ void testPTB() {
                               minibatchSize, maxNumWords);
   llvm::outs() << "Loaded " << numWords << " words.\n";
   ExecutionEngine EE(executionBackend);
+  Context ctx;
 
   // Construct the network:
   TrainingConfig TC;
@@ -235,7 +236,7 @@ void testPTB() {
 
   Function *TF = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   if (!dumpTrainingGraphDAGFileOpt.empty()) {
     llvm::outs() << "Dumping training graph\n";

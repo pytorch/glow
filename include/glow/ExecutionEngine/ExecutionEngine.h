@@ -18,6 +18,7 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Base/Context.h"
 #include "glow/Base/Train.h"
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Graph.h"
@@ -67,11 +68,9 @@ public:
 
   /// Optimize the graph, generate IR, optimize IR and compile it for a
   /// specific target. This method should be invoked before the run method.
-  /// The placeholder variables in \p placeholders are mapped to the concrete
-  /// tensor values in the compiled instance of the function.
-  void compile(CompilationMode mode, Function *F,
-               llvm::ArrayRef<Placeholder *> placeholders = {},
-               llvm::ArrayRef<Tensor *> inputs = {});
+  /// The context \p ctx contains the mapping between symbolic values to
+  /// concrete backing tensors.
+  void compile(CompilationMode mode, Function *F, const Context &ctx);
 
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to

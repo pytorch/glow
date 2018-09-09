@@ -19,6 +19,7 @@
 
 #include "CPUBackend.h"
 
+#include "glow/Base/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
@@ -250,7 +251,7 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
-  PlaceholderMap empty;
+  Context empty;
   allocationsInfo_.allocateWeightVars(F_, empty, false);
   allocationsInfo_.allocateTensorViews(F_);
 }

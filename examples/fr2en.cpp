@@ -130,6 +130,7 @@ struct Model {
   Variable *input_;
   Variable *seqLength_;
   Variable *output_;
+  Context ctx;
 
   void loadLanguages();
   void loadEncoder();
@@ -172,7 +173,7 @@ struct Model {
       F_ = Q;
     }
 
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(CompilationMode::Infer, F_, ctx);
   }
 
 private:

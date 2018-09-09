@@ -51,7 +51,9 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   auto OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
   auto result = F->createSave("ret", matmul, outVar);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({lhsVar, rhsVar}, {lhs, rhs});
   EE.run();
 

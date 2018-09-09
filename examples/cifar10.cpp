@@ -96,6 +96,8 @@ void testCIFAR10() {
   TrainingConfig TC;
 
   ExecutionEngine EE(executionBackend);
+  Context ctx;
+
   TC.learningRate = 0.001;
   TC.momentum = 0.9;
   TC.L2Decay = 0.0001;
@@ -128,7 +130,7 @@ void testCIFAR10() {
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

@@ -25,11 +25,11 @@
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
-                                         const PlaceholderMap &placeholders)
+                                         const Context &ctx)
     : F_(std::move(F)) {
 
   // Register the concrete tensors that back the placeholder tensors.
-  for (auto &ph : placeholders) {
+  for (auto &ph : ctx.pairs()) {
     auto *w = F_->getWeightForNode(ph.first);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = ph.second;

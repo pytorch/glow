@@ -132,7 +132,8 @@ void testMNIST() {
 
   Function *T = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, T);
+  Context ctx;
+  EE.compile(CompilationMode::Train, T, ctx);
 
   const int numIterations = 30;
 
@@ -156,7 +157,7 @@ void testMNIST() {
     timer.stopTimer();
   }
   llvm::outs() << "Validating.\n";
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   auto LIH = labelInputs.getHandle<int64_t>();
 

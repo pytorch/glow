@@ -13,8 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_EXECUTIONENGINE_CONTEXT_H
-#define GLOW_EXECUTIONENGINE_CONTEXT_H
+#ifndef GLOW_BASE_CONTEXT_H
+#define GLOW_BASE_CONTEXT_H
+
+#include "llvm/ADT/ArrayRef.h"
 
 #include <unordered_map>
 
@@ -42,22 +44,27 @@ private:
 public:
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
-  Tensor *get(Placeholder *P);
+  Tensor *get(Placeholder *P) const;
 
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
 
   /// \returns True if \p P is a registered Placeholder.
-  size_t count(Placeholder *P);
+  size_t count(Placeholder *P) const;
 
   /// Deletes all tensors and clears the mapping between Placeholders and
   /// tensors.
   void clear();
 
   /// \returns the mapping between placeholder to tensors.
-  PlaceholderMap &pairs() { return map_; }
+  const PlaceholderMap &pairs() const { return map_; }
 
   Context() = default;
+
+  /// Construct the Context with an initial mapping between \p placeholders
+  /// and \p inputs;
+  Context(llvm::ArrayRef<Placeholder *> placeholders,
+          llvm::ArrayRef<Tensor *> inputs);
 
   ~Context() { clear(); };
 
@@ -70,4 +77,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_EXECUTIONENGINE_CONTEXT_H
+#endif // GLOW_BASE_CONTEXT_H

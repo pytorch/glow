@@ -145,6 +145,9 @@ llvm::StringRef Loader::getModelOptPath() {
   return modelPathOpt[0];
 }
 
+// This is the execution context of the program.
+Context ctx;
+
 bool glow::emittingBundle() { return !emitBundle.empty(); }
 
 static bool commandLineIsInvalid() {
@@ -256,7 +259,7 @@ void Loader::compile() {
     EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(CompilationMode::Infer, F_, ctx);
   }
 
   if (dumpGraphOpt) {

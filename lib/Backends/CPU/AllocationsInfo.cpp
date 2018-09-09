@@ -16,6 +16,7 @@
 #define DEBUG_TYPE "jit-allocations"
 
 #include "AllocationsInfo.h"
+#include "glow/Base/Context.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -32,7 +33,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 void AllocationsInfo::allocateWeightVars(const IRFunction *F,
-                                         const PlaceholderMap &placeholders,
+                                         const Context &ctx,
                                          bool absoluteAddr) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
@@ -75,7 +76,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
   }
 
   // Allocate addresses for the Placeholders.
-  for (auto PH : placeholders) {
+  for (auto PH : ctx.pairs()) {
     assert(isa<WeightVar>(F->getWeightForNode(PH.first)));
     auto *w = cast<WeightVar>(F->getWeightForNode(PH.first));
     auto numBytes = w->getSizeInBytes();

@@ -18,6 +18,7 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Base/Context.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Node.h"
@@ -92,8 +93,7 @@ class OpenCLFunction final : public CompiledFunction {
 
 public:
   /// Ctor.
-  explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
-                          const PlaceholderMap &placeholders);
+  explicit OpenCLFunction(std::unique_ptr<IRFunction> F, const Context &ctx);
 
   /// @name CompiledFunction interface
   ///@{
@@ -104,7 +104,7 @@ public:
 
 private:
   /// Allocate memory for the tensors.
-  void allocateMemory(const PlaceholderMap &placeholders);
+  void allocateMemory(const Context &ctx);
   /// Copy the value from a device to a provided buffer.
   /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
@@ -171,9 +171,8 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const override;
+  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
+                                            const Context &ctx) const override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) const override;
 

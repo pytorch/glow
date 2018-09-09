@@ -15,8 +15,8 @@
  */
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-
 #include "glow/Backends/Backend.h"
+#include "glow/Base/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -170,18 +170,9 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
-                              llvm::ArrayRef<Placeholder *> placeholders,
-                              llvm::ArrayRef<Tensor *> inputs) {
-  PlaceholderMap pmap;
-  assert(placeholders.size() == inputs.size() &&
-         "Invalid number of placeholders");
-
-  for (size_t i = 0, e = placeholders.size(); i < e; i++) {
-    pmap[placeholders[i]] = inputs[i];
-  }
-
+                              const Context &ctx) {
   auto IR = generateIR(mode, F);
-  function_ = backend_->compile(std::move(IR), pmap);
+  function_ = backend_->compile(std::move(IR), ctx);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
