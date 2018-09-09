@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/ExecutionEngine/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
@@ -189,6 +190,42 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   EE_.run();
   auto &res = S->getVariable()->getPayload();
   EXPECT_TRUE(res.isEqual(data));
+}
+
+/// Test the basic functionality of the context.
+TEST(Context, basicContextTest) {
+  Module mod;
+  TypeRef ty = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
+
+  Tensor T1(ty);
+  Tensor T2(ty);
+
+  // Create a simple graph, just to have a few placeholders.
+  Function *F = mod.createFunction("main");
+  auto *input1 = mod.createPlaceholder(ty, "input1");
+  auto *input2 = mod.createPlaceholder(ty, "input2");
+  auto *input3 = mod.createPlaceholder(ty, "input3");
+  auto *add = F->createAdd("add", input1, input2);
+  F->createSave("ret", add);
+
+  // Create a context for some threaded execution.
+  Context C;
+
+  C.insert(input1, std::move(T1));
+  C.insert(input2, std::move(T2));
+
+  // Check that the right placeholders are found.
+  EXPECT_TRUE(C.count(input1));
+  EXPECT_TRUE(C.count(input2));
+  EXPECT_FALSE(C.count(nullptr));
+
+  // Try to fetch some placeholders that exist and some that don't.
+  auto *V1 = C.get(input1);
+  auto *V2 = C.get(input2);
+  auto *V3 = C.get(input3);
+  EXPECT_NE(V1, nullptr);
+  EXPECT_NE(V2, nullptr);
+  EXPECT_EQ(V3, nullptr);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
