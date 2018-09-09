@@ -16,6 +16,7 @@
 
 #include "BackendTestUtils.h"
 
+#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
@@ -238,10 +239,9 @@ class MockCPUBackend : public Backend {
 
 public:
   MockCPUBackend() { backend_.reset(createBackend(BackendKind::CPU)); }
-  std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const override {
-    return backend_->compile(std::move(IR), placeholders);
+  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
+                                            const Context &ctx) const override {
+    return backend_->compile(std::move(IR), ctx);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
@@ -305,7 +305,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  PlaceholderMap empty;
+  Context empty;
   backend.compile(std::move(M), empty)->execute();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);

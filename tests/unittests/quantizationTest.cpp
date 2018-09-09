@@ -134,7 +134,9 @@ TEST(Quantization, quantizeGraph) {
   F = quantization::quantizeFunction(EE, QI, F);
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
 }
 
@@ -157,7 +159,8 @@ TEST(Quantization, quantizeReLU) {
       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
        {0.2f, -128}}};
   F = quantization::quantizeFunction(EE, QI, F);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
   ASSERT_TRUE(llvm::isa<DequantizeNode>(save->getInput().getNode()));
@@ -238,9 +241,9 @@ TEST_P(Operator, end2end) {
   Function *F1 = createSimpleGraphForQuantization(mod, A, B, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
-
+  Context ctx;
   F1 = glow::profileQuantization(F1);
-  interpreterEE.compile(CompilationMode::Infer, F1);
+  interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
   interpreterEE.run();
@@ -253,7 +256,7 @@ TEST_P(Operator, end2end) {
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
-  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
   backendSpecificEE.run();
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -374,8 +377,9 @@ TEST_P(Operator, end2endGRU) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
+  Context ctx;
   F1 = glow::profileQuantization(F1);
-  interpreterEE.compile(CompilationMode::Infer, F1);
+  interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
   interpreterEE.run();
@@ -388,7 +392,7 @@ TEST_P(Operator, end2endGRU) {
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
-  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
   backendSpecificEE.run();
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -420,7 +424,9 @@ TEST(Quantization, rescaleSameType) {
   auto *result = F->createSave("ret", D);
 
   EXPECT_EQ(F->getNodes().size(), 3);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   EXPECT_EQ(F->getNodes().size(), 2);
 
@@ -444,7 +450,9 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto *result = F->createSave("ret", D);
 
   EXPECT_EQ(F->getNodes().size(), 4);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   EXPECT_EQ(F->getNodes().size(), 1);
 
@@ -614,10 +622,9 @@ public:
   MockQuantBackend() {
     backend_.reset(createBackend(BackendKind::Interpreter));
   }
-  std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const override {
-    return backend_->compile(std::move(IR), placeholders);
+  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
+                                            const Context &ctx) const override {
+    return backend_->compile(std::move(IR), ctx);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||
@@ -698,7 +705,9 @@ TEST(Quantization, quantizeGraphPartially) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
 
   {
@@ -777,7 +786,9 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
 
   {
@@ -866,7 +877,9 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
 
   {

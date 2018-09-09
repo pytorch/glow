@@ -60,7 +60,8 @@ TEST_P(Operator, pow) {
   auto *Save2 = F_->createSave("save", Pow2);
   auto *Save3 = F_->createSave("save", Pow3);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -87,7 +88,8 @@ TEST_P(InterpAndCPU, log) {
 
   auto *save = F_->createSave("save", LN);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -109,7 +111,8 @@ TEST_P(InterpAndCPU, CmpEQ) {
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
   auto *save = F_->createSave("save", cmpEQ);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -133,7 +136,8 @@ TEST_P(Operator, matmul) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -154,7 +158,8 @@ TEST_P(Operator, BroadcastedBatchMatMul) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -177,7 +182,8 @@ TEST_P(Operator, ParallelBatchMatMul) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -198,7 +204,8 @@ TEST_P(Operator, batchedReduceAdd) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -217,7 +224,8 @@ TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -248,7 +256,8 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < 8; i++) {
@@ -282,7 +291,8 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 1);
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < 2; i++) {
@@ -308,7 +318,8 @@ TEST_P(Operator, batchedReduceMean) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -327,7 +338,8 @@ TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -358,7 +370,8 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < 8; i++) {
@@ -392,7 +405,8 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
                                         /* axis */ 1);
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < 2; i++) {
@@ -421,7 +435,8 @@ TEST_P(Operator, batchedBatchedAdd) {
   auto R = F_->createBatchedAdd("batch.add", batch, added);
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -462,7 +477,8 @@ TEST_P(InterpAndCPU, broadcastSimple) {
   F_->createSave("save", R, broadcasted);
   F_->createSave("saveQ", QR, broadcastedQ);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
@@ -523,7 +539,8 @@ TEST_P(InterpAndCPU, broadcast) {
   F_->createSave("save", R, broadcasted);
   F_->createSave("saveQ", QR, broadcastedQ);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto broadcastedBHandle = broadcasted->getPayload().getHandle();
@@ -572,7 +589,8 @@ TEST_P(Operator, weightedSum) {
   auto *WS = F_->createWeightedSum("ws", {A, B}, {AW, BW});
   auto *save = F_->createSave("save", WS);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   // Verify the weighted sum was correctly calculated.
@@ -595,7 +613,8 @@ TEST_P(Operator, minElem) {
   LHS->getHandle().randomize(-10, 10, PRNG);
   RHS->getHandle().randomize(-10, 10, PRNG);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto resultH = save->getVariable()->getHandle();
@@ -621,7 +640,8 @@ TEST_P(Operator, TopK) {
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -673,7 +693,8 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   F_->createSave("Save.Values", CV, values);
   F_->createSave("Save.Indices", CI, indices);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -734,7 +755,8 @@ TEST_P(Operator, matMul) {
   F_->createSave("save.values", A1, res1);
   F_->createSave("save.values", A2, res2);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -765,7 +787,8 @@ TEST_P(InterpAndCPU, TopK1) {
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -796,7 +819,8 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   F_->createSave("save.values", TK->getValues(), OV);
   F_->createSave("save.indices", TK->getIndices(), IV);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -866,7 +890,8 @@ TEST_P(Operator, Gather) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -900,7 +925,8 @@ TEST_P(Operator, Transpose2Dims) {
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
   auto *result = F_->createSave("saveTranspose", tr);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor dest(ElemKind::FloatTy, {13, 20});
   A->getPayload().transpose(&dest, {1, 0});
@@ -942,7 +968,8 @@ TEST_P(Operator, Transpose3Dims) {
   // We should have exactly 6 possible permutations for 3 dimensions.
   EXPECT_EQ(6, nbOfShuffle);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (int i = 0; i < 6; ++i) {
@@ -995,7 +1022,8 @@ TEST_P(InterpAndCPU, GatherSizeT) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle<int64_t>();
@@ -1052,7 +1080,8 @@ TEST_P(Operator, BatchedGather) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1078,7 +1107,8 @@ TEST_P(Operator, ScatterAssign) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1118,7 +1148,8 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
 
   F_->createSave("save", DQ, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1152,7 +1183,8 @@ TEST_P(Operator, QuantizeAndDequantize) {
   auto *fpAdd = F_->createAdd("fpAdd", A, B);
   auto *fpResult = F_->createSave("fpSave", fpAdd);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   EXPECT_TRUE(result->getVariable()->getPayload().isEqual(
@@ -1186,7 +1218,8 @@ TEST_P(Operator, IntMatMul) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   F_->createSave("save", rq, res);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -1234,7 +1267,8 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   F_->createSave("save", rq, res);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -1295,7 +1329,9 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto *sub = F->createSub("compare", dequantRes, conv);
 
   F->createSave("save", sub, res);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   auto H = res->getPayload().getHandle();
 
@@ -1330,7 +1366,8 @@ TEST_P(InterpAndCPU, IntConcat) {
   auto sub = F_->createSub("compare", C, DCQ);
 
   auto res = F_->createSave("save", sub);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto R = res->getVariable()->getHandle();
@@ -1374,7 +1411,8 @@ TEST_P(InterpAndCPU, IntFC) {
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
   F_->createSave("save", sub, res);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = res->getPayload().getHandle();
@@ -1398,7 +1436,8 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
   Y->getPayload().getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   F_->createSave("save", ceLoss, L);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
@@ -1423,7 +1462,8 @@ TEST_P(Operator, RescaleNode) {
   auto *Z = F_->createRescaleQuantized("R3", Y, output->getType());
 
   F_->createSave("save", Z, output);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto RI = input->getPayload().getHandle<int8_t>();
@@ -1526,7 +1566,8 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   F_->createSave("saveMul", mul, O5);
   F_->createSave("saveDiv", div, O6);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1561,7 +1602,8 @@ TEST_P(Operator, QuantizedTranspose) {
   auto *result = F_->createSave("ret", dequantize);
   auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
   auto *fpResult = F_->createSave("fpRet", fpTr);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   EXPECT_TRUE(result->getVariable()->getPayload().isEqual(B->getPayload()));
   EXPECT_TRUE(fpResult->getVariable()->getPayload().isEqual(B->getPayload()));
@@ -1641,7 +1683,8 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   F_->createSave("saveMul", mul, O5);
   F_->createSave("saveDiv", div, O6);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1707,7 +1750,8 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   // Save result of the operation.
   F_->createSave("save", select, Out);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   int count_strict = 0;
@@ -1770,7 +1814,8 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   // Test a sequence of rescale operations t
   F_->createSave("save", DQ, O);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1783,6 +1828,7 @@ TEST_P(Operator, FCGradientCheck) {
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -1810,7 +1856,7 @@ TEST_P(Operator, FCGradientCheck) {
   initB.getHandle() = {-13.1f, 3.14f};
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
-  EE_.compile(CompilationMode::Train, DF);
+  EE_.compile(CompilationMode::Train, DF, ctx);
   runBatch(EE_, 3, sampleCounter, {A, B}, {&initA, &initB});
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
@@ -1844,7 +1890,8 @@ TEST_P(InterpAndCPU, concatVectors) {
     I3.getHandle<int64_t>().at({i + 20}) = i + 50;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   // Testing the output vector.
   updateVariables({V1, V2, V3}, {&I1, &I2, &I3});
@@ -1884,7 +1931,8 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
     I2.getHandle<int64_t>().at({i + 10}) = 2;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   // Testing the output vector.
   updateVariables({V1, V2}, {&I1, &I2});
@@ -1926,7 +1974,8 @@ TEST_P(InterpAndCPU, sliceVectors) {
     I.getHandle<int64_t>().at({2, j}) = j + 60;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   // Testing the output slices.
   updateVariables({V}, {&I});
@@ -1984,7 +2033,8 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
 
   auto *result = F_->createSave("ret", C2);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   updateVariables({V}, {&I});
   EE_.run();
@@ -2024,7 +2074,8 @@ TEST_P(InterpAndCPU, Tile) {
     }
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   updateVariables({V}, {&VT});
   EE_.run();
@@ -2073,7 +2124,8 @@ TEST_P(InterpAndCPU, QuantizedTile) {
     }
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   updateVariables({V}, {&VT});
   EE_.run();
@@ -2124,7 +2176,8 @@ TEST_P(Operator, simpleCmpSelectPredication) {
 
   auto *SN = F_->createSave("ret", data);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = SN->getVariable()->getHandle();
@@ -2163,7 +2216,8 @@ TEST_P(Operator, simplePredication) {
   FC1->setPredicate(pred);
   FC2->setPredicate(pred);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 }
 
@@ -2176,7 +2230,8 @@ TEST_P(InterpAndCPU, ChannelShuffle) {
   Node *CS = F_->createChannelShuffle("CS", inputs, 3, 1);
   SaveNode *S = F_->createSave("save", CS);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto results = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
@@ -2198,7 +2253,8 @@ TEST_P(Operator, Squeeze) {
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
 
-    EE_.compile(CompilationMode::Infer, F_);
+    Context ctx;
+    EE_.compile(CompilationMode::Infer, F_, ctx);
     EE_.run();
 
     auto results = S->getVariable()->getHandle();
@@ -2214,7 +2270,8 @@ TEST_P(Operator, Squeeze) {
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
 
-    EE_.compile(CompilationMode::Infer, F_);
+    Context ctx;
+    EE_.compile(CompilationMode::Infer, F_, ctx);
     EE_.run();
 
     auto results = S->getVariable()->getHandle();
@@ -2236,7 +2293,8 @@ TEST_P(Operator, Squeeze) {
     Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
     SaveNode *S2 = F_->createSave("save", UnSQZ);
 
-    EE_.compile(CompilationMode::Infer, F_);
+    Context ctx;
+    EE_.compile(CompilationMode::Infer, F_, ctx);
     EE_.run();
 
     auto res1 = S1->getVariable()->getHandle();
@@ -2260,7 +2318,8 @@ TEST_P(Operator, ExpandDims) {
   Node *EDN = F_->createExpandDims("expand", inputs, axes);
   SaveNode *S = F_->createSave("save", EDN);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   // Expected dims based on the axes above; inserted new dimensions of 1 in
@@ -2290,7 +2349,8 @@ TEST_P(InterpAndCPU, Split) {
   auto S3 = F_->createSave("save3", outputs2[0]);
   auto S4 = F_->createSave("save4", outputs2[1]);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto result = S1->getVariable()->getHandle();
@@ -2350,7 +2410,8 @@ TEST_P(Operator, IntRelu) {
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
   auto *save = F_->createSave("save", dequantize);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto result = save->getVariable()->getHandle();
@@ -2371,7 +2432,8 @@ TEST_P(Operator, IntSplat) {
   auto *dequantize = F_->createDequantize("dequantize", splat);
 
   auto *save = F_->createSave("save", dequantize);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto result = save->getVariable()->getHandle();
@@ -2403,7 +2465,8 @@ TEST_P(Operator, GroupConvolution) {
       F_->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
   SaveNode *S = F_->createSave("save", CN);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto result = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
@@ -2450,7 +2513,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2468,7 +2532,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
                         {1, 1}, {0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
-  EE_.compile(CompilationMode::Infer, refF);
+  EE_.compile(CompilationMode::Infer, refF, ctx);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2487,7 +2551,8 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2502,7 +2567,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  EE_.compile(CompilationMode::Infer, refF);
+  EE_.compile(CompilationMode::Infer, refF, ctx);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2521,7 +2586,8 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2536,7 +2602,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  EE_.compile(CompilationMode::Infer, refF);
+  EE_.compile(CompilationMode::Infer, refF, ctx);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2549,7 +2615,8 @@ TEST_P(Operator, Int8AvgPool) {
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   auto result = S->getVariable()->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
@@ -2565,7 +2632,8 @@ TEST_P(Operator, Int8MaxPool) {
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   auto result = S->getVariable()->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
@@ -2599,7 +2667,8 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
   auto *saveInt = F_->createSave("int8Save", dequantize);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto fpResult = saveFp->getVariable()->getHandle();
@@ -2633,7 +2702,8 @@ TEST_P(Operator, NonSquareKernelConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2651,7 +2721,8 @@ TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2669,7 +2740,8 @@ TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2701,7 +2773,8 @@ TEST_P(Operator, NonSquareStrideConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2719,7 +2792,8 @@ TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2737,7 +2811,8 @@ TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2769,7 +2844,8 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
   auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
   auto *saveInt = F_->createSave("int8Save", dequantize);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto fpResult = saveFp->getVariable()->getHandle();
@@ -2797,7 +2873,8 @@ TEST_P(InterpAndCPU, IntLookupTable) {
       F_->createIntLookupTable("lookupTable", input, initValues, outTy);
   auto save = F_->createSave("save", lookupTable);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto result = save->getVariable()->getHandle<int8_t>();
@@ -2832,7 +2909,8 @@ TEST_P(Operator, testBatchAdd) {
 
   F_->createSave("save", cc, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto RH = result->getPayload().getHandle();
@@ -2885,7 +2963,8 @@ TEST_P(Operator, testQuantizedBatchAdd) {
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto RH = result->getPayload().getHandle();
@@ -2936,7 +3015,8 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto S = F_->createSave("save", R);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
@@ -2983,7 +3063,8 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
                                               lengths);
   auto S = F_->createSave("save", R);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
@@ -3029,7 +3110,8 @@ TEST_P(Operator, sliceReshape) {
   F_->createSave("saveSSX", SSX, resultSSX);
   F_->createSave("saveRSSX", RSSX, resultRSSX);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -3115,7 +3197,8 @@ TEST_P(Operator, Flatten) {
       mod_.createVariable(ElemKind::FloatTy, {72, 1}, "4Dto2Da4");
   F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4, save4Dto2Da4);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
 
   EE_.run();
 
@@ -3163,7 +3246,8 @@ TEST_P(InterpAndCPU, DivSizeT) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   auto H = result->getPayload().getHandle<int64_t>();
@@ -3215,7 +3299,8 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
 
   F_->createSave("save", R, result);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
   EE_.run();
 
   Tensor expected(ElemKind::FloatTy, {2, 2});

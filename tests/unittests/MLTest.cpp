@@ -38,6 +38,7 @@ class MLTest : public TestRunnerBase {};
 
 TEST_P(MLTest, trainASimpleNetwork) {
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -68,14 +69,14 @@ TEST_P(MLTest, trainASimpleNetwork) {
   expected.getHandle<>() = {0.9f, 0.9f, 0.9f, 0.9f};
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network. Learn 1000 batches.
   runBatch(EE_, 1000, sampleCounter, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
   updateVariables({A}, {&inputs});
   EE_.run();
 
@@ -88,6 +89,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
 
 TEST_P(MLTest, simpleRegression) {
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -119,7 +121,7 @@ TEST_P(MLTest, simpleRegression) {
   auto E = expected.getHandle<>();
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
   for (int iter = 0; iter < 1000; iter++) {
@@ -130,7 +132,7 @@ TEST_P(MLTest, simpleRegression) {
   }
 
   // Verify the result of the regression layer.
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Test the output:
   for (int iter = 0; iter < 5; iter++) {
@@ -148,6 +150,7 @@ TEST_P(MLTest, simpleRegression) {
 
 TEST_P(MLTest, learnXor) {
   TrainingConfig TC;
+  Context ctx;
 
   unsigned numInputs = 10;
 
@@ -190,12 +193,12 @@ TEST_P(MLTest, learnXor) {
   }
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
   runBatch(EE_, 2500, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Prepare the testing tensor:
   for (unsigned i = 0; i < numInputs; i++) {
@@ -221,6 +224,7 @@ TEST_P(MLTest, learnXor) {
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -263,12 +267,12 @@ TEST_P(MLTest, learnLog) {
   }
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
   runBatch(EE_, 1000, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Set the testing data.
   Tensor testSet(ElemKind::FloatTy, {batchSize, 1});
@@ -330,6 +334,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -357,7 +362,7 @@ TEST_P(MLTest, circle) {
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
@@ -366,7 +371,7 @@ TEST_P(MLTest, circle) {
   // Training:
   runBatch(EE_, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Print a diagram that depicts the network decision on a grid.
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
@@ -425,6 +430,7 @@ TEST_P(MLTest, circle) {
 
 TEST_P(MLTest, learnSingleValueConcat) {
   unsigned width = 6;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -464,12 +470,12 @@ TEST_P(MLTest, learnSingleValueConcat) {
   expected.getHandle<>().clear(0.9);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
   runBatch(EE_, 1000, sampleCounter, {A, B, Ex}, {&inputs, &inputs, &expected});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Testing the output vector.
   updateVariables({A}, {&inputs});
@@ -510,6 +516,7 @@ void testRNNCell(TCellGenerator cell) {
   // training.
   size_t sampleCounter = 0;
 
+  Context ctx;
   ExecutionEngine EE;
   // Learning a single input vector.
   TC.learningRate = 0.05;
@@ -560,7 +567,7 @@ void testRNNCell(TCellGenerator cell) {
   auto *result = F->createSave("result", R);
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, NumVectors, NumElements});
@@ -576,7 +583,7 @@ void testRNNCell(TCellGenerator cell) {
   runBatch(EE, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   updateVariables({X}, {&inputs});
   EE.run();
@@ -599,6 +606,7 @@ TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
 /// Learn the square root of two.
 TEST_P(MLTest, learnSqrt2) {
   TrainingConfig TC;
+  Context ctx;
 
   TC.learningRate = 0.03;
 
@@ -618,7 +626,7 @@ TEST_P(MLTest, learnSqrt2) {
   F->createSave("ret", O);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
   for (int i = 0; i < 50; i++) {
@@ -632,6 +640,7 @@ TEST_P(MLTest, learnSqrt2) {
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
   TrainingConfig TC;
+  Context ctx;
 
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
@@ -676,7 +685,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   Variable *B = llvm::cast<Variable>(FC->getBias());
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network doing 100 steps. Learn on 500 samples.
   runBatch(EE_, 100, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
@@ -722,6 +731,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   const size_t numClasses = 2;
 
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -744,7 +754,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   auto *result = F->createSave("result", SM);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
   Tensor labels(ElemKind::Int64ITy, {numTrainPlayers, 1});
@@ -753,7 +763,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   // Training:
   runBatch(EE_, 2000, sampleCounter, {A, S}, {&players, &labels});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
   testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
@@ -781,6 +791,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 
 TEST_P(MLTest, learnSinus) {
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -828,7 +839,7 @@ TEST_P(MLTest, learnSinus) {
   auto *result = F->createSave("return", R);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Learn on numSamples samples.
   runBatch(EE_, 2700, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
@@ -843,7 +854,7 @@ TEST_P(MLTest, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
   updateVariables({inputX}, {&tensorX});
   EE_.run();
   auto resH = result->getVariable()->getPayload().getHandle<>();
@@ -864,6 +875,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   // training.
   size_t sampleCounter = 0;
 
+  Context ctx;
   TrainingConfig TC;
   TC.learningRate = 0.01;
   TC.momentum = 0.9;
@@ -886,7 +898,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   auto *result = F->createSave("ret", SM);
 
   Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF);
+  EE_.compile(CompilationMode::Train, TF, ctx);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
   Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
@@ -902,7 +914,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 
   runBatch(EE_, 500, sampleCounter, {A, S}, {&samples, &labels});
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   std::vector<std::tuple<float, float, size_t>> tests;
   tests.emplace_back(-0.8, -0.8, 0);
@@ -951,6 +963,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   ExecutionEngine EE{BackendKind::Interpreter};
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -976,7 +989,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto *SM = F->createSoftMax("sm", FCL, ex);
   auto *result = F->createSave("ret", SM);
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
   Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
@@ -987,7 +1000,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
 
   // Profiling:
   Function *PF = glow::profileQuantization(F);
-  EE.compile(CompilationMode::Infer, PF);
+  EE.compile(CompilationMode::Infer, PF, ctx);
   runBatch(EE, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
@@ -998,7 +1011,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
-  EE.compile(CompilationMode::Infer, QP);
+  EE.compile(CompilationMode::Infer, QP, ctx);
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
@@ -1038,6 +1051,7 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels,
 /// network reports the coordinate of the pixel.
 TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   ExecutionEngine EE{BackendKind::Interpreter};
+  Context ctx;
 
   const unsigned numSamples = 1000;
   const unsigned batchSize = 10;
@@ -1068,7 +1082,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto *R = F->createRegression("regression", FC1, ex);
   auto *result = F->createSave("ret", R);
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   // --  STEP1 - train the network. --
   Tensor images(ElemKind::FloatTy, {numSamples, 10, 10, 1});
@@ -1082,7 +1096,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // Profiled 'F'.
   Function *PF = glow::profileQuantization(F);
-  EE.compile(CompilationMode::Infer, PF);
+  EE.compile(CompilationMode::Infer, PF, ctx);
 
   // Run the graph to capture the profile.
   runBatch(EE, 100, sampleCounter, {input}, {&images});
@@ -1098,7 +1112,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
 
-  EE.compile(CompilationMode::Infer, QP);
+  EE.compile(CompilationMode::Infer, QP, ctx);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
@@ -1210,6 +1224,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   TrainingConfig TC;
   TC.learningRate = 0.15;
   TC.batchSize = 17;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -1250,13 +1265,13 @@ TEST_P(MLTest, matrixRotationRecognition) {
   Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   generateMatrixRotationRecognitionData(matricesA, matricesB, expected, PRNG);
 
-  EE_.compile(CompilationMode::Train, trainingGradientFunction);
+  EE_.compile(CompilationMode::Train, trainingGradientFunction, ctx);
   // Training:
   runBatch(EE_, 200, sampleCounter, {varMatricesA, varMatricesB, varExpected},
            {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // At this point we should have overfitted the data.
   // Take a random batch and check that the values match what we expect.

@@ -51,7 +51,9 @@ void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,
   }
   auto *batchedadd = F->createBatchedAdd("batchedadd", OT, batchVar, sliceVar);
   auto result = F->createSave("ret", batchedadd, outVar);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({batchVar, sliceVar}, {batch, slice});
   EE.run();
 
@@ -66,7 +68,9 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *batchedreduce =
       F->createBatchedReduceAdd("batchedreduce", var, /* axis */ 0);
   auto result = F->createSave("ret", batchedreduce);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
 
@@ -82,7 +86,9 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
   auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
   auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
   auto result = F->createSave("ret", lookupTable);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {input});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -116,7 +122,9 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
   auto *conv =
       F->createConv("conv", inputVar, filterVar, biasVar, OT, 5, 3, 4, 1);
   auto result = F->createSave("ret", conv, outVar);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({inputVar, filterVar, biasVar}, {inputs, filter, bias});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -152,11 +160,13 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
+  Context ctx;
+
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -171,7 +181,9 @@ void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
   auto *indicesV = VarFrom(indices);
   auto *gather = F->createGather("gather", dataV, indicesV);
   auto *result = F->createSave("ret", gather);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({dataV, indicesV}, {data, indices});
   EE.run();
   dest->assign(&result->getVariable()->getPayload());
@@ -185,7 +197,9 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
   auto *var = VarFrom(inputs);
   auto *lrn = F->createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
   auto result = F->createSave("ret", lrn);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -220,11 +234,14 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
+  Context ctx;
+
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
   runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
   out->assign(&result->getVariable()->getPayload());
 }
@@ -252,7 +269,9 @@ void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind) {
   }
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
   auto result = F->createSave("ret", matmul, outVar);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({lhsVar, rhsVar}, {lhs, rhs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -267,7 +286,9 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var2 = VarFrom(inputs2);
   auto *max = F->createMax("max", var1, var2);
   auto result = F->createSave("ret", max);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2}, {inputs1, inputs2});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -282,7 +303,9 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var2 = VarFrom(inputs2);
   auto *min = F->createMin("min", var1, var2);
   auto result = F->createSave("ret", min);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2}, {inputs1, inputs2});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -295,7 +318,9 @@ void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *pool = F->createAvgPool("pool", var, 3, 3, 1);
   auto result = F->createSave("ret", pool);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -328,11 +353,13 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
+  Context ctx;
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   runBatch(EE, 10, sampleCounter, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -345,7 +372,9 @@ void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *pool = F->createMaxPool("pool", var, 4, 2, 3);
   auto result = F->createSave("ret", pool);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -378,11 +407,13 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto result = F->createSave("ret", softmax);
 
+  Context ctx;
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   runBatch(EE, 7, sampleCounter, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
   out->assign(&result->getVariable()->getPayload());
 }
@@ -401,7 +432,9 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   auto *rescale = F->createRescaleQuantized("rescale", quantize, QT2);
   auto *dequantize = F->createDequantize("dequantize", rescale);
   auto result = F->createSave("ret", dequantize);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -414,7 +447,9 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *relu = F->createRELU("relu", var);
   auto result = F->createSave("ret", relu);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -428,7 +463,9 @@ void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
   auto *var = VarFrom(inputs);
   auto *reshape = F->createReshape("reshape", var, shape);
   auto result = F->createSave("ret", reshape);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -444,7 +481,9 @@ void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var3 = VarFrom(inputs2);
   auto *select = F->createSelect("cond", var1, var2, var3);
   auto result = F->createSave("ret", select);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2, var3}, {cond, inputs1, inputs2});
   EE.run();
 
@@ -458,7 +497,9 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *sigmoid = F->createSigmoid("sigmoid", var);
   auto result = F->createSave("ret", sigmoid);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
 
@@ -475,7 +516,9 @@ void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(C->getFilter())->getHandle().clear(0.3);
   cast<Variable>(C->getBias())->getHandle().clear(0.4);
   auto *result = F->createSave("ret", C);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({in}, {inputs});
   EE.run();
 
@@ -509,7 +552,9 @@ void inferGroupConv(Tensor *out, BackendKind kind) {
       F->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
   SaveNode *result = F->createSave("save", CN);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   out->assign(&result->getVariable()->getPayload());
 }
@@ -540,7 +585,9 @@ void inferNonSquarePaddingConv(Tensor *out, BackendKind kind) {
                                       {1, 1}, {1, 1}, {0, 1, 2, 3}, 1);
   SaveNode *result = F->createSave("save", CN);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   out->assign(&result->getVariable()->getPayload());
 }
@@ -572,7 +619,9 @@ void inferNonSquareKernelConv(Tensor *out, BackendKind kind) {
                                       {2, 1}, {1, 1}, {0, 1, 2, 3}, 1);
   SaveNode *result = F->createSave("save", CN);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   out->assign(&result->getVariable()->getPayload());
 }
@@ -604,7 +653,9 @@ void inferNonSquareStrideConv(Tensor *out, BackendKind kind) {
                                       {2, 1}, {2, 1}, {0, 1, 2, 3}, 1);
   SaveNode *result = F->createSave("save", CN);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   out->assign(&result->getVariable()->getPayload());
 }
@@ -637,7 +688,9 @@ void inferConvDKKC8(Tensor *out, BackendKind kind) {
                                       {3, 3}, {1, 1}, {1, 1, 1, 1}, 1);
   SaveNode *result = F->createSave("save", CN);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   out->assign(&result->getVariable()->getPayload());
 }
@@ -651,7 +704,9 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
   auto *var2 = VarFrom(selected);
   auto *softmax = F->createSoftMax("softmax", var1, var2);
   auto result = F->createSave("ret", softmax);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -680,10 +735,12 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto result = F->createSave("ret", softmax);
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  Context ctx;
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   runBatch(EE, 30, sampleCounter, {var1, var2}, {inputs, selected});
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2}, {inputs, selected});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -696,7 +753,9 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *tanh = F->createTanh("tanh", var);
   auto result = F->createSave("ret", tanh);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -709,7 +768,9 @@ void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = VarFrom(inputs);
   auto *tr = F->createTranspose("tr", var, {1, 0});
   auto result = F->createSave("ret", tr);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -729,7 +790,9 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
   Node *C1 = F->createConcat("concat", {T1, T2}, 0);
   Node *C2 = F->createConcat("concat", {T2, T3, C1, T2}, 0);
   auto *result = F->createSave("ret", C2);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2, var3}, {input1, input2, input3});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -748,7 +811,9 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);
   auto result = F->createSave("ret", pool);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -767,7 +832,9 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
   cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
   auto result = F->createSave("ret", rl1);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -794,7 +861,9 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
   cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {inputs});
   EE.run();
   out->assign(&result->getVariable()->getPayload());
@@ -834,7 +903,9 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *pool2 = F->createAvgPool("pool2", relu2, 3, 2, 1);
   auto *sigmoid3 = F->createSigmoid("sigmoid3", pool2);
   auto result = F->createSave("ret", sigmoid3);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var1, var2, var3, var4},
                   {inputs1, inputs2, inputs3, inputs4});
   EE.run();
@@ -871,7 +942,8 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   initConv(conv2b, weights[4], weights[5]);
   initConv(conv2c, weights[6], weights[7]);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   updateVariables({in}, {input});
   EE.run();
@@ -902,7 +974,8 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
   auto *e = F->createSlice("slice", add3, {0, 55, 50}, {1, 150, 100});
   auto *result = F->createSave("ret", e);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   updateVariables({inputs}, {input});
   EE.run();
@@ -928,7 +1001,9 @@ void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
   auto *max2 = F->createMax("max2", splat2, max1);
 
   auto result = F->createSave("ret", max2);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({var}, {input});
   EE.run();
   out->assign(&result->getVariable()->getPayload());

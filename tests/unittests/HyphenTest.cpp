@@ -244,6 +244,9 @@ const vector<const char *> TrainingData{
 
 namespace {
 struct HyphenNetwork {
+  /// The execution context.
+  Context ctx_;
+
   /// The input variable is N x 6 x 27 as encoded by mapLetterWindow().
   Variable *input_;
 
@@ -283,7 +286,7 @@ struct HyphenNetwork {
                            TrainingConfig &TC) {
     // Compilation is destructive because of target-specific lowering.
     // Compile a clone of the inference function.
-    EE.compile(CompilationMode::Infer, infer_->clone(name));
+    EE.compile(CompilationMode::Infer, infer_->clone(name), ctx_);
 
     auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];
@@ -362,7 +365,7 @@ TEST(HyphenTest, network) {
   size_t sampleCounter = 0;
 
   // Train using mini-batch SGD.
-  EE.compile(CompilationMode::Train, net.train_);
+  EE.compile(CompilationMode::Train, net.train_, net.ctx_);
   runBatch(EE, 1000, sampleCounter, {net.input_, net.expected_},
            {&inputs, &expected});
 

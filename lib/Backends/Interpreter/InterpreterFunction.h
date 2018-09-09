@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Base/Context.h"
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -48,8 +49,7 @@ class InterpreterFunction final : public CompiledFunction {
   std::unordered_map<const Value *, Tensor *> externalTensors_;
 
 public:
-  InterpreterFunction(std::unique_ptr<IRFunction> F,
-                      const PlaceholderMap &placeholders);
+  InterpreterFunction(std::unique_ptr<IRFunction> F, const Context &ctx);
 
   /// \name CompiledFunction interface
   ///@{

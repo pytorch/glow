@@ -29,6 +29,7 @@ using namespace glow;
 
 TEST(GraphAutoGrad, autoGrad) {
   ExecutionEngine EE;
+  Context ctx;
 
   TrainingConfig TC;
 
@@ -63,13 +64,14 @@ TEST(GraphAutoGrad, autoGrad) {
   (void)result;
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
   ExecutionEngine EE;
   TrainingConfig TC;
+  Context ctx;
 
   // Construct the network:
   TC.learningRate = 0.001;
@@ -92,8 +94,8 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *result = F->createSave("return", SM);
   (void)result;
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(GraphAutoGrad, cloneAndDiff) {

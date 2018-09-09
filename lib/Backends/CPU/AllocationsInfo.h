@@ -16,8 +16,6 @@
 #ifndef GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 #define GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 
-#include "glow/Backends/CompiledFunction.h"
-
 #include "llvm/IR/Module.h"
 
 #include <functional>
@@ -27,6 +25,7 @@ class Value;
 class IRFunction;
 class WeightVar;
 class Variable;
+class Context;
 
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
@@ -60,8 +59,7 @@ struct AllocationsInfo {
   /// by the payloads of tensors corresponding to those WeightVars as offsets.
   /// This is useful in a JIT setup. If \p absoluteAddr is false, then all the
   /// WeightVars will get new offsets assigned.
-  void allocateWeightVars(const IRFunction *F,
-                          const PlaceholderMap &placeholders,
+  void allocateWeightVars(const IRFunction *F, const Context &ctx,
                           bool absoluteAddr);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be

@@ -200,6 +200,7 @@ int main(int argc, char **argv) {
   auto mb = loadFile(inputFilename);
   auto text = mb.get()->getBuffer();
   llvm::outs() << "Loaded " << text.size() << " chars.\n";
+  Context ctx;
 
   const size_t numSteps = 50;
   const size_t minibatchSize = 32;
@@ -234,7 +235,7 @@ int main(int argc, char **argv) {
   // Run this number of iterations over the input. On each iteration: train the
   // network on the whole input and then generate some sample text.
   for (unsigned i = 0; i < numEpochs; i++) {
-    EE.compile(CompilationMode::Train, TF);
+    EE.compile(CompilationMode::Train, TF, ctx);
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
@@ -243,7 +244,8 @@ int main(int argc, char **argv) {
     llvm::outs() << ".\n";
 
     //// Use the trained network to generate some text ////
-    EE.compile(CompilationMode::Infer, F);
+    Context ctx;
+    EE.compile(CompilationMode::Infer, F, ctx);
 
     // Load a few characters to start the text that we generate.
     Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});

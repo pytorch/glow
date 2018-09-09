@@ -39,7 +39,9 @@ static void executeSerial(const FunctionDAG &G, llvm::ArrayRef<Variable *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   for (auto *F : G.getFunctions()) {
     ExecutionEngine EE;
-    EE.compile(CompilationMode::Infer, F);
+    Context ctx;
+    EE.compile(CompilationMode::Infer, F, ctx);
+
     updateVariables(vars, inputs);
     EE.run();
   }
@@ -98,7 +100,9 @@ TEST_F(PartitionTest, SerialExecution) {
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
-  EE.compile(CompilationMode::Infer, F_);
+  Context ctx;
+
+  EE.compile(CompilationMode::Infer, F_, ctx);
   updateVariables({input}, {&in});
   EE.run();
   Tensor ref = res.clone();
@@ -141,7 +145,9 @@ TEST_F(PartitionTest, Branchover) {
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 8});
   ExecutionEngine EE;
-  EE.compile(CompilationMode::Infer, F_);
+  Context ctx;
+
+  EE.compile(CompilationMode::Infer, F_, ctx);
   updateVariables({input}, {&in});
   EE.run();
   Tensor ref = res.clone();

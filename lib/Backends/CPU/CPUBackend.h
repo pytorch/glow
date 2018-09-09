@@ -42,9 +42,8 @@ public:
   ///@{
   ~CPUBackend() override = default;
 
-  std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const override;
+  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
+                                            const Context &ctx) const override;
 
   void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
             llvm::StringRef networkName) const override;

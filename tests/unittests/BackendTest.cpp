@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/Context.h"
+#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
@@ -62,7 +62,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   F = ::glow::profileQuantization(F);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
@@ -102,6 +103,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
 TEST_P(BackendTest, simpleInference) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+  Context ctx;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -128,7 +130,7 @@ TEST_P(BackendTest, simpleInference) {
   auto *SM = F->createSoftMax("sm", RL3, ex);
   F->createSave("ret", SM);
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   updateVariables({input}, {&inputs});
   EE_.run();
@@ -146,7 +148,7 @@ TEST_P(BackendTest, debugPrint) {
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  PlaceholderMap empty;
+  Context empty;
   auto function = backend->compile(std::move(IR), empty);
   function->execute();
 }
@@ -156,13 +158,15 @@ TEST_P(BackendTest, debugPrint) {
 /// Later we execute the code and check that things work.
 TEST_P(BackendTest, decoupleCodegenFromGraph) {
   Module mod;
+  Context ctx;
+
   Function *F = mod.createFunction("main");
   auto *X = mod.createVariable(ElemKind::FloatTy, {3}, "X");
   X->getPayload().getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
   Variable *res = save->getVariable();
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Erase all of the functions to ensure that the compiled code does not
   // depend on the graph.
@@ -186,7 +190,9 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
   SaveNode *S = F->createSave("ret", input);
-  EE_.compile(CompilationMode::Infer, F, {input}, {&data});
+  Context ctx({input}, {&data});
+
+  EE_.compile(CompilationMode::Infer, F, ctx);
   EE_.run();
   auto &res = S->getVariable()->getPayload();
   EXPECT_TRUE(res.isEqual(data));

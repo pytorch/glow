@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
+#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNX.h"
@@ -66,7 +67,8 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
   auto result = graphOutputVar->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};

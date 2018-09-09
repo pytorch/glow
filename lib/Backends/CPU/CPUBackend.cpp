@@ -97,11 +97,11 @@ static void emitJitMain(LLVMIRGen &irgen) {
 /// Perform memory allocation for a JIT execution.
 static void *allocateJITMemory(const IRFunction *F,
                                AllocationsInfo &allocationsInfo,
-                               const PlaceholderMap &placeholders) {
+                               const Context &ctx) {
   allocationsInfo.numberValues(F);
   allocationsInfo.allocateActivations(F);
   // Tell the allocateWeightVars to use absolute addresses for weights.
-  allocationsInfo.allocateWeightVars(F, placeholders, true);
+  allocationsInfo.allocateWeightVars(F, ctx, true);
   allocationsInfo.allocateTensorViews(F);
 
   // Allocate the heap to match the max memory usage for activations.
@@ -124,16 +124,14 @@ CPUBackend::createIRGen(IRFunction *IR,
 }
 
 std::unique_ptr<CompiledFunction>
-CPUBackend::compile(std::unique_ptr<IRFunction> IR,
-                    const PlaceholderMap &placeholders) const {
+CPUBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
   irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
                            llvm::CodeModel::Model::Large);
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
-  auto heap =
-      allocateJITMemory(IR.get(), irgen->getAllocationsInfo(), placeholders);
+  auto heap = allocateJITMemory(IR.get(), irgen->getAllocationsInfo(), ctx);
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(*irgen);
   // Emit the code for the body of the entry function.

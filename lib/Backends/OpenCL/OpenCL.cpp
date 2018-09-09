@@ -99,7 +99,7 @@ static void addStringOption(std::vector<std::string> &options,
 }
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
-                               const PlaceholderMap &placeholders)
+                               const Context &ctx)
     : F_(std::move(F)) {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -137,7 +137,7 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
   // Create the program from the source.
   createProgram(SHADER_CODE, options, commands_);
-  allocateMemory(placeholders);
+  allocateMemory(ctx);
 }
 
 OpenCLFunction::~OpenCLFunction() {
@@ -1483,7 +1483,7 @@ uint64_t OpenCLFunction::copyMutableWeightsFromDevice() {
   return copiedBytes;
 }
 
-void OpenCLFunction::allocateMemory(const PlaceholderMap &placeholders) {
+void OpenCLFunction::allocateMemory(const Context &ctx) {
   // The allocator assigns device memory addresses to the buffers.
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
 
@@ -1495,7 +1495,7 @@ void OpenCLFunction::allocateMemory(const PlaceholderMap &placeholders) {
   }
 
   // Register the bound locations of the placeholders.
-  for (auto PH : placeholders) {
+  for (auto PH : ctx.pairs()) {
     auto *w = F_->getWeightForNode(PH.first);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = PH.second;
@@ -1581,7 +1581,6 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compile(std::unique_ptr<IRFunction> IR,
-                    const PlaceholderMap &placeholders) const {
-  return llvm::make_unique<OpenCLFunction>(std::move(IR), placeholders);
+OCLBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
+  return llvm::make_unique<OpenCLFunction>(std::move(IR), ctx);
 }

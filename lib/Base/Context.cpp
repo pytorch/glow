@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/Context.h"
+#include "glow/Base/Context.h"
 #include "glow/Base/Tensor.h"
 
 using namespace glow;
 
-Tensor *Context::get(Placeholder *P) {
+Tensor *Context::get(Placeholder *P) const {
   auto it = map_.find(P);
   if (it == map_.end()) {
     return nullptr;
@@ -34,7 +34,7 @@ void Context::insert(Placeholder *P, Tensor &&T) {
   map_[P] = new Tensor(std::move(T));
 }
 
-size_t Context::count(Placeholder *P) { return map_.count(P); }
+size_t Context::count(Placeholder *P) const { return map_.count(P); }
 
 void Context::clear() {
   // Delete all of the tensors that are owned by the context.
@@ -43,4 +43,17 @@ void Context::clear() {
   }
 
   map_.clear();
+}
+
+Context::Context(llvm::ArrayRef<Placeholder *> placeholders,
+                 llvm::ArrayRef<Tensor *> inputs) {
+  assert(placeholders.size() == inputs.size() &&
+         "Invalid number of placeholders");
+
+  for (size_t i = 0, e = placeholders.size(); i < e; i++) {
+    auto *orig = inputs[i];
+    /// Create a reference to the original tensor and hand it to the Context.
+    Tensor ptrT = orig->getUnowned(orig->dims());
+    insert(placeholders[i], std::move(ptrT));
+  }
 }

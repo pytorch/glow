@@ -34,9 +34,8 @@ public:
   ///@{
   ~Interpreter() override = default;
 
-  std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR,
-          const PlaceholderMap &placeholders) const override;
+  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
+                                            const Context &ctx) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 

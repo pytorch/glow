@@ -261,7 +261,8 @@ TEST(Graph, simpleQuant) {
   auto *fcBias = MD.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
   F->createSave("ret", O);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(Graph, quantizeDequantizeNodes) {
@@ -280,7 +281,8 @@ TEST(Graph, quantizeDequantizeNodes) {
 
   auto *D = F->createDequantize("dequantize", A);
   F->createSave("ret", D);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(Graph, quantizeGather) {
@@ -293,7 +295,8 @@ TEST(Graph, quantizeGather) {
                                      VisibilityKind::Public);
   auto *gather = F->createGather("gather", input, indices);
   F->createSave("ret", gather);
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(Graph, cloneTest) {
@@ -382,7 +385,9 @@ TEST(Graph, NodeValue) {
   a = F->createAdd("x8", a, a);
   auto S = F->createSave("Save", a);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
 
   EXPECT_EQ(
@@ -439,7 +444,9 @@ TEST(Graph, nodesWithPredicates) {
   auto *SM = F->createSoftMax("sm", RL3, ex);
   F->createSave("ret", SM);
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   updateVariables({input}, {&inputs});
   EE.run();
 }
@@ -513,7 +520,9 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   // Copy the value of A.
   Tensor AOrig = A->getPayload().clone();
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   auto *ret = saveNode->getVariable();
   auto handleAOrig = AOrig.getHandle<>();
@@ -557,7 +566,9 @@ TEST(Graph, schedulingOfSaves) {
   // Copy the value of A.
   Tensor AOrig = A->getPayload().clone();
 
-  EE.compile(CompilationMode::Infer, F);
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+
   EE.run();
   auto *ret = saveNode->getVariable();
   auto handleAOrig = AOrig.getHandle<>();
