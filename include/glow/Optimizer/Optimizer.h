@@ -31,7 +31,7 @@ enum class CompilationMode {
 };
 
 /// Perform optimizations on the IR representation.
-void optimize(IRFunction &M, CompilationMode mode, const Backend &B);
+void optimize(IRFunction &M, const Backend &B);
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationMode mode);
 

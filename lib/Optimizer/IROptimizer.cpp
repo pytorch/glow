@@ -1593,7 +1593,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 }
 
 /// Perform optimizations on the IR representation.
-void glow::optimize(IRFunction &M, CompilationMode mode, const Backend &B) {
+void glow::optimize(IRFunction &M, const Backend &B) {
   M.verify();
   if (!optimizeIR)
     return;
