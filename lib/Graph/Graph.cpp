@@ -2069,7 +2069,7 @@ Function *Function::clone(llvm::StringRef newName,
 
       auto it = currToNew.find(input.getNode());
       if (it == currToNew.end()) {
-        assert(isa<Variable>(input.getNode()) &&
+        assert(isa<Storage>(input.getNode()) &&
                "Could not find a mapping for some node!");
         continue;
       }

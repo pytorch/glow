@@ -157,3 +157,32 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   EXPECT_EQ(nbSGDA, 1);
   EXPECT_EQ(nbSGDB, 1);
 }
+
+/// Check that we can differentiate functions that update Placeholder graphs.
+TEST(GraphAutoGrad, checkPlaceholderGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  Context ctx;
+
+  // Construct the network:
+  TC.learningRate = 0.001;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", true);
+  auto *RL = F->createRELU("relu", A);
+  F->createSave("return", RL);
+
+  // Expect a single user to the trainable input placeholder.
+  EXPECT_EQ(A->getNumUsers(), 1);
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  // Check that the Placeholder has multiple users, because at least one write
+  /// node will be added.
+  EXPECT_GE(A->getNumUsers(), 1);
+}
