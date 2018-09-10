@@ -188,7 +188,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   Tensor data{99.0, 35.0, 2.0, 3.0};
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", false);
   SaveNode *S = F->createSave("ret", input);
   Context ctx({input}, {&data});
 
@@ -207,9 +207,9 @@ TEST(Context, basicContextTest) {
 
   // Create a simple graph, just to have a few placeholders.
   Function *F = mod.createFunction("main");
-  auto *input1 = mod.createPlaceholder(ty, "input1");
-  auto *input2 = mod.createPlaceholder(ty, "input2");
-  auto *input3 = mod.createPlaceholder(ty, "input3");
+  auto *input1 = mod.createPlaceholder(ty, "input1", false);
+  auto *input2 = mod.createPlaceholder(ty, "input2", false);
+  auto *input3 = mod.createPlaceholder(ty, "input3", false);
   auto *add = F->createAdd("add", input1, input2);
   F->createSave("ret", add);
 

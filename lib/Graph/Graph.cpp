@@ -332,15 +332,16 @@ static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
 //                       Node builders
 //===----------------------------------------------------------------------===//
 
-Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name) {
+Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
+                                       bool isTrainable) {
   auto FT = uniqueType(*T);
-  return addPlaceholder(new Placeholder(name, FT));
+  return addPlaceholder(new Placeholder(name, FT, isTrainable));
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                       llvm::StringRef name) {
+                                       llvm::StringRef name, bool isTrainable) {
   auto FT = uniqueType(T, dims);
-  return createPlaceholder(FT, name);
+  return createPlaceholder(FT, name, isTrainable);
 }
 
 Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
