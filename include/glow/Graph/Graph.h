@@ -127,9 +127,10 @@ public:
   ///@{
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 llvm::StringRef name);
+                                 llvm::StringRef name, bool isTrainable);
 
-  Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name);
+  Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name,
+                                 bool isTrainable);
 
   Variable *createVariable(TypeRef T, llvm::StringRef name,
                            VisibilityKind visibility = VisibilityKind::Private,

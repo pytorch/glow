@@ -31,8 +31,12 @@ namespace glow {
 // Storage is the base class for Variables, which are bound to tensors, and
 // Placeholder nodes which are unbound.
 class Storage : public Node {
+  /// Specifies if the variable or placeholder is trainable.
+  bool isTrainable_;
+
 public:
-  Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
+  Storage(Kinded::Kind k, llvm::StringRef name, bool isTrainable)
+      : Node(k, name), isTrainable_(isTrainable) {}
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
@@ -50,6 +54,10 @@ public:
   Node *clone() const;
   /// @}
 
+  /// \returns True if the Variable or placeholder are trainable during
+  /// differentiation.
+  bool isTraining() const { return isTrainable_; }
+
   /// \returns result type of the variable.
   TypeRef getType() const { return Node::getType(0); }
 
@@ -66,8 +74,6 @@ public:
 };
 
 class Variable : public Storage {
-  /// Specifies if the variable is trainable.
-  bool isTrainable_;
   /// Specifies the visibility of the variable.
   VisibilityKind visibility_;
   /// The tensor payload that the variable holds.
@@ -77,20 +83,17 @@ public:
   /// Create a new variable and initialize its payload.
   Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
            bool isTrainable)
-      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(isTrainable),
+      : Storage(Kinded::Kind::VariableKind, name, isTrainable),
         visibility_(visibility) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Storage(Kinded::Kind::VariableKind, name), isTrainable_(false),
+      : Storage(Kinded::Kind::VariableKind, name, false),
         visibility_(visibility), payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
-
-  /// \returns True if the Variable is initialized to be in training mode.
-  bool isTraining() const { return isTrainable_; }
 
   /// \returns True if the Variable is private.
   bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
@@ -123,8 +126,8 @@ public:
 class Placeholder : public Storage {
 public:
   /// Create a new placeholder variable.
-  Placeholder(llvm::StringRef name, TypeRef Ty)
-      : Storage(Kinded::Kind::PlaceholderKind, name) {
+  Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
+      : Storage(Kinded::Kind::PlaceholderKind, name, isTrainable) {
     addResult(Ty);
   }
 

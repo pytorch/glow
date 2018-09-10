@@ -903,8 +903,9 @@ TEST(Graph, placeholder) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select");
+  Node *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", false);
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", false);
 
   K = F->createFullyConnected("FC", K, 10);
   K = F->createRELU("Relu", K);

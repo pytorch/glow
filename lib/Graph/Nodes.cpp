@@ -100,7 +100,8 @@ std::string Placeholder::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("users", getNumUsers());
+      .addParam("users", getNumUsers())
+      .addParam("trainable", isTraining());
   return db;
 }
 
