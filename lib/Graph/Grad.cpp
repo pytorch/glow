@@ -83,7 +83,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *N = *it;
-    if (isa<Variable>(N)) {
+    if (isa<Storage>(N)) {
       continue;
     }
 
@@ -228,9 +228,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
   } // End of the for-each instr loop.
 
   for (auto N : nodes) {
-    // Iterate only through Variables used by the Function.
+    // Iterate only through Variables/Placeholders used by the Function.
     // These are inserted during the post-order walk.
-    Variable *V = llvm::dyn_cast<Variable>(N);
+    Storage *V = llvm::dyn_cast<Storage>(N);
     if (!V)
       continue;
 
@@ -241,7 +241,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
         std::string nodeName = "_grad_" + V->getName().str();
         // Save the gradient and return the destination variable.
         auto *saveNode = G->createSave(nodeName, map.getGradient(V));
-        auto *GradV = llvm::dyn_cast<Variable>(saveNode->getOutput().getNode());
+        auto *GradV = llvm::dyn_cast<Storage>(saveNode->getOutput().getNode());
         varGrads->push_back({V, GradV});
       }
       continue;

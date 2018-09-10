@@ -25,6 +25,7 @@
 #include "gtest/gtest.h"
 
 using namespace glow;
+using llvm::cast;
 
 class GradCheckBase : public ::testing::TestWithParam<BackendKind> {
 public:
@@ -57,7 +58,7 @@ float gradDiff(float G1, float G2) {
 Variable *getGrad(const VariableGradientsList &grads, Variable *V) {
   for (auto &p : grads) {
     if (p.first == V) {
-      return p.second;
+      return cast<Variable>(p.second);
     }
   }
   return nullptr;

@@ -106,7 +106,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
         const auto &input = N->getNthInput(idx);
         // Skip operands that do not require memory allocations for storing
         // their results.
-        if (isa<Variable>(input))
+        if (isa<Storage>(input))
           continue;
         assert(resultMemSize_.count(input) > 0);
         assert(maxMemSize_.count(input) > 0);
@@ -128,7 +128,7 @@ class ChildMemSizeBasedScheduler : public Scheduler {
     if (isScheduled(N))
       return;
     // Do not explicitly schedule variables.
-    if (isa<Variable>(N))
+    if (isa<Storage>(N))
       return;
     // A set of node's sorted children.
     llvm::SmallVector<Node *, 8> orderedChildren;
@@ -144,8 +144,8 @@ class ChildMemSizeBasedScheduler : public Scheduler {
     // We don't model memory dependencies, but we still need to honor them.
     // Make sure the SaveNode happens after the last use of the output variable.
     if (auto *save = dyn_cast<SaveNode>(N)) {
-      Variable *output = save->getVariable();
-      for (NodeUse &use : output->getUsers()) {
+      auto *destination = save->getOutput().getNode();
+      for (NodeUse &use : destination->getUsers()) {
         Node *user = use.getUser();
         if (user == save) {
           continue;
@@ -218,6 +218,9 @@ public:
 void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
   for (auto &N : G_->getParent()->getVars()) {
+    Schedule.push_back(N);
+  }
+  for (auto &N : G_->getParent()->getPlaceholders()) {
     Schedule.push_back(N);
   }
   ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
