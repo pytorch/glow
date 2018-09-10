@@ -7,7 +7,6 @@ target_link_libraries(image-classifier
                         Base
                         Importer
                         ExecutionEngine
-                        IR
                         Quantization)
 
 add_executable(text-translator
@@ -19,7 +18,6 @@ target_link_libraries(text-translator
                         Base
                         Importer
                         ExecutionEngine
-                        IR
                         Quantization)
 
 add_executable(model-runner
@@ -31,5 +29,4 @@ target_link_libraries(model-runner
                         Base
                         Importer
                         ExecutionEngine
-                        IR
                         Quantization)

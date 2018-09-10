@@ -8,6 +8,7 @@ target_link_libraries(OpenCL
                       Graph
                       CodeGen
                       IR
+                      Optimizer
                       QuantizationBase)
 
 target_link_libraries(OpenCL

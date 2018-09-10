@@ -18,25 +18,11 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-#include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/CommandLine.h"
 
 using namespace glow;
-
-namespace {
-static llvm::cl::opt<std::string>
-    dumpIRDAG("dump-ir-dag",
-              llvm::cl::desc("Specify the file to export the IR in DOT format"),
-              llvm::cl::value_desc("file.dot"));
-
-static llvm::cl::opt<bool> dumpIR("dump-ir",
-                                  llvm::cl::desc("Prints IR to stdout"));
-} // namespace
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind)
     : backend_(createBackend(backendKind)) {}
@@ -121,8 +107,7 @@ void glow::runBatch(ExecutionEngine &EE, size_t iterations,
   }
 }
 
-std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
-                                                        Function *F) {
+void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
   // Verify the function pre-optimization/lowering.
   F->verify();
 
@@ -148,35 +133,17 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
   }
-
-  /// Prepare the IR container to handle our function.
-  auto IR = llvm::make_unique<IRFunction>(F);
-
-  // Generate IR from the graph.
-  IR->generateIR();
-
-  // Optimize the generated IR.
-  ::glow::optimize(*IR, backend_->shouldShareBuffers());
-
-  // If requested, dump IR to stdout and/or dot file for debugging.
-  if (dumpIR) {
-    IR->dump();
-  }
-  if (!dumpIRDAG.empty()) {
-    IR->dumpDAG(dumpIRDAG.getValue());
-  }
-
-  return IR;
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
                               const Context &ctx) {
-  auto IR = generateIR(mode, F);
-  function_ = backend_->compile(std::move(IR), ctx);
+  optimizeFunction(mode, F);
+  function_ = backend_->compile(F, ctx);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
-  backend_->save(generateIR(mode, F), outputDir, networkName);
+  optimizeFunction(mode, F);
+  backend_->save(F, outputDir, networkName);
 }

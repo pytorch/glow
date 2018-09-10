@@ -25,6 +25,10 @@ class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
     void execute() override {}
   };
+  std::unique_ptr<CompiledFunction> compile(Function *F,
+                                            const Context &ctx) const override {
+    return llvm::make_unique<MockFunction>();
+  }
   std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
                                             const Context &ctx) const override {
     return llvm::make_unique<MockFunction>();

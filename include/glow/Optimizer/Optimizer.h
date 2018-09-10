@@ -45,6 +45,11 @@ void lower(Function *F, const Backend &B);
 /// \returns a new function with the added quantization nodes.
 Function *profileQuantization(Function *F, llvm::StringRef newFuncName = "");
 
+/// Helper to generate and optimize IR from given Function \p F. \p
+/// shouldShareBuffers signifies whether to use the share buffers optimization.
+std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F,
+                                                  bool shouldShareBuffers);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H

@@ -142,9 +142,16 @@ CPUBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
   return llvm::make_unique<CPUFunction>(std::move(JIT), heap);
 }
 
-void CPUBackend::save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
+std::unique_ptr<CompiledFunction>
+CPUBackend::compile(Function *F, const Context &ctx) const {
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  return compile(std::move(IR), ctx);
+}
+
+void CPUBackend::save(Function *F, llvm::StringRef outputDir,
                       llvm::StringRef networkName) const {
   std::string tgt = target.empty() ? "" : target.getValue();
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
   BundleSaver(IR.get()).save(tgt, outputDir, networkName);
 }
 
