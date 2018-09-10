@@ -13,6 +13,9 @@ QUANTIZE?=YES
 # Path to the images.
 IMAGES=${GLOW_SRC}/tests/images/imagenet
 
+# Input name of the model.
+MODEL_INPUT_NAME=data
+
 # Compiler.
 CXX=clang++
 
@@ -29,17 +32,17 @@ vgg19: build/main.o build/vgg19.o
 profile.yml: download_weights
 	# Capture quantization profile based on all inputs.
 	# Note, Interpreter backend is used to collect the profile data.
-	${LOADER} ${IMAGES}/*.png -image_mode=128to127 -dump_profile=profile.yml -m vgg19
+	${LOADER} ${IMAGES}/*.png -image_mode=128to127 -dump_profile=profile.yml -m vgg19 -model_input_name=${MODEL_INPUT_NAME}
 
 ifeq ($(QUANTIZE),YES)
 build/vgg19.o: profile.yml
 	mkdir -p build
 	# Create bundle with quantized weights and computation graph.
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=128to127 -load_profile=profile.yml -m vgg19 -cpu -emit-bundle build -g
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=128to127 -load_profile=profile.yml -m vgg19 -model_input_name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
 else
 build/vgg19.o: download_weights
 	mkdir -p build
-	${LOADER} ${IMAGES}/dog_207.png -image_mode=128to127 -m vgg19 -cpu -emit-bundle build -g
+	${LOADER} ${IMAGES}/dog_207.png -image_mode=128to127 -m vgg19 -model_input_name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
 endif
 
 build/main.o: vgg19.cpp
