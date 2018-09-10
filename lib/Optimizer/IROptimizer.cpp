@@ -1593,7 +1593,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 }
 
 /// Perform optimizations on the IR representation.
-void glow::optimize(IRFunction &M, const Backend &B) {
+void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
   if (!optimizeIR)
     return;
@@ -1607,7 +1607,7 @@ void glow::optimize(IRFunction &M, const Backend &B) {
   optimizeExtracts(M);
 
   // Reuse buffers from previous operations.
-  if (B.shouldShareBuffers())
+  if (shouldShareBuffers)
     shareBuffers(M);
 
   performPeepholeOptimizations(M);

@@ -156,7 +156,7 @@ std::unique_ptr<IRFunction> ExecutionEngine::generateIR(CompilationMode mode,
   IR->generateIR();
 
   // Optimize the generated IR.
-  ::glow::optimize(*IR, *backend_);
+  ::glow::optimize(*IR, backend_->shouldShareBuffers());
 
   // If requested, dump IR to stdout and/or dot file for debugging.
   if (dumpIR) {
