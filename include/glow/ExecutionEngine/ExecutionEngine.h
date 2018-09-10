@@ -31,10 +31,10 @@
 
 namespace glow {
 
-/// This is the ExecutionEngine. It owns the Graph, the IR, and the backends.
-/// The Graph, IR, etc in this class are defined as pointers, in order to
-/// erase the type and prevent the internal types from leaking out to the
-/// users of this class.
+/// This is the ExecutionEngine. It owns the Graph, the backend, and the
+/// compiled function.  The Graph, etc in this class are defined as pointers, in
+/// order to erase the type and prevent the internal types from leaking out to
+/// the users of this class.
 class ExecutionEngine final {
   /// The Module that represents the high-level program.
   Module M_;
@@ -43,8 +43,8 @@ class ExecutionEngine final {
   /// A glow function compiled for this ExecutionEngine's backend.
   std::unique_ptr<CompiledFunction> function_;
 
-  /// Optimize the graph, generate IR, and optimize the IR.
-  std::unique_ptr<IRFunction> generateIR(CompilationMode mode, Function *F);
+  /// Optimize the Function \p F given compilation mode \p mode.
+  void optimizeFunction(CompilationMode mode, Function *F);
 
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
@@ -66,10 +66,10 @@ public:
     return backend_->isOpSupported(opKind, elementTy);
   }
 
-  /// Optimize the graph, generate IR, optimize IR and compile it for a
-  /// specific target. This method should be invoked before the run method.
-  /// The context \p ctx contains the mapping between symbolic values to
-  /// concrete backing tensors.
+  /// Optimize the graph and pass it to the backend to compile it for a specific
+  /// target. This method should be invoked before the run method. The context
+  /// \p ctx contains the mapping between symbolic values to concrete backing
+  /// tensors.
   void compile(CompilationMode mode, Function *F, const Context &ctx);
 
   /// Save a bundle for a standalone execution. This method takes care of

@@ -33,18 +33,23 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace {
 static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),
                     llvm::cl::init(false), llvm::cl::Hidden);
-static llvm::cl::opt<bool> dumpOptMod(
-    "dump-opt-mod",
-    llvm::cl::desc(
-        "Print the module to stdout after all optimizations are applied."),
-    llvm::cl::init(false), llvm::cl::Hidden);
 static llvm::cl::opt<bool> optimizeIR("optimize-ir",
                                       llvm::cl::desc("Enable IR optimizations"),
                                       llvm::cl::init(true), llvm::cl::Hidden);
+
+static llvm::cl::opt<std::string>
+    dumpIRDAG("dump-ir-dag",
+              llvm::cl::desc("Specify the file to export the IR in DOT format"),
+              llvm::cl::value_desc("file.dot"));
+
+static llvm::cl::opt<bool> dumpIR("dump-ir",
+                                  llvm::cl::desc("Prints IR to stdout"));
+} // namespace
 
 using namespace glow;
 
@@ -1592,6 +1597,14 @@ void performPeepholeOptimizations(IRFunction &M) {
   }
 }
 
+std::unique_ptr<IRFunction>
+glow::generateAndOptimizeIR(Function *F, bool shouldShareBuffers) {
+  auto IR = llvm::make_unique<IRFunction>(F);
+  IR->generateIR();
+  ::glow::optimize(*IR, shouldShareBuffers);
+  return IR;
+}
+
 /// Perform optimizations on the IR representation.
 void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
@@ -1627,9 +1640,13 @@ void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   // Perform a debug instrumentation if required.
   performDebugInstrumentation(M);
 
-  // Print the module to stdout if requested.
-  if (dumpOptMod)
-    M.dump();
-
   M.verify();
+
+  // If requested, dump IR to stdout and/or dot file for debugging.
+  if (dumpIR) {
+    M.dump();
+  }
+  if (!dumpIRDAG.empty()) {
+    M.dumpDAG(dumpIRDAG.getValue());
+  }
 }

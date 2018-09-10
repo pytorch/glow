@@ -226,7 +226,7 @@ target_link_libraries(caffe2ImporterTest
                         ExecutionEngine
                         gtest
                         testMain)
-add_glow_test(NAME caffe2ImporterTest 
+add_glow_test(NAME caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImporterTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -254,4 +254,3 @@ LIST(APPEND UNOPT_TESTS
 
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-

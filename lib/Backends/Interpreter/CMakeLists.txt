@@ -7,4 +7,5 @@ target_link_libraries(Interpreter
                         Base
                         Graph
                         IR
+                        Optimizer
                         QuantizationBase)

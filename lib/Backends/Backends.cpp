@@ -17,7 +17,6 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
-#include "glow/IR/Instrs.h"
 
 #include "llvm/Support/Casting.h"
 

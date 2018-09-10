@@ -40,17 +40,22 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Generate code for input function \param IR. \p ctx is the context that
+  /// Generate code for input IR function \param IR. \p ctx is the context that
   /// maps the graph to the concrete execution environment for a specific
   /// function.
   virtual std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const = 0;
 
-  /// Save the bundle for \p IR for a later standalone execution
+  /// Generate code for input function \param F. \p ctx is the context that maps
+  /// the graph to the concrete execution environment for a specific function.
+  virtual std::unique_ptr<CompiledFunction>
+  compile(Function *F, const Context &ctx) const = 0;
+
+  /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for
   /// the entry point of the network and prepend all generated
   /// files with this name.
-  virtual void save(std::unique_ptr<IRFunction> IR, llvm::StringRef outputDir,
+  virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef networkName) const {
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }

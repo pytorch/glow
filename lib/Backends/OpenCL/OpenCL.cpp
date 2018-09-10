@@ -1584,3 +1584,9 @@ std::unique_ptr<CompiledFunction>
 OCLBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
   return llvm::make_unique<OpenCLFunction>(std::move(IR), ctx);
 }
+
+std::unique_ptr<CompiledFunction>
+OCLBackend::compile(Function *F, const Context &ctx) const {
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  return compile(std::move(IR), ctx);
+}
