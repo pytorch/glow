@@ -326,7 +326,8 @@ static uint8_t *allocateMutableWeightVars(const BundleConfig &config) {
 /// finding the index of the max element.
 static void dumpInferenceResults(const BundleConfig &config,
                                  uint8_t *mutableWeightVars) {
-  const SymbolTableEntry &outputWeights = getMutableWeightVar(config, "output");
+  const SymbolTableEntry &outputWeights =
+      getMutableWeightVar(config, "save_prob");
   int maxIdx = 0;
   float maxValue = 0;
   float *results = (float *)(mutableWeightVars + outputWeights.offset);
