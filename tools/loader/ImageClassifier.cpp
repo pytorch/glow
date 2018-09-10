@@ -41,6 +41,11 @@ enum class ImageLayout {
   NHWC,
 };
 
+enum class ImageChannelOrder {
+  BGR,
+  RGB,
+};
+
 ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
   return llvm::StringSwitch<ImageNormalizationMode>(str)
       .Case("neg1to1", ImageNormalizationMode::kneg1to1)
@@ -73,7 +78,7 @@ llvm::cl::OptionCategory imageLoaderCat("Image Loader Options");
 llvm::cl::list<std::string> inputImageFilenames(llvm::cl::Positional,
                                                 llvm::cl::desc("<input files>"),
                                                 llvm::cl::OneOrMore);
-llvm::cl::opt<ImageNormalizationMode> imageMode(
+llvm::cl::opt<ImageNormalizationMode> imageNormMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
     llvm::cl::cat(imageLoaderCat),
     llvm::cl::values(clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
@@ -85,10 +90,16 @@ llvm::cl::opt<ImageNormalizationMode> imageMode(
                      clEnumValN(ImageNormalizationMode::kneg128to127,
                                 "neg128to127",
                                 "Values are in the range: -128 .. 127")));
-llvm::cl::alias imageModeA("i", llvm::cl::desc("Alias for -image_mode"),
-                           llvm::cl::aliasopt(imageMode),
-                           llvm::cl::cat(imageLoaderCat));
+llvm::cl::alias imageNormModeA("i", llvm::cl::desc("Alias for -image_mode"),
+                               llvm::cl::aliasopt(imageNormMode),
+                               llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<ImageChannelOrder> imageChannelOrder(
+    "image_channel_order", llvm::cl::desc("Specify the image channel order"),
+    llvm::cl::Optional, llvm::cl::cat(imageLoaderCat),
+    llvm::cl::values(clEnumValN(ImageChannelOrder::BGR, "BGR", "Use BGR"),
+                     clEnumValN(ImageChannelOrder::RGB, "RGB", "Use RGB")),
+    llvm::cl::init(ImageChannelOrder::BGR));
 llvm::cl::opt<ImageLayout>
     imageLayout("image_layout",
                 llvm::cl::desc("Specify which image layout to use"),
@@ -109,9 +120,11 @@ llvm::cl::opt<std::string> modelInputName(
     llvm::cl::cat(imageLoaderCat));
 } // namespace
 
-/// Loads and normalizes all PNGs into a tensor in the NCHW 3x224x224 format.
+/// Loads and normalizes all PNGs into a tensor in the NHWC format with the
+/// requested channel ordering.
 void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
-                             Tensor *result, ImageNormalizationMode normMode) {
+                             Tensor *result, ImageNormalizationMode normMode,
+                             ImageChannelOrder channelOrder) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
   auto range = normModeToRange(normMode);
@@ -127,10 +140,12 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
   result->reset(ElemKind::FloatTy,
                 {numImages, numChannels, imgHeight, imgWidth});
   auto RH = result->getHandle<>();
+
   // We iterate over all the png files, reading them all into our result tensor
   // for processing
   for (unsigned n = 0; n < filenames.size(); n++) {
     Tensor localCopy;
+    // PNG images are loaded as NHWC & RGB
     bool loadSuccess = !readPngImage(&localCopy, filenames[n].c_str(), range);
     GLOW_ASSERT(loadSuccess && "Error reading input image.");
     auto imageH = localCopy.getHandle<>();
@@ -140,12 +155,19 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
            "All images must have the same Height and Width");
     assert(dims[2] == numChannels &&
            "All images must have the same number of channels");
+    assert((channelOrder == ImageChannelOrder::BGR ||
+            channelOrder == ImageChannelOrder::RGB) &&
+           "Invalid image format");
 
-    // Convert to BGR, as this is what imagenet models are expecting.
+    // Convert to NCHW with the requested channel ordering.
     for (unsigned z = 0; z < numChannels; z++) {
       for (unsigned y = 0; y < dims[1]; y++) {
         for (unsigned x = 0; x < dims[0]; x++) {
-          RH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
+          if (channelOrder == ImageChannelOrder::BGR) {
+            RH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
+          } else { // RGB
+            RH.at({n, z, x, y}) = (imageH.at({x, y, z}));
+          }
         }
       }
     }
@@ -159,7 +181,8 @@ int main(int argc, char **argv) {
 
   // Load and process the image data into the data Tensor.
   Tensor data;
-  loadImagesAndPreprocess(inputImageFilenames, &data, imageMode);
+  loadImagesAndPreprocess(inputImageFilenames, &data, imageNormMode,
+                          imageChannelOrder);
 
   // For ONNX graphs with input in NHWC layout, we transpose the data.
   switch (imageLayout) {
