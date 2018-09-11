@@ -42,11 +42,6 @@ static llvm::cl::opt<bool> optimizeIR("optimize-ir",
                                       llvm::cl::desc("Enable IR optimizations"),
                                       llvm::cl::init(true), llvm::cl::Hidden);
 
-static llvm::cl::opt<std::string>
-    dumpIRDAG("dump-ir-dag",
-              llvm::cl::desc("Specify the file to export the IR in DOT format"),
-              llvm::cl::value_desc("file.dot"));
-
 static llvm::cl::opt<bool> dumpIR("dump-ir",
                                   llvm::cl::desc("Prints IR to stdout"));
 } // namespace
@@ -1642,11 +1637,8 @@ void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
 
   M.verify();
 
-  // If requested, dump IR to stdout and/or dot file for debugging.
+  // If requested, dump IR to stdout for debugging.
   if (dumpIR) {
     M.dump();
-  }
-  if (!dumpIRDAG.empty()) {
-    M.dumpDAG(dumpIRDAG.getValue());
   }
 }
