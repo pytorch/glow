@@ -32,7 +32,7 @@ namespace glow {
 llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                            llvm::ArrayRef<llvm::Value *> args);
 
-class CPUBackend : public Backend {
+class CPUBackend : public BackendUsingGlowIR {
 public:
   /// Ctor.
   CPUBackend() = default;
@@ -42,8 +42,8 @@ public:
   ///@{
   ~CPUBackend() override = default;
 
-  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
-                                            const Context &ctx) const override;
+  std::unique_ptr<CompiledFunction>
+  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override;
 
   std::unique_ptr<CompiledFunction> compile(Function *F,
                                             const Context &ctx) const override;

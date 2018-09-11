@@ -136,6 +136,9 @@ TEST_P(BackendTest, simpleInference) {
   EE_.run();
 }
 
+/// Test that the DebugPrint instruction works correctly for the backend. Note
+/// that the backend being tested must inherit from BackendUsingGlowIR and
+/// implement the compileIR() function for this test to work.
 TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
@@ -147,9 +150,10 @@ TEST_P(BackendTest, debugPrint) {
   IR->generateIR();
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
-  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  std::unique_ptr<BackendUsingGlowIR> backend(
+      static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
   Context empty;
-  auto function = backend->compile(std::move(IR), empty);
+  auto function = backend->compileIR(std::move(IR), empty);
   function->execute();
 }
 
