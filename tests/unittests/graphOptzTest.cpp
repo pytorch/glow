@@ -217,14 +217,22 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
 }
 
 TEST_F(GraphOptz, transposePrivateVariable) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Private, false);
+  Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                    VisibilityKind::Private, false);
+  A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  Tensor transposedA;
+  A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  F_->createSave("ret", T);
+  SaveNode *save = F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
   ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 1);
+  ASSERT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(&*F_->getNodes().begin(), save);
+  Variable *optimizedA = llvm::dyn_cast<Variable>(save->getInput().getNode());
+  ASSERT_NE(optimizedA, nullptr);
+  // Check that A has been properly transposed.
+  EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
