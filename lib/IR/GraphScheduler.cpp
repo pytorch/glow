@@ -14,206 +14,163 @@
  * limitations under the License.
  */
 #define DEBUG_TYPE "graph-scheduler"
-#include "glow/Graph/Graph.h"
-#include "glow/Graph/Nodes.h"
-#include "glow/Graph/Utils.h"
-#include "glow/IR/IR.h"
-#include "glow/Support/Debug.h"
+
+#include "glow/IR/GraphScheduler.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <unordered_map>
-#include <unordered_set>
-
 using namespace glow;
-
-//===----------------------------------------------------------------------===//
-//                               Graph scheduler
-//===----------------------------------------------------------------------===//
-
-namespace glow {
 
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-class Scheduler {
-protected:
-  /// Graph being processed.
-  Function &G_;
-  /// Scheduled nodes.
-  NodesPtrList &scheduled_;
+/// \returns true if a node \p N is scheduled already.
+bool ChildMemSizeBasedScheduler::isScheduled(const Node *N) const {
+  return std::find(scheduled_.begin(), scheduled_.end(), N) != scheduled_.end();
+}
 
-public:
-  Scheduler(Function &G, NodesPtrList &scheduled)
-      : G_(G), scheduled_(scheduled) {}
+/// Computes the amount of memory required to keep the result
+/// of each node.
+void ChildMemSizeBasedScheduler::computeNodeResultsMemorySize() {
+  for (auto &N : G_.getNodes()) {
+    size_t resultSize = 0;
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      resultSize += N.getType(idx)->getSizeInBytes();
+    }
+    resultMemSize_[&N] = resultSize;
+    DEBUG_GLOW(llvm::outs()
+               << "ResultSize of " << N.getName() << ":" << resultSize << "\n");
+  }
+}
 
-  virtual ~Scheduler() = default;
+/// Computes the max amount of memory required during the computation
+/// of children for each node.
+void ChildMemSizeBasedScheduler::computeNodeComputationMaxMemorySize() {
+  // Traverse nodes in such a way, that dependnecies are processed
+  // before the node using them.
+  GraphPostOrderVisitor visitor(G_);
+  for (auto *N : visitor.getPostOrder()) {
+    size_t maxSize = (N->getNumInputs() > 0)
+                         ? std::max(resultMemSize_[N->getNthInput(0)],
+                                    maxMemSize_[N->getNthInput(0)])
+                         : 0;
+    for (size_t idx = 1, e = N->getNumInputs(); idx < e; ++idx) {
+      const auto &input = N->getNthInput(idx);
+      // Skip operands that do not require memory allocations for storing
+      // their results.
+      if (isa<Variable>(input))
+        continue;
+      assert(resultMemSize_.count(input) > 0);
+      assert(maxMemSize_.count(input) > 0);
+      maxSize += resultMemSize_[input];
+      if (maxSize < maxMemSize_[input])
+        maxSize = maxMemSize_[input];
+    }
+    maxMemSize_[N] = maxSize;
+    DEBUG_GLOW(llvm::outs()
+               << "MaxSize of " << N->getName() << ":" << maxSize << "\n");
+  }
+}
 
-  // Create a linear execution schedule for a graph.
-  virtual void schedule() = 0;
-
-  NodesPtrList &getSchedule() { return scheduled_; }
-};
-
-/// This is a scheduler based on the generalized the paper "Generalizations of
-/// the Sethi-Ullman algorithm for register allocation" by Andrew W. Appel and
-/// Kenneth J. Supowit.
-/// http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.54.319&rep=rep1&type=pdf
-///
-/// The idea is to give more priority and schedule earlier those child nodes
-/// that free more memory after their computation.
-class ChildMemSizeBasedScheduler : public Scheduler {
-  /// Required number of bytes to hold the results of a given node.
-  std::unordered_map<const Node *, size_t> resultMemSize_;
-  /// Max number of bytes required during the computation of a given node.
-  std::unordered_map<const Node *, size_t> maxMemSize_;
-
-  /// \returns true if a node \p N is scheduled already.
-  bool isScheduled(const Node *N) const {
-    return std::find(scheduled_.begin(), scheduled_.end(), N) !=
-           scheduled_.end();
+/// Order children by (maxSize - resultSize). It gives more
+/// priority to the nodes that free more memory after
+/// their computation.
+void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
+  // Each child should be scheduled just once.
+  if (isScheduled(N))
+    return;
+  // Do not explicitly schedule variables.
+  if (isa<Variable>(N))
+    return;
+  // A set of node's sorted children.
+  llvm::SmallVector<Node *, 8> orderedChildren;
+  for (int idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
+    orderedChildren.push_back(N->getNthInput(idx));
   }
 
-  /// Computes the amount of memory required to keep the result
-  /// of each node.
-  void computeNodeResultsMemorySize() {
-    for (auto &N : G_.getNodes()) {
-      size_t resultSize = 0;
-      for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
-        resultSize += N.getType(idx)->getSizeInBytes();
+  if (N->hasPredicate()) {
+    orderedChildren.push_back(N->getPredicate());
+  }
+
+  // SaveNode hack:
+  // We don't model memory dependencies, but we still need to honor them.
+  // Make sure the SaveNode happens after the last use of the output variable.
+  if (auto *save = dyn_cast<SaveNode>(N)) {
+    Variable *output = save->getVariable();
+    for (NodeUse &use : output->getUsers()) {
+      Node *user = use.getUser();
+      if (user == save) {
+        continue;
       }
-      resultMemSize_[&N] = resultSize;
-      DEBUG_GLOW(llvm::outs() << "ResultSize of " << N.getName() << ":"
-                              << resultSize << "\n");
-    }
-  }
-
-  /// Computes the max amount of memory required during the computation
-  /// of children for each node.
-  void computeNodeComputationMaxMemorySize() {
-    // Traverse nodes in such a way, that dependnecies are processed
-    // before the node using them.
-    GraphPostOrderVisitor visitor(G_);
-    for (auto *N : visitor.getPostOrder()) {
-      size_t maxSize = (N->getNumInputs() > 0)
-                           ? std::max(resultMemSize_[N->getNthInput(0)],
-                                      maxMemSize_[N->getNthInput(0)])
-                           : 0;
-      for (size_t idx = 1, e = N->getNumInputs(); idx < e; ++idx) {
-        const auto &input = N->getNthInput(idx);
-        // Skip operands that do not require memory allocations for storing
-        // their results.
-        if (isa<Variable>(input))
-          continue;
-        assert(resultMemSize_.count(input) > 0);
-        assert(maxMemSize_.count(input) > 0);
-        maxSize += resultMemSize_[input];
-        if (maxSize < maxMemSize_[input])
-          maxSize = maxMemSize_[input];
+      // Variables may have users scattered across different functions.
+      // Only accounts for the ones in that function.
+      if (&G_ != user->getParent()) {
+        continue;
       }
-      maxMemSize_[N] = maxSize;
-      DEBUG_GLOW(llvm::outs()
-                 << "MaxSize of " << N->getName() << ":" << maxSize << "\n");
+      assert(!isa<SaveNode>(user) &&
+             "Variables must be saved at most once in each function");
+      orderedChildren.push_back(user);
     }
   }
 
-  /// Order children by (maxSize - resultSize). It gives more
-  /// priority to the nodes that free more memory after
-  /// their computation.
-  void orderChildNodesAndSchedule(Node *N) {
-    // Each child should be scheduled just once.
-    if (isScheduled(N))
-      return;
-    // Do not explicitly schedule variables.
-    if (isa<Variable>(N))
-      return;
-    // A set of node's sorted children.
-    llvm::SmallVector<Node *, 8> orderedChildren;
-    for (int idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
-      orderedChildren.push_back(N->getNthInput(idx));
-    }
+  // Order children by (maxSize - resultSize). It gives more
+  // priority to the nodes that free more memory after
+  // their computation.
+  for (size_t j = 0, e = orderedChildren.size(); j < e; ++j) {
+    for (size_t i = j; i > 0; --i) {
+      auto &currentChild = orderedChildren[i];
+      auto &prevChild = orderedChildren[i - 1];
 
-    if (N->hasPredicate()) {
-      orderedChildren.push_back(N->getPredicate());
-    }
+      size_t memFreedByCurrentChild =
+          maxMemSize_[currentChild] > resultMemSize_[currentChild]
+              ? maxMemSize_[currentChild] - resultMemSize_[currentChild]
+              : 0;
+      size_t memFreedByPrevChild =
+          maxMemSize_[prevChild] > resultMemSize_[prevChild]
+              ? maxMemSize_[prevChild] - resultMemSize_[prevChild]
+              : 0;
 
-    // SaveNode hack:
-    // We don't model memory dependencies, but we still need to honor them.
-    // Make sure the SaveNode happens after the last use of the output variable.
-    if (auto *save = dyn_cast<SaveNode>(N)) {
-      Variable *output = save->getVariable();
-      for (NodeUse &use : output->getUsers()) {
-        Node *user = use.getUser();
-        if (user == save) {
-          continue;
-        }
-        // Variables may have users scattered across different functions.
-        // Only accounts for the ones in that function.
-        if (&G_ != user->getParent()) {
-          continue;
-        }
-        assert(!isa<SaveNode>(user) &&
-               "Variables must be saved at most once in each function");
-        orderedChildren.push_back(user);
+      if (memFreedByCurrentChild > memFreedByPrevChild) {
+        std::swap(currentChild, prevChild);
       }
     }
-
-    // Order children by (maxSize - resultSize). It gives more
-    // priority to the nodes that free more memory after
-    // their computation.
-    for (size_t j = 0, e = orderedChildren.size(); j < e; ++j) {
-      for (size_t i = j; i > 0; --i) {
-        auto &currentChild = orderedChildren[i];
-        auto &prevChild = orderedChildren[i - 1];
-        if (maxMemSize_[currentChild] - resultMemSize_[currentChild] >
-            maxMemSize_[prevChild] - resultMemSize_[prevChild]) {
-          std::swap(currentChild, prevChild);
-        }
-      }
-    }
-
-    DEBUG_GLOW(llvm::outs() << "\nAbout to schedule children of "
-                            << N->getName() << "\n";
-               llvm::outs() << "Children are:\n");
-    DEBUG_GLOW(for (auto child
-                    : orderedChildren) {
-      llvm::outs() << "Child " << child->getName() << ": "
-                   << maxMemSize_[child] - resultMemSize_[child] << "\n";
-    });
-
-    // Process the children according to the computed ordering.
-    for (auto child : orderedChildren) {
-      orderChildNodesAndSchedule(child);
-    }
-
-    // Schedule the node after all its children are scheduled.
-    DEBUG_GLOW(llvm::outs() << "Scheduled node: " << N->getName() << "\n");
-    scheduled_.push_back(N);
   }
 
-  void scheduleNodes() {
-    /// Try to schedule all root nodes.
-    for (auto &N : G_.getNodes()) {
-      if (N.getNumUsers() == 0)
-        orderChildNodesAndSchedule(&N);
-    }
+  DEBUG_GLOW(llvm::outs() << "\nAbout to schedule children of " << N->getName()
+                          << "\n";
+             llvm::outs() << "Children are:\n");
+  DEBUG_GLOW(for (auto child
+                  : orderedChildren) {
+    llvm::outs() << "Child " << child->getName() << ": "
+                 << maxMemSize_[child] - resultMemSize_[child] << "\n";
+  });
+
+  // Process the children according to the computed ordering.
+  for (auto child : orderedChildren) {
+    orderChildNodesAndSchedule(child);
   }
 
-public:
-  ChildMemSizeBasedScheduler(Function &G, NodesPtrList &Schedule)
-      : Scheduler(G, Schedule) {}
+  // Schedule the node after all its children are scheduled.
+  DEBUG_GLOW(llvm::outs() << "Scheduled node: " << N->getName() << "\n");
+  scheduled_.push_back(N);
+}
 
-  ~ChildMemSizeBasedScheduler() override = default;
-
-  void schedule() override {
-    computeNodeResultsMemorySize();
-    computeNodeComputationMaxMemorySize();
-    scheduleNodes();
+void ChildMemSizeBasedScheduler::scheduleNodes() {
+  /// Try to schedule all root nodes.
+  for (auto &N : G_.getNodes()) {
+    if (N.getNumUsers() == 0)
+      orderChildNodesAndSchedule(&N);
   }
-};
+}
+
+void ChildMemSizeBasedScheduler::schedule() {
+  computeNodeResultsMemorySize();
+  computeNodeComputationMaxMemorySize();
+  scheduleNodes();
+}
 
 void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
@@ -230,5 +187,3 @@ void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
              G_->getNodes().size() + numPlaceholders + numVars &&
          "All graph nodes have to be scheduled");
 }
-
-} // namespace glow
