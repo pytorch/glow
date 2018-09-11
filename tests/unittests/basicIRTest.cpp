@@ -54,13 +54,40 @@ TEST(IR, uniqueTypes) {
   }
 
   // Check the uniqueing of quantized tensors.
-  Type T4(ElemKind::Int8QTy, {1, 2}, 0.4, 2);
+  Type T4(ElemKind::Int8QTy, {1, 2}, 0.4f, 2);
   auto *t4 = mod.uniqueType(T4);
   auto *u4 = mod.uniqueTypeWithNewShape(&T4, {2, 1});
   auto *q4 = mod.uniqueTypeWithNewShape(u4, {1, 2});
 
   EXPECT_NE(t4, u4);
   EXPECT_EQ(t4, q4);
+}
+
+#define TEST_QUANT_TYPE(kind, type, type_name, scale, offset)                  \
+  {                                                                            \
+    Type T(ElemKind::kind, {2, 3}, (scale), (offset));                         \
+    EXPECT_EQ(T.getElementType(), ElemKind::kind);                             \
+    EXPECT_EQ(T.getScale(), (scale));                                          \
+    EXPECT_EQ(T.getOffset(), (offset));                                        \
+    EXPECT_TRUE(T.isQuantizedType());                                          \
+    EXPECT_EQ(T.getElementSize(), sizeof(type));                               \
+    EXPECT_TRUE(T.isType<type>());                                             \
+    auto range = T.getQuantizedValueRange();                                   \
+    EXPECT_EQ(range.first, ((int64_t)type_name##_MIN - (offset)) * (scale));   \
+    EXPECT_EQ(range.second, ((int64_t)type_name##_MAX - (offset)) * (scale));  \
+  }
+
+TEST(IR, basicQuantizedTypes) {
+  // Quantized types
+  TEST_QUANT_TYPE(Int8QTy, int8_t, INT8, 0.3f, -45);
+  TEST_QUANT_TYPE(Int16QTy, int16_t, INT16, 0.3f, -45);
+  TEST_QUANT_TYPE(Int32QTy, int32_t, INT32, 0.3f, -45);
+
+  // Sanity check for non quantized types
+  Type TF(ElemKind::FloatTy, {2, 3});
+  EXPECT_FALSE(TF.isQuantizedType());
+  Type T64I(ElemKind::Int64ITy, {2, 3});
+  EXPECT_FALSE(T64I.isQuantizedType());
 }
 
 TEST(IR, basicUseList) {
