@@ -113,6 +113,13 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 1);
+  Node *newCV = A->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *save = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
 /// Check that the batch normalization optimization is
