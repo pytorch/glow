@@ -49,6 +49,10 @@ public:
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
 
+  /// Allocates a tensor to back the placeholder \p P. The new tensor has the
+  /// type of P.
+  Tensor *allocate(Placeholder *P);
+
   /// \returns True if \p P is a registered Placeholder.
   size_t count(Placeholder *P) const;
 

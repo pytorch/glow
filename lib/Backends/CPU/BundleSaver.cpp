@@ -19,7 +19,7 @@
 
 #include "CPUBackend.h"
 
-#include "glow/Base/Context.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"

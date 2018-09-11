@@ -1,5 +1,4 @@
 add_library(Base
-              Context.cpp
               Tensor.cpp
               Type.cpp
               Image.cpp)
