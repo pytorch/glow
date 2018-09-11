@@ -36,6 +36,42 @@ public:
 class InterpreterAndCPU : public TestRunnerBase {};
 class MLTest : public TestRunnerBase {};
 
+/// Use placeholders (and not variables) to learn the square root of two.
+TEST_P(MLTest, learnSqrt2Placeholder) {
+  TrainingConfig TC;
+  Context ctx;
+
+  TC.learningRate = 0.03;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("Square root of 2");
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1}, "A", true);
+  auto *inputTensor = ctx.allocate(A);
+  inputTensor->init(Tensor::InitKind::Broadcast, 1, mod.getPRNG());
+
+  auto *E = mod.createPlaceholder(ElemKind::FloatTy, {1}, "Ex", false);
+  ctx.allocate(E)->getHandle() = {2};
+
+  auto *O = mod.createPlaceholder(ElemKind::FloatTy, {1}, "output", false);
+  ctx.allocate(O);
+
+  Node *M = F->createMul("Mult", A, A);
+  M = F->createRegression("reg", M, E);
+  F->createSave("ret", M);
+
+  Function *TF = glow::differentiate(F, TC);
+  EE_.compile(CompilationMode::Train, TF, ctx);
+
+  // Train the network:
+  for (int i = 0; i < 100; i++) {
+    EE_.run();
+  }
+
+  float res = inputTensor->getHandle().at({0});
+  EXPECT_NEAR(res, 1.4142, 0.01);
+}
+
 TEST_P(MLTest, trainASimpleNetwork) {
   TrainingConfig TC;
   Context ctx;
