@@ -6,8 +6,8 @@
 Glow is a machine learning compiler and execution engine for various hardware
 targets.  It is designed to be used as a backend for high-level machine learning
 frameworks.  The compiler is designed to allow state of the art compiler
-optimizations and code generation of neural network graphs. This library is
-experimental and in active development.
+optimizations and code generation of neural network graphs. This library is in
+active development.
 
 ## How does it work?
 
@@ -34,11 +34,18 @@ The design philosophy is described in an [arXiv paper](https://arxiv.org/abs/180
 Glow builds and runs on macOS and Linux. The software depends on a modern C++
 compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
 
+#### Get Glow!
+
+  ```bash
+  git clone git@github.com:pytorch/glow.git  # or: git clone https://github.com/pytorch/glow.git
+  cd glow
+  ```
+
 #### Submodules
 
-Glow depends on googletest as a submodule.  To get it, run:
+Glow depends on googletest as a submodule. To get it, from the glow directory, run:
 
-  ```
+  ```bash
   git submodule update --init --recursive
   ```
 
@@ -46,7 +53,7 @@ Glow depends on googletest as a submodule.  To get it, run:
 
 Install the required dependencies using [Homebrew](https://brew.sh/):
 
-  ```
+  ```bash
   brew install cmake graphviz libpng ninja protobuf wget
   brew install --with-toolchain llvm
   ```
@@ -59,7 +66,7 @@ avoid conflicts with the system's LLVM.
 On Ubuntu you would need to install a few dependencies. The following command
 should install the required dependencies.
 
-  ```
+  ```bash
   sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 \
       libprotobuf-dev protobuf-compiler
   ```
@@ -79,7 +86,7 @@ directory. It's a good idea to build two configurations (Release and Debug)
 because some programs take a really long time to run in Debug mode. It's also a
 good idea to build the project outside of the source directory.
 
-  ```
+  ```bash
   mkdir build_Debug
   cd build_Debug
   cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug ../glow
@@ -96,7 +103,7 @@ By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
 example, if you installed it using Homebrew on macOS), you need to tell CMake
 where to find llvm using `-DCMAKE_PREFIX_PATH`.  For example:
 
-  ```
+  ```bash
   cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
       -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm
@@ -129,14 +136,14 @@ respectively.
 To run these programs, build Glow in Release mode, then run the following commands
 to download the cifar10, mnist and ptb databases.
 
-  ```
+  ```bash
   python ../glow/utils/download_test_db.py --all
   ```
 
 Now run the examples. Note that the databases should be in the current working
 directory.
 
-  ```
+  ```bash
   ./bin/mnist
   ./bin/cifar10
   ./bin/fr2en
