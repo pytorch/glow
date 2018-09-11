@@ -54,7 +54,8 @@ struct AllocationsInfo {
   uint8_t *baseActivationsAddress_{nullptr};
 
   /// Assign offsets to all of the variables in the module \p M and to the
-  /// placeholders \p placeholders.
+  /// placeholders. \p ctx is the context that maps the graph to the concrete
+  /// execution environment for a specific function.
   /// If the \p absoluteAddr is true, simply reuse the addresses already used
   /// by the payloads of tensors corresponding to those WeightVars as offsets.
   /// This is useful in a JIT setup. If \p absoluteAddr is false, then all the
