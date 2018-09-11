@@ -115,7 +115,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
                               cast<SaveNode>(N)->getInput().getType(), 0);
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
-      map.addGradient(cast<SaveNode>(N)->getVariable(), X);
+      map.addGradient(cast<SaveNode>(N)->getOutput(), X);
       continue;
     }
 
@@ -238,11 +238,12 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     // without performing the SGD update. This mode is used by the unit tests.
     if (varGrads) {
       if (map.hasGradient(V)) {
-        std::string nodeName = "_grad_" + V->getName().str();
+        // std::string nodeName = "_grad_" + V->getName().str();
         // Save the gradient and return the destination variable.
-        auto *saveNode = G->createSave(nodeName, map.getGradient(V));
-        auto *GradV = llvm::dyn_cast<Storage>(saveNode->getOutput().getNode());
-        varGrads->push_back({V, GradV});
+        // Node *saveNode = nullptr; //G->createSave(nodeName,
+        // map.getGradient(V));  auto *GradV =
+        // llvm::dyn_cast<Storage>(saveNode->getOutput().getNode());
+        // varGrads->push_back({V, GradV});
       }
       continue;
     }

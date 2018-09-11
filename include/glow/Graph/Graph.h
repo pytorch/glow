@@ -30,6 +30,8 @@
 
 namespace glow {
 
+class Context;
+
 /// List of Types.
 using TypesList = std::list<Type>;
 /// Intrusive list of Nodes.
@@ -211,8 +213,9 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, llvm::ArrayRef<unsigned_t> kernels,
+  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
+                              NodeValue input, size_t depth,
+                              llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group);
@@ -224,8 +227,8 @@ public:
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group);
 
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, unsigned_t kernel,
+  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
+                              NodeValue input, size_t depth, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
                               unsigned_t group);
 
@@ -264,7 +267,7 @@ public:
 
   /// Create a fully connected node with the given \p name, \p input and \p
   /// output depth. Trainable weight and bias variables are created implicitly.
-  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+  FullyConnectedNode *createFullyConnected(Context &ctx, llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
   /// Create a ReLU node with the given \p name and \p input.
@@ -476,7 +479,7 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
-  SaveNode *createSave(llvm::StringRef name, NodeValue input);
+  SaveNode *createSave(Context &ctx, llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
 
   /// Create quantization profile node named \p name for the output tensor from
