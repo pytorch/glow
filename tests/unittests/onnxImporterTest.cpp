@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
-#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNX.h"
 #include "gtest/gtest.h"

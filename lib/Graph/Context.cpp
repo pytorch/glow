@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-#include "glow/Base/Context.h"
+#include "glow/Graph/Context.h"
 #include "glow/Base/Tensor.h"
+#include "glow/Graph/Nodes.h"
 
 using namespace glow;
 
@@ -43,6 +44,13 @@ void Context::clear() {
   }
 
   map_.clear();
+}
+
+Tensor *Context::allocate(Placeholder *P) {
+  assert(!map_.count(P) && "Placeholder already registered");
+  Tensor *T = new Tensor(P->getType());
+  map_[P] = T;
+  return T;
 }
 
 Context::Context(llvm::ArrayRef<Placeholder *> placeholders,

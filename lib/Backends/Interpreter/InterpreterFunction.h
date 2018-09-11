@@ -17,8 +17,8 @@
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 
 #include "glow/Backends/CompiledFunction.h"
-#include "glow/Base/Context.h"
 #include "glow/Base/Tensor.h"
+#include "glow/Graph/Context.h"
 
 #include "llvm/ADT/ArrayRef.h"
 

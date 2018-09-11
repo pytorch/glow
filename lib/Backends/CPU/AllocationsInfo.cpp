@@ -16,8 +16,8 @@
 #define DEBUG_TYPE "jit-allocations"
 
 #include "AllocationsInfo.h"
-#include "glow/Base/Context.h"
 #include "glow/CodeGen/MemoryAllocator.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"

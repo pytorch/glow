@@ -16,8 +16,8 @@
 
 #include "BackendTestUtils.h"
 
-#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"

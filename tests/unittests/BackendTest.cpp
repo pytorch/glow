@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "glow/Base/Context.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
 
@@ -204,7 +204,6 @@ TEST(Context, basicContextTest) {
   TypeRef ty = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
 
   Tensor T1(ty);
-  Tensor T2(ty);
 
   // Create a simple graph, just to have a few placeholders.
   Function *F = mod.createFunction("main");
@@ -218,7 +217,7 @@ TEST(Context, basicContextTest) {
   Context C;
 
   C.insert(input1, std::move(T1));
-  C.insert(input2, std::move(T2));
+  Tensor *I2 = C.allocate(input2);
 
   // Check that the right placeholders are found.
   EXPECT_TRUE(C.count(input1));
@@ -232,6 +231,10 @@ TEST(Context, basicContextTest) {
   EXPECT_NE(V1, nullptr);
   EXPECT_NE(V2, nullptr);
   EXPECT_EQ(V3, nullptr);
+
+  // The tensor that we got while allocating T2 is the same one that we got
+  // while searching the context.
+  EXPECT_EQ(I2, V2);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,

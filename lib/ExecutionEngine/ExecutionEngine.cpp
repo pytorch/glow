@@ -16,7 +16,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Backends/Backend.h"
-#include "glow/Base/Context.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
