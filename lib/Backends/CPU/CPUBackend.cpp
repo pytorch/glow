@@ -124,7 +124,8 @@ CPUBackend::createIRGen(IRFunction *IR,
 }
 
 std::unique_ptr<CompiledFunction>
-CPUBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
+CPUBackend::compileIR(std::unique_ptr<IRFunction> IR,
+                      const Context &ctx) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
   irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
@@ -145,7 +146,7 @@ CPUBackend::compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const {
 std::unique_ptr<CompiledFunction>
 CPUBackend::compile(Function *F, const Context &ctx) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
-  return compile(std::move(IR), ctx);
+  return compileIR(std::move(IR), ctx);
 }
 
 void CPUBackend::save(Function *F, llvm::StringRef outputDir,

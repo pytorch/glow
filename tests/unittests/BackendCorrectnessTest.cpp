@@ -233,19 +233,22 @@ TEST_P(CPUOnly, localResponseNormalizationGradTest) {
 
 /// This is a mock backend wrapping the CPU backend. It is used only for unit
 /// testing.
-class MockCPUBackend : public Backend {
+class MockCPUBackend : public BackendUsingGlowIR {
   // The actual backend being wrapped.
-  std::unique_ptr<Backend> backend_;
+  std::unique_ptr<BackendUsingGlowIR> backend_;
 
 public:
-  MockCPUBackend() { backend_.reset(createBackend(BackendKind::CPU)); }
+  MockCPUBackend() {
+    backend_.reset(
+        static_cast<BackendUsingGlowIR *>(createBackend(BackendKind::CPU)));
+  }
   std::unique_ptr<CompiledFunction> compile(Function *F,
                                             const Context &ctx) const override {
     return backend_->compile(F, ctx);
   }
-  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
-                                            const Context &ctx) const override {
-    return backend_->compile(std::move(IR), ctx);
+  std::unique_ptr<CompiledFunction>
+  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override {
+    return backend_->compileIR(std::move(IR), ctx);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
@@ -310,7 +313,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   MockCPUBackend backend;
   Context empty;
-  backend.compile(std::move(M), empty)->execute();
+  backend.compileIR(std::move(M), empty)->execute();
   auto H = var->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

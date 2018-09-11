@@ -626,10 +626,6 @@ public:
                                             const Context &ctx) const override {
     return backend_->compile(F, ctx);
   }
-  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
-                                            const Context &ctx) const override {
-    return backend_->compile(std::move(IR), ctx);
-  }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||
         opKind == Kinded::Kind::LocalResponseNormalizationNodeKind) {

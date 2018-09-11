@@ -24,7 +24,7 @@ namespace glow {
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
-class Interpreter final : public Backend {
+class Interpreter final : public BackendUsingGlowIR {
 public:
   /// Ctor.
   Interpreter() = default;
@@ -34,8 +34,8 @@ public:
   ///@{
   ~Interpreter() override = default;
 
-  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
-                                            const Context &ctx) const override;
+  std::unique_ptr<CompiledFunction>
+  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override;
 
   std::unique_ptr<CompiledFunction> compile(Function *F,
                                             const Context &ctx) const override;

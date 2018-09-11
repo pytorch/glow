@@ -161,7 +161,7 @@ private:
 };
 
 /// This is the OpenCL backend.
-class OCLBackend final : public Backend {
+class OCLBackend final : public BackendUsingGlowIR {
 public:
   /// Ctor.
   OCLBackend() = default;
@@ -171,8 +171,8 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  std::unique_ptr<CompiledFunction> compile(std::unique_ptr<IRFunction> IR,
-                                            const Context &ctx) const override;
+  std::unique_ptr<CompiledFunction>
+  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override;
 
   std::unique_ptr<CompiledFunction> compile(Function *F,
                                             const Context &ctx) const override;

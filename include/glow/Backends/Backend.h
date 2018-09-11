@@ -40,12 +40,6 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Generate code for input IR function \param IR. \p ctx is the context that
-  /// maps the graph to the concrete execution environment for a specific
-  /// function.
-  virtual std::unique_ptr<CompiledFunction>
-  compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const = 0;
-
   /// Generate code for input function \param F. \p ctx is the context that maps
   /// the graph to the concrete execution environment for a specific function.
   virtual std::unique_ptr<CompiledFunction>
@@ -90,6 +84,17 @@ public:
 
 /// Create a backend of kind \p kind.
 Backend *createBackend(BackendKind backendKind);
+
+// Backends that use Glow low-level IR should inherit from this class. It allows
+// for unit tests to create low-level IR to compile and run.
+class BackendUsingGlowIR : public Backend {
+public:
+  /// Generate code for input IR function \param IR. \p ctx is the context that
+  /// maps the graph to the concrete execution environment for a specific
+  /// function. This is used only for unit testing.
+  virtual std::unique_ptr<CompiledFunction>
+  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const = 0;
+};
 
 } // namespace glow
 
