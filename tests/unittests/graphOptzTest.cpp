@@ -54,6 +54,32 @@ TEST_F(GraphOptz, DCE) {
   EXPECT_EQ(mod_.getVars().size(), 0);
 }
 
+/// Check that predicated instructions are DCE'ed like
+/// regular instructions.
+TEST_F(GraphOptz, DCEwithPredicate) {
+  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *predicatedBatch =
+      mod_.createVariable(ElemKind::FloatTy, {4}, "predicate");
+  for (int i = 0; i < 40; i++) {
+    K = F_->createRELU("relu", K);
+    K->setPredicate(predicatedBatch);
+    // Add a graph structure that diverges and converges, to catch algorithms
+    // that perform a dump recursive scan.
+    K = F_->createAdd("arith", K, K);
+    K->setPredicate(predicatedBatch);
+  }
+
+  // Check that we know how many nodes we've created.
+  EXPECT_EQ(F_->getNodes().size(), 80);
+
+  // Optimize all of the dead code.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  //  All of the nodes are gone.
+  EXPECT_EQ(F_->getNodes().size(), 0);
+  EXPECT_EQ(mod_.getVars().size(), 0);
+}
+
 TEST_F(GraphOptz, liveCodeNotEliminated) {
   Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
   auto *Ex = mod_.createVariable(ElemKind::Int64ITy, {4, 1}, "Ex");
