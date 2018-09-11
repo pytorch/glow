@@ -42,7 +42,7 @@ bool ChildMemSizeBasedScheduler::isScheduled(const Node *N) const {
 /// of each node.
 void ChildMemSizeBasedScheduler::computeNodeResultsMemorySize() {
   for (auto &N : G_.getNodes()) {
-    size_t resultSize = 0;
+    int64_t resultSize = 0;
     for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
       resultSize += N.getType(idx)->getSizeInBytes();
     }
@@ -59,10 +59,10 @@ void ChildMemSizeBasedScheduler::computeNodeComputationMaxMemorySize() {
   // before the node using them.
   GraphPostOrderVisitor visitor(G_);
   for (auto *N : visitor.getPostOrder()) {
-    size_t maxSize = (N->getNumInputs() > 0)
-                         ? std::max(resultMemSize_[N->getNthInput(0)],
-                                    maxMemSize_[N->getNthInput(0)])
-                         : 0;
+    int64_t maxSize = (N->getNumInputs() > 0)
+                          ? std::max(resultMemSize_[N->getNthInput(0)],
+                                     maxMemSize_[N->getNthInput(0)])
+                          : 0;
     for (size_t idx = 1, e = N->getNumInputs(); idx < e; ++idx) {
       const auto &input = N->getNthInput(idx);
       // Skip operands that do not require memory allocations for storing
