@@ -317,78 +317,106 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
-  Node *O = F_->createSave("ret", BN);
+  SaveNode *O = F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(BN->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than BN->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(
-      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<BatchNormalizationNode>(transpose->getInput()));
+  auto *bn = llvm::cast<BatchNormalizationNode>(transpose->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(bn->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(bn->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
-  Node *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(K->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than RELU->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(
-      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<ReluNode>(transpose->getInput()));
+  auto *relu = llvm::cast<ReluNode>(transpose->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(relu->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(relu->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
-  Node *O = F_->createSave("ret", SI);
+  SaveNode *O = F_->createSave("ret", SI);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(SI->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Sigmoid->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(
-      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<SigmoidNode>(transpose->getInput()));
+  auto *si = llvm::cast<SigmoidNode>(transpose->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(si->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(si->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowTanh) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
-  Node *O = F_->createSave("ret", TN);
+  SaveNode *O = F_->createSave("ret", TN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(TN->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  // Expecting Transpose->Output rather than Sigmoid->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(
-      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
+  // Expecting Transpose->Output rather than Tanh->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<TanhNode>(transpose->getInput()));
+  auto *tn = llvm::cast<TanhNode>(transpose->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(tn->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(tn->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
