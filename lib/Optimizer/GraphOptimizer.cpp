@@ -851,15 +851,8 @@ static void optimizeBatchNorm(Function *F) {
       // Q = W * A
       // C = b * A + B
 
-      // FIXME: We need to use a temporary node to hold on
-      // the variables, because using the result directly
-      // will create a temporary NodeValue that is going
-      // to be otherwise alive at the call site and that
-      // messes up with the number of users.
-      Node *tmp = CV->getFilter().getNode();
-      Variable *filterV = getUniquelyUsedVariable(*tmp);
-      tmp = CV->getBias().getNode();
-      Variable *cbiasV = getUniquelyUsedVariable(*tmp);
+      Variable *filterV = getUniquelyUsedVariable(*CV->getFilter().getNode());
+      Variable *cbiasV = getUniquelyUsedVariable(*CV->getBias().getNode());
 
       if (!filterV || !cbiasV) {
         continue;
