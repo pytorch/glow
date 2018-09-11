@@ -235,6 +235,38 @@ TEST_F(GraphOptz, transposePrivateVariable) {
   EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
 }
 
+/// Check that the removing of transposes still happens when
+/// predicates are involved.
+TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
+  Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                    VisibilityKind::Private, false);
+  Variable *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                       VisibilityKind::Private, false);
+  A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  Tensor transposedA;
+  A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
+  // Arguably, if the transpose doesn't happen because the predicate is false
+  // the value of A should be unchanged. However, the semantic of our
+  // predicate is that they can be ignored and the program would still
+  // be correct, thus this optimization is still legal.
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
+  T->setPredicate(pred);
+  SaveNode *save = F_->createSave("ret", T);
+  save->setPredicate(pred);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  ASSERT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(&*F_->getNodes().begin(), save);
+  // We should have kept the predicate on the save node.
+  ASSERT_EQ(pred->getNumUsers(), 1);
+  EXPECT_EQ(pred->getUsers().begin()->getUser(), save);
+  Variable *optimizedA = llvm::dyn_cast<Variable>(save->getInput().getNode());
+  ASSERT_NE(optimizedA, nullptr);
+  // Check that A has been properly transposed.
+  EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
+}
+
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                 VisibilityKind::Public, false);
