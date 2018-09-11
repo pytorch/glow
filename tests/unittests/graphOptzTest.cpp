@@ -278,6 +278,16 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
   ::glow::optimize(F_, CompilationMode::Train);
   EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ASSERT_EQ(A->getNumUsers(), 1);
+  Node *curCV = A->getUsers().begin()->getUser();
+  EXPECT_EQ(curCV, CV);
+  ASSERT_EQ(curCV->getNumUsers(), 1);
+  Node *curBN = curCV->getUsers().begin()->getUser();
+  EXPECT_EQ(curBN, BN);
+  ASSERT_EQ(curBN->getNumUsers(), 1);
+  Node *save = curBN->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
@@ -286,13 +296,24 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F_->createSave("ret", BN);
-  F_->createSave("ret", CV);
+  SaveNode *convSave = F_->createSave("ret", CV);
+  SaveNode *ret = F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
+  // Make sure the structure of the graph did not change, since the convolution
+  // node is used more than once.
   EXPECT_EQ(F_->getNodes().size(), 4);
+  ASSERT_TRUE(llvm::isa<ConvolutionNode>(convSave->getInput()));
+  ConvolutionNode *conv = llvm::dyn_cast<ConvolutionNode>(convSave->getInput());
+  EXPECT_EQ(conv, CV);
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
+  BatchNormalizationNode *batchNorm =
+      llvm::dyn_cast<BatchNormalizationNode>(ret->getInput());
+  EXPECT_EQ(batchNorm, BN);
+  EXPECT_EQ(batchNorm->getInput().getNode(), CV);
+  EXPECT_EQ(conv->getInput().getNode(), A);
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
