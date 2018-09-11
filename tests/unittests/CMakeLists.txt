@@ -124,6 +124,16 @@ target_link_libraries(graphOptzTest
                         testMain)
 add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
+add_executable(graphSchedulerTest
+	       graphSchedulerTest.cpp)
+target_link_libraries(graphSchedulerTest
+                      PRIVATE
+                        Graph
+                        IR
+                        gtest
+                        testMain)
+add_glow_test(graphSchedulerTest ${GLOW_BINARY_DIR}/tests/graphSchedulerTest)
+
 add_executable(quantizationTest
                quantizationTest.cpp)
 target_link_libraries(quantizationTest
