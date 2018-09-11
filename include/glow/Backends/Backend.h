@@ -40,9 +40,9 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// Generate code for input function \param IR. \p placeholders is a list of
-  /// Placeholders that are mapped to the concrete input tensor for the
-  /// specific function.
+  /// Generate code for input function \param IR. \p ctx is the context that
+  /// maps the graph to the concrete execution environment for a specific
+  /// function.
   virtual std::unique_ptr<CompiledFunction>
   compile(std::unique_ptr<IRFunction> IR, const Context &ctx) const = 0;
 
