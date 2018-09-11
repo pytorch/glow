@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Support/Support.h"
 
@@ -420,8 +421,8 @@ Placeholder *Module::addPlaceholder(Placeholder *ph) {
   return ph;
 }
 
-ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth,
+ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
+                                      NodeValue input, size_t depth,
                                       llvm::ArrayRef<unsigned_t> kernels,
                                       llvm::ArrayRef<unsigned_t> strides,
                                       llvm::ArrayRef<unsigned_t> pads,
@@ -448,15 +449,14 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   std::array<size_t, 4> filterDim = {
       {depth, kdim.height, kdim.width, idim.c / group}};
   size_t fanIn = kdim.height * kdim.width * idim.c;
-  auto *filter = getParent()->createVariable(
-      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private, true);
+  auto *filter = getParent()->createPlaceholder(ElemKind::FloatTy, filterDim,
+                                                "filter", true);
+  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
-  filter->getPayload().init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+  auto *bias =
+      getParent()->createPlaceholder(ElemKind::FloatTy, {depth}, "bias", true);
 
-  auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
-                                           VisibilityKind::Private, true);
-
-  bias->getPayload().init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
   auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
@@ -515,14 +515,14 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                     group);
 }
 
-ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      size_t depth, unsigned_t kernel,
-                                      unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group) {
+ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
+                                      NodeValue input, size_t depth,
+                                      unsigned_t kernel, unsigned_t stride,
+                                      unsigned_t pad, unsigned_t group) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createConv(name, input, depth, kernels, strides, pads, group);
+  return createConv(ctx, name, input, depth, kernels, strides, pads, group);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
@@ -605,7 +605,8 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
-FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
+FullyConnectedNode *Function::createFullyConnected(Context &ctx,
+                                                   llvm::StringRef name,
                                                    NodeValue input,
                                                    size_t outDepth) {
   TypeRef T = input.getType();
@@ -613,15 +614,12 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
   size_t fanIn = idim.second;
 
-  auto *W =
-      getParent()->createVariable(T->getElementType(), {idim.second, outDepth},
-                                  "weights", VisibilityKind::Private, true);
-
-  auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
-                                        VisibilityKind::Private, true);
-
-  W->getPayload().init(Tensor::InitKind::Xavier, fanIn, getPRNG());
-  B->getPayload().init(Tensor::InitKind::Broadcast, .1, getPRNG());
+  auto *W = getParent()->createPlaceholder(
+      T->getElementType(), {idim.second, outDepth}, "weights", true);
+  auto *B = getParent()->createPlaceholder(T->getElementType(), {outDepth},
+                                           "bias", true);
+  ctx.allocate(W)->init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, .1, getPRNG());
 
   auto OT =
       getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
@@ -1307,10 +1305,10 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                                   indices, lengths));
 }
 
-SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = getParent()->createVariable(input.getType(), name,
-                                           VisibilityKind::Public, false);
-
+SaveNode *Function::createSave(Context &ctx, llvm::StringRef name,
+                               NodeValue input) {
+  auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
+  ctx.allocate(dest);
   return addNode(new SaveNode(name, input, dest));
 }
 
