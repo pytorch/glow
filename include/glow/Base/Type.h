@@ -205,18 +205,18 @@ struct Type final {
   /// Specifies the element type of the tensor.
   ElemKind elementType_{ElemKind::Int64ITy};
 
-  /// Initialize a new integer type with \p scale and \p offset.
+  /// Initialize a new quantized type with \p scale and \p offset.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
        int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
-    assert(isQuantizedType() && "Only Integer types have a scale and offset");
+    assert(isQuantizedType() && "Only quantized types have a scale and offset");
     initDims(dims);
   }
 
-  /// Initialize a new float type.
+  /// Initialize a new non-quantized type.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
     assert(!isQuantizedType() &&
-           "Can't initialize Integer types without scale and offset");
+           "Can't initialize quantized types without scale and offset");
     initDims(dims);
   }
 
@@ -235,13 +235,15 @@ struct Type final {
   /// \returns true if \p other is the same type.
   bool isEqual(TypeRef other) const { return isEqual(*other); }
 
+  /// \returns the scale of a quantized type.
   float getScale() const {
-    assert(isQuantizedType() && "Can't get the scale of a float type");
+    assert(isQuantizedType() && "Can't get the scale of a non-quantized type");
     return scale_;
   }
 
+  /// \returns the offset of a quantized type.
   int32_t getOffset() const {
-    assert(isQuantizedType() && "Can't get the offset of a float type");
+    assert(isQuantizedType() && "Can't get the offset of a non-quantized type");
     return offset_;
   }
 
@@ -249,7 +251,7 @@ struct Type final {
   /// first, max second).
   std::pair<float, float> getQuantizedValueRange() const {
     assert(isQuantizedType() &&
-           "Can't get the quantized value range of a float type");
+           "Can't get the quantized value range of a non-quantized type");
 
     int64_t low = 0, high = 0;
     switch (elementType_) {
