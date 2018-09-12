@@ -632,6 +632,31 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
   EXPECT_EQ(O->getInput().getNode(), zero);
 }
 
+/// Tests opts for the identities: [1 * X = X] [X / 1 = X]
+TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
+  Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
+                                        VisibilityKind::Public);
+
+  // This builds the expression: (I / 1) * 1:
+  SplatNode *one = F_->createSplat("one", input->getType(), 1.);
+  DivNode *div = F_->createDiv("div", input, one);
+  MulNode *mul = F_->createMul("mul", div, one);
+  SaveNode *SN = F_->createSave("ret", mul);
+
+  // Splat, Div, Mul, Save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // The expression evaluates to "I", so Save is only node left.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  ASSERT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(SN)) != F_->getNodes().end());
+
+  // Save node should just save the input.
+  EXPECT_TRUE(SN->getInput().getNode() == input);
+}
+
 /// Reverse the intrusive list of nodes. This custom implementation is required,
 /// because std::reverse cannot be used with LLVM's intrusive lists.
 static void reverse(NodesList &L) {

@@ -184,11 +184,19 @@ static Node *simplifyNode(Node *node, Function *F) {
     if (isSplatOfVal(MN->getRHS(), 0)) {
       return MN->getRHS();
     }
+    // X * 1 => X
+    if (isSplatOfVal(MN->getRHS(), 1)) {
+      return MN->getLHS();
+    }
   }
 
-  // 0 / X => 0
   if (auto *DN = dyn_cast<DivNode>(node)) {
+    // 0 / X => 0
     if (isSplatOfVal(DN->getLHS(), 0)) {
+      return DN->getLHS();
+    }
+    // X / 1 => X
+    if (isSplatOfVal(DN->getRHS(), 1)) {
       return DN->getLHS();
     }
   }
