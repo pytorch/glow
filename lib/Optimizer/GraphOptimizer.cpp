@@ -219,6 +219,43 @@ static bool sinkCode(Function *F) {
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
+    // Sink Tranpose below slice nodes:
+    if (auto *S = dyn_cast<SliceNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(S->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      // Modify the indices of the SliceNode to make sure
+      // it takes the same slice from the input of the TransposeNode.
+      auto transposeShuffle = TR->getShuffle();
+      auto sliceStart = S->getStart();
+      auto sliceDims = S->getResult().dims();
+      auto numDims = transposeShuffle.size();
+
+      // "Undo" the transpose to figure out the correct start and
+      // output dimensions for the new SliceNode.
+      llvm::SmallVector<size_t, 8> newSliceStart(numDims);
+      llvm::SmallVector<size_t, 8> newSliceDims(numDims);
+
+      for (size_t i = 0; i < numDims; ++i) {
+        newSliceStart[transposeShuffle[i]] = sliceStart[i];
+        newSliceDims[transposeShuffle[i]] = sliceDims[i];
+      }
+
+      // Create a new SliceNode and TransposeNode and insert them in the
+      // appropriate place in the graph.
+      auto NSOutTy = F->getParent()->uniqueTypeWithNewShape(
+          TR->getResult().getType(), newSliceDims);
+      auto *NS =
+          F->createSlice(S->getName(), TR->getInput(), newSliceStart, NSOutTy);
+      auto *NTR = F->createTranspose(TR->getName(), NS, transposeShuffle);
+      S->getResult().replaceAllUsesOfWith(NTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below batch normalization nodes:
     if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(BN->getInput());
