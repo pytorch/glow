@@ -23,7 +23,7 @@ Function *F = mod.createFunction("main");
 // Declare input: a minibatch of 28x28 images.
 Variable *A = mod.createVariable(
     ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-    VisibilityKind::Public, Variable::TrainKind::None);
+    VisibilityKind::Public, false);
 
 // Construct LeNet.
 auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
@@ -39,13 +39,14 @@ auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
 // Declare output: an index (0-9) indicating which digit is seen.
 Variable *selected = mod.createVariable(
     ElemKind::Int64ITy, {minibatchSize, 1}, "selected",
-    VisibilityKind::Public, Variable::TrainKind::None);
+    VisibilityKind::Public, false);
 auto *SM = F->createSoftMax("sm", FCL1, selected);
 
 auto *result = F->createSave("return", SM);
 
 // Compile for inference.
-EE.compile(CompilationMode::Infer, F);
+Context ctx;
+EE.compile(CompilationMode::Infer, F, ctx);
 ```
 
 ## Graph IR
