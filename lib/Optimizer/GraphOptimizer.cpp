@@ -142,13 +142,13 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned_t> shuffle1,
   return true;
 }
 
-/// \returns True if the node \p N always evaluates to zero.
-bool isZero(Node *N) {
+/// \returns True if the node \p N always evaluates to \p val.
+bool isSplatOfVal(Node *N, float val) {
   SplatNode *Z = dyn_cast<SplatNode>(N);
   if (!Z)
     return false;
 
-  return (Z->getValue() == 0);
+  return (Z->getValue() == val);
 }
 
 /// \returns True if the node returns a constant value.
@@ -174,28 +174,28 @@ static Node *simplifyNode(Node *node, Function *F) {
 
   if (auto *AN = dyn_cast<AddNode>(node)) {
     // X + 0 => X
-    if (isZero(AN->getRHS())) {
+    if (isSplatOfVal(AN->getRHS(), 0)) {
       return AN->getLHS();
     }
   }
 
   if (auto *MN = dyn_cast<MulNode>(node)) {
     // X * 0 => 0
-    if (isZero(MN->getRHS())) {
+    if (isSplatOfVal(MN->getRHS(), 0)) {
       return MN->getRHS();
     }
   }
 
   // 0 / X => 0
   if (auto *DN = dyn_cast<DivNode>(node)) {
-    if (isZero(DN->getLHS())) {
+    if (isSplatOfVal(DN->getLHS(), 0)) {
       return DN->getLHS();
     }
   }
 
   // X - 0 => X
   if (auto *SN = dyn_cast<SubNode>(node)) {
-    if (isZero(SN->getRHS())) {
+    if (isSplatOfVal(SN->getRHS(), 0)) {
       return SN->getLHS();
     }
   }
