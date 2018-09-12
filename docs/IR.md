@@ -87,7 +87,6 @@ into one or more instructions.
 
 ### Variable Visibility
 
-
 Glow variables are similar to PyTorch and TensorFlow variables. They are
 persistent tensors that live across different executions of the neural network.
 Variables are annotated with Public or Private labels. These labels specify
@@ -108,6 +107,20 @@ write into them. However, Variables which are defined as Public cannot be
 considered Constant even if only ever read by other instructions. Thus, the
 visibility of the Variable is also annotated on its generated WeightVar, and all
 Public WeightVars are kept Mutable.
+
+### Placeholders
+
+Placeholders are symbolic nodes that are not backed by a concrete tensor during
+the compilation of the program. Inputs and outputs of Glow programs should be
+modeled using Placeholder nodes. Concrete tensors are attached to placeholder
+nodes during the compilation of the program, and not before. This means that
+unlike variables, the optimizer can’t inspect or mutate the content of
+Placeholder nodes. The same program could be compiled using different bound
+tensors without changing the semantics of the program.
+
+We are in the process of migrating the project from mutable variables into
+constant variables and Placeholder nodes.  The motivation, plan and status of
+this project are described in the github issue #1334.
 
 ### Predicates
 
@@ -263,24 +276,4 @@ usage.
 8. Low-level IR optimizations are performed.
 
 9. Backend-specific optimizations and code generation are performed.
-
-### Placeholders
-
-We are in the process of adding a new kind of variable: Placeholder. The
-motivation and plan for Placeholder variables are described in the issue #1334.
-
-The work on Placeholder variables is ongoing and the following tasks are still
-open:
-
-1. Teach the execution engine to bind tensors to the Placeholder nodes.
-
-2. Verify that dotty printing, dump() and debugging work well.
-
-3. Cleanup the APIs that are related to Variable and Placeholder and make them
-consistent.
-
-4. Change (some of) the unit tests to use the new Placeholder API.
-
-5. Make sure that our optimizations are correct when placeholder are used.
-
 
