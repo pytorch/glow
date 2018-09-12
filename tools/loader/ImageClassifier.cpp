@@ -123,11 +123,10 @@ llvm::cl::opt<std::string> modelInputName(
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
 void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
-                             Tensor *result, ImageNormalizationMode normMode,
-                             ImageChannelOrder channelOrder) {
+                             Tensor *result) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
-  auto range = normModeToRange(normMode);
+  auto range = normModeToRange(imageNormMode);
   unsigned numImages = filenames.size();
 
   // Get first image's dimensions and check if grayscale or color.
@@ -155,15 +154,15 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
            "All images must have the same Height and Width");
     assert(dims[2] == numChannels &&
            "All images must have the same number of channels");
-    assert((channelOrder == ImageChannelOrder::BGR ||
-            channelOrder == ImageChannelOrder::RGB) &&
+    assert((imageChannelOrder == ImageChannelOrder::BGR ||
+            imageChannelOrder == ImageChannelOrder::RGB) &&
            "Invalid image format");
 
     // Convert to NCHW with the requested channel ordering.
     for (unsigned z = 0; z < numChannels; z++) {
       for (unsigned y = 0; y < dims[1]; y++) {
         for (unsigned x = 0; x < dims[0]; x++) {
-          if (channelOrder == ImageChannelOrder::BGR) {
+          if (imageChannelOrder == ImageChannelOrder::BGR) {
             RH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
           } else { // RGB
             RH.at({n, z, x, y}) = (imageH.at({x, y, z}));
@@ -181,8 +180,7 @@ int main(int argc, char **argv) {
 
   // Load and process the image data into the data Tensor.
   Tensor data;
-  loadImagesAndPreprocess(inputImageFilenames, &data, imageNormMode,
-                          imageChannelOrder);
+  loadImagesAndPreprocess(inputImageFilenames, &data);
 
   // For ONNX graphs with input in NHWC layout, we transpose the data.
   switch (imageLayout) {
