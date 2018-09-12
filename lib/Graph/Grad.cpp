@@ -115,7 +115,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
                               cast<SaveNode>(N)->getInput().getType(), 0);
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
-      map.addGradient(cast<SaveNode>(N)->getVariable(), X);
+      map.addGradient(cast<SaveNode>(N)->getOutput(), X);
       continue;
     }
 
