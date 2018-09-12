@@ -236,7 +236,9 @@ static bool sinkCode(Function *F) {
           BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
           BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
           BN->getMomentum());
+      NewBN->setPredicate(BN->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle());
+      newTR->setPredicate(TR->getPredicate());
 
       BN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -256,7 +258,9 @@ static bool sinkCode(Function *F) {
       auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
           RL->getResult().getType(), TR->getInput().dims());
       auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
+      NRL->setPredicate(RL->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
+      newTR->setPredicate(TR->getPredicate());
       RL->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
@@ -271,7 +275,9 @@ static bool sinkCode(Function *F) {
       }
 
       auto *NSI = F->createSigmoid(SI->getName(), TR->getInput());
+      NSI->setPredicate(SI->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle());
+      newTR->setPredicate(TR->getPredicate());
       SI->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
@@ -286,7 +292,9 @@ static bool sinkCode(Function *F) {
       }
 
       auto *NTN = F->createTanh(TN->getName(), TR->getInput());
+      NTN->setPredicate(TN->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle());
+      newTR->setPredicate(TR->getPredicate());
       TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
