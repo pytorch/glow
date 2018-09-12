@@ -30,21 +30,21 @@ using namespace glow;
 namespace {
 llvm::cl::OptionCategory textTranslatorCat("Text Translator Options");
 
-llvm::cl::opt<size_t>
+llvm::cl::opt<unsigned>
     maxInputLenOpt("max_input_len",
                    llvm::cl::desc("Maximum allowed length of the input "
                                   "sentence. Specified by the input model."),
                    llvm::cl::Optional, llvm::cl::init(10),
                    llvm::cl::cat(textTranslatorCat));
 
-llvm::cl::opt<size_t>
+llvm::cl::opt<unsigned>
     maxOutputLenOpt("max_output_len",
                     llvm::cl::desc("Maximum allowed length of the output "
                                    "sentence. Specified by the input model."),
                     llvm::cl::Optional, llvm::cl::init(14),
                     llvm::cl::cat(textTranslatorCat));
 
-llvm::cl::opt<size_t> beamSizeOpt(
+llvm::cl::opt<unsigned> beamSizeOpt(
     "beam_size", llvm::cl::desc("Beam size used by the input model."),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(textTranslatorCat));
 
