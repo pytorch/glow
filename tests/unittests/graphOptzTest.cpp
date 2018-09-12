@@ -458,12 +458,14 @@ TEST_F(GraphOptz, mergeConcatNodes) {
                                  VisibilityKind::Public, false);
   Node *A3 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
                                  VisibilityKind::Public, false);
-  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 10, 15}, "input4",
+  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 5, 15}, "input4",
+                                 VisibilityKind::Public, false);
+  Node *A5 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 5, 15}, "input5",
                                  VisibilityKind::Public, false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
-  Node *CN3 = F_->createConcat("concat3", {A4}, 2);
+  Node *CN3 = F_->createConcat("concat3", {A4, A5}, 2);
   Node *CN4 = F_->createConcat("concat4", {A3, CN2, CN3}, 1);
   Node *O = F_->createSave("ret", CN4);
 
@@ -472,9 +474,9 @@ TEST_F(GraphOptz, mergeConcatNodes) {
   ::glow::optimize(F_, CompilationMode::Train);
 
   // It is expected that the optimization transforms
-  // concat4(1, A3, concat2(1, A1, concat1(1, A1, A2)), concat3(2, A4))
+  // concat4(1, A3, concat2(1, A1, concat1(1, A1, A2)), concat3(2, A4, A5))
   // into
-  // concat4(1, A3, A1, A1, A2, concat3(2, A4))
+  // concat4(1, A3, A1, A1, A2, concat3(2, A4, A5))
 
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
@@ -1285,4 +1287,26 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
 
   // input1 should still have a single user after optimization.
   EXPECT_EQ(I1->getUsers().size(), 1);
+}
+
+/// Test that a concat with a single input is replaced by the input.
+TEST_F(GraphOptz, eliminateSingleConcat) {
+  Node *input = mod_.createVariable(ElemKind::FloatTy, {10}, "input",
+                                    VisibilityKind::Public, false);
+
+  ConcatNode *CN = F_->createConcat("concat1", {input}, 0);
+  SaveNode *SN = F_->createSave("ret", CN);
+
+  // The ConcatNode and SaveNode.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Just the SaveNode should be left.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  ASSERT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
+                           IsSameNodeAddress(SN)) != F_->getNodes().end());
+
+  // Save node should just save the input.
+  EXPECT_TRUE(SN->getInput().getNode() == input);
 }

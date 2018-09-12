@@ -1103,6 +1103,12 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   if (auto transformedConcatNode = tryToOptimizeConcatOfRehapes(F, CN)) {
     return transformedConcatNode;
   }
+
+  // If the concat has a single input, replace the concat with that input.
+  if (CN->getNumInputs() == 1) {
+    return CN->getInputs()[0];
+  }
+
   return NodeValue(nullptr);
 }
 
