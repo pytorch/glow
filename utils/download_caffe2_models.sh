@@ -20,3 +20,7 @@ for model in $MODELS; do
     wget -nc "http://fb-glow-assets.s3.amazonaws.com/models/$model/$file" -P "$model"
   done
 done
+
+for file in dst_dictionary.txt src_dictionary.txt; do
+  wget -nc "http://fb-glow-assets.s3.amazonaws.com/models/en2gr/$file" -P en2gr
+done
