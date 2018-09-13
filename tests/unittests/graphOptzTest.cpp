@@ -563,18 +563,24 @@ TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
 }
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
-  Node *K = F_->createRELU("relu", T2);
-  F_->createSave("ret", K);
+  ReluNode *K = F_->createRELU("relu", T2);
+  SaveNode *save = F_->createSave("ret", K);
 
+  EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   EXPECT_EQ(F_->getNodes().size(), 2);
+  Node *relu = save->getInput();
+  EXPECT_EQ(relu->dims(0), llvm::makeArrayRef(origDims));
+  ASSERT_TRUE(llvm::isa<ReluNode>(relu));
+  EXPECT_EQ(llvm::cast<ReluNode>(relu)->getInput().getNode(), A);
 }
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
