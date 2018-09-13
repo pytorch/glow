@@ -522,8 +522,10 @@ TEST_P(InterpAndCPU, broadcast) {
   const size_t dimZ_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B};
 
-  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
-  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB");
+  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B",
+                                VisibilityKind::Public);
+  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB",
+                                 VisibilityKind::Public);
   auto H_B = B->getPayload().getHandle();
   auto H_QB = QB->getPayload().getHandle<int8_t>();
   H_B = {20, 10};
@@ -533,9 +535,10 @@ TEST_P(InterpAndCPU, broadcast) {
 
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
   auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
-  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
-  auto *broadcastedQ =
-      mod_.createVariable(ElemKind::Int8QTy, dims_A, 0.8, 3, "QB");
+  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A",
+                                          VisibilityKind::Public);
+  auto *broadcastedQ = mod_.createVariable(ElemKind::Int8QTy, dims_A, 0.8, 3,
+                                           "QB", VisibilityKind::Public);
   F_->createSave("save", R, broadcasted);
   F_->createSave("saveQ", QR, broadcastedQ);
 
@@ -2243,7 +2246,8 @@ TEST_P(InterpAndCPU, ChannelShuffle) {
 }
 
 TEST_P(Operator, Squeeze) {
-  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs");
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
+                                     VisibilityKind::Public);
   inputs->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -2309,7 +2313,8 @@ TEST_P(Operator, Squeeze) {
 /// Check that the expand dims operator works, which is implemented with a
 /// reshape.
 TEST_P(Operator, ExpandDims) {
-  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "inputs");
+  auto *inputs = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "inputs",
+                                     VisibilityKind::Public);
   auto IH = inputs->getHandle();
   IH = {1, 2, 3, 4};
 
@@ -3139,7 +3144,8 @@ TEST_P(Operator, sliceReshape) {
 
 /// Check that the flatten operator produces 2D tensors of the right dimensions.
 TEST_P(Operator, Flatten) {
-  auto *tensor4D = mod_.createVariable(ElemKind::FloatTy, {3, 2, 4, 3}, "4D");
+  auto *tensor4D = mod_.createVariable(ElemKind::FloatTy, {3, 2, 4, 3}, "4D",
+                                       VisibilityKind::Public);
   tensor4D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
 
   auto *reshape4Dto2DAxis1 = F_->createFlatten("flat4Dto2Da1", tensor4D, 1);
@@ -3169,7 +3175,8 @@ TEST_P(Operator, Flatten) {
   // This one is weird because we flatten something that is already flat, but
   // again because flattening is supported for every axis up and including the
   // rank of a tensor, 1D vector means we can flatten it on axis 1.
-  auto *tensor1D = mod_.createVariable(ElemKind::FloatTy, {15}, "1D");
+  auto *tensor1D = mod_.createVariable(ElemKind::FloatTy, {15}, "1D",
+                                       VisibilityKind::Public);
   tensor1D->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
 
   auto *reshape1Dto2DAxis1 = F_->createFlatten("flat1Dto2D", tensor1D, 1);
@@ -3178,23 +3185,24 @@ TEST_P(Operator, Flatten) {
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
 
   // Save all the reshapes so that the optimizations won't kill the network.
-  auto *save1Dto2D = mod_.createVariable(ElemKind::FloatTy, {15, 1}, "1Dto2D");
+  auto *save1Dto2D = mod_.createVariable(ElemKind::FloatTy, {15, 1}, "1Dto2D",
+                                         VisibilityKind::Public);
   F_->createSave("save1Dto2D", reshape1Dto2DAxis1, save1Dto2D);
 
-  auto *save4Dto2Da1 =
-      mod_.createVariable(ElemKind::FloatTy, {3, 24}, "4Dto2Da1");
+  auto *save4Dto2Da1 = mod_.createVariable(ElemKind::FloatTy, {3, 24},
+                                           "4Dto2Da1", VisibilityKind::Public);
   F_->createSave("save4Dto2Da1", reshape4Dto2DAxis1, save4Dto2Da1);
 
-  auto *save4Dto2Da2 =
-      mod_.createVariable(ElemKind::FloatTy, {6, 12}, "4Dto2Da2");
+  auto *save4Dto2Da2 = mod_.createVariable(ElemKind::FloatTy, {6, 12},
+                                           "4Dto2Da2", VisibilityKind::Public);
   F_->createSave("save4Dto2Da2", reshape4Dto2DAxis2, save4Dto2Da2);
 
-  auto *save4Dto2Da3 =
-      mod_.createVariable(ElemKind::FloatTy, {24, 3}, "4Dto2Da3");
+  auto *save4Dto2Da3 = mod_.createVariable(ElemKind::FloatTy, {24, 3},
+                                           "4Dto2Da3", VisibilityKind::Public);
   F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3, save4Dto2Da3);
 
-  auto *save4Dto2Da4 =
-      mod_.createVariable(ElemKind::FloatTy, {72, 1}, "4Dto2Da4");
+  auto *save4Dto2Da4 = mod_.createVariable(ElemKind::FloatTy, {72, 1},
+                                           "4Dto2Da4", VisibilityKind::Public);
   F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4, save4Dto2Da4);
 
   Context ctx;
