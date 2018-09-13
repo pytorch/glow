@@ -29,6 +29,7 @@
 #include <vector>
 
 namespace glow {
+class Context;
 
 /// List of Types.
 using TypesList = std::list<Type>;
@@ -582,6 +583,33 @@ public:
                   const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
+
+  /// @}
+
+  /// @name The builder functions below are identical to the builder functions
+  /// above except that they create nodes that use Placeholder instead of
+  /// Variables. The methods create and initialize the tensors in the context.
+  /// As soon as we finish the Placeholder migration we'll delete these methods
+  /// and merge them with the builder methods above.
+  /// See issue #1334.
+  ///@{
+
+  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
+                              NodeValue input, size_t depth,
+                              llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> strides,
+                              llvm::ArrayRef<unsigned_t> pads,
+                              unsigned_t group);
+
+  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
+                              NodeValue input, size_t depth, unsigned_t kernel,
+                              unsigned_t stride, unsigned_t pad,
+                              unsigned_t group);
+
+  FullyConnectedNode *createFullyConnected(Context &ctx, llvm::StringRef name,
+                                           NodeValue input, size_t outDepth);
+
+  SaveNode *createSave(Context &ctx, llvm::StringRef name, NodeValue input);
 
   /// @}
 

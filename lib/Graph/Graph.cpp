@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Support/Support.h"
 
@@ -1913,6 +1914,89 @@ void Function::createLSTM(llvm::StringRef namePrefix,
     outputs.push_back(O);
   }
 };
+
+//===----------------------------------------------------------------------===//
+//                   Placeholder-builder methods.
+//===----------------------------------------------------------------------===//
+
+ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
+                                      NodeValue input, size_t depth,
+                                      llvm::ArrayRef<unsigned_t> kernels,
+                                      llvm::ArrayRef<unsigned_t> strides,
+                                      llvm::ArrayRef<unsigned_t> pads,
+                                      unsigned_t group) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  ShapeHW kdim(kernels);
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
+         "buffer too small for selected stride");
+
+  assert(group > 0 && "group should be larger than 0");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  assert(depth % group == 0 && "depth must be divisible by groups");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+
+  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+
+  // Allocate the Filter and Bias tensors.
+  std::array<size_t, 4> filterDim = {
+      {depth, kdim.height, kdim.width, idim.c / group}};
+  size_t fanIn = kdim.height * kdim.width * idim.c;
+  auto *filter = getParent()->createPlaceholder(ElemKind::FloatTy, filterDim,
+                                                "filter", true);
+  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+
+  auto *bias =
+      getParent()->createPlaceholder(ElemKind::FloatTy, {depth}, "bias", true);
+  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+
+  auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
+                                     strides, pads, group));
+}
+
+ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
+                                      NodeValue input, size_t depth,
+                                      unsigned_t kernel, unsigned_t stride,
+                                      unsigned_t pad, unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConv(ctx, name, input, depth, kernels, strides, pads, group);
+}
+
+FullyConnectedNode *Function::createFullyConnected(Context &ctx,
+                                                   llvm::StringRef name,
+                                                   NodeValue input,
+                                                   size_t outDepth) {
+  TypeRef T = input.getType();
+  auto idim = flattenCdr(input.dims());
+  size_t fanIn = idim.second;
+
+  auto *W = getParent()->createPlaceholder(
+      T->getElementType(), {idim.second, outDepth}, "weights", true);
+  auto *B = getParent()->createPlaceholder(T->getElementType(), {outDepth},
+                                           "bias", true);
+
+  ctx.allocate(W)->init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, .1, getPRNG());
+
+  auto OT =
+      getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
+  return addNode(new FullyConnectedNode(name, OT, input, W, B));
+}
+
+SaveNode *Function::createSave(Context &ctx, llvm::StringRef name,
+                               NodeValue input) {
+  auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
+  return addNode(new SaveNode(name, input, dest));
+}
 
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
