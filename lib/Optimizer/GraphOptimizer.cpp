@@ -401,9 +401,11 @@ static bool sinkCode(Function *F) {
 #undef BOOLEAN_OP_CASE
 #undef ARITHMETIC_CASE
 
+      newAN->setPredicate(node->getPredicate());
       changed = true;
       auto *newTR =
           F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
+      newTR->setPredicate(node->getPredicate());
 #define GET_RESULT(NODE_) NODE_->getNthResult(0)
       GET_RESULT(node).replaceAllUsesOfWith(newTR);
 #undef GET_RESULT
@@ -455,7 +457,9 @@ static bool sinkCode(Function *F) {
 
       auto *newCN = F->createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
+      newCN->setPredicate(CN->getPredicate());
       auto *newTR = F->createTranspose(L->getName(), newCN, L->getShuffle());
+      newTR->setPredicate(CN->getPredicate());
       CN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
     }
