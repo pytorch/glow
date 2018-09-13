@@ -723,6 +723,48 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+/// Check that the predicates are properly preserved while doing
+/// the add(transpose, transpose) => transpose(add).
+TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
+                                 VisibilityKind::Public, false);
+  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                   VisibilityKind::Public, false);
+  Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
+  T1->setPredicate(pred);
+  Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
+  T2->setPredicate(pred);
+  Node *K = F_->createAdd("arith", T1, T2);
+  K->setPredicate(pred);
+  SaveNode *O = F_->createSave("ret", K);
+  O->setPredicate(pred);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  // Expecting Transpose->Output rather than Add->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  ASSERT_TRUE(llvm::isa<AddNode>(transpose->getInput()));
+  auto *add = llvm::cast<AddNode>(transpose->getInput());
+  EXPECT_EQ(add->getPredicate().getNode(), pred);
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(add->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().getNode(), A1);
+  EXPECT_EQ(add->getRHS().getNode(), A2);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
   Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                  VisibilityKind::Public, false);
@@ -762,6 +804,49 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
   EXPECT_TRUE(
       llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
+/// Check that the predicates are properly preserved while doing
+/// the concat(transpose, transpose) => transpose(add).
+TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t origDimsConcat[] = {1, 5, 20, 15};
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
+                                 VisibilityKind::Public, false);
+  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                   VisibilityKind::Public, false);
+  Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
+  T1->setPredicate(pred);
+  Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
+  T2->setPredicate(pred);
+  Node *CN = F_->createConcat("concat", {T1, T2}, 1);
+  CN->setPredicate(pred);
+  SaveNode *O = F_->createSave("ret", CN);
+  O->setPredicate(pred);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  // Expecting Transpose->Output rather than Add->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  ASSERT_TRUE(llvm::isa<ConcatNode>(transpose->getInput()));
+  auto *concat = llvm::cast<ConcatNode>(transpose->getInput());
+  EXPECT_EQ(concat->getPredicate().getNode(), pred);
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(concat->dims(0), llvm::makeArrayRef(origDimsConcat));
+  EXPECT_EQ(concat->getInputs()[0].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[1].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[0].getNode(), A1);
+  EXPECT_EQ(concat->getInputs()[1].getNode(), A2);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
