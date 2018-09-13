@@ -693,23 +693,32 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
                                  VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
                                  VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
-  Node *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting Transpose->Output rather than Add->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(
-      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<AddNode>(transpose->getInput()));
+  auto *add = llvm::cast<AddNode>(transpose->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(add->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().getNode(), A1);
+  EXPECT_EQ(add->getRHS().getNode(), A2);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
