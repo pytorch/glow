@@ -3322,6 +3322,46 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
   EXPECT_TRUE(expected.isEqual(result->getPayload()));
 }
 
+/// Test the InsertTensor node works correctly.
+TEST_P(InterpAndCPU, insertTensorTest) {
+  auto SN0Ty = mod_.uniqueType(ElemKind::Int64ITy, {4, 6});
+  auto SN1Ty = mod_.uniqueType(ElemKind::Int64ITy, {2, 2});
+
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  Node *SN0 = F_->createSplat("zero", SN0Ty, 0.);
+
+  // 1 1
+  // 1 1
+  Node *SN1 = F_->createSplat("one", SN1Ty, 1.);
+
+  // 0 0 0 0 0 0
+  // 0 1 1 1 1 0
+  // 0 1 1 1 1 0
+  // 0 0 0 0 0 0
+  Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {1, 1},
+                                    /* count */ 2, /* axis */ 1);
+  SaveNode *result = F_->createSave("result", IN);
+
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
+
+  EE_.run();
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = result->getVariable()->getPayload().getHandle<int64_t>();
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      int64_t expected = 1;
+      if (i == 0 || i == 3 || j == 0 || j == 5)
+        expected = 0;
+      EXPECT_EQ(resultH.at({i, j}), expected);
+    }
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
