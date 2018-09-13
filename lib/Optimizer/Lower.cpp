@@ -618,6 +618,20 @@ void lowerSigmoidCrossEntropyWithLogitsNode(
   SCEL.getResult().replaceAllUsesOfWith(reducedSigmoidXent);
 }
 
+/// Lower Tile nodes to InsertTensor nodes with correct axis and count.
+void lowerTileNode(Function *F, TileNode &TN) {
+  auto input = TN.getInput();
+
+  // Use a zero splat as the Big node input for InsertTensor.
+  auto *zero = F->createSplat("zero", TN.getResult().getType(), 0);
+  // Insert at the beginning of the splat.
+  auto start = std::vector<size_t>(input.dims().size(), 0);
+
+  auto *IN = F->createInsertTensor(TN.getName(), zero, input, start,
+                                   TN.getCount(), TN.getAxis());
+  TN.getResult().replaceAllUsesOfWith(IN);
+}
+
 void glow::lower(Function *F, const Backend &B) {
   auto &nodes = F->getNodes();
 
@@ -671,6 +685,8 @@ void glow::lower(Function *F, const Backend &B) {
       if (TN->getResult().getType()->isQuantizedType()) {
         lowerQuantizedTanhNode(F, TN);
       }
+    } else if (auto *TN = dyn_cast<TileNode>(node)) {
+      lowerTileNode(F, *TN);
     }
   }
 

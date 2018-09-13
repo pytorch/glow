@@ -820,8 +820,8 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
   return addNode(new ConcatNode(name, OT, ops, dimension));
 }
 
-InsertTensorNode *Function::createTile(llvm::StringRef name, NodeValue input,
-                                       unsigned_t tiles, unsigned_t axis) {
+TileNode *Function::createTile(llvm::StringRef name, NodeValue input,
+                               unsigned_t tiles, unsigned_t axis) {
   assert(tiles > 0 && "Tiles must be non-zero.");
   assert(axis >= 0 && axis < input.dims().size() &&
          "Axis must fall in range of source dims.");
@@ -829,11 +829,15 @@ InsertTensorNode *Function::createTile(llvm::StringRef name, NodeValue input,
   ShapeVector outShape(input.dims().begin(), input.dims().end());
   outShape[axis] *= tiles;
   auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outShape);
+  return addNode(new TileNode(name, OT, input, tiles, axis));
+}
 
-  // Use a zero splat as the Big node input for InsertTensor.
-  auto *zero = createSplat(name, OT, 0);
-  auto start = std::vector<size_t>(input.dims().size(), 0);
-  return addNode(new InsertTensorNode(name, zero, input, start, tiles, axis));
+InsertTensorNode *Function::createInsertTensor(llvm::StringRef name,
+                                               NodeValue big, NodeValue small,
+                                               llvm::ArrayRef<size_t> start,
+                                               unsigned_t count,
+                                               unsigned_t axis) {
+  return addNode(new InsertTensorNode(name, big, small, start, count, axis));
 }
 
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,

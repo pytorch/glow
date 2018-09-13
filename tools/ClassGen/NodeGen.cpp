@@ -395,6 +395,13 @@ int main(int argc, char **argv) {
                     "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
                     "{1}, the result is {{1,2},{-3,-4},{5,6}}.");
 
+  BB.newNode("Tile")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Count")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring("Tile an Input tensor Count times along Axis.");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//
