@@ -635,6 +635,36 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
   EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
 }
 
+/// Check that the predicates don't get in the way of
+/// the identity transpose removal, while still being
+/// preserved.
+TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
+                                VisibilityKind::Public, false);
+  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                   VisibilityKind::Public, false);
+  Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
+  T->setPredicate(pred);
+  Node *K = F_->createRELU("relu", T);
+  K->setPredicate(pred);
+  SaveNode *save = F_->createSave("ret", K);
+  save->setPredicate(pred);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(K->getNthInput(0).getNode(), T);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(save->getPredicate().getNode(), pred);
+  EXPECT_EQ(save->getInput().getNode(), K);
+  EXPECT_EQ(K->getNthInput(0).getNode(), A);
+  EXPECT_EQ(K->getPredicate().getNode(), pred);
+  // Make sure we didn't mess up with the dimensions of the
+  // variable while eliminating the transpose.
+  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
+}
+
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
