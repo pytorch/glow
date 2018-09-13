@@ -87,16 +87,17 @@ TEST_P(MLTest, trainASimpleNetwork) {
   Function *F = mod.createFunction("trainASimpleNetwork");
 
   // Create a variable with 1 input, which is a vector of 4 elements.
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                               VisibilityKind::Public, false);
-  auto *E = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
-                               VisibilityKind::Public, false);
-
-  Node *O = F->createFullyConnected("fc1", A, 10);
+  Placeholder *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
+  Placeholder *E = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
+  Node *O = F->createFullyConnected(ctx, "fc1", A, 10);
   O = F->createSigmoid("sig1", O);
-  O = F->createFullyConnected("fc2", O, 4);
+  O = F->createFullyConnected(ctx, "fc2", O, 4);
   O = F->createRegression("reg", O, E);
-  auto *result = F->createSave("return", O);
+  SaveNode *result = F->createSave(ctx, "return", O);
+
+  ctx.allocate(A);
+  ctx.allocate(E);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -108,15 +109,15 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE_, 1000, sampleCounter, {A, E}, {&inputs, &expected});
+  runBatch(EE_, ctx, 1000, sampleCounter, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
   EE_.compile(CompilationMode::Infer, F, ctx);
-  updateVariables({A}, {&inputs});
+  updateVariables(ctx, {A}, {&inputs});
   EE_.run();
 
-  auto RNWH = result->getVariable()->getPayload().getHandle<>();
+  auto RNWH = res->getHandle<>();
   (void)RNWH;
 
   // Test the output:
@@ -144,14 +145,18 @@ TEST_P(MLTest, simpleRegression) {
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("simpleRegression");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "A",
-                               VisibilityKind::Public, false);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, numInputs}, "E",
-                                VisibilityKind::Public, false);
-  Node *O = F->createFullyConnected("fc", A, 4);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, numInputs}, "A", false);
+  Placeholder *Ex =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, numInputs}, "E", false);
+  Node *O = F->createFullyConnected(ctx, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave("result", O);
+  auto *result = F->createSave(ctx, "result", O);
+
+  ctx.allocate(A);
+  ctx.allocate(Ex);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
@@ -164,7 +169,7 @@ TEST_P(MLTest, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    runBatch(EE_, 1, sampleCounter, {A, Ex}, {&inputs, &expected});
+    runBatch(EE_, ctx, 1, sampleCounter, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -174,10 +179,10 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    updateVariables({A}, {&inputs});
+    updateVariables(ctx, {A}, {&inputs});
     EE_.run();
 
-    auto resH = result->getVariable()->getPayload().getHandle<>();
+    auto resH = res->getHandle<>();
     (void)resH;
 
     EXPECT_NEAR(I.at({0, 0}) + 1, resH.at({0, 1}), 0.1);
@@ -201,16 +206,20 @@ TEST_P(MLTest, learnXor) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnXor");
 
-  auto *A = mod.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A",
-                               VisibilityKind::Public, false);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex",
-                                VisibilityKind::Public, false);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {numInputs, 2}, "A", false);
+  Placeholder *Ex =
+      mod.createPlaceholder(ElemKind::FloatTy, {numInputs, 1}, "Ex", false);
 
-  Node *O = F->createFullyConnected("fc1", A, 6);
+  Node *O = F->createFullyConnected(ctx, "fc1", A, 6);
   O = F->createTanh("tanh1", O);
-  O = F->createFullyConnected("fc2", O, 1);
+  O = F->createFullyConnected(ctx, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave("ret", O);
+  auto *result = F->createSave(ctx, "ret", O);
+
+  ctx.allocate(A);
+  ctx.allocate(Ex);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -232,7 +241,8 @@ TEST_P(MLTest, learnXor) {
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
-  runBatch(EE_, 2500, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, ctx, 2500, sampleCounter, {A, Ex},
+           {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -244,10 +254,10 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  updateVariables({A}, {&trainingSet});
+  updateVariables(ctx, {A}, {&trainingSet});
   EE_.run();
 
-  auto resH = result->getVariable()->getPayload().getHandle<>();
+  auto resH = res->getHandle<>();
 
   // Test the output:
   for (size_t i = 0; i < numInputs; i++) {
@@ -274,16 +284,20 @@ TEST_P(MLTest, learnLog) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnLog");
 
-  auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "A",
-                               VisibilityKind::Public, false);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {batchSize, 1}, "Ex",
-                                VisibilityKind::Public, false);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 1}, "A", false);
+  Placeholder *Ex =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 1}, "Ex", false);
 
-  Node *O = F->createFullyConnected("fc1", A, 4);
+  Node *O = F->createFullyConnected(ctx, "fc1", A, 4);
   O = F->createTanh("tanh1", O);
-  O = F->createFullyConnected("fc2", O, 1);
+  O = F->createFullyConnected(ctx, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave("ret", O);
+  auto *result = F->createSave(ctx, "ret", O);
+
+  ctx.allocate(A);
+  ctx.allocate(Ex);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   // Set the training data.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
@@ -306,7 +320,8 @@ TEST_P(MLTest, learnLog) {
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
-  runBatch(EE_, 1000, sampleCounter, {A, Ex}, {&trainingSet, &trainingLabels});
+  runBatch(EE_, ctx, 1000, sampleCounter, {A, Ex},
+           {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -324,10 +339,10 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
 
-  updateVariables({A}, {&testSet});
+  updateVariables(ctx, {A}, {&testSet});
   EE_.run();
 
-  auto resH = result->getVariable()->getPayload().getHandle<>();
+  auto resH = res->getHandle<>();
 
   // Test the output:
   for (size_t i = 0; i < batchSize; i++) {
@@ -386,16 +401,20 @@ TEST_P(MLTest, circle) {
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("circle");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 2}, "A",
-                               VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1}, "S",
-                               VisibilityKind::Public, false);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {minibatchSize, 2}, "A", false);
+  Placeholder *S =
+      mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1}, "S", false);
 
-  auto *FCL0 = F->createFullyConnected("fc1", A, 8);
+  auto *FCL0 = F->createFullyConnected(ctx, "fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
-  auto *FCL1 = F->createFullyConnected("fc2", T0, 2);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc2", T0, 2);
   auto *SM = F->createSoftMax("soft", FCL1, S);
-  auto *result = F->createSave("ret", SM);
+  auto *result = F->createSave(ctx, "ret", SM);
+
+  ctx.allocate(A);
+  ctx.allocate(S);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
@@ -405,7 +424,7 @@ TEST_P(MLTest, circle) {
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
+  runBatch(EE_, ctx, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -418,10 +437,10 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      updateVariables({A}, {&sample});
+      updateVariables(ctx, {A}, {&sample});
       EE_.run();
 
-      auto SMH = result->getVariable()->getPayload().getHandle<>();
+      auto SMH = res->getHandle<>();
       auto A = SMH.at({0, 0});
       auto B = SMH.at({0, 1});
 
@@ -442,10 +461,10 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    updateVariables({A}, {&sample});
+    updateVariables(ctx, {A}, {&sample});
     EE_.run();
 
-    auto SMH = result->getVariable()->getPayload().getHandle<>();
+    auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_TRUE(B > (A + 0.2));
@@ -455,9 +474,9 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    updateVariables({A}, {&sample});
+    updateVariables(ctx, {A}, {&sample});
     EE_.run();
-    auto SMH = result->getVariable()->getPayload().getHandle<>();
+    auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
     EXPECT_TRUE(A > (B + 0.2));
@@ -480,25 +499,29 @@ TEST_P(MLTest, learnSingleValueConcat) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnSingleValueConcat");
 
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, width * 2}, "Ex",
-                                VisibilityKind::Public, false);
+  Placeholder *Ex =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, width * 2}, "Ex", false);
 
   // Left side of the network:
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, width}, "A",
-                               VisibilityKind::Public, false);
-  Node *L = F->createFullyConnected("fc1", A, width);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, width}, "A", false);
+  Node *L = F->createFullyConnected(ctx, "fc1", A, width);
   L = F->createSigmoid("", L);
 
   // Right side of the network:
-  auto *B = mod.createVariable(ElemKind::FloatTy, {1, width}, "B",
-                               VisibilityKind::Public, false);
-  Node *R = F->createFullyConnected("fc2", B, width);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, width}, "B", false);
+  Node *R = F->createFullyConnected(ctx, "fc2", B, width);
   R = F->createSigmoid("sig", R);
 
   // Concat:
   auto *C = F->createConcat("con", {L, R}, 1);
   auto *RN = F->createRegression("reg", C, Ex);
-  auto *result = F->createSave("ret", RN);
+  auto *result = F->createSave(ctx, "ret", RN);
+
+  ctx.allocate(A);
+  ctx.allocate(B);
+  ctx.allocate(Ex);
+  auto *res = ctx.allocate(result->getPlaceholder());
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
@@ -509,14 +532,15 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network:
-  runBatch(EE_, 1000, sampleCounter, {A, B, Ex}, {&inputs, &inputs, &expected});
+  runBatch(EE_, ctx, 1000, sampleCounter, {A, B, Ex},
+           {&inputs, &inputs, &expected});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Testing the output vector.
-  updateVariables({A}, {&inputs});
+  updateVariables(ctx, {A}, {&inputs});
   EE_.run();
-  auto RNWH = result->getVariable()->getPayload().getHandle<>();
+  auto RNWH = res->getHandle<>();
   (void)RNWH;
 
   // Test the output:
