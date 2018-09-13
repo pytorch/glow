@@ -616,7 +616,8 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
 }
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T);
@@ -629,6 +630,9 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
 
   EXPECT_EQ(F_->getNodes().size(), 2);
   EXPECT_EQ(K->getNthInput(0).getNode(), A);
+  // Make sure we didn't mess up with the dimensions of the
+  // variable while eliminating the transpose.
+  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
 }
 
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
