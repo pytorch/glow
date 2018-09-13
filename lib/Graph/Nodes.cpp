@@ -423,6 +423,8 @@ void InsertTensorNode::verify() const {
   auto src = getSmall();
   auto offsets = getStart();
   unsigned numDims = dest.dims().size();
+  unsigned axis = getAxis();
+  unsigned count = getCount();
   (void)numDims;
   (void)dest;
   (void)src;
@@ -432,6 +434,14 @@ void InsertTensorNode::verify() const {
 
   for (unsigned i = 0; i < numDims; i++) {
     assert(src.dims()[i] + offsets[i] <= dest.dims()[i] && "out of bounds");
+  }
+
+  assert(axis <= src.dims().size() && "Invalid axis.");
+  for (size_t i = 0; i < src.dims().size(); i++) {
+    size_t mul = (i == axis) ? count : 1;
+    (void)mul;
+    assert(src.dims()[i] * mul <= dest.dims()[i] &&
+           "Small does not fit inside Big.");
   }
 }
 
@@ -449,6 +459,20 @@ void SliceNode::verify() const {
 
   for (unsigned i = 0; i < numDims; i++) {
     assert(dest.dims()[i] + offsets[i] <= src.dims()[i] && "out of bounds");
+  }
+}
+
+void TileNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  unsigned axis = getAxis();
+  unsigned count = getCount();
+  (void)dest;
+  assert(axis <= src.dims().size() && "Invalid axis.");
+  for (size_t i = 0; i < src.dims().size(); i++) {
+    size_t mul = (i == axis) ? count : 1;
+    (void)mul;
+    assert(src.dims()[i] * mul == dest.dims()[i] && "Incorrect output shape.");
   }
 }
 

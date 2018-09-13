@@ -320,12 +320,20 @@ public:
                            llvm::ArrayRef<NodeValue> inputs,
                            unsigned_t dimension, TypeRef outTy);
 
-  /// Create an insert tensor node that implements a tile with provided \p name,
-  /// \p input, \p tiles, and \p axis. For example, an input tensor {{1,2,3,4}}
-  /// of dimension 1x4 with tiles = 2 and axis = 0 would result in an output
-  /// tensor {{1,2,3,4}, {1,2,3,4}} of dimension 2x4.
-  InsertTensorNode *createTile(llvm::StringRef name, NodeValue input,
-                               unsigned_t tiles, unsigned_t axis);
+  /// Create a TileNode with \p name, \p input, \p tiles, and \p axis. For
+  /// example, an input tensor {{1,2,3,4}} of dimension 1x4 with tiles = 2 and
+  /// axis = 0 would result in an output tensor {{1,2,3,4}, {1,2,3,4}} of
+  /// dimension 2x4.
+  TileNode *createTile(llvm::StringRef name, NodeValue input, unsigned_t tiles,
+                       unsigned_t axis);
+
+  /// Create an insert tensor node \p name, which inserts \p small into \p big
+  /// at offset into big \p start \p count times along \p axis.
+  InsertTensorNode *createInsertTensor(llvm::StringRef name, NodeValue big,
+                                       NodeValue small,
+                                       llvm::ArrayRef<size_t> start,
+                                       unsigned_t count = 1,
+                                       unsigned_t axis = 0);
 
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
