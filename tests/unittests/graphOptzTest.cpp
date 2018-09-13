@@ -780,8 +780,8 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
-  Node *input =
-      F_->getParent()->createVariable(ElemKind::FloatTy, shape, "input");
+  Node *input = F_->getParent()->createVariable(
+      ElemKind::FloatTy, shape, "input", VisibilityKind::Public);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave("ret", R2);
@@ -1136,7 +1136,8 @@ TEST_F(GraphOptz, concatReshapes) {
     // original ConcatNode (before opt) is 20, and the size of leading
     // dimensions of original ConcatNode (before opt) is 10.
     Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape1,
-                                                "input" + std::to_string(i));
+                                                "input" + std::to_string(i),
+                                                VisibilityKind::Public);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs1.push_back(RN);
   }
@@ -1148,7 +1149,8 @@ TEST_F(GraphOptz, concatReshapes) {
     // makes the leading/trailing dims same as in the case of the original
     // concat node.
     Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape3,
-                                                "input" + std::to_string(i));
+                                                "input" + std::to_string(i),
+                                                VisibilityKind::Public);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs2.push_back(RN);
   }
