@@ -766,22 +766,33 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
 }
 
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t origDimsConcat[] = {1, 10, 10, 15};
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
                                  VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
                                  VisibilityKind::Public, false);
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
-  Node *O = F_->createSave("ret", CN);
+  SaveNode *O = F_->createSave("ret", CN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Concat->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<ReluNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
+  auto *relu = llvm::dyn_cast<ReluNode>(O->getInput());
+  ASSERT_NE(relu, nullptr);
+  ASSERT_TRUE(llvm::isa<ConcatNode>(relu->getInput()));
+  auto *concat = llvm::cast<ConcatNode>(relu->getInput());
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(concat->dims(0), llvm::makeArrayRef(origDimsConcat));
+  EXPECT_EQ(concat->getInputs()[0].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[1].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[0].getNode(), A1);
+  EXPECT_EQ(concat->getInputs()[1].getNode(), A2);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
