@@ -126,16 +126,26 @@ this project are described in the github issue #1334.
 
 Predication is a well-known technique to control the execution of some node or
 instruction by means of a boolean flag. If the value of the flag at runtime is
-set to 'false' then the predicated node or instructions may return any value. A
-correct program should know to ignore the output of the predicated instruction
-because it could be zeros or uninitialized memory. The type of the flag must be
+set to 'false' then the predicated node or instructions may return any value.
+
+Glow's approach to predication is to support it as an optimization. In other
+words, if honoring the predicates does not give a performance boost, then
+a backend is free to ignore them. As such predication **cannot** be used
+to model control flow, since potentially the last write could win.
+Therefore input graphs must correctly execute with predicates ignored.
+For instance, when ignoring predicates, a program should be free of
+divisions by zero and other things that would lead to
+an abnormal termination of the program. Another example would be,
+in training mode, the memory used in predicated training nodes should be
+initialized to zero to make sure the program will not use uninitialized
+memory to update the weights, if the predicates get ignored.
+
+The type of the flag must be
 a boolean value or a vector of booleans that matches the batch size. Predicates
 could accelerate the performance of some networks by avoiding some
 computation. It can particularly be useful when applied to Recurrent Neural
 Networks, because different elements of the batch may have different lengths and
-do not need to perform the same amount of computation. In training mode,
-predicated training nodes should not use uninitialized memory to update the
-weights and instead should pass zeros.
+do not need to perform the same amount of computation.
 
 ![](pred.png)
 
