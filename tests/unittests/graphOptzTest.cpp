@@ -583,6 +583,38 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   EXPECT_EQ(llvm::cast<ReluNode>(relu)->getInput().getNode(), A);
 }
 
+/// Make sure the predicates don't get in the way of the
+/// transpose(transpose) => identity and that they are
+/// preserved.
+TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
+                                VisibilityKind::Public, false);
+  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                   VisibilityKind::Public, false);
+  Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
+  T1->setPredicate(pred);
+  Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
+  T2->setPredicate(pred);
+  ReluNode *K = F_->createRELU("relu", T2);
+  K->setPredicate(pred);
+  SaveNode *save = F_->createSave("ret", K);
+  save->setPredicate(pred);
+
+  EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(save->getPredicate().getNode(), pred);
+  Node *relu = save->getInput();
+  EXPECT_EQ(relu->getPredicate().getNode(), pred);
+  EXPECT_EQ(relu->dims(0), llvm::makeArrayRef(origDims));
+  ASSERT_TRUE(llvm::isa<ReluNode>(relu));
+  EXPECT_EQ(llvm::cast<ReluNode>(relu)->getInput().getNode(), A);
+}
+
 TEST_F(GraphOptz, removeIdentityTranspose) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
                                 VisibilityKind::Public, false);
