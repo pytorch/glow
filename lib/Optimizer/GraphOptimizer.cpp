@@ -1441,6 +1441,22 @@ static void optimizeReshape(Function *F) {
       reshapeNode->getResult().replaceAllUsesOfWith(newReshape);
       continue;
     }
+    // Reshape(PrivateVariable) -> PrivateVariable'.
+    // Only do this if the Variable has a single use, as otherwise we would
+    // duplicate the Variable and increase the memory footprint.
+    auto *V = dyn_cast<Variable>(inputNode);
+    if (V && V->isPrivate() && V->hasOneUse()) {
+      // Create a new variable with the type of the reshape.
+      auto *newV = F->getParent()->createVariable(
+          reshapeNode->getResult().getType(), V->getName(),
+          V->getVisibilityKind(), /* isTrainable */ false);
+      // Create an unowned view of the original tensor with the correct shape,
+      // and assign it to the new Variable.
+      Tensor reshapedT = V->getPayload().getUnowned(reshapeNode->getDims());
+      newV->assign(&reshapedT);
+      reshapeNode->getResult().replaceAllUsesOfWith(newV);
+      continue;
+    }
   }
 }
 
