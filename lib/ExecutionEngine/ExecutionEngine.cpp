@@ -61,6 +61,24 @@ void glow::updateVariables(llvm::ArrayRef<Variable *> vars,
   }
 }
 
+void glow::updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
+                           llvm::ArrayRef<Tensor *> inputs) {
+  assert(inputs.size() == ph.size() &&
+         "The number of inputs does not match the number of Placeholders");
+
+  // Update the input variables.
+  for (int i = 0, e = ph.size(); i < e; i++) {
+    assert(ph[i] && "Invalid value");
+    auto *backingTensor = ctx.get(ph[i]);
+    assert(backingTensor && "Can't find the placeholder");
+    auto dim = inputs[i]->dims();
+    (void)dim;
+    assert(backingTensor->getType().isEqual(inputs[i]->getType()) &&
+           "Mismatch on Variable and Tensor types.");
+    backingTensor->assign(inputs[i]);
+  }
+}
+
 void ExecutionEngine::run() {
   assert(function_ && "No function has been compiled");
   function_->execute();
@@ -100,6 +118,41 @@ void glow::runBatch(ExecutionEngine &EE, size_t iterations,
     // Pick up one slice from the input tensors, and load it into corresponding
     // network Variables. Then, run a single pass over the network.
     glow::updateVariablesFromBatch(vars, inputs, sampleCounter);
+
+    // Run the network.
+    EE.run();
+    sampleCounter += batchSize;
+  }
+}
+
+void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
+                    size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
+                    llvm::ArrayRef<Tensor *> inputs) {
+  // This is the size of one batch (the number of samples in the batch).
+  size_t batchSize = ph[0]->getType()->dims()[0];
+
+  assert(!inputs.empty() && "No inputs");
+  assert(inputs.size() == ph.size() &&
+         "The number of inputs does not match the number of variables");
+
+  // For each iteration in the batch:
+  for (size_t i = 0; i < iterations; i++) {
+
+    // Update the input placeholders.
+    for (int i = 0, e = ph.size(); i < e; i++) {
+      assert(ph[i] && "Invalid value");
+      auto *backingTensor = ctx.get(ph[i]);
+      assert(backingTensor && "Can't find the backing tensor");
+
+      auto dim = inputs[i]->dims();
+      assert(backingTensor->dims().drop_front() == dim.drop_front() &&
+             "Invalid slice size");
+      // Extract the n'th slice, that must be a tensor.
+      size_t slc = sampleCounter % dim[0];
+      // Pick up one slice from the input tensors, and load it into the
+      // corresponding network Placeholder.
+      backingTensor->copyConsecutiveSlices(inputs[i], slc);
+    }
 
     // Run the network.
     EE.run();

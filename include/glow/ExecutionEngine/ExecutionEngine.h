@@ -94,6 +94,9 @@ public:
 void updateVariables(llvm::ArrayRef<Variable *> vars,
                      llvm::ArrayRef<Tensor *> inputs);
 
+void updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
+                     llvm::ArrayRef<Tensor *> inputs);
+
 /// Update the content of the tensors \p vars with some slices that from \p
 /// inputs. The data starts at slice \p sampleIdx and wraps around until the
 /// data in \p v is filled. All dimensions, except for the first (batch)
@@ -116,6 +119,10 @@ void updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
 /// (sampleCounter % batchsize).
 void runBatch(ExecutionEngine &EE, size_t iterations, size_t &sampleCounter,
               llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
+
+void runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
+              size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
+              llvm::ArrayRef<Tensor *> inputs);
 
 } // namespace glow
 
