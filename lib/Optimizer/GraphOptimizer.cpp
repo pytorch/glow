@@ -236,9 +236,9 @@ static bool sinkCode(Function *F) {
           BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
           BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
           BN->getMomentum());
-      NewBN->setPredicate(BN->getPredicate());
+      NewBN->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle());
-      newTR->setPredicate(TR->getPredicate());
+      newTR->setPredicate(node->getPredicate());
 
       BN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -258,9 +258,9 @@ static bool sinkCode(Function *F) {
       auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
           RL->getResult().getType(), TR->getInput().dims());
       auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
-      NRL->setPredicate(RL->getPredicate());
+      NRL->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
-      newTR->setPredicate(TR->getPredicate());
+      newTR->setPredicate(node->getPredicate());
       RL->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
@@ -275,9 +275,9 @@ static bool sinkCode(Function *F) {
       }
 
       auto *NSI = F->createSigmoid(SI->getName(), TR->getInput());
-      NSI->setPredicate(SI->getPredicate());
+      NSI->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle());
-      newTR->setPredicate(TR->getPredicate());
+      newTR->setPredicate(node->getPredicate());
       SI->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
@@ -292,9 +292,9 @@ static bool sinkCode(Function *F) {
       }
 
       auto *NTN = F->createTanh(TN->getName(), TR->getInput());
-      NTN->setPredicate(TN->getPredicate());
+      NTN->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle());
-      newTR->setPredicate(TR->getPredicate());
+      newTR->setPredicate(node->getPredicate());
       TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
@@ -459,9 +459,9 @@ static bool sinkCode(Function *F) {
 
       auto *newCN = F->createConcat(
           CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
-      newCN->setPredicate(CN->getPredicate());
+      newCN->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(L->getName(), newCN, L->getShuffle());
-      newTR->setPredicate(CN->getPredicate());
+      newTR->setPredicate(node->getPredicate());
       CN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
     }
@@ -921,6 +921,8 @@ static void optimizeBatchNorm(Function *F) {
         cbiasH.raw(i) = cbiasH.raw(i) * A + B;
       }
 
+      // Take the predicate of what was expected for the output.
+      CV->setPredicate(BN->getPredicate());
       BN->getResult().replaceAllUsesOfWith(CV);
     }
   } // For all nodes in the graph.

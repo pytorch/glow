@@ -127,12 +127,14 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "predicate",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "predicate",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "predicate",
+                                    VisibilityKind::Public, false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
-  CV->setPredicate(pred);
+  CV->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  BN->setPredicate(pred);
+  BN->setPredicate(pred2);
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -144,7 +146,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   Node *newCV = A->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
   ASSERT_TRUE(newCV->hasPredicate());
-  EXPECT_EQ(newCV->getPredicate().getNode(), pred);
+  EXPECT_EQ(newCV->getPredicate().getNode(), pred2);
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
@@ -349,28 +351,32 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   const size_t transposedDims[] = {1, 15, 5, 10};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  T->setPredicate(pred);
+  T->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
-  BN->setPredicate(pred);
+  BN->setPredicate(pred2);
   SaveNode *O = F_->createSave("ret", BN);
-  O->setPredicate(pred);
+  O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(BN->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred3);
   // Expecting Transpose->Output rather than BN->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
   ASSERT_TRUE(llvm::isa<BatchNormalizationNode>(transpose->getInput()));
   auto *bn = llvm::cast<BatchNormalizationNode>(transpose->getInput());
-  EXPECT_EQ(bn->getPredicate().getNode(), pred);
+  EXPECT_EQ(bn->getPredicate().getNode(), pred2);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(bn->dims(0), llvm::makeArrayRef(origDims));
@@ -411,28 +417,32 @@ TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
   const size_t transposedDims[] = {1, 15, 5, 10};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  T->setPredicate(pred);
+  T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
-  K->setPredicate(pred);
+  K->setPredicate(pred2);
   SaveNode *O = F_->createSave("ret", K);
-  O->setPredicate(pred);
+  O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred3);
   // Expecting Transpose->Output rather than RELU->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
   ASSERT_TRUE(llvm::isa<ReluNode>(transpose->getInput()));
   auto *relu = llvm::cast<ReluNode>(transpose->getInput());
-  EXPECT_EQ(relu->getPredicate().getNode(), pred);
+  EXPECT_EQ(relu->getPredicate().getNode(), pred2);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(relu->dims(0), llvm::makeArrayRef(origDims));
@@ -473,28 +483,32 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
   const size_t transposedDims[] = {1, 15, 5, 10};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  T->setPredicate(pred);
+  T->setPredicate(pred1);
   Node *SI = F_->createSigmoid("sigmoid", T);
-  SI->setPredicate(pred);
+  SI->setPredicate(pred2);
   SaveNode *O = F_->createSave("ret", SI);
-  O->setPredicate(pred);
+  O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(SI->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred3);
   // Expecting Transpose->Output rather than Sigmoid->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
   ASSERT_TRUE(llvm::isa<SigmoidNode>(transpose->getInput()));
   auto *si = llvm::cast<SigmoidNode>(transpose->getInput());
-  EXPECT_EQ(si->getPredicate().getNode(), pred);
+  EXPECT_EQ(si->getPredicate().getNode(), pred2);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(si->dims(0), llvm::makeArrayRef(origDims));
@@ -533,28 +547,32 @@ TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
   const size_t transposedDims[] = {1, 15, 5, 10};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  T->setPredicate(pred);
+  T->setPredicate(pred1);
   Node *TN = F_->createTanh("tanh", T);
-  TN->setPredicate(pred);
+  TN->setPredicate(pred2);
   SaveNode *O = F_->createSave("ret", TN);
-  O->setPredicate(pred);
+  O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(TN->dims(0), llvm::makeArrayRef(transposedDims));
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred3);
   // Expecting Transpose->Output rather than Tanh->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
   ASSERT_TRUE(llvm::isa<TanhNode>(transpose->getInput()));
   auto *tn = llvm::cast<TanhNode>(transpose->getInput());
-  EXPECT_EQ(tn->getPredicate().getNode(), pred);
+  EXPECT_EQ(tn->getPredicate().getNode(), pred2);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(tn->dims(0), llvm::makeArrayRef(origDims));
@@ -590,16 +608,22 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
-  T1->setPredicate(pred);
+  T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
-  T2->setPredicate(pred);
+  T2->setPredicate(pred2);
   ReluNode *K = F_->createRELU("relu", T2);
-  K->setPredicate(pred);
+  K->setPredicate(pred3);
   SaveNode *save = F_->createSave("ret", K);
-  save->setPredicate(pred);
+  save->setPredicate(pred4);
 
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -607,9 +631,9 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
   ::glow::optimize(F_, CompilationMode::Infer);
 
   EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_EQ(save->getPredicate().getNode(), pred);
+  EXPECT_EQ(save->getPredicate().getNode(), pred4);
   Node *relu = save->getInput();
-  EXPECT_EQ(relu->getPredicate().getNode(), pred);
+  EXPECT_EQ(relu->getPredicate().getNode(), pred3);
   EXPECT_EQ(relu->dims(0), llvm::makeArrayRef(origDims));
   ASSERT_TRUE(llvm::isa<ReluNode>(relu));
   EXPECT_EQ(llvm::cast<ReluNode>(relu)->getInput().getNode(), A);
@@ -642,24 +666,28 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
-  T->setPredicate(pred);
+  T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
-  K->setPredicate(pred);
+  K->setPredicate(pred2);
   SaveNode *save = F_->createSave("ret", K);
-  save->setPredicate(pred);
+  save->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->getNthInput(0).getNode(), T);
 
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_EQ(save->getPredicate().getNode(), pred);
+  EXPECT_EQ(save->getPredicate().getNode(), pred3);
   EXPECT_EQ(save->getInput().getNode(), K);
   EXPECT_EQ(K->getNthInput(0).getNode(), A);
-  EXPECT_EQ(K->getPredicate().getNode(), pred);
+  EXPECT_EQ(K->getPredicate().getNode(), pred2);
   // Make sure we didn't mess up with the dimensions of the
   // variable while eliminating the transpose.
   EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
@@ -731,29 +759,35 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
                                  VisibilityKind::Public, false);
   Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
                                  VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
-  T1->setPredicate(pred);
+  T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
-  T2->setPredicate(pred);
+  T2->setPredicate(pred2);
   Node *K = F_->createAdd("arith", T1, T2);
-  K->setPredicate(pred);
+  K->setPredicate(pred3);
   SaveNode *O = F_->createSave("ret", K);
-  O->setPredicate(pred);
+  O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred4);
   // Expecting Transpose->Output rather than Add->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred3);
   ASSERT_TRUE(llvm::isa<AddNode>(transpose->getInput()));
   auto *add = llvm::cast<AddNode>(transpose->getInput());
-  EXPECT_EQ(add->getPredicate().getNode(), pred);
+  EXPECT_EQ(add->getPredicate().getNode(), pred3);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(add->dims(0), llvm::makeArrayRef(origDims));
@@ -806,29 +840,35 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
                                  VisibilityKind::Public, false);
   Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
                                  VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *R1 = F_->createRELU("relu1", A1);
-  R1->setPredicate(pred);
+  R1->setPredicate(pred1);
   Node *R2 = F_->createRELU("relu2", A2);
-  R2->setPredicate(pred);
+  R2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
-  CN->setPredicate(pred);
+  CN->setPredicate(pred3);
   SaveNode *O = F_->createSave("ret", CN);
-  O->setPredicate(pred);
+  O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Expecting RELU->Output rather than Concat->Output.
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred4);
   auto *relu = llvm::dyn_cast<ReluNode>(O->getInput());
   ASSERT_NE(relu, nullptr);
-  EXPECT_EQ(relu->getPredicate().getNode(), pred);
+  EXPECT_EQ(relu->getPredicate().getNode(), pred3);
   ASSERT_TRUE(llvm::isa<ConcatNode>(relu->getInput()));
   auto *concat = llvm::cast<ConcatNode>(relu->getInput());
-  EXPECT_EQ(concat->getPredicate().getNode(), pred);
+  EXPECT_EQ(concat->getPredicate().getNode(), pred3);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(concat->dims(0), llvm::makeArrayRef(origDimsConcat));
@@ -881,29 +921,35 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
                                  VisibilityKind::Public, false);
   Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
                                  VisibilityKind::Public, false);
-  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                   VisibilityKind::Public, false);
+  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
+  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                    VisibilityKind::Public, false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
-  T1->setPredicate(pred);
+  T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
-  T2->setPredicate(pred);
+  T2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
-  CN->setPredicate(pred);
+  CN->setPredicate(pred3);
   SaveNode *O = F_->createSave("ret", CN);
-  O->setPredicate(pred);
+  O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  EXPECT_EQ(O->getPredicate().getNode(), pred4);
   // Expecting Transpose->Output rather than Add->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
   ASSERT_NE(transpose, nullptr);
-  EXPECT_EQ(transpose->getPredicate().getNode(), pred);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred3);
   ASSERT_TRUE(llvm::isa<ConcatNode>(transpose->getInput()));
   auto *concat = llvm::cast<ConcatNode>(transpose->getInput());
-  EXPECT_EQ(concat->getPredicate().getNode(), pred);
+  EXPECT_EQ(concat->getPredicate().getNode(), pred3);
   // Check that the dimensions of the input and output have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(concat->dims(0), llvm::makeArrayRef(origDimsConcat));
