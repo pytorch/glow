@@ -666,18 +666,30 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
 }
 
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t afterFirstTransposeDims[] = {1, 10, 15, 5};
+  const size_t afterSecondTransposeDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
                                 VisibilityKind::Public, false);
-  Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
-  Node *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
-  Node *K = F_->createRELU("relu", T2);
-  F_->createSave("ret", K);
+  TransposeNode *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
+  TransposeNode *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
+  SaveNode *save = F_->createSave("ret", T2);
 
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  // Make sure the structure of the graph did not change.
+  Node *secondTranspose = save->getInput();
+  EXPECT_EQ(secondTranspose->dims(0),
+            llvm::makeArrayRef(afterSecondTransposeDims));
+  EXPECT_EQ(secondTranspose, T2);
+  Node *firstTranspose = T2->getInput();
+  EXPECT_EQ(firstTranspose, T1);
+  EXPECT_EQ(T1->dims(0), llvm::makeArrayRef(afterFirstTransposeDims));
+  EXPECT_EQ(T1->getInput().getNode(), A);
+  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
