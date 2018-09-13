@@ -424,8 +424,10 @@ static bool sinkCode(Function *F) {
       if (L && R) {
         auto *newCN = F->createConcat(
             CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
+        newCN->setPredicate(node->getPredicate());
         auto *newRL =
             F->createRELU(L->getName(), newCN, CN->getResult().getType());
+        newRL->setPredicate(node->getPredicate());
         CN->getResult().replaceAllUsesOfWith(newRL);
       }
     }

@@ -797,6 +797,49 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+/// Check that the predicates are properly preserved while doing
+/// the sinking of relu nodes.
+TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t origDimsConcat[] = {1, 10, 10, 15};
+  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
+                                 VisibilityKind::Public, false);
+  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
+                                 VisibilityKind::Public, false);
+  Node *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
+                                   VisibilityKind::Public, false);
+  Node *R1 = F_->createRELU("relu1", A1);
+  R1->setPredicate(pred);
+  Node *R2 = F_->createRELU("relu2", A2);
+  R2->setPredicate(pred);
+  Node *CN = F_->createConcat("concat", {R1, R2}, 1);
+  CN->setPredicate(pred);
+  SaveNode *O = F_->createSave("ret", CN);
+  O->setPredicate(pred);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting RELU->Output rather than Concat->Output.
+  EXPECT_EQ(O->getPredicate().getNode(), pred);
+  auto *relu = llvm::dyn_cast<ReluNode>(O->getInput());
+  ASSERT_NE(relu, nullptr);
+  EXPECT_EQ(relu->getPredicate().getNode(), pred);
+  ASSERT_TRUE(llvm::isa<ConcatNode>(relu->getInput()));
+  auto *concat = llvm::cast<ConcatNode>(relu->getInput());
+  EXPECT_EQ(concat->getPredicate().getNode(), pred);
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(concat->dims(0), llvm::makeArrayRef(origDimsConcat));
+  EXPECT_EQ(concat->getInputs()[0].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[1].dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(concat->getInputs()[0].getNode(), A1);
+  EXPECT_EQ(concat->getInputs()[1].getNode(), A2);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 5, 20, 15};
