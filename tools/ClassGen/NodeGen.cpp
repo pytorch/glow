@@ -41,12 +41,17 @@ int main(int argc, char **argv) {
   BB.declareNode("Variable");
   BB.declareNode("Placeholder");
 
+  // Notice: As soon as we finish the migration from bound-variables to unbound
+  // placeholders we'll need to remove the getVariable() API. See issue #1334.
   BB.newNode("Save")
       .addInput("Input")
       .addInput("Output")
       .addExtraMethod("Variable *getVariable() const;",
                       "Variable *SaveNode::getVariable() const { return "
                       "llvm::cast<Variable>(Output_.getNode()); };")
+      .addExtraMethod("Placeholder *getPlaceholder() const;",
+                      "Placeholder *SaveNode::getPlaceholder() const { return "
+                      "llvm::cast<Placeholder>(Output_.getNode()); };")
       .addOverwrittenInput("Output")
       .setHasSideEffects(true)
       .setDocstring("Specifies a node whose Input will be copied to Output."
