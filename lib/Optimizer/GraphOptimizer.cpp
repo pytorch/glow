@@ -1842,6 +1842,18 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Min);
     COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Max);
 #undef COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE
+
+    // Combine Rescale down with Relu node.
+    //   ReluNode(Rescale(in)) -> ReluNode(in).
+    if (auto *RN = dyn_cast<ReluNode>(&node)) {
+      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(RN->getInput())) {
+        auto *newRN = F->createRELU(RN->getName(), rescale->getInput(),
+                                    RN->getResult().getType());
+        RN->getResult().replaceAllUsesOfWith(newRN);
+        changed = true;
+      }
+      continue;
+    }
   }
 
   return changed;

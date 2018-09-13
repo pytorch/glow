@@ -33,6 +33,18 @@ protected:
   Function *F_;
 };
 
+/// \returns the number of nodes in \p F of kind \p kind.
+static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
+  unsigned count = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == kind) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
 TEST_F(GraphOptz, DCE) {
   Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
 
@@ -1620,16 +1632,25 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   EXPECT_EQ(F_->getNodes().size(), 5);
 }
 
-/// \returns the number of nodes in \p F of kind \p kind.
-static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
-  unsigned count = 0;
-  for (auto &n : F->getNodes()) {
-    if (n.getKind() == kind) {
-      count++;
-    }
-  }
+/// Check that Relu can be merged with Rescale.
+TEST_F(GraphOptz, mergeRescaleWithRelu) {
+  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", VisibilityKind::Public, false);
 
-  return count;
+  auto *rescale1 = F_->createRescaleQuantized(
+      "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
+  auto *relu = F_->createRELU("relu", rescale1);
+  F_->createSave("save", relu);
+
+  // Rescale, RELU, Save nodes.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // RELU, Save nodes left; Rescale merged into RELU.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::RescaleQuantizedNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
 }
 
 // Check that we are able to merge some small matmuls into a larger one.
