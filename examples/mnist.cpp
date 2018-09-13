@@ -85,6 +85,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST() {
+  Context ctx;
   llvm::outs() << "Loading the mnist database.\n";
 
   Tensor imageInputs;
@@ -110,29 +111,29 @@ void testMNIST() {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A =
-      mod.createVariable(ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input",
-                         VisibilityKind::Public, false);
+  Placeholder *A = mod.createPlaceholder(
+      ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input", false);
 
-  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv("conv", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(ctx, "conv", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected("fc", MP1, 10);
-  Variable *selected =
-      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1}, "selected",
-                         VisibilityKind::Public, false);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP1, 10);
+  Placeholder *selected = mod.createPlaceholder(
+      ElemKind::Int64ITy, {minibatchSize, 1}, "selected", false);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
+  SaveNode *result = F->createSave(ctx, "return", SM);
 
-  auto *result = F->createSave("return", SM);
+  Tensor *inputTensor = ctx.allocate(A);
+  Tensor *resultTensor = ctx.allocate(result->getPlaceholder());
+  ctx.allocate(selected);
 
   Function *T = glow::differentiate(F, TC);
 
-  Context ctx;
   EE.compile(CompilationMode::Train, T, ctx);
 
   const int numIterations = 30;
@@ -151,7 +152,7 @@ void testMNIST() {
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    runBatch(EE, numIterations, sampleCounter, {A, selected},
+    runBatch(EE, ctx, numIterations, sampleCounter, {A, selected},
              {&imageInputs, &labelInputs});
 
     timer.stopTimer();
@@ -165,24 +166,19 @@ void testMNIST() {
   // classify correctly.
   int rightAnswer = 0;
 
-  Tensor sample(ElemKind::FloatTy, {minibatchSize, 28, 28, 1});
-
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
-    sample.copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
-    updateVariables({A}, {&sample});
+    inputTensor->copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
     EE.run();
 
-    Tensor &res = result->getVariable()->getPayload();
-
     for (unsigned i = 0; i < minibatchSize; i++) {
-      auto T = res.getHandle<>().extractSlice(i);
+      auto T = resultTensor->getHandle<>().extractSlice(i);
       int64_t guess = T.getHandle<>().minMaxArg().second;
 
       int64_t correct = LIH.at({minibatchSize * iter + i, 0});
       rightAnswer += (guess == correct);
 
       if (iter == numIterations) {
-        auto I = sample.getHandle<>().extractSlice(i);
+        auto I = inputTensor->getHandle<>().extractSlice(i);
 
         llvm::outs() << "MNIST Input";
         I.getHandle<>().dumpAscii();
