@@ -861,24 +861,28 @@ TEST_P(MLTest, learnSinus) {
     tensorY.getHandle<>().at({i, 0}) = y;
   }
 
-  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                                    VisibilityKind::Public, false);
+  Placeholder *inputX =
+      mod.createPlaceholder(ElemKind::FloatTy, {numSamples, 1}, "input", false);
 
-  auto *expectedY =
-      mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "expected",
-                         VisibilityKind::Public, false);
+  Placeholder *expectedY = mod.createPlaceholder(
+      ElemKind::FloatTy, {numSamples, 1}, "expected", false);
 
-  FullyConnectedNode *FC1 = F->createFullyConnected("fc1", inputX, 10);
+  FullyConnectedNode *FC1 = F->createFullyConnected(ctx, "fc1", inputX, 10);
   Node *O = F->createSigmoid("sigmoid1", FC1);
-  FullyConnectedNode *FC2 = F->createFullyConnected("fc2", O, 1);
+  FullyConnectedNode *FC2 = F->createFullyConnected(ctx, "fc2", O, 1);
   Node *R = F->createRegression("reg", FC2, expectedY);
-  auto *result = F->createSave("return", R);
+  SaveNode *result = F->createSave(ctx, "return", R);
+
+  ctx.allocate(inputX);
+  ctx.allocate(expectedY);
+  Tensor *res = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Learn on numSamples samples.
-  runBatch(EE_, 2700, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, ctx, 2700, sampleCounter, {inputX, expectedY},
+           {&tensorX, &tensorY});
 
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
@@ -891,9 +895,9 @@ TEST_P(MLTest, learnSinus) {
   }
 
   EE_.compile(CompilationMode::Infer, F, ctx);
-  updateVariables({inputX}, {&tensorX});
+  updateVariables(ctx, {inputX}, {&tensorX});
   EE_.run();
-  auto resH = result->getVariable()->getPayload().getHandle<>();
+  auto resH = res->getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
     float x = tensorX.getHandle().at({i, 0});
@@ -920,18 +924,22 @@ TEST_P(MLTest, nonLinearClassifier) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("nonLinearClassifier");
 
-  auto *A = mod.createVariable(ElemKind::FloatTy, {batchSize, 2}, "A",
-                               VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "S",
-                               VisibilityKind::Public, false);
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 2}, "A", false);
+  Placeholder *S =
+      mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "S", false);
 
-  auto *FCL0 = F->createFullyConnected("fc1", A, 8);
+  auto *FCL0 = F->createFullyConnected(ctx, "fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
-  auto *FCL1 = F->createFullyConnected("fc2", T0, 8);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc2", T0, 8);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *FCL2 = F->createFullyConnected("fc2", T1, 2);
+  auto *FCL2 = F->createFullyConnected(ctx, "fc2", T1, 2);
   auto *SM = F->createSoftMax("soft", FCL2, S);
-  auto *result = F->createSave("ret", SM);
+  SaveNode *result = F->createSave(ctx, "ret", SM);
+
+  ctx.allocate(A);
+  ctx.allocate(S);
+  Tensor *res = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
@@ -948,7 +956,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
-  runBatch(EE_, 500, sampleCounter, {A, S}, {&samples, &labels});
+  runBatch(EE_, ctx, 500, sampleCounter, {A, S}, {&samples, &labels});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -957,13 +965,13 @@ TEST_P(MLTest, nonLinearClassifier) {
   tests.emplace_back(0.8, -0.8, 1);
   tests.emplace_back(-0.8, 0.8, 1);
   tests.emplace_back(0.8, 0.8, 0);
+  auto RH = res->getHandle<>();
   for (size_t i = 0; i < tests.size(); i++) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    updateVariables({A}, {&T});
+    updateVariables(ctx, {A}, {&T});
     EE_.run();
-    auto RH = result->getVariable()->getPayload().getHandle<>();
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
 }
