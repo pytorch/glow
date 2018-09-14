@@ -700,28 +700,32 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   }
 
   // Create a variable with 1 input, which is a real number.
-  auto *inputX = mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "input",
-                                    VisibilityKind::Public, false);
-  auto *expectedY =
-      mod.createVariable(ElemKind::FloatTy, {numSamples, 1}, "expected",
-                         VisibilityKind::Public, false);
+  Placeholder *inputX =
+      mod.createPlaceholder(ElemKind::FloatTy, {numSamples, 1}, "input", false);
+  Placeholder *expectedY = mod.createPlaceholder(
+      ElemKind::FloatTy, {numSamples, 1}, "expected", false);
 
-  FullyConnectedNode *FC = F->createFullyConnected("fc", inputX, 1);
+  FullyConnectedNode *FC = F->createFullyConnected(ctx, "fc", inputX, 1);
   Node *R = F->createRegression("reg", FC, expectedY);
-  F->createSave("return", R);
+  SaveNode *SN = F->createSave(ctx, "return", R);
 
-  Variable *M = llvm::cast<Variable>(FC->getWeights());
-  Variable *B = llvm::cast<Variable>(FC->getBias());
+  ctx.allocate(inputX);
+  ctx.allocate(expectedY);
+  ctx.allocate(SN->getPlaceholder());
+
+  Placeholder *M = llvm::cast<Placeholder>(FC->getWeights());
+  Placeholder *B = llvm::cast<Placeholder>(FC->getBias());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  runBatch(EE_, 100, sampleCounter, {inputX, expectedY}, {&tensorX, &tensorY});
+  runBatch(EE_, ctx, 100, sampleCounter, {inputX, expectedY},
+           {&tensorX, &tensorY});
 
   // Testing trained m and b:
-  EXPECT_NEAR(M->getPayload().getHandle<>().at({0, 0}), referenceM, 0.01);
-  EXPECT_NEAR(B->getPayload().getHandle<>().at({0}), referenceB, 0.01);
+  EXPECT_NEAR(ctx.get(M)->getHandle<>().at({0, 0}), referenceM, 0.01);
+  EXPECT_NEAR(ctx.get(B)->getHandle<>().at({0}), referenceB, 0.01);
 }
 
 enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
@@ -772,15 +776,18 @@ TEST_P(MLTest, classifyPlayerSport) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("classifyPlayers");
 
-  auto *A =
-      mod.createVariable(ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A",
-                         VisibilityKind::Public, false);
-  auto *S = mod.createVariable(ElemKind::Int64ITy, {numTrainPlayers, 1}, "S",
-                               VisibilityKind::Public, false);
+  Placeholder *A = mod.createPlaceholder(
+      ElemKind::FloatTy, {numTrainPlayers, numFeatures}, "A", false);
+  Placeholder *S = mod.createPlaceholder(ElemKind::Int64ITy,
+                                         {numTrainPlayers, 1}, "S", false);
 
-  auto *FC = F->createFullyConnected("fc", A, numClasses);
+  auto *FC = F->createFullyConnected(ctx, "fc", A, numClasses);
   auto *SM = F->createSoftMax("softmax", FC, S);
-  auto *result = F->createSave("result", SM);
+  SaveNode *result = F->createSave(ctx, "result", SM);
+
+  ctx.allocate(A);
+  ctx.allocate(S);
+  ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
@@ -790,7 +797,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, 2000, sampleCounter, {A, S}, {&players, &labels});
+  runBatch(EE_, ctx, 2000, sampleCounter, {A, S}, {&players, &labels});
 
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -808,11 +815,11 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  updateVariables({A}, {&testPlayersTensor});
+  updateVariables(ctx, {A}, {&testPlayersTensor});
   EE_.run();
 
+  auto SMH = ctx.get(result->getPlaceholder())->getHandle<>();
   for (size_t i = 0; i < testPlayers.size(); i++) {
-    auto SMH = result->getVariable()->getPayload().getHandle<>();
     const size_t sport = static_cast<size_t>(std::get<2>(testPlayers[i]));
     EXPECT_NEAR(SMH.at({i, sport}), 1.0, 0.1);
   }
