@@ -547,26 +547,26 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.1);
 }
 
-void buildGRU(Function *F, const std::vector<Node *> &slicesX,
+void buildGRU(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
               std::vector<NodeValue> &outputs) {
-  return F->createGRU("GRU", slicesX, 1, hiddenSize, outputSize, outputs);
+  return F->createGRU(ctx, "GRU", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-void buildRNN(Function *F, const std::vector<Node *> &slicesX,
+void buildRNN(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
               std::vector<NodeValue> &outputs) {
-  return F->createSimpleRNN("SimpleRNN", slicesX, 1, hiddenSize, outputSize,
+  return F->createSimpleRNN(ctx, "SimpleRNN", slicesX, 1, hiddenSize, outputSize,
                             outputs);
 };
 
-void buildLSTM(Function *F, const std::vector<Node *> &slicesX,
+void buildLSTM(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
                unsigned hiddenSize, unsigned outputSize,
                std::vector<NodeValue> &outputs) {
-  return F->createLSTM("LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
+  return F->createLSTM(ctx, "LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
 };
 
-using TCellGenerator = void (*)(Function *, const std::vector<Node *> &,
+using TCellGenerator = void (*)(Context &, Function *, const std::vector<Node *> &,
                                 unsigned, unsigned, std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
@@ -588,10 +588,12 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned NumElements = 4;
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  auto *X = mod.createVariable(ElemKind::FloatTy, {1, NumVectors, NumElements},
-                               "X", VisibilityKind::Public, false);
-  auto *Y = mod.createVariable(ElemKind::FloatTy, {1, NumVectors}, "Y",
-                               VisibilityKind::Public, false);
+  Placeholder *X = mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors, NumElements},
+                               "X",  false);
+  Placeholder *Y = mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors}, "Y",
+                               false);
+  ctx.allocate(X);
+  ctx.allocate(Y);
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced;
@@ -615,7 +617,7 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned outputSize = 1;
 
   std::vector<NodeValue> outputNodes;
-  cell(F, XSliced, hiddenSize, outputSize, outputNodes);
+  cell(ctx, F, XSliced, hiddenSize, outputSize, outputNodes);
 
   std::vector<NodeValue> regressionNodes;
   for (unsigned t = 0; t < NumVectors; t++) {
@@ -624,7 +626,9 @@ void testRNNCell(TCellGenerator cell) {
   };
 
   auto *R = F->createConcat("O", regressionNodes, 1);
-  auto *result = F->createSave("result", R);
+  SaveNode *result = F->createSave(ctx, "result", R);
+
+  Tensor *res = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
@@ -640,15 +644,15 @@ void testRNNCell(TCellGenerator cell) {
   }
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
+  runBatch(EE, ctx, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({X}, {&inputs});
+  updateVariables(ctx, {X}, {&inputs});
   EE.run();
 
-  auto RNWH = result->getVariable()->getPayload().getHandle<>();
+  auto RNWH = res->getHandle<>();
   (void)RNWH;
 
   // Test the output:
@@ -662,41 +666,6 @@ TEST_P(MLTest, trainASimpleRNN) { testRNNCell(buildRNN); };
 TEST_P(MLTest, trainGRU) { testRNNCell(buildGRU); };
 
 TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
-
-/// Learn the square root of two.
-TEST_P(MLTest, learnSqrt2) {
-  TrainingConfig TC;
-  Context ctx;
-
-  TC.learningRate = 0.03;
-
-  auto &mod = EE_.getModule();
-  Function *F = mod.createFunction("Square root of 2");
-
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1}, "A",
-                               VisibilityKind::Public, true);
-  A->getPayload().init(Tensor::InitKind::Broadcast, 1, mod.getPRNG());
-
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1}, "Ex",
-                                VisibilityKind::Public, false);
-  Ex->getPayload().getHandle() = {2};
-
-  Node *O = F->createMul("Mult", A, A);
-  O = F->createRegression("reg", O, Ex);
-  F->createSave("ret", O);
-
-  Function *TF = glow::differentiate(F, TC);
-  EE_.compile(CompilationMode::Train, TF, ctx);
-
-  // Train the network:
-  for (int i = 0; i < 50; i++) {
-    EE_.run();
-    EE_.run();
-  }
-
-  float res = A->getPayload().getHandle().at({0});
-  EXPECT_NEAR(res, 1.4142, 0.01);
-}
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
   TrainingConfig TC;
