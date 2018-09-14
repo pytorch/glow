@@ -587,8 +587,8 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
-                                                   NodeValue input, Variable *W,
-                                                   Variable *B) {
+                                                   NodeValue input, Storage *W,
+                                                   Storage *B) {
   TypeRef T = input.getType();
   TypeRef OT = getParent()->uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
@@ -1998,6 +1998,379 @@ SaveNode *Function::createSave(Context &ctx, llvm::StringRef name,
   return addNode(new SaveNode(name, input, dest));
 }
 
+void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
+                         llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                         unsigned hiddenSize, unsigned outputSize,
+                         std::vector<NodeValue> &outputs) {
+  std::string nameBase = namePrefix;
+  const unsigned timeSteps = inputs.size();
+  assert(timeSteps > 0 && "empty input");
+  const unsigned inputSize = inputs.front()->dims(0).back();
+  assert(inputSize > 0 && "input dimensionality is zero");
+
+  // Initialize the state to zero.
+  Placeholder *HInit = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state", false);
+  ctx.allocate(HInit)->zero();
+  Node *Ht = HInit;
+
+  // Update gate:
+  //    Z <- sigmoid(Wxz * x + Whz * h + bz)
+  // Reset gate:
+  //    R <- sigmoid(Wxr * x + Whr * h + br)
+  // Hidden state:
+  //    h <- Z . h + (1 - Z) tanh (Wxh * x + Whh * (R . h) + bh)
+
+  // update gate
+  float bUpdate = 0.1;
+  Placeholder *Wxz = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxz", true);
+  Placeholder *Whz = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whz", true);
+  Placeholder *Bz1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz1", true);
+  Placeholder *Bz2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz2", true);
+
+  ctx.allocate(Wxz)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whz)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bz1)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
+                          getPRNG());
+  ctx.allocate(Bz2)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
+                          getPRNG());
+
+  // Reset gate.
+  float bReset = -1.0;
+  Placeholder *Wxr = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxr", true);
+  Placeholder *Whr = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whr", true);
+  Placeholder *Br1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br1", true);
+  Placeholder *Br2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".br2", true);
+
+  ctx.allocate(Wxr)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whr)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Br1)->init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
+  ctx.allocate(Br2)->init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
+
+  // hidden state
+  float b = 0.1;
+  Placeholder *Wxh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh", true);
+  Placeholder *Whh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh", true);
+  Placeholder *Bh1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh1", true);
+  Placeholder *Bh2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh2", true);
+
+  ctx.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bh1)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  ctx.allocate(Bh2)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  // Output Layer.
+  Placeholder *Why = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why", true);
+  Placeholder *By = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {outputSize}, nameBase + ".by", true);
+
+  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {batchSize, hiddenSize});
+  auto *Ones = createSplat(nameBase + ".ones", ty, 1.0);
+
+  std::vector<Node *> outputNodes;
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
+    auto add1Name = nameBase + ".add1." + std::to_string(t);
+    auto sigmoid1Name = nameBase + ".sigmoid1." + std::to_string(t);
+
+    auto *Zt = createSigmoid(
+        sigmoid1Name,
+        createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whz, Bz1),
+                  createFullyConnected(fc2Name, inputs[t], Wxz, Bz2)));
+
+    auto fc3Name = nameBase + ".fc3." + std::to_string(t);
+    auto fc4Name = nameBase + ".fc4." + std::to_string(t);
+    auto add2Name = nameBase + ".add2." + std::to_string(t);
+    auto sigmoid2Name = nameBase + ".sigmoid2." + std::to_string(t);
+
+    auto *Rt = createSigmoid(
+        sigmoid2Name,
+        createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whr, Br1),
+                  createFullyConnected(fc4Name, inputs[t], Wxr, Br2)));
+
+    auto zhtName = nameBase + ".zh." + std::to_string(t);
+    auto *ZHt = createMul(zhtName, Zt, Ht);
+
+    auto oneMinusZtName = nameBase + ".1-z." + std::to_string(t);
+    auto *OneMinusZt = createSub(oneMinusZtName, Ones, Zt);
+
+    auto rhtName = nameBase + ".rh." + std::to_string(t);
+    auto *RHt = createMul(rhtName, Rt, Ht);
+
+    auto fc5Name = nameBase + ".fc5." + std::to_string(t);
+    auto fc6Name = nameBase + ".fc6." + std::to_string(t);
+    auto add3Name = nameBase + ".add3." + std::to_string(t);
+    auto tanh1Name = nameBase + ".tanh1." + std::to_string(t);
+
+    auto *Ut = createTanh(
+        tanh1Name,
+        createAdd(add3Name, createFullyConnected(fc5Name, RHt, Whh, Bh1),
+                  createFullyConnected(fc6Name, inputs[t], Wxh, Bh2)));
+
+    auto oneMinusZtUtName = nameBase + "1.-zu." + std::to_string(t);
+    auto *OneMinusZtUt = createMul(oneMinusZtUtName, OneMinusZt, Ut);
+
+    auto htName = nameBase + ".H." + std::to_string(t);
+    Ht = createAdd(htName, ZHt, OneMinusZtUt);
+
+    auto outName = nameBase + ".out." + std::to_string(t);
+    auto *O = createFullyConnected(outName, Ht, Why, By);
+    outputs.push_back(O);
+  }
+}
+
+void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
+                               llvm::ArrayRef<Node *> inputs,
+                               unsigned batchSize, unsigned hiddenSize,
+                               unsigned outputSize,
+                               std::vector<NodeValue> &outputs) {
+  std::string nameBase = namePrefix;
+  const unsigned timeSteps = inputs.size();
+  assert(timeSteps > 0 && "empty input");
+  const unsigned inputSize = inputs.front()->dims(0).back();
+  assert(inputSize > 0 && "input dimensionality is zero");
+
+  // Initialize the state to zero.
+  Placeholder *HInit =
+      getParent()->createPlaceholder(ElemKind::FloatTy, {batchSize, hiddenSize},
+                                     nameBase + ".initial_state", false);
+  ctx.allocate(HInit)->zero();
+  Node *Ht = HInit;
+
+  float b = 0.1;
+  Placeholder *Whh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whh", true);
+  Placeholder *Bhh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bhh", true);
+  Placeholder *Wxh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxh", true);
+
+  Placeholder *Bxh = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".Bxh", true);
+  Placeholder *Why = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why", true);
+  Placeholder *Bhy = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {outputSize}, nameBase + ".Bhy", true);
+
+  ctx.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bhh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  ctx.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Bxh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bhy)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  // Un-roll backpropogation through time as a loop with the shared parameters.
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
+    auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh);
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
+    auto *FC2 = createFullyConnected(fc2Name, inputs[t], Wxh, Bxh);
+    auto aName = nameBase + ".add." + std::to_string(t);
+    auto *A = createAdd(aName, FC1, FC2);
+    auto tanhName = nameBase + ".tanh." + std::to_string(t);
+    auto *H = createTanh(tanhName, A);
+    auto outName = nameBase + ".out." + std::to_string(t);
+    auto *O = createFullyConnected(outName, H, Why, Bhy);
+    outputs.push_back(O);
+
+    Ht = H;
+  };
+}
+
+void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
+                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                          unsigned hiddenSize, unsigned outputSize,
+                          std::vector<NodeValue> &outputs) {
+  std::string nameBase = namePrefix;
+  const unsigned timeSteps = inputs.size();
+  assert(timeSteps > 0 && "empty input");
+  const unsigned inputSize = inputs.front()->dims(0).back();
+  assert(inputSize > 0 && "input dimensionality is zero");
+
+  // Initialize the hidden and cell states to zero.
+  Placeholder *HInit =
+      getParent()->createPlaceholder(ElemKind::FloatTy, {batchSize, hiddenSize},
+                                     "initial_hidden_state", false);
+  ctx.allocate(HInit)->zero();
+  Node *Ht = HInit;
+
+  Placeholder *CInit = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state", false);
+  ctx.allocate(CInit)->zero();
+  Node *Ct = CInit;
+
+  // Forget gate:
+  //    F <- sigmoid(Wxf * x + Whf * h + bf)
+  // Input gate:
+  //    I <- sigmoid(Wxi * x + Whi * h + bi)
+  // Output gate:
+  //    O <- sigmoid(Wxo * x + Who * h + bi)
+  // Cell state:
+  //    C <- F . C + I . tanh(Wxc  * x + Whc * h + bc)
+  // Hidden state:
+  //    h <- O . tanh(C)
+
+  // forget gate
+  float bForget = 1.0;
+  Placeholder *Wxf = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxf", true);
+  Placeholder *Whf = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whf", true);
+  Placeholder *Bf1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf1", true);
+  Placeholder *Bf2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf2", true);
+  ctx.allocate(Wxf)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whf)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bf1)->init(glow::Tensor::InitKind::Broadcast, bForget,
+                          getPRNG());
+  ctx.allocate(Bf2)->init(glow::Tensor::InitKind::Broadcast, bForget,
+                          getPRNG());
+
+  // input gate
+  float bInput = 0.1;
+  Placeholder *Wxi = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxi", true);
+  Placeholder *Whi = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whi", true);
+  Placeholder *Bi1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi1", true);
+  Placeholder *Bi2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi2", true);
+
+  ctx.allocate(Wxi)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whi)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bi1)->init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
+  ctx.allocate(Bi2)->init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
+
+  // output gate
+  float bOutput = 0.1;
+  Placeholder *Wxo = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxo", true);
+  Placeholder *Who = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Who", true);
+  Placeholder *Bo1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo1", true);
+  Placeholder *Bo2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo2", true);
+
+  ctx.allocate(Wxo)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Who)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bo1)->init(glow::Tensor::InitKind::Broadcast, bOutput,
+                          getPRNG());
+  ctx.allocate(Bo2)->init(glow::Tensor::InitKind::Broadcast, bOutput,
+                          getPRNG());
+
+  // cell state
+  float bCell = 0.1;
+  Placeholder *Wxc = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {inputSize, hiddenSize}, nameBase + ".Wxc", true);
+  Placeholder *Whc = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, hiddenSize}, nameBase + ".Whc", true);
+  Placeholder *Bc1 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc1", true);
+  Placeholder *Bc2 = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc2", true);
+
+  ctx.allocate(Wxc)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
+  ctx.allocate(Whc)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(Bc1)->init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
+  ctx.allocate(Bc2)->init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
+
+  // output layer
+  float b = 0.1;
+  Placeholder *Why = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {hiddenSize, outputSize}, nameBase + ".Why", true);
+  Placeholder *By = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {outputSize}, nameBase + ".by", true);
+
+  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                          getPRNG());
+  ctx.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+
+  std::vector<Node *> outputNodes;
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto fc1Name = nameBase + ".fc1." + std::to_string(t);
+    auto fc2Name = nameBase + ".fc2." + std::to_string(t);
+    auto add1Name = nameBase + ".add1." + std::to_string(t);
+    auto sigmoid1Name = nameBase + ".sigmoid1." + std::to_string(t);
+
+    auto *Ft = createSigmoid(
+        sigmoid1Name,
+        createAdd(add1Name, createFullyConnected(fc1Name, Ht, Whf, Bf1),
+                  createFullyConnected(fc2Name, inputs[t], Wxf, Bf2)));
+
+    auto fc3Name = nameBase + ".fc3." + std::to_string(t);
+    auto fc4Name = nameBase + ".fc4." + std::to_string(t);
+    auto add2Name = nameBase + ".add2." + std::to_string(t);
+    auto sigmoid2Name = nameBase + ".sigmoid2." + std::to_string(t);
+
+    auto *It = createSigmoid(
+        sigmoid2Name,
+        createAdd(add2Name, createFullyConnected(fc3Name, Ht, Whi, Bi1),
+                  createFullyConnected(fc4Name, inputs[t], Wxi, Bi2)));
+
+    auto fc5Name = nameBase + ".fc5." + std::to_string(t);
+    auto fc6Name = nameBase + ".fc6." + std::to_string(t);
+    auto add3Name = nameBase + ".add3." + std::to_string(t);
+    auto sigmoid3Name = nameBase + ".sigmoid3." + std::to_string(t);
+
+    auto *Ot = createSigmoid(
+        sigmoid3Name,
+        createAdd(add3Name, createFullyConnected(fc5Name, Ht, Who, Bo1),
+                  createFullyConnected(fc6Name, inputs[t], Wxo, Bo2)));
+
+    auto fc7Name = nameBase + ".fc7." + std::to_string(t);
+    auto fc8Name = nameBase + ".fc8." + std::to_string(t);
+    auto add4Name = nameBase + ".add4." + std::to_string(t);
+    auto tanh1Name = nameBase + ".tanh1." + std::to_string(t);
+
+    auto *CRt = createTanh(
+        tanh1Name,
+        createAdd(add4Name, createFullyConnected(fc7Name, Ht, Whc, Bc1),
+                  createFullyConnected(fc8Name, inputs[t], Wxc, Bc2)));
+
+    auto mul1Name = nameBase + ".mul1." + std::to_string(t);
+    auto mul2Name = nameBase + ".mul2." + std::to_string(t);
+    Ct = createAdd(nameBase + ".C." + std::to_string(t),
+                   createMul(mul1Name, Ft, Ct), createMul(mul2Name, It, CRt));
+
+    auto htName = nameBase + ".H." + std::to_string(t);
+    auto tanh2Name = nameBase + ".tanh2." + std::to_string(t);
+    Ht = createMul(htName, Ot, createTanh(tanh2Name, Ct));
+
+    auto outName = nameBase + ".out." + std::to_string(t);
+    auto *O = createFullyConnected(outName, Ht, Why, By);
+    outputs.push_back(O);
+  }
+};
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

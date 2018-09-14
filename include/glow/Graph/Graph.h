@@ -254,8 +254,8 @@ public:
                              unsigned_t pad);
 
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, Variable *W,
-                                           Variable *B);
+                                           NodeValue input, Storage *W,
+                                           Storage *B);
 
   /// Create a fully connected node with the specified output type.
   /// Note, outputDepth is infered based on the output type.
@@ -611,6 +611,20 @@ public:
 
   SaveNode *createSave(Context &ctx, llvm::StringRef name, NodeValue input);
 
+  void createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
+                       const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                       unsigned hiddenSize, unsigned outputSize,
+                       std::vector<NodeValue> &outputs);
+
+  void createGRU(Context &ctx, llvm::StringRef namePrefix,
+                 const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                 unsigned hiddenSize, unsigned outputSize,
+                 std::vector<NodeValue> &outputs);
+
+  void createLSTM(Context &ctx, llvm::StringRef namePrefix,
+                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                  unsigned hiddenSize, unsigned outputSize,
+                  std::vector<NodeValue> &outputs);
   /// @}
 
   /// Erase the node \p N from the Function.
