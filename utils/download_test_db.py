@@ -10,20 +10,31 @@ import pickle
 import sys
 import tarfile
 import urllib
+import sys
 
 try:
     from urllib.error import URLError
 except ImportError:
     from urllib2 import URLError
 
+try:
+    from urllib.request import urlretrieve
+except ImportError:
+    from urllib import urlretrieve
 
 Dataset = collections.namedtuple('Dataset', 'filename, url, handler, dest_path')
+
+
+def pickle_load(file):
+    if sys.version_info.major >= 3:
+        return pickle.load(file, encoding='bytes')
+    return pickle.load(file)
 
 
 def handle_mnist(filename, dest_path):
     print('Extracting {} ...'.format(filename))
     with gzip.open(filename, 'rb') as file:
-        training_set, _, _ = pickle.load(file)
+        training_set, _, _ = pickle_load(file)
         data, labels = training_set
 
         images_file = open('mnist_images.bin', 'wb')
@@ -86,7 +97,7 @@ def download_dataset(dataset):
         print('Downloading {} from {} ...'.format(dataset.filename,
                                                   dataset.url))
         try:
-            urllib.urlretrieve(
+            urlretrieve(
                 dataset.url,
                 dataset.filename,
                 reporthook=report_download_progress)
