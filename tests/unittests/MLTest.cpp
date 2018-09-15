@@ -556,18 +556,20 @@ void buildGRU(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
 void buildRNN(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
               unsigned hiddenSize, unsigned outputSize,
               std::vector<NodeValue> &outputs) {
-  return F->createSimpleRNN(ctx, "SimpleRNN", slicesX, 1, hiddenSize, outputSize,
-                            outputs);
+  return F->createSimpleRNN(ctx, "SimpleRNN", slicesX, 1, hiddenSize,
+                            outputSize, outputs);
 };
 
 void buildLSTM(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
                unsigned hiddenSize, unsigned outputSize,
                std::vector<NodeValue> &outputs) {
-  return F->createLSTM(ctx, "LSTM", slicesX, 1, hiddenSize, outputSize, outputs);
+  return F->createLSTM(ctx, "LSTM", slicesX, 1, hiddenSize, outputSize,
+                       outputs);
 };
 
-using TCellGenerator = void (*)(Context &, Function *, const std::vector<Node *> &,
-                                unsigned, unsigned, std::vector<NodeValue> &);
+using TCellGenerator = void (*)(Context &, Function *,
+                                const std::vector<Node *> &, unsigned, unsigned,
+                                std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
   TrainingConfig TC;
@@ -588,10 +590,10 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned NumElements = 4;
   // Create a variable with 1 input, which is 3 consecutive vectors
   // of 4 elements each.
-  Placeholder *X = mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors, NumElements},
-                               "X",  false);
-  Placeholder *Y = mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors}, "Y",
-                               false);
+  Placeholder *X = mod.createPlaceholder(
+      ElemKind::FloatTy, {1, NumVectors, NumElements}, "X", false);
+  Placeholder *Y =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors}, "Y", false);
   ctx.allocate(X);
   ctx.allocate(Y);
 
