@@ -225,7 +225,8 @@ static Function *createSimpleGraphForQuantization(Module *M, Variable *A,
   auto *TN = F->createTranspose("transpose", O, {1, 0});
   auto *MMN = F->createMatMul("batchedreduceadd", O, TN);
   auto *BRAN = F->createBatchedReduceAdd("batchedreduceadd", MMN, 0);
-  F->createSave("save", BRAN);
+  auto *TLN = F->createTile("tile", BRAN, 2, 0);
+  F->createSave("save", TLN);
   return F;
 }
 

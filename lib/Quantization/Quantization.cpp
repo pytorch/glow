@@ -360,6 +360,19 @@ static Node *quantizeNode(Function *F, Node *node,
                                     quantizedInputs[1]);
     break;
   }
+  case Kinded::Kind::TileNodeKind: {
+    auto *TN = cast<TileNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    auto QT =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, TN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+
+    quantizedNode = F->createTile(TN->getName(), quantizedInputs[0],
+                                  TN->getCount(), TN->getAxis(), QT);
+    break;
+  }
   default:
     GLOW_UNREACHABLE("The node type is not supported for quantization");
   }

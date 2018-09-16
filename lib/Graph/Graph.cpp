@@ -828,15 +828,19 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 }
 
 TileNode *Function::createTile(llvm::StringRef name, NodeValue input,
-                               unsigned_t tiles, unsigned_t axis) {
+                               unsigned_t tiles, unsigned_t axis,
+                               TypeRef outTy) {
   assert(tiles > 0 && "Tiles must be non-zero.");
   assert(axis >= 0 && axis < input.dims().size() &&
          "Axis must fall in range of source dims.");
 
-  ShapeVector outShape(input.dims().begin(), input.dims().end());
-  outShape[axis] *= tiles;
-  auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outShape);
-  return addNode(new TileNode(name, OT, input, tiles, axis));
+  if (outTy == nullptr) {
+    ShapeVector outShape(input.dims().begin(), input.dims().end());
+    outShape[axis] *= tiles;
+    outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outShape);
+  }
+
+  return addNode(new TileNode(name, outTy, input, tiles, axis));
 }
 
 InsertTensorNode *Function::createInsertTensor(llvm::StringRef name,
