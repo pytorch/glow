@@ -183,6 +183,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::SigmoidNodeKind:
     case Kinded::Kind::SubNodeKind:
     case Kinded::Kind::TanhNodeKind:
+    case Kinded::Kind::TileNodeKind:
     case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
       return true;
