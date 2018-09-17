@@ -1120,10 +1120,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {batchSize, 10, 10, 1},
-                                   "input", VisibilityKind::Public, false);
-  auto *ex = mod.createVariable(ElemKind::FloatTy, {batchSize, 2},
-                                "coordinates", VisibilityKind::Public, false);
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::FloatTy, {batchSize, 10, 10, 1}, "input", false);
+  Placeholder *ex = mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 2},
+                                          "coordinates", false);
 
   // A simple single-layer FC network could solve this program but we use a two
   // layer FC network to give the compiler something slightly more complex to
@@ -1132,7 +1132,12 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto *RL0 = F->createRELU("relu0", FC0);
   auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
-  auto *result = F->createSave("ret", R);
+  SaveNode *result = F->createSave(ctx, "ret", R);
+
+  ctx.allocate(input);
+  ctx.allocate(ex);
+  Tensor *res = ctx.allocate(result->getPlaceholder());
+
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
 
@@ -1142,7 +1147,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, 400, sampleCounter, {input, ex}, {&images, &labels});
+  runBatch(EE, ctx, 400, sampleCounter, {input, ex}, {&images, &labels});
 
   // -- STEP2 - Profile and quantize the network. --
 
@@ -1151,7 +1156,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EE.compile(CompilationMode::Infer, PF, ctx);
 
   // Run the graph to capture the profile.
-  runBatch(EE, 100, sampleCounter, {input}, {&images});
+  runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -1172,11 +1177,11 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
-  updateVariables({input}, {&testImages});
+  updateVariables(ctx, {input}, {&testImages});
   EE.run();
 
   // A handle to the projected result.
-  auto RH = result->getVariable()->getHandle<>();
+  auto RH = res->getHandle<>();
   // A handle to the true label.
   auto LH = testLabels.getHandle<>();
 
