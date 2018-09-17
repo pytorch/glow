@@ -169,6 +169,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::DequantizeNodeKind:
     case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
+    case Kinded::Kind::GatherNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:
@@ -180,6 +181,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::RescaleQuantizedNodeKind:
     case Kinded::Kind::ReshapeNodeKind:
     case Kinded::Kind::SelectNodeKind:
+    case Kinded::Kind::SliceNodeKind:
     case Kinded::Kind::SigmoidNodeKind:
     case Kinded::Kind::SubNodeKind:
     case Kinded::Kind::TanhNodeKind:
