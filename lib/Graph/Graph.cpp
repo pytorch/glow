@@ -1923,6 +1923,33 @@ void Function::createLSTM(llvm::StringRef namePrefix,
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
 
+BatchNormalizationNode *
+Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
+                                   NodeValue input, unsigned_t channelIdx,
+                                   float epsilon, float momentum) {
+  // Figure out how many channels are in the tensor.
+  size_t channels = input.dims()[channelIdx];
+
+  // Allocate the learnable parameters beta and gamma.
+  auto *beta = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
+                                              "beta", true);
+  ctx.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+
+  auto *gamma = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
+                                               "gamma", true);
+
+  ctx.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
+
+  auto *mean = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
+                                              "mean", false);
+
+  auto *variance = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
+                                                  "variance", false);
+
+  return createBatchNormalization(name, input, beta, gamma, mean, variance,
+                                  channelIdx, epsilon, momentum);
+}
+
 ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
                                       NodeValue input, size_t depth,
                                       llvm::ArrayRef<unsigned_t> kernels,
