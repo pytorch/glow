@@ -1023,17 +1023,22 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("convNetForImageRecognition");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {batchSize, 8, 8, 1},
-                                   "input", VisibilityKind::Public, false);
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::FloatTy, {batchSize, 8, 8, 1}, "input", false);
 
-  auto *ex = mod.createVariable(ElemKind::Int64ITy, {batchSize, 1}, "exp",
-                                VisibilityKind::Public, false);
+  Placeholder *ex =
+      mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "exp", false);
 
   auto *CV = F->createConv("conv", input, 1, 3, 1, 0, 1);
   auto *TANH = F->createTanh("tanh", CV);
   auto *FCL = F->createFullyConnected("fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
-  auto *result = F->createSave("ret", SM);
+  SaveNode *result = F->createSave(ctx, "ret", SM);
+
+  ctx.allocate(input);
+  ctx.allocate(ex);
+  Tensor *res = ctx.allocate(result->getPlaceholder());
+
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
 
@@ -1042,12 +1047,12 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, 500, sampleCounter, {input, ex}, {&images, &labels});
+  runBatch(EE, ctx, 500, sampleCounter, {input, ex}, {&images, &labels});
 
   // Profiling:
   Function *PF = glow::profileQuantization(F);
   EE.compile(CompilationMode::Infer, PF, ctx);
-  runBatch(EE, 100, sampleCounter, {input}, {&images});
+  runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -1058,13 +1063,14 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
   EE.compile(CompilationMode::Infer, QP, ctx);
+
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  updateVariables({input}, {&testImages});
+  updateVariables(ctx, {input}, {&testImages});
   EE.run();
-  auto SMH = result->getVariable()->getHandle<>();
+  auto SMH = res->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});

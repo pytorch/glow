@@ -56,6 +56,14 @@ Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
     nodesToInstrument.insert(var->getOutput());
   }
 
+  // Add Quantization Profile node to all floating point placeholders.
+  for (const auto &PH : G->getParent()->getPlaceholders()) {
+    if (PH->getOutput().getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+    nodesToInstrument.insert(PH->getOutput());
+  }
+
   for (const auto &node : nodesToInstrument) {
     G->createQuantizationProfile("QuantizationProfile", node);
   }
