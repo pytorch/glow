@@ -3487,6 +3487,61 @@ TEST_P(InterpAndCPU, insertTensorTest) {
   }
 }
 
+/// Test RowwiseQuantizedFullyConnected Node.
+TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
+  // In this test we subtract the outputs of a row-wise quantized FC and a
+  // floating-point FC and ensure that the error is below some low value.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 100}, "in", false);
+  auto *fc = F_->createFullyConnected(ctx_, "FC", input, 5);
+
+  auto *weights = llvm::cast<Placeholder>(fc->getWeights());
+  auto *bias = llvm::cast<Placeholder>(fc->getBias());
+
+  ctx_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ctx_.get(bias)->getHandle().randomize(0, 0.1, mod_.getPRNG());
+  ctx_.get(weights)->getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
+
+  // Create rowwise quantized FC.
+  // The FC fomula is I * W + B, while the RWQFC is I * transpose(W) + B.
+  // So get the tranpose of weights from the above FC.
+  auto *newWeights = mod_.createVariable(
+      ElemKind::FloatTy, {weights->dims()[1], weights->dims()[0]}, "newW",
+      VisibilityKind::Private, false);
+  ctx_.get(weights)->transpose(&newWeights->getPayload(), {1, 0});
+
+  TypeRef inputTy =
+      mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.0086, -1);
+  TypeRef resTy =
+      mod_.uniqueType(ElemKind::Int8QTy, fc->getResult().dims(), 0.05, 49);
+  TypeRef biasTy =
+      mod_.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.00036, -128);
+
+  auto *inputq = F_->createQuantize("input.q", input, inputTy);
+  auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
+
+  auto *fcq = F_->createRowwiseQuantizedFullyConnected(
+      ctx_, "fcq", inputq, newWeights, biasq, resTy);
+  auto *dequantRes = F_->createDequantize("dequant", fcq);
+
+  // Subtract the results of the convolution from the rowwise quantized fc.
+  auto *sub = F_->createSub("compare", dequantRes, fc);
+
+  auto *save = F_->createSave(ctx_, "save", sub);
+
+  ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto H = ctx_.get(save->getPlaceholder())->getHandle();
+
+  // The difference in the results should be less than 0.05.
+  for (int i = 0, e = H.size(); i < e; i++) {
+    EXPECT_LE(std::abs(H.raw(i)), 0.05);
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

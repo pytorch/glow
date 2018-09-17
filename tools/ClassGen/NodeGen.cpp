@@ -107,6 +107,20 @@ int main(int argc, char **argv) {
                     "Weights tensor are multiplied, and then the Bias tensor "
                     "is added to it, producing the Output.");
 
+  BB.newNode("RowwiseQuantizedFullyConnected")
+      .addInput("Input")
+      .addInput("Weights")
+      .addInput("Scales")
+      .addInput("Offsets")
+      .addInput("Bias")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Creates a RowwiseQuantizedFullyConnected node where the Input "
+          "matrix and the transpose of Weights matrix are multiplied, and "
+          "then the Bias vector is broadcast-added to the result. Input, "
+          "Bias and Result are regularly quantized, while Weights use row-wise"
+          "quantization.");
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//

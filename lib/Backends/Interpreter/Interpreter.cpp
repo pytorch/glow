@@ -68,6 +68,7 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::TileNodeKind:
     case Kinded::Kind::TopKNodeKind:
     case Kinded::Kind::TransposeNodeKind:
+    case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
       return true;
     default:
       return false;

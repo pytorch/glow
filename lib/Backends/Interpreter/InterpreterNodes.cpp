@@ -1338,6 +1338,48 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 }
 
 //===----------------------------------------------------------------------===//
+//                       Row-wise quantized FC
+//===----------------------------------------------------------------------===//
+void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
+    const RowwiseQuantizedFullyConnectedInst *I) {
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto weightsW = getWeightHandle<int8_t>(I->getWeights());
+  auto biasW = getWeightHandle<int8_t>(I->getBias());
+  auto scalesW = getWeightHandle<float>(I->getScales());
+  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+  auto inTy = inW.getType();
+  auto biasTy = biasW.getType();
+  auto outTy = outW.getType();
+  int32_t outOffset = outTy.getOffset();
+  int32_t inOffset = inTy.getOffset();
+  int32_t biasOffset = biasTy.getOffset();
+  float outScale = outTy.getScale();
+  float inScale = inTy.getScale();
+  float biasScale = biasTy.getScale();
+
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      float matMulScale = scalesW.raw(j) * inScale;
+      int32_t sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        int32_t W = weightsW.at({j, k});
+        int32_t I = inW.at({i, k});
+        sum += (W - offsetsW.raw(j)) * (I - inOffset);
+      }
+      int32_t B = std::round(float(biasW.at({j}) - biasOffset) *
+                             (biasScale / matMulScale));
+      sum += B;
+      // Scale the result back to the expected destination scale.
+      outW.at({i, j}) = quantization::clip<int32_t, int8_t>(
+          std::round(float(sum) * (matMulScale / outScale) + outOffset));
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
 //                       Batched operations
 //===----------------------------------------------------------------------===//
 

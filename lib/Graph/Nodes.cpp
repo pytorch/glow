@@ -645,6 +645,42 @@ void TopKNode::verify() const {
   }
 }
 
+void RowwiseQuantizedFullyConnectedNode::verify() const {
+  auto src = getInput();
+  auto weights = getWeights();
+  auto scales = getScales();
+  auto offsets = getOffsets();
+  auto bias = getBias();
+  auto dest = getResult();
+
+  (void)src;
+  (void)weights;
+  (void)scales;
+  (void)offsets;
+  (void)bias;
+  (void)dest;
+
+  assert(src.dims().size() == 2 && weights.dims().size() == 2 &&
+         dest.dims().size() == 2 &&
+         "Input, weights and result should be 2D tensor");
+
+  assert(offsets.dims().size() == 1 && scales.dims().size() == 1 &&
+         bias.dims().size() == 1 &&
+         "Offsets, scales and bias should be 1D tensor");
+
+  assert(src.dims()[0] == dest.dims()[0] &&
+         src.dims()[1] == weights.dims()[1] &&
+         "Mismatch on expected source dimensions");
+
+  assert(bias.dims()[0] == weights.dims()[0] &&
+         weights.dims()[0] == dest.dims()[1] &&
+         "Inconsistent bias/weights/dest sizes.");
+
+  assert(scales.dims()[0] == offsets.dims()[0] &&
+         scales.dims()[0] == weights.dims()[0] &&
+         "Inconsistent weights/offsets/scales sizes");
+}
+
 void GatherNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType());
   assert(getIndices().getElementType() == ElemKind::Int64ITy);

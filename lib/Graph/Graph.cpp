@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -637,6 +637,36 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   auto OT =
       getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
+}
+
+RowwiseQuantizedFullyConnectedNode *
+Function::createRowwiseQuantizedFullyConnected(Context &ctx,
+                                               llvm::StringRef name,
+                                               NodeValue input, Variable *W,
+                                               Node *B, TypeRef outTy) {
+  // Since W is constant, quantize it in compilation time.
+  // The quantized data is in qWeights, the scale of each row is in scales,
+  // and the offset of each row is in offsets.
+  Variable *weights = llvm::cast<Variable>(W);
+  size_t numRows = W->getType()->dims()[0];
+
+  // So far, if we want to create a storage with Int8QTy/Int16QTy/Int32QTy,
+  // it is assumed to be quantized data and the scale and offset should be
+  // provided. But for rowwise quantization, the scales and offsets are stored
+  // in vectors separately, we add the dummy scale and offset here.
+  auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
+                                               0.0, 0, "weights.rwqfc",
+                                               VisibilityKind::Private, false);
+  auto *scales = getParent()->createPlaceholder(ElemKind::FloatTy, {numRows},
+                                                "scales.rwqfc", false);
+  auto *offsets = getParent()->createPlaceholder(
+      ElemKind::Int32QTy, {numRows}, 0.0, 0, "offsets.rwqfc", false);
+
+  quantization::tensorRowwiseQuantization(
+      weights->getPayload(), qWeights->getPayload(), *ctx.allocate(scales),
+      *ctx.allocate(offsets));
+  return addNode(new RowwiseQuantizedFullyConnectedNode(
+      name, outTy, input, qWeights, scales, offsets, B));
 }
 
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,

@@ -276,6 +276,15 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
+  /// Create a row-wise quantized fully connected node. This node is only used
+  /// in quantization. Args \p input and \p B are quantized in regular way, \p W
+  /// is the constant weights and will be row-wise quantized during node
+  /// creation time.
+  RowwiseQuantizedFullyConnectedNode *
+  createRowwiseQuantizedFullyConnected(Context &ctx, llvm::StringRef name,
+                                       NodeValue input, Variable *W, Node *B,
+                                       TypeRef outTy);
+
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
