@@ -17,6 +17,8 @@
 #ifndef GLOW_QUANTIZATION_BASE_BASE_H
 #define GLOW_QUANTIZATION_BASE_BASE_H
 
+#include "glow/Base/Type.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
@@ -98,6 +100,12 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
 /// by \p schema.
 TensorQuantizationParams chooseQuantizationParams(float min, float max,
                                                   Schema schema = Asymmetric);
+
+/// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
+/// function \p f.
+/// \pre inTy and outTy should be Int8QTy.
+std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
+                                  std::function<float(float)> f);
 
 } // namespace quantization
 } // namespace glow
