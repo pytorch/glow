@@ -265,8 +265,6 @@ static void verifyRelu(NodeValue result, NodeValue input) {
   if (input.getType()->isQuantizedType()) {
     assert(result.getType()->isQuantizedType());
     checkSameShape(result, input);
-    assert(result.getType()->getOffset() == -128 &&
-           "Min fp32 value should be 0");
   } else {
     checkSameType(result, input);
   }
