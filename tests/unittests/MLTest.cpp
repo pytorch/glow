@@ -58,7 +58,9 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 
   Node *M = F->createMul("Mult", A, A);
   M = F->createRegression("reg", M, E);
-  F->createSave("ret", M);
+  SaveNode *SN = F->createSave(ctx, "ret", M);
+
+  ctx.allocate(SN->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF, ctx);
@@ -1290,29 +1292,34 @@ TEST_P(MLTest, matrixRotationRecognition) {
   Module &mod = EE_.getModule();
   PseudoRNG &PRNG = mod.getPRNG();
   Function *F = mod.createFunction("MatrixRotationRecognition");
-  Variable *varMatricesA =
-      mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA",
-                         VisibilityKind::Public, false);
-  Variable *varMatricesB =
-      mod.createVariable(ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB",
-                         VisibilityKind::Public, false);
-  Variable *varExpected =
-      mod.createVariable(ElemKind::Int64ITy, {TC.batchSize, 1}, "expected",
-                         VisibilityKind::Public, false);
+  Placeholder *varMatricesA = mod.createPlaceholder(
+      ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA", false);
+  Placeholder *varMatricesB = mod.createPlaceholder(
+      ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB", false);
+  Placeholder *varExpected = mod.createPlaceholder(
+      ElemKind::Int64ITy, {TC.batchSize, 1}, "expected", false);
 
   // Simply concatenating the matrices first would probability be as effective
   // but we want to build something more complex than a straight chain of
   // operators to stress the scheduler.
-  auto *FCA = F->createFullyConnected("hidden_matrixA_fc", varMatricesA, 10);
-  auto *FCB = F->createFullyConnected("hidden_matrixB_fc", varMatricesB, 10);
+  auto *FCA =
+      F->createFullyConnected(ctx, "hidden_matrixA_fc", varMatricesA, 10);
+  auto *FCB =
+      F->createFullyConnected(ctx, "hidden_matrixB_fc", varMatricesB, 10);
   auto *ReLUA = F->createRELU("hidden_matrixA_ReLU", FCA);
   auto *ReLUB = F->createRELU("hidden_matrixB_ReLU", FCB);
   auto *concat = F->createConcat("hidden_concat_A_B", {ReLUA, ReLUB}, 1);
   auto *hiddenFC = F->createFullyConnected("hidden_fc", concat, 30);
   auto *finalReLU = F->createRELU("hidden_concat_ReLU", hiddenFC);
-  auto *finalFC = F->createFullyConnected("output_fc", finalReLU, 2);
+  auto *finalFC = F->createFullyConnected(ctx, "output_fc", finalReLU, 2);
   auto *softMax = F->createSoftMax("output", finalFC, varExpected);
-  SaveNode *forwardInferenceResult = F->createSave("result", softMax);
+  SaveNode *result = F->createSave(ctx, "result", softMax);
+
+  ctx.allocate(varMatricesA);
+  ctx.allocate(varMatricesB);
+  ctx.allocate(varExpected);
+  Tensor *res = ctx.allocate(result->getPlaceholder());
+
   Function *trainingGradientFunction = glow::differentiate(F, TC);
 
   // Train the network.
@@ -1324,7 +1331,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction, ctx);
   // Training:
-  runBatch(EE_, 200, sampleCounter, {varMatricesA, varMatricesB, varExpected},
+  runBatch(EE_, ctx, 200, sampleCounter,
+           {varMatricesA, varMatricesB, varExpected},
            {&matricesA, &matricesB, &expected});
 
   // Switch to inference mode.
@@ -1332,7 +1340,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   // At this point we should have overfitted the data.
   // Take a random batch and check that the values match what we expect.
-  auto RHtrain = forwardInferenceResult->getVariable()->getHandle<>();
+  auto RHtrain = res->getHandle<>();
   auto batchSize = TC.batchSize;
   unsigned numBatches = numSamples / batchSize;
   unsigned batchStartIdx = PRNG.nextRandInt(0, numBatches - 1) * batchSize;
@@ -1341,7 +1349,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  updateVariables({varMatricesA, varMatricesB},
+  updateVariables(ctx, {varMatricesA, varMatricesB},
                   {&batchMatricesA, &batchMatricesB});
   EE_.run();
 
