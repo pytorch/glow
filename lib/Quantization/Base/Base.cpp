@@ -15,6 +15,7 @@
  */
 
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Base/Tensor.h"
 
 #include <cmath>
 
@@ -260,6 +261,31 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
   }
 
   return mapping;
+}
+
+void tensorRowwiseQuantization(Tensor &input, Tensor &output, Tensor &scales,
+                               Tensor &offsets) {
+  ShapeHW idim(input.dims());
+
+  auto srcH = input.getHandle<float>();
+  auto destH = output.getHandle<int8_t>();
+  auto scalesH = scales.getHandle<float>();
+  auto offsetsH = offsets.getHandle<int32_t>();
+  for (size_t i = 0; i < idim.height; i++) {
+    auto slice = srcH.extractSlice(i);
+    auto rSrc = slice.getHandle<float>();
+    auto res = rSrc.minMaxArg();
+    float min = rSrc.raw(res.first);
+    float max = rSrc.raw(res.second);
+
+    TensorQuantizationParams qParams =
+        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+    for (size_t j = 0; j < idim.width; j++) {
+      destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
+    }
+    scalesH.raw(i) = qParams.scale;
+    offsetsH.raw(i) = qParams.offset;
+  }
 }
 
 } // namespace quantization
