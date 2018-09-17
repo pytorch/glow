@@ -238,5 +238,30 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   return result;
 }
 
+std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
+                                  std::function<float(float)> f) {
+  assert(inTy->getElementType() == outTy->getElementType() &&
+         "Input and output type must have same element kind.");
+  assert(inTy->isQuantizedType() && "Must pass quantized types.");
+  assert(inTy->getElementType() == ElemKind::Int8QTy &&
+         "Currently only support int8 for this method.");
+
+  // Calculate the step which will be added to the currInputVal repeatedly in
+  // order to cover the input range of the input type.
+  auto inputRange = inTy->getQuantizedValueRange();
+  const float step = (inputRange.second - inputRange.first) / 255;
+  float currInputVal = inputRange.first;
+
+  // Calculate the output int value for each possible input value.
+  std::vector<int8_t> mapping(256);
+  TensorQuantizationParams outputTQP{outTy->getScale(), outTy->getOffset()};
+  for (size_t i = 0; i < 256; i++, currInputVal += step) {
+    float currOutputVal = f(currInputVal);
+    mapping[i] = quantization::quantize(currOutputVal, outputTQP);
+  }
+
+  return mapping;
+}
+
 } // namespace quantization
 } // namespace glow
