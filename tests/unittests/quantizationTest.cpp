@@ -568,6 +568,52 @@ TEST(Quantization, chooseQuantizationSymmetric) {
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
 
+/// Check that Relu can use our symmetric quantization schema.
+TEST(Quantization, reluCanUseSymmetricSchema) {
+  Context ctx;
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle<float>();
+  for (size_t i = 0; i < 10; i++) {
+    IH.at({i}) = (i % 2 == 0) ? 5 : -5;
+  }
+
+  // Create symmetric params that will be used for Relu.
+  TensorQuantizationParams reluParams =
+      chooseQuantizationParams(0.0, 10.0, quantization::Schema::Symmetric);
+  TypeRef reluTy = mod.uniqueType(ElemKind::Int8QTy, {10}, reluParams.scale,
+                                  reluParams.offset);
+  TensorQuantizationParams inputParams =
+      chooseQuantizationParams(-10.0, 10.0, quantization::Schema::Symmetric);
+
+  QuantizeNode *QN =
+      F->createQuantize("quant", input,
+                        mod.uniqueType(ElemKind::Int8QTy, {10},
+                                       inputParams.scale, inputParams.offset));
+  ReluNode *RN = F->createRELU("relu", QN, reluTy);
+  DequantizeNode *DN = F->createDequantize("dequantize", RN);
+  SaveNode *SN = F->createSave(ctx, "save", DN);
+  auto *res = ctx.allocate(SN->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  // Verify all negative values were correctly set to zero.
+  auto RH = res->getHandle();
+  for (size_t i = 0; i < 10; i++) {
+    if (i % 2 == 0) {
+      EXPECT_NEAR(RH.at({i}), 5, 0.05);
+    } else {
+      EXPECT_EQ(RH.at({i}), 0);
+    }
+  }
+}
+
 /// Check that our symmetric with uint8 quantization schema produces
 /// the expected scales and offsets for various ranges.
 TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
