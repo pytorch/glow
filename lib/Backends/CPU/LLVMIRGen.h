@@ -213,7 +213,7 @@ public:
   virtual void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                       const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
-  void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
+  virtual void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
   /// \returns a libjit API function by name.
   llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
