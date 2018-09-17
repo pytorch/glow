@@ -602,6 +602,11 @@ public:
   /// See issue #1334.
   ///@{
 
+  BatchNormalizationNode *
+  createBatchNormalization(Context &ctx, llvm::StringRef name, NodeValue input,
+                           unsigned_t channelIdx = 0, float epsilon = 1e-5,
+                           float momentum = 0.9);
+
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
                               NodeValue input, size_t depth,
                               llvm::ArrayRef<unsigned_t> kernels,

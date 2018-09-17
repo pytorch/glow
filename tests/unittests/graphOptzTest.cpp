@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -31,6 +32,7 @@ public:
 protected:
   Module mod_;
   Function *F_;
+  Context ctx_;
 };
 
 /// \returns the number of nodes in \p F of kind \p kind.
@@ -46,7 +48,8 @@ static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
 }
 
 TEST_F(GraphOptz, DCE) {
-  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+                                   false);
 
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);
@@ -69,7 +72,8 @@ TEST_F(GraphOptz, DCE) {
 /// Check that predicated instructions are DCE'ed like
 /// regular instructions.
 TEST_F(GraphOptz, DCEwithPredicate) {
-  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+                                   false);
   Node *predicatedBatch =
       mod_.createVariable(ElemKind::FloatTy, {4}, "predicate");
   for (int i = 0; i < 40; i++) {
@@ -93,15 +97,16 @@ TEST_F(GraphOptz, DCEwithPredicate) {
 }
 
 TEST_F(GraphOptz, liveCodeNotEliminated) {
-  Node *K = mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  auto *Ex = mod_.createVariable(ElemKind::Int64ITy, {4, 1}, "Ex");
+  Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
+                                   false);
+  auto *Ex = mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "Ex", false);
 
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);
     K = F_->createAdd("arith", K, K);
   }
   K = F_->createSoftMax("Regression", K, Ex);
-  F_->createSave("ret", K);
+  F_->createSave(ctx_, "ret", K);
 
   // Check that we know how many nodes we've created.
   EXPECT_EQ(F_->getNodes().size(), 82);
@@ -111,15 +116,15 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 
   //  Nothing got optimized.
   EXPECT_EQ(F_->getNodes().size(), 82);
-  EXPECT_EQ(mod_.getVars().size(), 3);
+  EXPECT_EQ(mod_.getPlaceholders().size(), 3);
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F_->createSave("ret", BN);
+  F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -137,12 +142,12 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 /// Check that the batch normalization optimization is
 /// not blocked by predicates and that it preserves them.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "predicate",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "predicate",
-                                    VisibilityKind::Public, false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *pred1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
+  Node *pred2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
   Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
   CV->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
