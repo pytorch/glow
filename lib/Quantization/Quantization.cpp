@@ -373,6 +373,18 @@ static Node *quantizeNode(Function *F, Node *node,
                                   TN->getCount(), TN->getAxis(), QT);
     break;
   }
+  case Kinded::Kind::LogNodeKind: {
+    auto *LN = cast<LogNode>(node);
+    assert(quantizedInputs.size() == 1 && "Invalid number of inputs");
+    assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+
+    auto QT =
+        F->getParent()->uniqueType(ElemKind::Int8QTy, LN->getResult().dims(),
+                                   qParams[0].scale, qParams[0].offset);
+
+    quantizedNode = F->createLog(LN->getName(), quantizedInputs[0], QT);
+    break;
+  }
   default:
     GLOW_UNREACHABLE("The node type is not supported for quantization");
   }

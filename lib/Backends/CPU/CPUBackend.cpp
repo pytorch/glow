@@ -170,6 +170,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
     case Kinded::Kind::GatherNodeKind:
+    case Kinded::Kind::LogNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxNodeKind:
     case Kinded::Kind::MinNodeKind:

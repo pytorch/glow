@@ -288,7 +288,10 @@ public:
 
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  LogNode *createLog(llvm::StringRef name, NodeValue input);
+  /// Create a Log node with \p name, which calculates element-wise natural log
+  /// of \p input, with output type \p outTy.
+  LogNode *createLog(llvm::StringRef name, NodeValue input,
+                     TypeRef outTy = nullptr);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr);
