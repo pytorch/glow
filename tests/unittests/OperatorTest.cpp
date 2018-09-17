@@ -2684,6 +2684,51 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   }
 }
 
+/// Verify that a quantized Log works correctly.
+TEST_P(InterpAndCPU, Int8Log) {
+  constexpr size_t size = 1000;
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {size}, "input",
+                                    VisibilityKind::Public);
+
+  const float min = 1.0;
+  const float max = 100.0;
+  input->getHandle().randomize(min, max, mod_.getPRNG());
+
+  // Input some random data into an fp log.
+  auto *fpLog = F_->createLog("fpLog", input);
+  auto *saveFp = F_->createSave("fpSave", fpLog);
+
+  // Quantize the input that was also used for the fpLog, and pass it to the
+  // quantized Log.
+  auto quantizationParams =
+      glow::quantization::chooseQuantizationParams(min, max);
+  auto quantizeTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
+  auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
+
+  // Use log of min/max to calculate quantization output params.
+  quantizationParams =
+      glow::quantization::chooseQuantizationParams(log(min), log(max));
+  auto logTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
+                      quantizationParams.offset);
+
+  // Create a quantized log with the quantized version of the input.
+  auto *intLog = F_->createLog("int8Log", quantize, logTy);
+  auto *dequantize = F_->createDequantize("dequantize", intLog);
+  auto *saveInt = F_->createSave("int8Save", dequantize);
+
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.run();
+
+  // Compare the results of the fp and quantized log.
+  auto &fpResult = saveFp->getVariable()->getPayload();
+  auto &intResult = saveInt->getVariable()->getPayload();
+  EXPECT_TRUE(fpResult.isEqual(intResult, 0.1));
+}
+
 /// Check Non-square kernel for conv.
 TEST_P(Operator, NonSquareKernelConvolution) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 4, 4, 1}, "input");

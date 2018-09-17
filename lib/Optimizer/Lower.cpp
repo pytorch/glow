@@ -187,6 +187,35 @@ void lowerReluNode(Function *F, ReluNode &R) {
   R.getResult().replaceAllUsesOfWith(relu);
 }
 
+/// Lower a quantized Log by creating an IntLookupTable with a new mapping given
+/// the input and output quantization parameters.
+void lowerQuantizedLogNode(Function *F, LogNode *LN) {
+  TypeRef outTy = LN->getResult().getType();
+  TypeRef inTy = LN->getInput().getType();
+
+  auto inputRange = inTy->getQuantizedValueRange();
+  (void)inputRange;
+  assert(inputRange.first >= 0 &&
+         "Input range must not be negative since this is input to log().");
+
+  // Pass a function returning log here to create the mapping. Note that the
+  // interval is always extended to include zero, so we check if the input is
+  // zero and if so use log(float min), i.e. closest positive value to zero,
+  // as -inf is unsupported to convert to int.
+  auto logFun = [](float a) {
+    return (a == 0.0) ? log(std::numeric_limits<float>::min()) : log(a);
+  };
+  std::vector<int8_t> mapping =
+      glow::quantization::createMapping(inTy, outTy, logFun);
+
+  // Create a new int lookup table with this newly calculated mapping to
+  // implement this quantized log.
+  IntLookupTableNode *ILT = F->createIntLookupTable(
+      LN->getName().str() + ".log", LN->getInput(), mapping, outTy);
+
+  LN->getResult().replaceAllUsesOfWith(ILT);
+}
+
 void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
@@ -684,6 +713,10 @@ void glow::lower(Function *F, const Backend &B) {
     } else if (auto *TN = dyn_cast<TanhNode>(node)) {
       if (TN->getResult().getType()->isQuantizedType()) {
         lowerQuantizedTanhNode(F, TN);
+      }
+    } else if (auto *LN = dyn_cast<LogNode>(node)) {
+      if (LN->getResult().getType()->isQuantizedType()) {
+        lowerQuantizedLogNode(F, LN);
       }
     } else if (auto *TN = dyn_cast<TileNode>(node)) {
       lowerTileNode(F, *TN);

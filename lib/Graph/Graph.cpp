@@ -1127,8 +1127,9 @@ PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
   return createPow(name, base, SP);
 }
 
-LogNode *Function::createLog(llvm::StringRef name, NodeValue input) {
-  return addNode(new LogNode(name, input.getType(), input));
+LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
+                             TypeRef outTy) {
+  return addNode(new LogNode(name, outTy ? outTy : input.getType(), input));
 }
 
 SelectNode *Function::createSelect(llvm::StringRef name, TypeRef outTy,

@@ -684,7 +684,13 @@ void ScatterAssignNode::verify() const {
 
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
-void LogNode::verify() const { checkSameType(getInput(), getResult()); }
+void LogNode::verify() const {
+  if (getResult().getType()->isQuantizedType()) {
+    checkSameShape(getInput(), getResult());
+  } else {
+    checkSameType(getInput(), getResult());
+  }
+}
 
 void SelectNode::verify() const {
   assert(getResult().getElementType() == getCond().getElementType());
