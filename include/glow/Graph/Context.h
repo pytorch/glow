@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include <list>
 #include <unordered_map>
 
 namespace glow {
@@ -52,6 +53,16 @@ public:
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.
   Tensor *allocate(Placeholder *P);
+
+  /// Allocates zero-initialized backing tensors to all placeholders in \p lst
+  /// that are not currently allocated in the context.
+  /// \returns the number of tensors that were allocated.
+  unsigned allocate(std::list<Placeholder *> &lst);
+
+  /// \returns the first placeholder in \p list that is not allocated by this
+  /// context. This method returns null if all placeholders in the list are
+  /// allocated.
+  Placeholder *getFirstUnallocated(std::list<Placeholder *> &lst) const;
 
   /// \returns True if \p P is a registered Placeholder.
   size_t count(Placeholder *P) const;

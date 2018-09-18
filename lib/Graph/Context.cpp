@@ -53,6 +53,33 @@ Tensor *Context::allocate(Placeholder *P) {
   return T;
 }
 
+unsigned Context::allocate(std::list<Placeholder *> &lst) {
+  unsigned allocated = 0;
+  // For each placeholder in the list:
+  for (Placeholder *P : lst) {
+    // Don't allocate tensors for placeholders that are already allocated.
+    if (this->count(P)) {
+      continue;
+    }
+
+    // Allocate a tensor to back P.
+    allocate(P);
+    allocated++;
+  }
+  return allocated;
+}
+
+Placeholder *Context::getFirstUnallocated(std::list<Placeholder *> &lst) const {
+  // For each placeholder in the list:
+  for (Placeholder *P : lst) {
+    // If we found an unallocated placeholder then return it.
+    if (!count(P))
+      return P;
+  }
+
+  return nullptr;
+}
+
 Context::Context(llvm::ArrayRef<Placeholder *> placeholders,
                  llvm::ArrayRef<Tensor *> inputs) {
   assert(placeholders.size() == inputs.size() &&
