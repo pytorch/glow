@@ -1194,6 +1194,31 @@ TEST_P(Operator, QuantizeAndDequantize) {
       fpResult->getVariable()->getPayload()));
 }
 
+TEST_P(InterpAndCPU, RowWiseQuantizeAndDequantize) {
+  auto *A = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "A",
+                                VisibilityKind::Public);
+  A->getPayload().getHandle() = {1.0f, 1.2f, 0.5f, 1.3f};
+
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 12}, 0.0, 0.0);
+  auto *qNode =
+      F_->createFloatToFused8BitRowwiseQuantize("rowwisequantize", A, qType);
+  auto dType = mod_.uniqueType(ElemKind::FloatTy, {1, 4});
+  auto *dequantize = F_->createFused8BitRowwiseQuantizedToFloat(
+      "rowwisedequantize", qNode, dType);
+  auto *S = F_->createSave("save", dequantize);
+
+  Context ctx;
+  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.run();
+
+  auto results = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
+
+  EXPECT_EQ(results.size(), 4);
+  std::vector<float> expected = {1.0f, 1.2f, 0.5f, 1.3f};
+  for (size_t i = 0; i < 4; i++)
+    EXPECT_NEAR(results.raw(i), expected[i], 0.01);
+}
+
 TEST_P(Operator, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.

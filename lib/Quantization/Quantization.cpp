@@ -88,6 +88,56 @@ quantizeInputs(Function *F, Node *node,
   return quantizedInputs;
 }
 
+/// Quantize all inputs for \p node and return back pointers to the newly
+/// created qunatization nodes.
+static llvm::SmallVector<NodeValue, 3> quantizeRowWiseFCInputs(
+    Function *F, Node *node,
+    const std::unordered_map<std::string, TensorQuantizationParams>
+        &nodeToTQP) {
+  llvm::SmallVector<NodeValue, 3> quantizedInputs;
+  assert(node->getNumInputs() == 3 && "Invalid num of inputs");
+  for (unsigned i = 0; i < 3; ++i) {
+    auto NV = node->getNthInput(i);
+
+    // Do not quantize non floating point type, e.g., Index type.
+    if (NV.getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
+    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
+        NV.getNode()->getName(), NV.getResNo());
+    if (i == 1) {
+      // Wights need row-wise quantization.
+      // In FC, the weights is stored in tranposed format already, need to
+      // transpose it back to get row-wise quantization.
+      Node *transNode = F->createTranspose("w.trans", NV, {1, 0});
+      auto QT = F->getParent()->uniqueType(
+          ElemKind::Int8QTy, {NV.dims()[1], NV.dims()[0] + 8}, 0.0, 0);
+      Node *quantizeNode = F->createFloatToFused8BitRowwiseQuantize(
+          "rowwisequantize", transNode, QT);
+      quantizedInputs.push_back(quantizeNode);
+    } else {
+      // Input and Biase -- regular quantization based on given scale and
+      // offset.
+      assert(nodeToTQP.find(nodeOutputName) != nodeToTQP.end() &&
+             "Missing quantization params for a node");
+
+      if (i == 0) {
+        // Input. Should be flatten first.
+        NV = F->createFlatten("fc.1X", NV, 1);
+      }
+      const TensorQuantizationParams &TQP =
+          nodeToTQP.find(nodeOutputName)->second;
+      auto QT = F->getParent()->uniqueType(ElemKind::Int8QTy, NV.dims(),
+                                           TQP.scale, TQP.offset);
+      Node *quantizeNode = F->createQuantize("quantize", NV, QT);
+      quantizedInputs.push_back(quantizeNode);
+    }
+  }
+
+  return quantizedInputs;
+}
+
 /// \returns true when given \p node can be quantized.
 /// Normally node's inputs must have floating point
 /// type, but there are some special cases, e.g., Gather node.
@@ -451,16 +501,36 @@ quantizeFunction(const ExecutionEngine &EE,
     // also we should not quantize Index type inputs.
     if (canBeQuantized(node) &&
         EE.isOpSupported(node->getKind(), ElemKind::Int8QTy)) {
-      // 1) Quantize all of the inputs based on the profiles.
-      //    Quantize only floating point inputs.
-      auto quantizedInputs = quantizeInputs(G, node, nodeToTQP);
-
+      Node *quantizedNode = nullptr;
       auto qParams = getQuantizationParameters(node, nodeToTQP);
+      if (EE.isOpSupported(Kinded::Kind::RowWiseFullyConnectedNodeKind,
+                           ElemKind::Int8QTy) &&
+          node->getKind() == Kinded::Kind::FullyConnectedNodeKind) {
+        // Row-wise quantization for FC node.
+        // 1) Quantize input and bias based on the profiles.
+        //    Row-wise quantize weights. Quantize only floating points inputs.
+        // 2) Quantize the FC node.
+        auto quantizedInputs = quantizeRowWiseFCInputs(G, node, nodeToTQP);
+        auto *FC = cast<FullyConnectedNode>(node);
+        assert(quantizedInputs.size() == 3 && "Invalid number of inputs");
+        assert(qParams.size() == 1 && "Invalid number of quantized outputs");
+        auto QT = G->getParent()->uniqueType(
+            ElemKind::Int8QTy, FC->getResult().dims(), qParams[0].scale,
+            qParams[0].offset);
+        quantizedNode = G->createRowWiseFullyConnected(
+            FC->getName(), quantizedInputs[0], quantizedInputs[1],
+            quantizedInputs[2], QT);
+        assert(quantizedNode != nullptr && "Node must be quantized");
+      } else {
+        // 1) Quantize all of the inputs based on the profiles.
+        //    Quantize only floating point inputs.
+        auto quantizedInputs = quantizeInputs(G, node, nodeToTQP);
 
-      // 2) Quantize the node.
-      Node *quantizedNode = quantizeNode(G, node, quantizedInputs, qParams);
-      quantizedNode = postProcessQuantizedNode(G, quantizedNode, qParams);
-      assert(quantizedNode != nullptr && "Node must be quantized");
+        // 2) Quantize the node.
+        quantizedNode = quantizeNode(G, node, quantizedInputs, qParams);
+        quantizedNode = postProcessQuantizedNode(G, quantizedNode, qParams);
+        assert(quantizedNode != nullptr && "Node must be quantized");
+      }
 
       // 3) Dequantize all outputs of the node so that invariant is kept.
       unsigned qParamIndex = 0;

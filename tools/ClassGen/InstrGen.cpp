@@ -120,6 +120,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("RowWiseFullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "Weights", "Bias"});
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -445,6 +454,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("FloatToFused8BitRowwiseQuantize")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int8QTy"})
+      .autoIRGen();
+
+  BB.newInstr("Fused8BitRowwiseQuantizedToFloat")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
+      .autoIRGen();
   //===--------------------------------------------------------------------===//
   //                Instructions used by RNN
   //===--------------------------------------------------------------------===//

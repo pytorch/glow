@@ -629,6 +629,12 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
+RowWiseFullyConnectedNode *
+Function::createRowWiseFullyConnected(llvm::StringRef name, NodeValue input,
+                                      Node *W, Node *B, TypeRef outTy) {
+  return addNode(new RowWiseFullyConnectedNode(name, outTy, input, W, B));
+}
+
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
                                TypeRef outTy) {
   return addNode(new ReluNode(name, outTy, input));
@@ -1482,6 +1488,34 @@ RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
 
   return addNode(
       new RescaleQuantizedNode(name, getParent()->uniqueType(*outTy), input));
+}
+
+FloatToFused8BitRowwiseQuantizeNode *
+Function::createFloatToFused8BitRowwiseQuantize(llvm::StringRef name,
+                                                NodeValue input,
+                                                TypeRef outTy) {
+  assert(input.getElementType() == ElemKind::FloatTy &&
+         "Input must be a floating type");
+  assert(outTy->getElementType() == ElemKind::Int8QTy &&
+         "Output must be a quantized type");
+  assert(input.dims().size() == outTy->dims().size() &&
+         "Different dimensions for input and output");
+
+  return addNode(new FloatToFused8BitRowwiseQuantizeNode(
+      name, getParent()->uniqueType(*outTy), input));
+}
+
+Fused8BitRowwiseQuantizedToFloatNode *
+Function::createFused8BitRowwiseQuantizedToFloat(llvm::StringRef name,
+                                                 NodeValue input,
+                                                 TypeRef outTy) {
+  assert(input.getElementType() == ElemKind::Int8QTy &&
+         "Input must be a quantized type");
+  assert(outTy->getElementType() == ElemKind::FloatTy &&
+         "Output must be a float type");
+
+  return addNode(new Fused8BitRowwiseQuantizedToFloatNode(
+      name, getParent()->uniqueType(*outTy), input));
 }
 
 Node *Function::createWeightedSum(llvm::StringRef name,

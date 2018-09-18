@@ -270,7 +270,7 @@ TEST_P(Operator, end2end) {
     double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) / mx;
 
     // Allow 3% difference.
-    EXPECT_NEAR(diff, 0, 0.03);
+    EXPECT_NEAR(diff, 0, 0.02);
   }
 }
 
@@ -406,7 +406,7 @@ TEST_P(Operator, end2endGRU) {
     double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) / mx;
 
     // Allow 3% difference.
-    EXPECT_NEAR(diff, 0, 0.03);
+    EXPECT_NEAR(diff, 0, 0.02);
   }
 }
 
