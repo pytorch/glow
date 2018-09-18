@@ -1467,8 +1467,8 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", VisibilityKind::Public, true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", true);
 
   auto *D = F_->createDequantize("dequantize", input);
 
