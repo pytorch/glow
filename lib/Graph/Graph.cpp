@@ -1327,7 +1327,7 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
-                               Variable *output) {
+                               Storage *output) {
   return addNode(new SaveNode(name, input, output));
 }
 

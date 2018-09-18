@@ -490,7 +490,7 @@ public:
                                  NodeValue lengths);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
-  SaveNode *createSave(llvm::StringRef name, NodeValue input, Variable *output);
+  SaveNode *createSave(llvm::StringRef name, NodeValue input, Storage *output);
 
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input. Capture observed node name in quantization profile node as
