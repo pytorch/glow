@@ -75,7 +75,7 @@ TEST_F(GraphOptz, DCEwithPredicate) {
   Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                                    false);
   Node *predicatedBatch =
-      mod_.createVariable(ElemKind::FloatTy, {4}, "predicate");
+    mod_.createPlaceholder(ElemKind::FloatTy, {4}, "predicate", true);
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);
     K->setPredicate(predicatedBatch);
@@ -1494,8 +1494,8 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   auto *splat = F_->createSplat("splat", splatTy, 0.0);
 
   auto *input =
-      mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset, "input",
-                          VisibilityKind::Public, true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {size}, scale, offset, "input",
+                          true);
 
   auto *max = F_->createMax("max", splat, input);
   F_->createSave(ctx_, "save", max);
@@ -1511,10 +1511,10 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
   auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
 
-  Node *LHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS",
-                                  VisibilityKind::Public);
-  Node *RHS = mod_.createVariable(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS",
-                                  VisibilityKind::Public);
+  Node *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS",
+                                  true);
+  Node *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS",
+                                  true);
 
   Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
   add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
@@ -1556,11 +1556,11 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
   // This test ensures the fact that fusing of rescale is done.
   auto *input =
-      mod_.createVariable(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input");
+    mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input", true);
   auto *filter =
-      mod_.createVariable(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter");
+    mod_.createPlaceholder(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter", true);
   auto *bias =
-      mod_.createVariable(ElemKind::Int8QTy, {16}, 0.5, 10, "bias");
+    mod_.createPlaceholder(ElemKind::Int8QTy, {16}, 0.5, 10, "bias", true);
 
   auto *rInput = F_->createRescaleQuantized(
       "rescale", input,
@@ -1571,7 +1571,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   auto *rBias = F_->createRescaleQuantized(
       "rescale", bias, mod_.uniqueType(ElemKind::Int8QTy, {16}, 0.3, 25));
   auto *CV = F_->createConv(
-      "conv", rInput, rFilter, rBias,
+    "conv", rInput, rFilter, rBias,
       mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.7, -3), 5, 1, 2, 1);
   auto *rCV = F_->createRescaleQuantized(
       "rescale", CV,
@@ -1586,8 +1586,8 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
 
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", VisibilityKind::Public, true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", true);
 
   // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
@@ -1611,8 +1611,8 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
 
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", VisibilityKind::Public, true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", true);
 
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
@@ -1635,8 +1635,8 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
 
 /// Check that Relu can be merged with Rescale.
 TEST_F(GraphOptz, mergeRescaleWithRelu) {
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", VisibilityKind::Public, false);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                        "input", false);
 
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
@@ -1656,8 +1656,8 @@ TEST_F(GraphOptz, mergeRescaleWithRelu) {
 
 // Check that we are able to merge some small matmuls into a larger one.
 TEST_F(GraphOptz, mergeMatMulNodes) {
-  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
-  Node *weight = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "weight");
+  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  Node *weight = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1680,8 +1680,8 @@ TEST_F(GraphOptz, mergeMatMulNodes) {
 
 // Check that we are able to merge batched adds.
 TEST_F(GraphOptz, mergeBANodes) {
-  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
-  Node *slice = mod_.createVariable(ElemKind::FloatTy, {10, 10}, "weight");
+  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  Node *slice = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1703,7 +1703,7 @@ TEST_F(GraphOptz, mergeBANodes) {
 
 // Check that we are able to eliminate concat nodes.
 TEST_F(GraphOptz, concatElim) {
-  Node *input = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input");
+  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1737,9 +1737,9 @@ TEST_F(GraphOptz, concatReshapes) {
     // The optimization would kick in, as the size of trailing dimensions of
     // original ConcatNode (before opt) is 20, and the size of leading
     // dimensions of original ConcatNode (before opt) is 10.
-    Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape1,
+    Node *var = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape1,
                                                 "input" + std::to_string(i),
-                                                VisibilityKind::Public);
+                                                   true);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs1.push_back(RN);
   }
@@ -1750,9 +1750,9 @@ TEST_F(GraphOptz, concatReshapes) {
     // The optimization would NOT kick in, as we cannot find the dim that
     // makes the leading/trailing dims same as in the case of the original
     // concat node.
-    Node *var = F_->getParent()->createVariable(ElemKind::FloatTy, shape3,
+    Node *var = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape3,
                                                 "input" + std::to_string(i),
-                                                VisibilityKind::Public);
+                                                   true);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs2.push_back(RN);
   }
@@ -1866,8 +1866,8 @@ TEST_F(GraphOptz, VarsCSE) {
 // Verify that constant input canonicalization works correctly when the
 // arithmetic nodes have multiple users.
 TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
-  Node *I1 = mod_.createVariable(ElemKind::FloatTy, {10, 10, 10}, "input1",
-                                 VisibilityKind::Public, false);
+  Node *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input1",
+                                 false);
 
   Type t(ElemKind::FloatTy, {10, 10, 10});
   Node *SN = F_->createSplat("one", &t, 1.0);
@@ -1904,7 +1904,7 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
   // is the same as prior to optimization other than canonicalization.
   AddNode *newAN1 = llvm::dyn_cast<AddNode>(SN1->getInput().getNode());
   ASSERT_TRUE(newAN1 != nullptr);
-  EXPECT_TRUE(llvm::isa<Variable>(newAN1->getLHS()));
+  EXPECT_TRUE(llvm::isa<Placeholder>(newAN1->getLHS()));
   EXPECT_TRUE(llvm::isa<SplatNode>(newAN1->getRHS()));
 
   AddNode *newAN2 = llvm::dyn_cast<AddNode>(SN2->getInput().getNode());
@@ -1920,8 +1920,8 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
 
 /// Test that a concat with a single input is replaced by the input.
 TEST_F(GraphOptz, eliminateSingleConcat) {
-  Node *input = mod_.createVariable(ElemKind::FloatTy, {10}, "input",
-                                    VisibilityKind::Public, false);
+  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input",
+                                       false);
 
   ConcatNode *CN = F_->createConcat("concat1", {input}, 0);
   SaveNode *SN = F_->createSave(ctx_, "ret", CN);
