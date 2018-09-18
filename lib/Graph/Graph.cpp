@@ -2489,6 +2489,16 @@ Variable *Module::getVariableByName(llvm::StringRef name) {
   return nullptr;
 }
 
+Placeholder *Module::getPlaceholderByName(llvm::StringRef name) {
+  for (auto *P : getPlaceholders()) {
+    if (P->getName() == name) {
+      return P;
+    }
+  }
+
+  return nullptr;
+}
+
 void Module::eraseVariable(Variable *N) {
   auto &vars = getVars();
   auto I = std::find(vars.begin(), vars.end(), N);

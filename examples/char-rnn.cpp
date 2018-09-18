@@ -56,7 +56,7 @@ llvm::cl::opt<unsigned> numEpochs("epochs",
                                   llvm::cl::cat(category));
 llvm::cl::opt<unsigned>
     generateChars("chars", llvm::cl::desc("Generate this number of chars."),
-                  llvm::cl::init(1000), llvm::cl::value_desc("N"),
+                  llvm::cl::init(10), llvm::cl::value_desc("N"),
                   llvm::cl::cat(category));
 
 } // namespace
@@ -154,16 +154,18 @@ static std::unique_ptr<llvm::MemoryBuffer> loadFile(llvm::StringRef filename) {
 
 /// Creates a new RNN network. The network answers the question, given N chars
 /// of input, what is the character following each one of these chars.
-static Function *createNetwork(Module &mod, size_t minibatchSize,
+static Function *createNetwork(Module &mod, Context &ctx, size_t minibatchSize,
                                size_t numSteps, size_t hiddenSize) {
   Function *F = mod.createFunction("main");
 
-  Variable *X =
-      mod.createVariable(ElemKind::FloatTy, {minibatchSize, numSteps, 128},
-                         "input", VisibilityKind::Public, false);
-  Variable *Y =
-      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, numSteps},
-                         "expected", VisibilityKind::Public, false);
+  auto *X = mod.createPlaceholder(
+      ElemKind::FloatTy, {minibatchSize, numSteps, 128}, "input", false);
+  ctx.allocate(X);
+
+  auto *Y = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, numSteps},
+                                  "expected", false);
+  ctx.allocate(Y);
+
   std::vector<Node *> slicesX;
   std::vector<Node *> expectedX;
 
@@ -179,7 +181,8 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
   }
 
   std::vector<NodeValue> outputNodes;
-  F->createLSTM("rnn", slicesX, minibatchSize, hiddenSize, 128, outputNodes);
+  F->createLSTM(ctx, "rnn", slicesX, minibatchSize, hiddenSize, 128,
+                outputNodes);
 
   std::vector<NodeValue> resX;
   for (unsigned i = 0; i < numSteps; i++) {
@@ -191,7 +194,9 @@ static Function *createNetwork(Module &mod, size_t minibatchSize,
   }
 
   Node *O = F->createConcat("output", resX, 1);
-  F->createSave("result", O);
+  auto *S = F->createSave(ctx, "result", O);
+  ctx.allocate(S->getPlaceholder());
+
   return F;
 }
 
@@ -218,11 +223,11 @@ int main(int argc, char **argv) {
   auto &mod = EE.getModule();
 
   //// Train the network ////
-  Function *F = createNetwork(mod, minibatchSize, numSteps, hiddenSize);
+  Function *F = createNetwork(mod, ctx, minibatchSize, numSteps, hiddenSize);
   Function *TF = differentiate(F, TC);
 
-  auto *X = mod.getVariableByName("input");
-  auto *Y = mod.getVariableByName("expected");
+  auto *X = mod.getPlaceholderByName("input");
+  auto *Y = mod.getPlaceholderByName("expected");
 
   Tensor thisCharTrain(ElemKind::FloatTy, {batchSize, numSteps, 128});
   Tensor nextCharTrain(ElemKind::Int64ITy, {batchSize, numSteps});
@@ -239,12 +244,11 @@ int main(int argc, char **argv) {
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
-    runBatch(EE, batchSize / minibatchSize, sampleCounter, {X, Y},
+    runBatch(EE, ctx, batchSize / minibatchSize, sampleCounter, {X, Y},
              {&thisCharTrain, &nextCharTrain});
     llvm::outs() << ".\n";
 
     //// Use the trained network to generate some text ////
-    Context ctx;
     EE.compile(CompilationMode::Infer, F, ctx);
 
     // Load a few characters to start the text that we generate.
@@ -253,8 +257,7 @@ int main(int argc, char **argv) {
     loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
 
     auto *res = llvm::cast<SaveNode>(F->getNodeByName("result"));
-    auto &T = res->getVariable()->getPayload();
-
+    auto *T = ctx.get(res->getPlaceholder());
     std::string result;
     std::string input;
     input.insert(input.begin(), text.begin(), text.begin() + numSteps);
@@ -263,11 +266,11 @@ int main(int argc, char **argv) {
     // Generate a sentence by running inference over and over again.
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
-      updateVariables({X}, {&currCharInfer});
+      updateVariables(ctx, {X}, {&currCharInfer});
       EE.run();
 
       // Pick a char at random from the softmax distribution.
-      char c = getPredictedChar(T, 0, numSteps - 1);
+      char c = getPredictedChar(*T, 0, numSteps - 1);
 
       // Update the inputs for the next iteration:
       result.push_back(c);
