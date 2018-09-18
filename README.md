@@ -43,7 +43,10 @@ compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
 
 #### Submodules
 
-Glow depends on googletest as a submodule. To get it, from the glow directory, run:
+Glow depends on a few submodules: googletest, onnx, and a library
+for FP16 conversions.
+
+To get them, from the glow directory, run:
 
   ```bash
   git submodule update --init --recursive

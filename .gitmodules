@@ -4,3 +4,6 @@
 [submodule "thirdparty/onnx"]
 	path = thirdparty/onnx
 	url = https://github.com/onnx/onnx.git
+[submodule "thirdparty/fp16"]
+	path = thirdparty/fp16
+	url = https://github.com/Maratyszcza/FP16.git

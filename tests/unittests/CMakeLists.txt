@@ -147,6 +147,15 @@ target_link_libraries(quantizationTest
                         testMain)
 add_glow_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest)
 
+add_executable(float16Test
+               float16Test.cpp)
+target_link_libraries(float16Test
+                      PRIVATE
+                        Support
+                        gtest
+                        testMain)
+add_glow_test(float16Test ${GLOW_BINARY_DIR}/tests/float16Test)
+
 add_executable(UtilsTest
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
