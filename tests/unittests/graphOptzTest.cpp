@@ -75,7 +75,7 @@ TEST_F(GraphOptz, DCEwithPredicate) {
   Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                                    false);
   Node *predicatedBatch =
-    mod_.createPlaceholder(ElemKind::FloatTy, {4}, "predicate", true);
+      mod_.createPlaceholder(ElemKind::FloatTy, {4}, "predicate", true);
   for (int i = 0; i < 40; i++) {
     K = F_->createRELU("relu", K);
     K->setPredicate(predicatedBatch);
@@ -170,8 +170,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                   false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
   SaveNode *ret = F_->createSave(ctx_, "ret", BN);
@@ -195,21 +195,17 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   auto *filter =
-      mod_.createPlaceholder(ElemKind::FloatTy, {16, 5, 5, 3}, "filter",
-                          true);
-  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "bias",
-                                       true);
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 5, 5, 3}, "filter", true);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "bias", true);
 
   ConvolutionNode *CV = F_->createConv(
-    "conv", A, filter, bias,
+      "conv", A, filter, bias,
       mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
-  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "beta",
-                                       true);
-  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "gamma",
-                                        true);
+  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "beta", true);
+  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "gamma", true);
 
   auto *mean = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "mean", false);
   auto *var = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "var", false);
@@ -259,8 +255,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                     VisibilityKind::Private, false);
-  auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                       false);
+  auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
   A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
@@ -287,8 +282,8 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave(ctx_, "ret", BN);
@@ -310,8 +305,8 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                   false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
 
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
@@ -338,8 +333,7 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
   SaveNode *O = F_->createSave(ctx_, "ret", BN);
@@ -366,14 +360,10 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
@@ -404,8 +394,7 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
   SaveNode *O = F_->createSave(ctx_, "ret", K);
@@ -432,14 +421,10 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
 TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                    false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
@@ -470,8 +455,7 @@ TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
   SaveNode *O = F_->createSave(ctx_, "ret", SI);
@@ -498,14 +482,10 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
 TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *SI = F_->createSigmoid("sigmoid", T);
@@ -536,8 +516,7 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowTanh) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
   SaveNode *O = F_->createSave(ctx_, "ret", TN);
@@ -562,14 +541,10 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
 TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *TN = F_->createTanh("tanh", T);
@@ -599,8 +574,7 @@ TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   ReluNode *K = F_->createRELU("relu", T2);
@@ -623,16 +597,11 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
 /// preserved.
 TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
@@ -658,8 +627,7 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T);
   F_->createSave(ctx_, "ret", K);
@@ -681,14 +649,10 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
 /// preserved.
 TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
@@ -714,8 +678,7 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t afterFirstTransposeDims[] = {1, 10, 15, 5};
   const size_t afterSecondTransposeDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
-                                 false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   TransposeNode *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   TransposeNode *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
   SaveNode *save = F_->createSave(ctx_, "ret", T2);
@@ -739,10 +702,10 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
@@ -772,18 +735,14 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 /// the add(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
@@ -819,10 +778,10 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 10, 10, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
@@ -853,18 +812,14 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
 TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 10, 10, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *R1 = F_->createRELU("relu1", A1);
   R1->setPredicate(pred1);
   Node *R2 = F_->createRELU("relu2", A2);
@@ -900,10 +855,10 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 5, 20, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
@@ -934,18 +889,14 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
 TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 5, 20, 15};
-  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
-                                  false);
-  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
-                                  false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
-  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
-                                     false);
+  Node *A1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
+  Node *A2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
@@ -979,8 +930,8 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
 }
 
 TEST_F(GraphOptz, poolBelowReluSwapped) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                 false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave(ctx_, "ret", PL);
@@ -997,8 +948,8 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                 false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave(ctx_, "ret", PL);
@@ -1015,8 +966,8 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                 false);
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
   Node *O = F_->createSave(ctx_, "ret", PL);
@@ -1050,15 +1001,15 @@ struct IsSameNodeAddress {
 
 TEST_F(GraphOptz, mergeConcatNodes) {
   Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                                  false);
+                                    false);
   Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                                  false);
+                                    false);
   Node *A3 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                                  false);
-  Node *A4 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input4",
-                                  false);
-  Node *A5 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input5",
-                                  false);
+                                    false);
+  Node *A4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input4", false);
+  Node *A5 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input5", false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
@@ -1107,9 +1058,9 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 
 TEST_F(GraphOptz, CSE) {
   Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                                  false);
+                                    false);
   Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                                  false);
+                                    false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
@@ -1163,7 +1114,8 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
 TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
@@ -1197,8 +1149,10 @@ TEST_F(GraphOptz, ZeroArithmetic) {
 /// A test that verifies that arithmetic simplification works correctly when
 /// the parents need to be simplified prior to the node itself.
 TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
-  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input1", true);
-  auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input2", true);
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input1", true);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input2", true);
 
   // This builds the expression: ((0 * I1) * (0 * I2)) = 0
   // It should be simplified to simply the splat zero node being saved.
@@ -1228,7 +1182,8 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 
 /// Tests opts for the identities: [1 * X = X] [X / 1 = X]
 TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: (I / 1) * 1:
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
@@ -1326,8 +1281,8 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   const size_t reshape[] = {1, 6000};
   Type t1(ElemKind::FloatTy, shape);
   Type t2(ElemKind::FloatTy, reshape);
-  Node *input =
-    F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape, "input", true);
+  Node *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
+                                                   "input", true);
   auto *Z1 = F_->createSplat("zero1", &t1, 1.5);
   auto *A1 = F_->createAdd("add1", Z1->getResult().getType(), input, Z1);
   auto *R1 = F_->createReshape("reshape1", Z1, reshape);
@@ -1374,8 +1329,8 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
-  Node *input = F_->getParent()->createPlaceholder(
-    ElemKind::FloatTy, shape, "input", true);
+  Node *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
+                                                   "input", true);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave(ctx_, "ret", R2);
@@ -1416,7 +1371,7 @@ TEST_F(GraphOptz, DCEPublicVars) {
 
 TEST_F(GraphOptz, foldQuantizeIntoVar) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                                   VisibilityKind::Private);
+                                    VisibilityKind::Private);
   input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
@@ -1437,7 +1392,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 
 TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                                   VisibilityKind::Private);
+                                    VisibilityKind::Private);
   input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
@@ -1468,7 +1423,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", true);
+                                       "input", true);
 
   auto *D = F_->createDequantize("dequantize", input);
 
@@ -1493,9 +1448,8 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, 0.0);
 
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {size}, scale, offset, "input",
-                          true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {size}, scale, offset,
+                                       "input", true);
 
   auto *max = F_->createMax("max", splat, input);
   F_->createSave(ctx_, "save", max);
@@ -1511,10 +1465,10 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
   auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
 
-  Node *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS",
-                                  true);
-  Node *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS",
-                                  true);
+  Node *LHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
+  Node *RHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
 
   Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
   add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
@@ -1555,12 +1509,12 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
   // This test ensures the fact that fusing of rescale is done.
-  auto *input =
-    mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input", true);
-  auto *filter =
-    mod_.createPlaceholder(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter", true);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5,
+                                       10, "input", true);
+  auto *filter = mod_.createPlaceholder(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5,
+                                        10, "filter", true);
   auto *bias =
-    mod_.createPlaceholder(ElemKind::Int8QTy, {16}, 0.5, 10, "bias", true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {16}, 0.5, 10, "bias", true);
 
   auto *rInput = F_->createRescaleQuantized(
       "rescale", input,
@@ -1571,7 +1525,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   auto *rBias = F_->createRescaleQuantized(
       "rescale", bias, mod_.uniqueType(ElemKind::Int8QTy, {16}, 0.3, 25));
   auto *CV = F_->createConv(
-    "conv", rInput, rFilter, rBias,
+      "conv", rInput, rFilter, rBias,
       mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.7, -3), 5, 1, 2, 1);
   auto *rCV = F_->createRescaleQuantized(
       "rescale", CV,
@@ -1587,7 +1541,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", true);
+                                       "input", true);
 
   // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
   auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
@@ -1612,7 +1566,7 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", true);
+                                       "input", true);
 
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
@@ -1636,7 +1590,7 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
 /// Check that Relu can be merged with Rescale.
 TEST_F(GraphOptz, mergeRescaleWithRelu) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
-                                        "input", false);
+                                       "input", false);
 
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
@@ -1656,8 +1610,10 @@ TEST_F(GraphOptz, mergeRescaleWithRelu) {
 
 // Check that we are able to merge some small matmuls into a larger one.
 TEST_F(GraphOptz, mergeMatMulNodes) {
-  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
-  Node *weight = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
+  Node *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  Node *weight =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1680,8 +1636,10 @@ TEST_F(GraphOptz, mergeMatMulNodes) {
 
 // Check that we are able to merge batched adds.
 TEST_F(GraphOptz, mergeBANodes) {
-  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
-  Node *slice = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
+  Node *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  Node *slice =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "weight", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1703,7 +1661,8 @@ TEST_F(GraphOptz, mergeBANodes) {
 
 // Check that we are able to eliminate concat nodes.
 TEST_F(GraphOptz, concatElim) {
-  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  Node *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
 
   // Split the input to a bunch of small slices.
   std::vector<NodeValue> inputs;
@@ -1737,9 +1696,8 @@ TEST_F(GraphOptz, concatReshapes) {
     // The optimization would kick in, as the size of trailing dimensions of
     // original ConcatNode (before opt) is 20, and the size of leading
     // dimensions of original ConcatNode (before opt) is 10.
-    Node *var = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape1,
-                                                "input" + std::to_string(i),
-                                                   true);
+    Node *var = F_->getParent()->createPlaceholder(
+        ElemKind::FloatTy, shape1, "input" + std::to_string(i), true);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs1.push_back(RN);
   }
@@ -1750,9 +1708,8 @@ TEST_F(GraphOptz, concatReshapes) {
     // The optimization would NOT kick in, as we cannot find the dim that
     // makes the leading/trailing dims same as in the case of the original
     // concat node.
-    Node *var = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape3,
-                                                "input" + std::to_string(i),
-                                                   true);
+    Node *var = F_->getParent()->createPlaceholder(
+        ElemKind::FloatTy, shape3, "input" + std::to_string(i), true);
     auto *RN = F_->createReshape("reshape" + std::to_string(i), var, shape2);
     inputs2.push_back(RN);
   }
@@ -1866,8 +1823,8 @@ TEST_F(GraphOptz, VarsCSE) {
 // Verify that constant input canonicalization works correctly when the
 // arithmetic nodes have multiple users.
 TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
-  Node *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input1",
-                                 false);
+  Node *I1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input1", false);
 
   Type t(ElemKind::FloatTy, {10, 10, 10});
   Node *SN = F_->createSplat("one", &t, 1.0);
@@ -1920,8 +1877,7 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
 
 /// Test that a concat with a single input is replaced by the input.
 TEST_F(GraphOptz, eliminateSingleConcat) {
-  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input",
-                                       false);
+  Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
 
   ConcatNode *CN = F_->createConcat("concat1", {input}, 0);
   SaveNode *SN = F_->createSave(ctx_, "ret", CN);

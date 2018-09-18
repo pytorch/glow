@@ -346,9 +346,8 @@ Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 float scale, int32_t offset,
-                                 llvm::StringRef name,
-                                 bool isTrainable) {
+                                       float scale, int32_t offset,
+                                       llvm::StringRef name, bool isTrainable) {
   auto FT = uniqueType(T, dims, scale, offset);
   return createPlaceholder(FT, name, isTrainable);
 }
