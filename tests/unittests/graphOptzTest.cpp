@@ -1374,8 +1374,8 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
-  Node *input = F_->getParent()->createVariable(
-    ElemKind::FloatTy, shape, "input", VisibilityKind::Public);
+  Node *input = F_->getParent()->createPlaceholder(
+    ElemKind::FloatTy, shape, "input", true);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave(ctx_, "ret", R2);
@@ -1436,7 +1436,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 }
 
 TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
-  auto input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
                                    VisibilityKind::Private);
   input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
@@ -1467,7 +1467,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
-  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
 
   auto *D = F_->createDequantize("dequantize", input);
@@ -1493,7 +1493,7 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, 0.0);
 
-  Variable *input =
+  auto *input =
       mod_.createVariable(ElemKind::Int8QTy, {size}, scale, offset, "input",
                           VisibilityKind::Public, true);
 
@@ -1555,11 +1555,11 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
   // This test ensures the fact that fusing of rescale is done.
-  Variable *input =
+  auto *input =
       mod_.createVariable(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5, 10, "input");
-  Variable *filter =
+  auto *filter =
       mod_.createVariable(ElemKind::Int8QTy, {16, 5, 5, 3}, 0.5, 10, "filter");
-  Variable *bias =
+  auto *bias =
       mod_.createVariable(ElemKind::Int8QTy, {16}, 0.5, 10, "bias");
 
   auto *rInput = F_->createRescaleQuantized(
@@ -1586,7 +1586,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
 
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
-  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
 
   // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
@@ -1611,7 +1611,7 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
 
 TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   // Check that Arithmetic operations can be merged with the Rescale.
-  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, true);
 
   auto *rescale1 = F_->createRescaleQuantized(
@@ -1635,7 +1635,7 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
 
 /// Check that Relu can be merged with Rescale.
 TEST_F(GraphOptz, mergeRescaleWithRelu) {
-  Variable *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                         "input", VisibilityKind::Public, false);
 
   auto *rescale1 = F_->createRescaleQuantized(
