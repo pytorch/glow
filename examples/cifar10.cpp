@@ -107,10 +107,12 @@ void testCIFAR10() {
   Function *F = mod.createFunction("main");
 
   // Create the input layer:
-  auto *A = mod.createVariable(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
-                               "input", VisibilityKind::Public, false);
-  auto *E = mod.createVariable(ElemKind::Int64ITy, {minibatchSize, 1},
-                               "expected", VisibilityKind::Public, false);
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
+                                  "input", false);
+  ctx.allocate(A);
+  auto *E = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1},
+                                  "expected", false);
+  ctx.allocate(E);
 
   // Create the rest of the network.
   auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
@@ -127,7 +129,8 @@ void testCIFAR10() {
 
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *SM = F->createSoftMax("softmax", FCL1, E);
-  auto *result = F->createSave("ret", SM);
+  auto *save = F->createSave(ctx, "ret", SM);
+  auto *result = ctx.allocate(save->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
@@ -149,20 +152,18 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    runBatch(EE, reportRate, sampleCounter, {A, E}, {&images, &labels});
+    runBatch(EE, ctx, reportRate, sampleCounter, {A, E}, {&images, &labels});
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      updateVariables({A}, {&sample});
+      updateVariables(ctx, {A}, {&sample});
       EE.run();
-      result->getOutput();
-      Tensor &res = result->getVariable()->getPayload();
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
-        auto T = res.getHandle<>().extractSlice(iter);
+        auto T = result->getHandle<>().extractSlice(iter);
         size_t guess = T.getHandle<>().minMaxArg().second;
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});
         score += guess == correct;
