@@ -272,11 +272,12 @@ struct HyphenNetwork {
     ctx_.allocate(expected_);
     Node *n;
 
-    n = infer_->createFullyConnected("hidden_fc", input_, 10);
+    n = infer_->createFullyConnected(ctx_, "hidden_fc", input_, 10);
     n = infer_->createRELU("hidden", n);
-    n = infer_->createFullyConnected("output_fc", n, 2);
+    n = infer_->createFullyConnected(ctx_, "output_fc", n, 2);
     n = infer_->createSoftMax("output", n, expected_);
-    result_ = infer_->createSave("result", n);
+    result_ = infer_->createSave(ctx_, "result", n);
+    ctx_.allocate(result_->getPlaceholder());
     train_ = glow::differentiate(infer_, conf);
   }
 
@@ -292,7 +293,7 @@ struct HyphenNetwork {
     auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
-    auto resultHandle = result_->getVariable()->getHandle<>();
+    auto resultHandle = ctx_.get(result_->getPlaceholder())->getHandle<>();
     unsigned errors = 0;
 
     for (size_t bi = 0; bi < numSamples; bi += batchSize) {
