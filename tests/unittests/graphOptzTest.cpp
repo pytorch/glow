@@ -152,7 +152,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   CV->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
-  F_->createSave("ret", BN);
+  F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -170,12 +170,12 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave("ret", BN);
-  SaveNode *convSave = F_->createSave("convSave", CV);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                   false);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
+  SaveNode *convSave = F_->createSave(ctx_, "convSave", CV);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -195,37 +195,37 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
-  Variable *filter =
-      mod_.createVariable(ElemKind::FloatTy, {16, 5, 5, 3}, "filter",
-                          VisibilityKind::Private, true);
-  Variable *bias = mod_.createVariable(ElemKind::FloatTy, {16}, "bias",
-                                       VisibilityKind::Private, true);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                false);
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 5, 5, 3}, "filter",
+                          true);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "bias",
+                                       true);
 
   ConvolutionNode *CV = F_->createConv(
-      "conv", A, filter, bias,
+    "conv", A, filter, bias,
       mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
-  Variable *beta = mod_.createVariable(ElemKind::FloatTy, {16}, "beta",
-                                       VisibilityKind::Private, true);
-  Variable *gamma = mod_.createVariable(ElemKind::FloatTy, {16}, "gamma",
-                                        VisibilityKind::Private, true);
+  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "beta",
+                                       true);
+  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "gamma",
+                                        true);
 
-  Variable *mean = mod_.createVariable(ElemKind::FloatTy, {16}, "mean");
-  Variable *var = mod_.createVariable(ElemKind::FloatTy, {16}, "var");
+  auto *mean = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "mean", false);
+  auto *var = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "var", false);
 
   Node *BN = F_->createBatchNormalization("batch", CV, beta, gamma, mean, var,
                                           3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave("ret", BN);
-  SaveNode *filterSave = F_->createSave("filterSave", CV->getFilter());
+  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
+  SaveNode *filterSave = F_->createSave(ctx_, "filterSave", CV->getFilter());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   ::glow::optimize(F_, CompilationMode::Infer);
   // Make sure the structure of the graph did not change.
   EXPECT_EQ(F_->getNodes().size(), 4);
-  EXPECT_TRUE(llvm::isa<Variable>(filterSave->getInput()));
-  Variable *varFilter = llvm::dyn_cast<Variable>(filterSave->getInput());
+  EXPECT_TRUE(llvm::isa<Placeholder>(filterSave->getInput()));
+  auto *varFilter = llvm::dyn_cast<Placeholder>(filterSave->getInput());
   EXPECT_EQ(varFilter, CV->getFilter());
   EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
   BatchNormalizationNode *batchNorm =
@@ -242,7 +242,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
   Tensor transposedA;
   A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  SaveNode *save = F_->createSave("ret", T);
+  SaveNode *save = F_->createSave(ctx_, "ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -259,8 +259,8 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
                                     VisibilityKind::Private, false);
-  Variable *pred = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                       VisibilityKind::Private, false);
+  auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                       false);
   A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
   A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
@@ -270,7 +270,7 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   // be correct, thus this optimization is still legal.
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred);
-  SaveNode *save = F_->createSave("ret", T);
+  SaveNode *save = F_->createSave(ctx_, "ret", T);
   save->setPredicate(pred);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -287,11 +287,11 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  F_->createSave("ret", BN);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                false);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -310,13 +310,13 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
+                                   false);
 
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
-  SaveNode *convSave = F_->createSave("ret", CV);
-  SaveNode *ret = F_->createSave("ret", BN);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  SaveNode *convSave = F_->createSave(ctx_, "ret", CV);
+  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -338,11 +338,11 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
-  SaveNode *O = F_->createSave("ret", BN);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
+  SaveNode *O = F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(BN->dims(0), llvm::makeArrayRef(transposedDims));
@@ -366,19 +366,19 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
-  Node *BN = F_->createBatchNormalization("batch", T, 3, 0.0001, 0.9);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
-  SaveNode *O = F_->createSave("ret", BN);
+  SaveNode *O = F_->createSave(ctx_, "ret", BN);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
