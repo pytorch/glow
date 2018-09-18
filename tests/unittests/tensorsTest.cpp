@@ -62,6 +62,18 @@ TEST(Tensor, randomizeInt) {
   }
 }
 
+TEST(Tensor, randomizeFloat16) {
+  PseudoRNG PRNG;
+  Tensor T(ElemKind::Float16Ty, {10, 10});
+  auto H = T.getHandle<float16_t>();
+  H.randomize(-50, 50, PRNG);
+
+  // Check that all of the numbers fall in the range -50 to 50.
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    EXPECT_NEAR(H.raw(i), 0, 50);
+  }
+}
+
 TEST(Tensor, clone) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
   auto H = T.getHandle<>();

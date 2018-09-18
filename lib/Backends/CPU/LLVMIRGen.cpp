@@ -240,6 +240,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt64Ty();
   case ElemKind::FloatTy:
     return builder.getFloatTy();
+  case ElemKind::Float16Ty:
+    llvm_unreachable("Not yet implemented");
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
   case ElemKind::Int16QTy:
@@ -450,6 +452,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   switch (kind) {
   case ElemKind::FloatTy:
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
+  case ElemKind::Float16Ty:
+    llvm_unreachable("No yet implemented");
   case ElemKind::Int64ITy:
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:

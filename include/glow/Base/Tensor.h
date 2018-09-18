@@ -270,6 +270,8 @@ public:
     switch (getElementType()) {
     case ElemKind::FloatTy:
       return isEqualImpl<float>(other, allowedError);
+    case ElemKind::Float16Ty:
+      return isEqualImpl<float16_t>(other, allowedError);
     case ElemKind::Int8QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
@@ -644,6 +646,19 @@ public:
     std::uniform_int_distribution<int> dist(low, high);
     for (size_t i = 0, e = size(); i < e; i++) {
       raw(i) = dist(PRNG);
+    }
+  }
+
+  /// Fill the tensor with uniformly distributed values in the range
+  /// [low .. high).
+  template <typename T = ElemTy>
+  typename std::enable_if<!std::is_floating_point<T>::value &&
+                          !std::is_integral<T>::value>::type
+  randomize(float low, float high, PseudoRNG &PRNG) {
+    assert(low < high && "invalid range");
+    std::uniform_real_distribution<float> dist(low, high);
+    for (size_t i = 0, e = size(); i < e; i++) {
+      raw(i) = ElemTy(dist(PRNG));
     }
   }
 

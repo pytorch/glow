@@ -18,6 +18,8 @@
 
 #include "glow/Support/Compiler.h"
 
+#include "glow/Support/Float16.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -42,6 +44,9 @@ constexpr unsigned max_tensor_dimensions = 6;
 /// when handling members of these classes, e.g. a convolution Node/Instr's
 /// getGroup() (Unsigned), or getKernels() (UnsignedVector).
 using unsigned_t = uint32_t;
+
+using float16_t = float16;
+static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
 
 using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
 
@@ -180,11 +185,12 @@ inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
 /// An enum representing the type used by the elements of a tensor. The types of
 /// Handles for these tensors should match the element kind.
 enum class ElemKind : unsigned char {
-  FloatTy,  // 32-bit float type (float)
-  Int8QTy,  // 8-bit quantized type (int8_t)
-  Int16QTy, // 16-bit quantized type (int16_t)
-  Int32QTy, // 32-bit quantized type (int32_t)
-  Int64ITy, // 64-bit index type (int64_t)
+  FloatTy,   // 32-bit float type (float)
+  Float16Ty, // 16-bit float type (half, fp16)
+  Int8QTy,   // 8-bit quantized type (int8_t)
+  Int16QTy,  // 16-bit quantized type (int16_t)
+  Int32QTy,  // 32-bit quantized type (int32_t)
+  Int64ITy,  // 64-bit index type (int64_t)
 };
 
 /// A class that represents a type of a tensor.
@@ -341,6 +347,8 @@ struct Type final {
     switch (Ty) {
     case ElemKind::FloatTy:
       return std::is_same<ElemTy, float>::value;
+    case ElemKind::Float16Ty:
+      return std::is_same<ElemTy, float16_t>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::Int16QTy:
@@ -371,6 +379,8 @@ struct Type final {
     switch (Ty) {
     case ElemKind::FloatTy:
       return sizeof(float);
+    case ElemKind::Float16Ty:
+      return sizeof(float16_t);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
     case ElemKind::Int16QTy:
@@ -391,7 +401,7 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float", "i8", "i16", "i32", "index",
+        "float", "float16", "i8", "i16", "i32", "index",
     };
     return names[(int)Ty];
   }
