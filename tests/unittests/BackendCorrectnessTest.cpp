@@ -267,7 +267,10 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   Function *F = mod.createFunction("DataParallelStacking");
   auto M = llvm::make_unique<IRFunction>(F);
 
-  auto var = mod.createVariable(glow::ElemKind::FloatTy, {2}, "output");
+  auto *var =
+      mod.createPlaceholder(glow::ElemKind::FloatTy, {2}, "output", false);
+  Context ctx;
+  auto *outputTensor = ctx.allocate(var);
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at
     // destruction.
@@ -312,9 +315,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  Context empty;
-  backend.compileIR(std::move(M), empty)->execute();
-  auto H = var->getHandle();
+  backend.compileIR(std::move(M), ctx)->execute();
+  auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);
 }
