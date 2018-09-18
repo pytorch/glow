@@ -404,11 +404,11 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
-  SaveNode *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave(ctx_, "ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->dims(0), llvm::makeArrayRef(transposedDims));
@@ -432,19 +432,19 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
 TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                    false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
   K->setPredicate(pred2);
-  SaveNode *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave(ctx_, "ret", K);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -470,11 +470,11 @@ TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
-  SaveNode *O = F_->createSave("ret", SI);
+  SaveNode *O = F_->createSave(ctx_, "ret", SI);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(SI->dims(0), llvm::makeArrayRef(transposedDims));
@@ -498,19 +498,19 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
 TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *SI = F_->createSigmoid("sigmoid", T);
   SI->setPredicate(pred2);
-  SaveNode *O = F_->createSave("ret", SI);
+  SaveNode *O = F_->createSave(ctx_, "ret", SI);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -536,11 +536,11 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowTanh) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
-  SaveNode *O = F_->createSave("ret", TN);
+  SaveNode *O = F_->createSave(ctx_, "ret", TN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(TN->dims(0), llvm::makeArrayRef(transposedDims));
@@ -562,19 +562,19 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
 TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
   Node *TN = F_->createTanh("tanh", T);
   TN->setPredicate(pred2);
-  SaveNode *O = F_->createSave("ret", TN);
+  SaveNode *O = F_->createSave(ctx_, "ret", TN);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -599,12 +599,12 @@ TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   ReluNode *K = F_->createRELU("relu", T2);
-  SaveNode *save = F_->createSave("ret", K);
+  SaveNode *save = F_->createSave(ctx_, "ret", K);
 
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -623,23 +623,23 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
 /// preserved.
 TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   T2->setPredicate(pred2);
   ReluNode *K = F_->createRELU("relu", T2);
   K->setPredicate(pred3);
-  SaveNode *save = F_->createSave("ret", K);
+  SaveNode *save = F_->createSave(ctx_, "ret", K);
   save->setPredicate(pred4);
 
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
@@ -658,11 +658,11 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T);
-  F_->createSave("ret", K);
+  F_->createSave(ctx_, "ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->getNthInput(0).getNode(), T);
@@ -681,19 +681,19 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
 /// preserved.
 TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
   K->setPredicate(pred2);
-  SaveNode *save = F_->createSave("ret", K);
+  SaveNode *save = F_->createSave(ctx_, "ret", K);
   save->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -714,11 +714,11 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t afterFirstTransposeDims[] = {1, 10, 15, 5};
   const size_t afterSecondTransposeDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createVariable(ElemKind::FloatTy, origDims, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input",
+                                 false);
   TransposeNode *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   TransposeNode *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
-  SaveNode *save = F_->createSave("ret", T2);
+  SaveNode *save = F_->createSave(ctx_, "ret", T2);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -739,14 +739,14 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
-  SaveNode *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave(ctx_, "ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -772,25 +772,25 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 /// the add(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   T2->setPredicate(pred2);
   Node *K = F_->createAdd("arith", T1, T2);
   K->setPredicate(pred3);
-  SaveNode *O = F_->createSave("ret", K);
+  SaveNode *O = F_->createSave(ctx_, "ret", K);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -819,14 +819,14 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 10, 10, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
-  SaveNode *O = F_->createSave("ret", CN);
+  SaveNode *O = F_->createSave(ctx_, "ret", CN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -853,25 +853,25 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
 TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 10, 10, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *R1 = F_->createRELU("relu1", A1);
   R1->setPredicate(pred1);
   Node *R2 = F_->createRELU("relu2", A2);
   R2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
   CN->setPredicate(pred3);
-  SaveNode *O = F_->createSave("ret", CN);
+  SaveNode *O = F_->createSave(ctx_, "ret", CN);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -900,14 +900,14 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 5, 20, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
-  SaveNode *O = F_->createSave("ret", CN);
+  SaveNode *O = F_->createSave(ctx_, "ret", CN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -934,25 +934,25 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
 TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t origDimsConcat[] = {1, 5, 20, 15};
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, origDims, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, origDims, "input2",
-                                 VisibilityKind::Public, false);
-  Node *pred1 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred2 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred3 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
-  Node *pred4 = mod_.createVariable(ElemKind::FloatTy, {1}, "pred",
-                                    VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input2",
+                                  false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
+  Node *pred4 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred",
+                                     false);
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   T1->setPredicate(pred1);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   T2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
   CN->setPredicate(pred3);
-  SaveNode *O = F_->createSave("ret", CN);
+  SaveNode *O = F_->createSave(ctx_, "ret", CN);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -979,11 +979,11 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
 }
 
 TEST_F(GraphOptz, poolBelowReluSwapped) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                 false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
+  Node *O = F_->createSave(ctx_, "ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -997,11 +997,11 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                 false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
+  Node *O = F_->createSave(ctx_, "ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1015,12 +1015,12 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
 }
 
 TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
-                                VisibilityKind::Public, false);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input",
+                                 false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
-  F_->createSave("ret", R);
+  Node *O = F_->createSave(ctx_, "ret", PL);
+  F_->createSave(ctx_, "ret", R);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -1049,22 +1049,22 @@ struct IsSameNodeAddress {
 };
 
 TEST_F(GraphOptz, mergeConcatNodes) {
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                                 VisibilityKind::Public, false);
-  Node *A3 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
-                                 VisibilityKind::Public, false);
-  Node *A4 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 5, 15}, "input4",
-                                 VisibilityKind::Public, false);
-  Node *A5 = mod_.createVariable(ElemKind::FloatTy, {1, 1, 5, 15}, "input5",
-                                 VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                  false);
+  Node *A3 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input3",
+                                  false);
+  Node *A4 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input4",
+                                  false);
+  Node *A5 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 5, 15}, "input5",
+                                  false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
   Node *CN3 = F_->createConcat("concat3", {A4, A5}, 2);
   Node *CN4 = F_->createConcat("concat4", {A3, CN2, CN3}, 1);
-  Node *O = F_->createSave("ret", CN4);
+  Node *O = F_->createSave(ctx_, "ret", CN4);
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
@@ -1106,15 +1106,15 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 }
 
 TEST_F(GraphOptz, CSE) {
-  Node *A1 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
-                                 VisibilityKind::Public, false);
-  Node *A2 = mod_.createVariable(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
-                                 VisibilityKind::Public, false);
+  Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
+                                  false);
+  Node *A2 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input2",
+                                  false);
 
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
   Node *CN3 = F_->createConcat("concat3", {CN1, CN2}, 2);
-  Node *O = F_->createSave("ret", CN3);
+  Node *O = F_->createSave(ctx_, "ret", CN3);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -1144,7 +1144,7 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   Type t(ElemKind::FloatTy, {1000, 1000, 1000});
   Node *Z = F_->createSplat("zero", &t, 0.);
   Node *S = F_->createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
-  Node *O = F_->createSave("ret", S);
+  Node *O = F_->createSave(ctx_, "ret", S);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1163,8 +1163,7 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
 TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
-  Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
-                                        VisibilityKind::Public);
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
@@ -1182,7 +1181,7 @@ TEST_F(GraphOptz, ZeroArithmetic) {
 
   auto *sub = F_->createSub("sub", add3, zero); // -> input
 
-  SaveNode *O = F_->createSave("ret", sub);
+  SaveNode *O = F_->createSave(ctx_, "ret", sub);
 
   // The expression evaluates to "I".
 
@@ -1198,10 +1197,8 @@ TEST_F(GraphOptz, ZeroArithmetic) {
 /// A test that verifies that arithmetic simplification works correctly when
 /// the parents need to be simplified prior to the node itself.
 TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
-  Variable *input1 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
-                                         VisibilityKind::Public);
-  Variable *input2 = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
-                                         VisibilityKind::Public);
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input1", true);
+  auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input2", true);
 
   // This builds the expression: ((0 * I1) * (0 * I2)) = 0
   // It should be simplified to simply the splat zero node being saved.
@@ -1213,7 +1210,7 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 
   MulNode *mul3 = F_->createMul("mul3", mul1, mul2); // -> 0
 
-  SaveNode *O = F_->createSave("ret", mul3);
+  SaveNode *O = F_->createSave(ctx_, "ret", mul3);
 
   // Expect 1 splat, 3 muls, 1 save.
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -1231,14 +1228,13 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 
 /// Tests opts for the identities: [1 * X = X] [X / 1 = X]
 TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
-  Variable *input = mod_.createVariable(ElemKind::FloatTy, {4, 10}, "input",
-                                        VisibilityKind::Public);
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: (I / 1) * 1:
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
   DivNode *div = F_->createDiv("div", input, one);
   MulNode *mul = F_->createMul("mul", div, one);
-  SaveNode *SN = F_->createSave("ret", mul);
+  SaveNode *SN = F_->createSave(ctx_, "ret", mul);
 
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -1278,12 +1274,13 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;
     Function *F = mod.createFunction("foo");
+    Context ctx;
 
     Type t(ElemKind::FloatTy, {1000, 1000, 1000});
     Node *Z = F->createSplat("zero", &t, 0.);
     Node *S1 = F->createSlice("slice1", Z, {5, 15, 42}, {99, 88, 77});
     Node *S2 = F->createSlice("slice2", S1, {1, 1, 1}, {2, 3, 4});
-    F->createSave("ret", S2);
+    F->createSave(ctx, "ret", S2);
 
     if (shouldReverse) {
       auto &nodes = F->getNodes();
@@ -1305,7 +1302,7 @@ TEST_F(GraphOptz, ReshapeNoop) {
   Type t(ElemKind::FloatTy, shape);
   auto *Z = F_->createSplat("zero", &t, 0.);
   auto *R = F_->createReshape("reshape", Z, shape);
-  auto *O = F_->createSave("ret", R);
+  auto *O = F_->createSave(ctx_, "ret", R);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1330,7 +1327,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   Type t1(ElemKind::FloatTy, shape);
   Type t2(ElemKind::FloatTy, reshape);
   Node *input =
-      F_->getParent()->createVariable(ElemKind::FloatTy, shape, "input");
+    F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape, "input", true);
   auto *Z1 = F_->createSplat("zero1", &t1, 1.5);
   auto *A1 = F_->createAdd("add1", Z1->getResult().getType(), input, Z1);
   auto *R1 = F_->createReshape("reshape1", Z1, reshape);
@@ -1344,7 +1341,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // Z2 is only used by R3.
   // The Z2,R3 nodes will be replaced by a new splat node with the shape of R3.
   auto *A3 = F_->createAdd("add", A2->getResult().getType(), A2, R3);
-  auto *O = F_->createSave("ret", A3);
+  auto *O = F_->createSave(ctx_, "ret", A3);
 
   // Before optimization, we have 9 nodes in the graph.
   EXPECT_EQ(F_->getNodes().size(), 9);
@@ -1378,10 +1375,10 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
   Node *input = F_->getParent()->createVariable(
-      ElemKind::FloatTy, shape, "input", VisibilityKind::Public);
+    ElemKind::FloatTy, shape, "input", VisibilityKind::Public);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
-  auto *O = F_->createSave("ret", R2);
+  auto *O = F_->createSave(ctx_, "ret", R2);
 
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -1406,26 +1403,25 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
 }
 
 TEST_F(GraphOptz, DCEPublicVars) {
-  mod_.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
-                      VisibilityKind::Public);
+  mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
 
-  EXPECT_EQ(mod_.getVars().size(), 1);
+  EXPECT_EQ(mod_.getPlaceholders().size(), 1);
 
   // Optimize all of the dead code.
   ::glow::optimize(F_, CompilationMode::Infer);
 
   //  Public nodes should not be deleted.
-  EXPECT_EQ(mod_.getVars().size(), 1);
+  EXPECT_EQ(mod_.getPlaceholders().size(), 1);
 }
 
 TEST_F(GraphOptz, foldQuantizeIntoVar) {
-  auto input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
+  auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
                                    VisibilityKind::Private);
   input->getPayload() = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
-  auto S = F_->createSave("save", Q);
+  auto S = F_->createSave(ctx_, "save", Q);
 
   EXPECT_EQ(2, F_->getNodes().size());
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1446,7 +1442,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
-  F_->createSave("save", Q);
+  F_->createSave(ctx_, "save", Q);
   auto clonedF = F_->clone("cloned");
 
   EXPECT_EQ(2, clonedF->getNodes().size());
@@ -1479,7 +1475,7 @@ TEST_F(GraphOptz, quantizeToRescale) {
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
   auto *Q = F_->createQuantize("quantize", D, qType);
 
-  F_->createSave("ret", Q);
+  F_->createSave(ctx_, "ret", Q);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1502,7 +1498,7 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
                           VisibilityKind::Public, true);
 
   auto *max = F_->createMax("max", splat, input);
-  F_->createSave("save", max);
+  F_->createSave(ctx_, "save", max);
   EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1522,27 +1518,27 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 
   Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
   add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
-  add = F_->createSave("saveAdd", add);
+  add = F_->createSave(ctx_, "saveAdd", add);
 
   Node *sub = F_->createSub("qSub", opOutTy, LHS, RHS);
   sub = F_->createRescaleQuantized("rsSub", sub, rescaleOutTy);
-  sub = F_->createSave("saveSub", sub);
+  sub = F_->createSave(ctx_, "saveSub", sub);
 
   Node *div = F_->createDiv("qDiv", opOutTy, LHS, RHS);
   div = F_->createRescaleQuantized("rsDiv", div, rescaleOutTy);
-  div = F_->createSave("saveDiv", div);
+  div = F_->createSave(ctx_, "saveDiv", div);
 
   Node *mul = F_->createMul("qMul", opOutTy, LHS, RHS);
   mul = F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
-  mul = F_->createSave("saveMul", mul);
+  mul = F_->createSave(ctx_, "saveMul", mul);
 
   Node *min = F_->createMin("qMin", opOutTy, LHS, RHS);
   min = F_->createRescaleQuantized("rsMin", min, rescaleOutTy);
-  min = F_->createSave("saveMin", min);
+  min = F_->createSave(ctx_, "saveMin", min);
 
   Node *max = F_->createMax("qMax", opOutTy, LHS, RHS);
   max = F_->createRescaleQuantized("rsMax", max, rescaleOutTy);
-  max = F_->createSave("saveMax", max);
+  max = F_->createSave(ctx_, "saveMax", max);
 
   // All rescales must be fused into arithmetic operations above.
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1580,7 +1576,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   auto *rCV = F_->createRescaleQuantized(
       "rescale", CV,
       mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.4, 37));
-  F_->createSave("save", rCV);
+  F_->createSave(ctx_, "save", rCV);
 
   // All rescales must be fused into convolution.
   EXPECT_EQ(F_->getNodes().size(), 6);
@@ -1604,7 +1600,7 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
   auto *maxpool =
       F_->createMaxPool("maxpool", transpose, {3, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *save = F_->createSave("ret", maxpool);
+  auto *save = F_->createSave(ctx_, "ret", maxpool);
 
   EXPECT_EQ(F_->getNodes().size(), 7);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1630,7 +1626,7 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   auto *rescale4 = F_->createRescaleQuantized(
       "rescale", mul, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.1, 11));
   auto *div = F_->createDiv("div", rescale4, rescale4);
-  F_->createSave("save", div);
+  F_->createSave(ctx_, "save", div);
 
   EXPECT_EQ(F_->getNodes().size(), 9);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1645,7 +1641,7 @@ TEST_F(GraphOptz, mergeRescaleWithRelu) {
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
   auto *relu = F_->createRELU("relu", rescale1);
-  F_->createSave("save", relu);
+  F_->createSave(ctx_, "save", relu);
 
   // Rescale, RELU, Save nodes.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -1673,7 +1669,7 @@ TEST_F(GraphOptz, mergeMatMulNodes) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  F_->createSave(ctx_, "save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1696,7 +1692,7 @@ TEST_F(GraphOptz, mergeBANodes) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  F_->createSave(ctx_, "save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1719,7 +1715,7 @@ TEST_F(GraphOptz, concatElim) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  F_->createSave(ctx_, "save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1768,7 +1764,7 @@ TEST_F(GraphOptz, concatReshapes) {
   inputs2.clear();
 
   auto *addNode = F_->createAdd("add", concatNode1, concatNode2);
-  auto *O = F_->createSave("ret", addNode);
+  auto *O = F_->createSave(ctx_, "ret", addNode);
 
   EXPECT_EQ(F_->getNodes().size(), 24);
 
@@ -1823,17 +1819,17 @@ TEST_F(GraphOptz, VarsCSE) {
   auto *SN = F_->createSigmoid("sigmoid", input2);
   auto *RN = F_->createRELU("relu", input3);
   auto *CN = F_->createConcat("concat", {TN, SN, RN}, /* axis */ 0);
-  F_->createSave("ret", CN);
+  F_->createSave(ctx_, "ret", CN);
 
-  // Initially there are four variables: inputs 1, 2, and 3, and the variable
-  // for the save.
-  EXPECT_EQ(mod_.getVars().size(), 4);
+  // Initially there are three variables: inputs 1, 2, and 3 (the save uses a
+  // placeholder).
+  EXPECT_EQ(mod_.getVars().size(), 3);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  // Now only three variables are left; input1 and input2 have been combined,
+  // Now only two variables are left; input1 and input2 have been combined,
   // but input3 has not.
-  EXPECT_EQ(mod_.getVars().size(), 3);
+  EXPECT_EQ(mod_.getVars().size(), 2);
 
   // Verify that only one of input1 and input2 exists, and that input3 still
   // exists.
@@ -1881,8 +1877,8 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
   // to the RHS for both. Note that add1 has multiple users: add2 and save1.
   Node *AN1 = F_->createAdd("add1", SN, I1);
   Node *AN2 = F_->createAdd("add2", SN, AN1);
-  SaveNode *SN1 = F_->createSave("save1", AN1);
-  SaveNode *SN2 = F_->createSave("save2", AN2);
+  SaveNode *SN1 = F_->createSave(ctx_, "save1", AN1);
+  SaveNode *SN2 = F_->createSave(ctx_, "save2", AN2);
 
   // Five nodes in total: one splat, two adds, and two saves.
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -1928,7 +1924,7 @@ TEST_F(GraphOptz, eliminateSingleConcat) {
                                     VisibilityKind::Public, false);
 
   ConcatNode *CN = F_->createConcat("concat1", {input}, 0);
-  SaveNode *SN = F_->createSave("ret", CN);
+  SaveNode *SN = F_->createSave(ctx_, "ret", CN);
 
   // The ConcatNode and SaveNode.
   EXPECT_EQ(F_->getNodes().size(), 2);
@@ -1954,7 +1950,7 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
       ElemKind::FloatTy, shape, "input", VisibilityKind::Private);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
-  auto *O = F_->createSave("ret", R2);
+  auto *O = F_->createSave(ctx_, "ret", R2);
 
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
