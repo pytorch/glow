@@ -133,9 +133,9 @@ public:
   Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name,
                                  bool isTrainable);
 
-  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                                 int32_t offset, llvm::StringRef name,
-                                 bool isTrainable);
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+                                 float scale, int32_t offset,
+                                 llvm::StringRef name, bool isTrainable);
 
   Variable *createVariable(TypeRef T, llvm::StringRef name,
                            VisibilityKind visibility = VisibilityKind::Private,
