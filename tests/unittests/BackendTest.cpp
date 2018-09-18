@@ -35,12 +35,13 @@ TEST(Interpreter, NotImplementedSave) {
   // Interpreter backend does not support a save method.
   // Exercise it and make sure that it fails.
   ExecutionEngine EE;
+  Context ctx;
   auto &mod = EE.getModule();
 
   // Create a few nodes to make sure IR can be normally generated.
   Function *F = mod.createFunction("main");
-  F->createSave("save", mod.createVariable(ElemKind::FloatTy, {2}, "A",
-                                           VisibilityKind::Public, false));
+  F->createSave(ctx, "save",
+                mod.createPlaceholder(ElemKind::FloatTy, {2}, "A", false));
 
   EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output", "network"), "");
 }
@@ -52,10 +53,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   Tensor inputs(ElemKind::FloatTy, {1, 4});
   inputs.getHandle() = {1, 1.2f, 0.5f, 1.3f};
 
-  auto *A = mod.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                               VisibilityKind::Public);
-  auto *Ex = mod.createVariable(ElemKind::FloatTy, {1, 4}, "E",
-                                VisibilityKind::Public);
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
+  auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
   Node *O = F->createFullyConnected("fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
@@ -63,11 +62,13 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   F = ::glow::profileQuantization(F);
 
   Context ctx;
+  ctx.allocate(A);
+  ctx.allocate(Ex);
   EE.compile(CompilationMode::Infer, F, ctx);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  updateVariables({A}, {&inputs});
+  updateVariables(ctx, {A}, {&inputs});
   EE.run();
 
   QuantizationProfileNode *profile{nullptr};
@@ -93,7 +94,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  updateVariables({A}, {&inputs});
+  updateVariables(ctx, {A}, {&inputs});
   EE.run();
   min = CI.raw(0);
   max = CI.raw(1);
@@ -108,10 +109,10 @@ TEST_P(BackendTest, simpleInference) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   F->setName("interpret");
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
-                                   VisibilityKind::Public);
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", false);
 
-  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
 
   auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
@@ -128,11 +129,14 @@ TEST_P(BackendTest, simpleInference) {
   auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
-  F->createSave("ret", SM);
+  auto *S = F->createSave(ctx, "ret", SM);
 
+  ctx.allocate(input);
+  ctx.allocate(ex);
+  ctx.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({input}, {&inputs});
+  updateVariables(ctx, {input}, {&inputs});
   EE_.run();
 }
 
@@ -142,9 +146,12 @@ TEST_P(BackendTest, simpleInference) {
 TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
+  Context ctx;
   Function *F = mod.createFunction("main");
-  auto *IV = mod.createVariable("input", input, VisibilityKind::Public, false);
-  (void)IV;
+  auto *IV = mod.createPlaceholder(input.getElementType(), input.dims(),
+                                   "input", false);
+  auto *IVTensor = ctx.allocate(IV);
+  IVTensor->assign(&input);
 
   auto IR = llvm::make_unique<IRFunction>(F);
   IR->generateIR();
@@ -152,8 +159,7 @@ TEST_P(BackendTest, debugPrint) {
 
   std::unique_ptr<BackendUsingGlowIR> backend(
       static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
-  Context empty;
-  auto function = backend->compileIR(std::move(IR), empty);
+  auto function = backend->compileIR(std::move(IR), ctx);
   function->execute();
 }
 
@@ -165,11 +171,12 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   Context ctx;
 
   Function *F = mod.createFunction("main");
-  auto *X = mod.createVariable(ElemKind::FloatTy, {3}, "X");
-  X->getPayload().getHandle() = {1., 2., 3.};
+  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = ctx.allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
-  auto *save = F->createSave("save", pow);
-  Variable *res = save->getVariable();
+  auto *save = F->createSave(ctx, "save", pow);
+  auto *saveTensor = ctx.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Erase all of the functions to ensure that the compiled code does not
@@ -180,7 +187,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   // around.
   EE_.run();
 
-  auto HX = res->getPayload().getHandle();
+  auto HX = saveTensor->getHandle();
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
   EXPECT_NEAR(HX.at({1}), 4, 1E-5);
   EXPECT_NEAR(HX.at({2}), 9, 1E-5);
@@ -193,13 +200,13 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", false);
-  SaveNode *S = F->createSave("ret", input);
   Context ctx({input}, {&data});
+  SaveNode *S = F->createSave(ctx, "ret", input);
+  auto *STensor = ctx.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F, ctx);
   EE_.run();
-  auto &res = S->getVariable()->getPayload();
-  EXPECT_TRUE(res.isEqual(data));
+  EXPECT_TRUE(STensor->isEqual(data));
 }
 
 /// Test the basic functionality of the context.
@@ -209,16 +216,18 @@ TEST(Context, basicContextTest) {
 
   Tensor T1(ty);
 
+  // Create a context for some threaded execution.
+  Context C;
+
   // Create a simple graph, just to have a few placeholders.
   Function *F = mod.createFunction("main");
   auto *input1 = mod.createPlaceholder(ty, "input1", false);
   auto *input2 = mod.createPlaceholder(ty, "input2", false);
   auto *input3 = mod.createPlaceholder(ty, "input3", false);
   auto *add = F->createAdd("add", input1, input2);
-  F->createSave("ret", add);
-
-  // Create a context for some threaded execution.
-  Context C;
+  auto *save = F->createSave(C, "ret", add);
+  auto *savePlaceholder = save->getPlaceholder();
+  auto *saveTensor = C.allocate(savePlaceholder);
 
   C.insert(input1, std::move(T1));
   Tensor *I2 = C.allocate(input2);
@@ -226,15 +235,18 @@ TEST(Context, basicContextTest) {
   // Check that the right placeholders are found.
   EXPECT_TRUE(C.count(input1));
   EXPECT_TRUE(C.count(input2));
+  EXPECT_TRUE(C.count(savePlaceholder));
   EXPECT_FALSE(C.count(nullptr));
 
   // Try to fetch some placeholders that exist and some that don't.
   auto *V1 = C.get(input1);
   auto *V2 = C.get(input2);
   auto *V3 = C.get(input3);
+  auto *S = C.get(savePlaceholder);
   EXPECT_NE(V1, nullptr);
   EXPECT_NE(V2, nullptr);
   EXPECT_EQ(V3, nullptr);
+  EXPECT_NE(S, nullptr);
 
   // The tensor that we got while allocating T2 is the same one that we got
   // while searching the context.
