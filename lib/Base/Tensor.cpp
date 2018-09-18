@@ -24,8 +24,9 @@ using namespace glow;
 namespace {
 
 /// This is a helper method that's used in the visualization of tensors.
-template <class ElemTy> static char valueToChar(ElemTy val) {
+template <class ElemTy> static char valueToChar(ElemTy input) {
   char ch = ' ';
+  const double val = input;
   if (val > 0.2) {
     ch = '.';
   }
@@ -92,7 +93,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   }
 
   // Check for zero tensor.
-  if (mn == .0 && mx == .0) {
+  if (mn == ElemTy(.0) && mx == ElemTy(.0)) {
     os << "[ Zero tensor ]\n";
     return;
   }
@@ -269,6 +270,8 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
+  case ElemKind::Float16Ty:
+    return dumpAsciiGenericImpl(T->getHandle<float16_t>(), os);
   case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
   case ElemKind::Int16QTy:
@@ -286,6 +289,8 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
     return dumpGenericImpl(T->getHandle<float>(), os);
+  case ElemKind::Float16Ty:
+    return dumpGenericImpl(T->getHandle<float16_t>(), os);
   case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os);
   case ElemKind::Int16QTy:
@@ -319,6 +324,12 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
   case ElemKind::FloatTy: {
     auto srcH = src->getHandle<float>();
     auto destH = dest->getHandle<float>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
+  case ElemKind::Float16Ty: {
+    auto srcH = src->getHandle<float16_t>();
+    auto destH = dest->getHandle<float16_t>();
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
@@ -369,6 +380,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<float>().clear(val);
       break;
     }
+    case ElemKind::Float16Ty: {
+      getHandle<float16_t>().clear(float16_t(val));
+      break;
+    }
     case ElemKind::Int8QTy: {
       getHandle<int8_t>().clear(val);
       break;
@@ -393,6 +408,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     switch (getElementType()) {
     case ElemKind::FloatTy: {
       getHandle<float>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Float16Ty: {
+      getHandle<float16_t>().initXavier(val, PRNG);
       break;
     }
     case ElemKind::Int8QTy: {
