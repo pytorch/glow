@@ -248,10 +248,10 @@ struct HyphenNetwork {
   Context ctx_;
 
   /// The input variable is N x 6 x 27 as encoded by mapLetterWindow().
-  Variable *input_;
+  Placeholder *input_;
 
   /// The expected output index when training: 0 = no hyphen, 1 = hyphen.
-  Variable *expected_;
+  Placeholder *expected_;
 
   /// The forward inference function.
   Function *infer_;
@@ -263,12 +263,13 @@ struct HyphenNetwork {
   Function *train_;
 
   HyphenNetwork(Module &mod, TrainingConfig &conf)
-      : input_(mod.createVariable(ElemKind::FloatTy, {conf.batchSize, 6, 27},
-                                  "input", VisibilityKind::Public, false)),
-        expected_(mod.createVariable(ElemKind::Int64ITy, {conf.batchSize, 1},
-                                     "expected", VisibilityKind::Public,
-                                     false)),
+      : input_(mod.createPlaceholder(ElemKind::FloatTy, {conf.batchSize, 6, 27},
+                                     "input", false)),
+        expected_(mod.createPlaceholder(ElemKind::Int64ITy, {conf.batchSize, 1},
+                                        "expected", false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
+    ctx_.allocate(input_);
+    ctx_.allocate(expected_);
     Node *n;
 
     n = infer_->createFullyConnected("hidden_fc", input_, 10);
@@ -302,7 +303,7 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      updateVariables({input_}, {&batchInputs});
+      updateVariables(ctx_, {input_}, {&batchInputs});
       EE.run();
 
       // Check each output in the batch.
@@ -366,7 +367,7 @@ TEST(HyphenTest, network) {
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train, net.train_, net.ctx_);
-  runBatch(EE, 1000, sampleCounter, {net.input_, net.expected_},
+  runBatch(EE, net.ctx_, 1000, sampleCounter, {net.input_, net.expected_},
            {&inputs, &expected});
 
   // Now test inference on the trained network.
