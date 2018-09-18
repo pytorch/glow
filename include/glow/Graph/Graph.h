@@ -124,6 +124,10 @@ public:
 
   const PlaceholderList &getPlaceholders() const { return placeholders_; }
 
+  /// \returns a pointer to the placeholder with the name \p name or
+  /// nullptr if no placeholder has this name.
+  Placeholder *getPlaceholderByName(llvm::StringRef name);
+
   /// @name High-level Variable builders.
   ///@{
 
