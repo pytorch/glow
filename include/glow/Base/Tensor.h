@@ -626,7 +626,7 @@ public:
   }
 
   /// Fill the tensor with uniformly distributed values in the range
-  /// [low .. high].
+  /// [low .. high).
   template <typename T = ElemTy>
   typename std::enable_if<std::is_floating_point<T>::value>::type
   randomize(float low, float high, PseudoRNG &PRNG) {
