@@ -239,6 +239,18 @@ TEST(Context, basicContextTest) {
   // The tensor that we got while allocating T2 is the same one that we got
   // while searching the context.
   EXPECT_EQ(I2, V2);
+
+  // Check that all of the placeholders are allocated.
+  C.allocate(input3);
+  EXPECT_EQ(nullptr, C.getFirstUnallocated(mod.getPlaceholders()));
+
+  // Check that some placeholders are unallocated.
+  C.clear();
+  EXPECT_NE(nullptr, C.getFirstUnallocated(mod.getPlaceholders()));
+
+  // Check that all of the placeholders are allocated.
+  C.allocate(mod.getPlaceholders());
+  EXPECT_EQ(nullptr, C.getFirstUnallocated(mod.getPlaceholders()));
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
