@@ -40,24 +40,27 @@ extern void libjit_matmul_f(float *c, const float *a, const float *b,
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   ExecutionEngine EE(BackendKind::Interpreter);
+  Context ctx;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto lhsVar = mod.createVariable(lhs->getElementType(), lhs->dims(), "lhs",
-                                   VisibilityKind::Public);
-  auto rhsVar = mod.createVariable(rhs->getElementType(), rhs->dims(), "rhs",
-                                   VisibilityKind::Public);
-  auto outVar = mod.createVariable(out->getElementType(), out->dims(), "out",
-                                   VisibilityKind::Public);
+  auto *lhsVar =
+      mod.createPlaceholder(lhs->getElementType(), lhs->dims(), "lhs", false);
+  ctx.allocate(lhsVar);
+  auto *rhsVar =
+      mod.createPlaceholder(rhs->getElementType(), rhs->dims(), "rhs", false);
+  ctx.allocate(rhsVar);
   auto OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
-  auto result = F->createSave("ret", matmul, outVar);
-  Context ctx;
+  auto save = F->createSave(ctx, "ret", matmul);
+  auto *res = ctx.allocate(save->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({lhsVar, rhsVar}, {lhs, rhs});
+  updateVariables(ctx, {lhsVar, rhsVar}, {lhs, rhs});
   EE.run();
 
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(res);
 }
 
 TEST(Gemm, jitTest) {
