@@ -41,9 +41,8 @@ TEST(GraphAutoGrad, autoGrad) {
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-
-  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                   VisibilityKind::Public, false);
+  auto *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
 
   auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
@@ -55,12 +54,12 @@ TEST(GraphAutoGrad, autoGrad) {
 
   auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected = mod.createVariable(
-      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
+  auto *selected =
+      mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
-  auto *result = F->createSave("return", SM);
+  auto *result = F->createSave(ctx, "return", SM);
   (void)result;
 
   Function *TF = glow::differentiate(F, TC);
@@ -81,17 +80,17 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  Variable *A = mod.createVariable(ElemKind::FloatTy, {10, 28, 28, 1}, "input",
-                                   VisibilityKind::Public, false);
+  auto *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
   auto *CV0 = F->createLocalResponseNormalization("LRN", A);
   auto *FCL1 = F->createFullyConnected("fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
-  Variable *selected = mod.createVariable(
-      ElemKind::Int64ITy, {10, 1}, "selected", VisibilityKind::Public, false);
+  auto *selected =
+      mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
-  auto *result = F->createSave("return", SM);
+  auto *result = F->createSave(ctx, "return", SM);
   (void)result;
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
@@ -102,7 +101,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
   ExecutionEngine EE;
   TrainingConfig TC;
-
+  Context ctx;
   Module M;
 
   auto *F = M.createFunction("main");
@@ -126,19 +125,20 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   EXPECT_EQ(M.getVars().size(), 3);
 
-  Node *label = M.createVariable(ElemKind::FloatTy, {1}, "label",
-                                 VisibilityKind::Public, false);
+  Node *label = M.createPlaceholder(ElemKind::FloatTy, {1}, "label", false);
   Node *reg = F->createRegression("reg", AplusB_F, label);
-  F->createSave("return", reg);
+  F->createSave(ctx, "return", reg);
 
-  EXPECT_EQ(M.getVars().size(), 5);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
+  EXPECT_EQ(M.getVars().size(), 3);
 
   auto *diffF = differentiate(F, TC);
 
   diffF->verify();
 
   EXPECT_EQ(M.getFunctions().size(), 3);
-  EXPECT_EQ(M.getVars().size(), 5);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
+  EXPECT_EQ(M.getVars().size(), 3);
   // Check that we have as many SGD node as variables that need to be trained.
   unsigned nbSGDs = 0;
   unsigned nbSGDA = 0;
