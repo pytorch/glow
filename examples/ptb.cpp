@@ -200,12 +200,12 @@ void testPTB() {
   Function *F = mod.createFunction("main");
   llvm::outs() << "Building\n";
 
-  Variable *X = mod.createVariable(ElemKind::FloatTy,
-                                   {minibatchSize, vocabSize * numSteps},
-                                   "input", VisibilityKind::Public, false);
-  Variable *Y =
-      mod.createVariable(ElemKind::Int64ITy, {minibatchSize, numSteps},
-                         "selected", VisibilityKind::Public, false);
+  auto *X = mod.createPlaceholder(
+      ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input", false);
+  ctx.allocate(X);
+  auto *Y = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, numSteps},
+                                  "selected", false);
+  ctx.allocate(Y);
 
   std::vector<Node *> slicesX;
 
@@ -227,7 +227,8 @@ void testPTB() {
   Node *T = F->createReshape("Y.reshape", TN, {numSteps * minibatchSize, 1});
 
   auto *SM = F->createSoftMax("softmax", O, T);
-  auto *result = F->createSave("result", SM);
+  auto *save = F->createSave(ctx, "result", SM);
+  auto *result = ctx.allocate(save->getPlaceholder());
 
   if (!dumpInitialGraphDAGFileOpt.empty()) {
     llvm::outs() << "Dumping initial graph\n";
@@ -272,13 +273,12 @@ void testPTB() {
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
-      runBatch(EE, 1, sampleCounter, {X, Y},
+      runBatch(EE, ctx, 1, sampleCounter, {X, Y},
                {&inputWordsBatch, &targetWordsBatch});
-      Tensor &res = result->getVariable()->getPayload();
       for (size_t step = 0; step < numSteps; step++) {
         for (unsigned int i = 0; i < minibatchSize; i++) {
           auto T =
-              res.getHandle<float>().extractSlice(step * minibatchSize + i);
+              result->getHandle<float>().extractSlice(step * minibatchSize + i);
           size_t correct = targetWords.getHandle<int64_t>().at(
               {minibatchSize * batch + i, step});
           float soft_guess = -std::log(T.getHandle<float>().at({correct}));
