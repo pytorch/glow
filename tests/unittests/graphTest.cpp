@@ -49,13 +49,15 @@ TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = MD.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
+  Context ctx;
+  Node *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
 
-  K = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
-  F->createSave("Save", K);
+  F->createSave(ctx, "Save", K);
   F->dump();
   F->dumpDAG();
   lower(F, MockBackend());
@@ -104,11 +106,13 @@ TEST(Graph, useList) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Variable *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Context ctx;
+  auto *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
 
   EXPECT_EQ(K->getNumUsers(), 0);
 
-  ConvolutionNode *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+  ConvolutionNode *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
 
   EXPECT_TRUE(K->hasOneUse());
   EXPECT_EQ(K->getNumUsers(), 1);
@@ -182,12 +186,14 @@ TEST(Graph, useListIteration) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Node *K = MD.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
+  Node *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
 
   EXPECT_EQ(K->getNumUsers(), 0);
 
-  ConvolutionNode *conv1 = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
-  ConvolutionNode *conv2 = F->createConv("Conv2", K, 16, 3, 2, 3, 1);
+  Context ctx;
+  ConvolutionNode *conv1 = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  ConvolutionNode *conv2 = F->createConv(ctx, "Conv2", K, 16, 3, 2, 3, 1);
   // Check the number of users for different nodes.
   EXPECT_EQ(K->getNumUsers(), 2);
   EXPECT_EQ(conv1->getNumUsers(), 0);
@@ -205,15 +211,17 @@ TEST(Graph, simpleTestFC) {
   Function *F = MD.createFunction("F");
   IRFunction M(F);
 
-  auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
-  auto *Ex = MD.createVariable(ElemKind::FloatTy, {numInputs, 1}, "Ex");
+  auto *A = MD.createPlaceholder(ElemKind::FloatTy, {numInputs, 2}, "A", true);
+  auto *Ex =
+      MD.createPlaceholder(ElemKind::FloatTy, {numInputs, 1}, "Ex", true);
 
-  Node *O = F->createFullyConnected("FC1", A, 6);
+  Context ctx;
+  Node *O = F->createFullyConnected(ctx, "FC1", A, 6);
   O = F->createRELU("RELU1", O);
-  O = F->createFullyConnected("FC2", O, 1);
+  O = F->createFullyConnected(ctx, "FC2", O, 1);
   O = F->createRELU("RELU2", O);
   O = F->createRegression("Regression", O, Ex);
-  F->createSave("Save", O);
+  F->createSave(ctx, "Save", O);
   F->dump();
   F->dumpDAG();
   lower(F, MockBackend());
@@ -229,23 +237,24 @@ TEST(Graph, QuantizationProfileNodes) {
   Function *F = MD.createFunction("F");
   IRFunction M(F);
 
-  auto *A = MD.createVariable(ElemKind::FloatTy, {numInputs, 2}, "A");
+  auto *A = MD.createPlaceholder(ElemKind::FloatTy, {numInputs, 2}, "A", true);
 
   // Add non float operation, which should not be profiled.
   auto *outQTy = F->getParent()->uniqueType(glow::ElemKind::Int8QTy,
                                             {numInputs, 2}, 1.5, 6);
   auto *quantize = F->createQuantize("quantize", A, outQTy);
   // Make sure that quantize is not optimized away.
-  F->createSave("save", quantize);
+  Context ctx;
+  F->createSave(ctx, "save", quantize);
 
   // Multiple nodes read from the same variable.
   // Only one Quantization Profile node should be created for the output
   // from the variable.
-  Node *O = F->createFullyConnected("FC1", A, 6);
-  Node *C = F->createFullyConnected("FC2", A, 6);
+  Node *O = F->createFullyConnected(ctx, "FC1", A, 6);
+  Node *C = F->createFullyConnected(ctx, "FC2", A, 6);
   O = F->createRELU("RELU1", O);
-  F->createSave("save", O);
-  F->createSave("save", C);
+  F->createSave(ctx, "save", O);
+  F->createSave(ctx, "save", C);
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
@@ -272,15 +281,15 @@ TEST(Graph, simpleQuant) {
   llvm::SmallVector<unsigned_t, 2> steps = {1, 1};
   unsigned width = 224;
 
-  auto *input = MD.createVariable(ElemKind::Int8QTy, {1, width, width, 3}, 0.4,
-                                  2, "Input", VisibilityKind::Public);
+  auto *input = MD.createPlaceholder(ElemKind::Int8QTy, {1, width, width, 3},
+                                     0.4, 2, "Input", true);
 
   // Calculate the size and allocate the output buffer.
   std::array<size_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
-  auto *filter = MD.createVariable(ElemKind::Int8QTy, filterDim, 3.3, 4, "F",
-                                   VisibilityKind::Private);
-  auto *bias = MD.createVariable(ElemKind::Int8QTy, {depth}, 1.3, 5, "B",
-                                 VisibilityKind::Private);
+  auto *filter =
+      MD.createPlaceholder(ElemKind::Int8QTy, filterDim, 3.3, 4, "F", true);
+  auto *bias =
+      MD.createPlaceholder(ElemKind::Int8QTy, {depth}, 1.3, 5, "B", true);
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvPoolOutputDims(width, width, kernels, steps, pads);
@@ -291,11 +300,13 @@ TEST(Graph, simpleQuant) {
       F->createConv("conv", input, filter, bias, t, kernels, steps, pads, 1);
 
   auto s = conv->getResult().getType()->size();
-  auto *fcFilter = MD.createVariable(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F");
-  auto *fcBias = MD.createVariable(ElemKind::Int8QTy, {6}, 0.4, 2, "B");
+  auto *fcFilter =
+      MD.createPlaceholder(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F", true);
+  auto *fcBias =
+      MD.createPlaceholder(ElemKind::Int8QTy, {6}, 0.4, 2, "B", true);
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
-  F->createSave("ret", O);
   Context ctx;
+  F->createSave(ctx, "ret", O);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
@@ -304,7 +315,7 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto &MD = EE.getModule();
   auto F = MD.createFunction("main");
 
-  auto *input = MD.createVariable(ElemKind::FloatTy, {1, 3}, "Input");
+  auto *input = MD.createPlaceholder(ElemKind::FloatTy, {1, 3}, "Input", true);
   auto qType = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
 
   auto *Q = F->createQuantize("quantize", input, qType);
@@ -314,8 +325,8 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto *A = F->createRescaleQuantized("rescale", Q, transform);
 
   auto *D = F->createDequantize("dequantize", A);
-  F->createSave("ret", D);
   Context ctx;
+  F->createSave(ctx, "ret", D);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
@@ -323,26 +334,27 @@ TEST(Graph, quantizeGather) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  auto *input = mod.createVariable(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input",
-                                   VisibilityKind::Public);
-  auto *indices = mod.createVariable(ElemKind::Int64ITy, {1}, "index",
-                                     VisibilityKind::Public);
+  auto *input =
+      mod.createPlaceholder(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input", true);
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
-  F->createSave("ret", gather);
   Context ctx;
+  F->createSave(ctx, "ret", gather);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
 TEST(Graph, cloneTest) {
   Module M;
+  Context ctx;
 
   Function *F = M.createFunction("main");
-  Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
-  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+  Node *K =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
+  Node *S = M.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
+  Node *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
-  F->createSave("Save", SM);
+  F->createSave(ctx, "Save", SM);
 
   auto *newConv = F->addNode(conv->clone());
   auto *newRelu = F->addNode(relu->clone());
@@ -357,8 +369,8 @@ TEST(Graph, moduleTest) {
   Module M;
   M.createFunction("one");
   M.createFunction("two");
-  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
-  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
+  M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V1", true);
+  M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V2", true);
   EXPECT_TRUE(M.hasFunction("one"));
   EXPECT_TRUE(M.hasFunction("two"));
   EXPECT_FALSE(M.hasFunction("four"));
@@ -369,11 +381,15 @@ TEST(Graph, functionDependenciesTest) {
   Module M;
   auto F1 = M.createFunction("one");
   auto F2 = M.createFunction("two");
-  auto V1 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V1");
-  auto V2 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V2");
-  auto V3 = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V3");
-  M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "V4");
+  auto V1 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V1", true);
+  auto V2 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V2", true);
+  auto V3 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V3", true);
+  M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V4", true);
 
+  Context ctx;
   auto sum = F1->createSub("1_sub_2", V1, V2);
   F1->createSave("sv", sum, V1);
   F2->createSave("sv", V3, V2);
@@ -386,16 +402,18 @@ TEST(Graph, functionDependenciesTest) {
 
 TEST(Graph, cloneTest2) {
   Module M;
+  Context ctx;
 
   auto *F = M.createFunction("main");
-  Node *K = M.createVariable(ElemKind::FloatTy, {4, 320, 200, 3}, "input");
-  Node *S = M.createVariable(ElemKind::Int64ITy, {4, 1}, "select");
-  Node *conv = F->createConv("Conv1", K, 16, 3, 2, 3, 1);
+  Node *K =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
+  Node *S = M.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
+  Node *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
 
   Node *SM = F->createSoftMax("SoftMax", concat, S);
-  F->createSave("Save", SM);
+  F->createSave(ctx, "Save", SM);
 
   auto *newF = F->clone("new_main");
   newF->verify();
@@ -410,23 +428,21 @@ TEST(Graph, NodeValue) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
-                                    VisibilityKind::Public, true);
-  inputX->getPayload().init(Tensor::InitKind::Broadcast, 3.0, mod.getPRNG());
+  Context ctx;
+  auto *inputX = mod.createPlaceholder(ElemKind::FloatTy, {1}, "input", true);
+  ctx.allocate(inputX)->init(Tensor::InitKind::Broadcast, 3.0, mod.getPRNG());
 
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
   a = F->createAdd("x8", a, a);
-  auto S = F->createSave("Save", a);
+  auto *S = F->createSave(ctx, "Save", a);
+  auto *res = ctx.allocate(S->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
 
-  EXPECT_EQ(
-      llvm::cast<Variable>(S->getOutput())->getPayload().getHandle().raw(0),
-      24);
+  EXPECT_EQ(res->getHandle().raw(0), 24);
 }
 
 /// Check that by deleting one function, the variables that refernced
@@ -435,8 +451,7 @@ TEST(Graph, deleteFunction) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F1 = mod.createFunction("f1");
-  auto *inputX = mod.createVariable(ElemKind::FloatTy, {1}, "input",
-                                    VisibilityKind::Public, true);
+  auto *inputX = mod.createPlaceholder(ElemKind::FloatTy, {1}, "input", true);
   F1->createLog("log1", inputX);
   Function *F2 = mod.createFunction("f2");
   F2->createLog("log2", inputX);
@@ -457,15 +472,17 @@ TEST(Graph, nodesWithPredicates) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   F->setName("interpret");
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
-                                   VisibilityKind::Public);
+  Context ctx;
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", true);
+  auto *pred =
+      mod.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
+  ctx.allocate(input);
+  ctx.allocate(ex);
+  ctx.allocate(pred);
 
-  auto *ex = mod.createVariable(ElemKind::Int64ITy, {1, 1}, "exp");
-
-  Variable *pred = mod.createVariable(ElemKind::Int64ITy, {1}, "predicate",
-                                      VisibilityKind::Private, false);
-
-  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(ctx, "conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
@@ -473,15 +490,15 @@ TEST(Graph, nodesWithPredicates) {
   RL0->setPredicate(pred);
   MP0->setPredicate(pred);
 
-  auto *FCL1 = F->createFullyConnected("fc", MP0, 10);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP0, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
-  F->createSave("ret", SM);
+  auto *save = F->createSave(ctx, "ret", SM);
+  ctx.allocate(save->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({input}, {&inputs});
+  updateVariables(ctx, {input}, {&inputs});
   EE.run();
 }
 
@@ -490,9 +507,11 @@ unsigned getConvNodeSize(BackendKind kind) {
   Module mod;
   Function *F = mod.createFunction("main");
   IRFunction M(F);
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
-  ConvolutionNode *CN = F->createConv("conv", input, 6, 1, 1, 0, 2);
-  F->createSave("save", CN);
+  Context ctx;
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", true);
+  ConvolutionNode *CN = F->createConv(ctx, "conv", input, 6, 1, 1, 0, 2);
+  F->createSave(ctx, "save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
   lower(F, *backend);
@@ -536,32 +555,31 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public, true);
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
-  auto *zero =
-      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {3, 32}, "A", true);
+  auto *B = mod.createPlaceholder(A->getType(), "B", true);
+  auto *zero = mod.createPlaceholder(A->getType(), "zero", true);
 
-  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
+  Context ctx;
+  ctx.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  ctx.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
-  auto *saveNode = F->createSave("ret", addAB);
+  auto *saveNode = F->createSave(ctx, "ret", addAB);
+  ctx.allocate(saveNode->getPlaceholder());
   F->createSave("resetA", zero, A);
 
   // Copy the value of A.
-  Tensor AOrig = A->getPayload().clone();
+  Tensor AOrig = ctx.get(A)->clone();
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  auto *ret = saveNode->getVariable();
+  auto *ret = ctx.get(saveNode->getPlaceholder());
   auto handleAOrig = AOrig.getHandle<>();
-  auto handleB = B->getPayload().getHandle<>();
-  auto handleRet = ret->getPayload().getHandle<>();
+  auto handleB = ctx.get(B)->getHandle<>();
+  auto handleRet = ret->getHandle<>();
   bool allEqual = true;
   for (unsigned row = 0; row != 3; ++row) {
     for (unsigned column = 0; column != 32; ++column) {
@@ -569,7 +587,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
                   handleRet.at({row, column});
     }
   }
-  EXPECT_TRUE(A->getPayload().isEqual(zero->getPayload(), 0.0));
+  EXPECT_TRUE(ctx.get(A)->isEqual(*ctx.get(zero), 0.0));
   EXPECT_TRUE(allEqual);
 }
 
@@ -579,35 +597,34 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 /// using only the order of the nodes in the list of nodes.
 TEST(Graph, schedulingOfSaves) {
   ExecutionEngine EE;
+  Context ctx;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *A = mod.createVariable(ElemKind::FloatTy, {3, 32}, "A",
-                               VisibilityKind::Public, true);
-  auto *B = mod.createVariable(A->getType(), "B", VisibilityKind::Public, true);
-  auto *zero =
-      mod.createVariable(A->getType(), "zero", VisibilityKind::Public, true);
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {3, 32}, "A", true);
+  auto *B = mod.createPlaceholder(A->getType(), "B", true);
+  auto *zero = mod.createPlaceholder(A->getType(), "zero", true);
   F->createSave("resetA", zero, A);
 
-  A->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  B->getPayload().init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  zero->getPayload().init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
+  ctx.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  ctx.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
-  auto *saveNode = F->createSave("ret", addAB);
+  auto *saveNode = F->createSave(ctx, "ret", addAB);
+  ctx.allocate(saveNode->getPlaceholder());
 
   // Copy the value of A.
-  Tensor AOrig = A->getPayload().clone();
+  Tensor AOrig = ctx.get(A)->clone();
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  auto *ret = saveNode->getVariable();
+  auto *ret = saveNode->getPlaceholder();
   auto handleAOrig = AOrig.getHandle<>();
-  auto handleB = B->getHandle<>();
-  auto handleRet = ret->getHandle<>();
+  auto handleB = ctx.get(B)->getHandle<>();
+  auto handleRet = ctx.get(ret)->getHandle<>();
   bool allEqual = true;
   for (unsigned row = 0; row != 3; ++row) {
     for (unsigned column = 0; column != 32; ++column) {
@@ -615,7 +632,7 @@ TEST(Graph, schedulingOfSaves) {
                   handleRet.at({row, column});
     }
   }
-  EXPECT_TRUE(A->getPayload().isEqual(zero->getPayload(), 0.0));
+  EXPECT_TRUE(ctx.get(A)->isEqual(*ctx.get(zero), 0.0));
   EXPECT_TRUE(allEqual);
 }
 
@@ -677,8 +694,8 @@ TEST(Graph, cmpOutputTypes) {
   auto qType1 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.3, 5);
   auto qType2 = F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 0.4, 5);
   // Define two variables of quantized types.
-  Variable *qv1 = mod.createVariable(qType1, "V1", VisibilityKind::Private);
-  Variable *qv2 = mod.createVariable(qType2, "V2", VisibilityKind::Private);
+  auto *qv1 = mod.createPlaceholder(qType1, "V1", true);
+  auto *qv2 = mod.createPlaceholder(qType2, "V2", true);
   // Create cmp nodes using quantized inputs.
   auto *cmpNode1 = F->createCmpEQ("cmpeq", qv1, qv2);
   auto *cmpNode2 = F->createCmpLTE("cmplte", qv1, qv2);
@@ -694,8 +711,8 @@ TEST(Graph, cmpOutputTypes) {
   // Define a non-quantized type.
   auto nqType3 = F->getParent()->uniqueType(ElemKind::FloatTy, {1, 3});
   // Define two variables of non-quantized types.
-  Variable *nqv3 = mod.createVariable(nqType3, "V3", VisibilityKind::Private);
-  Variable *nqv4 = mod.createVariable(nqType3, "V4", VisibilityKind::Private);
+  auto *nqv3 = mod.createPlaceholder(nqType3, "V3", true);
+  auto *nqv4 = mod.createPlaceholder(nqType3, "V4", true);
   // Create cmp nodes using non-quantized inputs.
   auto *cmpNode3 = F->createCmpEQ("cmpeq", nqv3, nqv4);
   auto *cmpNode4 = F->createCmpLTE("cmplte", nqv3, nqv4);
@@ -726,11 +743,12 @@ hasAllTheseUses(const llvm::SmallPtrSetImpl<const Node *> &expectedUsers,
 /// Check that our uses lists are correct for nodes with multiple results.
 TEST(Graph, usesListsWithSeveralResult) {
   ExecutionEngine EE;
+  Context ctx;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
-                                   VisibilityKind::Public, true);
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {3, 32}, "input", true);
   auto *topK = F->createTopK("topK", input, 12);
   EXPECT_EQ(topK->getNumUsers(), 0);
 
@@ -749,7 +767,7 @@ TEST(Graph, usesListsWithSeveralResult) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Now add a user to only one result of the topK node.
-  savesOfValues.insert(F->createSave("saveValues1", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues1", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 1);
@@ -765,7 +783,7 @@ TEST(Graph, usesListsWithSeveralResult) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add a user to the other result of the topK node.
-  savesOfIndices.insert(F->createSave("saveIndices1", indices));
+  savesOfIndices.insert(F->createSave(ctx, "saveIndices1", indices));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 2);
@@ -782,9 +800,9 @@ TEST(Graph, usesListsWithSeveralResult) {
 
   // Add a couple more users of values and indices.
   // Interleaves the insertions in the uses list for both values and indices.
-  savesOfValues.insert(F->createSave("saveValues2", values));
-  savesOfValues.insert(F->createSave("saveValues3", values));
-  savesOfIndices.insert(F->createSave("saveIndices2", indices));
+  savesOfValues.insert(F->createSave(ctx, "saveValues2", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues3", values));
+  savesOfIndices.insert(F->createSave(ctx, "saveIndices2", indices));
 
   EXPECT_EQ(topK->getNumUsers(), 5);
 
@@ -802,11 +820,12 @@ TEST(Graph, usesListsWithSeveralResult) {
 /// NodeValue.
 TEST(Graph, usesListsThroughNodeValues) {
   ExecutionEngine EE;
+  Context ctx;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 32}, "input",
-                                   VisibilityKind::Public, true);
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {3, 32}, "input", true);
   auto *reLU = F->createRELU("reLU", input);
   EXPECT_EQ(reLU->getNumUsers(), 0);
 
@@ -820,7 +839,7 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Now add a user to only one result of the reLU node.
-  savesOfValues.insert(F->createSave("saveValues1", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues1", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(reLU->getNumUsers(), 1);
@@ -831,7 +850,7 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add one more use.
-  savesOfValues.insert(F->createSave("saveValues2", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues2", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(reLU->getNumUsers(), 2);
@@ -841,8 +860,8 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add a couple more users.
-  savesOfValues.insert(F->createSave("saveValues3", values));
-  savesOfValues.insert(F->createSave("saveValues4", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues3", values));
+  savesOfValues.insert(F->createSave(ctx, "saveValues4", values));
 
   EXPECT_EQ(reLU->getNumUsers(), 4);
 
@@ -854,23 +873,24 @@ TEST(Graph, usesListsThroughNodeValues) {
 /// Verify that the pre-order visitor works correctly.
 TEST(Graph, PreOrderTest) {
   Module M;
+  Context ctx;
   auto *F = M.createFunction("main");
 
-  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
-                                      VisibilityKind::Public);
-  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
-                                      VisibilityKind::Public);
+  auto *input1 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input1", true);
+  auto *input2 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input2", true);
   SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
   MulNode *mul1 = F->createMul("mul1", zero, input1);
   MulNode *mul2 = F->createMul("mul2", zero, input2);
   MulNode *mul3 = F->createMul("mul3", mul1, mul2);
-  SaveNode *ret1 = F->createSave("ret1", mul3);
+  SaveNode *ret1 = F->createSave(ctx, "ret1", mul3);
 
   SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
   AddNode *add1 = F->createAdd("add1", input2, one);
   AddNode *add2 = F->createAdd("add2", add1, one);
   AddNode *add3 = F->createAdd("add3", add2, one);
-  SaveNode *ret2 = F->createSave("ret2", add2);
+  SaveNode *ret2 = F->createSave(ctx, "ret2", add2);
 
   GraphPreOrderVisitor visitor(*F);
   auto order = visitor.getPreOrder();
@@ -895,23 +915,24 @@ TEST(Graph, PreOrderTest) {
 /// Verify that the post-order visitor works correctly.
 TEST(Graph, PostOrderTest) {
   Module M;
+  Context ctx;
   auto *F = M.createFunction("main");
 
-  Variable *input1 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input1",
-                                      VisibilityKind::Public);
-  Variable *input2 = M.createVariable(ElemKind::FloatTy, {4, 10}, "input2",
-                                      VisibilityKind::Public);
+  auto *input1 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input1", true);
+  auto *input2 =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input2", true);
   SplatNode *zero = F->createSplat("zero", input1->getType(), 0.);
   MulNode *mul1 = F->createMul("mul1", zero, input1);
   MulNode *mul2 = F->createMul("mul2", zero, input2);
   MulNode *mul3 = F->createMul("mul3", mul1, mul2);
-  SaveNode *ret1 = F->createSave("ret1", mul3);
+  SaveNode *ret1 = F->createSave(ctx, "ret1", mul3);
 
   SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
   AddNode *add1 = F->createAdd("add1", input2, one);
   AddNode *add2 = F->createAdd("add2", add1, one);
   AddNode *add3 = F->createAdd("add3", add2, one);
-  SaveNode *ret2 = F->createSave("ret2", add2);
+  SaveNode *ret2 = F->createSave(ctx, "ret2", add2);
 
   GraphPostOrderVisitor visitor(*F);
   auto order = visitor.getPostOrder();
