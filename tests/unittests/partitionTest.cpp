@@ -32,45 +32,47 @@ public:
 protected:
   Module mod_;
   Function *F_;
+  Context ctx_;
 };
 
 /// Execute a graph of functions serially, which is the simplest approach.
-static void executeSerial(const FunctionDAG &G, llvm::ArrayRef<Variable *> vars,
+static void executeSerial(const FunctionDAG &G, Context &ctx,
+                          llvm::ArrayRef<Placeholder *> vars,
                           llvm::ArrayRef<Tensor *> inputs) {
   for (auto *F : G.getFunctions()) {
     ExecutionEngine EE;
-    Context ctx;
     EE.compile(CompilationMode::Infer, F, ctx);
 
-    updateVariables(vars, inputs);
+    updateVariables(ctx, vars, inputs);
     EE.run();
   }
 }
 
 TEST_F(PartitionTest, SerialExecution) {
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 32}, "input",
-                                    VisibilityKind::Public, false);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+  ctx_.allocate(input);
 
   // Initial FC.
-  Node *I = F_->createFullyConnected("initial_fc", input, 16);
+  Node *I = F_->createFullyConnected(ctx_, "initial_fc", input, 16);
   I = F_->createSigmoid("initial_sigmoid", I);
 
   // Left branch.
-  Node *L = F_->createFullyConnected("left_fc1", I, 16);
+  Node *L = F_->createFullyConnected(ctx_, "left_fc1", I, 16);
   L = F_->createSigmoid("left_sigmoid1", L);
-  L = F_->createFullyConnected("left_fc2", L, 8);
+  L = F_->createFullyConnected(ctx_, "left_fc2", L, 8);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
-  Node *R = F_->createFullyConnected("right_fc1", I, 16);
+  Node *R = F_->createFullyConnected(ctx_, "right_fc1", I, 16);
   R = F_->createSigmoid("right_sigmoid1", R);
-  R = F_->createFullyConnected("right_fc2", R, 8);
+  R = F_->createFullyConnected(ctx_, "right_fc2", R, 8);
   R = F_->createSigmoid("right_sigmoid2", R);
 
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
-  auto *save = F_->createSave("ret", mul);
-  auto &res = save->getVariable()->getPayload();
+  auto *save = F_->createSave(ctx_, "ret", mul);
+  auto &res = *ctx_.allocate(save->getPlaceholder());
 
   auto G = glow::partition(F_);
   ASSERT_EQ(G.getFunctions().size(), 4);
@@ -100,27 +102,28 @@ TEST_F(PartitionTest, SerialExecution) {
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
-  Context ctx;
 
-  EE.compile(CompilationMode::Infer, F_, ctx);
-  updateVariables({input}, {&in});
+  EE.compile(CompilationMode::Infer, F_, ctx_);
+  updateVariables(ctx_, {input}, {&in});
   EE.run();
   Tensor ref = res.clone();
 
   // Infer using the partitioned graph.
-  executeSerial(G, {input}, {&in});
+  ctx_.allocate(mod_.getPlaceholders());
+  executeSerial(G, ctx_, {input}, {&in});
   Tensor test = res.clone();
   EXPECT_TRUE(ref.isEqual(test));
 }
 
 TEST_F(PartitionTest, Branchover) {
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
-                                    VisibilityKind::Public, false);
-  auto *FC1 = F_->createFullyConnected("fc1", input, 8);
-  auto *FC2 = F_->createFullyConnected("fc2", FC1, 8);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 8}, "input", false);
+  ctx_.allocate(input);
+  auto *FC1 = F_->createFullyConnected(ctx_, "fc1", input, 8);
+  auto *FC2 = F_->createFullyConnected(ctx_, "fc2", FC1, 8);
   auto *add = F_->createAdd("add", FC1, FC2);
-  auto *save = F_->createSave("save", add);
-  auto &res = save->getVariable()->getPayload();
+  auto *save = F_->createSave(ctx_, "save", add);
+  auto &res = *ctx_.allocate(save->getPlaceholder());
 
   auto G = glow::partition(F_);
   ASSERT_EQ(G.getFunctions().size(), 3);
@@ -145,24 +148,24 @@ TEST_F(PartitionTest, Branchover) {
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 8});
   ExecutionEngine EE;
-  Context ctx;
 
-  EE.compile(CompilationMode::Infer, F_, ctx);
-  updateVariables({input}, {&in});
+  EE.compile(CompilationMode::Infer, F_, ctx_);
+  updateVariables(ctx_, {input}, {&in});
   EE.run();
   Tensor ref = res.clone();
 
   // Infer using the partitioned graph.
-  executeSerial(G, {input}, {&in});
+  ctx_.allocate(mod_.getPlaceholders());
+  executeSerial(G, ctx_, {input}, {&in});
   Tensor test = res.clone();
   EXPECT_TRUE(ref.isEqual(test));
 }
 
 TEST_F(PartitionTest, Train) {
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 8}, "input",
-                                    VisibilityKind::Public, false);
-  auto *FC = F_->createFullyConnected("fc", input, 8);
-  F_->createSave("save", FC);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 8}, "input", false);
+  auto *FC = F_->createFullyConnected(ctx_, "fc", input, 8);
+  F_->createSave(ctx_, "save", FC);
   auto *TF = glow::differentiate(F_, TrainingConfig());
   auto G = glow::partition(TF);
   ASSERT_EQ(G.getFunctions().size(), 6);
