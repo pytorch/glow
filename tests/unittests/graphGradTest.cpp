@@ -105,40 +105,35 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   Module M;
 
   auto *F = M.createFunction("main");
-  Node *A =
-      M.createVariable(ElemKind::FloatTy, {1}, "A", VisibilityKind::Private);
-  Node *B =
-      M.createVariable(ElemKind::FloatTy, {1}, "B", VisibilityKind::Private);
+  Node *A = M.createPlaceholder(ElemKind::FloatTy, {1}, "A", true);
+  Node *B = M.createPlaceholder(ElemKind::FloatTy, {1}, "B", true);
   Node *AplusB_F = F->createAdd("AplusB", A, B);
 
-  EXPECT_EQ(M.getVars().size(), 2);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
 
   auto *G = F->clone("G");
 
-  EXPECT_EQ(M.getVars().size(), 2);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
   EXPECT_EQ(G->getNodes().size(), 1);
 
-  Node *C =
-      M.createVariable(ElemKind::FloatTy, {1}, "C", VisibilityKind::Private);
+  Node *C = M.createPlaceholder(ElemKind::FloatTy, {1}, "C", true);
   Node *AplusB_G = &G->getNodes().back();
   G->createAdd("totalSum", AplusB_G, C);
 
-  EXPECT_EQ(M.getVars().size(), 3);
+  EXPECT_EQ(M.getPlaceholders().size(), 3);
 
   Node *label = M.createPlaceholder(ElemKind::FloatTy, {1}, "label", false);
   Node *reg = F->createRegression("reg", AplusB_F, label);
   F->createSave(ctx, "return", reg);
 
-  EXPECT_EQ(M.getPlaceholders().size(), 2);
-  EXPECT_EQ(M.getVars().size(), 3);
+  EXPECT_EQ(M.getPlaceholders().size(), 5);
 
   auto *diffF = differentiate(F, TC);
 
   diffF->verify();
 
   EXPECT_EQ(M.getFunctions().size(), 3);
-  EXPECT_EQ(M.getPlaceholders().size(), 2);
-  EXPECT_EQ(M.getVars().size(), 3);
+  EXPECT_EQ(M.getPlaceholders().size(), 5);
   // Check that we have as many SGD node as variables that need to be trained.
   unsigned nbSGDs = 0;
   unsigned nbSGDA = 0;
