@@ -36,7 +36,7 @@ using llvm::format;
 namespace {
 llvm::cl::OptionCategory ptbCat("PTB Options");
 llvm::cl::opt<BackendKind> executionBackend(
-    llvm::cl::desc("Backend to use:"),
+    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter (default option)"),
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),

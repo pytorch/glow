@@ -43,7 +43,7 @@ static llvm::cl::opt<std::string> inputFilename(llvm::cl::desc("input file"),
                                                 llvm::cl::cat(category));
 
 llvm::cl::opt<BackendKind> executionBackend(
-    llvm::cl::desc("Backend to use:"),
+    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter (default option)"),
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
