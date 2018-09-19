@@ -345,6 +345,25 @@ public:
     }
   }
 
+  /// Convenience method to copy the content of \p t
+  /// to this while both have different underlying types.
+  /// This copy will read each element of \p t as SrcElemType
+  /// and cast them to DestElemType in this.
+  template <typename DestElemType, typename SrcElemType>
+  void copyWithCast(const Tensor *t) {
+    static_assert(!std::is_same<DestElemType, SrcElemType>::value,
+                  "Use copyRawFrom instead");
+    assert(this != t && "Copying to self");
+    assert(getElementType() != t->getElementType() &&
+           "Use copyRawFrom instead");
+    assert(size() == t->size() && "Different sizes");
+    const auto *src = t->getRawDataPointer<SrcElemType>();
+    auto *dst = getRawDataPointer<DestElemType>();
+    for (size_t idx = 0, end = size(); idx != end; ++idx) {
+      dst[idx] = DestElemType(src[idx]);
+    }
+  }
+
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned_t> shuffle) {
