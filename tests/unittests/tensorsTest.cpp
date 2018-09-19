@@ -305,6 +305,25 @@ TEST(Tensor, copySlice) {
   }
 }
 
+/// Check that we can copy tensors across different types.
+TEST(Tensor, copyWithCast) {
+  PseudoRNG PRNG;
+  Tensor A(ElemKind::Float16Ty, {10, 5, 3});
+  Tensor B(ElemKind::FloatTy, {10, 5, 3});
+
+  auto AH = A.getHandle<float16_t>();
+  auto BH = B.getHandle<>();
+
+  AH.randomize(-2.0, 2.0, PRNG);
+
+  B.copyWithCast<float, float16_t>(&A);
+
+  EXPECT_EQ(A.size(), B.size());
+  for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
+    EXPECT_NEAR(AH.raw(idx), BH.raw(idx), 0.0001);
+  }
+}
+
 TEST(Tensor, reset) {
   Tensor A(ElemKind::FloatTy, {2, 3});
   Tensor QA(ElemKind::Int8QTy, {3, 4}, 2.2, 7);
