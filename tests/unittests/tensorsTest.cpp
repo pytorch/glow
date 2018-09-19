@@ -58,7 +58,7 @@ TEST(Tensor, randomizeInt) {
 
   // Check that all of the numbers fall in the range -50 to 50.
   for (size_t i = 0, e = H.size(); i < e; i++) {
-    EXPECT_NEAR(H.raw(0), 0, 50);
+    EXPECT_NEAR(H.raw(i), 0, 50);
   }
 }
 
