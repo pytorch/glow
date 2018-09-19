@@ -1922,3 +1922,36 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   // The new Variable should have the same shape as the original second Reshape.
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
+
+/// Test that transpose is merged into matmul.
+TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3}, "input", false);
+  auto *weights = F_->getParent()->createVariable(
+      ElemKind::FloatTy, {6, 1}, "weights", VisibilityKind::Private);
+
+  weights->getHandle() = {0, 1, 2, 3, 4, 5};
+  float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
+
+  auto *TN = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *RN = F_->createReshape("reshape", TN, {1, 6});
+  auto *MMN = F_->createMatMul("matmul", RN, weights);
+  auto *SN = F_->createSave(ctx_, "ret", MMN);
+
+  // Transpose + Reshape + MatMul + Save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Reshape + MatMul + Save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  // Check reordered weights.
+  auto *newMMN = llvm::dyn_cast<MatMulNode>(SN->getInput());
+  ASSERT_TRUE(newMMN != nullptr);
+  auto *newW = llvm::dyn_cast<Variable>(newMMN->getRHS());
+  ASSERT_TRUE(newW != nullptr);
+  for (unsigned i = 0; i < 6; ++i) {
+    EXPECT_EQ(newWeightsRef[i], newW->getHandle().raw(i));
+  }
+}

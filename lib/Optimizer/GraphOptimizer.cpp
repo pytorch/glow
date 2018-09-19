@@ -592,6 +592,88 @@ static void mergeMatMul(Function *F) {
   }
 }
 
+/// Merge Transpose into MatMul.
+/// MatMul(Reshape(Transpose(X)), Weights) ->
+/// -> MatMul(Reshape(X), reordered Weights)
+/// Common sequence while using NCHW as input layout, because GLOW convolution
+/// layout is NHWC:
+/// Transpose([N, H, W, C]) -> [N, C, H, W]
+/// Reshape([N, C, H, W]) -> [N, C * H * W]
+/// MatMul([N, C * H * W], [C * H * W, K]) -> [N, K]
+static bool mergeTransposeIntoMatMul(Function *F) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *MMN = dyn_cast<MatMulNode>(&node);
+    if (!MMN) {
+      continue;
+    }
+
+    // MatMul RHS is constant weights.
+    auto *W = dyn_cast<Variable>(MMN->getRHS());
+    if (!W || !W->isPrivate()) {
+      continue;
+    }
+
+    // Linearizing Reshape precedes MatMul.
+    // The first dimension must be kept unchanged, the others are linearized.
+    auto *RN = dyn_cast<ReshapeNode>(MMN->getLHS());
+    if (!RN || !RN->hasOneUse() ||
+        RN->getInput().dims()[0] != RN->getDims()[0]) {
+      continue;
+    }
+
+    // Transpose precedes Reshape.
+    // The first dimension must be kept unchanged, the others can be shuffled
+    // in any way.
+    auto *TN = dyn_cast<TransposeNode>(RN->getInput());
+    if (!TN || !TN->hasOneUse() || TN->getShuffle()[0] != 0) {
+      continue;
+    }
+
+    // MatMul weights tensor is 2D. De-linearize the first dimension according
+    // to Transpose output layout (original shape) and input layout (reordered
+    // shape). Then we can do weights reordering by simply transposing the
+    // tensor from original shape to reordered shape.
+    //
+    // Example for [N, H, W, C] -> [N, C, H, W] transpose (common case):
+    //   De-linearized original shape: [C * H * W, K] -> [C, H, W, K]
+    //   De-linearized reordered shape: [C * H * W, K] -> [H, W, C, K]
+    //   Reorder weights by transposing them: [C, H, W, K] -> [H, W, C, K]
+    ShapeVector shape, newShape;
+    llvm::SmallVector<unsigned_t, max_tensor_dimensions> shuffle;
+    shuffle.resize(TN->getShuffle().size() - 1);
+    for (size_t i = 1; i < TN->getShuffle().size(); i++) {
+      shape.push_back(TN->getResult().getType()->dims()[i]);
+      newShape.push_back(TN->getInput().getType()->dims()[i]);
+      shuffle[TN->getShuffle()[i] - 1] = i - 1;
+    }
+    shape.push_back(W->dims()[1]);
+    newShape.push_back(W->dims()[1]);
+    shuffle.push_back(TN->getShuffle().size() - 1);
+    auto reshapedWTy =
+        F->getParent()->uniqueTypeWithNewShape(W->getType(), shape);
+    auto reshapedNewWTy =
+        F->getParent()->uniqueTypeWithNewShape(W->getType(), newShape);
+
+    // New reordered weights.
+    auto *newW = F->getParent()->createVariable(
+        W->getType(), W->getName(), W->getVisibilityKind(), W->isTraining());
+    Tensor reshapedSrc(W->getPayload().getUnsafePtr(), reshapedWTy);
+    Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
+    reshapedSrc.transpose(&reshapedDst, shuffle);
+
+    // New Reshape and MatMul.
+    auto *newRN =
+        F->createReshape(RN->getName(), TN->getInput(), RN->getDims());
+    auto *newMMN = F->createMatMul(MMN->getName(), MMN->getResult().getType(),
+                                   newRN, newW);
+    MMN->getResult().replaceAllUsesOfWith(newMMN);
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns True if the two slices \p A and \p B access consecutive spacial
 /// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50) are
 /// consecutive but Slice(0..10) Slice(20..30) are not.
@@ -1905,6 +1987,12 @@ void glow::optimize(Function *F, CompilationMode mode) {
   optimizeSliceOfSplat(F);
 
   optimizeReshape(F);
+
+  // Merge Transpose into MatMul.
+  // Run after optimizeReshape to ensure a single Reshapes precedes MatMul.
+  // Run DCE to ensure correct number of node users.
+  DCE(F);
+  mergeTransposeIntoMatMul(F);
 
   // Optimize quantization related operators.
   optimizeQuantization(F);
