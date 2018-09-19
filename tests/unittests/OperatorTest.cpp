@@ -38,6 +38,7 @@ protected:
   ExecutionEngine EE_{GetParam()};
   Module mod_;
   Function *F_;
+  Context ctx_;
 };
 
 class InterpAndCPU : public Operator {};
@@ -45,55 +46,64 @@ class InterpAndCPU : public Operator {};
 class InterpOnly : public Operator {};
 
 TEST_P(Operator, pow) {
-  auto *X = mod_.createVariable(ElemKind::FloatTy, {1, 1, 3}, "X");
-  auto *Y = mod_.createVariable(ElemKind::FloatTy, {2}, "Y");
-  auto *Exp = mod_.createVariable(ElemKind::FloatTy, {2}, "Exp");
-  X->getPayload().getHandle() = {5, 0.1f, -3};
-  Y->getPayload().getHandle() = {2, 100};
-  Exp->getPayload().getHandle() = {2, -1};
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
+  auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);
+  auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Exp", false);
+
+  ctx_.allocate(X)->getHandle() = {5, 0.1f, -3};
+  ctx_.allocate(Y)->getHandle() = {2, 100};
+  ctx_.allocate(Exp)->getHandle() = {2, -1};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
   auto *Pow3 = F_->createPow("Pow3", Y, Exp);
 
-  auto *Save1 = F_->createSave("save", Pow1);
-  auto *Save2 = F_->createSave("save", Pow2);
-  auto *Save3 = F_->createSave("save", Pow3);
+  auto *save1 = F_->createSave(ctx_, "save", Pow1);
+  auto *savePlaceholder1 = save1->getPlaceholder();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  auto *save2 = F_->createSave(ctx_, "save", Pow2);
+  auto *savePlaceholder2 = save2->getPlaceholder();
+
+  auto *save3 = F_->createSave(ctx_, "save", Pow3);
+  auto *savePlaceholder3 = save3->getPlaceholder();
+
+  ctx_.allocate(savePlaceholder1);
+  ctx_.allocate(savePlaceholder2);
+  ctx_.allocate(savePlaceholder3);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto HX = llvm::cast<Variable>(Save1->getOutput())->getPayload().getHandle();
+  auto HX = ctx_.get(savePlaceholder1)->getHandle();
   EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
   EXPECT_NEAR(HX.at({0, 0, 1}), 0.01, 1E-5);
   EXPECT_NEAR(HX.at({0, 0, 2}), 9, 1E-5);
 
-  auto HY = llvm::cast<Variable>(Save2->getOutput())->getPayload().getHandle();
+  auto HY = ctx_.get(savePlaceholder2)->getHandle();
   EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
 
-  auto HZ = llvm::cast<Variable>(Save3->getOutput())->getPayload().getHandle();
+  auto HZ = ctx_.get(savePlaceholder3)->getHandle();
   EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
   EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
 TEST_P(InterpAndCPU, log) {
-  auto *X = mod_.createVariable(ElemKind::FloatTy, {6}, "X");
-  auto XH = X->getPayload().getHandle();
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto XH = ctx_.allocate(X)->getHandle();
   XH = {210030, 600, 4, 0.7f, .005f, 0.000829f};
 
   auto *LN = F_->createLog("log", X);
 
-  auto *save = F_->createSave("save", LN);
+  auto *save = F_->createSave(ctx_, "save", LN);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto saveH = save->getVariable()->getHandle();
+  auto saveH = saveTensor->getHandle();
 
   for (size_t i = 0; i < 6; i++) {
     EXPECT_NEAR(saveH.at({i}), log(XH.at({i})), 1E-5);
@@ -101,22 +111,22 @@ TEST_P(InterpAndCPU, log) {
 }
 
 TEST_P(InterpAndCPU, CmpEQ) {
-  auto *X = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "X");
-  X->getPayload().getHandle<int64_t>() = {0, 1, 17, 876, 1000, 44444, 9999999,
-                                          0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2, 7}, "Y");
-  Y->getPayload().getHandle<int64_t>() = {1, 2, 16, 900, 1111, 44544, 1999999,
-                                          0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
+  ctx_.allocate(X)->getHandle<int64_t>() = {
+      0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
+  ctx_.allocate(Y)->getHandle<int64_t>() = {
+      1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
 
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave("save", cmpEQ);
+  auto *save = F_->createSave(ctx_, "save", cmpEQ);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto saveH = save->getVariable()->getHandle<int64_t>();
+  auto saveH = saveTensor->getHandle<int64_t>();
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_FALSE(saveH.at({0, i}));
   }
@@ -126,21 +136,20 @@ TEST_P(InterpAndCPU, CmpEQ) {
 }
 
 TEST_P(Operator, matmul) {
-  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "lhs");
-  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 1}, "result");
-  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6};
-  rhs->getPayload().getHandle() = {7, 10};
+  auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
+  ctx_.allocate(rhs)->getHandle() = {7, 10};
 
   auto R = F_->createMatMul("MM", lhs, rhs);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = saveTensor->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
@@ -148,21 +157,21 @@ TEST_P(Operator, matmul) {
 
 /// Test that the broadcasted batch mat mul operator works as expected.
 TEST_P(Operator, BroadcastedBatchMatMul) {
-  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
-  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 1}, "rhs");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
-  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
-  rhs->getPayload().getHandle() = {7, 10};
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
+  ctx_.allocate(rhs)->getHandle() = {7, 10};
 
   auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
@@ -172,21 +181,22 @@ TEST_P(Operator, BroadcastedBatchMatMul) {
 }
 
 TEST_P(Operator, ParallelBatchMatMul) {
-  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "lhs");
-  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {2, 2, 1}, "rhs");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 1}, "result");
-  lhs->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
-  rhs->getPayload().getHandle() = {7, 10, 12, -1};
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
+  auto *rhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 1}, "rhs", false);
+  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
+  ctx_.allocate(rhs)->getHandle() = {7, 10, 12, -1};
 
   auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
@@ -196,19 +206,19 @@ TEST_P(Operator, ParallelBatchMatMul) {
 }
 
 TEST_P(Operator, batchedReduceAdd) {
-  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
-  batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
+  ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0}), 11, 0.001);
   EXPECT_NEAR(H.at({1}), 22, 0.001);
   EXPECT_NEAR(H.at({2}), 33, 0.001);
@@ -216,19 +226,19 @@ TEST_P(Operator, batchedReduceAdd) {
 }
 
 TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
-  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "batch");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
-  batch->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
+  ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
   auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 6, 0.001);
   EXPECT_NEAR(H.at({0, 1}), 9, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 24, 0.001);
@@ -239,25 +249,23 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
 
-  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
-                                    BT->getOffset(), "batch");
-  auto *result = mod_.createVariable(ElemKind::Int8QTy, {8}, OT->getScale(),
-                                     OT->getOffset(), "result");
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
+                             BT->getOffset(), "batch", false);
 
-  batch->getPayload().getHandle<int8_t>() = {
+  ctx_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = batch->getHandle<int8_t>();
-  auto OH = result->getHandle<int8_t>();
+  auto BH = ctx_.get(batch)->getHandle<int8_t>();
 
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 0);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < 8; i++) {
@@ -275,24 +283,22 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
 
-  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {2, 3, 4},
-                                    BT->getScale(), BT->getOffset(), "batch");
-  auto *result = mod_.createVariable(ElemKind::Int8QTy, {2, 4}, OT->getScale(),
-                                     OT->getOffset(), "result");
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2, 3, 4}, BT->getScale(),
+                             BT->getOffset(), "batch", false);
 
-  batch->getPayload().getHandle<int8_t>() = {
+  ctx_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = batch->getHandle<int8_t>();
-  auto OH = result->getHandle<int8_t>();
+  auto BH = ctx_.get(batch)->getHandle<int8_t>();
 
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 1);
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < 2; i++) {
@@ -310,19 +316,19 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
 }
 
 TEST_P(Operator, batchedReduceMean) {
-  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 4}, "batch");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {4}, "result");
-  batch->getPayload().getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
+  ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0}), 5.5, 0.001);
   EXPECT_NEAR(H.at({1}), 11.0, 0.001);
   EXPECT_NEAR(H.at({2}), 16.5, 0.001);
@@ -330,19 +336,19 @@ TEST_P(Operator, batchedReduceMean) {
 }
 
 TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
-  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 2}, "batch");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "result");
-  batch->getPayload().getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
+  ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
   auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 2.0, 0.001);
   EXPECT_NEAR(H.at({0, 1}), 3.0, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 8.0, 0.001);
@@ -353,25 +359,23 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
 
-  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
-                                    BT->getOffset(), "batch");
-  auto *result = mod_.createVariable(ElemKind::Int8QTy, {8}, OT->getScale(),
-                                     OT->getOffset(), "result");
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
+                             BT->getOffset(), "batch", false);
 
-  batch->getPayload().getHandle<int8_t>() = {
+  ctx_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = batch->getHandle<int8_t>();
-  auto OH = result->getHandle<int8_t>();
+  auto BH = ctx_.get(batch)->getHandle<int8_t>();
 
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 0);
 
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < 8; i++) {
@@ -389,24 +393,22 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
 
-  auto *batch = mod_.createVariable(ElemKind::Int8QTy, {2, 3, 4},
-                                    BT->getScale(), BT->getOffset(), "batch");
-  auto *result = mod_.createVariable(ElemKind::Int8QTy, {2, 4}, OT->getScale(),
-                                     OT->getOffset(), "result");
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2, 3, 4}, BT->getScale(),
+                             BT->getOffset(), "batch", false);
 
-  batch->getPayload().getHandle<int8_t>() = {
+  ctx_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = batch->getHandle<int8_t>();
-  auto OH = result->getHandle<int8_t>();
+  auto BH = ctx_.get(batch)->getHandle<int8_t>();
 
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 1);
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < 2; i++) {
@@ -424,22 +426,23 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
 }
 
 TEST_P(Operator, batchedBatchedAdd) {
-  auto *batch = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "batch");
-  auto *added = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "added");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 3, 3}, "result");
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 3}, "batch", false);
+  auto *added =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "added", false);
 
-  batch->getPayload().getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
-                                     6, 7, 8, 9, 10, 11, 12, 13, 14};
-  added->getPayload().getHandle().clear(1.0);
+  ctx_.allocate(batch)->getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
+                                       6, 7, 8, 9, 10, 11, 12, 13, 14};
+  ctx_.allocate(added)->getHandle().clear(1.0);
 
   auto R = F_->createBatchedAdd("batch.add", batch, added);
-  F_->createSave("save", R, result);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 10, 0.001);
   EXPECT_NEAR(H.at({0, 0, 1}), 9, 0.001);
   EXPECT_NEAR(H.at({0, 0, 2}), 8, 0.001);
@@ -460,10 +463,11 @@ TEST_P(InterpAndCPU, broadcastSimple) {
   const size_t dimW_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B, dimW_B};
 
-  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B");
-  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 1.1, -2, "QB");
-  auto H_B = B->getPayload().getHandle();
-  auto H_QB = QB->getPayload().getHandle<int8_t>();
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, dims_B, "B", false);
+  auto *QB =
+      mod_.createPlaceholder(ElemKind::Int8QTy, dims_B, 1.1, -2, "QB", false);
+  auto H_B = ctx_.allocate(B)->getHandle();
+  auto H_QB = ctx_.allocate(QB)->getHandle<int8_t>();
   H_B = {20, 10};
   H_QB = {35, -18};
 
@@ -471,18 +475,18 @@ TEST_P(InterpAndCPU, broadcastSimple) {
 
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
   auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
-  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A");
-  auto *broadcastedQ =
-      mod_.createVariable(ElemKind::Int8QTy, dims_A, 1.1, -2, "QA");
-  F_->createSave("save", R, broadcasted);
-  F_->createSave("saveQ", QR, broadcastedQ);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *broadcasted = ctx_.allocate(save->getPlaceholder());
+
+  auto *saveQ = F_->createSave(ctx_, "saveQ", QR);
+  auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto broadcastedBHandle = broadcasted->getPayload().getHandle();
-  auto broadcastedQBHandle = broadcastedQ->getPayload().getHandle<int8_t>();
+  auto broadcastedBHandle = broadcasted->getHandle();
+  auto broadcastedQBHandle = broadcastedQ->getHandle<int8_t>();
   // Verify broadcasted B has same shape.
   EXPECT_EQ(broadcastedBHandle.dims().size(), numDims_A);
   EXPECT_EQ(broadcastedQBHandle.dims().size(), numDims_A);
@@ -522,12 +526,12 @@ TEST_P(InterpAndCPU, broadcast) {
   const size_t dimZ_B = 1;
   const size_t dims_B[numDims_B] = {dimY_B, dimZ_B};
 
-  auto *B = mod_.createVariable(ElemKind::FloatTy, dims_B, "B",
-                                VisibilityKind::Public);
-  auto *QB = mod_.createVariable(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB",
-                                 VisibilityKind::Public);
-  auto H_B = B->getPayload().getHandle();
-  auto H_QB = QB->getPayload().getHandle<int8_t>();
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, dims_B, "B", false);
+  auto *QB =
+      mod_.createPlaceholder(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB", false);
+
+  auto H_B = ctx_.allocate(B)->getHandle();
+  auto H_QB = ctx_.allocate(QB)->getHandle<int8_t>();
   H_B = {20, 10};
   H_QB = {-8, 41};
 
@@ -535,19 +539,18 @@ TEST_P(InterpAndCPU, broadcast) {
 
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
   auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
-  auto *broadcasted = mod_.createVariable(ElemKind::FloatTy, dims_A, "A",
-                                          VisibilityKind::Public);
-  auto *broadcastedQ = mod_.createVariable(ElemKind::Int8QTy, dims_A, 0.8, 3,
-                                           "QB", VisibilityKind::Public);
-  F_->createSave("save", R, broadcasted);
-  F_->createSave("saveQ", QR, broadcastedQ);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *broadcasted = ctx_.allocate(save->getPlaceholder());
+
+  auto *saveQ = F_->createSave(ctx_, "saveQ", QR);
+  auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto broadcastedBHandle = broadcasted->getPayload().getHandle();
-  auto broadcastedQBHandle = broadcastedQ->getPayload().getHandle<int8_t>();
+  auto broadcastedBHandle = broadcasted->getHandle();
+  auto broadcastedQBHandle = broadcastedQ->getHandle<int8_t>();
   // Verify broadcasted B has same shape.
   EXPECT_EQ(broadcastedBHandle.dims().size(), numDims_A);
   EXPECT_EQ(broadcastedQBHandle.dims().size(), numDims_A);
@@ -577,27 +580,29 @@ TEST_P(InterpAndCPU, broadcast) {
 /// Perform a simple weighted sum.
 TEST_P(Operator, weightedSum) {
   // Create the data.
-  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "A");
-  A->getPayload().getHandle() = {1.0, 2.0, 3.0, 4.0};
-  auto *B = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "B");
-  B->getPayload().getHandle() = {5.0, 6.0, 7.0, 8.0};
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "A", false);
+  ctx_.allocate(A)->getHandle() = {1.0, 2.0, 3.0, 4.0};
+
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "B", false);
+  ctx_.allocate(B)->getHandle() = {5.0, 6.0, 7.0, 8.0};
 
   // Create the weights.
-  auto *AW = mod_.createVariable(ElemKind::FloatTy, {1}, "AW");
-  AW->getPayload().getHandle() = {0.1f};
-  auto *BW = mod_.createVariable(ElemKind::FloatTy, {1}, "BW");
-  BW->getPayload().getHandle() = {10.0};
+  auto *AW = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "AW", false);
+  ctx_.allocate(AW)->getHandle() = {0.1f};
+
+  auto *BW = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "BW", false);
+  ctx_.allocate(BW)->getHandle() = {10.0f};
 
   // Create the weighted sum with the data and weights, and save it.
   auto *WS = F_->createWeightedSum("ws", {A, B}, {AW, BW});
-  auto *save = F_->createSave("save", WS);
+  auto *save = F_->createSave(ctx_, "save", WS);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   // Verify the weighted sum was correctly calculated.
-  auto resultH = save->getVariable()->getHandle();
+  auto resultH = saveTensor->getHandle();
   EXPECT_NEAR(resultH.at({0, 0}), 50.1, 1E-5);
   EXPECT_NEAR(resultH.at({0, 1}), 60.2, 1E-5);
   EXPECT_NEAR(resultH.at({1, 0}), 70.3, 1E-5);
@@ -608,21 +613,21 @@ TEST_P(Operator, minElem) {
   PseudoRNG PRNG;
   unsigned len = 5;
 
-  auto *LHS = mod_.createVariable(ElemKind::FloatTy, {len}, "lhs");
-  auto *RHS = mod_.createVariable(ElemKind::FloatTy, {len}, "rhs");
+  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "lhs", false);
+  auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
   auto *min = F_->createMin("min", LHS, RHS);
-  auto *save = F_->createSave("min", min);
+  auto *save = F_->createSave(ctx_, "min", min);
+  auto *result = ctx_.allocate(save->getPlaceholder());
 
-  LHS->getHandle().randomize(-10, 10, PRNG);
-  RHS->getHandle().randomize(-10, 10, PRNG);
+  ctx_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
+  ctx_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto resultH = save->getVariable()->getHandle();
-  auto LHSH = LHS->getHandle();
-  auto RHSH = RHS->getHandle();
+  auto resultH = result->getHandle();
+  auto LHSH = ctx_.get(LHS)->getHandle();
+  auto RHSH = ctx_.get(RHS)->getHandle();
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_EQ(resultH.raw(i), std::min(LHSH.raw(i), RHSH.raw(i)));
@@ -630,26 +635,30 @@ TEST_P(Operator, minElem) {
 }
 
 TEST_P(Operator, TopK) {
-  auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
-  auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 3}, "values");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
+  auto *values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 3}, "values", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {3, 1, 3}, "indices", false);
 
-  inp->getPayload().getHandle() = {
+  ctx_.allocate(inp)->getHandle() = {
       28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
   };
+  ctx_.allocate(values);
+  ctx_.allocate(indices);
 
   auto R = F_->createTopK("TopK", inp, 3);
 
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<int64_t>();
+  auto V = ctx_.get(values)->getHandle();
+  auto I = ctx_.get(indices)->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
   EXPECT_EQ(I.at({0, 0, 0}), 2);
@@ -675,13 +684,15 @@ TEST_P(Operator, TopK) {
 
 // Check that concatenating Nodes with multiple outputs works correctly.
 TEST_P(InterpAndCPU, ConcatTopK) {
-  auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
-  auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {2, 1, 3}, "input");
-  auto *values = mod_.createVariable(ElemKind::FloatTy, {4, 1, 2}, "values");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {4, 1, 2}, "indices");
+  auto *inp1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *inp2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
 
-  inp1->getPayload().getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
-  inp2->getPayload().getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
+  ctx_.allocate(inp1)->getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
+  ctx_.allocate(inp2)->getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
 
   auto *R1 = F_->createTopK("TopK1", inp1, 2);
   auto *R2 = F_->createTopK("TopK2", inp2, 2);
@@ -693,16 +704,18 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   auto *CI = F_->createConcat("Concat.Indices",
                               {R1->getIndices(), R2->getIndices()}, 0);
 
-  F_->createSave("Save.Values", CV, values);
-  F_->createSave("Save.Indices", CI, indices);
+  auto *saveValues = F_->createSave(ctx_, "Save.Values", CV);
+  auto *saveValuesTensor = ctx_.allocate(saveValues->getPlaceholder());
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
+  auto *saveIndicesTensor = ctx_.allocate(saveIndices->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<int64_t>();
+  auto V = saveValuesTensor->getHandle();
+  auto I = saveIndicesTensor->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 3);
   EXPECT_FLOAT_EQ(I.at({0, 0, 0}), 2);
@@ -758,8 +771,7 @@ TEST_P(Operator, matMul) {
   F_->createSave("save.values", A1, res1);
   F_->createSave("save.values", A2, res2);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -790,8 +802,7 @@ TEST_P(InterpAndCPU, TopK1) {
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -822,8 +833,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   F_->createSave("save.values", TK->getValues(), OV);
   F_->createSave("save.indices", TK->getIndices(), IV);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -893,8 +903,7 @@ TEST_P(Operator, Gather) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -928,8 +937,7 @@ TEST_P(Operator, Transpose2Dims) {
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
   auto *result = F_->createSave("saveTranspose", tr);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor dest(ElemKind::FloatTy, {13, 20});
   A->getPayload().transpose(&dest, {1, 0});
@@ -971,8 +979,7 @@ TEST_P(Operator, Transpose3Dims) {
   // We should have exactly 6 possible permutations for 3 dimensions.
   EXPECT_EQ(6, nbOfShuffle);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (int i = 0; i < 6; ++i) {
@@ -1025,8 +1032,7 @@ TEST_P(InterpAndCPU, GatherSizeT) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle<int64_t>();
@@ -1083,8 +1089,7 @@ TEST_P(Operator, BatchedGather) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1110,8 +1115,7 @@ TEST_P(Operator, ScatterAssign) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1151,8 +1155,7 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
 
   F_->createSave("save", DQ, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle();
@@ -1186,8 +1189,7 @@ TEST_P(Operator, QuantizeAndDequantize) {
   auto *fpAdd = F_->createAdd("fpAdd", A, B);
   auto *fpResult = F_->createSave("fpSave", fpAdd);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   EXPECT_TRUE(result->getVariable()->getPayload().isEqual(
@@ -1221,8 +1223,7 @@ TEST_P(Operator, IntMatMul) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   F_->createSave("save", rq, res);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -1270,8 +1271,7 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   F_->createSave("save", rq, res);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -1291,7 +1291,8 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
-void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
+void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
+                         Context &ctx) {
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
   // check that the results are below some known delta.
@@ -1332,7 +1333,6 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   auto *sub = F->createSub("compare", dequantRes, conv);
 
   F->createSave("save", sub, res);
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
@@ -1344,9 +1344,9 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10); }
+TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10, ctx_); }
 
-TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8); }
+TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8, ctx_); }
 
 TEST_P(InterpAndCPU, IntConcat) {
   auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");
@@ -1369,8 +1369,7 @@ TEST_P(InterpAndCPU, IntConcat) {
   auto sub = F_->createSub("compare", C, DCQ);
 
   auto res = F_->createSave("save", sub);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto R = res->getVariable()->getHandle();
@@ -1414,8 +1413,7 @@ TEST_P(InterpAndCPU, IntFC) {
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
   F_->createSave("save", sub, res);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = res->getPayload().getHandle();
@@ -1439,8 +1437,7 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
   Y->getPayload().getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   F_->createSave("save", ceLoss, L);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   auto R = L->getPayload().getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
@@ -1465,8 +1462,7 @@ TEST_P(Operator, RescaleNode) {
   auto *Z = F_->createRescaleQuantized("R3", Y, output->getType());
 
   F_->createSave("save", Z, output);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto RI = input->getPayload().getHandle<int8_t>();
@@ -1569,8 +1565,7 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   F_->createSave("saveMul", mul, O5);
   F_->createSave("saveDiv", div, O6);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1605,9 +1600,10 @@ TEST_P(Operator, QuantizedTranspose) {
   auto *result = F_->createSave("ret", dequantize);
   auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
   auto *fpResult = F_->createSave("fpRet", fpTr);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
+
   EXPECT_TRUE(result->getVariable()->getPayload().isEqual(B->getPayload()));
   EXPECT_TRUE(fpResult->getVariable()->getPayload().isEqual(B->getPayload()));
 }
@@ -1686,8 +1682,7 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   F_->createSave("saveMul", mul, O5);
   F_->createSave("saveDiv", div, O6);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1753,8 +1748,7 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   // Save result of the operation.
   F_->createSave("save", select, Out);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   int count_strict = 0;
@@ -1817,8 +1811,7 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   // Test a sequence of rescale operations t
   F_->createSave("save", DQ, O);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   for (size_t i = 0; i < len; i++) {
@@ -1831,7 +1824,6 @@ TEST_P(Operator, FCGradientCheck) {
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
   TrainingConfig TC;
-  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -1859,7 +1851,7 @@ TEST_P(Operator, FCGradientCheck) {
   initB.getHandle() = {-13.1f, 3.14f};
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
-  EE_.compile(CompilationMode::Train, DF, ctx);
+  EE_.compile(CompilationMode::Train, DF, ctx_);
   runBatch(EE_, 3, sampleCounter, {A, B}, {&initA, &initB});
 
   EXPECT_NEAR(X->getPayload().getHandle().raw(0), -0.21294, 1E-5);
@@ -1893,8 +1885,7 @@ TEST_P(InterpAndCPU, concatVectors) {
     I3.getHandle<int64_t>().at({i + 20}) = i + 50;
   }
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output vector.
   updateVariables({V1, V2, V3}, {&I1, &I2, &I3});
@@ -1934,8 +1925,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
     I2.getHandle<int64_t>().at({i + 10}) = 2;
   }
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output vector.
   updateVariables({V1, V2}, {&I1, &I2});
@@ -1977,8 +1967,7 @@ TEST_P(InterpAndCPU, sliceVectors) {
     I.getHandle<int64_t>().at({2, j}) = j + 60;
   }
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output slices.
   updateVariables({V}, {&I});
@@ -2036,8 +2025,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
 
   auto *result = F_->createSave("ret", C2);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   updateVariables({V}, {&I});
   EE_.run();
@@ -2077,8 +2065,7 @@ TEST_P(InterpAndCPU, Tile) {
     }
   }
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   updateVariables({V}, {&VT});
   EE_.run();
@@ -2127,8 +2114,7 @@ TEST_P(InterpAndCPU, QuantizedTile) {
     }
   }
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   updateVariables({V}, {&VT});
   EE_.run();
@@ -2179,8 +2165,7 @@ TEST_P(Operator, simpleCmpSelectPredication) {
 
   auto *SN = F_->createSave("ret", data);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = SN->getVariable()->getHandle();
@@ -2219,8 +2204,7 @@ TEST_P(Operator, simplePredication) {
   FC1->setPredicate(pred);
   FC2->setPredicate(pred);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 }
 
@@ -2233,8 +2217,7 @@ TEST_P(InterpAndCPU, ChannelShuffle) {
   Node *CS = F_->createChannelShuffle("CS", inputs, 3, 1);
   SaveNode *S = F_->createSave("save", CS);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto results = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
@@ -2257,8 +2240,7 @@ TEST_P(Operator, Squeeze) {
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
 
-    Context ctx;
-    EE_.compile(CompilationMode::Infer, F_, ctx);
+    EE_.compile(CompilationMode::Infer, F_, ctx_);
     EE_.run();
 
     auto results = S->getVariable()->getHandle();
@@ -2274,8 +2256,7 @@ TEST_P(Operator, Squeeze) {
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
 
-    Context ctx;
-    EE_.compile(CompilationMode::Infer, F_, ctx);
+    EE_.compile(CompilationMode::Infer, F_, ctx_);
     EE_.run();
 
     auto results = S->getVariable()->getHandle();
@@ -2297,8 +2278,7 @@ TEST_P(Operator, Squeeze) {
     Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
     SaveNode *S2 = F_->createSave("save", UnSQZ);
 
-    Context ctx;
-    EE_.compile(CompilationMode::Infer, F_, ctx);
+    EE_.compile(CompilationMode::Infer, F_, ctx_);
     EE_.run();
 
     auto res1 = S1->getVariable()->getHandle();
@@ -2323,8 +2303,7 @@ TEST_P(Operator, ExpandDims) {
   Node *EDN = F_->createExpandDims("expand", inputs, axes);
   SaveNode *S = F_->createSave("save", EDN);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   // Expected dims based on the axes above; inserted new dimensions of 1 in
@@ -2354,8 +2333,7 @@ TEST_P(InterpAndCPU, Split) {
   auto S3 = F_->createSave("save3", outputs2[0]);
   auto S4 = F_->createSave("save4", outputs2[1]);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto result = S1->getVariable()->getHandle();
@@ -2415,8 +2393,7 @@ TEST_P(Operator, IntRelu) {
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
   auto *save = F_->createSave("save", dequantize);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto result = save->getVariable()->getHandle();
@@ -2437,8 +2414,7 @@ TEST_P(Operator, IntSplat) {
   auto *dequantize = F_->createDequantize("dequantize", splat);
 
   auto *save = F_->createSave("save", dequantize);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto result = save->getVariable()->getHandle();
@@ -2470,8 +2446,7 @@ TEST_P(Operator, GroupConvolution) {
       F_->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
   SaveNode *S = F_->createSave("save", CN);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto result = llvm::cast<Variable>(S->getOutput())->getPayload().getHandle();
@@ -2518,8 +2493,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2537,7 +2511,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
                         {1, 1}, {0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
-  EE_.compile(CompilationMode::Infer, refF, ctx);
+  EE_.compile(CompilationMode::Infer, refF, ctx_);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2556,8 +2530,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2572,7 +2545,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  EE_.compile(CompilationMode::Infer, refF, ctx);
+  EE_.compile(CompilationMode::Infer, refF, ctx_);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2591,8 +2564,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2607,7 +2579,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  EE_.compile(CompilationMode::Infer, refF, ctx);
+  EE_.compile(CompilationMode::Infer, refF, ctx_);
   EE_.run();
   Tensor &result1 = S->getVariable()->getPayload();
 
@@ -2620,9 +2592,10 @@ TEST_P(Operator, Int8AvgPool) {
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
+
   auto result = S->getVariable()->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
   out.getHandle<int8_t>() = {2, 3, 5, 6};
@@ -2637,9 +2610,10 @@ TEST_P(Operator, Int8MaxPool) {
   input->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
+
   auto result = S->getVariable()->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
   out.getHandle<int8_t>() = {4, 5, 7, 8};
@@ -2672,8 +2646,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
   auto *saveInt = F_->createSave("int8Save", dequantize);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto fpResult = saveFp->getVariable()->getHandle();
@@ -2707,8 +2680,7 @@ TEST_P(Operator, NonSquareKernelConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2726,8 +2698,8 @@ TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2745,8 +2717,7 @@ TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2778,8 +2749,7 @@ TEST_P(Operator, NonSquareStrideConvolution) {
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2797,8 +2767,7 @@ TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2816,8 +2785,7 @@ TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
   Tensor &result = S->getVariable()->getPayload();
 
@@ -2849,8 +2817,7 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
   auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
   auto *saveInt = F_->createSave("int8Save", dequantize);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto fpResult = saveFp->getVariable()->getHandle();
@@ -2878,8 +2845,7 @@ TEST_P(InterpAndCPU, IntLookupTable) {
       F_->createIntLookupTable("lookupTable", input, initValues, outTy);
   auto save = F_->createSave("save", lookupTable);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto result = save->getVariable()->getHandle<int8_t>();
@@ -2914,8 +2880,7 @@ TEST_P(Operator, testBatchAdd) {
 
   F_->createSave("save", cc, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto RH = result->getPayload().getHandle();
@@ -2968,8 +2933,7 @@ TEST_P(Operator, testQuantizedBatchAdd) {
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto RH = result->getPayload().getHandle();
@@ -3020,8 +2984,7 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto S = F_->createSave("save", R);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
@@ -3068,8 +3031,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
                                               lengths);
   auto S = F_->createSave("save", R);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   Tensor &result = llvm::cast<Variable>(S->getOutput())->getPayload();
@@ -3115,8 +3077,7 @@ TEST_P(Operator, sliceReshape) {
   F_->createSave("saveSSX", SSX, resultSSX);
   F_->createSave("saveRSSX", RSSX, resultRSSX);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -3205,8 +3166,7 @@ TEST_P(Operator, Flatten) {
                                            "4Dto2Da4", VisibilityKind::Public);
   F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4, save4Dto2Da4);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
@@ -3254,8 +3214,7 @@ TEST_P(InterpAndCPU, DivSizeT) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   auto H = result->getPayload().getHandle<int64_t>();
@@ -3307,8 +3266,7 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
 
   F_->createSave("save", R, result);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   Tensor expected(ElemKind::FloatTy, {2, 2});
@@ -3345,8 +3303,7 @@ TEST_P(InterpAndCPU, insertTensorTest) {
                                     /* count */ 2, /* axis */ 1);
   SaveNode *result = F_->createSave("result", IN);
 
-  Context ctx;
-  EE_.compile(CompilationMode::Infer, F_, ctx);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
