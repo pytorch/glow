@@ -82,4 +82,9 @@ target_link_libraries(CPUBackend
                         LLVMInterpreter
                         LLVMSupport
                         LLVMPasses)
+if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
+  target_link_libraries(CPUBackend
+                        PRIVATE
+                          LLVMOrcJIT)
+endif()
 add_dependencies(CPUBackend CPURuntime)

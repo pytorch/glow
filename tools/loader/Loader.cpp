@@ -72,6 +72,7 @@ llvm::cl::opt<std::string> dumpProfileFileOpt(
 llvm::cl::opt<quantization::Schema> quantizationSchema(
     "quantization-schema",
     llvm::cl::desc("Specify which quantization schema to use"),
+    llvm::cl::Optional,
     llvm::cl::values(
         clEnumValN(quantization::Schema::Asymmetric, "asymmetric",
                    "Use asymmetric ranges"),

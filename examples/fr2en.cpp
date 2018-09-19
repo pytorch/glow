@@ -58,7 +58,7 @@ llvm::cl::opt<bool>
             llvm::cl::Optional, llvm::cl::cat(fr2enCat));
 
 llvm::cl::opt<BackendKind> ExecutionBackend(
-    llvm::cl::desc("Backend to use:"),
+    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter"),
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),

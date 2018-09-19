@@ -57,11 +57,18 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-# Prefer LLVM 6.
-find_package(LLVM 6 CONFIG)
-# If LLVM 6 not found, try build with whatever is available.
+# Prefer LLVM 7.
+find_package(LLVM 7 CONFIG)
+
+# If LLVM 7 not found, try building with LLVM 6.
 if (NOT LLVM_FOUND)
-  find_package(LLVM CONFIG)
+  # Fallback to LLVM 6
+  find_package(LLVM 6 CONFIG)
+ 
+  # Fallback to whatever is available. 
+  if (NOT LLVM_FOUND)
+    find_package(LLVM CONFIG)
+  endif()
 endif()
 if (NOT LLVM_FOUND)
   message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
