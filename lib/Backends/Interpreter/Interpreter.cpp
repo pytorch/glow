@@ -73,6 +73,9 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
       return false;
     }
   }
+  if (elementTy == ElemKind::Float16Ty) {
+    return false;
+  }
 
   return true;
 }
