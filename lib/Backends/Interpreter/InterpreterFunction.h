@@ -96,6 +96,8 @@ private:
                                  llvm::ArrayRef<unsigned_t> kernelSizes,
                                  llvm::ArrayRef<unsigned_t> strides,
                                  llvm::ArrayRef<unsigned_t> pads, size_t group);
+
+  template <typename ElemTy = float>
   void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
                                     Value *biasV,
                                     llvm::ArrayRef<unsigned_t> kernelSizes,

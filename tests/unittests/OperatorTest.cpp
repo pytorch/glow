@@ -1291,6 +1291,66 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
+void checkFloat16Convolution(ExecutionEngine &EE, unsigned convDepth) {
+  // In this test we generate a single precision floating-point based
+  // convolution and an half precision one. We pass the same values
+  // and we check that the results are below some
+  // known delta.
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Context ctx;
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+  ctx.allocate(input);
+  auto *inputFloat16 = mod.createPlaceholder(
+      ElemKind::Float16Ty, {1, 10, 10, 3}, "in_float16", false);
+  ctx.allocate(inputFloat16);
+  auto *conv = F->createConv(ctx, "conv", input, convDepth, 5, 1, 0, 1);
+  auto *convFloat16 =
+      F->createConv(ctx, "convFloat16", inputFloat16, convDepth, 5, 1, 0, 1);
+
+  // Make sure the inputs are the same for both convolutions.
+  Tensor *inputFloat16Tensor = ctx.get(inputFloat16);
+  auto inputFloat16Handle = inputFloat16Tensor->getHandle<float16_t>();
+  inputFloat16Handle.randomize(-1.0, 1.0, mod.getPRNG());
+
+  ctx.get(input)->copyWithCast<float, float16_t>(inputFloat16Tensor);
+
+  auto *filterFloat16Var =
+      llvm::cast<Placeholder>(convFloat16->getFilter().getNode());
+  auto *filterVar = llvm::cast<Placeholder>(conv->getFilter().getNode());
+  ctx.get(filterVar)->copyWithCast<float, float16_t>(ctx.get(filterFloat16Var));
+
+  auto *biasFloat16Var =
+      llvm::cast<Placeholder>(convFloat16->getBias().getNode());
+  auto *biasVar = llvm::cast<Placeholder>(conv->getBias().getNode());
+  ctx.get(biasVar)->copyWithCast<float, float16_t>(ctx.get(biasFloat16Var));
+
+  SaveNode *save = F->createSave(ctx, "save", conv);
+  SaveNode *saveFloat16 = F->createSave(ctx, "saveFloat16", convFloat16);
+
+  auto floatOut =
+      ctx.allocate(llvm::cast<Placeholder>(save->getOutput()))->getHandle();
+  auto float16Out =
+      ctx.allocate(llvm::cast<Placeholder>(saveFloat16->getOutput()))
+          ->getHandle<float16_t>();
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run();
+
+  // Check that the difference in the results is less than 0.1.
+  for (int i = 0, e = floatOut.size(); i < e; i++) {
+    EXPECT_NEAR(floatOut.raw(i), float(float16Out.raw(i)), 0.1);
+  }
+}
+
+TEST_P(InterpOnly, FP16ConvolutionDepth10) { checkFloat16Convolution(EE_, 10); }
+
+TEST_P(InterpOnly, FP16ConvolutionDepth8) { checkFloat16Convolution(EE_, 8); }
+
 void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
                          Context &ctx) {
   // In this test we generate a Floating-point based convolution and an integer
