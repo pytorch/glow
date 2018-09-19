@@ -158,7 +158,8 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
     llvm::legacy::PassManager PM;
     auto &TM = irgen_.getTargetMachine();
     TM.addPassesToEmitFile(
-        PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+        PM, outputFile, nullptr,
+        llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
     PM.run(M);
   }
   outputFile.close();
