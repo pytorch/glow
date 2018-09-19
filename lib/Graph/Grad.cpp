@@ -240,8 +240,8 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       if (map.hasGradient(V)) {
         std::string nodeName = "_grad_" + V->getName().str();
         // Save the gradient and return the destination variable.
-        auto *saveNode = G->createSave(nodeName, map.getGradient(V));
-        auto *GradV = llvm::dyn_cast<Storage>(saveNode->getOutput().getNode());
+        auto *saveNode = G->createSavePH(nodeName, map.getGradient(V));
+        auto *GradV = llvm::dyn_cast<Storage>(saveNode->getPlaceholder());
         varGrads->push_back({V, GradV});
       }
       continue;
