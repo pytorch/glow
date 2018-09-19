@@ -127,9 +127,9 @@ struct Model {
   ExecutionEngine EE_{ExecutionBackend};
   Function *F_;
   Vocabulary en_, fr_;
-  Variable *input_;
-  Variable *seqLength_;
-  Variable *output_;
+  Placeholder *input_;
+  Placeholder *seqLength_;
+  Placeholder *output_;
   Context ctx;
 
   void loadLanguages();
@@ -177,26 +177,27 @@ struct Model {
   }
 
 private:
-  Variable *embedding_fr_, *embedding_en_;
+  Placeholder *embedding_fr_, *embedding_en_;
   Node *encoderHiddenOutput_;
 
-  Variable *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
+  Placeholder *loadEmbedding(llvm::StringRef langPrefix, size_t langSize) {
     auto &mod = EE_.getModule();
-    Variable *result = mod.createVariable(
-        ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
-        "embedding." + langPrefix.str(), VisibilityKind::Private, false);
+    auto *result =
+        mod.createPlaceholder(ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
+                              "embedding." + langPrefix.str(), false);
     loadMatrixFromFile("fr2en/" + langPrefix.str() + "_embedding.bin",
-                       result->getPayload());
+                       *ctx.allocate(result));
+
     return result;
   }
 
   Node *createPyTorchGRUCell(Function *G, Node *input, Node *hidden,
-                             Variable *w_ih, Variable *b_ih, Variable *w_hh,
-                             Variable *b_hh) {
+                             Placeholder *wIh, Placeholder *bIh,
+                             Placeholder *wHh, Placeholder *bHh) {
     // reference implementation:
     // https://github.com/pytorch/pytorch/blob/dd5c195646b941d3e20a72847ac48c41e272b8b2/torch/nn/_functions/rnn.py#L46
-    Node *gi = G->createFullyConnected("pytorch.GRU.gi", input, w_ih, b_ih);
-    Node *gh = G->createFullyConnected("pytorch.GRU.gh", hidden, w_hh, b_hh);
+    Node *gi = G->createFullyConnected("pytorch.GRU.gi", input, wIh, bIh);
+    Node *gh = G->createFullyConnected("pytorch.GRU.gh", hidden, wHh, bHh);
 
     Node *i_r = G->createSlice("pytorch.GRU.i_r", gi, {0, 0},
                                {batchSize_, EMBEDDING_SIZE});
@@ -240,36 +241,34 @@ void Model::loadLanguages() {
 /// \p encoderHiddenOutput saves resulting hidden layer.
 void Model::loadEncoder() {
   auto &mod = EE_.getModule();
-  input_ = mod.createVariable(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH},
-                              "encoder.inputsentence", VisibilityKind::Public,
-                              false);
-  seqLength_ =
-      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "encoder.seqLength",
-                         VisibilityKind::Public, false);
+  input_ = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH},
+                                 "encoder.inputsentence", false);
+  ctx.allocate(input_);
+  seqLength_ = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_},
+                                     "encoder.seqLength", false);
+  ctx.allocate(seqLength_);
 
-  Variable *hiddenInit =
-      mod.createVariable(ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE},
-                         "encoder.hiddenInit", VisibilityKind::Private, false);
-  hiddenInit->getPayload().zero();
+  auto *hiddenInit =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE},
+                            "encoder.hiddenInit", false);
+  auto *hiddenInitTensor = ctx.allocate(hiddenInit);
+  hiddenInitTensor->zero();
 
   Node *hidden = hiddenInit;
 
-  Variable *w_ih =
-      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
-                         "encoder.w_ih", VisibilityKind::Private, false);
-  Variable *b_ih =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_ih",
-                         VisibilityKind::Private, false);
-  Variable *w_hh =
-      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
-                         "encoder.w_hh", VisibilityKind::Private, false);
-  Variable *b_hh =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "encoder.b_hh",
-                         VisibilityKind::Private, false);
-  loadMatrixFromFile("fr2en/encoder_w_ih.bin", w_ih->getPayload());
-  loadMatrixFromFile("fr2en/encoder_b_ih.bin", b_ih->getPayload());
-  loadMatrixFromFile("fr2en/encoder_w_hh.bin", w_hh->getPayload());
-  loadMatrixFromFile("fr2en/encoder_b_hh.bin", b_hh->getPayload());
+  auto *wIh = mod.createPlaceholder(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_ih", false);
+  auto *bIh = mod.createPlaceholder(ElemKind::FloatTy, {HIDDEN_SIZE},
+                                    "encoder.b_ih", false);
+  auto *wHh = mod.createPlaceholder(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "encoder.w_hh", false);
+  auto *bHh = mod.createPlaceholder(ElemKind::FloatTy, {HIDDEN_SIZE},
+                                    "encoder.b_hh", false);
+
+  loadMatrixFromFile("fr2en/encoder_w_ih.bin", *ctx.allocate(wIh));
+  loadMatrixFromFile("fr2en/encoder_b_ih.bin", *ctx.allocate(bIh));
+  loadMatrixFromFile("fr2en/encoder_w_hh.bin", *ctx.allocate(wHh));
+  loadMatrixFromFile("fr2en/encoder_b_hh.bin", *ctx.allocate(bHh));
 
   Node *inputEmbedded =
       F_->createGather("encoder.embedding", embedding_fr_, input_);
@@ -284,7 +283,7 @@ void Model::loadEncoder() {
     Node *reshape =
         F_->createReshape("encoder." + std::to_string(step) + ".reshape",
                           inputSlice, {batchSize_, EMBEDDING_SIZE});
-    hidden = createPyTorchGRUCell(F_, reshape, hidden, w_ih, b_ih, w_hh, b_hh);
+    hidden = createPyTorchGRUCell(F_, reshape, hidden, wIh, bIh, wHh, bHh);
     outputs.push_back(hidden);
   }
 
@@ -300,37 +299,32 @@ void Model::loadEncoder() {
 /// Resulting translation is put into \p output Variable.
 void Model::loadDecoder() {
   auto &mod = EE_.getModule();
-  Variable *input =
-      mod.createVariable(ElemKind::Int64ITy, {batchSize_}, "decoder.input",
-                         VisibilityKind::Private, false);
+  auto *input = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_},
+                                      "decoder.input", false);
+  auto *inputTensor = ctx.allocate(input);
   for (size_t i = 0; i < batchSize_; i++) {
-    input->getPayload().getHandle<int64_t>().at({i}) = en_.word2index_["SOS"];
+    inputTensor->getHandle<int64_t>().at({i}) = en_.word2index_["SOS"];
   }
 
-  Variable *w_ih =
-      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
-                         "decoder.w_ih", VisibilityKind::Private, false);
-  Variable *b_ih =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_ih",
-                         VisibilityKind::Private, false);
-  Variable *w_hh =
-      mod.createVariable(ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE},
-                         "decoder.w_hh", VisibilityKind::Private, false);
-  Variable *b_hh =
-      mod.createVariable(ElemKind::FloatTy, {HIDDEN_SIZE}, "decoder.b_hh",
-                         VisibilityKind::Private, false);
-  Variable *out_w = mod.createVariable(
-      ElemKind::FloatTy, {EMBEDDING_SIZE, en_.index2word_.size()},
-      "decoder.out_w", VisibilityKind::Private, false);
-  Variable *out_b =
-      mod.createVariable(ElemKind::FloatTy, {en_.index2word_.size()},
-                         "decoder.out_b", VisibilityKind::Private, false);
-  loadMatrixFromFile("fr2en/decoder_w_ih.bin", w_ih->getPayload());
-  loadMatrixFromFile("fr2en/decoder_b_ih.bin", b_ih->getPayload());
-  loadMatrixFromFile("fr2en/decoder_w_hh.bin", w_hh->getPayload());
-  loadMatrixFromFile("fr2en/decoder_b_hh.bin", b_hh->getPayload());
-  loadMatrixFromFile("fr2en/decoder_out_w.bin", out_w->getPayload());
-  loadMatrixFromFile("fr2en/decoder_out_b.bin", out_b->getPayload());
+  auto *wIh = mod.createPlaceholder(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_ih", false);
+  auto *bIh = mod.createPlaceholder(ElemKind::FloatTy, {HIDDEN_SIZE},
+                                    "decoder.b_ih", false);
+  auto *wHh = mod.createPlaceholder(
+      ElemKind::FloatTy, {EMBEDDING_SIZE, HIDDEN_SIZE}, "decoder.w_hh", false);
+  auto *bHh = mod.createPlaceholder(ElemKind::FloatTy, {HIDDEN_SIZE},
+                                    "decoder.b_hh", false);
+  auto *outW = mod.createPlaceholder(ElemKind::FloatTy,
+                                     {EMBEDDING_SIZE, en_.index2word_.size()},
+                                     "decoder.out_w", false);
+  auto *outB = mod.createPlaceholder(
+      ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b", false);
+  loadMatrixFromFile("fr2en/decoder_w_ih.bin", *ctx.allocate(wIh));
+  loadMatrixFromFile("fr2en/decoder_b_ih.bin", *ctx.allocate(bIh));
+  loadMatrixFromFile("fr2en/decoder_w_hh.bin", *ctx.allocate(wHh));
+  loadMatrixFromFile("fr2en/decoder_b_hh.bin", *ctx.allocate(bHh));
+  loadMatrixFromFile("fr2en/decoder_out_w.bin", *ctx.allocate(outW));
+  loadMatrixFromFile("fr2en/decoder_out_b.bin", *ctx.allocate(outB));
 
   Node *hidden = encoderHiddenOutput_;
   Node *lastWordIdx = input;
@@ -345,9 +339,9 @@ void Model::loadDecoder() {
                          embedding_en_, lastWordIdx);
 
     Node *relu = F_->createRELU("decoder.relu", embedded);
-    hidden = createPyTorchGRUCell(F_, relu, hidden, w_ih, b_ih, w_hh, b_hh);
+    hidden = createPyTorchGRUCell(F_, relu, hidden, wIh, bIh, wHh, bHh);
 
-    Node *FC = F_->createFullyConnected("decoder.outFC", hidden, out_w, out_b);
+    Node *FC = F_->createFullyConnected("decoder.outFC", hidden, outW, outB);
     auto *topK = F_->createTopK("decoder.topK", FC, 1);
 
     lastWordIdx =
@@ -358,9 +352,9 @@ void Model::loadDecoder() {
   Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
                                     {MAX_LENGTH, batchSize_});
-  output_ = mod.createVariable(ElemKind::Int64ITy, {MAX_LENGTH, batchSize_},
-                               "decoder.output", VisibilityKind::Public, false);
-  F_->createSave("decoder.output", reshape, output_);
+  auto *save = F_->createSave(ctx, "decoder.output", reshape);
+  output_ = save->getPlaceholder();
+  ctx.allocate(output_);
 }
 
 /// Translation has 2 stages:
@@ -391,10 +385,10 @@ void Model::translate(const std::vector<std::string> &batch) {
         (words.size() - 1) + j * MAX_LENGTH;
   }
 
-  updateVariables({input_, seqLength_}, {&input, &seqLength});
+  updateVariables(ctx, {input_, seqLength_}, {&input, &seqLength});
   EE_.run();
 
-  auto OH = output_->getPayload().getHandle<int64_t>();
+  auto OH = ctx.get(output_)->getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
     for (unsigned i = 0; i < MAX_LENGTH; i++) {
       int64_t wordIdx = OH.at({i, j});
