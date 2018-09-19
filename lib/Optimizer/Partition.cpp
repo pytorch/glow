@@ -16,6 +16,7 @@
 
 #include "glow/Optimizer/Partition.h"
 
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Utils.h"
 
@@ -70,7 +71,7 @@ Node *singleNonVariableInput(Node *node) {
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; i++) {
     Node *in = node->getNthInput(i).getNode();
-    if (isa<Variable>(in))
+    if (isa<Storage>(in))
       continue;
     if (nonVarInput)
       return nullptr;
@@ -90,7 +91,7 @@ NodeFunctionMap selectBasicBlockPartitions(Function *F) {
   // assigned to a partition before it is assigned.
   GraphPostOrderVisitor visitor(*F);
   for (auto *node : visitor.getPostOrder()) {
-    if (isa<Variable>(node))
+    if (isa<Storage>(node))
       continue;
 
     // If node has only one input, and that input has only one output, place it
@@ -117,7 +118,6 @@ NodeFunctionMap selectBasicBlockPartitions(Function *F) {
 FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
   FunctionDAG G(mapping.getFunctions());
   llvm::DenseMap<Node *, Node *> currToNew;
-  auto *mod = F->getParent();
 
   // Clone nodes into target partition.
   for (auto &N : F->getNodes()) {
@@ -128,12 +128,12 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
 
   // For any dependency that crosses a partition, add a variable and save
   // node. Record the dependence in the function graph.
-  llvm::DenseMap<Node *, Variable *> variables;
+  llvm::DenseMap<Node *, Placeholder *> variables;
   for (auto *F : mapping.getFunctions()) {
     for (auto &N : F->getNodes()) {
       for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
-        if (isa<Variable>(input.getNode()))
+        if (isa<Storage>(input.getNode()))
           continue;
 
         auto *inputF = mapping[input.getNode()];
@@ -151,10 +151,8 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
         }
 
         // Create a new variable to represent this dependence.
-        auto *tmp = mod->createVariable(
-            input.getType(), std::string(input.getNode()->getName()) + "_tmp",
-            VisibilityKind::Private, false);
-        inputF->createSave("tmp", input, tmp);
+        auto *save = inputF->createSavePH("tmp", input);
+        auto *tmp = save->getPlaceholder();
         variables[input.getNode()] = tmp;
         N.setNthInput(inp, tmp);
       }
@@ -168,7 +166,7 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
       for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
 
-        if (isa<Variable>(input.getNode()))
+        if (isa<Storage>(input.getNode()))
           continue;
 
         // Link this node to the clone of its input.
