@@ -31,15 +31,20 @@ using namespace glow;
 //===----------------------------------------------------------------------===//
 
 // This is the floating point implementation of Convolution.
+template <typename ElemTy>
 void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
 
-  auto inW = getWeightHandle(inV);
-  auto outW = getWeightHandle(outV);
-  auto filterW = getWeightHandle(filterV);
-  auto biasW = getWeightHandle(biasV);
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto filterW = getWeightHandle<ElemTy>(filterV);
+  auto biasW = getWeightHandle<ElemTy>(biasV);
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -81,14 +86,15 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
                   continue;
                 }
                 for (size_t fd = 0; fd < inCperG; fd++) {
-                  sum += filterW.at({d, fx, fy, fd}) *
-                         inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                  sum += float(
+                      filterW.at({d, fx, fy, fd}) *
+                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}));
                 }
               }
             }
 
-            sum += biasW.at({d});
-            outW.at({n, ax, ay, d}) = sum;
+            sum += float(biasW.at({d}));
+            outW.at({n, ax, ay, d}) = ElemTy(sum);
           } // W
         }   // H
       }     // C
@@ -203,8 +209,15 @@ void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
     return;
   }
 
-  fwdConvolutionInst_FloatImpl(I->getSrc(), I->getDest(), I->getFilter(),
-                               I->getBias(), kernelSizes, strides, pads, group);
+  if (I->getSrc()->getType()->isType<float16_t>()) {
+    fwdConvolutionInst_FloatImpl<float16_t>(I->getSrc(), I->getDest(),
+                                            I->getFilter(), I->getBias(),
+                                            kernelSizes, strides, pads, group);
+    return;
+  }
+  fwdConvolutionInst_FloatImpl<float>(I->getSrc(), I->getDest(), I->getFilter(),
+                                      I->getBias(), kernelSizes, strides, pads,
+                                      group);
 }
 
 void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
