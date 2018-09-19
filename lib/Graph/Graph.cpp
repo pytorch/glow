@@ -456,17 +456,20 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   std::array<size_t, 4> filterDim = {
       {depth, kdim.height, kdim.width, idim.c / group}};
   size_t fanIn = kdim.height * kdim.width * idim.c;
-  auto *filter = getParent()->createVariable(
-      ElemKind::FloatTy, filterDim, "filter", VisibilityKind::Private, true);
+  ElemKind inputTy = input.getType()->getElementType();
+  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+         "Convolution on non-floating point type?");
+  auto *filter = getParent()->createVariable(inputTy, filterDim, "filter",
+                                             VisibilityKind::Private, true);
 
   filter->getPayload().init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
-  auto *bias = getParent()->createVariable(ElemKind::FloatTy, {depth}, "bias",
+  auto *bias = getParent()->createVariable(inputTy, {depth}, "bias",
                                            VisibilityKind::Private, true);
 
   bias->getPayload().init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
-  auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
                                      strides, pads, group));
@@ -1990,15 +1993,17 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
   std::array<size_t, 4> filterDim = {
       {depth, kdim.height, kdim.width, idim.c / group}};
   size_t fanIn = kdim.height * kdim.width * idim.c;
-  auto *filter = getParent()->createPlaceholder(ElemKind::FloatTy, filterDim,
-                                                "filter", true);
+  ElemKind inputTy = input.getType()->getElementType();
+  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+         "Convolution on non-floating point type?");
+  auto *filter =
+      getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
   ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
-  auto *bias =
-      getParent()->createPlaceholder(ElemKind::FloatTy, {depth}, "bias", true);
+  auto *bias = getParent()->createPlaceholder(inputTy, {depth}, "bias", true);
   ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
-  auto OT = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
                                      strides, pads, group));

@@ -21,6 +21,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 
@@ -62,6 +63,39 @@ TEST(Graph, simpleTestConv) {
   M.generateIR();
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+}
+
+/// Check that we can create convolution with float16.
+TEST(Graph, float16Conv) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  Context ctx;
+  Node *K = MD.createVariable(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
+
+  auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
+  conv->verify();
+  EXPECT_EQ(conv->getType(0)->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getFilter().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getBias().getType()->getElementType(), ElemKind::Float16Ty);
+
+  lower(F, MockBackend());
+
+  IRFunction M(F);
+
+  M.generateIR();
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<ConvolutionInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<ConvolutionInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getType()->getElementType(),
+            ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getFilter()->getType()->getElementType(),
+            ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getBias()->getType()->getElementType(),
+            ElemKind::Float16Ty);
 }
 
 /// Test that our use lists are correctly reflecting the state of the IR
