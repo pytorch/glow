@@ -227,7 +227,7 @@ TEST(Context, basicContextTest) {
   auto *add = F->createAdd("add", input1, input2);
   auto *save = F->createSave(C, "ret", add);
   auto *savePlaceholder = save->getPlaceholder();
-  auto *saveTensor = C.allocate(savePlaceholder);
+  C.allocate(savePlaceholder);
 
   C.insert(input1, std::move(T1));
   Tensor *I2 = C.allocate(input2);
