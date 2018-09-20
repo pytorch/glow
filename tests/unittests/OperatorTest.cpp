@@ -740,18 +740,18 @@ TEST_P(InterpAndCPU, ConcatTopK) {
 
 // Check that matrix multiplication works well on some predefined values.
 TEST_P(Operator, matMul) {
-  auto *inp0 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input0");
-  auto *inp1 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input1");
-  auto *inp2 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "input1");
-  auto *res0 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res0");
-  auto *res1 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res1");
-  auto *res2 = mod_.createVariable(ElemKind::FloatTy, {1, 2}, "res1");
-  auto *rot = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "rot");
+  auto *inp0 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input0", false);
+  auto *inp1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input1", false);
+  auto *inp2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input2", false);
+  auto *rot = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "rot", false);
 
   float deg = 45.0 / 180.0 * 3.1415926;
   // Use the rotation matrix to manipulate some values.
   // https://en.wikipedia.org/wiki/Rotation_matrix
-  rot->getPayload().getHandle() = {
+  ctx_.allocate(rot)->getHandle() = {
       cosf(deg),
       -sinf(deg),
       sinf(deg),
@@ -759,25 +759,28 @@ TEST_P(Operator, matMul) {
   };
 
   // Some test vectors.
-  inp0->getPayload().getHandle() = {1, 4};
-  inp1->getPayload().getHandle() = {14, 2};
-  inp2->getPayload().getHandle() = {5, 2};
+  ctx_.allocate(inp0)->getHandle() = {1, 4};
+  ctx_.allocate(inp1)->getHandle() = {14, 2};
+  ctx_.allocate(inp2)->getHandle() = {5, 2};
 
   auto *A0 = F_->createMatMul("m0", inp0, rot);
   auto *A1 = F_->createMatMul("m1", inp1, rot);
   auto *A2 = F_->createMatMul("m2", inp2, rot);
 
-  F_->createSave("save.values", A0, res0);
-  F_->createSave("save.values", A1, res1);
-  F_->createSave("save.values", A2, res2);
+  auto *res0 = F_->createSave(ctx_, "save.values", A0);
+  ctx_.allocate(res0->getPlaceholder());
+  auto *res1 = F_->createSave(ctx_, "save.values", A1);
+  ctx_.allocate(res1->getPlaceholder());
+  auto *res2 = F_->createSave(ctx_, "save.values", A2);
+  ctx_.allocate(res2->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
 
-  auto R0 = res0->getPayload().getHandle();
-  auto R1 = res1->getPayload().getHandle();
-  auto R2 = res2->getPayload().getHandle();
+  auto R0 = ctx_.get(res0->getPlaceholder())->getHandle();
+  auto R1 = ctx_.get(res1->getPlaceholder())->getHandle();
+  auto R2 = ctx_.get(res2->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(R0.at({0, 0}), 3.5355339);
   EXPECT_FLOAT_EQ(R0.at({0, 1}), 2.1213205);
@@ -789,25 +792,26 @@ TEST_P(Operator, matMul) {
 
 // Check the TopK operator for the special case of K=1.
 TEST_P(InterpAndCPU, TopK1) {
-  auto *inp = mod_.createVariable(ElemKind::FloatTy, {3, 1, 5}, "input");
-  auto *values = mod_.createVariable(ElemKind::FloatTy, {3, 1, 1}, "values");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 1}, "indices");
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
 
-  inp->getPayload().getHandle() = {
+  ctx_.allocate(inp)->getHandle() = {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
   };
 
   auto R = F_->createTopK("TopK", inp, 1);
 
-  F_->createSave("save.values", {R, 0}, values);
-  F_->createSave("save.indices", {R, 1}, indices);
+  auto *values = F_->createSave(ctx_, "save.values", {R, 0});
+  ctx_.allocate(values->getPlaceholder());
+
+  auto *indices = F_->createSave(ctx_, "save.indices", {R, 1});
+  ctx_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
-
   EE_.run();
 
-  auto V = values->getPayload().getHandle();
-  auto I = indices->getPayload().getHandle<int64_t>();
+  auto V = ctx_.get(values->getPlaceholder())->getHandle();
+  auto I = ctx_.get(indices->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
   EXPECT_EQ(I.at({0, 0, 0}), 1);
@@ -818,27 +822,24 @@ TEST_P(InterpAndCPU, TopK1) {
 }
 
 TEST_P(InterpAndCPU, QuantizedTopK) {
-  auto *INV =
-      mod_.createVariable(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5, "input");
-  auto *OV =
-      mod_.createVariable(ElemKind::Int8QTy, {3, 1, 3}, 1.2, 5, "values");
-  auto *IV = mod_.createVariable(ElemKind::Int64ITy, {3, 1, 3}, "indices");
-
-  INV->getPayload().getHandle<int8_t>() = {
+  auto *INV = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5,
+                                     "input", false);
+  ctx_.allocate(INV)->getHandle<int8_t>() = {
       -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
   };
 
   auto TK = F_->createTopK("TopK", INV, 3);
 
-  F_->createSave("save.values", TK->getValues(), OV);
-  F_->createSave("save.indices", TK->getIndices(), IV);
+  auto *values = F_->createSave(ctx_, "save.values", TK->getValues());
+  ctx_.allocate(values->getPlaceholder());
+  auto *indices = F_->createSave(ctx_, "save.indices", TK->getIndices());
+  ctx_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
-
   EE_.run();
 
-  auto VH = OV->getPayload().getHandle<int8_t>();
-  auto IH = IV->getPayload().getHandle<int64_t>();
+  auto VH = ctx_.get(values->getPlaceholder())->getHandle<int8_t>();
+  auto IH = ctx_.get(indices->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(VH.at({0, 0, 0}), 8);
   EXPECT_EQ(IH.at({0, 0, 0}), 3);
@@ -888,25 +889,26 @@ TEST_P(Operator, Gather) {
         ],
     ]
   */
-  auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {2, 4, 2}, "result");
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
 
-  data->getPayload().getHandle() = {
+  ctx_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  indices->getPayload().getHandle<int64_t>() = {
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
   auto R = F_->createGather("gather", data, indices);
 
-  F_->createSave("save", R, result);
+  auto *result = F_->createSave(ctx_, "save", R);
+  ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
@@ -931,17 +933,19 @@ TEST_P(Operator, Gather) {
 /// is correct for tensors with 2 dimensions.
 /// Note: This assumes that Tensor::transpose is correct.
 TEST_P(Operator, Transpose2Dims) {
-  auto *A = mod_.createVariable(ElemKind::FloatTy, {20, 13}, "A",
-                                VisibilityKind::Public);
-  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
+  ctx_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
-  auto *result = F_->createSave("saveTranspose", tr);
+  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  ctx_.allocate(result->getPlaceholder());
+
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
+
   Tensor dest(ElemKind::FloatTy, {13, 20});
-  A->getPayload().transpose(&dest, {1, 0});
-  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(dest));
+  ctx_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
 }
 
 /// Check if the code generation of transposes
@@ -949,9 +953,8 @@ TEST_P(Operator, Transpose2Dims) {
 /// Note: This assumes that Tensor::transpose is correct.
 TEST_P(Operator, Transpose3Dims) {
   constexpr size_t dims[] = {20, 13, 7};
-  auto *A =
-      mod_.createVariable(ElemKind::FloatTy, dims, "A", VisibilityKind::Public);
-  A->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "A", false);
+  ctx_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
   int nbOfShuffle = 0;
   SaveNode *savedTransposes[6];
@@ -970,7 +973,9 @@ TEST_P(Operator, Transpose3Dims) {
         shuffles[nbOfShuffle][1] = j;
         shuffles[nbOfShuffle][2] = k;
         auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
-        savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
+        savedTransposes[nbOfShuffle] =
+            F_->createSave(ctx_, "saveTranspose", tr);
+        ctx_.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
         ++nbOfShuffle;
       }
     }
@@ -985,8 +990,8 @@ TEST_P(Operator, Transpose3Dims) {
   for (int i = 0; i < 6; ++i) {
     Tensor dest(ElemKind::FloatTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
                                     dims[shuffles[i][2]]});
-    A->getPayload().transpose(&dest, shuffles[i]);
-    EXPECT_TRUE(savedTransposes[i]->getVariable()->getPayload().isEqual(dest));
+    ctx_.get(A)->transpose(&dest, shuffles[i]);
+    EXPECT_TRUE(ctx_.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
   }
 }
 
@@ -1017,25 +1022,27 @@ TEST_P(InterpAndCPU, GatherSizeT) {
         ],
     ]
   */
-  auto *data = mod_.createVariable(ElemKind::Int64ITy, {3, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2, 4}, "indices");
-  auto *result = mod_.createVariable(ElemKind::Int64ITy, {2, 4, 2}, "result");
+  auto *data =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
 
-  data->getPayload().getHandle<int64_t>() = {
+  ctx_.allocate(data)->getHandle<int64_t>() = {
       1, 2, 3, 4, 5, 6,
   };
-  indices->getPayload().getHandle<int64_t>() = {
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
   auto R = F_->createGather("gather", data, indices);
 
-  F_->createSave("save", R, result);
+  auto *result = F_->createSave(ctx_, "save", R);
+  ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle<int64_t>();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(H.at({0, 0, 0}), 1);
   EXPECT_EQ(H.at({0, 0, 1}), 2);
@@ -1072,14 +1079,14 @@ TEST_P(Operator, BatchedGather) {
     [4.5, 1.2],
    ]
    */
-  auto *data = mod_.createVariable(ElemKind::FloatTy, {3, 4}, "data");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "result");
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
 
-  data->getPayload().getHandle() = {
+  ctx_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
   };
-  indices->getPayload().getHandle<int64_t>() = {
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
       0,
       2,
   };
@@ -1087,12 +1094,13 @@ TEST_P(Operator, BatchedGather) {
   // Create a batched gather (a single batch dimension).
   auto R = F_->createGather("gather", data, indices, 1);
 
-  F_->createSave("save", R, result);
+  auto *result = F_->createSave(ctx_, "save", R);
+  ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.4);
   EXPECT_FLOAT_EQ(H.at({1, 0}), 2.3);
@@ -1102,23 +1110,25 @@ TEST_P(Operator, BatchedGather) {
 }
 
 TEST_P(Operator, ScatterAssign) {
-  auto *data = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "data");
-  auto *indices = mod_.createVariable(ElemKind::Int64ITy, {2}, "indices");
-  auto *slices = mod_.createVariable(ElemKind::FloatTy, {2, 2}, "slices");
-  auto *result = mod_.createVariable(ElemKind::FloatTy, {5, 2}, "result");
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
-  data->getPayload().getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  indices->getPayload().getHandle<int64_t>() = {1, 3};
-  slices->getPayload().getHandle() = {-3, -4, -7, -8};
+  ctx_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  ctx_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  ctx_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
 
-  F_->createSave("save", R, result);
+  auto *result = F_->createSave(ctx_, "save", R);
+  ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getPayload().getHandle();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.0);
@@ -1173,27 +1183,28 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
 }
 
 TEST_P(Operator, QuantizeAndDequantize) {
-  auto *A = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "A",
-                                VisibilityKind::Public);
-  auto *B = mod_.createVariable(ElemKind::FloatTy, {1, 4}, "B",
-                                VisibilityKind::Public);
-  A->getPayload().getHandle() = {1, 1.2f, 0.5f, 1.3f};
-  B->getPayload().getHandle() = {1.8f, 5.2f, 3.5f, 11.3f};
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
+  ctx_.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
+  ctx_.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 11.3f};
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
   auto *quantizeA = F_->createQuantize("quantize", A, qType);
   auto *quantizeB = F_->createQuantize("quantize", B, qType);
   auto *add = F_->createAdd("add", quantizeA, quantizeB);
   auto *dequantize = F_->createDequantize("dequantize", add);
-  auto *result = F_->createSave("save", dequantize);
+  auto *result = F_->createSave(ctx_, "save", dequantize);
+  ctx_.allocate(result->getPlaceholder());
+
   auto *fpAdd = F_->createAdd("fpAdd", A, B);
-  auto *fpResult = F_->createSave("fpSave", fpAdd);
+  auto *fpResult = F_->createSave(ctx_, "fpSave", fpAdd);
+  ctx_.allocate(fpResult->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(
-      fpResult->getVariable()->getPayload()));
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())
+                  ->isEqual(*ctx_.get(fpResult->getPlaceholder())));
 }
 
 TEST_P(Operator, IntMatMul) {
@@ -1203,15 +1214,14 @@ TEST_P(Operator, IntMatMul) {
   TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, -2);
   TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.075, 2);
 
-  auto *res = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "res");
-  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "lhs");
-  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+  auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", false);
 
-  lhs->getPayload().getHandle() = {
+  ctx_.allocate(lhs)->getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
   };
 
-  rhs->getPayload().getHandle() = {
+  ctx_.allocate(rhs)->getHandle() = {
       0.1f, -0.2f, 0.3f, 9.0f, -8.0f, 7.0f, 6.0f, 5.0f, 9.0f,
   };
 
@@ -1222,9 +1232,10 @@ TEST_P(Operator, IntMatMul) {
 
   auto *rq = F_->createDequantize("dequant", matmulq);
 
-  F_->createSave("save", rq, res);
-  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  auto *result = F_->createSave(ctx_, "save", rq);
+  ctx_.allocate(result->getPlaceholder());
 
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
   /*
@@ -1234,7 +1245,7 @@ TEST_P(Operator, IntMatMul) {
    A x B = [36.1,  -1.2,  41.3], [15.4, -65.8, -8.8], [26.6, 69.8,  58.8]]
    */
 
-  auto H = res->getPayload().getHandle();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 36.1, 1.0);
   EXPECT_NEAR(H.at({0, 1}), -1.2, 1.0);
   EXPECT_NEAR(H.at({0, 2}), 41.3, 1.0);
@@ -1251,15 +1262,17 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
   TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
 
-  auto *res = mod_.createVariable(ElemKind::FloatTy, {1, 3, 3}, "res");
-  auto *lhs = mod_.createVariable(ElemKind::FloatTy, {1, 3, 3}, "lhs");
-  auto *rhs = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "rhs");
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3}, "lhs", false);
+  ctx_.allocate(lhs);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", false);
+  ctx_.allocate(rhs);
 
-  lhs->getPayload().getHandle() = {
+  ctx_.get(lhs)->getHandle() = {
       8.7f, 6.5f, 4.3f, 2.1f, 1.0f, -5.1f, -4.0f, -12.0f, 0.2f,
   };
 
-  rhs->getPayload().getHandle() = {
+  ctx_.get(rhs)->getHandle() = {
       -9.1f, -0.4f, 1.3f, 2.2f, -8.1f, 7.6f, -6.4f, 10.0f, 9.1f,
   };
 
@@ -1270,7 +1283,8 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
 
   auto *rq = F_->createDequantize("dequant", matmulq);
 
-  F_->createSave("save", rq, res);
+  auto *result = F_->createSave(ctx_, "save", rq);
+  ctx_.allocate(result->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   EE_.run();
@@ -1278,7 +1292,7 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   // A = [8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2]
   // B = [-9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1]
   // A + B = [-0.4, 6.1, 5.6, 4.3, -7.1, 2.5, -10.4, -2. , 9.3]
-  auto H = res->getPayload().getHandle();
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), -0.4, 0.1);
   EXPECT_NEAR(H.at({0, 0, 1}), 6.1, 0.1);
   EXPECT_NEAR(H.at({0, 0, 2}), 5.6, 0.1);
@@ -1362,23 +1376,21 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *conv = F->createConv("conv", input, convDepth, 5, 1, 0, 1);
-  auto *res =
-      mod.createVariable(ElemKind::FloatTy, conv->getResult().dims(), "res");
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+  auto *conv = F->createConv(ctx, "conv", input, convDepth, 5, 1, 0, 1);
+  auto *filter = llvm::cast<Placeholder>(conv->getFilter().getNode());
+  auto *bias = llvm::cast<Placeholder>(conv->getBias().getNode());
 
-  auto filter = conv->getFilter();
-  auto bias = conv->getBias();
+  ctx.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  ctx.get(bias)->getHandle().randomize(-2.0, 2.0, mod.getPRNG());
 
-  input->getPayload().getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(-2.0, 2.0,
-                                                                 mod.getPRNG());
-
-  TypeRef resTy = mod.uniqueType(ElemKind::Int8QTy, res->dims(), 0.08, 0.0);
+  TypeRef resTy =
+      mod.uniqueType(ElemKind::Int8QTy, conv->getResult().dims(), 0.08, 0.0);
   TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
   TypeRef filterTy =
-      mod.uniqueType(ElemKind::Int8QTy, filter.dims(), 0.01, 0.0);
-  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.04, 0.0);
+      mod.uniqueType(ElemKind::Int8QTy, filter->dims(), 0.01, 0.0);
+  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.04, 0.0);
 
   auto *inputq = F->createQuantize("input.q", input, inputTy);
   auto *filterq = F->createQuantize("filter.q", filter, filterTy);
@@ -1392,11 +1404,12 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
   // Subtract the results of the convolution from the quantized convolution.
   auto *sub = F->createSub("compare", dequantRes, conv);
 
-  F->createSave("save", sub, res);
+  auto *res = F->createSave(ctx, "save", sub);
+  ctx.allocate(res->getPlaceholder());
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  auto H = res->getPayload().getHandle();
+  auto H = ctx.get(res->getPlaceholder())->getHandle();
 
   // Check that the difference in the results is less than 0.1.
   for (int i = 0, e = H.size(); i < e; i++) {
@@ -1409,10 +1422,10 @@ TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10, ctx_); }
 TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8, ctx_); }
 
 TEST_P(InterpAndCPU, IntConcat) {
-  auto A = mod_.createVariable(ElemKind::FloatTy, {3, 3}, "A");
-  auto B = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "B");
-  A->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  B->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  auto A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
+  auto B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
+  ctx_.allocate(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ctx_.allocate(B)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
 
   auto ATy = mod_.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
   auto BTy = mod_.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
@@ -1428,11 +1441,12 @@ TEST_P(InterpAndCPU, IntConcat) {
   // Subtract the results of the Concat from the quantized Concat.
   auto sub = F_->createSub("compare", C, DCQ);
 
-  auto res = F_->createSave("save", sub);
+  auto *res = F_->createSave(ctx_, "save", sub);
+  ctx_.allocate(res->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto R = res->getVariable()->getHandle();
+  auto R = ctx_.get(res->getPlaceholder())->getHandle();
   // Check that the difference in the results is less than 0.2.
   for (int i = 0, e = R.size(); i < e; i++) {
     EXPECT_NEAR(R.raw(i), 0, 0.2);
@@ -1442,25 +1456,23 @@ TEST_P(InterpAndCPU, IntConcat) {
 TEST_P(InterpAndCPU, IntFC) {
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {1, 10, 10, 3}, "in");
-  auto *fc = F_->createFullyConnected("FC", input, 30);
-  auto *res =
-      mod_.createVariable(ElemKind::FloatTy, fc->getResult().dims(), "res");
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+  auto *fc = F_->createFullyConnected(ctx_, "FC", input, 30);
 
-  auto weights = fc->getWeights();
-  auto bias = fc->getBias();
+  auto *weights = llvm::cast<Placeholder>(fc->getWeights());
+  auto *bias = llvm::cast<Placeholder>(fc->getBias());
 
-  input->getPayload().getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  llvm::cast<Variable>(bias)->getPayload().getHandle().randomize(
-      0, 0.00001, mod_.getPRNG());
-  llvm::cast<Variable>(weights)->getPayload().getHandle().randomize(
-      -1.1, 1.1, mod_.getPRNG());
+  ctx_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ctx_.get(bias)->getHandle().randomize(0, 0.00001, mod_.getPRNG());
+  ctx_.get(weights)->getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
 
-  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, res->dims(), 0.15, 4);
+  TypeRef resTy =
+      mod_.uniqueType(ElemKind::Int8QTy, fc->getResult().dims(), 0.15, 4);
   TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
   TypeRef weightsTy =
-      mod_.uniqueType(ElemKind::Int8QTy, weights.dims(), 0.01, 2);
-  TypeRef biasTy = mod_.uniqueType(ElemKind::Int8QTy, bias.dims(), 0.02, 1);
+      mod_.uniqueType(ElemKind::Int8QTy, weights->dims(), 0.01, 2);
+  TypeRef biasTy = mod_.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.02, 1);
 
   auto *inputq = F_->createQuantize("input.q", input, inputTy);
   auto *weightsq = F_->createQuantize("filter.q", weights, weightsTy);
@@ -1472,11 +1484,13 @@ TEST_P(InterpAndCPU, IntFC) {
   // Subtract the results of the convolution from the quantized fc.
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
-  F_->createSave("save", sub, res);
+  auto *res = F_->createSave(ctx_, "save", sub);
+  ctx_.allocate(res->getPlaceholder());
+
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = res->getPayload().getHandle();
+  auto H = ctx_.get(res->getPlaceholder())->getHandle();
   // Check that there aren't too many elements with a difference in the results
   // of greater than 0.2.
   int count = 0;
@@ -1489,44 +1503,46 @@ TEST_P(InterpAndCPU, IntFC) {
 }
 
 TEST_P(InterpAndCPU, EntropyLossTest) {
-  auto *P = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "P");
-  auto *Y = mod_.createVariable(ElemKind::Int64ITy, {2}, "Y");
-  auto *L = mod_.createVariable(ElemKind::FloatTy, {1}, "L");
+  auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "P", false);
+  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "Y", false);
 
-  P->getPayload().getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
-  Y->getPayload().getHandle<int64_t>() = {1, 2};
+  ctx_.allocate(P)->getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
+  ctx_.allocate(Y)->getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
-  F_->createSave("save", ceLoss, L);
+  auto *L = F_->createSave(ctx_, "save", ceLoss);
+  ctx_.allocate(L->getPlaceholder());
+
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
-  auto R = L->getPayload().getHandle();
+
+  auto R = ctx_.get(L->getPlaceholder())->getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
-  auto *input = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
-                                    "input", VisibilityKind::Public, true);
-  auto *output = mod_.createVariable(ElemKind::Int8QTy, {4, 10}, 0.4, -4,
-                                     "output", VisibilityKind::Public, false);
-
-  input->getPayload().init(Tensor::InitKind::Broadcast, 40, mod_.getPRNG());
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
+                                       "input", false);
+  ctx_.allocate(input)->init(Tensor::InitKind::Broadcast, 40, mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
   auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
+  auto resTy = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, -4);
 
   // Test a sequence of rescale operations that the optimizer may try to
   // optimize at some point.
   auto *X = F_->createRescaleQuantized("R1", input, T1);
   auto *Y = F_->createRescaleQuantized("R2", X, T2);
-  auto *Z = F_->createRescaleQuantized("R3", Y, output->getType());
+  auto *Z = F_->createRescaleQuantized("R3", Y, resTy);
 
-  F_->createSave("save", Z, output);
+  auto *output = F_->createSave(ctx_, "save", Z);
+  ctx_.allocate(output->getPlaceholder());
+
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto RI = input->getPayload().getHandle<int8_t>();
-  auto RO = output->getPayload().getHandle<int8_t>();
+  auto RI = ctx_.get(input)->getHandle<int8_t>();
+  auto RO = ctx_.get(output->getPlaceholder())->getHandle<int8_t>();
 
   EXPECT_EQ(RI.raw(0), 40);
   EXPECT_NEAR(RO.raw(0), 40, 1);
@@ -1537,34 +1553,13 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
   // Mul, and Div nodes as well as how they interact with the rescaling node.
-  auto *A = mod_.createVariable(ElemKind::FloatTy, {len}, "A",
-                                VisibilityKind::Public);
-  auto *B = mod_.createVariable(ElemKind::FloatTy, {len}, "B",
-                                VisibilityKind::Public);
-  auto *C = mod_.createVariable(ElemKind::FloatTy, {len}, "C",
-                                VisibilityKind::Public);
-  auto *O1 = mod_.createVariable(ElemKind::FloatTy, {len}, "Max",
-                                 VisibilityKind::Public, false);
-  auto *O2 = mod_.createVariable(ElemKind::FloatTy, {len}, "Min",
-                                 VisibilityKind::Public, false);
-  auto *O3 = mod_.createVariable(ElemKind::FloatTy, {len}, "Add",
-                                 VisibilityKind::Public, false);
-  auto *O4 = mod_.createVariable(ElemKind::FloatTy, {len}, "Sub",
-                                 VisibilityKind::Public, false);
-  auto *O5 = mod_.createVariable(ElemKind::FloatTy, {len}, "Mul",
-                                 VisibilityKind::Public, false);
-  auto *O6 = mod_.createVariable(ElemKind::FloatTy, {len}, "Div",
-                                 VisibilityKind::Public, false);
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "A", false);
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "B", false);
+  auto *C = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "C", false);
 
-  auto AH = A->getHandle();
-  auto BH = B->getHandle();
-  auto CH = C->getHandle();
-  auto O1H = O1->getHandle();
-  auto O2H = O2->getHandle();
-  auto O3H = O3->getHandle();
-  auto O4H = O4->getHandle();
-  auto O5H = O5->getHandle();
-  auto O6H = O6->getHandle();
+  auto AH = ctx_.allocate(A)->getHandle();
+  auto BH = ctx_.allocate(B)->getHandle();
+  auto CH = ctx_.allocate(C)->getHandle();
 
   AH.randomize(-10, 10, mod_.getPRNG());
   BH.randomize(-10, 10, mod_.getPRNG());
@@ -1618,12 +1613,19 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   div = F_->createDequantize("divDQ", div);
 
   // Save results of the operations.
-  F_->createSave("saveMax", max, O1);
-  F_->createSave("saveMin", min, O2);
-  F_->createSave("saveAdd", add, O3);
-  F_->createSave("saveSub", sub, O4);
-  F_->createSave("saveMul", mul, O5);
-  F_->createSave("saveDiv", div, O6);
+  auto *O1 = F_->createSave(ctx_, "saveMax", max);
+  auto *O2 = F_->createSave(ctx_, "saveMin", min);
+  auto *O3 = F_->createSave(ctx_, "saveAdd", add);
+  auto *O4 = F_->createSave(ctx_, "saveSub", sub);
+  auto *O5 = F_->createSave(ctx_, "saveMul", mul);
+  auto *O6 = F_->createSave(ctx_, "saveDiv", div);
+
+  ctx_.allocate(O1->getPlaceholder());
+  ctx_.allocate(O2->getPlaceholder());
+  ctx_.allocate(O3->getPlaceholder());
+  ctx_.allocate(O4->getPlaceholder());
+  ctx_.allocate(O5->getPlaceholder());
+  ctx_.allocate(O6->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
@@ -1637,35 +1639,39 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
     auto div = BH.at({i}) / CH.at({i});
 
     // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
-    EXPECT_NEAR(max, O1H.at({i}), 2.0);
-    EXPECT_NEAR(min, O2H.at({i}), 2.0);
-    EXPECT_NEAR(add, O3H.at({i}), 2.0);
-    EXPECT_NEAR(sub, O4H.at({i}), 2.0);
-    EXPECT_NEAR(mul, O5H.at({i}), 2.0);
-    EXPECT_NEAR(div, O6H.at({i}), 2.0);
+    EXPECT_NEAR(max, ctx_.get(O1->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(min, ctx_.get(O2->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(add, ctx_.get(O3->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(sub, ctx_.get(O4->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(mul, ctx_.get(O5->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(div, ctx_.get(O6->getPlaceholder())->getHandle().at({i}), 2.0);
   }
 }
 
 TEST_P(Operator, QuantizedTranspose) {
-  auto *A = mod_.createVariable(ElemKind::FloatTy, {2, 3}, "A",
-                                VisibilityKind::Public);
-  auto *B = mod_.createVariable(ElemKind::FloatTy, {3, 2}, "B",
-                                VisibilityKind::Public);
-  A->getPayload().getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 5.8f};
-  A->getPayload().transpose(&B->getPayload(), {1, 0});
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "A", false);
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "B", false);
+
+  ctx_.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 5.8f};
+  ctx_.allocate(B);
+  ctx_.get(A)->transpose(ctx_.get(B), {1, 0});
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {2, 3}, 0.05, -138);
   auto *quantizeA = F_->createQuantize("quantize", A, qType);
   auto *tr = F_->createTranspose("tr", quantizeA, {1, 0});
   auto *dequantize = F_->createDequantize("dequantize", tr);
-  auto *result = F_->createSave("ret", dequantize);
+
+  auto *result = F_->createSave(ctx_, "ret", dequantize);
+  ctx_.allocate(result->getPlaceholder());
   auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
-  auto *fpResult = F_->createSave("fpRet", fpTr);
+
+  auto *fpResult = F_->createSave(ctx_, "fpRet", fpTr);
+  ctx_.allocate(fpResult->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  EXPECT_TRUE(result->getVariable()->getPayload().isEqual(B->getPayload()));
-  EXPECT_TRUE(fpResult->getVariable()->getPayload().isEqual(B->getPayload()));
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(*ctx_.get(B)));
+  EXPECT_TRUE(ctx_.get(fpResult->getPlaceholder())->isEqual(*ctx_.get(B)));
 }
 
 TEST_P(Operator, QuantizedArithmeticUnrescaled) {
