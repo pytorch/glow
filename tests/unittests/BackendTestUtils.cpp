@@ -24,110 +24,147 @@ namespace glow {
 
 using llvm::cast;
 
-#define VarFrom(T)                                                             \
-  mod.createVariable(&T->getType(), #T, VisibilityKind::Public, false)
+namespace {
+// Helpers for creating and intializing placeholders from tensors.
+static Placeholder *createPlaceholder(Module &mod, Context &ctx, Tensor *tensor,
+                                      llvm::StringRef name) {
+  auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
+                                  name, false);
+  auto *PTensor = ctx.allocate(P);
+  PTensor->assign(tensor);
+
+  return P;
+}
+
+static Placeholder *createQuantizedPlaceholder(Module &mod, Context &ctx,
+                                               Tensor *tensor, float scale,
+                                               int32_t offset,
+                                               llvm::StringRef name) {
+  auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
+                                  scale, offset, name, false);
+  auto *PTensor = ctx.allocate(P);
+  PTensor->assign(tensor);
+
+  return P;
+}
+} // namespace
 
 void inferBatchedAddNet(Tensor *batch, Tensor *slice, Tensor *out,
                         BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  Variable *batchVar;
-  Variable *sliceVar;
-  Variable *outVar;
+  Placeholder *batchP;
+  Placeholder *sliceP;
+  Placeholder *outP;
   TypeRef OT;
   if (batch->getType().isQuantizedType()) {
     auto &outType = out->getType();
-    batchVar = VarFrom(batch);
-    sliceVar = VarFrom(slice);
-    outVar = VarFrom(out);
+    batchP = createQuantizedPlaceholder(mod, ctx, batch, outType.getScale(),
+                                        outType.getOffset(), "batchP");
+    sliceP = createQuantizedPlaceholder(mod, ctx, slice, outType.getScale(),
+                                        outType.getOffset(), "sliceP");
+    outP = createQuantizedPlaceholder(mod, ctx, out, outType.getScale(),
+                                      outType.getOffset(), "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    batchVar = VarFrom(batch);
-    sliceVar = VarFrom(slice);
-    outVar = VarFrom(out);
+    batchP = createPlaceholder(mod, ctx, batch, "batchP");
+    sliceP = createPlaceholder(mod, ctx, slice, "sliceP");
+    outP = createPlaceholder(mod, ctx, out, "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
-  auto *batchedadd = F->createBatchedAdd("batchedadd", OT, batchVar, sliceVar);
-  auto result = F->createSave("ret", batchedadd, outVar);
-  Context ctx;
+  auto *batchedadd = F->createBatchedAdd("batchedadd", OT, batchP, sliceP);
+  auto *result = F->createSave("ret", batchedadd, outP);
+  auto *resultTensor = ctx.get(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({batchVar, sliceVar}, {batch, slice});
+  updateVariables(ctx, {batchP, sliceP}, {batch, slice});
   EE.run();
 
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *batchedreduce =
       F->createBatchedReduceAdd("batchedreduce", var, /* axis */ 0);
-  auto result = F->createSave("ret", batchedreduce);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", batchedreduce);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
 
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
                             llvm::ArrayRef<int8_t> table, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(input);
   auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
+  auto var = createQuantizedPlaceholder(mod, ctx, input, outTy->getScale(),
+                                        outTy->getOffset(), "var");
   auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
-  auto result = F->createSave("ret", lookupTable);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", lookupTable);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {input});
+  updateVariables(ctx, {var}, {input});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  Variable *inputVar;
-  Variable *filterVar;
-  Variable *biasVar;
-  Variable *outVar;
+  Placeholder *inputP;
+  Placeholder *filterP;
+  Placeholder *biasP;
+  Placeholder *outP;
   TypeRef OT;
   if (inputs->getType().isQuantizedType()) {
     auto &outType = out->getType();
-    inputVar = VarFrom(inputs);
-    filterVar = VarFrom(filter);
-    biasVar = VarFrom(bias);
-    outVar = VarFrom(out);
+    inputP = createQuantizedPlaceholder(mod, ctx, inputs, outType.getScale(),
+                                        outType.getOffset(), "inputP");
+    filterP = createQuantizedPlaceholder(mod, ctx, filter, outType.getScale(),
+                                         outType.getOffset(), "filterP");
+    biasP = createQuantizedPlaceholder(mod, ctx, bias, outType.getScale(),
+                                       outType.getOffset(), "biasP");
+    outP = createQuantizedPlaceholder(mod, ctx, out, outType.getScale(),
+                                      outType.getOffset(), "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    inputVar = VarFrom(inputs);
-    filterVar = VarFrom(filter);
-    biasVar = VarFrom(bias);
-    outVar = VarFrom(out);
+    inputP = createPlaceholder(mod, ctx, inputs, "inputP");
+    filterP = createPlaceholder(mod, ctx, filter, "filterP");
+    biasP = createPlaceholder(mod, ctx, bias, "biasP");
+    outP = createPlaceholder(mod, ctx, out, "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
-  auto *conv =
-      F->createConv("conv", inputVar, filterVar, biasVar, OT, 5, 3, 4, 1);
-  auto result = F->createSave("ret", conv, outVar);
-  Context ctx;
+  auto *conv = F->createConv("conv", inputP, filterP, biasP, OT, 5, 3, 4, 1);
+  auto *result = F->createSave("ret", conv, outP);
+  auto *resultTensor = ctx.get(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({inputVar, filterVar, biasVar}, {inputs, filter, bias});
+  updateVariables(ctx, {inputP, filterP, biasP}, {inputs, filter, bias});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
@@ -136,6 +173,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -146,8 +184,8 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *conv1 =
       F->createConv("conv1", var1, 3, {5, 3}, {2, 1}, {2, 1, 2, 1}, 1);
   cast<Variable>(conv1->getFilter())->assign(kernel1);
@@ -158,51 +196,54 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   cast<Variable>(conv2->getBias())->assign(bias2);
   auto *reshape2 = F->createReshape("reshape2", conv2, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto result = F->createSave("ret", softmax);
-
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
 
-  runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EE, ctx, 8, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
-  updateVariables({var1, var2}, {inputs, selected});
+  updateVariables(ctx, {var1, var2}, {inputs, selected});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
                     BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *dataV = VarFrom(data);
-  auto *indicesV = VarFrom(indices);
-  auto *gather = F->createGather("gather", dataV, indicesV);
-  auto *result = F->createSave("ret", gather);
-  Context ctx;
+  auto *dataP = createPlaceholder(mod, ctx, data, "dataP");
+  auto *indicesP = createPlaceholder(mod, ctx, indices, "indicesP");
+  auto *gather = F->createGather("gather", dataP, indicesP);
+  auto *result = F->createSave(ctx, "ret", gather);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({dataV, indicesV}, {data, indices});
+  updateVariables(ctx, {dataP, indicesP}, {data, indices});
   EE.run();
-  dest->assign(&result->getVariable()->getPayload());
+  dest->assign(resultTensor);
 }
 
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *lrn = F->createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
-  auto result = F->createSave("ret", lrn);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", lrn);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
@@ -210,6 +251,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         llvm::ArrayRef<size_t> shape1,
                                         llvm::ArrayRef<size_t> shape2,
                                         Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   TrainingConfig TC;
 
@@ -222,8 +264,8 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->assign(weights);
   cast<Variable>(fc->getBias())->assign(bias);
@@ -232,98 +274,108 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
       F->createLocalResponseNormalization("lrn", reshape1, 2, 2.0, 0.5, 1.0);
   auto *reshape2 = F->createReshape("reshape2", lrn, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto result = F->createSave("ret", softmax);
-
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
-  runBatch(EE, 8, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EE, ctx, 8, sampleCounter, {var1, var2}, {inputs, selected});
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
-  out->assign(&result->getVariable()->getPayload());
+  runBatch(EE, ctx, 1, sampleCounter, {var1, var2}, {inputs, selected});
+  out->assign(resultTensor);
 }
 
 void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  Variable *lhsVar;
-  Variable *rhsVar;
-  Variable *outVar;
+  Placeholder *lhsP;
+  Placeholder *rhsP;
+  Placeholder *outP;
   TypeRef OT;
   if (lhs->getType().isQuantizedType()) {
     auto &outType = out->getType();
-    lhsVar = VarFrom(lhs);
-    rhsVar = VarFrom(rhs);
-    outVar = VarFrom(out);
+    lhsP = createQuantizedPlaceholder(mod, ctx, lhs, outType.getScale(),
+                                      outType.getOffset(), "lhsP");
+    rhsP = createQuantizedPlaceholder(mod, ctx, rhs, outType.getScale(),
+                                      outType.getOffset(), "rhsP");
+    outP = createQuantizedPlaceholder(mod, ctx, out, outType.getScale(),
+                                      outType.getOffset(), "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
                                     outType.getScale(), outType.getOffset());
   } else {
-    lhsVar = VarFrom(lhs);
-    rhsVar = VarFrom(rhs);
-    outVar = VarFrom(out);
+    lhsP = createPlaceholder(mod, ctx, lhs, "lhsP");
+    rhsP = createPlaceholder(mod, ctx, rhs, "rhsP");
+    outP = createPlaceholder(mod, ctx, out, "outP");
     OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   }
-  auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
-  auto result = F->createSave("ret", matmul, outVar);
-  Context ctx;
+  auto *matmul = F->createMatMul("matmul", OT, lhsP, rhsP);
+  auto *result = F->createSave("ret", matmul, outP);
+  auto *resultTensor = ctx.get(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({lhsVar, rhsVar}, {lhs, rhs});
+  updateVariables(ctx, {lhsP, rhsP}, {lhs, rhs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs1);
-  auto *var2 = VarFrom(inputs2);
+  auto *var1 = createPlaceholder(mod, ctx, inputs1, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, inputs2, "var2");
   auto *max = F->createMax("max", var1, var2);
-  auto result = F->createSave("ret", max);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", max);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2}, {inputs1, inputs2});
+  updateVariables(ctx, {var1, var2}, {inputs1, inputs2});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
                  BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs1);
-  auto *var2 = VarFrom(inputs2);
+  auto *var1 = createPlaceholder(mod, ctx, inputs1, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, inputs2, "var2");
   auto *min = F->createMin("min", var1, var2);
-  auto result = F->createSave("ret", min);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", min);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2}, {inputs1, inputs2});
+  updateVariables(ctx, {var1, var2}, {inputs1, inputs2});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *pool = F->createAvgPool("pool", var, 3, 3, 1);
-  auto result = F->createSave("ret", pool);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", pool);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -332,6 +384,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -342,8 +395,8 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   TC.L2Decay = 0.01;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->assign(weights);
   cast<Variable>(fc->getBias())->assign(bias);
@@ -351,33 +404,35 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *pool = F->createAvgPool("pool", reshape1, 2, 2, 0);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto result = F->createSave("ret", softmax);
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
 
-  runBatch(EE, 10, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EE, ctx, 10, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2}, {inputs, selected});
+  updateVariables(ctx, {var1, var2}, {inputs, selected});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *pool = F->createMaxPool("pool", var, 4, 2, 3);
-  auto result = F->createSave("ret", pool);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", pool);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -386,6 +441,7 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -396,8 +452,8 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   TC.L2Decay = 0.003;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->assign(weights);
   cast<Variable>(fc->getBias())->assign(bias);
@@ -405,25 +461,26 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *pool = F->createMaxPool("pool", reshape1, 5, 3, 4);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto result = F->createSave("ret", softmax);
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
 
-  runBatch(EE, 7, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EE, ctx, 7, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  runBatch(EE, 1, sampleCounter, {var1, var2}, {inputs, selected});
-  out->assign(&result->getVariable()->getPayload());
+  runBatch(EE, ctx, 1, sampleCounter, {var1, var2}, {inputs, selected});
+  out->assign(resultTensor);
 }
 
 void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
                       BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto QT1 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
                                         scale, offset);
   auto QT2 = F->getParent()->uniqueType(ElemKind::Int8QTy, inputs->dims(),
@@ -431,291 +488,335 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   auto *quantize = F->createQuantize("quantize", var, QT1);
   auto *rescale = F->createRescaleQuantized("rescale", quantize, QT2);
   auto *dequantize = F->createDequantize("dequantize", rescale);
-  auto result = F->createSave("ret", dequantize);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", dequantize);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *relu = F->createRELU("relu", var);
-  auto result = F->createSave("ret", relu);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", relu);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
                      BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *reshape = F->createReshape("reshape", var, shape);
-  auto result = F->createSave("ret", reshape);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", reshape);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
                     BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(cond);
-  auto *var2 = VarFrom(inputs1);
-  auto *var3 = VarFrom(inputs2);
+  auto *var1 = createPlaceholder(mod, ctx, cond, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, inputs1, "var2");
+  auto *var3 = createPlaceholder(mod, ctx, inputs2, "var3");
   auto *select = F->createSelect("cond", var1, var2, var3);
-  auto result = F->createSave("ret", select);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", select);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2, var3}, {cond, inputs1, inputs2});
+  updateVariables(ctx, {var1, var2, var3}, {cond, inputs1, inputs2});
   EE.run();
 
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *sigmoid = F->createSigmoid("sigmoid", var);
-  auto result = F->createSave("ret", sigmoid);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", sigmoid);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  auto *in = VarFrom(inputs);
+  auto *in = createPlaceholder(mod, ctx, inputs, "in");
   auto *C = F->createConv("conv2a", in, 64, 1, 1, 0, 1);
   cast<Variable>(C->getFilter())->getHandle().clear(0.3);
   cast<Variable>(C->getBias())->getHandle().clear(0.4);
-  auto *result = F->createSave("ret", C);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", C);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({in}, {inputs});
+  updateVariables(ctx, {in}, {inputs});
   EE.run();
 
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferGroupConv(Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
-  auto IH = input->getHandle();
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle();
   for (size_t i = 0; i < 2 * 32; i++) {
     IH.raw(i) = (i + 1) / 10.0;
   }
 
-  auto filter =
-      mod.createVariable(ElemKind::FloatTy, {128, 1, 1, 16}, "filter");
-  auto FH = filter->getHandle();
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {128, 1, 1, 16},
+                                       "filter", false);
+  auto *filterTensor = ctx.allocate(filter);
+  auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 128; i++)
     for (size_t j = 0; j < 16; j++) {
       FH.at({i, 0, 0, j}) = (i + j) / 100.0;
     }
-  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
-  zeroBias->getPayload().zero();
+  auto *zeroBias =
+      mod.createPlaceholder(ElemKind::FloatTy, {128}, "bias", false);
+  auto *zeroBiasTensor = ctx.allocate(zeroBias);
+  zeroBiasTensor->zero();
 
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 2, 1, 128});
 
   ConvolutionNode *CN =
       F->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
-  SaveNode *result = F->createSave("save", CN);
+  SaveNode *result = F->createSave(ctx, "save", CN);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferNonSquarePaddingConv(Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
-  auto IH = input->getHandle();
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle();
   for (size_t i = 0; i < 2 * 32; i++) {
     IH.raw(i) = (i + 1) / 10.0;
   }
 
-  auto filter =
-      mod.createVariable(ElemKind::FloatTy, {128, 1, 1, 32}, "filter");
-  auto FH = filter->getHandle();
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {128, 1, 1, 32},
+                                       "filter", false);
+  auto *filterTensor = ctx.allocate(filter);
+  auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 128; i++)
     for (size_t j = 0; j < 16; j++) {
       FH.at({i, 0, 0, j}) = (i + j) / 100.0;
     }
-  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
-  zeroBias->getPayload().zero();
+  auto *zeroBias =
+      mod.createPlaceholder(ElemKind::FloatTy, {128}, "bias", false);
+  auto *zeroBiasTensor = ctx.allocate(zeroBias);
+  zeroBiasTensor->zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 5, 128});
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {1, 1}, {1, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave("save", CN);
+  SaveNode *result = F->createSave(ctx, "save", CN);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferNonSquareKernelConv(Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
-  auto IH = input->getHandle();
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle();
   for (size_t i = 0; i < 2 * 32; i++) {
     IH.raw(i) = (i + 1) / 10.0;
   }
 
-  auto filter =
-      mod.createVariable(ElemKind::FloatTy, {128, 2, 1, 32}, "filter");
-  auto FH = filter->getHandle();
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {128, 2, 1, 32},
+                                       "filter", false);
+  auto *filterTensor = ctx.allocate(filter);
+  auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 128; i++)
     for (size_t j = 0; j < 2; j++)
       for (size_t k = 0; k < 32; k++) {
         FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
       }
-  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
-  zeroBias->getPayload().zero();
+  auto *zeroBias =
+      mod.createPlaceholder(ElemKind::FloatTy, {128}, "bias", false);
+  auto *zeroBiasTensor = ctx.allocate(zeroBias);
+  zeroBiasTensor->zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 3, 5, 128});
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {2, 1}, {1, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave("save", CN);
+  SaveNode *result = F->createSave(ctx, "save", CN);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferNonSquareStrideConv(Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {1, 2, 1, 32}, "input");
-  auto IH = input->getHandle();
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle();
   for (size_t i = 0; i < 2 * 32; i++) {
     IH.raw(i) = (i + 1) / 10.0;
   }
 
-  auto filter =
-      mod.createVariable(ElemKind::FloatTy, {128, 2, 1, 32}, "filter");
-  auto FH = filter->getHandle();
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {128, 2, 1, 32},
+                                       "filter", false);
+  auto *filterTensor = ctx.allocate(filter);
+  auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 128; i++)
     for (size_t j = 0; j < 2; j++)
       for (size_t k = 0; k < 32; k++) {
         FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
       }
-  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {128}, "bias");
-  zeroBias->getPayload().zero();
+  auto *zeroBias =
+      mod.createPlaceholder(ElemKind::FloatTy, {128}, "bias", false);
+  auto *zeroBiasTensor = ctx.allocate(zeroBias);
+  zeroBiasTensor->zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 2, 5, 128});
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {2, 1}, {2, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave("save", CN);
+  SaveNode *result = F->createSave(ctx, "save", CN);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferConvDKKC8(Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *input = mod.createVariable(ElemKind::FloatTy, {3, 3, 3, 32}, "input");
-  auto IH = input->getHandle();
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {3, 3, 3, 32}, "input", false);
+  auto *inputTensor = ctx.allocate(input);
+  auto IH = inputTensor->getHandle();
   for (size_t i = 0; i < 3 * 3 * 3 * 32; i++) {
     IH.raw(i) = (i + 1) / 10.0;
   }
 
-  auto filter =
-      mod.createVariable(ElemKind::FloatTy, {192, 3, 3, 32}, "filter");
-  auto FH = filter->getHandle();
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {192, 3, 3, 32},
+                                       "filter", false);
+  auto *filterTensor = ctx.allocate(filter);
+  auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 192; i++)
     for (size_t j = 0; j < 3; j++)
       for (size_t k = 0; k < 3; k++)
         for (size_t l = 0; l < 32; l++) {
           FH.at({i, j, k, k}) = (i + j + k + l) / 200.0;
         }
-  auto *zeroBias = mod.createVariable(ElemKind::FloatTy, {192}, "bias");
-  zeroBias->getPayload().zero();
+  auto *zeroBias =
+      mod.createPlaceholder(ElemKind::FloatTy, {192}, "bias", false);
+  auto *zeroBiasTensor = ctx.allocate(zeroBias);
+  zeroBiasTensor->zero();
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {3, 3, 3, 192});
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {3, 3}, {1, 1}, {1, 1, 1, 1}, 1);
-  SaveNode *result = F->createSave("save", CN);
+  SaveNode *result = F->createSave(ctx, "save", CN);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
                      BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *softmax = F->createSoftMax("softmax", var1, var2);
-  auto result = F->createSave("ret", softmax);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2}, {inputs, selected});
+  updateVariables(ctx, {var1, var2}, {inputs, selected});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
   TrainingConfig TC;
+  Context ctx;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -726,104 +827,114 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   TC.L2Decay = 0.001;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs);
-  auto *var2 = VarFrom(selected);
+  auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
   cast<Variable>(fc->getWeights())->assign(weights);
   cast<Variable>(fc->getBias())->assign(bias);
   auto *softmax = F->createSoftMax("softmax", fc, var2);
-  auto result = F->createSave("ret", softmax);
+  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
-  Context ctx;
+
   EE.compile(CompilationMode::Train, TF, ctx);
 
-  runBatch(EE, 30, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EE, ctx, 30, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2}, {inputs, selected});
+  updateVariables(ctx, {var1, var2}, {inputs, selected});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tanh = F->createTanh("tanh", var);
-  auto result = F->createSave("ret", tanh);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", tanh);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tr = F->createTranspose("tr", var, {1, 0});
-  auto result = F->createSave("ret", tr);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", tr);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
                         Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(input1);
-  auto *var2 = VarFrom(input2);
-  auto *var3 = VarFrom(input3);
+  auto *var1 = createPlaceholder(mod, ctx, input1, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, input2, "var2");
+  auto *var3 = createPlaceholder(mod, ctx, input3, "var3");
   auto *T1 = F->createTanh("tanh1", var1);
   auto *T2 = F->createTanh("tanh2", var2);
   auto *T3 = F->createTanh("tanh3", var3);
   Node *C1 = F->createConcat("concat", {T1, T2}, 0);
   Node *C2 = F->createConcat("concat", {T2, T3, C1, T2}, 0);
-  auto *result = F->createSave("ret", C2);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", C2);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2, var3}, {input1, input2, input3});
+  updateVariables(ctx, {var1, var2, var3}, {input1, input2, input3});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
                        size_t convDepth) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *conv =
       F->createConv("conv", tr, convDepth, {5, 5}, {2, 2}, {1, 1, 1, 1}, 1);
   cast<Variable>(conv->getFilter())->getHandle().clear(2);
   cast<Variable>(conv->getBias())->getHandle().clear(2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);
-  auto result = F->createSave("ret", pool);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", pool);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected("fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
@@ -831,21 +942,24 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *rl1 = F->createRELU("relu", fc2);
   cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
   cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
-  auto result = F->createSave("ret", rl1);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", rl1);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = VarFrom(inputs);
-  auto *selected = mod.createVariable(ElemKind::Int64ITy, {2, 1}, "selected");
+  auto *var = createPlaceholder(mod, ctx, inputs, "var");
+  auto *selected =
+      mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
 
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected("fc", tr, 16);
@@ -856,28 +970,29 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   auto *R = F->createRegression("reg", fc2, fc2);
   auto *SM = F->createSoftMax("SM", R, selected);
-  auto result = F->createSave("ret", SM);
+  auto *result = F->createSave(ctx, "ret", SM);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
   cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {inputs});
+  updateVariables(ctx, {var}, {inputs});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
                       Tensor *inputs4, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var1 = VarFrom(inputs1);
-  auto *var2 = VarFrom(inputs2);
-  auto *var3 = VarFrom(inputs3);
-  auto *var4 = VarFrom(inputs4);
+  auto *var1 = createPlaceholder(mod, ctx, inputs1, "var1");
+  auto *var2 = createPlaceholder(mod, ctx, inputs2, "var2");
+  auto *var3 = createPlaceholder(mod, ctx, inputs3, "var3");
+  auto *var4 = createPlaceholder(mod, ctx, inputs4, "var4");
   auto *conv1 = F->createConv("conv1", var1, 6, 4, 1, 2, 1);
   cast<Variable>(conv1->getFilter())->getHandle().clear(0.5);
   cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
@@ -902,14 +1017,15 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *relu2 = F->createRELU("relu2", sub);
   auto *pool2 = F->createAvgPool("pool2", relu2, 3, 2, 1);
   auto *sigmoid3 = F->createSigmoid("sigmoid3", pool2);
-  auto result = F->createSave("ret", sigmoid3);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", sigmoid3);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var1, var2, var3, var4},
+  updateVariables(ctx, {var1, var2, var3, var4},
                   {inputs1, inputs2, inputs3, inputs4});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 namespace {
@@ -922,11 +1038,12 @@ static void initConv(ConvolutionNode *C, Tensor &filter, Tensor &bias) {
 
 void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
                      BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *in = VarFrom(input);
+  auto *in = createPlaceholder(mod, ctx, input, "in");
   auto *conv1 = F->createConv("conv1", in, 256, 1, 1, 0, 1);
   auto *conv2a = F->createConv("conv2a", in, 64, 1, 1, 0, 1);
   auto *relu2a = F->createRELU("relu2a", conv2a);
@@ -935,27 +1052,28 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   auto *conv2c = F->createConv("conv2c", relu2b, 256, 1, 1, 0, 1);
   auto *add = F->createAdd("add", conv2c, conv1);
   auto *relu = F->createRELU("res2a_relu", add);
-  auto *result = F->createSave("ret", relu);
+  auto *result = F->createSave(ctx, "ret", relu);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   initConv(conv1, weights[0], weights[1]);
   initConv(conv2a, weights[2], weights[3]);
   initConv(conv2b, weights[4], weights[5]);
   initConv(conv2c, weights[6], weights[7]);
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({in}, {input});
+  updateVariables(ctx, {in}, {input});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *inputs = VarFrom(input);
+  auto *inputs = createPlaceholder(mod, ctx, input, "inputs");
 
   auto *x1 = F->createSlice("ex1", inputs, {0, 5, 0}, {1, 100, 100});
   auto *x2 = F->createSlice("ex2", inputs, {1, 5, 0}, {2, 100, 100});
@@ -972,26 +1090,27 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
   auto *add3 = F->createAdd("add1", add1, add2);
 
   auto *e = F->createSlice("slice", add3, {0, 55, 50}, {1, 150, 100});
-  auto *result = F->createSave("ret", e);
+  auto *result = F->createSave(ctx, "ret", e);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({inputs}, {input});
+  updateVariables(ctx, {inputs}, {input});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
+  Context ctx;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *var = VarFrom(input);
-  auto T = mod.uniqueType(ElemKind::Int8QTy, var->getType()->dims(),
-                          2 * var->getType()->getScale(),
-                          -var->getType()->getOffset());
-
+  auto T = mod.uniqueType(ElemKind::Int8QTy, input->getType().dims(),
+                          2 * input->getType().getScale(),
+                          -input->getType().getOffset());
+  auto *var = createQuantizedPlaceholder(mod, ctx, input, T->getScale(),
+                                         T->getOffset(), "var");
   auto *rescale = F->createRescaleQuantized("rescale", var, T);
 
   auto *splat1 = F->createSplat("splat1", T, 0.0);
@@ -1000,13 +1119,14 @@ void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
   auto *max1 = F->createMax("max1", rescale, splat1);
   auto *max2 = F->createMax("max2", splat2, max1);
 
-  auto result = F->createSave("ret", max2);
-  Context ctx;
+  auto *result = F->createSave(ctx, "ret", max2);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables({var}, {input});
+  updateVariables(ctx, {var}, {input});
   EE.run();
-  out->assign(&result->getVariable()->getPayload());
+  out->assign(resultTensor);
 }
 
 } // namespace glow
