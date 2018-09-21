@@ -24,8 +24,13 @@
 typedef SSIZE_T ssize_t;
 #endif
 
-typedef float float4 __attribute__((ext_vector_type(4)));
-typedef float float8 __attribute__((ext_vector_type(8)));
+#if defined(__clang__)
+using float4 = float __attribute__((ext_vector_type(4)));
+using float8 = float __attribute__((ext_vector_type(8)));
+#elif defined(__GNUC__) || defined(__GNUG__)
+using float4 = float __attribute__((vector_size(16)));
+using float8 = float __attribute__((vector_size(32)));
+#endif
 
 /// Loads a simd float8 value from \p ptr.
 #define LoadFloat8(PTR) *((const float8 *)(PTR))
@@ -37,7 +42,11 @@ typedef float float8 __attribute__((ext_vector_type(8)));
 #define AddFloat8(PTR, VAL) *((float8 *)(PTR)) += (VAL);
 
 /// Broadcast the input value to a float8.
+#if defined(__clang__)
 #define BroadcastFloat8(VAL) ((float8)(VAL))
+#elif defined(__GNUC__) || defined(__GNUG__)
+#define BroadcastFloat8(VAL) ((VAL) - (float8){})
+#endif
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
