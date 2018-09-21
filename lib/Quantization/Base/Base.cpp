@@ -230,9 +230,7 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
          "Symmetric quantization should be centered on 0");
   // The only valid offsets for symmetric quantization with uint8 support are 0
   // and -128.
-  // When we use the symmetric property we actually go update the schema in use,
-  // thus 0 is already covered by the previous assert.
-  assert((result.offset == -128 ||
+  assert((result.offset == -128 || result.offset == 0 ||
           schema != quantization::Schema::SymmetricWithUInt8) &&
          "Symmetric quantization should be centered on 0");
   return result;
