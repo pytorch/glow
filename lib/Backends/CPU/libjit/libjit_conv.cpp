@@ -63,7 +63,7 @@ void libjit_convDKKC8_convolve_channel(
   float8 sum[numDepthRegs][ywidth];
   for (unsigned wu = 0; wu < ywidth; wu++) {
     for (unsigned du = 0; du < numDepthRegs; du++) {
-      sum[du][wu] = 0;
+      sum[du][wu] = BroadcastFloat8(0.0);
     }
   }
 
@@ -77,7 +77,7 @@ void libjit_convDKKC8_convolve_channel(
       // Load a single pixel from the input image and broadcast it.
       auto inIdx = libjit_getXYZW(inWdims, sampleN, inX, inY + wu * stride,
                                   fd + group * numChannels);
-      in8[wu] = inW[inIdx];
+      in8[wu] = BroadcastFloat8(inW[inIdx]);
     }
 
     // For each y pixel:
