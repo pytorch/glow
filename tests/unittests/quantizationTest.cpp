@@ -640,6 +640,12 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
+  // Map float [0; 0] to int [-128; 127].
+  symmetricParams = chooseQuantizationParams(
+      0.0, 0.0, quantization::Schema::SymmetricWithUInt8);
+  EXPECT_EQ(symmetricParams.offset, 0);
+  EXPECT_NEAR(symmetricParams.scale, 0.1, 0.001);
+
   // Map float [2.0; 5.0] to int [-128; 127].
   // All positive, using uint8.
   // However, our quantization schemas always include zero.
