@@ -956,6 +956,7 @@ TEST(Graph, PostOrderTest) {
 
 TEST(Graph, placeholder) {
   Module MD;
+  Context ctx;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
   Node *K =
@@ -965,5 +966,5 @@ TEST(Graph, placeholder) {
   K = F->createFullyConnected("FC", K, 10);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
-  F->createSave("Save", K);
+  F->createSave(ctx, "Save", K);
 }
