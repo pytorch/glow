@@ -168,7 +168,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   Placeholder *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", true);
   auto *RL = F->createRELU("relu", A);
-  F->createSave("return", RL);
+  F->createSave(ctx, "return", RL);
 
   // Expect a single user to the trainable input placeholder.
   EXPECT_EQ(A->getNumUsers(), 1);
