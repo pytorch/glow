@@ -24,6 +24,8 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "FunctionPass.h"
+
 #include <unordered_map>
 #include <unordered_set>
 
@@ -1136,20 +1138,31 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   return NodeValue(nullptr);
 }
 
-/// Optimize Concat nodes.
-static void optimizeConcatNodes(Function *F) {
-  auto &nodes = F->getNodes();
-
-  // For each node:
-  for (auto &node : nodes) {
-    if (auto *CN = dyn_cast<ConcatNode>(&node)) {
-      NodeValue newCN = simplifyConcatNode(F, CN);
-      if (newCN.getNode()) {
-        CN->getResult().replaceAllUsesOfWith(newCN);
+class OptimizeConcatNodes : public FunctionPass {
+public:
+  OptimizeConcatNodes(){};
+  ~OptimizeConcatNodes(){};
+  bool run(Function *F) override {
+    auto &nodes = F->getNodes();
+    bool changed = false;
+    // For each node:
+    for (auto &node : nodes) {
+      if (auto *CN = dyn_cast<ConcatNode>(&node)) {
+        NodeValue newCN = simplifyConcatNode(F, CN);
+        if (newCN.getNode()) {
+          CN->getResult().replaceAllUsesOfWith(newCN);
+          changed = true;
+          continue;
+        }
       }
     }
+    return changed;
   }
-}
+
+  const llvm::StringRef getName() const override {
+    return "OptimizeConcatNodes";
+  }
+};
 
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
@@ -1896,7 +1909,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
   CSE(F);
 
   // Optimize Concat nodes.
-  optimizeConcatNodes(F);
+  OptimizeConcatNodes().run(F);
 
   // Optimize arithmetic nodes based on algebraic identities.
   optimizeArithmeticNodes(F);
