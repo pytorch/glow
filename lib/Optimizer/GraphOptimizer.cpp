@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -24,6 +25,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 
+#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -1939,6 +1941,24 @@ static bool sinkRescaleQuantizedNode(Function *F) {
   }
 
   return changed;
+}
+
+void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
+                                          llvm::ArrayRef<Placeholder *> vars) {
+  auto *M = F->getParent();
+  auto &placeholders = M->getPlaceholders();
+  for (auto &PH : placeholders) {
+    if (std::find(vars.begin(), vars.end(), PH) != vars.end()) {
+      continue;
+    }
+    auto *tensor = ctx.get(PH);
+    if (!tensor) {
+      continue;
+    }
+    auto *constantV = M->createVariable(PH->getName(), *tensor,
+                                        VisibilityKind::Private, false);
+    PH->getOutput().replaceAllUsesOfWith(constantV, F);
+  }
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {

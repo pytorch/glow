@@ -83,8 +83,8 @@ public:
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
 
-  /// Replace all of the uses of this value with \p v.
-  void replaceAllUsesOfWith(NodeValue v);
+  /// Replace all of the uses in \p F of this value with \p v.
+  void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr);
 
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;

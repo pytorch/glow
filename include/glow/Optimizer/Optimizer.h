@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace glow {
@@ -23,6 +24,9 @@ namespace glow {
 class IRFunction;
 class Function;
 class Backend;
+class Module;
+class Context;
+class Placeholder;
 
 enum class CompilationMode {
   Train, /// Compile the graph in preperation for training.
@@ -38,6 +42,11 @@ void optimize(Function *F, CompilationMode mode);
 /// Lower the high-level neural network operators into low-level linear algebra
 /// operators.
 void lower(Function *F, const Backend &B);
+
+/// Convert placeholders in Module \p M to constants based on the values in \p
+/// ctx.  Do not convert any placeholders explicitly listed in \p vars.
+void convertPlaceholdersToConstants(Function *F, const Context &ctx,
+                                    llvm::ArrayRef<Placeholder *> vars);
 
 /// Instrument function \p F by inserting quantization profile nodes
 /// for capturing stats for quantization. The new quantized function is called

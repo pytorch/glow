@@ -232,15 +232,16 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
 }
 
 TEST_F(GraphOptz, transposePrivateVariable) {
-  Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                    VisibilityKind::Private, false);
-  A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  ctx_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
-  A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
+  ctx_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   SaveNode *save = F_->createSave(ctx_, "ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   ASSERT_EQ(F_->getNodes().size(), 1);
   EXPECT_EQ(&*F_->getNodes().begin(), save);
@@ -253,12 +254,12 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 /// Check that the removing of transposes still happens when
 /// predicates are involved.
 TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
-  Variable *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 20, 3}, "A",
-                                    VisibilityKind::Private, false);
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  A->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  ctx_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
-  A->getPayload().transpose(&transposedA, {0, 3, 1, 2});
+  ctx_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
   // Arguably, if the transpose doesn't happen because the predicate is false
   // the value of A should be unchanged. However, the semantic of our
   // predicate is that they can be ignored and the program would still
@@ -269,6 +270,7 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   save->setPredicate(pred);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   ASSERT_EQ(F_->getNodes().size(), 1);
   EXPECT_EQ(&*F_->getNodes().begin(), save);
@@ -1370,15 +1372,15 @@ TEST_F(GraphOptz, DCEPublicVars) {
 }
 
 TEST_F(GraphOptz, foldQuantizeIntoVar) {
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                                    VisibilityKind::Private);
-  input->getPayload() = {10, 10, 10, 10};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
+  *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
   auto S = F_->createSave(ctx_, "save", Q);
 
   EXPECT_EQ(2, F_->getNodes().size());
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {S->getPlaceholder()});
   ::glow::optimize(F_, CompilationMode::Infer);
   // Quantization node was merged into input var.
   EXPECT_EQ(1, F_->getNodes().size());
@@ -1391,9 +1393,8 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 }
 
 TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
-  auto *input = mod_.createVariable(ElemKind::FloatTy, {4}, "input",
-                                    VisibilityKind::Private);
-  input->getPayload() = {10, 10, 10, 10};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
+  *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
@@ -1401,13 +1402,14 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto clonedF = F_->clone("cloned");
 
   EXPECT_EQ(2, clonedF->getNodes().size());
+  ::glow::convertPlaceholdersToConstants(clonedF, ctx_, {});
   ::glow::optimize(clonedF, CompilationMode::Infer);
   // F_ function should not be affected.
   EXPECT_EQ(2, F_->getNodes().size());
 
   // Check original var.
   for (unsigned i = 0; i < 4; ++i) {
-    EXPECT_EQ(10, input->getHandle().raw(i));
+    EXPECT_EQ(10, ctx_.get(input)->getHandle().raw(i));
   }
 
   // Quantization node was merged into input var.
@@ -1902,8 +1904,9 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
-  Node *input = F_->getParent()->createVariable(
-      ElemKind::FloatTy, shape, "input", VisibilityKind::Private);
+  auto *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
+                                                   "input", true);
+  ctx_.allocate(input);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave(ctx_, "ret", R2);
@@ -1911,6 +1914,7 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // After optimization, we expect to see just a Save.
@@ -1954,4 +1958,31 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   for (unsigned i = 0; i < 6; ++i) {
     EXPECT_EQ(newWeightsRef[i], newW->getHandle().raw(i));
   }
+}
+
+TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
+  auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
+  auto *input3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input3", true);
+  auto *save1 = F_->createSave(ctx_, "save1", input1);
+  auto *save2 = F_->createSave(ctx_, "save2", input2);
+  auto *save3 = F_->createSave(ctx_, "save3", input3);
+
+  // No variables, six PHs (3 inputs, 3 saves).
+  EXPECT_EQ(mod_.getVars().size(), 0);
+  EXPECT_EQ(mod_.getPlaceholders().size(), 6);
+
+  // Allocate two of the three inputs, but mark input2 of them as non-constant.
+  ctx_.allocate(input1);
+  ctx_.allocate(input2);
+  // Don't allocate input3; keep it as a placeholder instead.
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {input2});
+
+  // input1 becomes a variable.
+  EXPECT_EQ(mod_.getVars().size(), 1);
+  EXPECT_EQ(mod_.getPlaceholders().size(), 6);
+
+  EXPECT_TRUE(llvm::isa<Variable>(save1->getInput()));
+  EXPECT_TRUE(llvm::isa<Placeholder>(save2->getInput()));
+  EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
