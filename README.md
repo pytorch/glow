@@ -71,7 +71,7 @@ should install the required dependencies.
 
   ```bash
   sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 \
-      libprotobuf-dev protobuf-compiler
+      libprotobuf-dev protobuf-compiler libpng-dev
   ```
 
 In order to support ONNX net serialization format, Glow requires
