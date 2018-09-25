@@ -158,6 +158,8 @@ void testMNIST() {
     timer.stopTimer();
   }
   llvm::outs() << "Validating.\n";
+
+  ::glow::convertPlaceholdersToConstants(F, ctx, {A, result->getPlaceholder()});
   EE.compile(CompilationMode::Infer, F, ctx);
 
   auto LIH = labelInputs.getHandle<int64_t>();
