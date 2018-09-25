@@ -42,7 +42,7 @@ NodeValue::NodeValue(Node *N, unsigned resNo) {
   resNo_ = resNo;
 }
 
-void NodeValue::replaceAllUsesOfWith(NodeValue v) {
+void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
@@ -53,6 +53,10 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v) {
                                          nodeValueUsers.end());
   for (auto &U : usersVec) {
     NodeHandle *site = U.get();
+    auto *userF = U.getUser()->getParent();
+    // If the user is not in function F, don't touch it.
+    if (F && userF != F)
+      continue;
     assert(site->getNode() == node_ && "Invalid user");
     assert(site->getResNo() == getResNo() && "Invalid list of uses");
     site->setOperand(v.getNode(), v.getResNo());
