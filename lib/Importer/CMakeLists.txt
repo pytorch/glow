@@ -5,10 +5,7 @@ add_definitions(-DGOOGLE_PROTOBUF_NO_RTTI)
 
 if(NOT TARGET onnx_proto)
   # Note: This avoids libprotobuf.so complaining about name collisions at runtime
-  if(NOT ONNX_NAMESPACE)
-    set(ONNX_NAMESPACE "glow_onnx")
-  endif()
-  add_definitions("-DONNX_NAMESPACE=${ONNX_NAMESPACE}")
+  add_definitions("-DONNX_NAMESPACE=glow_onnx")
   add_subdirectory(${GLOW_THIRDPARTY_DIR}/onnx EXCLUDE_FROM_ALL build)
 endif()
 
