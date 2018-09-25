@@ -58,7 +58,7 @@ Install the required dependencies using [Homebrew](https://brew.sh/):
 
   ```bash
   brew install cmake graphviz libpng ninja protobuf wget
-  brew install --with-toolchain llvm
+  brew install --with-toolchain llvm@6
   ```
 
 Note that LLVM is installed to a non-default location (`/usr/local/opt/llvm`) to
