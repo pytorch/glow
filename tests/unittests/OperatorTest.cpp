@@ -2464,11 +2464,13 @@ TEST_P(Operator, IntRelu) {
   auto *relu = F_->createRELU("relu", rescale, reluOutTy);
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
-  auto *save = F_->createSave("save", dequantize);
+  auto *save = F_->createSave(ctx_, "save", dequantize);
+  ctx_.allocate(mod_.getPlaceholders());
+
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto result = save->getVariable()->getHandle();
+  auto result = ctx_.get(save->getPlaceholder())->getHandle();
   float expectedValue = std::max(0.0f, splatValue);
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(expectedValue, result.raw(i));
@@ -2485,11 +2487,12 @@ TEST_P(Operator, IntSplat) {
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
   auto *dequantize = F_->createDequantize("dequantize", splat);
 
-  auto *save = F_->createSave("save", dequantize);
+  auto *save = F_->createSave(ctx_, "save", dequantize);
+  ctx_.allocate(mod_.getPlaceholders());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto result = save->getVariable()->getHandle();
+  auto result = ctx_.get(save->getPlaceholder())->getHandle();
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(splatValue, result.raw(i));
   }
