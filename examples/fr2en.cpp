@@ -173,6 +173,8 @@ struct Model {
       F_ = Q;
     }
 
+    ::glow::convertPlaceholdersToConstants(F_, ctx,
+                                           {input_, seqLength_, output_});
     EE_.compile(CompilationMode::Infer, F_, ctx);
   }
 
