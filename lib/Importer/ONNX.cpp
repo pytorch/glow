@@ -23,7 +23,7 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
-#include "onnx/onnx.pb.h"
+#include "onnx/onnx_pb.h"
 
 #include <cassert>
 #include <cstddef>

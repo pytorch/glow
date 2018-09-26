@@ -16,7 +16,7 @@
 
 #include "glow/Importer/ONNXIFILoader.h"
 
-#include "onnx/onnx.pb.h"
+#include "onnx/onnx_pb.h"
 
 namespace glow {
 namespace onnxifi {
