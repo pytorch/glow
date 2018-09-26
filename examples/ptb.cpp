@@ -217,7 +217,7 @@ void testPTB() {
   }
 
   std::vector<NodeValue> outputNodes;
-  F->createSimpleRNN("rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
+  F->createSimpleRNN(ctx, "rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
                      outputNodes);
 
   // O has a shape of {numSteps * minibatchSize, vocabSize}
