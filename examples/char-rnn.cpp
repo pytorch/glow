@@ -249,15 +249,20 @@ int main(int argc, char **argv) {
     llvm::outs() << ".\n";
 
     //// Use the trained network to generate some text ////
-    EE.compile(CompilationMode::Infer, F, ctx);
+    auto *res =
+        llvm::cast<SaveNode>(F->getNodeByName("result"))->getPlaceholder();
+    // Clone the function before optimizing it, so that we can promote
+    // placeholders to constants.
+    auto *OF = F->clone("clone");
+    ::glow::convertPlaceholdersToConstants(OF, ctx, {X, res});
+    EE.compile(CompilationMode::Infer, OF, ctx);
 
     // Load a few characters to start the text that we generate.
     Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});
     Tensor nextCharInfer(ElemKind::Int64ITy, {minibatchSize, numSteps});
     loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
 
-    auto *res = llvm::cast<SaveNode>(F->getNodeByName("result"));
-    auto *T = ctx.get(res->getPlaceholder());
+    auto *T = ctx.get(res);
     std::string result;
     std::string input;
     input.insert(input.begin(), text.begin(), text.begin() + numSteps);
