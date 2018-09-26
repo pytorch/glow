@@ -381,7 +381,10 @@ public:
   char *getUnsafePtr() const { return getData(); }
 
   /// \return a new handle that points and manages this tensor.
-  template <class ElemTy = float> Handle<ElemTy> getHandle();
+  template <class ElemTy = float> Handle<ElemTy> getHandle() &;
+
+  /// If Tensor is rvalue, it is an error to get its Handle.
+  template <class ElemTy = float> Handle<ElemTy> getHandle() && = delete;
 
 private:
   /// \returns a pointer to the raw data, of type \p ElemTy.
@@ -779,7 +782,7 @@ private:
   }
 };
 
-template <class ElemTy> Handle<ElemTy> Tensor::getHandle() {
+template <class ElemTy> Handle<ElemTy> Tensor::getHandle() & {
   assert(type_.isType<ElemTy>() && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
 }
