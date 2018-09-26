@@ -729,12 +729,10 @@ TEST(Quantization, quantizeGraphPartially) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *LHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs",
-                                 VisibilityKind::Private, true);
-  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
-                                 VisibilityKind::Private, true);
-  LHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
+  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *TN = F->createTanh("tanh", MMN);
@@ -762,6 +760,7 @@ TEST(Quantization, quantizeGraphPartially) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
+  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
@@ -809,10 +808,9 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   Function *F = mod.createFunction("main");
 
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
-  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
-                                 VisibilityKind::Private, true);
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
   ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *TNLHS = F->createTanh("tanh", LHS);
   auto *MMN = F->createMatMul("matmul", TNLHS, RHS);
@@ -843,6 +841,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
+  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
@@ -880,7 +879,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
     EXPECT_TRUE(!TN2->getResult().getType()->isQuantizedType());
 
     // Verify that the input variable to the tanh is not quantized.
-    auto *varTN2 = llvm::dyn_cast<Placeholder>(TN2->getInput());
+    auto *varTN2 = llvm::dyn_cast<Variable>(TN2->getInput());
     ASSERT_TRUE(varTN2);
     EXPECT_TRUE(!varTN2->getType()->isQuantizedType());
 
@@ -899,12 +898,10 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *LHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "lhs",
-                                 VisibilityKind::Private, true);
-  auto *RHS = mod.createVariable(ElemKind::FloatTy, {3, 3}, "rhs",
-                                 VisibilityKind::Private, true);
-  LHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
+  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *CN = F->createAdd("concat", LHS, MMN);
@@ -935,6 +932,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
+  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
