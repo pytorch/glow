@@ -3632,7 +3632,7 @@ TEST_P(InterpAndCPU, insertTensorTest) {
 }
 
 /// Test RowwiseQuantizedFullyConnected Node.
-TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
+TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   // In this test we subtract the outputs of a row-wise quantized FC and a
   // floating-point FC and ensure that the error is below some low value.
   auto *input =
@@ -3665,7 +3665,7 @@ TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
   auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
 
   auto *fcq = F_->createRowwiseQuantizedFullyConnected(
-      ctx_, "fcq", inputq, newWeights, biasq, resTy);
+      "fcq", inputq, newWeights, biasq, resTy);
   auto *dequantRes = F_->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the rowwise quantized fc.
