@@ -169,13 +169,13 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatRELU) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "exp", false);
 
-  Node *FA = F->createFullyConnected("fc1", A, numOutputElem / 2);
+  Node *FA = F->createFullyConnected(ctx, "fc1", A, numOutputElem / 2);
   FA = F->createRELU("relu1", FA);
 
   auto *B =
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "B", true);
   ctx.allocate(B);
-  Node *FB = F->createFullyConnected("fc2", B, numOutputElem / 2);
+  Node *FB = F->createFullyConnected(ctx, "fc2", B, numOutputElem / 2);
   FB = F->createRELU("relu2", FB);
 
   Node *O = F->createConcat("concat", {FA, FB}, 1);
@@ -244,7 +244,7 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
 
   Node *O = F->createAvgPool("pool", A, 3, 3, 1);
   O = F->createTanh("tanh", O);
-  O = F->createFullyConnected("fc", O, numOutputElem);
+  O = F->createFullyConnected(ctx, "fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave(ctx, "ret", O);
 
@@ -380,7 +380,7 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
 
-  Node *FA = F->createFullyConnected("fc", A, numOutputElem);
+  Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
   FA = F->createTanh("tanh", FA);
   FA = F->createRegression("reg", FA, Exp);
   auto *result = F->createSave(ctx, "ret", FA);
@@ -409,7 +409,7 @@ TEST_P(InterpreterGrad, gradientCheckFC) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
 
-  Node *FA = F->createFullyConnected("fc", A, numOutputElem);
+  Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
   FA = F->createRegression("reg", FA, Exp);
   auto *result = F->createSave(ctx, "ret", FA);
 
@@ -497,7 +497,7 @@ TEST_P(InterpreterGrad, gradientCheckTranspose) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "exp", false);
   Node *TA = F->createTranspose("transpose", A, NHWC2NCHW);
-  TA = F->createFullyConnected("fc", TA, numOutputElem);
+  TA = F->createFullyConnected(ctx, "fc", TA, numOutputElem);
   TA = F->createRegression("regress", TA, Exp);
   auto *result = F->createSave(ctx, "ret", TA);
 

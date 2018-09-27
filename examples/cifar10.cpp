@@ -127,7 +127,7 @@ void testCIFAR10() {
   auto *RL2 = F->createRELU("relu", CV2);
   auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
 
-  auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
   auto *SM = F->createSoftMax("softmax", FCL1, E);
   auto *save = F->createSave(ctx, "ret", SM);
   auto *result = ctx.allocate(save->getPlaceholder());

@@ -2249,11 +2249,11 @@ TEST_P(Operator, simplePredication) {
   Node *C5 = F_->createSplat("C5", counters->getType(), 5.0);
   Node *pred = F_->createCmpLTE("cmp", C5, counters);
 
-  auto *FC0 = F_->createFullyConnected("FC0", inputs, 128);
+  auto *FC0 = F_->createFullyConnected(ctx_, "FC0", inputs, 128);
   auto *RL0 = F_->createRELU("RL0", FC0);
-  auto *FC1 = F_->createFullyConnected("FC1", RL0, 64);
+  auto *FC1 = F_->createFullyConnected(ctx_, "FC1", RL0, 64);
   auto *RL1 = F_->createRELU("RL1", FC1);
-  auto *FC2 = F_->createFullyConnected("FC2", RL1, 32);
+  auto *FC2 = F_->createFullyConnected(ctx_, "FC2", RL1, 32);
   auto *RL2 = F_->createRELU("RL2", FC2);
 
   auto *save = F_->createSave(ctx_, "ret", RL2);

@@ -52,7 +52,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *RL1 = F->createRELU("conv23", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected("fc3", MP1, 10);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
@@ -83,7 +83,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
   auto *CV0 = F->createLocalResponseNormalization("LRN", A);
-  auto *FCL1 = F->createFullyConnected("fc3", CV0, 10);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);

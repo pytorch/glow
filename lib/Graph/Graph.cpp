@@ -616,29 +616,6 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
-FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
-                                                   NodeValue input,
-                                                   size_t outDepth) {
-  TypeRef T = input.getType();
-  auto idim = flattenCdr(input.dims());
-
-  size_t fanIn = idim.second;
-
-  auto *W =
-      getParent()->createVariable(T->getElementType(), {idim.second, outDepth},
-                                  "weights", VisibilityKind::Private, true);
-
-  auto *B = getParent()->createVariable(T->getElementType(), {outDepth}, "bias",
-                                        VisibilityKind::Private, true);
-
-  W->getPayload().init(Tensor::InitKind::Xavier, fanIn, getPRNG());
-  B->getPayload().init(Tensor::InitKind::Broadcast, .1, getPRNG());
-
-  auto OT =
-      getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
-  return addNode(new FullyConnectedNode(name, OT, input, W, B));
-}
-
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(Context &ctx,
                                                llvm::StringRef name,

@@ -271,11 +271,6 @@ public:
                                            NodeValue input, Node *W, Node *B,
                                            TypeRef outTy);
 
-  /// Create a fully connected node with the given \p name, \p input and \p
-  /// output depth. Trainable weight and bias variables are created implicitly.
-  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, size_t outDepth);
-
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
   /// is the constant weights and will be row-wise quantized during node
@@ -601,6 +596,8 @@ public:
                               unsigned_t stride, unsigned_t pad,
                               unsigned_t group);
 
+  /// Create a fully connected node with the given \p name, \p input and \p
+  /// output depth. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(Context &ctx, llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
