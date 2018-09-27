@@ -221,21 +221,10 @@ public:
   ///@{
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, llvm::ArrayRef<unsigned_t> kernels,
-                              llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group);
-
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group);
-
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              size_t depth, unsigned_t kernel,
-                              unsigned_t stride, unsigned_t pad,
                               unsigned_t group);
 
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,

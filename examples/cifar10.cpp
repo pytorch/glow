@@ -115,15 +115,15 @@ void testCIFAR10() {
   ctx.allocate(E);
 
   // Create the rest of the network.
-  auto *CV0 = F->createConv("conv", A, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv("conv", MP0, 20, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(ctx, "conv", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv("conv", MP1, 20, 5, 1, 2, 1);
+  auto *CV2 = F->createConv(ctx, "conv", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu", CV2);
   auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
 

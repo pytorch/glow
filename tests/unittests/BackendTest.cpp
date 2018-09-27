@@ -114,15 +114,15 @@ TEST_P(BackendTest, simpleInference) {
 
   auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
 
-  auto *CV0 = F->createConv("conv1", input, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(ctx, "conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv("conv2", MP0, 20, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(ctx, "conv2", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu2", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv("conv3", MP1, 20, 5, 1, 2, 1);
+  auto *CV2 = F->createConv(ctx, "conv3", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu3", CV2);
   auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
 
