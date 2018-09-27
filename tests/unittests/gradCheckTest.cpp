@@ -58,7 +58,7 @@ float gradDiff(float G1, float G2) {
 Placeholder *getGrad(const VariableGradientsList &grads, Placeholder *V) {
   for (auto &p : grads) {
     if (p.first == V) {
-      return cast<Placeholder>(p.second);
+      return p.second;
     }
   }
   return nullptr;
@@ -66,7 +66,7 @@ Placeholder *getGrad(const VariableGradientsList &grads, Placeholder *V) {
 
 void allocateGrads(Context &ctx, const VariableGradientsList &grads) {
   for (auto &p : grads) {
-    auto grad = cast<Placeholder>(p.second);
+    auto grad = p.second;
     ctx.allocate(grad);
   }
 }

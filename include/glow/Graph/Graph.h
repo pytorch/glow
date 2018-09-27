@@ -677,7 +677,8 @@ public:
 
 struct TrainingConfig;
 
-using VariableGradientsList = std::list<std::pair<Storage *, Storage *>>;
+using VariableGradientsList =
+    std::list<std::pair<Placeholder *, Placeholder *>>;
 
 /// Create a new Function that 'trains' the input Function. We differentiate the
 /// nodes and insert code to update the weights based on the \p config
