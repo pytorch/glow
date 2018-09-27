@@ -272,7 +272,7 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                                    false);
 
-  Node *O = F->createBatchNormalization("batch", A, 3, 0.0001, 0.9);
+  Node *O = F->createBatchNormalization(ctx, "batch", A, 3, 0.0001, 0.9);
   O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
   O = F->createRegression("reg", O, Ex);
   auto result = F->createSave(ctx, "ret", O);
