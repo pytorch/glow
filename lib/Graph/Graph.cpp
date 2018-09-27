@@ -561,8 +561,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 }
 
 RowwiseQuantizedFullyConnectedNode *
-Function::createRowwiseQuantizedFullyConnected(Context &ctx,
-                                               llvm::StringRef name,
+Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Variable *W,
                                                Node *B, TypeRef outTy) {
   // Since W is constant, quantize it in compilation time.
@@ -578,14 +577,17 @@ Function::createRowwiseQuantizedFullyConnected(Context &ctx,
   auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
                                                0.0, 0, "weights.rwqfc",
                                                VisibilityKind::Private, false);
-  auto *scales = getParent()->createPlaceholder(ElemKind::FloatTy, {numRows},
-                                                "scales.rwqfc", false);
-  auto *offsets = getParent()->createPlaceholder(
-      ElemKind::Int32QTy, {numRows}, 0.0, 0, "offsets.rwqfc", false);
+  auto *scales =
+      getParent()->createVariable(ElemKind::FloatTy, {numRows}, "scales.rwqfc",
+                                  VisibilityKind::Private, false);
+  auto *offsets = getParent()->createVariable(ElemKind::Int32QTy, {numRows},
+                                              0.0, 0, "offsets.rwqfc",
+                                              VisibilityKind::Private, false);
 
   quantization::tensorRowwiseQuantization(
-      weights->getPayload(), qWeights->getPayload(), *ctx.allocate(scales),
-      *ctx.allocate(offsets));
+      weights->getPayload(), qWeights->getPayload(), scales->getPayload(),
+      offsets->getPayload());
+
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));
 }
