@@ -1,5 +1,3 @@
-// Copyright 2017 Facebook Inc.  All Rights Reserved.
-
 syntax = "proto2";
 
 package caffe2;
@@ -72,6 +70,7 @@ message QTensorProto {
   required bool is_signed = 5;
   repeated int32 data = 6 [packed = true];
   optional string name = 7;
+  optional TensorProto.DataType data_type = 8 [default = INT32];
 }
 
 // TensorProtos stores multiple TensorProto objects in one single proto. This
@@ -101,18 +100,27 @@ message Argument {
   optional float f = 2;
   optional int64 i = 3;
   optional bytes s = 4;
+  optional NetDef n = 8;
   repeated float floats = 5;
   repeated int64 ints = 6;
   repeated bytes strings = 7;
+  repeated NetDef nets = 9;
 }
 
 // DeviceType that Caffe2 currently supports.
 // Note: if you add a device type, make sure you add the corresponding device
-// line in core/blob_serialization.cc.
+// line in the DeviceTypeName() function in caffe2/utils/proto_utils.cc
+// and update ATen/core/DeviceType.h
 enum DeviceType {
   CPU = 0;                    // In default, we will use CPU.
   CUDA = 1;                   // CUDA.
   MKLDNN = 2;                 // Reserved for explicit MKLDNN
+  OPENGL = 3;                 // OpenGL
+  OPENCL = 4;                 // OpenCL
+  IDEEP = 5;                  // IDEEP.
+  HIP = 6;                    // AMD HIP
+  // Change the following number if you add more devices in the code.
+  COMPILE_TIME_MAX_DEVICE_TYPES = 7;
   ONLY_FOR_TEST = 20901701;   // This device type is only for test.
 }
 
@@ -120,6 +128,8 @@ enum DeviceType {
 // different DeviceTypes, so currently all devices share the same DeviceOption
 // proto. Fields that are specific to a device type is ignored if the type does
 // not match.
+// Note: if you add fields to the DeviceOption, make sure you add the
+// corresponding changes to IsSameDevice() function in utils/proto_utils.{h,cc}.
 message DeviceOption {
   // [general] Options that need to be carried out before running the execution.
   // optional DeviceType device_type = 1 [ default = CPU ];
@@ -128,6 +138,15 @@ message DeviceOption {
   optional int32 cuda_gpu_id = 2;
   // [general] The random seed to start the device random number generator with.
   optional uint32 random_seed = 3;
+  // [general] What node this op should execute on.
+  // Used for net transformation purposes. Must be empty at execution time.
+  optional string node_name = 4;
+  // [CPU and Linux specific] NUMA node id
+  optional int32 numa_node_id = 5 [default = -1];
+  // [general] Extra information passed, not used at execution time currently.
+  repeated string extra_info = 6;
+  // [HIP specific] the hip gpu id.
+  optional int32 hip_gpu_id = 7;
 }
 
 // Operator Definition.
@@ -162,6 +181,11 @@ message OperatorDef {
   // is_gradient_op argument is only used as a hint in shape inference
   // and has no runtime significance
   optional bool is_gradient_op = 9 [default = false];
+
+  // debug information associated with the construction of the operator.
+  // This is an optional string with no assumed characteristics as
+  // operators can be constructed in any language.
+  optional string debug_info = 10;
 }
 
 // Network definition.
@@ -270,7 +294,7 @@ message ExecutionStep {
   // If yes, the workflow and nets are re-created every time this step is run.
   optional bool create_workspace = 12;
 
-  // How many copies of the children exeuction steps to run concurrently.
+  // How many copies of the children execution steps to run concurrently.
   optional int32 num_concurrent_instances = 13;
 }
 
@@ -294,6 +318,10 @@ message BlobProto {
   optional TensorProto tensor = 3;
   optional bytes content = 4;
   optional QTensorProto qtensor = 5;
+  // If blob is not Tensor and is divided into chunks, content_num_chunks
+  // contains number of chunks, into which blob was divided.
+  optional int32 content_num_chunks = 6;
+  optional int32 content_chunk_id = 7;
 }
 
 // Protobuf format to serialize DBReader.
@@ -307,4 +335,3 @@ message DBReaderProto {
   // The current key of the DB if the DB supports seeking.
   optional string key = 4;
 }
-
