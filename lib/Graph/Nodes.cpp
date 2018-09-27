@@ -728,6 +728,8 @@ void LogNode::verify() const {
   }
 }
 
+void IsNaNNode::verify() const { checkSameShape(getInput(), getResult()); }
+
 void SelectNode::verify() const {
   assert(getResult().getElementType() == getCond().getElementType());
   assert(getResult().getElementType() == getLHS().getElementType());

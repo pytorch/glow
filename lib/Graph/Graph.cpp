@@ -1075,6 +1075,25 @@ CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
+IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
+  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), input.getType());
+  return addNode(new IsNaNNode(name, OT, input));
+}
+
+Node *Function::createReplaceNaN(llvm::StringRef name, NodeValue input,
+                                 float value) {
+  // Create IsNaN node.
+  auto *INN = createIsNaN(name.str() + ".isNaN", input);
+
+  // Create Splat node.
+  auto *S = createSplat(name.str() + ".splat", input.getType(), value);
+
+  // Create Select node to pick between original and replacement values.
+  auto *SN = createSelect(name.str() + ".select", INN, S, input);
+
+  return SN;
+}
+
 PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
   auto *SP = createSplat(name, base.getType(), exp);
   return createPow(name, base, SP);

@@ -413,6 +413,18 @@ public:
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
+  /// Create a node that produces an boolean output of the same shape as
+  /// \p input in which each element indicates whether or not the corresponding
+  /// element in \p input is NaN or not.
+  IsNaNNode *createIsNaN(llvm::StringRef name, NodeValue input);
+
+  /// Implements an operation that replaces all instances of NaN in \p input
+  /// with \p value. This operation is lowered to a Select node with \p input
+  /// as one of the inputs, a Splat node created using \p value as the other
+  /// input, and an IsNaN node as the comparator input.
+  /// \returns the Select node.
+  Node *createReplaceNaN(llvm::StringRef name, NodeValue input, float value);
+
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
   SelectNode *createSelect(llvm::StringRef name, NodeValue Cond, NodeValue LHS,

@@ -1219,6 +1219,15 @@ void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
   }
 }
 
+void InterpreterFunction::fwdElementIsNaNInst(const glow::ElementIsNaNInst *I) {
+  auto inW = getWeightHandle(I->getSrc());
+  auto outW = getWeightHandle(I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = std::isnan(val);
+  }
+}
+
 void InterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
