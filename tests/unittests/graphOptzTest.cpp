@@ -122,12 +122,13 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   F_->createSave(ctx_, "ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -148,7 +149,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
   Node *pred2 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
-  Node *CV = F_->createConv("conv", A, 16, 5, 1, 2, 1);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   CV->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization("batch", CV, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
@@ -156,6 +157,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 

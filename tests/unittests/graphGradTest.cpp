@@ -44,11 +44,11 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
 
-  auto *CV0 = F->createConv("conv1", A, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(ctx, "conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv("conv2", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(ctx, "conv2", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("conv23", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 3, 3, 0);
 
