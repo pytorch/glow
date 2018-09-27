@@ -228,36 +228,36 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
   } // End of the for-each instr loop.
 
   for (auto N : nodes) {
-    // Iterate only through Variables/Placeholders used by the Function.
-    // These are inserted during the post-order walk.
-    Storage *V = llvm::dyn_cast<Storage>(N);
-    if (!V)
+    // Iterate only through Placeholders used by the Function. These are
+    // inserted during the post-order walk.
+    Placeholder *PH = llvm::dyn_cast<Placeholder>(N);
+    if (!PH)
       continue;
 
     // In this special differentiation mode we record the last gradient value
     // without performing the SGD update. This mode is used by the unit tests.
     if (varGrads) {
-      if (map.hasGradient(V)) {
-        std::string nodeName = "_grad_" + V->getName().str();
+      if (map.hasGradient(PH)) {
+        std::string nodeName = "_grad_" + PH->getName().str();
         // Save the gradient and return the destination variable.
-        auto *saveNode = G->createSavePH(nodeName, map.getGradient(V));
-        auto *GradV = llvm::dyn_cast<Storage>(saveNode->getPlaceholder());
-        varGrads->push_back({V, GradV});
+        auto *saveNode = G->createSavePH(nodeName, map.getGradient(PH));
+        Placeholder *GradV = saveNode->getPlaceholder();
+        varGrads->push_back({PH, GradV});
       }
       continue;
     }
 
     // Don't update nodes that are not marked as trainable.
-    if (!V->isTraining()) {
+    if (!PH->isTraining()) {
       continue;
     }
 
-    auto X = new SGDNode(V->getName(), map.getGradient(V), V, conf.L1Decay,
+    auto X = new SGDNode(PH->getName(), map.getGradient(PH), PH, conf.L1Decay,
                          conf.L2Decay, conf.learningRate, conf.momentum,
                          conf.batchSize);
     toAppend.push_back(X);
     // Now update the weight with the value computed by SGD.
-    auto *save = new SaveNode(V->getName().str() + ".saveGrad", {X, 0}, V);
+    auto *save = new SaveNode(PH->getName().str() + ".saveGrad", {X, 0}, PH);
     toAppend.push_back(save);
   }
 
