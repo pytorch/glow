@@ -381,12 +381,6 @@ public:
                    unsigned_t axis, llvm::ArrayRef<size_t> split,
                    std::vector<Node *> &outputs);
 
-  BatchNormalizationNode *createBatchNormalization(llvm::StringRef name,
-                                                   NodeValue input,
-                                                   unsigned_t channelIdx = 0,
-                                                   float epsilon = 1e-5,
-                                                   float momentum = 0.9);
-
   BatchNormalizationNode *
   createBatchNormalization(llvm::StringRef name, NodeValue input,
                            NodeValue beta, NodeValue gamma, NodeValue mean,

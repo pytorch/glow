@@ -975,35 +975,6 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
          "Total size of results must be equal to input size.");
 }
 
-BatchNormalizationNode *
-Function::createBatchNormalization(llvm::StringRef name, NodeValue input,
-                                   unsigned_t channelIdx, float epsilon,
-                                   float momentum) {
-  // Figure out how many channels are in the tensor.
-  size_t channels = input.dims()[channelIdx];
-
-  // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "beta", VisibilityKind::Private, true);
-
-  beta->getPayload().init(glow::Tensor::InitKind::Zero, 0, getPRNG());
-
-  auto *gamma = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "gamma", VisibilityKind::Private, true);
-
-  gamma->getPayload().init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
-
-  auto *mean = getParent()->createVariable(
-      ElemKind::FloatTy, {channels}, "mean", VisibilityKind::Private, false);
-
-  auto *variance =
-      getParent()->createVariable(ElemKind::FloatTy, {channels}, "variance",
-                                  VisibilityKind::Private, false);
-
-  return createBatchNormalization(name, input, beta, gamma, mean, variance,
-                                  channelIdx, epsilon, momentum);
-}
-
 BatchNormalizationNode *Function::createBatchNormalization(
     llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
     NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,

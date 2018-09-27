@@ -391,13 +391,15 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       epsilon = loadFloat(epsilonIt->second);
     }
 
-    auto *node = G_.createBatchNormalization(opName, in, 1, epsilon);
+    auto *scaleV = G_.getParent()->createVariable("scale", *scale);
+    auto *biasV = G_.getParent()->createVariable("bias", *bias);
+    auto *meanV = G_.getParent()->createVariable(
+        "mean", *mean, VisibilityKind::Private, false);
+    auto *varV = G_.getParent()->createVariable("var", *var,
+                                                VisibilityKind::Private, false);
+    auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
+                                             varV, 1, epsilon);
 
-    // Load the weights.
-    cast<Variable>(node->getScale())->assign(scale);
-    cast<Variable>(node->getBias())->assign(bias);
-    cast<Variable>(node->getMean())->assign(mean);
-    cast<Variable>(node->getVar())->assign(var);
     addNodeAsOutput(op, node);
     return true;
   }
