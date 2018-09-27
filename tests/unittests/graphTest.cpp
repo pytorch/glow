@@ -963,7 +963,7 @@ TEST(Graph, placeholder) {
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", false);
   Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", false);
 
-  K = F->createFullyConnected("FC", K, 10);
+  K = F->createFullyConnected(ctx, "FC", K, 10);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave(ctx, "Save", K);

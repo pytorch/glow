@@ -266,9 +266,9 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
   auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
-  auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getWeights())->assign(weights);
-  cast<Variable>(fc->getBias())->assign(bias);
+  auto *fc = F->createFullyConnected(ctx, "fc", var1, bias->dims()[0]);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->assign(weights);
+  ctx.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *lrn =
       F->createLocalResponseNormalization("lrn", reshape1, 2, 2.0, 0.5, 1.0);
@@ -397,9 +397,9 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
   auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
-  auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getWeights())->assign(weights);
-  cast<Variable>(fc->getBias())->assign(bias);
+  auto *fc = F->createFullyConnected(ctx, "fc", var1, bias->dims()[0]);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->assign(weights);
+  ctx.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *pool = F->createAvgPool("pool", reshape1, 2, 2, 0);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
@@ -454,9 +454,9 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
   auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
-  auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getWeights())->assign(weights);
-  cast<Variable>(fc->getBias())->assign(bias);
+  auto *fc = F->createFullyConnected(ctx, "fc", var1, bias->dims()[0]);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->assign(weights);
+  ctx.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *pool = F->createMaxPool("pool", reshape1, 5, 3, 4);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
@@ -829,9 +829,9 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
   auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
-  auto *fc = F->createFullyConnected("fc", var1, bias->dims()[0]);
-  cast<Variable>(fc->getWeights())->assign(weights);
-  cast<Variable>(fc->getBias())->assign(bias);
+  auto *fc = F->createFullyConnected(ctx, "fc", var1, bias->dims()[0]);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->assign(weights);
+  ctx.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *softmax = F->createSoftMax("softmax", fc, var2);
   auto *result = F->createSave(ctx, "ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
@@ -936,12 +936,12 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
-  auto *fc = F->createFullyConnected("fc", tr, 16);
+  auto *fc = F->createFullyConnected(ctx, "fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
-  auto *fc2 = F->createFullyConnected("fc2", rl0, 8);
+  auto *fc2 = F->createFullyConnected(ctx, "fc2", rl0, 8);
   auto *rl1 = F->createRELU("relu", fc2);
-  cast<Variable>(fc->getWeights())->getHandle().clear(0.8);
-  cast<Variable>(fc2->getWeights())->getHandle().clear(1.5);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->getHandle().clear(0.8);
+  ctx.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.5);
   auto *result = F->createSave(ctx, "ret", rl1);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
@@ -962,19 +962,19 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
       mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
 
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
-  auto *fc = F->createFullyConnected("fc", tr, 16);
+  auto *fc = F->createFullyConnected(ctx, "fc", tr, 16);
   auto *th0 = F->createTanh("tanh", fc);
   auto *sg0 = F->createSigmoid("sig", fc);
   auto *A1 = F->createAdd("add", th0, sg0);
-  auto *fc2 = F->createFullyConnected("fc2", A1, 16);
+  auto *fc2 = F->createFullyConnected(ctx, "fc2", A1, 16);
 
   auto *R = F->createRegression("reg", fc2, fc2);
   auto *SM = F->createSoftMax("SM", R, selected);
   auto *result = F->createSave(ctx, "ret", SM);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  cast<Variable>(fc->getWeights())->getHandle().clear(0.4);
-  cast<Variable>(fc2->getWeights())->getHandle().clear(3.5);
+  ctx.get(cast<Placeholder>(fc->getWeights()))->getHandle().clear(0.4);
+  ctx.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(3.5);
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
@@ -997,15 +997,15 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   cast<Variable>(conv1->getFilter())->getHandle().clear(0.5);
   cast<Variable>(conv1->getBias())->getHandle().clear(0.7);
   auto *sigmoid1 = F->createSigmoid("sigmoid1", conv1);
-  auto *fc1 = F->createFullyConnected("fc1", var2, 2352);
-  cast<Variable>(fc1->getWeights())->getHandle().clear(0.6);
+  auto *fc1 = F->createFullyConnected(ctx, "fc1", var2, 2352);
+  ctx.get(cast<Placeholder>(fc1->getWeights()))->getHandle().clear(0.6);
   auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
   auto *relu1 = F->createRELU("relu1", reshape1);
   auto *pool1 = F->createMaxPool("pool1", relu1, 2, 2, 1);
   auto *add = F->createAdd("add", sigmoid1, pool1);
   auto *tanh = F->createTanh("tanh", add);
-  auto *fc2 = F->createFullyConnected("fc2", var3, 720);
-  cast<Variable>(fc2->getWeights())->getHandle().clear(1.1);
+  auto *fc2 = F->createFullyConnected(ctx, "fc2", var3, 720);
+  ctx.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.1);
   auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6});
   auto *mul = F->createMul("mul", tanh, reshape2);
   auto *sigmoid2 = F->createSigmoid("sigmoid2", mul);

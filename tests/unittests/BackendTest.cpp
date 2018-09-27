@@ -48,6 +48,7 @@ TEST(Interpreter, NotImplementedSave) {
 
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
+  Context ctx;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -55,13 +56,12 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
   auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
-  Node *O = F->createFullyConnected("fc", A, 4);
+  Node *O = F->createFullyConnected(ctx, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
   F = ::glow::profileQuantization(F);
 
-  Context ctx;
   ctx.allocate(A);
   ctx.allocate(Ex);
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -126,7 +126,7 @@ TEST_P(BackendTest, simpleInference) {
   auto *RL2 = F->createRELU("relu3", CV2);
   auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
 
-  auto *FCL1 = F->createFullyConnected("fc", MP2, 10);
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
   auto *S = F->createSave(ctx, "ret", SM);

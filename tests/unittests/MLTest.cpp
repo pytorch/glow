@@ -1033,7 +1033,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
 
   auto *CV = F->createConv("conv", input, 1, 3, 1, 0, 1);
   auto *TANH = F->createTanh("tanh", CV);
-  auto *FCL = F->createFullyConnected("fc", TANH, 2);
+  auto *FCL = F->createFullyConnected(ctx, "fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
   SaveNode *result = F->createSave(ctx, "ret", SM);
 
@@ -1130,9 +1130,9 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // A simple single-layer FC network could solve this program but we use a two
   // layer FC network to give the compiler something slightly more complex to
   // work with so we are adding another FC layer.
-  auto *FC0 = F->createFullyConnected("fc0", input, 6);
+  auto *FC0 = F->createFullyConnected(ctx, "fc0", input, 6);
   auto *RL0 = F->createRELU("relu0", FC0);
-  auto *FC1 = F->createFullyConnected("fc1", RL0, 2);
+  auto *FC1 = F->createFullyConnected(ctx, "fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
   SaveNode *result = F->createSave(ctx, "ret", R);
 
@@ -1309,7 +1309,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   auto *ReLUA = F->createRELU("hidden_matrixA_ReLU", FCA);
   auto *ReLUB = F->createRELU("hidden_matrixB_ReLU", FCB);
   auto *concat = F->createConcat("hidden_concat_A_B", {ReLUA, ReLUB}, 1);
-  auto *hiddenFC = F->createFullyConnected("hidden_fc", concat, 30);
+  auto *hiddenFC = F->createFullyConnected(ctx, "hidden_fc", concat, 30);
   auto *finalReLU = F->createRELU("hidden_concat_ReLU", hiddenFC);
   auto *finalFC = F->createFullyConnected(ctx, "output_fc", finalReLU, 2);
   auto *softMax = F->createSoftMax("output", finalFC, varExpected);
