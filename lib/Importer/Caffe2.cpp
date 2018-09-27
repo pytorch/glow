@@ -328,6 +328,19 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "ReplaceNaN") {
+    // Load the input and NaN replacement value:
+    auto input = getNodeValueOrCreateVariableByName(op.input(0));
+    auto valueIt = dict.find("value");
+    auto value = valueIt != dict.end() ? loadFloat(valueIt->second) : 0.0f;
+
+    auto *node = G_.createReplaceNaN(opName, input, value);
+
+    // Save the outputs:
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "ChannelShuffle") {
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
 

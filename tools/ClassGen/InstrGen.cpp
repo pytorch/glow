@@ -300,6 +300,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("CmpEQ");
 
+  BB.newInstr("ElementIsNaN")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen("IsNaN");
+
   BB.newInstr("ElementPow")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

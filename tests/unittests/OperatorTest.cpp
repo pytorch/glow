@@ -89,6 +89,32 @@ TEST_P(Operator, pow) {
   EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
+TEST_P(InterpAndCPU, replaceNaN) {
+  auto value = 1.0f;
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto XH = ctx_.allocate(X)->getHandle();
+  XH = {1, NAN, 2, NAN, 3, NAN};
+
+  auto *RNN = F_->createReplaceNaN("replaceNaN", X, value);
+
+  auto *save = F_->createSave(ctx_, "save", RNN);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+
+  EE_.run();
+
+  auto saveH = saveTensor->getHandle();
+
+  for (size_t i = 0; i < 6; i++) {
+    if (std::isnan(XH.raw(i))) {
+      EXPECT_EQ(saveH.raw(i), value);
+    } else {
+      EXPECT_EQ(XH.raw(i), saveH.raw(i));
+    }
+  }
+}
+
 TEST_P(InterpAndCPU, log) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
   auto XH = ctx_.allocate(X)->getHandle();

@@ -1,0 +1,13 @@
+name: "replaceNaN"
+op {
+  input: "input"
+  output: "replace_nan_result"
+  name: ""
+  type: "ReplaceNaN"
+  arg {
+    name: "value"
+    f: 1
+  }
+}
+external_input: "input"
+external_output: "replace_nan_result"

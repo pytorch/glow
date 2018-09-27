@@ -361,6 +361,7 @@ TEST(caffe2, importClip) {
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Variable *output;
+
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
   inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
                             46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
@@ -427,5 +428,65 @@ TEST(caffe2, importClipDefault) {
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 5 * 5; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), inputs_0.getHandle().raw(i));
+  }
+}
+
+/// Test loading a ReplaceNaN operator.
+TEST(caffe2, replaceNaN) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/replace_nan_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Variable *output;
+  Tensor input(ElemKind::FloatTy, {10, 10});
+  auto inputHandle = input.getHandle();
+
+  // Fill input by alternating between NAN and random values.
+  inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
+  for (size_t i = 0; i < inputHandle.size(); ++i) {
+    if (i & 0x1) {
+      inputHandle.raw(i) = NAN;
+    }
+  }
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  auto result = output->getHandle();
+
+  // Check that the shape of the output matches the input.
+  std::vector<size_t> expectedDims = {10, 10};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+
+  // Compile and run the model.
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  // High level checks on the content of the graph.
+  // We have 1 IsNaN, 1 Splat, 1 Select and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 4);
+  // With have one input and one output.
+  EXPECT_EQ(mod.getVars().size(), 2);
+
+  // Check that the output tensor is the same as the input tensor except for
+  // NaNs, which should have been replaced with 1 (the value specified in
+  // replace_nan_predict_net.pbtxt).
+  for (size_t i = 0; i < result.size(); ++i) {
+    if (std::isnan(inputHandle.raw(i)))
+      EXPECT_EQ(result.raw(i), 1);
+    else {
+      EXPECT_EQ(result.raw(i), inputHandle.raw(i));
+    }
   }
 }

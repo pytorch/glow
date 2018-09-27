@@ -315,6 +315,14 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
+  // clang-format off
+  BB.newNode("IsNaN")
+    .addInput("Input")
+    .addResultFromCtorArg()
+    .setDocstring("Determines whether each element of the Input is NaN and "
+                  "generates a mask that can be consumed by a Select node.");
+  // clang-format on
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
