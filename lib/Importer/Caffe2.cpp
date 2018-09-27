@@ -21,7 +21,7 @@
 
 #include "llvm/Support/Casting.h"
 
-#include "glow/caffe.pb.h"
+#include "caffe2/proto/caffe2.pb.h"
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 

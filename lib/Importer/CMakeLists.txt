@@ -13,21 +13,21 @@ if(NOT TARGET onnx_proto)
 endif()
 
 find_package(Protobuf REQUIRED)
-PROTOBUF_GENERATE_CPP(CAFFE_SRCS CAFFE_HDRS caffe.proto)
+PROTOBUF_GENERATE_CPP(CAFFE_SRCS CAFFE_HDRS caffe2.proto)
 
 # NB: We need to copy the *.pb.h files to appropriately-prefixed paths to
 # placate FB's internal build system.  That is, we need:
 #
-#   #include "glow/caffe.pb.h"
+#   #include "caffe2/proto/caffe2.pb.h"
 #
 # instead of:
 #
-#   #include "caffe.pb.h"
+#   #include "caffe2.pb.h"
 #
 # Please don't optimize away the "useless" copies!
 add_custom_command(
-  OUTPUT ${GLOW_BINARY_DIR}/glow/caffe.pb.h
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CAFFE_HDRS} ${GLOW_BINARY_DIR}/glow/caffe.pb.h
+  OUTPUT ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CAFFE_HDRS} ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h
   DEPENDS ${CAFFE_HDRS})
 
 add_library(Importer
@@ -36,7 +36,7 @@ add_library(Importer
               ONNX.cpp
               ONNXIFILoader.cpp 
               ${CAFFE_SRCS}
-              ${GLOW_BINARY_DIR}/glow/caffe.pb.h)
+              ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h)
 target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS})
 target_compile_definitions(Importer
                            INTERFACE
