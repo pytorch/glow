@@ -205,9 +205,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // Save the newly calculated mean and variance to the mean and variance
       // variables. These will be used during the next iteration of training.
       G->createSave("saveMean", MVN->getNewMean(),
-                    llvm::cast<Variable>(mean.getNode()));
+                    llvm::cast<Placeholder>(mean.getNode()));
       G->createSave("saveVar", MVN->getNewVar(),
-                    llvm::cast<Variable>(var.getNode()));
+                    llvm::cast<Placeholder>(var.getNode()));
 
       // Replace the BN's mean and variance with the new mean and variance
       // calculated from MVN. The indices here are based on the assumed

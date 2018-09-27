@@ -1564,9 +1564,11 @@ Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
 
   auto *mean = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
                                               "mean", false);
+  ctx.allocate(mean)->zero();
 
   auto *variance = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
                                                   "variance", false);
+  ctx.allocate(variance)->zero();
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
