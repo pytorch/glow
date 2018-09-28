@@ -994,3 +994,49 @@ TEST(Graph, placeholder) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave(ctx, "Save", K);
 }
+
+/// Check that the setType API allows to change the type of the
+/// related result and only the related result.
+TEST(Graph, setType) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  const size_t inputDims[] = {4, 10};
+  const size_t top5Dims[] = {4, 5};
+  auto *input =
+      M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+  TopKNode *topK = F->createTopK("add", input, 5);
+  TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
+
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+
+  // Modify the type of result 0 and make sure type 1 is not
+  // affected. Similarly the input shouldn't be affected.
+  TypeRef inputTy = M.uniqueType(ElemKind::FloatTy, inputDims);
+  TypeRef topKRes0 = M.uniqueType(ElemKind::Float16Ty, top5Dims);
+  topK->setType(0, topKRes0);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+
+  // Make sure the NodeValue API works the same way
+  // as the Node::setType API.
+  NodeValue valRes1 = topK->getNthResult(1);
+  valRes1.setType(topKRes0);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), topKRes0);
+  EXPECT_EQ(valRes1.getType(), topKRes0);
+
+  // Now restore sane types.
+  NodeValue valRes0 = topK->getNthResult(0);
+  valRes0.setType(origTopKRes0);
+  topK->setType(1, origTopKRes1);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(valRes0.getType(), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(valRes1.getType(), origTopKRes1);
+}
