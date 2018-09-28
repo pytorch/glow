@@ -1491,6 +1491,15 @@ Node *Function::createWeightedSum(llvm::StringRef name,
   return currAdd;
 }
 
+Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
+                           float max) {
+  auto *minSplat = createSplat(name.str() + ".minSplat", input.getType(), min);
+  auto *minClipped = createMax(name.str() + ".minClip", input, minSplat);
+  auto *maxSplat = createSplat(name.str() + ".maxSplat", input.getType(), max);
+  auto result = createMin(name.str(), minClipped, maxSplat);
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//

@@ -558,6 +558,9 @@ public:
   Node *createWeightedSum(llvm::StringRef name, llvm::ArrayRef<NodeValue> data,
                           llvm::ArrayRef<NodeValue> weights);
 
+  /// Create a series of nodes for the Clip operator. It limits the given input
+  /// within an interval specified by the `min` and `max` arguments.
+  Node *createClip(llvm::StringRef name, NodeValue input, float min, float max);
   /// @}
 
   /// @name The builder functions below are identical to the builder functions
