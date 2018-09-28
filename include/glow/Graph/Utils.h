@@ -132,6 +132,21 @@ public:
   }
 };
 
+/// Change the type to \p newTy for all the results of \p node
+/// whose element type is equal to \p origTy.
+/// \note This API does not support converting to a quantized type.
+inline void mutateNodeResTypeThatMatch(Module &mod, Node &node, ElemKind origTy,
+                                       ElemKind newTy) {
+  for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+    NodeValue res = node.getNthResult(idx);
+    if (res.getElementType() != origTy) {
+      continue;
+    }
+    TypeRef newTyRef = mod.uniqueType(newTy, res.dims());
+    res.setType(newTyRef);
+  }
+}
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H
