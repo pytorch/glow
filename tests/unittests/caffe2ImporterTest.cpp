@@ -490,3 +490,153 @@ TEST(caffe2, replaceNaN) {
     }
   }
 }
+
+/// Test loading a DotProduct operator with 1D inputs.
+TEST(caffe2, dotProduct1D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Variable *output;
+
+  // Input tensors.
+  const size_t kDataSize = 10;
+  Tensor X(ElemKind::FloatTy, {kDataSize});
+  Tensor Y(ElemKind::FloatTy, {kDataSize});
+  auto XH = X.getHandle();
+  auto YH = Y.getHandle();
+
+  // Fill inputs with random values.
+  XH.randomize(-3.0, 3.0, mod.getPRNG());
+  YH.randomize(-3.0, 3.0, mod.getPRNG());
+
+  // Compute expected output.
+  Tensor O(ElemKind::FloatTy, {kDataSize});
+  auto OH = O.getHandle();
+
+  for (size_t i = 0; i < kDataSize; ++i) {
+    OH.at({i}) = XH.at({i}) * YH.at({i});
+  }
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+                               {&X, &Y}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  auto result = output->getHandle();
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(result.dims().vec() == OH.dims().vec());
+
+  // High level checks on the content of the graph.
+  // We have 1 Mul and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Check that the graph has the expected shape (Mul -> Save),
+  // starting from the output.
+  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *MN = llvm::dyn_cast<MulNode>(saveNode->getInput());
+  ASSERT_TRUE(MN);
+
+  // With have two inputs and one output.
+  EXPECT_EQ(mod.getVars().size(), 3);
+
+  // Compile and run the model.
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0; i < result.size(); ++i) {
+    EXPECT_NEAR(result.raw(i), OH.raw(i), 0.00001);
+  }
+}
+
+// Test loading a DotProduct operator with 2D inputs.
+TEST(caffe2, dotProduct2D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Variable *output;
+
+  // Input tensors.
+  const size_t kRows = 10;
+  const size_t kCols = 20;
+  Tensor X(ElemKind::FloatTy, {kRows, kCols});
+  Tensor Y(ElemKind::FloatTy, {kRows, kCols});
+  auto XH = X.getHandle();
+  auto YH = Y.getHandle();
+
+  // Fill inputs with random values.
+  XH.randomize(-3.0, 3.0, mod.getPRNG());
+  YH.randomize(-3.0, 3.0, mod.getPRNG());
+
+  // Compute expected output.
+  Tensor O(ElemKind::FloatTy, {kRows});
+  auto OH = O.getHandle();
+
+  for (size_t i = 0; i < kRows; ++i) {
+    auto dotProduct = 0.0f;
+
+    // Compute dot product of the i-th row of X and Y.
+    for (size_t j = 0; j < kCols; ++j) {
+      dotProduct += (XH.at({i, j}) * YH.at({i, j}));
+    }
+
+    OH.at({i}) = dotProduct;
+  }
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+                               {&X, &Y}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  auto result = output->getHandle();
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(result.dims().vec() == OH.dims().vec());
+
+  // High level checks on the content of the graph.
+  // We have 1 Mul, 1 BatchedReduceAdd and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 3);
+
+  // Check that the graph has the expected shape
+  /// (Mul -> BatchedReduceAdd -> Save), starting from the output.
+  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *BRA = llvm::dyn_cast<BatchedReduceAddNode>(saveNode->getInput());
+  ASSERT_TRUE(BRA);
+  ASSERT_EQ(BRA->getNumInputs(), 1);
+
+  auto *MN = llvm::dyn_cast<MulNode>(BRA->getNthInput(0));
+  ASSERT_TRUE(MN);
+
+  // With have two inputs and one output.
+  EXPECT_EQ(mod.getVars().size(), 3);
+
+  // Compile and run the model.
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0; i < result.size(); ++i) {
+    EXPECT_NEAR(result.raw(i), OH.raw(i), 0.00001);
+  }
+}

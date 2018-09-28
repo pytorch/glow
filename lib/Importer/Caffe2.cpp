@@ -329,6 +329,19 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "DotProduct") {
+    // Load the inputs.
+    auto X = getNodeValueOrCreateVariableByName(op.input(0));
+    auto Y = getNodeValueOrCreateVariableByName(op.input(1));
+
+    // Create dot product node.
+    auto *node = G_.createDotProduct(opName, X, Y);
+
+    // Save the output.
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "ReplaceNaN") {
     // Load the input and NaN replacement value:
     auto input = getNodeValueOrCreateVariableByName(op.input(0));

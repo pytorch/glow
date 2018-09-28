@@ -1,0 +1,11 @@
+name: "dot_product"
+op {
+  input: "X"
+  input: "Y"
+  output: "dot_product"
+  name: ""
+  type: "DotProduct"
+}
+external_input: "X"
+external_input: "Y"
+external_output: "dot_product"
