@@ -18,6 +18,11 @@
 
 #include "glow/Importer/ONNXIFILoader.h"
 
+/// Allow defining names for onnxifi implementation.
+#ifndef GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER
+#define GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(name) name
+#endif
+
 /**
  * This file contains implementation of the onnxifi interface.
  * Documentation on the functions implementing onnxifi interface in
@@ -36,7 +41,8 @@
 ///                    backendIDs. As an output, it specifies the number of
 ///                    actual available backends.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
+    onnxBackendID *backendIDs, size_t *numBackends) {
   if (!numBackends) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -64,7 +70,8 @@ onnxGetBackendIDs(onnxBackendID *backendIDs, size_t *numBackends) {
 /// Caller is responsible to release objects associated with the backend ID
 /// (onnxBackend, onnxGraph, onnxEvent) before calling this function.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxReleaseBackendID(onnxBackendID backendID) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseBackendID)(
+    onnxBackendID backendID) {
   auto *backendId = static_cast<glow::onnxifi::BackendIdPtr>(backendID);
   if (!backendID) {
     return ONNXIFI_STATUS_INVALID_ID;
@@ -101,8 +108,9 @@ static onnxStatus setBackendInfoUInt64(void *infoValue, size_t *infoValueSize,
 
 /// Query high-level information about the backend and its target device.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
-                   void *infoValue, size_t *infoValueSize) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendInfo)(
+    onnxBackendID backendID, onnxBackendInfo infoType, void *infoValue,
+    size_t *infoValueSize) {
   if (!infoValueSize) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -136,8 +144,8 @@ onnxGetBackendInfo(onnxBackendID backendID, onnxBackendInfo infoType,
 
 /// Query if an ONNX model graph is compatible with the backend.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
-                            const void *onnxModel) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendCompatibility)(
+    onnxBackendID backendID, size_t onnxModelSize, const void *onnxModel) {
   if (!onnxModel) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -172,8 +180,9 @@ onnxGetBackendCompatibility(onnxBackendID backendID, size_t onnxModelSize,
 
 /// Initialize an ONNXIFI backend.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
-                onnxBackend *backend) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitBackend)(
+    onnxBackendID backendID, const uint64_t *auxpropertiesList,
+    onnxBackend *backend) {
   if (!backend) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -191,7 +200,7 @@ onnxInitBackend(onnxBackendID backendID, const uint64_t *auxpropertiesList,
 
 /// Deinitialize an ONNXIFI backend and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxReleaseBackend(onnxBackend backend) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseBackend)(onnxBackend backend) {
   auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
   if (!glowBackend) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
@@ -204,7 +213,8 @@ onnxReleaseBackend(onnxBackend backend) {
 
 /// Initialize a single-shot ONNXIFI event.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxInitEvent(onnxBackend backend, onnxEvent *event) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitEvent)(onnxBackend backend,
+                                                     onnxEvent *event) {
   if (!event) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -220,7 +230,7 @@ onnxInitEvent(onnxBackend backend, onnxEvent *event) {
 
 /// Change the state of the ONNXIFI event \p event to signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxSignalEvent(onnxEvent event) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(onnxEvent event) {
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -235,7 +245,7 @@ onnxSignalEvent(onnxEvent event) {
 
 /// Wait until an ONNXIFI event is signalled.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxWaitEvent(onnxEvent event) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -248,7 +258,8 @@ onnxWaitEvent(onnxEvent event) {
 
 /// Query ONNXIFI event state without blocking.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetEventState(onnxEvent event, onnxEventState *state) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetEventState)(
+    onnxEvent event, onnxEventState *state) {
   if (!state) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -266,7 +277,7 @@ onnxGetEventState(onnxEvent event, onnxEventState *state) {
 
 /// Deinitialize an ONNXIFI event and release associated resources.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxReleaseEvent(onnxEvent event) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseEvent)(onnxEvent event) {
   auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
   if (!glowEvent) {
     return ONNXIFI_STATUS_INVALID_EVENT;
@@ -278,7 +289,8 @@ onnxReleaseEvent(onnxEvent event) {
 }
 
 /// Parse an ONNXIFI graph and convert it for a particular backend.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxInitGraph(
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     onnxBackend backend, const uint64_t *auxPropertiesList,
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
@@ -326,7 +338,8 @@ static bool verifyDescriptors(uint32_t count,
 }
 
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses.
-ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
+ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetGraphIO)(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
@@ -356,8 +369,9 @@ ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI onnxSetGraphIO(
 /// Asynchronously execute operations in an ONNXIFI graph using pre-specified
 /// locations for inputs and outputs.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
-             onnxMemoryFenceV1 *outputFence) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
+    onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
+    onnxMemoryFenceV1 *outputFence) {
   if (!inputFence || !outputFence) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -399,7 +413,7 @@ onnxRunGraph(onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
 /// Deinitialize an ONNXIFI graph and release associated resources.
 /// It blocks until all in-flight inference operations complete.
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxReleaseGraph(onnxGraph graph) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseGraph)(onnxGraph graph) {
   auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
   if (!glowGraph) {
     return ONNXIFI_STATUS_INVALID_GRAPH;
