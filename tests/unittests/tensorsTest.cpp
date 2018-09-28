@@ -324,6 +324,38 @@ TEST(Tensor, copyWithCast) {
   }
 }
 
+/// Check that we can convert a tensor from float to float16_t and the other way
+/// around.
+TEST(Tensor, convertToType) {
+  PseudoRNG PRNG;
+  Tensor A(ElemKind::FloatTy, {10, 5, 3});
+  Tensor B(ElemKind::FloatTy, {10, 5, 3});
+
+  auto AH = A.getHandle<>();
+
+  AH.randomize(-2.0, 2.0, PRNG);
+
+  B.copyRawFrom(&A);
+  ASSERT_EQ(B.getElementType(), ElemKind::FloatTy);
+
+  // Cast B from float to float16_t.
+  B.convertToType(ElemKind::Float16Ty);
+  ASSERT_EQ(B.getElementType(), ElemKind::Float16Ty);
+  {
+    auto BH = B.getHandle<float16_t>();
+
+    EXPECT_EQ(A.size(), B.size());
+    for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
+      EXPECT_NEAR(AH.raw(idx), BH.raw(idx), 0.001);
+    }
+  }
+
+  // Cast back B from float16_t to float.
+  B.convertToType(ElemKind::FloatTy);
+  ASSERT_EQ(B.getElementType(), ElemKind::FloatTy);
+  EXPECT_TRUE(B.isEqual(A, 0.001));
+}
+
 TEST(Tensor, reset) {
   Tensor A(ElemKind::FloatTy, {2, 3});
   Tensor QA(ElemKind::Int8QTy, {3, 4}, 2.2, 7);

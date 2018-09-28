@@ -435,3 +435,20 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   }
   }
 }
+
+void Tensor::convertToType(ElemKind newTy) {
+  Tensor tmp(newTy, dims());
+  switch (newTy) {
+  case ElemKind::Float16Ty:
+    assert(getElementType() == ElemKind::FloatTy && "Cast not implemented");
+    tmp.copyWithCast<float16_t, float>(this);
+    break;
+  case ElemKind::FloatTy:
+    assert(getElementType() == ElemKind::Float16Ty && "Cast not implemented");
+    tmp.copyWithCast<float, float16_t>(this);
+    break;
+  default:
+    llvm_unreachable("Type not supported");
+  }
+  *this = std::move(tmp);
+}
