@@ -296,7 +296,8 @@ void LLVMIRGen::performCodeGen() {
     llvm::raw_svector_ostream asmStream(asmBuffer);
     llvm::legacy::PassManager PM;
     getTargetMachine().addPassesToEmitFile(
-        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+        PM, asmStream, nullptr,
+        llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
     PM.run(*llmodule_);
     llvm::outs() << asmStream.str();
   }

@@ -46,7 +46,7 @@ private:
   TargetMachine &TM_;
   const DataLayout DL_;
 #if LLVM_VERSION_MAJOR > 6
-  SymbolStringPool SSP_;
+  std::shared_ptr<SymbolStringPool> SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
