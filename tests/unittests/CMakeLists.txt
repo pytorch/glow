@@ -125,7 +125,7 @@ target_link_libraries(graphOptzTest
 add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest)
 
 add_executable(graphSchedulerTest
-	       graphSchedulerTest.cpp)
+               graphSchedulerTest.cpp)
 target_link_libraries(graphSchedulerTest
                       PRIVATE
                         Graph
@@ -133,7 +133,6 @@ target_link_libraries(graphSchedulerTest
                         gtest
                         testMain)
 target_include_directories(graphSchedulerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/IR)
-
 add_glow_test(graphSchedulerTest ${GLOW_BINARY_DIR}/tests/graphSchedulerTest)
 
 add_executable(quantizationTest
