@@ -26,7 +26,7 @@
 using namespace glow;
 using llvm::dyn_cast;
 
-void lowerAddGradNode(Function *F, AddGradNode &node) {
+static void lowerAddGradNode(Function *F, AddGradNode &node) {
   /// The chain rule for addition:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
@@ -34,7 +34,7 @@ void lowerAddGradNode(Function *F, AddGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
 }
-void lowerMulGradNode(Function *F, MulGradNode &node) {
+static void lowerMulGradNode(Function *F, MulGradNode &node) {
   /// The chain rule for multiplication:
   /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = LHS * delta(OUT)
@@ -47,7 +47,7 @@ void lowerMulGradNode(Function *F, MulGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
 }
-void lowerSubGradNode(Function *F, SubGradNode &node) {
+static void lowerSubGradNode(Function *F, SubGradNode &node) {
   /// The chain rule for subtraction:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
@@ -57,7 +57,7 @@ void lowerSubGradNode(Function *F, SubGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
 }
-void lowerDivGradNode(Function *F, DivGradNode &node) {
+static void lowerDivGradNode(Function *F, DivGradNode &node) {
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = (-LHS / (RHS ^ 2)) * delta(OUT)
@@ -78,12 +78,12 @@ void lowerDivGradNode(Function *F, DivGradNode &node) {
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
 }
 
-void lowerRegressionNode(RegressionNode &node) {
+static void lowerRegressionNode(RegressionNode &node) {
   auto input = node.getInput();
   node.getResult().replaceAllUsesOfWith(input);
 }
 
-void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
+static void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
   auto outG = node.getInput();
 
   auto inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
@@ -93,7 +93,7 @@ void lowerRegressionGradNode(Function *F, RegressionGradNode &node) {
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
 }
 
-void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
+static void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   auto *X = F->createFlatten("fc.1X", FC.getInput(), 1);
 
   auto W = FC.getWeights();
@@ -111,7 +111,8 @@ void lowerFullyConnectedNode(Function *F, FullyConnectedNode &FC) {
   }
 }
 
-void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
+static void lowerFullyConnectedGradNode(Function *F,
+                                        FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
@@ -133,7 +134,7 @@ void lowerFullyConnectedGradNode(Function *F, FullyConnectedGradNode &FCG) {
   FCG.getGradOfInputNamedBias().replaceAllUsesOfWith(db);
 }
 
-void lowerReluGradNode(Function *F, ReluGradNode &RG) {
+static void lowerReluGradNode(Function *F, ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
   auto *zero = F->createSplat("zero", RG.getInput().getType(), 0.0);
@@ -144,7 +145,7 @@ void lowerReluGradNode(Function *F, ReluGradNode &RG) {
   RG.getGradOfInputNamedInput().replaceAllUsesOfWith(res);
 }
 
-void lowerTanhGradNode(Function *F, TanhGradNode &THG) {
+static void lowerTanhGradNode(Function *F, TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
 
@@ -161,7 +162,7 @@ void lowerTanhGradNode(Function *F, TanhGradNode &THG) {
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
+static void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
 
@@ -179,7 +180,7 @@ void lowerSigmoidGradNode(Function *F, SigmoidGradNode &THG) {
   THG.getGradOfInputNamedInput().replaceAllUsesOfWith(grad);
 }
 
-void lowerReluNode(Function *F, ReluNode &R) {
+static void lowerReluNode(Function *F, ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
   auto *relu =
@@ -189,7 +190,7 @@ void lowerReluNode(Function *F, ReluNode &R) {
 
 /// Lower a quantized Log by creating an IntLookupTable with a new mapping given
 /// the input and output quantization parameters.
-void lowerQuantizedLogNode(Function *F, LogNode *LN) {
+static void lowerQuantizedLogNode(Function *F, LogNode *LN) {
   TypeRef outTy = LN->getResult().getType();
   TypeRef inTy = LN->getInput().getType();
 
@@ -216,7 +217,7 @@ void lowerQuantizedLogNode(Function *F, LogNode *LN) {
   LN->getResult().replaceAllUsesOfWith(ILT);
 }
 
-void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
+static void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
   // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
@@ -249,7 +250,7 @@ void lowerQuantizedTanhNode(Function *F, TanhNode *TN) {
   TN->getResult().replaceAllUsesOfWith(rescaleOutputNode);
 }
 
-void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
+static void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
@@ -282,7 +283,7 @@ void lowerQuantizedSigmoidNode(Function *F, SigmoidNode *SN) {
   SN->getResult().replaceAllUsesOfWith(rescaleOutputNode);
 }
 
-void lowerSGDNode(Function *F, SGDNode &SGD) {
+static void lowerSGDNode(Function *F, SGDNode &SGD) {
   NodeValue W = SGD.getWeight();
   NodeValue G = SGD.getGradient();
 
@@ -349,7 +350,8 @@ void lowerSGDNode(Function *F, SGDNode &SGD) {
   SGD.getUpdatedWeight().replaceAllUsesOfWith(newW);
 }
 
-void lowerBatchNormalizationNode(Function *F, BatchNormalizationNode &BN) {
+static void lowerBatchNormalizationNode(Function *F,
+                                        BatchNormalizationNode &BN) {
   auto in = BN.getInput();
   auto out = BN.getResult();
 
@@ -391,7 +393,8 @@ void lowerBatchNormalizationNode(Function *F, BatchNormalizationNode &BN) {
   BN.getResult().replaceAllUsesOfWith(newResult);
 }
 
-void lowerMeanVarNormalizationNode(Function *F, MeanVarNormalizationNode &MVN) {
+static void lowerMeanVarNormalizationNode(Function *F,
+                                          MeanVarNormalizationNode &MVN) {
   auto in = MVN.getInput();
 
   auto inMean = MVN.getMean();
@@ -468,8 +471,8 @@ void lowerMeanVarNormalizationNode(Function *F, MeanVarNormalizationNode &MVN) {
   MVN.getNewVar().replaceAllUsesOfWith(newVar);
 }
 
-void lowerBatchNormalizationGradNode(Function *F,
-                                     BatchNormalizationGradNode &BNG) {
+static void lowerBatchNormalizationGradNode(Function *F,
+                                            BatchNormalizationGradNode &BNG) {
   auto inW = BNG.getInput();
   auto outG = BNG.getGradOfOriginalOutputNamedResult();
 
@@ -565,7 +568,7 @@ void lowerBatchNormalizationGradNode(Function *F,
   BNG.getGradOfInputNamedVar().replaceAllUsesOfWith(zeroSplat);
 }
 
-void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
+static void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
   // a Concatenation of smaller dimension Convolutions. Input channels will be
   // divided into equal groups of consecutive channels. These will be separately
@@ -607,7 +610,7 @@ void lowerGroupConvolutionNode(Function *F, ConvolutionNode &BNG) {
   BNG.getResult().replaceAllUsesOfWith(result);
 }
 
-void lowerSigmoidCrossEntropyWithLogitsNode(
+static void lowerSigmoidCrossEntropyWithLogitsNode(
     Function *F, SigmoidCrossEntropyWithLogitsNode &SCEL) {
   // Following Caffe2 implementation closely to lower this Node.
   // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
@@ -648,7 +651,7 @@ void lowerSigmoidCrossEntropyWithLogitsNode(
 }
 
 /// Lower Tile nodes to InsertTensor nodes with correct axis and count.
-void lowerTileNode(Function *F, TileNode &TN) {
+static void lowerTileNode(Function *F, TileNode &TN) {
   auto input = TN.getInput();
 
   // Use a zero splat as the Big node input for InsertTensor.
