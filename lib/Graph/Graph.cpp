@@ -1605,6 +1605,26 @@ SaveNode *Function::createSave(Context &ctx, llvm::StringRef name,
   return addNode(new SaveNode(name, input, dest));
 }
 
+Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
+                                 NodeValue Y) {
+  auto XDimsSize = X.dims().size();
+  (void)XDimsSize;
+
+  assert(X.dims() == Y.dims() && "X and Y must have the same shape");
+  assert((XDimsSize == 1) || (XDimsSize == 2) && "X and Y must be 1D or 2D");
+
+  // Create Mul node.
+  auto *MN = createMul(name.str() + ".mul", X, Y);
+
+  // If X and Y are 1D, the BatchedReduceAdd node is not needed.
+  if (XDimsSize == 1) {
+    return MN;
+  }
+
+  // Create and return BatchedReduceAdd node.
+  return createBatchedReduceAdd(name.str() + ".bra", MN, 1);
+}
+
 void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,

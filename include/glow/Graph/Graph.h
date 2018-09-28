@@ -280,6 +280,12 @@ public:
                                        NodeValue input, Variable *W, Node *B,
                                        TypeRef outTy);
 
+  /// Implement an operation that computes the row-wise dot product of its
+  /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This
+  /// lowered to a Mul node, and is followed by a BatchedReduceAdd if \p X and
+  /// \p Y are 2D. \returns either the Mul or BatchedReduceAdd node.
+  Node *createDotProduct(llvm::StringRef name, NodeValue X, NodeValue Y);
+
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);
