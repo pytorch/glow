@@ -18,6 +18,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/Quantization/Serialization.h"
 
@@ -137,6 +138,11 @@ llvm::cl::opt<std::string> networkName(
                    "of the entry point to the network "
                    "and as a prefix for all the files that are generated."),
     llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool>
+    useFp16("use-fp16",
+            llvm::cl::desc("Use fp16 for all floating-point computation."),
+            llvm::cl::init(false), llvm::cl::cat(loaderCat));
 } // namespace
 
 llvm::StringRef Loader::getModelOptPath() {
@@ -252,6 +258,10 @@ void Loader::compile(Context &ctx) {
     F_ = Q;
   }
 
+  if (useFp16) {
+    mutateNodesType(*F_, ElemKind::FloatTy, ElemKind::Float16Ty, &ctx);
+  }
+
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
     EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
@@ -276,6 +286,7 @@ void Loader::runInference(Context &ctx) {
   if (timeOpt) {
     timer.startTimer();
   }
+
   for (unsigned i = 0; i < iterationsOpt; i++) {
     EE_.run();
   }
