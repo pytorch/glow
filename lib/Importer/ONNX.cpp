@@ -318,6 +318,11 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     std::vector<unsigned_t> pads = getPads(dict);
 
+    if (in.dims().size() != 4 || kernels.size() != 2) {
+      // Glow only handles 2D pooling currently.
+      return false;
+    }
+
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
 
     // If 'global_pooling' is set then the operation will pool over the size of

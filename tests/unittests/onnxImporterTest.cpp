@@ -78,3 +78,18 @@ TEST(onnx, importConv) {
   for (size_t i = 0; i < 4 * 4; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
+
+TEST(onnx, importAveragePool3D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename("tests/models/onnxModels/averagePool3D.onnxtxt");
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {1, 3, 32, 32, 32});
+    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"x"}, {&data}, *F), "");
+  }
+}

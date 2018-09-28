@@ -1,0 +1,70 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "AveragePool"
+    attribute {
+      name: "kernel_shape"
+      ints: 2
+      ints: 2
+      ints: 2
+      type: INTS
+    }
+  }
+  name: "test_averagepool_3d_default"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 32
+          }
+          dim {
+            dim_value: 32
+          }
+          dim {
+            dim_value: 32
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 31
+          }
+          dim {
+            dim_value: 31
+          }
+          dim {
+            dim_value: 31
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
