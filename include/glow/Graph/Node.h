@@ -88,6 +88,8 @@ public:
 
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;
+  /// Set the type of the referenced value.
+  void setType(TypeRef ty);
 
   /// Methods that forward to the result type (that must be valid):
   /// @{
@@ -333,6 +335,12 @@ public:
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx) const;
+  /// Set the \p idx'th result type of the node.
+  /// \note This setter only changes the type of this one
+  ///       result. If that type is incompatible with
+  ///       the inputs of the node, the caller is
+  ///       responsible to update these if need be.
+  void setType(unsigned idx, TypeRef ty);
 
   /// Methods that forward to the result type (that must be valid):
   /// @{

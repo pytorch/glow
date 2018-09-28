@@ -90,6 +90,13 @@ TypeRef Node::getType(unsigned idx) const {
   return types_[idx];
 }
 
+void Node::setType(unsigned idx, TypeRef ty) {
+  assert(idx < numRes_ && "Result number does not exist.");
+  assert(types_[idx]->dims() == ty->dims() &&
+         "Better create a new node at this point");
+  types_[idx] = ty;
+}
+
 ElemKind Node::getElementType(unsigned resNo) const {
   TypeRef TR = getType(resNo);
   return TR->getElementType();
@@ -195,6 +202,7 @@ void Node::visit(Node *parent, NodeWalker *visitor) {
 }
 
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
+void NodeValue::setType(TypeRef ty) { node_->setType(resNo_, ty); }
 
 ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
