@@ -136,7 +136,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
          "The number of inputs does not match the number of variables");
 
   // For each iteration in the batch:
-  for (size_t i = 0; i < iterations; i++) {
+  for (size_t j = 0; j < iterations; j++) {
 
     // Update the input placeholders.
     for (int i = 0, e = ph.size(); i < e; i++) {
