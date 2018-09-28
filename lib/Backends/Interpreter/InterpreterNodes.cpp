@@ -1375,8 +1375,8 @@ void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
       int32_t sum = 0;
       for (size_t k = 0; k < idim.width; k++) {
         int32_t W = weightsW.at({j, k});
-        int32_t I = inW.at({i, k});
-        sum += (W - offsetsW.raw(j)) * (I - inOffset);
+        int32_t A = inW.at({i, k});
+        sum += (W - offsetsW.raw(j)) * (A - inOffset);
       }
       int32_t B = std::round(float(biasW.at({j}) - biasOffset) *
                              (biasScale / matMulScale));

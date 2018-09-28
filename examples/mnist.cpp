@@ -132,9 +132,9 @@ void testMNIST() {
   Tensor *resultTensor = ctx.allocate(result->getPlaceholder());
   ctx.allocate(selected);
 
-  Function *T = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, T, ctx);
+  EE.compile(CompilationMode::Train, TF, ctx);
 
   const int numIterations = 30;
 
