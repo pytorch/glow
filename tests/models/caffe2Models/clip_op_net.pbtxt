@@ -1,0 +1,17 @@
+name: "clip"
+op {
+  input: "inputs_0"
+  output: "clip_result"
+  name: ""
+  type: "Clip"
+  arg {
+    name: "min"
+    f: 20.0
+  }
+  arg {
+    name: "max"
+    f: 60.0
+  }
+}
+external_input: "inputs_0"
+external_output: "clip_result"

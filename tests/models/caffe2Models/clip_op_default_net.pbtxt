@@ -1,0 +1,9 @@
+name: "clip"
+op {
+  input: "inputs_0"
+  output: "clip_result"
+  name: ""
+  type: "Clip"
+}
+external_input: "inputs_0"
+external_output: "clip_result"

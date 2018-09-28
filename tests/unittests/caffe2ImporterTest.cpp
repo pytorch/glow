@@ -348,3 +348,84 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   // We don't actually check that the output is correct, because this
   // should be covered in the OperatorTest for MatMul already.
 }
+
+/// Test loading clip op from a Caffe2 model.
+/// Test with arg min = 20.0 max = 60.0
+TEST(caffe2, importClip) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/clip_op_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Variable *output;
+  Tensor inputs_0(ElemKind::FloatTy, {5, 5});
+  inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
+                            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
+                            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
+                            38.0, 30.0, 84.0, 40.0};
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+                               {&inputs_0}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = output->getHandle();
+  std::vector<size_t> expectedDims = {5, 5};
+  std::vector<float> expectedValues = {45.0, 20.0, 59.0, 60.0, 48.0, 20.0, 44.0,
+                                       46.0, 60.0, 28.0, 20.0, 60.0, 20.0, 20.0,
+                                       60.0, 24.0, 37.0, 60.0, 20.0, 60.0, 36.0,
+                                       38.0, 30.0, 60.0, 40.0};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 5 * 5; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading clip op from a Caffe2 model with default arg values:
+/// min = std::numeric_limits<float>::lowest()
+/// max = std::numeric_limits<float>::max()
+TEST(caffe2, importClipDefault) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/clip_op_default_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Variable *output;
+  Tensor inputs_0(ElemKind::FloatTy, {5, 5});
+  inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
+                            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
+                            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
+                            38.0, 30.0, 84.0, 40.0};
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+                               {&inputs_0}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  Context ctx;
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = output->getHandle();
+  std::vector<size_t> expectedDims = {5, 5};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 5 * 5; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), inputs_0.getHandle().raw(i));
+  }
+}
