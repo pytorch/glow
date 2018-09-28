@@ -191,6 +191,12 @@ ModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
     ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
     ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
     ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
+  } else if (operation == "Sigmoid") {
+    ADD_OP_MAPPING(SigmoidNodeKind, FloatTy);
+  } else if (operation == "Flatten") {
+    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+  } else if (operation == "Concat") {
+    ADD_OP_MAPPING(ConcatNodeKind, FloatTy);
   }
 #undef ADD_OP_MAPPING
 
