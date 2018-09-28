@@ -565,11 +565,11 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Clip") {
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     float cmin = (dict.count("min") && dict["min"]->has_f())
-                    ? loadFloat(dict["min"])
-                    : std::numeric_limits<float>::lowest();
+                     ? loadFloat(dict["min"])
+                     : std::numeric_limits<float>::lowest();
     float cmax = (dict.count("max") && dict["max"]->has_f())
-                    ? loadFloat(dict["max"])
-                    : std::numeric_limits<float>::max();
+                     ? loadFloat(dict["max"])
+                     : std::numeric_limits<float>::max();
 
     auto *node = G_.createClip(opName, in, cmin, cmax);
     addNodeAsOutput(op, node);
