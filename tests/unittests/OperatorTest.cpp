@@ -29,14 +29,13 @@ using namespace glow;
 
 class Operator : public ::testing::TestWithParam<BackendKind> {
 public:
-  Operator() {
-    mod_ = EE_.getModule();
-    F_ = mod_.createFunction("main");
-  }
+  Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+
+  ~Operator() { mod_.clear(); }
 
 protected:
   ExecutionEngine EE_{GetParam()};
-  Module mod_;
+  Module &mod_;
   Function *F_;
   Context ctx_;
 };
@@ -1333,14 +1332,14 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
 }
 
-void checkFloat16Convolution(ExecutionEngine &EE, unsigned convDepth) {
+void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
+                             unsigned convDepth) {
   // In this test we generate a single precision floating-point based
   // convolution and an half precision one. We pass the same values
   // and we check that the results are below some
   // known delta.
 
   auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
   Context ctx;
 
   auto *input =
@@ -1389,11 +1388,15 @@ void checkFloat16Convolution(ExecutionEngine &EE, unsigned convDepth) {
   }
 }
 
-TEST_P(InterpOnly, FP16ConvolutionDepth10) { checkFloat16Convolution(EE_, 10); }
+TEST_P(InterpOnly, FP16ConvolutionDepth10) {
+  checkFloat16Convolution(EE_, F_, 10);
+}
 
-TEST_P(InterpOnly, FP16ConvolutionDepth8) { checkFloat16Convolution(EE_, 8); }
+TEST_P(InterpOnly, FP16ConvolutionDepth8) {
+  checkFloat16Convolution(EE_, F_, 8);
+}
 
-void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
+void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
                          Context &ctx) {
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
@@ -1402,7 +1405,6 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
   // In this test the output of the convolution is in the range [-256 ... 256].
   // The inputs (specified below) are in the range [-1 .. 1],
   auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
@@ -1445,9 +1447,13 @@ void checkIntConvolution(ExecutionEngine &EE, unsigned convDepth,
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) { checkIntConvolution(EE_, 10, ctx_); }
+TEST_P(Operator, IntConvolutionDepth10) {
+  checkIntConvolution(EE_, F_, 10, ctx_);
+}
 
-TEST_P(Operator, IntConvolutionDepth8) { checkIntConvolution(EE_, 8, ctx_); }
+TEST_P(Operator, IntConvolutionDepth8) {
+  checkIntConvolution(EE_, F_, 8, ctx_);
+}
 
 TEST_P(InterpAndCPU, IntConcat) {
   auto A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);

@@ -52,7 +52,7 @@ Function *Module::createFunction(llvm::StringRef name) {
   return F;
 }
 
-Module::~Module() {
+void Module::clear() {
   eraseFunctions();
 
   for (auto it = vars_.begin(), e = vars_.end(); it != e; it++) {
@@ -68,6 +68,7 @@ Module::~Module() {
   placeholders_.clear();
 }
 
+Module::~Module() { clear(); }
 void Module::verify() const {
   for (auto *F : functions_) {
     F->verify();
