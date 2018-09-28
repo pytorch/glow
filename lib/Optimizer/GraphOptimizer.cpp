@@ -2004,20 +2004,6 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      if (auto *C = dyn_cast<Constant>(Q->getInput())) {
-        // Quantize(Constant) -> Constant
-        // Note, it does not really matter how many usages this Constant has.
-        // Quantized graph will use optimized Constant and other functions will
-        // refer to the floating point original Constant.
-        NodeValue NC =
-            convertConstant(*F->getParent(), *C, Q->getResult().getType());
-        if (NC == NodeValue()) {
-          continue;
-        }
-        Q->getResult().replaceAllUsesOfWith(NC);
-        continue;
-      }
-
       if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
         // Quantize(Splat) -> Splat'
         SplatNode *newSN = F->createSplat(
@@ -2339,6 +2325,33 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     }
   }
 
+  return changed;
+}
+
+bool glow::quantizeConstantsPayload(Function *F) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    if (auto *Q = dyn_cast<QuantizeNode>(&node)) {
+      if (auto *C = dyn_cast<Constant>(Q->getInput())) {
+        // Quantize(Constant) -> Constant
+        // Note, it does not really matter how many usages this Constant has.
+        // Quantized graph will use optimized Constant and other functions will
+        // refer to the floating point original Constant.
+        NodeValue NC =
+            convertConstant(*F->getParent(), *C, Q->getResult().getType());
+        if (NC == NodeValue()) {
+          continue;
+        }
+        Q->getResult().replaceAllUsesOfWith(NC);
+        changed = true;
+        continue;
+      }
+    }
+  }
+  // Remove potentially unused constants.
+  if (changed) {
+    DCE(F);
+  }
   return changed;
 }
 

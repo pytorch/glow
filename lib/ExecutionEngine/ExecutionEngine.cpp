@@ -145,6 +145,14 @@ void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
   }
+
+  // Do the actual float ->fix point conversion of constant tensors once all
+  // optimizations are performed in order to get the best quantization accuracy.
+  if (::glow::quantizeConstantsPayload(F)) {
+    // Optimize the graph again after the constant quantization.
+    // In particular, DCE is very likely to be useful.
+    ::glow::optimize(F, mode);
+  }
 }
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
