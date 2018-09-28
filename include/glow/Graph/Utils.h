@@ -147,6 +147,15 @@ inline void mutateNodeResTypeThatMatch(Module &mod, Node &node, ElemKind origTy,
   }
 }
 
+/// Replace with \p newTy, the type of all the nodes, placeholders and so on
+/// that use \p origTy.
+/// If a \p context is provided, this method makes sure the tensors
+/// backing the placeholders are properly updated. Otherwise,
+/// this method assumes the placeholders are not bound to anything.
+/// \pre The parent module has only one function, this one.
+void mutateNodesType(Function &F, ElemKind origTy, ElemKind newTy,
+                     Context *context = nullptr);
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

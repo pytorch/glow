@@ -16,6 +16,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
 

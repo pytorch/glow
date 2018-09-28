@@ -16,6 +16,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -1432,6 +1433,62 @@ TEST_P(InterpOnly, FP16ConvolutionDepth10) {
 
 TEST_P(InterpOnly, FP16ConvolutionDepth8) {
   checkFloat16Convolution(EE_, F_, 8);
+}
+
+void checkFloat16ConvolutionWithCast(ExecutionEngine &EE, Function *F,
+                                     unsigned convDepth) {
+  // In this test we generate a half precision floating-point based
+  // convolution graph.
+  // Compile, run it.
+  // Then, convert the graph into single precision.
+  // Compile, run it.
+  // Finally, we check that the output are similar.
+
+  auto &mod = EE.getModule();
+  Context ctx;
+
+  auto *inputFloat16 = mod.createPlaceholder(
+      ElemKind::Float16Ty, {1, 10, 10, 3}, "in_float16", false);
+  ctx.allocate(inputFloat16);
+  auto *convFloat16 =
+      F->createConv(ctx, "convFloat16", inputFloat16, convDepth, 5, 1, 0, 1);
+
+  Tensor *inputFloat16Tensor = ctx.get(inputFloat16);
+  auto inputFloat16Handle = inputFloat16Tensor->getHandle<float16_t>();
+  inputFloat16Handle.randomize(-1.0, 1.0, mod.getPRNG());
+
+  SaveNode *saveFloat16 = F->createSave(ctx, "saveFloat16", convFloat16);
+
+  Tensor *out = ctx.allocate(llvm::cast<Placeholder>(saveFloat16->getOutput()));
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run();
+
+  // Save the value of the fp16 run.
+  Tensor float16OutTensor = out->clone();
+
+  // Convert the graph to single precision.
+  mutateNodesType(*F, ElemKind::Float16Ty, ElemKind::FloatTy, &ctx);
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run();
+
+  auto floatOut = out->getHandle<>();
+  auto float16Out = float16OutTensor.getHandle<float16_t>();
+  // Check that the difference in the results is less than 0.1.
+  for (int i = 0, e = floatOut.size(); i < e; i++) {
+    EXPECT_NEAR(floatOut.raw(i), float(float16Out.raw(i)), 0.1);
+  }
+}
+
+TEST_P(InterpOnly, FP16ConvolutionWithCastDepth10) {
+  checkFloat16ConvolutionWithCast(EE_, F_, 10);
+}
+
+TEST_P(InterpOnly, FP16ConvolutionWithCastDepth8) {
+  checkFloat16ConvolutionWithCast(EE_, F_, 8);
 }
 
 void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,

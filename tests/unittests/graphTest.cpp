@@ -1112,3 +1112,30 @@ TEST(Graph, mutateNodeTypeThatMatch) {
   EXPECT_EQ(topK->getType(0), origTopKRes0);
   EXPECT_EQ(topK->getType(1), origTopKRes0);
 }
+
+TEST(Graph, mutateNodesType) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  const size_t inputDims[] = {4, 10};
+  const size_t top5Dims[] = {4, 5};
+  auto *input =
+      M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+  TopKNode *topK = F->createTopK("add", input, 5);
+  TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
+  TypeRef origInputTy = M.uniqueType(ElemKind::FloatTy, inputDims);
+
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(input->getType(), origInputTy);
+
+  // Update all nodes using float type to float16 type.
+  mutateNodesType(*F, ElemKind::FloatTy, ElemKind::Float16Ty);
+
+  TypeRef topKRes0 = M.uniqueType(ElemKind::Float16Ty, origTopKRes0->dims());
+  TypeRef inputTy = M.uniqueType(ElemKind::Float16Ty, origInputTy->dims());
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(input->getType(), inputTy);
+}
