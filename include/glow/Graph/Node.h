@@ -84,7 +84,7 @@ public:
   operator Node *() const { return node_; }
 
   /// Replace all of the uses in \p F of this value with \p v.
-  void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr);
+  void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr) const;
 
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;

@@ -42,7 +42,7 @@ NodeValue::NodeValue(Node *N, unsigned resNo) {
   resNo_ = resNo;
 }
 
-void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) {
+void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
