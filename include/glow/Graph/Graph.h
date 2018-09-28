@@ -182,8 +182,19 @@ public:
   /// Erase all of the functions from the module.
   void eraseFunctions();
 
+  /// Erase all the functions, variables, etc.
+  void clear();
+
   /// Erase a function \p F from the module.
   void eraseFunction(Function *F);
+
+  // Don't copy or move this class around.
+  // The destructor will wipe the functions leaving
+  // the original Module only dangling pointers.
+  Module(const Module &) = delete;
+  Module(Module &&) = delete;
+  Module &operator=(const Context &) = delete;
+  Module &operator=(Context &&) = delete;
 };
 
 /// Represents the compute graph.

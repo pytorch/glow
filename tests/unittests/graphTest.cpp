@@ -45,6 +45,32 @@ TEST(Graph, testVariableErasure) {
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 }
 
+/// Check that the clear method completely reset a module.
+TEST(Graph, clear) {
+  Module M;
+
+  // Check that the module is initially empty.
+  EXPECT_EQ(M.getVars().size(), 0);
+  EXPECT_EQ(M.getPlaceholders().size(), 0);
+  EXPECT_EQ(M.getFunctions().size(), 0);
+
+  // Create a few things.
+  M.createFunction("main");
+  M.createPlaceholder(ElemKind::FloatTy, {1}, "placeholder", true);
+  M.createVariable(ElemKind::FloatTy, {1}, "var");
+
+  EXPECT_EQ(M.getVars().size(), 1);
+  EXPECT_EQ(M.getPlaceholders().size(), 1);
+  EXPECT_EQ(M.getFunctions().size(), 1);
+
+  // Check that clearing the module makes it completely free of any kind of
+  // objects.
+  M.clear();
+  EXPECT_EQ(M.getVars().size(), 0);
+  EXPECT_EQ(M.getPlaceholders().size(), 0);
+  EXPECT_EQ(M.getFunctions().size(), 0);
+}
+
 TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
