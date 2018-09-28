@@ -364,6 +364,9 @@ public:
     }
   }
 
+  /// Convert each element of this tensor to \p newTy.
+  void convertToType(ElemKind newTy);
+
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned_t> shuffle) {
