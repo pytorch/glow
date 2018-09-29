@@ -45,7 +45,11 @@ class GlowJIT {
 private:
   TargetMachine &TM_;
   const DataLayout DL_;
-#if LLVM_VERSION_MAJOR > 6
+#if FACEBOOK_INTERNAL
+  SymbolStringPool SSP_;
+  ExecutionSession ES_;
+  std::shared_ptr<SymbolResolver> resolver_;
+#elif LLVM_VERSION_MAJOR > 6
   std::shared_ptr<SymbolStringPool> SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;

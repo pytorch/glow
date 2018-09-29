@@ -90,7 +90,26 @@ public:
 
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
-#if LLVM_VERSION_MAJOR > 6
+#if FACEBOOK_INTERNAL
+      ES_(SSP_),
+      resolver_(createLegacyLookupResolver(
+          [this](const std::string &Name) -> JITSymbol {
+            if (auto Sym = compileLayer_.findSymbol(Name, false))
+              return Sym;
+            else if (auto Err = Sym.takeError())
+              return std::move(Err);
+            if (auto SymAddr =
+                    RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+              return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+            return nullptr;
+          },
+          [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
+      objectLayer_(ES_,
+                   [this](llvm::orc::VModuleKey) {
+                     return RTDyldObjectLinkingLayer::Resources{
+                         std::make_shared<SectionMemoryManager>(), resolver_};
+                   }),
+#elif LLVM_VERSION_MAJOR > 6
       SSP_(std::make_shared<SymbolStringPool>()), ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           ES_,
