@@ -158,7 +158,10 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
     llvm::legacy::PassManager PM;
     auto &TM = irgen_.getTargetMachine();
 
-#if LLVM_VERSION_MAJOR > 6
+#if FACEBOOK_INTERNAL
+    TM.addPassesToEmitFile(
+        PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+#elif LLVM_VERSION_MAJOR > 6
     TM.addPassesToEmitFile(
         PM, outputFile, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);

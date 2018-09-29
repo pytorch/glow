@@ -295,7 +295,10 @@ void LLVMIRGen::performCodeGen() {
     llvm::SmallVector<char, 0> asmBuffer;
     llvm::raw_svector_ostream asmStream(asmBuffer);
     llvm::legacy::PassManager PM;
-#if LLVM_VERSION_MAJOR > 6
+#if FACEBOOK_INTERNAL
+    getTargetMachine().addPassesToEmitFile(
+        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#elif LLVM_VERSION_MAJOR > 6
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
