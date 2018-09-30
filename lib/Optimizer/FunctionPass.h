@@ -16,14 +16,24 @@
 #ifndef OPTIMIZER_FUNCTION_PASS_H
 #define OPTIMIZER_FUNCTION_PASS_H
 
-#include "glow/Graph/Graph.h"
+namespace glow {
 
+class Function;
+
+/// A high level class (that will be) shared by all optimizers.
 class FunctionPass {
 public:
   FunctionPass() = default;
+
   virtual ~FunctionPass() = default;
-  virtual bool run(glow::Function *F) = 0;
+
+  /// \returns true if the optimizer changes something.
+  virtual bool run(Function *F) = 0;
+
+  /// \returns the name of the optimizer.
   virtual const llvm::StringRef getName() const = 0;
 };
+
+} // namespace glow
 
 #endif // OPTIMIZER_FUNCTION_PASS_H
