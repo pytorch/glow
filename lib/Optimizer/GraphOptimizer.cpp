@@ -817,9 +817,23 @@ static bool mergeTransposeIntoMatMul(Function *F) {
     }
 
     // MatMul RHS is constant weights.
-    auto *W = dyn_cast<Constant>(MMN->getRHS());
-    if (!W) {
-      continue;
+    Constant *W;
+    QuantizeNode *Q = nullptr;
+    {
+      auto *We = dyn_cast<Constant>(MMN->getRHS());
+      if (!We) {
+        Q = dyn_cast<QuantizeNode>(MMN->getRHS());
+        if (!Q) {
+          continue;
+        }
+        auto *QW = dyn_cast<Constant>(Q->getInput());
+        if (!QW) {
+          continue;
+        }
+        W = QW;
+      } else {
+        W = We;
+      }
     }
 
     // Linearizing Reshape precedes MatMul.
@@ -869,11 +883,17 @@ static bool mergeTransposeIntoMatMul(Function *F) {
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
 
+    NodeValue newWeights = newW;
+    if (Q) {
+      newWeights =
+          F->createQuantize(Q->getName(), newW, Q->getResult().getType());
+    }
+
     // New Reshape and MatMul.
     auto *newRN =
         F->createReshape(RN->getName(), TN->getInput(), RN->getDims());
     auto *newMMN = F->createMatMul(MMN->getName(), MMN->getResult().getType(),
-                                   newRN, newW);
+                                   newRN, newWeights);
     MMN->getResult().replaceAllUsesOfWith(newMMN);
     changed = true;
   }
