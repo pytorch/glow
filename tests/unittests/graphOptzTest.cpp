@@ -140,6 +140,27 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
+  Node *A =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "A", false);
+  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  F_->createSave(ctx_, "ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 1);
+  Node *newCV = A->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *save = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+}
+
 /// Check that the batch normalization optimization is
 /// not blocked by predicates and that it preserves them.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
