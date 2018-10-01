@@ -575,16 +575,15 @@ Function::createRowwiseQuantizedFullyConnected(Context &ctx,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
-  auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
-                                               0.0, 0, "weights.rwqfc",
-                                               VisibilityKind::Private, false);
+  auto *qWeights = getParent()->createPlaceholder(
+      ElemKind::Int8QTy, W->dims(), 0.0, 0, "weights.rwqfc", false);
   auto *scales = getParent()->createPlaceholder(ElemKind::FloatTy, {numRows},
                                                 "scales.rwqfc", false);
   auto *offsets = getParent()->createPlaceholder(
       ElemKind::Int32QTy, {numRows}, 0.0, 0, "offsets.rwqfc", false);
 
   quantization::tensorRowwiseQuantization(
-      weights->getPayload(), qWeights->getPayload(), *ctx.allocate(scales),
+      weights->getPayload(), *ctx.allocate(qWeights), *ctx.allocate(scales),
       *ctx.allocate(offsets));
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));
