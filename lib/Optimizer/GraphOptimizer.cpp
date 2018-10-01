@@ -905,6 +905,100 @@ static Variable *getUniquelyUsedVariable(Node &node) {
   return dyn_cast<Variable>(&node);
 }
 
+/// Normalize the weight of \p CV with what \p BN is doing.
+/// \return Whether or not the normalization was possible.
+template <typename ElemTy>
+bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
+
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  Variable *filterV = getUniquelyUsedVariable(*CV.getFilter().getNode());
+  Variable *cbiasV = getUniquelyUsedVariable(*CV.getBias().getNode());
+
+  if (!filterV || !cbiasV) {
+    return false;
+  }
+
+  // First, BN computation can be phrased as follows:
+  //
+  // (X - mean) * (1.0 / sqrt(var + eps)) * bn_scale + bias
+  //
+  // Thus, we can rewrite bn_scale as:
+  //  X * bn_scale * 1.0 / (sqrt(var + eps)) +
+  //    (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
+  //
+  // Thus, can just have the affine transform:
+  //
+  //  X * A + B
+  //
+  //  where
+  //
+  //  A = bn_scale * 1.0 / (sqrt(running_var + eps))
+  //  B =  (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
+  //
+  // Now, we have that the computation made is the following:
+  //
+  // ((X `conv` W) + b) * A + B
+  //
+  // Then, we can simply fuse this as follows:
+  //
+  // (X `conv` (W * A)) + b * A + B
+  //
+  // which is simply
+  //
+  // (X `conv` Q) + C
+  //
+  // where
+  //
+  // Q = W * A
+  // C = b * A + B
+
+  Variable *scaleV = cast<Variable>(BN.getScale());
+  Variable *biasV = cast<Variable>(BN.getBias());
+  Variable *meanV = cast<Variable>(BN.getMean());
+  Variable *var = cast<Variable>(BN.getVar());
+
+  auto filterH = filterV->getHandle<ElemTy>();
+
+  auto cbiasH = cbiasV->getHandle<ElemTy>();
+
+  auto scaleH = scaleV->getHandle<ElemTy>();
+  auto biasH = biasV->getHandle<ElemTy>();
+  auto meanH = meanV->getHandle<ElemTy>();
+  auto varH = var->getHandle<ElemTy>();
+
+  // Update the filter/bias variables of the Conv node.
+  auto epsilon = BN.getEpsilon();
+  for (size_t i = 0, e = filterH.size(); i < e; i++) {
+    // Dimension zero is the 'channel' dimension. If we ever change the
+    // layout of the filter then we need to change this optimization.
+    size_t channelId = filterH.getDimForPtr(0, i);
+    float var = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(var + epsilon);
+    float gamma = scaleH.at({channelId});
+    float A = gamma * stdvar;
+    filterH.raw(i) = ElemTy(float(filterH.raw(i)) * A);
+  }
+
+  for (size_t i = 0, e = cbiasH.size(); i < e; i++) {
+    // Dimension zero is the 'channel' dimension. If we ever change the
+    // layout of the filter then we need to change this optimization.
+    size_t channelId = cbiasH.getDimForPtr(0, i);
+    float mu = meanH.at({channelId});
+    float var = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(var + epsilon);
+    float gamma = scaleH.at({channelId});
+    float beta = biasH.at({channelId});
+    float A = gamma * stdvar;
+    float B = beta - mu * A;
+    cbiasH.raw(i) = ElemTy(float(cbiasH.raw(i)) * A + B);
+  }
+  return true;
+}
+
 static void optimizeBatchNorm(Function *F) {
   auto &nodes = F->getNodes();
 
@@ -923,86 +1017,20 @@ static void optimizeBatchNorm(Function *F) {
         continue;
       }
 
-      // First, BN computation can be phrased as follows:
-      //
-      // (X - mean) * (1.0 / sqrt(var + eps)) * bn_scale + bias
-      //
-      // Thus, we can rewrite bn_scale as:
-      //  X * bn_scale * 1.0 / (sqrt(var + eps)) +
-      //    (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
-      //
-      // Thus, can just have the affine transform:
-      //
-      //  X * A + B
-      //
-      //  where
-      //
-      //  A = bn_scale * 1.0 / (sqrt(running_var + eps))
-      //  B =  (bias - mean * (1.0 / sqrt(var + eps)) * bn_scale)
-      //
-      // Now, we have that the computation made is the following:
-      //
-      // ((X `conv` W) + b) * A + B
-      //
-      // Then, we can simply fuse this as follows:
-      //
-      // (X `conv` (W * A)) + b * A + B
-      //
-      // which is simply
-      //
-      // (X `conv` Q) + C
-      //
-      // where
-      //
-      // Q = W * A
-      // C = b * A + B
+      bool normalizationHappened = false;
+      switch (CV->getElementType(0)) {
+      case ElemKind::FloatTy:
+        normalizationHappened = normalizeWeights<float>(*CV, *BN);
+        break;
+      case ElemKind::Float16Ty:
+        normalizationHappened = normalizeWeights<float16_t>(*CV, *BN);
+        break;
+      default:
+        llvm_unreachable("Type not supported");
+      }
 
-      Variable *filterV = getUniquelyUsedVariable(*CV->getFilter().getNode());
-      Variable *cbiasV = getUniquelyUsedVariable(*CV->getBias().getNode());
-
-      if (!filterV || !cbiasV) {
+      if (!normalizationHappened) {
         continue;
-      }
-
-      Variable *scaleV = cast<Variable>(BN->getScale());
-      Variable *biasV = cast<Variable>(BN->getBias());
-      Variable *meanV = cast<Variable>(BN->getMean());
-      Variable *var = cast<Variable>(BN->getVar());
-
-      auto filterH = filterV->getHandle<>();
-
-      auto cbiasH = cbiasV->getHandle<>();
-
-      auto scaleH = scaleV->getHandle<>();
-      auto biasH = biasV->getHandle<>();
-      auto meanH = meanV->getHandle<>();
-      auto varH = var->getHandle<>();
-
-      // Update the filter/bias variables of the Conv node.
-      auto epsilon = BN->getEpsilon();
-      for (size_t i = 0, e = filterH.size(); i < e; i++) {
-        // Dimension zero is the 'channel' dimension. If we ever change the
-        // layout of the filter then we need to change this optimization.
-        size_t channelId = filterH.getDimForPtr(0, i);
-        float var = varH.at({channelId});
-        float stdvar = 1.0f / std::sqrt(var + epsilon);
-        float gamma = scaleH.at({channelId});
-        float A = gamma * stdvar;
-        filterH.raw(i) = filterH.raw(i) * A;
-      }
-
-      for (size_t i = 0, e = cbiasH.size(); i < e; i++) {
-        // Dimension zero is the 'channel' dimension. If we ever change the
-        // layout of the filter then we need to change this optimization.
-        size_t channelId = cbiasH.getDimForPtr(0, i);
-        float mu = meanH.at({channelId});
-        float var = varH.at({channelId});
-        float stdvar = 1.0f / std::sqrt(var + epsilon);
-        float gamma = scaleH.at({channelId});
-        float beta = biasH.at({channelId});
-        float A = gamma * stdvar;
-        float B = beta - mu * A;
-        cbiasH.raw(i) = cbiasH.raw(i) * A + B;
       }
 
       // Take the predicate of what was expected for the output.
