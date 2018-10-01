@@ -263,8 +263,8 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
   return mapping;
 }
 
-void tensorRowwiseQuantization(Tensor &input, Tensor &output, Tensor &scales,
-                               Tensor &offsets) {
+void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
+                               Tensor &scales, Tensor &offsets) {
   ShapeHW idim(input.dims());
 
   auto srcH = input.getHandle<float>();
