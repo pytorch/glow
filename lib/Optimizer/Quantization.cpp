@@ -23,7 +23,8 @@
 
 using namespace glow;
 
-Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
+Function *glow::profileQuantization(Context &ctx, Function *F,
+                                    llvm::StringRef newFuncName) {
   // Create a new name for the differentiated function, if none is given.
   std::string tmpName;
   if (newFuncName.empty()) {
@@ -65,7 +66,7 @@ Function *glow::profileQuantization(Function *F, llvm::StringRef newFuncName) {
   }
 
   for (const auto &node : nodesToInstrument) {
-    G->createQuantizationProfile("QuantizationProfile", node);
+    G->createQuantizationProfile(ctx, "QuantizationProfile", node);
   }
 
   return G;

@@ -28,15 +28,17 @@ namespace glow {
 namespace quantization {
 
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(const Function *F, Schema schema) {
+generateNodeQuantizationInfos(Context &ctx, const Function *F, Schema schema) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
   for (auto &node : F->getNodes()) {
     auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(&node);
 
     if (QPN) {
-      auto CI = QPN->getComputationInfoVar()->getHandle<float>();
-      auto histogram = QPN->getHistogramVar()->getHandle<float>();
+      auto CI =
+          ctx.get(QPN->getComputationInfoPlaceholder())->getHandle<float>();
+      auto histogram =
+          ctx.get(QPN->getHistogramPlaceholder())->getHandle<float>();
       float min = CI.raw(0);
       float max = CI.raw(1);
 

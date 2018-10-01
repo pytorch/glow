@@ -242,7 +242,7 @@ TEST_P(Operator, end2end) {
   Function *F1 = createSimpleGraphForQuantization(mod, ctx, A, B, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
-  F1 = glow::profileQuantization(F1);
+  F1 = glow::profileQuantization(ctx, F1);
   interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
@@ -250,7 +250,7 @@ TEST_P(Operator, end2end) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(F1);
+      quantization::generateNodeQuantizationInfos(ctx, F1);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
@@ -377,7 +377,7 @@ TEST_P(Operator, end2endGRU) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
-  F1 = glow::profileQuantization(F1);
+  F1 = glow::profileQuantization(ctx, F1);
   interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
@@ -385,7 +385,7 @@ TEST_P(Operator, end2endGRU) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(F1);
+      quantization::generateNodeQuantizationInfos(ctx, F1);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));

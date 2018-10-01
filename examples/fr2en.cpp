@@ -151,7 +151,7 @@ struct Model {
       ::optimize(F_, glow::CompilationMode::Infer);
 
       // Instrument the graph to capture profiles for nodes' outputs.
-      F_ = glow::profileQuantization(F_);
+      F_ = glow::profileQuantization(ctx, F_);
     }
 
     // Load the quantization profile and transform the graph.
@@ -173,8 +173,12 @@ struct Model {
       F_ = Q;
     }
 
-    ::glow::convertPlaceholdersToConstants(F_, ctx,
-                                           {input_, seqLength_, output_});
+    // Do not create constants if we're profiling; the newly allocate histogram
+    // vars will erroneously become constants.
+    if (dumpProfileFileOpt.empty()) {
+      ::glow::convertPlaceholdersToConstants(F_, ctx,
+                                             {input_, seqLength_, output_});
+    }
     EE_.compile(CompilationMode::Infer, F_, ctx);
   }
 
@@ -406,7 +410,7 @@ void Model::translate(const std::vector<std::string> &batch) {
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(F_);
+        quantization::generateNodeQuantizationInfos(ctx, F_);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }

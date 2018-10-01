@@ -1287,19 +1287,19 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
 }
 
 QuantizationProfileNode *
-Function::createQuantizationProfile(llvm::StringRef name, NodeValue input) {
+Function::createQuantizationProfile(Context &ctx, llvm::StringRef name,
+                                    NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
-  auto *histogram =
-      getParent()->createVariable(ElemKind::FloatTy, {numberOfBuckets},
-                                  "histogram", VisibilityKind::Private, false);
+  auto *histogram = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {numberOfBuckets}, "histogram", false);
+  ctx.allocate(histogram);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo =
-      getParent()->createVariable(ElemKind::FloatTy, {2}, "computationInfo",
-                                  VisibilityKind::Private, false);
-
+  auto *computationInfo = getParent()->createPlaceholder(
+      ElemKind::FloatTy, {2}, "computationInfo", false);
+  ctx.allocate(computationInfo);
   return addNode(new QuantizationProfileNode(
       name, input, histogram, computationInfo, input.getNode()->getName().str(),
       input.getResNo()));

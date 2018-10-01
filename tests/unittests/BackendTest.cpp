@@ -60,7 +60,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
-  F = ::glow::profileQuantization(F);
+  F = ::glow::profileQuantization(ctx, F);
 
   ctx.allocate(A);
   ctx.allocate(Ex);
@@ -86,7 +86,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   EXPECT_TRUE(profile != nullptr);
 
-  auto CI = profile->getComputationInfoVar()->getHandle<float>();
+  auto CI =
+      ctx.get(profile->getComputationInfoPlaceholder())->getHandle<float>();
   float min = CI.raw(0);
   float max = CI.raw(1);
   EXPECT_NEAR(0.5, min, 0.00001);

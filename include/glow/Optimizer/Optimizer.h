@@ -48,11 +48,13 @@ void lower(Function *F, const Backend &B);
 void convertPlaceholdersToConstants(Function *F, const Context &ctx,
                                     llvm::ArrayRef<Placeholder *> vars);
 
-/// Instrument function \p F by inserting quantization profile nodes
-/// for capturing stats for quantization. The new quantized function is called
-/// \p newFuncName. If no name is given the method will generate a name.
-/// \returns a new function with the added quantization nodes.
-Function *profileQuantization(Function *F, llvm::StringRef newFuncName = "");
+/// Instrument function \p F by inserting quantization profile nodes for
+/// capturing stats for quantization. The nodes will refer to tensors allocate
+/// in in context \p ctx. The new quantized function is called \p
+/// newFuncName. If no name is given the method will generate a name.  \returns
+/// a new function with the added quantization nodes.
+Function *profileQuantization(Context &ctx, Function *F,
+                              llvm::StringRef newFuncName = "");
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.
