@@ -126,6 +126,36 @@ TEST(Graph, float16Conv) {
             ElemKind::Float16Ty);
 }
 
+/// Check that we can create batchNorm with float16.
+TEST(Graph, float16BatchNorm) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  Context ctx;
+  auto *input =
+      MD.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "input", false);
+  BatchNormalizationNode *BN =
+      F->createBatchNormalization(ctx, "batch", input, 3, 0.0001, 0.9);
+
+  BN->verify();
+  EXPECT_EQ(BN->getType(0)->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getScale().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getBias().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getMean().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getVar().getType()->getElementType(), ElemKind::Float16Ty);
+
+  lower(F, MockBackend());
+
+  EXPECT_TRUE(std::all_of(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+          if (node.getType(idx)->getElementType() != ElemKind::Float16Ty) {
+            return false;
+          }
+        }
+        return true;
+      }));
+}
+
 /// Test that our use lists are correctly reflecting the state of the IR
 /// and in particular that it is not polluted by temporary variable.
 TEST(Graph, useList) {

@@ -1502,22 +1502,24 @@ Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
   // Figure out how many channels are in the tensor.
   size_t channels = input.dims()[channelIdx];
 
+  ElemKind inputTy = input.getType()->getElementType();
+
   // Allocate the learnable parameters beta and gamma.
-  auto *beta = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
-                                              "beta", true);
+  auto *beta =
+      getParent()->createPlaceholder(inputTy, {channels}, "beta", true);
   ctx.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
 
-  auto *gamma = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
-                                               "gamma", true);
+  auto *gamma =
+      getParent()->createPlaceholder(inputTy, {channels}, "gamma", true);
 
   ctx.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
 
-  auto *mean = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
-                                              "mean", false);
+  auto *mean =
+      getParent()->createPlaceholder(inputTy, {channels}, "mean", false);
   ctx.allocate(mean)->zero();
 
-  auto *variance = getParent()->createPlaceholder(ElemKind::FloatTy, {channels},
-                                                  "variance", false);
+  auto *variance =
+      getParent()->createPlaceholder(inputTy, {channels}, "variance", false);
   ctx.allocate(variance)->zero();
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
