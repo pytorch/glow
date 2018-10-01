@@ -2735,6 +2735,24 @@ TEST_P(Operator, Int8AvgPool) {
   }
 }
 
+TEST_P(InterpOnly, FP16MaxPool) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
+  ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
+                                                  5., 6., 7., 8.};
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 2, 2, 1});
+  out.getHandle<float16_t>() = {4., 5., 7., 8.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(Operator, Int8MaxPool) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
