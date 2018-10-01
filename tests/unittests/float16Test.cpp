@@ -68,3 +68,10 @@ TEST(Float16, eq) {
   EXPECT_FALSE(a == b);
   EXPECT_TRUE(a == a);
 }
+
+TEST(Float16, ge) {
+  float16 a = -31.455;
+  float16 b = 4543.4;
+  EXPECT_EQ(a >= b, float(a) >= float(b));
+  EXPECT_FALSE(a >= b);
+}
