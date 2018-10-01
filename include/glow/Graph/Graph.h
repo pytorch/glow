@@ -511,9 +511,10 @@ public:
   SaveNode *createSave(llvm::StringRef name, NodeValue input, Storage *output);
 
   /// Create quantization profile node named \p name for the output tensor from
-  /// \p input. Capture observed node name in quantization profile node as
-  /// original node can be replaced during lowering phase.
-  QuantizationProfileNode *createQuantizationProfile(llvm::StringRef name,
+  /// \p input in context \p ctx. Capture observed node name in quantization
+  /// profile node as original node can be replaced during lowering phase.
+  QuantizationProfileNode *createQuantizationProfile(Context &ctx,
+                                                     llvm::StringRef name,
                                                      NodeValue input);
 
   /// Create lookup table for mapping between quantized numbers.

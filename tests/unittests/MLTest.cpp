@@ -1052,13 +1052,13 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   runBatch(EE, ctx, 500, sampleCounter, {input, ex}, {&images, &labels});
 
   // Profiling:
-  Function *PF = glow::profileQuantization(F);
+  Function *PF = glow::profileQuantization(ctx, F);
   EE.compile(CompilationMode::Infer, PF, ctx);
   runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(PF);
+      quantization::generateNodeQuantizationInfos(ctx, PF);
   Function *QP = quantization::quantizeFunction(EE, QI, F);
 
   // Evaluate on the quantized function:
@@ -1154,7 +1154,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // -- STEP2 - Profile and quantize the network. --
 
   // Profiled 'F'.
-  Function *PF = glow::profileQuantization(F);
+  Function *PF = glow::profileQuantization(ctx, F);
   EE.compile(CompilationMode::Infer, PF, ctx);
 
   // Run the graph to capture the profile.
@@ -1162,7 +1162,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(PF);
+      quantization::generateNodeQuantizationInfos(ctx, PF);
 
   Function *QP = quantization::quantizeFunction(EE, QI, F);
 

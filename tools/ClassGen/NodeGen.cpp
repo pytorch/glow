@@ -459,14 +459,17 @@ int main(int argc, char **argv) {
       .addInput("ComputationInfo")
       .addMember(MemberType::String, "ProfiledNodeName")
       .addMember(MemberType::Unsigned, "ProfiledOutputNumber")
-      .addExtraMethod("Variable *getHistogramVar() const ;",
-                      "Variable *QuantizationProfileNode::getHistogramVar() "
-                      "const { return "
-                      "llvm::cast<Variable>(Histogram_.getNode()); };")
       .addExtraMethod(
-          "Variable *getComputationInfoVar() const;",
-          "Variable *QuantizationProfileNode::getComputationInfoVar() const { "
-          "return llvm::cast<Variable>(ComputationInfo_.getNode()); };")
+          "Placeholder *getHistogramPlaceholder() const ;",
+          "Placeholder *QuantizationProfileNode::getHistogramPlaceholder() "
+          "const { return "
+          "llvm::cast<Placeholder>(Histogram_.getNode()); };")
+      .addExtraMethod(
+          "Placeholder *getComputationInfoPlaceholder() const;",
+          "Placeholder "
+          "*QuantizationProfileNode::getComputationInfoPlaceholder() const "
+          "{ "
+          "return llvm::cast<Placeholder>(ComputationInfo_.getNode()); };")
       .addOverwrittenInput("ComputationInfo")
       .addOverwrittenInput("Histogram")
       .setHasSideEffects(true)

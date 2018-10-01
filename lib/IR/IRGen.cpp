@@ -386,8 +386,9 @@ public:
     case glow::Kinded::Kind::QuantizationProfileNodeKind: {
       auto *QPN = cast<QuantizationProfileNode>(N);
       auto *inputTensor = valueForNode(QPN->getInput());
-      auto *histogram = valueForNode(QPN->getHistogramVar());
-      auto *computationInfo = valueForNode(QPN->getComputationInfoVar());
+      auto *histogram = valueForNode(QPN->getHistogramPlaceholder());
+      auto *computationInfo =
+          valueForNode(QPN->getComputationInfoPlaceholder());
       builder_.createQuantizationProfileInst(QPN->getName(), inputTensor,
                                              histogram, computationInfo);
       break;

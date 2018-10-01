@@ -217,7 +217,7 @@ void Loader::compile() {
     ::optimize(F_, glow::CompilationMode::Infer);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    F_ = ::profileQuantization(F_);
+    F_ = ::profileQuantization(ctx, F_);
   }
 
   // Load the quantization profile and transform the graph.
@@ -293,7 +293,8 @@ void Loader::runInference(llvm::ArrayRef<Variable *> variables,
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(F_, quantizationSchema);
+        quantization::generateNodeQuantizationInfos(ctx, F_,
+                                                    quantizationSchema);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }

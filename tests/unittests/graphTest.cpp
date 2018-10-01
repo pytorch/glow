@@ -284,7 +284,7 @@ TEST(Graph, QuantizationProfileNodes) {
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
-  F = ::glow::profileQuantization(F);
+  F = ::glow::profileQuantization(ctx, F);
   lower(F, MockBackend());
   ::optimize(F, CompilationMode::Infer);
 
