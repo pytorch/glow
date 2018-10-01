@@ -365,9 +365,14 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else {
+  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
     fwdMaxPool<float>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                       I->getPads());
+  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
+    fwdMaxPool<float16_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
+                          I->getPads());
+  } else {
+    llvm_unreachable("Type not supported");
   }
 }
 
@@ -379,9 +384,14 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else {
+  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
     fwdMaxPool<float>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                       I->getPads());
+  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
+    fwdMaxPool<float16_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
+                          I->getPads());
+  } else {
+    llvm_unreachable("Type not supported");
   }
 }
 
