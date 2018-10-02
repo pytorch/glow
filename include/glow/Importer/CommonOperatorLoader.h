@@ -229,7 +229,7 @@ protected:
     }
   }
 
-  void loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
+  bool loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
 
@@ -237,6 +237,9 @@ protected:
     // First look at input tensors, then at the "shape" attribute.
     std::vector<int64_t> requestedDims;
     if (op.input_size() > 1) {
+      // Non-constant shape tensors are unsupported by Glow.
+      if (!tensors_.count(op.input(1)))
+        return false;
       Tensor *constShapeTensor = getTensorByName(op.input(1));
       auto TH = constShapeTensor->getHandle<int64_t>();
       for (size_t i = 0, e = constShapeTensor->size(); i != e; i++) {
@@ -288,6 +291,7 @@ protected:
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
     nodeValueByName_[op.output(0)] = NodeValue(node, 0);
+    return true;
   }
 
   void loadTranspose(const OpType &op, ArgumentDictionaryTy &dict,
@@ -426,8 +430,7 @@ protected:
       return true;
     }
     if (typeName == "Reshape") {
-      loadReshape(op, dict);
-      return true;
+      return loadReshape(op, dict);
     }
     if (typeName == "Flatten") {
       loadFlatten(op, dict);
