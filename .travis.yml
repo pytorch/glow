@@ -71,5 +71,5 @@ script:
  - function keep_alive() { while true; do echo -en "\a"; sleep 60; done }
  - keep_alive &
  - ninja all
- - CTEST_PARALLEL_LEVEL=2 ninja test || cat Testing/Temporary/LastTest.log
+ - CTEST_PARALLEL_LEVEL=2 ninja test || ( cat Testing/Temporary/LastTest.log && exit 1 )
  - CTEST_PARALLEL_LEVEL=2 ninja test_unopt
