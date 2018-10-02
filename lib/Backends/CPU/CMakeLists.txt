@@ -46,6 +46,7 @@ add_library(CPURuntimeNative
 add_library(CPUBackend
             AllocationsInfo.cpp
             BundleSaver.cpp
+            CommandLine.cpp
             CPUFunction.cpp
             DebugInfo.cpp
             FunctionSpecializer.cpp

@@ -28,7 +28,7 @@ namespace {
 static llvm::cl::opt<bool> dumpJITSymbolInfo(
     "dump-jit-symbol-info",
     llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
-    llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+    llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
 
 #if LLVM_VERSION_MAJOR <= 6
 /// This is a callback that is invoked when an LLVM module is compiled and

@@ -114,7 +114,11 @@ static void loadText(Tensor &inputText, Tensor &nextChar, llvm::StringRef text,
   }
 }
 
-PseudoRNG RNG;
+PseudoRNG &getRNG() {
+  static PseudoRNG RNG;
+
+  return RNG;
+}
 
 /// This method selects a random number based on a softmax distribution. One
 /// property of this distribution is that the sum of all probabilities is equal
@@ -125,7 +129,7 @@ static char getPredictedChar(Tensor &inputText, size_t slice, size_t word) {
   auto IH = inputText.getHandle();
 
   // Pick a random number between zero and one.
-  double x = std::abs(RNG.nextRand());
+  double x = std::abs(getRNG().nextRand());
   double sum = 0;
   // Accumulate the probabilities into 'sum'.
   for (size_t i = 0; i < 128; i++) {
