@@ -20,6 +20,7 @@
 #include "glow/Graph/Nodes.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Error.h"
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
@@ -115,7 +116,18 @@ bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::ModelProto &net,
   return loadProto(net, fileStream);
 }
 
-std::vector<unsigned_t> getPads(const ArgumentDictionaryTy &dict) {
+namespace {
+/// Helper type for pads.
+using Pads = std::vector<unsigned_t>;
+
+/// Create an llvm::Error from \p str.
+llvm::Error make_string_error(const char *str) {
+  return llvm::make_error<llvm::StringError>(str,
+                                             llvm::inconvertibleErrorCode());
+}
+} // namespace
+
+llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pads")) {
     return getShape<unsigned_t>(dict.at("pads"));
   }
@@ -123,12 +135,12 @@ std::vector<unsigned_t> getPads(const ArgumentDictionaryTy &dict) {
     auto padStr = loadStr(dict.at("auto_pad"));
     if (padStr == "VALID") {
       // Return default value 0 for pads.
-      return {0, 0, 0, 0};
+      return Pads({0, 0, 0, 0});
     }
-    llvm_unreachable("only auto_pad==VALID is supported");
+    return make_string_error("only auto_pad==VALID is supported");
   }
   // Return default value 0 for pads.
-  return {0, 0, 0, 0};
+  return Pads({0, 0, 0, 0});
 }
 
 /// Loads tensor \p T from the input \p in.
@@ -235,7 +247,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
     unsigned_t group = dict.count("group") ? loadInt(dict["group"]) : 1;
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-    std::vector<unsigned_t> pads = getPads(dict);
+    auto pads = getPads(dict);
+    if (!pads)
+      return false;
 
     // Load the inputs
     NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
@@ -290,14 +304,14 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
-    auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
+    auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape,
+                                             strides, *pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
-                               kernelShape, strides, pads, group);
+                               kernelShape, strides, *pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -316,7 +330,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     std::vector<unsigned_t> kernels =
         getShape<unsigned_t>(dict.at("kernel_shape"));
 
-    std::vector<unsigned_t> pads = getPads(dict);
+    auto pads = getPads(dict);
+    if (!pads)
+      return false;
 
     if (in.dims().size() != 4 || kernels.size() != 2) {
       // Glow only handles 2D pooling currently.
@@ -335,9 +351,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      node = G_.createMaxPool(opName, tr, kernels, strides, *pads);
     } else {
-      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+      node = G_.createAvgPool(opName, tr, kernels, strides, *pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
@@ -355,9 +371,11 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     std::vector<unsigned_t> kernels(2);
     kernels[0] = in.dims()[2];
     kernels[1] = in.dims()[3];
-    std::vector<unsigned_t> pads = getPads(dict);
+    auto pads = getPads(dict);
+    if (!pads)
+      return false;
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+    Node *node = G_.createAvgPool(opName, tr, kernels, strides, *pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
     return true;
