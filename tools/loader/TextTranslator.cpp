@@ -284,6 +284,8 @@ processAndPrintDecodedTranslation(Variable *outputTokenBeamList,
 }
 
 int main(int argc, char **argv) {
+  Context ctx;
+
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -322,7 +324,7 @@ int main(int argc, char **argv) {
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile();
+  loader.compile(ctx);
 
   assert(!emittingBundle() && "Bundle mode has not been tested.");
 
@@ -336,7 +338,7 @@ int main(int argc, char **argv) {
     loadNextInputTranslationText(&encoderInputs);
 
     // Run actual translation.
-    loader.runInference({encoderInputsVar}, {&encoderInputs});
+    loader.runInference(ctx, {encoderInputsVar}, {&encoderInputs});
 
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.

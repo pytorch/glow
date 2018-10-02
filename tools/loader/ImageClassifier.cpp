@@ -174,6 +174,7 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
 }
 
 int main(int argc, char **argv) {
+  Context ctx;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -219,11 +220,11 @@ int main(int argc, char **argv) {
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile();
+  loader.compile(ctx);
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference({inputImage}, {&data});
+    loader.runInference(ctx, {inputImage}, {&data});
 
     // Print out the inferred image classification.
     Tensor &res = SMVar->getPayload();
