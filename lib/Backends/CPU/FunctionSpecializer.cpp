@@ -41,7 +41,7 @@ static llvm::cl::opt<bool>
     jitSpecializeDims("jit-specialize",
                       llvm::cl::desc("Create specialized functions for "
                                      "operations with constant dimensions"),
-                      llvm::cl::init(true), llvm::cl::cat(CPUBackendCat));
+                      llvm::cl::init(true), llvm::cl::cat(getCPUBackendCat()));
 
 STATISTIC(NumSpecializations, "Number of created specializations");
 STATISTIC(NumSharedSpecializations, "Number of shared specializations");

@@ -39,21 +39,19 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
-
 static llvm::cl::opt<bool>
     dumpIR("dump-llvm-ir",
            llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-           llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+           llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
 
 static llvm::cl::opt<bool>
     dumpJitAsm("dump-llvm-asm",
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
-               llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+               llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
 
 llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
-                  llvm::cl::init(false), llvm::cl::cat(CPUBackendCat));
+                  llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
 
 llvm::cl::opt<llvm::Reloc::Model> relocModel(
     "relocation-model",
@@ -62,7 +60,7 @@ llvm::cl::opt<llvm::Reloc::Model> relocModel(
     llvm::cl::values(
         clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
         clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
-    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(CPUBackendCat));
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getCPUBackendCat()));
 
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
