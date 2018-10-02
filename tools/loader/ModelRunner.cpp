@@ -27,6 +27,7 @@
 using namespace glow;
 
 int main(int argc, char **argv) {
+  Context ctx;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -45,11 +46,11 @@ int main(int argc, char **argv) {
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile();
+  loader.compile(ctx);
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference({}, {});
+    loader.runInference(ctx, {}, {});
 
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 

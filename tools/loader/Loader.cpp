@@ -146,9 +146,6 @@ llvm::StringRef Loader::getModelOptPath() {
   return modelPathOpt[0];
 }
 
-// This is the execution context of the program.
-Context ctx;
-
 bool glow::emittingBundle() { return !emitBundle.empty(); }
 
 static bool commandLineIsInvalid() {
@@ -208,7 +205,7 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
   GLOW_UNREACHABLE("Unknown node name.");
 }
 
-void Loader::compile() {
+void Loader::compile(Context &ctx) {
   // Handle the request to profile the graph in preperation for quantization.
   if (!dumpProfileFileOpt.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
@@ -271,7 +268,7 @@ void Loader::compile() {
   }
 }
 
-void Loader::runInference(llvm::ArrayRef<Variable *> variables,
+void Loader::runInference(Context &ctx, llvm::ArrayRef<Variable *> variables,
                           llvm::ArrayRef<Tensor *> tensors) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
