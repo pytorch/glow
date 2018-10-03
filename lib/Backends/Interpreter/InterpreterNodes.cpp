@@ -700,6 +700,10 @@ void InterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<float>().clear(I->getValue());
   }
 
+  if (k == ElemKind::Float16Ty) {
+    return T->getHandle<float16_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::Int8QTy) {
     // Quantize the requested floating point splat value into the correct
     // integer representation.
