@@ -136,6 +136,11 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
   offsetsArray_ = F->args().begin() + 3;
 }
 
+static const unsigned char libjit_bc[] = {
+#include "glow/libjit_bc.inc"
+};
+static const size_t libjit_bc_size = sizeof(libjit_bc);
+
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
@@ -145,37 +150,12 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
   using llvm::sys::path::parent_path;
 
   llvm::SMDiagnostic error;
-
-  auto *envPath = getenv("GLOW_LIBJIT_PATH");
-  if (envPath != nullptr) {
-    return llvm::parseIRFile(envPath, error, *ctx);
-  }
-
-  // Figure out the location of the current executable.
-  auto mainExec =
-      llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
-  llvm::StringRef basePath = parent_path(mainExec);
-
-  // Search for the standard library starting at the location of the executable.
-  // Go up the tree up to three levels (by removing the last directory name).
-  for (int i = 0; i < 3; i++) {
-    llvm::SmallString<256> libPath(basePath);
-    append(libPath, filename);
-    if (llvm::sys::fs::exists(libPath)) {
-      auto res = llvm::parseIRFile(libPath, error, *ctx);
-
-      // If we could not parse the bitcode file then print an error.
-      if (!res.get()) {
-        error.print(mainExec.c_str(), llvm::errs());
-      }
-      return res;
-    }
-
-    // Go up the filesystem tree.
-    basePath = parent_path(basePath);
-  }
-
-  return llvm::parseIRFile(filename, error, *ctx);
+  return llvm::parseIR(
+      llvm::MemoryBufferRef(
+          llvm::StringRef(reinterpret_cast<const char *>(&libjit_bc[0]),
+                          libjit_bc_size),
+          "libjit.bc"),
+      error, *ctx);
 }
 
 /// Register a diagnostics handler that prevents the compiler from printing to

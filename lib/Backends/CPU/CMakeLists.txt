@@ -38,12 +38,18 @@ set_target_properties(CPURuntime
                         OUTPUT_NAME
                           libjit.bc)
 
+add_custom_command(
+  OUTPUT "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
+  COMMAND include-bin "${CMAKE_BINARY_DIR}/libjit.bc" "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
+  DEPENDS include-bin CPURuntime)
+
 add_library(CPURuntimeNative
               libjit/libjit.cpp
               libjit/libjit_conv.cpp
               libjit/libjit_matmul.cpp)
 
 add_library(CPUBackend
+            "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
             AllocationsInfo.cpp
             BundleSaver.cpp
             CommandLine.cpp
