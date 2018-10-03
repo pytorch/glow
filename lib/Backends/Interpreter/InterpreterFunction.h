@@ -108,7 +108,11 @@ private:
   void fwdAvgPoolInst_I8Impl(const AvgPoolInst *I);
   template <typename ElemTy>
   void fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I);
+
   template <typename ElemTy> void fwdSoftMaxInst_Impl(const SoftMaxInst *I);
+
+  void fwdMatMulInst_I8Impl(const glow::MatMulInst *I);
+  void fwdMatMulInst_FloatImpl(const glow::MatMulInst *I);
   ///@}
 };
 

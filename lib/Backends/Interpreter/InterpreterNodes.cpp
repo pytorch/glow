@@ -1336,51 +1336,51 @@ void InterpreterFunction::fwdElementSelectInst(
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhs = getWeightHandle<int8_t>(I->getLHS());
-    auto rhs = getWeightHandle<int8_t>(I->getRHS());
+void InterpreterFunction::fwdMatMulInst_I8Impl(const glow::MatMulInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType());
+  auto lhs = getWeightHandle<int8_t>(I->getLHS());
+  auto rhs = getWeightHandle<int8_t>(I->getRHS());
 
-    auto dest = getWeightHandle<int8_t>(I->getDest());
+  auto dest = getWeightHandle<int8_t>(I->getDest());
 
-    auto destDim = dest.dims();
-    auto lhsDim = lhs.dims();
+  auto destDim = dest.dims();
+  auto lhsDim = lhs.dims();
 
-    auto destTy = I->getDest()->getType();
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
 
-    dest.clear(0);
+  dest.clear(0);
 
-    // For matrix multiplication, if the offset is equal to zero the scale
-    // is defined as the formula (L.scale * R.scale / D.scale).
-    // In here we assume that the offset for all buffers is zero.
-    float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
+  // For matrix multiplication, if the offset is equal to zero the scale
+  // is defined as the formula (L.scale * R.scale / D.scale).
+  // In here we assume that the offset for all buffers is zero.
+  float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
+  int32_t lhsOffset = lhsTy->getOffset();
+  int32_t rhsOffset = rhsTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[0]; x++) {
-      for (size_t y = 0; y < destDim[1]; y++) {
+  // For each (x,y) in the destination matrix:
+  for (size_t x = 0; x < destDim[0]; x++) {
+    for (size_t y = 0; y < destDim[1]; y++) {
 
-        // Perform DOT on the row an column.
-        int32_t sum = 0;
-        for (size_t i = 0; i < lhsDim[1]; i++) {
-          int32_t L = lhs.at({x, i});
-          int32_t R = rhs.at({i, y});
-          // We represent the element multiplication with offset as
-          // (value - offset).
-          sum += (L - lhsOffset) * (R - rhsOffset);
-        }
-
-        dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
-            std::round(scale * sum + destOffset));
+      // Perform DOT on the row an column.
+      int32_t sum = 0;
+      for (size_t i = 0; i < lhsDim[1]; i++) {
+        int32_t L = lhs.at({x, i});
+        int32_t R = rhs.at({i, y});
+        // We represent the element multiplication with offset as
+        // (value - offset).
+        sum += (L - lhsOffset) * (R - rhsOffset);
       }
-    }
-    return;
-  }
 
+      dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
+          std::round(scale * sum + destOffset));
+    }
+  }
+}
+
+void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
   auto lhs = getWeightHandle(I->getLHS());
   auto rhs = getWeightHandle(I->getRHS());
   auto dest = getWeightHandle(I->getDest());
@@ -1401,6 +1401,16 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
       }
       dest.at({x, y}) = sum;
     }
+  }
+}
+
+void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    fwdMatMulInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdMatMulInst_FloatImpl(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
