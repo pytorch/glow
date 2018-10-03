@@ -38,7 +38,7 @@ TEST(caffe2, importConv) {
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
                                {&data}, *F);
     output = caffe2LD.getSingleOutput();
   }
@@ -86,7 +86,7 @@ TEST(caffe2, concatAddAxis) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1", "inputs_2"},
                                {&inputs_0, &inputs_1, &inputs_2}, *F);
     output = caffe2LD.getSingleOutput();
@@ -157,7 +157,7 @@ TEST(caffe2, concat) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1", "inputs_2"},
                                {&inputs_0, &inputs_1, &inputs_2}, *F);
     output = caffe2LD.getSingleOutput();
@@ -225,7 +225,7 @@ TEST(caffe2, batchedMatmulRHS) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"}, {&inputs_0, &inputs_1},
                                *F);
     output = caffe2LD.getSingleOutput();
@@ -288,7 +288,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"}, {&inputs_0, &inputs_1},
                                *F);
     output = caffe2LD.getSingleOutput();
@@ -370,7 +370,7 @@ TEST(caffe2, importClip) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0}, *F);
     output = caffe2LD.getSingleOutput();
   }
@@ -414,7 +414,7 @@ TEST(caffe2, importClipDefault) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0}, *F);
     output = caffe2LD.getSingleOutput();
   }
@@ -457,7 +457,7 @@ TEST(caffe2, replaceNaN) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
                                {&input}, *F);
     output = caffe2LD.getSingleOutput();
   }
@@ -526,7 +526,7 @@ TEST(caffe2, dotProduct1D) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X, &Y}, *F);
     output = caffe2LD.getSingleOutput();
   }
@@ -603,7 +603,7 @@ TEST(caffe2, dotProduct2D) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X, &Y}, *F);
     output = caffe2LD.getSingleOutput();
   }

@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
   std::vector<Tensor *> inputTensors = {
       &encoderInputs, &attnWeights, &prevHyposIndices, &prevScores, &prevToken};
 
-  auto LD = caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
+  auto LD = Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
                               loader.getCaffe2NetWeightFilename(), inputNames,
                               inputTensors, *loader.getFunction());
 

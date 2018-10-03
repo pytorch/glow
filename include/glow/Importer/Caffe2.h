@@ -36,7 +36,7 @@ class Tensor;
 class Value;
 
 /// Loads caffe2 models.
-class caffe2ModelLoader
+class Caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
   /// Get the broadcast attribute.
   bool getBroadcast(const ArgumentDictionaryTy &dict) override;
@@ -65,7 +65,7 @@ public:
   /// \p netWeightFilename, and populates the network in \p F.
   /// The tensors in \p tensors are stored with the names in the list of names
   /// \p names and used as inputs to the network.
-  caffe2ModelLoader(const std::string &netDescFilename,
+  Caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<Tensor *> tensors, Function &F);
