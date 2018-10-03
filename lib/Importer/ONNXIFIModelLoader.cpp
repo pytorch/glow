@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "onnx/onnx_pb.h"
 

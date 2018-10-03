@@ -17,7 +17,7 @@
 #define GLOW_ONNXIFI_BASE_H
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "onnx/onnxifi.h"
 

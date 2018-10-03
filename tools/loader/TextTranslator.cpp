@@ -16,7 +16,7 @@
 
 #include "Loader.h"
 
-#include "glow/Importer/Caffe2.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"

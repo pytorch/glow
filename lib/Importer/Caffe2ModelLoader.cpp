@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Importer/Caffe2.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"

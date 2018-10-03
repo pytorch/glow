@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"

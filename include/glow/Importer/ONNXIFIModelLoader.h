@@ -19,7 +19,7 @@
 
 #include "onnx/onnxifi.h"
 
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/ONNXModelLoader.h"
 
 #include "llvm/ADT/StringMap.h"
 

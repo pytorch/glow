@@ -15,7 +15,7 @@
  */
 #include "Base.h"
 
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "llvm/ADT/SmallVector.h"
 
