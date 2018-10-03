@@ -19,7 +19,6 @@
 #include "onnx/onnx_pb.h"
 
 namespace glow {
-namespace onnxifi {
 
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
@@ -203,5 +202,4 @@ ONNXIFIModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
   return result;
 }
 
-} // namespace onnxifi
 } // namespace glow

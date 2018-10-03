@@ -24,7 +24,6 @@
 #include "llvm/ADT/StringMap.h"
 
 namespace glow {
-namespace onnxifi {
 
 class ONNXIFIModelLoader : public ONNXModelLoader {
 private:
@@ -69,7 +68,6 @@ public:
   parseOperator(const void *onnxModel, size_t onnxModelSize);
 };
 
-} // namespace onnxifi
 } // namespace glow
 
 #endif // GLOW_IMPORTER_ONNXIFILOADER_H
