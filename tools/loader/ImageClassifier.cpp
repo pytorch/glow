@@ -224,7 +224,12 @@ int main(int argc, char **argv) {
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference(ctx, {inputImage}, {&data});
+
+    // Update the inputs.
+    updateVariables({inputImage}, {&data});
+
+    // Perform the inference execution.
+    loader.runInference(ctx);
 
     // Print out the inferred image classification.
     Tensor &res = SMVar->getPayload();

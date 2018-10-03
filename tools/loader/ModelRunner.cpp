@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference(ctx, {}, {});
+    loader.runInference(ctx);
 
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 

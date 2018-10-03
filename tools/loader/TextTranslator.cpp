@@ -337,8 +337,11 @@ int main(int argc, char **argv) {
     // Load the next string into encoderInputs.
     loadNextInputTranslationText(&encoderInputs);
 
+    // update the inputs.
+    updateVariables({encoderInputsVar}, {&encoderInputs});
+
     // Run actual translation.
-    loader.runInference(ctx, {encoderInputsVar}, {&encoderInputs});
+    loader.runInference(ctx);
 
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.
