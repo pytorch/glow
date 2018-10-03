@@ -453,8 +453,10 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU") {
-    // Glow does not support MKL now, just pass these two ops.
+  if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
+      typeName == "Copy" || typeName == "EnsureCPUOutput" ||
+      typeName == "EnsureDense") {
+    // Glow does not support any of these ops now, so implement them as no-ops.
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     addNodeAsOutput(op, in);
     return;
