@@ -976,8 +976,8 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
     // Dimension zero is the 'channel' dimension. If we ever change the
     // layout of the filter then we need to change this optimization.
     size_t channelId = filterH.getDimForPtr(0, i);
-    float var = varH.at({channelId});
-    float stdvar = 1.0f / std::sqrt(var + epsilon);
+    float value = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(value + epsilon);
     float gamma = scaleH.at({channelId});
     float A = gamma * stdvar;
     filterH.raw(i) = ElemTy(float(filterH.raw(i)) * A);
@@ -988,8 +988,8 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
     // layout of the filter then we need to change this optimization.
     size_t channelId = cbiasH.getDimForPtr(0, i);
     float mu = meanH.at({channelId});
-    float var = varH.at({channelId});
-    float stdvar = 1.0f / std::sqrt(var + epsilon);
+    float value = varH.at({channelId});
+    float stdvar = 1.0f / std::sqrt(value + epsilon);
     float gamma = scaleH.at({channelId});
     float beta = biasH.at({channelId});
     float A = gamma * stdvar;
