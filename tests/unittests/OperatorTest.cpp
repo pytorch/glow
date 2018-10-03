@@ -3326,6 +3326,26 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, FP16Reshape) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createReshape("tr", A, {13, 20, 1});
+  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto outputHandle =
+      ctx_.get(result->getPlaceholder())->getHandle<float16_t>();
+  ASSERT_EQ(outputHandle.size(), inputHandle.size());
+  for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
 /// Stack many slices/reshapes together. Some of these may be turned into tensor
 /// views stacked onto each other.
 TEST_P(Operator, sliceReshape) {
