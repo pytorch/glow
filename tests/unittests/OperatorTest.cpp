@@ -973,6 +973,23 @@ TEST_P(Operator, Transpose2Dims) {
   EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
 }
 
+/// Check that transpose is supported for FP16.
+TEST_P(InterpOnly, FP16Transpose2Dims) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
+  ctx_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  Tensor dest(ElemKind::Float16Ty, {13, 20});
+  ctx_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
+}
+
 /// Check if the code generation of transposes
 /// is correct for tensors with 3 dimensions.
 /// Note: This assumes that Tensor::transpose is correct.
