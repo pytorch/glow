@@ -362,6 +362,193 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   // should be covered in the OperatorTest for MatMul already.
 }
 
+/// Test loading a FC node : I * transpose(W) + B.
+TEST(caffe2, FC) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/fc_predict_net.pbtxt");
+  std::string NetWeightFilename("tests/models/caffe2Models/fc_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor inputs(ElemKind::FloatTy, {2, 3});
+    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+
+    // Weights and bias are read from NetWeightFilename. And the values are:
+    // weights : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+  }
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = ctx.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {2, 4};
+  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
+                                       32.1, 77.2, 122.3, 167.4};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
+/// Test loading a FC node : I * transpose(W) + B, where I is need to be
+/// flatten.
+TEST(caffe2, FCWithFlatten) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/fc_predict_net.pbtxt");
+  std::string NetWeightFilename("tests/models/caffe2Models/fc_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  {
+    Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
+    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+
+    // Weights and bias are read from NetWeightFilename. And the values are:
+    // weights : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+  }
+
+  // High level check on the content of the graph. We have 1 reshape, 1 FC,
+  // and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *fcNode =
+      llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(fcNode);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
+  ASSERT_TRUE(reshape);
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+  auto result = ctx.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {2, 4};
+  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
+                                       32.1, 77.2, 122.3, 167.4};
+  result = ctx.get(output)->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
+/// Test loading a FCTransposed node: I * W + B
+TEST(caffe2, FCTransposed) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/fcTransposed_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor inputs(ElemKind::FloatTy, {2, 3});
+    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+
+    // Weights and bias are read from NetWeightFilename. And the values are:
+    // weights : {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12};
+    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+  }
+
+  // High level check on the content of the graph. We have 1 FC and 1 save,
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *fcNode =
+      llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(fcNode);
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = ctx.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {2, 4};
+  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
+                                       32.1, 77.2, 122.3, 167.4};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
+/// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
+TEST(caffe2, FCTransposedWithFlatten) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/fcTransposed_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  {
+    Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
+    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+
+    // Weights and bias are read from NetWeightFilename. And the values are:
+    // weights : {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12};
+    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+  }
+
+  // High level check on the content of the graph. We have 1 reshape, 1 FC,
+  // and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *saveNode1 = getSaveNodeFromDest(output);
+  auto *fcNode1 =
+      llvm::dyn_cast<FullyConnectedNode>(saveNode1->getInput().getNode());
+  ASSERT_TRUE(fcNode1);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode1->getInput());
+  ASSERT_TRUE(reshape);
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+  auto result = ctx.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {2, 4};
+  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
+                                       32.1, 77.2, 122.3, 167.4};
+  result = ctx.get(output)->getHandle();
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {
