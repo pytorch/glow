@@ -106,6 +106,7 @@ private:
                                     size_t group);
 
   void fwdAvgPoolInst_I8Impl(const AvgPoolInst *I);
+  template <typename ElemTy>
   void fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I);
   ///@}
 };

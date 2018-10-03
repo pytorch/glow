@@ -395,7 +395,13 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   }
 }
 
+template <typename ElemTy>
 void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -406,8 +412,8 @@ void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
   // https://arxiv.org/abs/1312.4400
   float filterArea = kdim.height * kdim.width;
 
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -431,10 +437,10 @@ void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
                 continue;
               }
 
-              sum += inW.at({n, (size_t)ox, (size_t)oy, z});
+              sum += float(inW.at({n, (size_t)ox, (size_t)oy, z}));
             }
           }
-          outW.at({n, ax, ay, z}) = sum / filterArea;
+          outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
         } // W
       }   // H
     }     // C
@@ -497,10 +503,13 @@ void InterpreterFunction::fwdAvgPoolInst_I8Impl(const AvgPoolInst *I) {
 void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInst_I8Impl(I);
-    return;
+  } else if (I->getSrc()->getType()->isType<float16_t>()) {
+    fwdAvgPoolInst_FloatImpl<float16_t>(I);
+  } else if (I->getSrc()->getType()->isType<float>()) {
+    fwdAvgPoolInst_FloatImpl<float>(I);
+  } else {
+    llvm_unreachable("Type not supported");
   }
-
-  fwdAvgPoolInst_FloatImpl(I);
 }
 
 void InterpreterFunction::fwdMaxPoolWithXYGradInst(
