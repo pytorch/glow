@@ -3665,6 +3665,33 @@ TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
   }
 }
 
+/// Check the correctness of the SoftMax operator.
+/// The semantic of SoftMax is
+/// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).
+TEST_P(Operator, SoftMax) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+  ctx_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 6});
+  // Expected results are:
+  // sum = exp(input_0) + ... + exp(input_N) = ~245.387
+  // res_0 = exp(1) / sum = ~0.011
+  // res_1 = exp(3) / sum = ~0.082
+  // And so on.
+  out.getHandle<float>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
