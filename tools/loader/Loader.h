@@ -42,6 +42,8 @@ class Loader {
 public:
   /// Getter for the Function.
   Function *getFunction() { return F_; }
+  /// Getter for the Module.
+  Module *getModule() { return F_->getParent(); }
   /// Getter for the Caffe2 network file name.
   llvm::StringRef getCaffe2NetDescFilename() { return caffe2NetDescFilename_; }
   /// Getter for the Caffe2 weights file name.

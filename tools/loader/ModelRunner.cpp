@@ -42,7 +42,8 @@ int main(int argc, char **argv) {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
                                  *loader.getFunction()));
   }
-  Variable *output = LD->getSingleOutput();
+  Placeholder *output = LD->getSingleOutput();
+  auto *outputT = ctx.allocate(output);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -55,7 +56,7 @@ int main(int argc, char **argv) {
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 
     // Print out the result of output operator.
-    output->getPayload().getHandle().dump();
+    outputT->getHandle().dump();
   }
 
   return 0;

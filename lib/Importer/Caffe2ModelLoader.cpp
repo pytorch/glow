@@ -621,8 +621,8 @@ void Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
     auto r = getNodeValueByName(outputName);
-    auto *SN = G_.createSave("save_" + outputName, r);
-    outputVarsByName_[outputName] = SN->getVariable();
+    auto *SN = G_.createSavePH("save_" + outputName, r);
+    outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 }
 
@@ -798,9 +798,9 @@ void Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<Tensor *> tensors,
+                                     llvm::ArrayRef<TypeRef> types,
                                      Function &F)
-    : CommonOperatorLoader(names, tensors, F) {
+    : CommonOperatorLoader(names, types, F) {
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;
   // The caffe2 network descriptor that we are deserializing.

@@ -34,7 +34,7 @@ Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
   return tensors_[name];
 }
 
-Variable *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
+Placeholder *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
   assert(outputVarsByName_.count(name) &&
          "There is no Variable registered with this name.");
   auto it = outputVarsByName_.find(name);
@@ -60,15 +60,23 @@ NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   return node;
 }
 
-Variable *ProtobufLoader::createAndRememberVariable(
-    llvm::StringRef name, const Tensor &tensor, VisibilityKind visibilityKind) {
-  assert(!hasNodeByName(name) && "Creating an already existing node?!");
+Variable *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+                                                    const Tensor &tensor) {
+  assert(!hasNodeByName(name) && "Creating an already existing node");
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
-  Variable *node = G_.getParent()->createVariable(name, tensor, visibilityKind,
-                                                  /* trainable */ false);
+  Variable *node =
+      G_.getParent()->createVariable(name, tensor, VisibilityKind::Private,
+                                     /* trainable */ false);
   nodeValueByName_[name] = NodeValue(node, 0);
+  return node;
+}
 
+Placeholder *ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name,
+                                                          TypeRef T) {
+  assert(!hasNodeByName(name) && "Creating an already existing node");
+  Placeholder *node = G_.getParent()->createPlaceholder(T, name, false);
+  nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }
 
@@ -80,7 +88,7 @@ ProtobufLoader::getNodeValueOrCreateVariableByName(llvm::StringRef name) {
   }
 
   Tensor *T = getTensorByName(name);
-  return NodeValue(createAndRememberVariable(name, *T), 0);
+  return NodeValue(createAndRegisterConstant(name, *T), 0);
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
@@ -88,17 +96,16 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                               llvm::ArrayRef<Tensor *> tensors, Function &F)
+                               llvm::ArrayRef<TypeRef> types, Function &F)
     : G_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
-  assert(tensorNames.size() == tensors.size() && "Invalid initialization list");
+  assert(tensorNames.size() == types.size() && "Invalid initialization list");
   for (unsigned i = 0; i < tensorNames.size(); i++) {
     assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
-    createAndRememberVariable(tensorNames[i], *tensors[i],
-                              VisibilityKind::Public);
+    createAndRegisterPlaceholder(tensorNames[i], types[i]);
   }
 }
 

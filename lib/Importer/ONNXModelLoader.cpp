@@ -503,8 +503,8 @@ bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.output_size(); i++) {
     const auto &outputName = net.output(i).name();
     auto r = getNodeValueByName(outputName);
-    SaveNode *SN = G_.createSave("save_" + outputName, r);
-    outputVarsByName_[outputName] = SN->getVariable();
+    SaveNode *SN = G_.createSavePH("save_" + outputName, r);
+    outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
   return true;
@@ -528,7 +528,7 @@ ONNXModelLoader::ONNXModelLoader(Function &F)
 
 void ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                                   llvm::ArrayRef<const char *> tensorNames,
-                                  llvm::ArrayRef<Tensor *> tensors) {
+                                  llvm::ArrayRef<TypeRef> types) {
   for (size_t i = 0; i < tensorNames.size(); i++) {
     // Look if a corresponding input exists.
     for (int j = 0; j < net.input_size(); j++) {
@@ -539,7 +539,7 @@ void ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
 
-      llvm::ArrayRef<size_t> dims = tensors[i]->dims();
+      llvm::ArrayRef<size_t> dims = types[i]->dims();
       const ONNX_NAMESPACE::TensorShapeProto &shape =
           valueInfo.type().tensor_type().shape();
       (void)shape;
@@ -558,8 +558,8 @@ void ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
-                                 llvm::ArrayRef<Tensor *> tensors, Function &F)
-    : CommonOperatorLoader(tensorNames, tensors, F) {
+                                 llvm::ArrayRef<TypeRef> types, Function &F)
+    : CommonOperatorLoader(tensorNames, types, F) {
   // The ONNX model that we are deserializing.
   ONNX_NAMESPACE::ModelProto modelDef;
   if (!loadProto(modelDef, modelDescFilename)) {
@@ -568,7 +568,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   setVersion(modelDef);
 
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-  checkInputs(graphDef, tensorNames, tensors);
+  checkInputs(graphDef, tensorNames, types);
 
   loadInitializers(graphDef);
   if (!loadNetwork(graphDef)) {

@@ -32,22 +32,27 @@ TEST(caffe2, importConv) {
   std::string NetDescFilename("tests/models/caffe2Models/predict_net.pbtxt");
   std::string NetWeightFilename("tests/models/caffe2Models/init_net.pbtxt");
 
-  Variable *output;
+  Placeholder *output;
+  Context ctx;
+
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
-                               {&data}, *F);
+                               {&data.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"data"}, {&data});
   }
 
-  Context ctx;
+  auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
-  auto result = output->getHandle();
+  auto result = res->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
@@ -76,7 +81,9 @@ TEST(caffe2, concatAddAxis) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Context ctx;
+
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 7});
   Tensor inputs_2(ElemKind::FloatTy, {10, 7});
@@ -86,18 +93,22 @@ TEST(caffe2, concatAddAxis) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"inputs_0", "inputs_1", "inputs_2"},
-                               {&inputs_0, &inputs_1, &inputs_2}, *F);
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"inputs_0", "inputs_1", "inputs_2"},
+        {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs_0", "inputs_1", "inputs_2"},
+                       {&inputs_0, &inputs_1, &inputs_2});
   }
 
-  auto result = output->getHandle();
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {10, 3, 7};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
 
-  Context ctx;
+  auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
@@ -105,11 +116,11 @@ TEST(caffe2, concatAddAxis) {
   // We have 1 reshape, 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 3);
   // With have three inputs and one outputs.
-  EXPECT_EQ(mod.getVars().size(), 4);
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
 
   // Check that the graph has the expected shape,
   // starting from the output.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *reshape = llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(reshape);
   auto *concat = llvm::dyn_cast<ConcatNode>(reshape->getInput());
@@ -117,15 +128,15 @@ TEST(caffe2, concatAddAxis) {
   // We will check that the inputs are correct within
   // the next loop.
 
+  auto result = res->getHandle();
+
   // Check that the output matches the concatenation of
   // all the inputs.
   Tensor *inputs[] = {&inputs_0, &inputs_1, &inputs_2};
   for (size_t i = 0; i < 3; ++i) {
     const auto inputsHandle = inputs[i]->getHandle();
-    ASSERT_TRUE(llvm::isa<Variable>(concat->getInputs()[i]));
-    EXPECT_TRUE(llvm::cast<Variable>(concat->getInputs()[i])
-                    ->getPayload()
-                    .isEqual(*inputs[i]));
+    ASSERT_TRUE(llvm::isa<Placeholder>(concat->getInputs()[i]));
+
 
     for (size_t row = 0; row < 10; ++row) {
       for (size_t column = 0; column < 7; ++column) {
@@ -147,7 +158,8 @@ TEST(caffe2, concat) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Context ctx;
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 12});
   Tensor inputs_2(ElemKind::FloatTy, {10, 5});
@@ -157,18 +169,23 @@ TEST(caffe2, concat) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"inputs_0", "inputs_1", "inputs_2"},
-                               {&inputs_0, &inputs_1, &inputs_2}, *F);
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"inputs_0", "inputs_1", "inputs_2"},
+        {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs_0", "inputs_1", "inputs_2"},
+                       {&inputs_0, &inputs_1, &inputs_2});
   }
 
-  auto result = output->getHandle();
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {10, 24};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
 
-  Context ctx;
+  ctx.allocate(mod.getPlaceholders());
+  auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
   EE.run();
@@ -176,11 +193,13 @@ TEST(caffe2, concat) {
   // We have 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 2);
   // With have three inputs and one outputs.
-  EXPECT_EQ(mod.getVars().size(), 4);
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  auto result = res->getHandle();
 
   // Check that the graph has the expected shape,
   // starting from the output.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *concat = llvm::dyn_cast<ConcatNode>(saveNode->getInput());
   ASSERT_TRUE(concat);
   // We will check that the inputs are correct within
@@ -192,10 +211,7 @@ TEST(caffe2, concat) {
   size_t columnsChecked = 0;
   for (size_t i = 0; i < 3; ++i) {
     const auto inputsHandle = inputs[i]->getHandle();
-    ASSERT_TRUE(llvm::isa<Variable>(concat->getInputs()[i]));
-    EXPECT_TRUE(llvm::cast<Variable>(concat->getInputs()[i])
-                    ->getPayload()
-                    .isEqual(*inputs[i]));
+    ASSERT_TRUE(llvm::isa<Placeholder>(concat->getInputs()[i]));
 
     size_t currentColumnWidth = inputs[i]->dims()[1];
     for (size_t row = 0; row < 10; ++row) {
@@ -217,7 +233,8 @@ TEST(caffe2, batchedMatmulRHS) {
       "tests/models/caffe2Models/matmul_trans_RHS_predict_net.pbtxt");
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
-  Variable *output;
+
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 7});
   inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
@@ -226,25 +243,25 @@ TEST(caffe2, batchedMatmulRHS) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"inputs_0", "inputs_1"}, {&inputs_0, &inputs_1},
-                               *F);
+                               {"inputs_0", "inputs_1"},
+                               {&inputs_0.getType(), &inputs_1.getType()}, *F);
     output = caffe2LD.getSingleOutput();
   }
-  auto result = output->getHandle();
+
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {3, 10, 10};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
   // High level check on the content of the graph.
   // We have 1 transpose, 1 matmul, 1 save, and 2 reshapes.
   EXPECT_EQ(F->getNodes().size(), 5);
   // With have 2 inputs and one outputs.
-  EXPECT_EQ(mod.getVars().size(), 3);
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
   // starting from the output.
   // Batched matmul with broadcasted RHS are lowered
   // to a regular matmul, where LHS is reshaped from
   // a 3D tensor to a flattened matrix.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *reshapeResult =
       llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(reshapeResult);
@@ -256,14 +273,10 @@ TEST(caffe2, batchedMatmulRHS) {
   auto *lhs = llvm::dyn_cast<ReshapeNode>(matmul->getLHS().getNode());
   ASSERT_TRUE(lhs);
   auto *lhsInput = lhs->getInput().getNode();
-  ASSERT_TRUE(llvm::isa<Variable>(lhsInput));
-  EXPECT_TRUE(llvm::cast<Variable>(lhsInput)->getPayload().isEqual(inputs_0));
+  ASSERT_TRUE(llvm::isa<Placeholder>(lhsInput));
   auto *transpose = llvm::dyn_cast<TransposeNode>(matmul->getRHS().getNode());
   ASSERT_TRUE(transpose);
-  ASSERT_TRUE(llvm::isa<Variable>(transpose->getInput().getNode()));
-  EXPECT_TRUE(llvm::cast<Variable>(transpose->getInput().getNode())
-                  ->getPayload()
-                  .isEqual(inputs_1));
+  ASSERT_TRUE(llvm::isa<Placeholder>(transpose->getInput().getNode()));
   // Check that the last two dimensions are swapped.
   const unsigned_t shuffle[] = {1, 0};
   EXPECT_EQ(transpose->getShuffle(), llvm::makeArrayRef(shuffle));
@@ -280,7 +293,8 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
       "tests/models/caffe2Models/parallel_matmul_predict_net.pbtxt");
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
-  Variable *output;
+
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {3, 7, 10});
   inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
@@ -289,24 +303,24 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"inputs_0", "inputs_1"}, {&inputs_0, &inputs_1},
-                               *F);
+                               {"inputs_0", "inputs_1"},
+                               {&inputs_0.getType(), &inputs_1.getType()}, *F);
     output = caffe2LD.getSingleOutput();
   }
-  auto result = output->getHandle();
+
   // Check that the shape of the output matches what Caffe2 expects.
   std::vector<size_t> expectedDims = {3, 10, 10};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
   // High level check on the content of the graph.
   // We have 6 slices, 3 matmuls, 1 concat, 7 reshapes, 1 save.
   EXPECT_EQ(F->getNodes().size(), 18);
   // With have 2 inputs and one outputs.
-  EXPECT_EQ(mod.getVars().size(), 3);
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
   // starting from the output.
   // Parallel Batched matmul is lowered to a sequence of slices, reshapes and
   // regular matmuls.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *reshapeResult =
       llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(reshapeResult);
@@ -329,9 +343,8 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
         llvm::dyn_cast<SliceNode>(lhsReshape->getInput().getNode());
     ASSERT_TRUE(lhsSlice);
     EXPECT_EQ(lhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *lhsInput = llvm::dyn_cast<Variable>(lhsSlice->getInput().getNode());
+    auto *lhsInput = llvm::dyn_cast<Placeholder>(lhsSlice->getInput().getNode());
     ASSERT_TRUE(lhsInput);
-    EXPECT_TRUE(lhsInput->getPayload().isEqual(inputs_0));
     // RHS
     auto *rhsReshape = llvm::dyn_cast<ReshapeNode>(matmul->getRHS().getNode());
     ASSERT_TRUE(rhsReshape);
@@ -341,9 +354,8 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
         llvm::dyn_cast<SliceNode>(rhsReshape->getInput().getNode());
     ASSERT_TRUE(rhsSlice);
     EXPECT_EQ(rhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *rhsInput = llvm::dyn_cast<Variable>(rhsSlice->getInput().getNode());
+    auto *rhsInput = llvm::dyn_cast<Placeholder>(rhsSlice->getInput().getNode());
     ASSERT_TRUE(rhsInput);
-    EXPECT_TRUE(rhsInput->getPayload().isEqual(inputs_1));
   }
   // We don't actually check that the output is correct, because this
   // should be covered in the OperatorTest for MatMul already.
@@ -360,8 +372,8 @@ TEST(caffe2, importClip) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
-
+  Context ctx;
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
   inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
                             46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
@@ -371,15 +383,17 @@ TEST(caffe2, importClip) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
-                               {&inputs_0}, *F);
+                               {&inputs_0.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
 
-  Context ctx;
+  auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
 
-  auto result = output->getHandle();
+  auto result = res->getHandle();
   std::vector<size_t> expectedDims = {5, 5};
   std::vector<float> expectedValues = {45.0, 20.0, 59.0, 60.0, 48.0, 20.0, 44.0,
                                        46.0, 60.0, 28.0, 20.0, 60.0, 20.0, 20.0,
@@ -404,7 +418,8 @@ TEST(caffe2, importClipDefault) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Context ctx;
+  Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
   inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
                             46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
@@ -415,15 +430,17 @@ TEST(caffe2, importClipDefault) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
-                               {&inputs_0}, *F);
+                               {&inputs_0.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
 
-  Context ctx;
+  auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
 
-  auto result = output->getHandle();
+  auto result = res->getHandle();
   std::vector<size_t> expectedDims = {5, 5};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 5 * 5; i++) {
@@ -442,7 +459,8 @@ TEST(caffe2, replaceNaN) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Context ctx;
+  Placeholder *output;
   Tensor input(ElemKind::FloatTy, {10, 10});
   auto inputHandle = input.getHandle();
 
@@ -458,26 +476,29 @@ TEST(caffe2, replaceNaN) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
-                               {&input}, *F);
+                               {&input.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"input"}, {&input});
   }
 
-  auto result = output->getHandle();
 
   // Check that the shape of the output matches the input.
   std::vector<size_t> expectedDims = {10, 10};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // Compile and run the model.
-  Context ctx;
+  auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
+
+  auto result = res->getHandle();
 
   // High level checks on the content of the graph.
   // We have 1 IsNaN, 1 Splat, 1 Select and 1 Output.
   EXPECT_EQ(F->getNodes().size(), 4);
   // With have one input and one output.
-  EXPECT_EQ(mod.getVars().size(), 2);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
 
   // Check that the output tensor is the same as the input tensor except for
   // NaNs, which should have been replaced with 1 (the value specified in
@@ -502,7 +523,8 @@ TEST(caffe2, dotProduct1D) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Placeholder *output;
+  Context ctx;
 
   // Input tensors.
   const size_t kDataSize = 10;
@@ -527,14 +549,14 @@ TEST(caffe2, dotProduct1D) {
   // will not depend on anyting from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
-                               {&X, &Y}, *F);
+                               {&X.getType(), &Y.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
 
-  auto result = output->getHandle();
-
   // Check that the shape of the output matches that of the expected output.
-  EXPECT_TRUE(result.dims().vec() == OH.dims().vec());
+  EXPECT_TRUE(output->dims().vec() == OH.dims().vec());
 
   // High level checks on the content of the graph.
   // We have 1 Mul and 1 Output.
@@ -542,18 +564,20 @@ TEST(caffe2, dotProduct1D) {
 
   // Check that the graph has the expected shape (Mul -> Save),
   // starting from the output.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *MN = llvm::dyn_cast<MulNode>(saveNode->getInput());
   ASSERT_TRUE(MN);
 
   // With have two inputs and one output.
-  EXPECT_EQ(mod.getVars().size(), 3);
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
   // Compile and run the model.
-  Context ctx;
+  ctx.allocate(mod.getPlaceholders());
+  auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
 
+  auto result = res->getHandle();
   // Check that the output tensor is the same as the expected output.
   for (size_t i = 0; i < result.size(); ++i) {
     EXPECT_NEAR(result.raw(i), OH.raw(i), 0.00001);
@@ -571,7 +595,8 @@ TEST(caffe2, dotProduct2D) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Variable *output;
+  Context ctx;
+  Placeholder *output;
 
   // Input tensors.
   const size_t kRows = 10;
@@ -603,15 +628,15 @@ TEST(caffe2, dotProduct2D) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
-                               {&X, &Y}, *F);
+   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+                               {&X.getType(), &Y.getType()}, *F);
     output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
 
-  auto result = output->getHandle();
-
   // Check that the shape of the output matches that of the expected output.
-  EXPECT_TRUE(result.dims().vec() == OH.dims().vec());
+  EXPECT_TRUE(output->dims().vec() == OH.dims().vec());
 
   // High level checks on the content of the graph.
   // We have 1 Mul, 1 BatchedReduceAdd and 1 Output.
@@ -619,7 +644,7 @@ TEST(caffe2, dotProduct2D) {
 
   // Check that the graph has the expected shape
   /// (Mul -> BatchedReduceAdd -> Save), starting from the output.
-  auto *saveNode = getSaveNodeFromVariable(output);
+  auto *saveNode = getSaveNodeFromDest(output);
   auto *BRA = llvm::dyn_cast<BatchedReduceAddNode>(saveNode->getInput());
   ASSERT_TRUE(BRA);
   ASSERT_EQ(BRA->getNumInputs(), 1);
@@ -628,12 +653,14 @@ TEST(caffe2, dotProduct2D) {
   ASSERT_TRUE(MN);
 
   // With have two inputs and one output.
-  EXPECT_EQ(mod.getVars().size(), 3);
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
   // Compile and run the model.
-  Context ctx;
+  auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
+
+  auto result = res->getHandle();
 
   // Check that the output tensor is the same as the expected output.
   for (size_t i = 0; i < result.size(); ++i) {

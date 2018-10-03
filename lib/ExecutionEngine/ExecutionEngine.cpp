@@ -79,6 +79,21 @@ void glow::updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
   }
 }
 
+void glow::updateInputsByName(Context &ctx, Module *mod,
+                              llvm::ArrayRef<llvm::StringRef> ph,
+                              llvm::ArrayRef<Tensor *> inputs) {
+  assert(inputs.size() == ph.size() &&
+         "The number of inputs does not match the number of Placeholders");
+
+  for (int i = 0, e = ph.size(); i < e; i++) {
+    Placeholder *p = mod->getPlaceholderByName(ph[i]);
+    Tensor *t = inputs[i];
+    assert(t && "Invalid tensor.");
+    assert(p && "Invalid placeholder.");
+    updateVariables(ctx, {p}, {t});
+  }
+}
+
 void ExecutionEngine::run() {
   assert(function_ && "No function has been compiled");
   function_->execute();

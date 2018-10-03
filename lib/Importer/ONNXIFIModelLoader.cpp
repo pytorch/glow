@@ -48,8 +48,7 @@ void ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
 
     Tensor *T = new Tensor();
     setTensorType(in.type(), T);
-    auto *var =
-        createAndRememberVariable(in.name(), *T, VisibilityKind::Public);
+    Placeholder *var = createAndRegisterPlaceholder(in.name(), &T->getType());
     onnxNameToInputVars_.try_emplace(in.name(), var);
   }
 }

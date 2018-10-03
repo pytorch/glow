@@ -99,17 +99,19 @@ protected:
   /// A list of weight tensors indexed by name.
   llvm::StringMap<Tensor *> tensors_;
   /// A map from names of the external outputs of the network to Variables.
-  llvm::StringMap<Variable *> outputVarsByName_;
+  llvm::StringMap<Placeholder *> outputVarsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
   Tensor *getTensorByName(llvm::StringRef name);
 
-  /// Create a new variable \p name initialized with \p tensor.
-  /// \returns The newly created variable.
-  /// \pre !hasNodeByName(name)
-  Variable *createAndRememberVariable(
-      llvm::StringRef name, const Tensor &tensor,
-      VisibilityKind visibilityKind = VisibilityKind::Private);
+  /// Create a new constant that's initialized with \p tensor, and register it
+  /// under the name \p name. \returns The newly created constant.
+  Variable *createAndRegisterConstant(llvm::StringRef name,
+                                      const Tensor &tensor);
+
+  /// Create a new Placeholder of type \p T, and register it
+  /// under the name \p name. \returns The newly created placeholder.
+  Placeholder *createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
@@ -130,26 +132,25 @@ public:
   bool hasNodeByName(llvm::StringRef name) const;
 
   /// Constructs new ProtobufLoader object. It will populate the network into \p
-  /// F. The tensors in \p tensors are stored with the names in the list of
-  /// names \p tensorNames and used as inputs to the network.
+  /// F. The list \p types and \p names are used to initialized the inputs and
+  /// outputs with specific names and types.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                 llvm::ArrayRef<Tensor *> tensors, Function &F);
+                 llvm::ArrayRef<TypeRef> types, Function &F);
 
   virtual ~ProtobufLoader();
 
-  /// \returns the single final output Variable of the network. The function
-  /// assumes there is only one output, verified via assertion. For image
+  /// \returns the single final output of the network. The function assumes that
+  /// there is only one output, verified via assertion. For image
   /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
-  /// \pre outputVarsByName_.size() == 1
-  Variable *getSingleOutput() {
+  Placeholder *getSingleOutput() {
     assert(outputVarsByName_.size() == 1);
     return outputVarsByName_.begin()->second;
   }
 
-  /// \returns the Variable for the external output with \p name.
+  /// \returns the Placeholder for the external output with \p name.
   /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
-  Variable *getOutputByName(llvm::StringRef name) const;
+  Placeholder *getOutputByName(llvm::StringRef name) const;
 };
 
 } // namespace glow

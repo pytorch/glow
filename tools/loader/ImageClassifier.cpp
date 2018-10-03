@@ -203,21 +203,24 @@ int main(int argc, char **argv) {
   if (c2Model) {
     LD.reset(new Caffe2ModelLoader(
         loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {inputName}, {&data}, *loader.getFunction()));
+        {inputName}, {&data.getType()}, *loader.getFunction()));
   } else {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
-                                 {&data}, *loader.getFunction()));
+                                 {&data.getType()}, *loader.getFunction()));
   }
+
+  // Allocate tensors to back all inputs and outputs.
+  ctx.allocate(loader.getModule()->getPlaceholders());
+
   // Get the Variable that the final expected Softmax writes into at the end of
   // image inference.
-  Variable *SMVar = LD->getSingleOutput();
+  Placeholder *SMVar = LD->getSingleOutput();
+  Tensor *SMVarT = ctx.get(SMVar);
 
   // Create Variables for both possible input names for flexibility for the
   // input model. The input data is mapped to both names. Whichever Variable is
   // unused will be removed in compile().
-  Node *inputImageNode = LD->getNodeValueByName(inputName);
-  Variable *inputImage = llvm::cast<Variable>(inputImageNode);
-  assert(inputImage->getVisibilityKind() == VisibilityKind::Public);
+  auto *inputImage = llvm::cast<Placeholder>(LD->getNodeValueByName(inputName));
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -227,14 +230,13 @@ int main(int argc, char **argv) {
   if (!emittingBundle()) {
 
     // Update the inputs.
-    updateVariables({inputImage}, {&data});
+    updateVariables(ctx, {inputImage}, {&data});
 
     // Perform the inference execution.
     loader.runInference(ctx);
 
     // Print out the inferred image classification.
-    Tensor &res = SMVar->getPayload();
-    auto H = res.getHandle<>();
+    auto H = SMVarT->getHandle<>();
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
     for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
       Tensor slice = H.extractSlice(i);

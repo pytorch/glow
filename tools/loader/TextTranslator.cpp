@@ -173,14 +173,13 @@ static void loadNextInputTranslationText(Tensor *encoderInputs) {
 /// model \p outputTokenBeamList, \p outputScoreBeamList, and \p
 /// outputPrevIndexBeamList. A translation is made up of a vector of tokens
 /// which must be converted back to words from via the destination dictionary.
-static std::vector<size_t>
-getBestTranslation(Variable *outputTokenBeamList, Variable *outputScoreBeamList,
-                   Variable *outputPrevIndexBeamList) {
+static std::vector<size_t> getBestTranslation(Tensor *outputTokenBeamList,
+                                              Tensor *outputScoreBeamList,
+                                              Tensor *outputPrevIndexBeamList) {
   // Get handles to all the outputs from the model run.
-  auto tokenBeamListH = outputTokenBeamList->getPayload().getHandle<int64_t>();
-  auto scoreBeamListH = outputScoreBeamList->getPayload().getHandle<float>();
-  auto prevIndexBeamListH =
-      outputPrevIndexBeamList->getPayload().getHandle<int64_t>();
+  auto tokenBeamListH = outputTokenBeamList->getHandle<int64_t>();
+  auto scoreBeamListH = outputScoreBeamList->getHandle<float>();
+  auto prevIndexBeamListH = outputPrevIndexBeamList->getHandle<int64_t>();
 
   // This pair represents the ending position of a translation in the beam
   // search grid. The first index corresponds to the length (column index), the
@@ -258,10 +257,9 @@ getBestTranslation(Variable *outputTokenBeamList, Variable *outputScoreBeamList,
 /// the model, \p outputTokenBeamList, \p outputScoreBeamList, and \p
 /// outputPrevIndexBeamList. Then converts each of the tokens from the returned
 /// best translation into words from the dest dictionary, and prints it.
-static void
-processAndPrintDecodedTranslation(Variable *outputTokenBeamList,
-                                  Variable *outputScoreBeamList,
-                                  Variable *outputPrevIndexBeamList) {
+static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
+                                              Tensor *outputScoreBeamList,
+                                              Tensor *outputPrevIndexBeamList) {
   std::vector<size_t> translationTokens = getBestTranslation(
       outputTokenBeamList, outputScoreBeamList, outputPrevIndexBeamList);
 
@@ -313,15 +311,19 @@ int main(int argc, char **argv) {
   constexpr char const *inputNames[5] = {"encoder_inputs", "attn_weights",
                                          "prev_hypos_indices", "prev_scores",
                                          "prev_token"};
-  std::vector<Tensor *> inputTensors = {
-      &encoderInputs, &attnWeights, &prevHyposIndices, &prevScores, &prevToken};
+  std::vector<TypeRef> inputTensors = {
+      &encoderInputs.getType(), &attnWeights.getType(),
+      &prevHyposIndices.getType(), &prevScores.getType(), &prevToken.getType()};
 
   auto LD = Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
                               loader.getCaffe2NetWeightFilename(), inputNames,
                               inputTensors, *loader.getFunction());
 
-  Variable *encoderInputsVar =
-      llvm::cast<Variable>(LD.getNodeValueByName("encoder_inputs"));
+  // Allocate tensors to back all inputs and outputs.
+  ctx.allocate(loader.getModule()->getPlaceholders());
+
+  Placeholder *encoderInputsVar =
+      llvm::cast<Placeholder>(LD.getNodeValueByName("encoder_inputs"));
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -329,9 +331,11 @@ int main(int argc, char **argv) {
 
   assert(!emittingBundle() && "Bundle mode has not been tested.");
 
-  Variable *outputTokenBeamList = LD.getOutputByName("output_token_beam_list");
-  Variable *outputScoreBeamList = LD.getOutputByName("output_score_beam_list");
-  Variable *outputPrevIndexBeamList =
+  Placeholder *outputTokenBeamList =
+      LD.getOutputByName("output_token_beam_list");
+  Placeholder *outputScoreBeamList =
+      LD.getOutputByName("output_score_beam_list");
+  Placeholder *outputPrevIndexBeamList =
       LD.getOutputByName("output_prev_index_beam_list");
 
   while (true) {
@@ -339,15 +343,16 @@ int main(int argc, char **argv) {
     loadNextInputTranslationText(&encoderInputs);
 
     // update the inputs.
-    updateVariables({encoderInputsVar}, {&encoderInputs});
+    updateVariables(ctx, {encoderInputsVar}, {&encoderInputs});
 
     // Run actual translation.
     loader.runInference(ctx);
 
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.
-    processAndPrintDecodedTranslation(outputTokenBeamList, outputScoreBeamList,
-                                      outputPrevIndexBeamList);
+    processAndPrintDecodedTranslation(ctx.get(outputTokenBeamList),
+                                      ctx.get(outputScoreBeamList),
+                                      ctx.get(outputPrevIndexBeamList));
   }
 
   return 0;
