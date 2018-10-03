@@ -40,7 +40,7 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   }
 }
 
-void ModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
+void ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.input()) {
     // Skip static weights.
     if (tensors_.count(in.name())) {
@@ -95,8 +95,8 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
   return true;
 }
 
-bool ModelLoader::loadWeights(uint32_t weightsCount,
-                              const onnxTensorDescriptorV1 *weightDescriptors) {
+bool ONNXIFIModelLoader::loadWeights(
+    uint32_t weightsCount, const onnxTensorDescriptorV1 *weightDescriptors) {
   for (uint32_t i = 0; i < weightsCount; ++i) {
     Tensor *T = new Tensor();
 
@@ -110,10 +110,10 @@ bool ModelLoader::loadWeights(uint32_t weightsCount,
   return true;
 }
 
-std::unique_ptr<ModelLoader> ModelLoader::parse(
+std::unique_ptr<ONNXIFIModelLoader> ONNXIFIModelLoader::parse(
     const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
-  std::unique_ptr<ModelLoader> loader(new ModelLoader(F));
+  std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader(F));
 
   ONNX_NAMESPACE::ModelProto modelDef;
   if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
@@ -139,7 +139,7 @@ std::unique_ptr<ModelLoader> ModelLoader::parse(
 }
 
 std::vector<std::pair<Kinded::Kind, ElemKind>>
-ModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
+ONNXIFIModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
   std::vector<std::pair<Kinded::Kind, ElemKind>> result;
   ONNX_NAMESPACE::ModelProto modelDef;
   if (!ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {

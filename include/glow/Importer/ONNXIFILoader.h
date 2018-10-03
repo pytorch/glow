@@ -26,9 +26,9 @@
 namespace glow {
 namespace onnxifi {
 
-class ModelLoader : public ONNXModelLoader {
+class ONNXIFIModelLoader : public ONNXModelLoader {
 private:
-  ModelLoader(Function &F) : ONNXModelLoader(F) {}
+  ONNXIFIModelLoader(Function &F) : ONNXModelLoader(F) {}
 
   /// Load the inputs from the GraphProto. This is useful when the
   /// initializers are not available.
@@ -52,10 +52,10 @@ public:
     return outputVarsByName_;
   }
 
-  /// \returns unique pointer to ModelLoader if \p onnxModel can be parsed
-  /// and static weights can be loaded from the \p wightDescriptors.
+  /// \returns unique pointer to ONNXIFIModelLoader if \p onnxModel can be
+  /// parsed and static weights can be loaded from the \p wightDescriptors.
   /// \returns nullptr otherwise.
-  static std::unique_ptr<ModelLoader>
+  static std::unique_ptr<ONNXIFIModelLoader>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
