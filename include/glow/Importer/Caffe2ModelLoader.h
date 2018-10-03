@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_CAFFE2_H
-#define GLOW_IMPORTER_CAFFE2_H
+#ifndef GLOW_IMPORTER_CAFFE2MODELLOADER_H
+#define GLOW_IMPORTER_CAFFE2MODELLOADER_H
 
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/CommonOperatorLoader.h"
@@ -73,4 +73,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IMPORTER_CAFFE2_H
+#endif // GLOW_IMPORTER_CAFFE2MODELLOADER_H
