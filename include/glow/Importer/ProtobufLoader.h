@@ -126,10 +126,6 @@ public:
   /// created, this method registers it under \p name.
   NodeValue getNodeValueOrCreateVariableByName(llvm::StringRef name);
 
-  /// \returns The variable registered under \p name.
-  /// \pre isa<Variable>(getNodeValueByName(name).getNode())
-  Variable *getVariableByName(llvm::StringRef name) const;
-
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
 

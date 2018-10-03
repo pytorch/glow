@@ -83,15 +83,6 @@ ProtobufLoader::getNodeValueOrCreateVariableByName(llvm::StringRef name) {
   return NodeValue(createAndRememberVariable(name, *T), 0);
 }
 
-Variable *ProtobufLoader::getVariableByName(llvm::StringRef name) const {
-  assert(hasNodeByName(name) && "Variable was not created");
-  auto *node = getNodeValueByName(name).getNode();
-
-  assert(llvm::isa<Variable>(node) && "Node is not a variable");
-
-  return llvm::cast<Variable>(node);
-}
-
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
   return getNodeValueByNameOrNullNodeValue(name).getNode() != nullptr;
 }

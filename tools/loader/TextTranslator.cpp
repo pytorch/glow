@@ -320,7 +320,8 @@ int main(int argc, char **argv) {
                               loader.getCaffe2NetWeightFilename(), inputNames,
                               inputTensors, *loader.getFunction());
 
-  Variable *encoderInputsVar = LD.getVariableByName("encoder_inputs");
+  Variable *encoderInputsVar =
+      llvm::cast<Variable>(LD.getNodeValueByName("encoder_inputs"));
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
