@@ -321,6 +321,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
+    // Glow doesn't support argmax output yet.
+    if (op.output_size() > 1)
+      return false;
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     std::vector<unsigned_t> strides(2, 1);
