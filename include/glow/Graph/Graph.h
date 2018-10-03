@@ -582,6 +582,22 @@ public:
   Node *createWeightedSum(llvm::StringRef name, llvm::ArrayRef<NodeValue> data,
                           llvm::ArrayRef<NodeValue> weights);
 
+  /// Create a series of nodes that implements a two-parameter
+  /// rowwise Box-Cox transform. For each element of the \p input x, this is
+  /// defined as:
+  ///
+  /// y = ln(max(x + lambda2, 1e-6)), if lambda1 == 0
+  ///     (max(x + lambda2, 1e-6)^lambda1 - 1)/lambda1, if lambda1 != 0
+  ///
+  /// The transform parameters \p lambda1 and \p lambda2 are vectors of size D
+  /// that are broadcasted to match the size of \p input (NxD). The transform
+  /// itself is implemented using elementwise Max, Add, Log (if lambda1 == 0),
+  /// Pow, Splat, Sub, and Div (if lambda1 != 0) nodes with a Splat and Select
+  /// node to select between the two cases listed above. \returns the final
+  /// Select node.
+  Node *createBatchBoxCox(llvm::StringRef name, NodeValue input,
+                          NodeValue lambda1, NodeValue lambda2);
+
   /// Create a series of nodes for the Clip operator. It limits the given input
   /// within an interval specified by the `min` and `max` arguments.
   Node *createClip(llvm::StringRef name, NodeValue input, float min, float max);

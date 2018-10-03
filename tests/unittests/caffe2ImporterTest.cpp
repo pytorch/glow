@@ -667,3 +667,162 @@ TEST(caffe2, dotProduct2D) {
     EXPECT_NEAR(result.raw(i), OH.raw(i), 0.00001);
   }
 }
+
+// Test loading a BatchBoxCox operator.
+TEST(caffe2, batchBoxCox) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/batch_box_cox_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Context ctx;
+  Placeholder *output;
+
+  // Input tensors.
+  const size_t kRows = 10;
+  const size_t kCols = 5;
+  Tensor data(ElemKind::FloatTy, {kRows, kCols});
+  Tensor lambda1(ElemKind::FloatTy, {kCols});
+  Tensor lambda2(ElemKind::FloatTy, {kCols});
+  auto dataH = data.getHandle();
+  auto lambda1H = lambda1.getHandle();
+  auto lambda2H = lambda2.getHandle();
+
+  // Fill inputs with random values.
+  dataH.randomize(0.0, 5.0, mod.getPRNG());
+  lambda1H.randomize(1.0, 2.0, mod.getPRNG());
+  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
+
+  // Zero out every other element to lambda1 to test that case of the transform.
+  for (size_t i = 0; i < kCols; i += 2) {
+    lambda1H.at({i}) = 0;
+  }
+
+  // Compute expected output.
+  Tensor O(ElemKind::FloatTy, {kRows, kCols});
+  auto OH = O.getHandle();
+
+  for (size_t i = 0; i < kRows; ++i) {
+    for (size_t j = 0; j < kCols; ++j) {
+      float d = dataH.at({i, j});
+      float l1 = lambda1H.at({j});
+      float l2 = lambda2H.at({j});
+
+      // Compute elementwise Box-Cox transform.
+      float tmp = std::max(d + l2, 1e-6f);
+      if (l1 == 0) {
+        // Clip argument to log and pow at 1e-6 to avoid saturation.
+        OH.at({i, j}) = std::log(tmp);
+      } else {
+        OH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
+      }
+    }
+  }
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
+        {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"data", "lambda1", "lambda2"},
+                       {&data, &lambda1, &lambda2});
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(output->dims().vec() == OH.dims().vec());
+
+  // High level checks on the content of the graph.
+  // We should have 2 Broadcast (2 Reshape and 2 Tile), 2 Add, 4 Splat,
+  // 1 Max, 1 Log, 1 Pow, 1 Sub, 1 Div, 1 CmpEQ, 1 Select and 1 Output =
+  // 18 nodes in total.
+  //
+  EXPECT_EQ(F->getNodes().size(), 18);
+
+  // Check that the graph has the expected shape:
+  //
+  //        (input) Broadcast          Broadcast -----
+  //              \   |        ________/ /           |
+  //              v   v       v         /            |
+  //       Splat   Add  -> Pow  Splat  /             |
+  //           \    |   |   |   /     /              |
+  //            v   v   |   v  v     v               |
+  //             Max ----   Sub    Add <-- Splat     |
+  //              |          |    /                  |
+  //              v          v   v                   |
+  //             Log         Div                     |
+  //                \       /         _______________|
+  //                 v     v         v
+  //                 Select  <--- CmpEQ <--- Splat
+  //                   |
+  //                   v
+  //                 Output
+  //
+  // Search in a breadth-first fashion starting from the output.
+  // Broadcast consists of (Reshape -> Tile), so cast to TileNode
+  // when checking for Broadcast.
+
+  // Output.
+  auto *saveNode = getSaveNodeFromDest(output);
+  ASSERT_TRUE(saveNode);
+
+  // Select.
+  auto *selectNode = llvm::dyn_cast<SelectNode>(saveNode->getInput());
+  ASSERT_TRUE(selectNode);
+
+  // CmpEQ, Log, Div.
+  auto *CEQ = llvm::dyn_cast<CmpEQNode>(selectNode->getNthInput(0));
+  ASSERT_TRUE(CEQ);
+  auto *LN = llvm::dyn_cast<LogNode>(selectNode->getNthInput(1));
+  ASSERT_TRUE(LN);
+  auto *DN = llvm::dyn_cast<DivNode>(selectNode->getNthInput(2));
+  ASSERT_TRUE(DN);
+
+  // Splat, Broadcast, Max, Sub, Add.
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(CEQ->getNthInput(1)));
+  auto *BN1 = llvm::dyn_cast<TileNode>(CEQ->getNthInput(0));
+  ASSERT_TRUE(BN1);
+  auto *MN = llvm::dyn_cast<MaxNode>(LN->getInput());
+  ASSERT_TRUE(MN);
+  auto *subNode = llvm::dyn_cast<SubNode>(DN->getNthInput(0));
+  ASSERT_TRUE(subNode);
+  auto *AN1 = llvm::dyn_cast<AddNode>(DN->getNthInput(1));
+  ASSERT_TRUE(AN1);
+
+  // Splat, Splat, Splat. Add, Pow, Broadcast.
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(MN->getNthInput(1)));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(subNode->getNthInput(1)));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(AN1->getNthInput(1)));
+  auto *AN2 = llvm::dyn_cast<AddNode>(MN->getNthInput(0));
+  ASSERT_TRUE(AN2);
+  auto *PN = llvm::dyn_cast<PowNode>(subNode->getNthInput(0));
+  ASSERT_TRUE(PN);
+  EXPECT_EQ(MN, llvm::dyn_cast<MaxNode>(PN->getNthInput(0)));
+  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(AN1->getNthInput(0)));
+
+  // Broadcast, Broadcast.
+  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(PN->getNthInput(1)));
+  auto *BN2 = llvm::dyn_cast<TileNode>(AN2->getNthInput(1));
+  EXPECT_TRUE(BN2);
+
+  // With have three inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  // Compile and run the model.
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = res->getHandle();
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0; i < result.size(); ++i) {
+    EXPECT_FLOAT_EQ(result.raw(i), OH.raw(i));
+  }
+}

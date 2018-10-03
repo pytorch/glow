@@ -1477,6 +1477,66 @@ Node *Function::createWeightedSum(llvm::StringRef name,
   return currAdd;
 }
 
+Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
+                                  NodeValue lambda1, NodeValue lambda2) {
+  assert((lambda1.dims() == lambda2.dims()) &&
+         "lambda1 and lambda2 must have the same shape");
+  assert((lambda1.getType()->getElementType() == lambda2.getElementType()) &&
+         "lambda1 and lambda2 must have the same element type");
+  assert((lambda1.getType()->getElementType() == data.getElementType()) &&
+         "data and lambdas must have the same element type");
+  assert((lambda1.dims().size() == 1) && "lambda1 and lambda2 must be vectors");
+  assert((data.dims().size() == 2) && "data must be a matrix");
+  assert((data.dims()[1] == lambda1.dims()[0]) &&
+         "data, lambda1 and lambda2 must have the same number of rows");
+
+  // Broadcast lambda1 and lambda2 so that they are both the same size as the
+  // data.
+  auto *BL1 = createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
+                              /*axis=*/1);
+  auto *BL2 = createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
+                              /*axis=*/1);
+
+  // Add a small epsilon to lambda1 so that we can avoid dividing by zero later.
+  // It doesn't matter that this is technically incorrect because the final
+  // Select will discard the results of this computation.
+  auto *eps = createSplat(name.str() + ".eps", BL1->getNthResult(0).getType(),
+                          std::numeric_limits<float>::min());
+  auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
+
+  // Compute data + BL2, which is needed regardless of whether
+  // lambda1 is 0 or not.
+  auto *AN = createAdd(name.str() + ".add", data, BL2);
+
+  // Take the max of data + BL2 and 1e-6 to void exponentiating or taking the
+  // logarithm of too small a number.
+  auto *minArg =
+      createSplat(name.str() + ".logpowmin", AN->getResult().getType(), 1e-6);
+  auto *MN = createMax(name.str() + ".max", AN, minArg);
+
+  // Compute the Box-Cox transform for the lambda1 == 0 case:
+  //    y = ln(max(x + lambda2, 1e-6))
+
+  auto *LN = createLog(name.str() + ".log", MN);
+
+  // Compute the Box-Cox transform for the lambda1 != 0 case:
+  //    y = (max(x + lambda2, 1e-6)^lambda1 - 1)/lambda1
+  auto *PN = createPow(name.str() + ".pow", MN, BL1);
+  auto *ones =
+      createSplat(name.str() + ".ones", PN->getResult().getType(), 1.0f);
+  auto *SN = createSub(name.str() + ".sub", PN, ones);
+  // Divide by EBL1, not BL1 to avoid a divide-by-zero exception.
+  auto *DN = createDiv(name.str() + ".div", SN, EBL1);
+
+  // Compute predicates for selecting between the two cases above.
+  auto *zeroes =
+      createSplat(name.str() + ".zeroes", BL1->getNthResult(0).getType(), 0.0f);
+  auto *predicate = createCmpEQ(name.str() + ".cmpeq", BL1, zeroes);
+
+  // Create Select to pick between the two Box-Cox cases.
+  return createSelect(name.str() + ".select", predicate, LN, DN);
+}
+
 Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
                            float max) {
   auto *minSplat = createSplat(name.str() + ".minSplat", input.getType(), min);

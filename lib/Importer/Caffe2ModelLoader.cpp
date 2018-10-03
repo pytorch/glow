@@ -605,6 +605,16 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "BatchBoxCox") {
+    auto data = getNodeValueOrCreateVariableByName(op.input(0));
+    auto lambda1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto lambda2 = getNodeValueOrCreateVariableByName(op.input(2));
+
+    auto *node = G_.createBatchBoxCox(opName, data, lambda1, lambda2);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
