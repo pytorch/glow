@@ -215,7 +215,8 @@ int main(int argc, char **argv) {
   // Create Variables for both possible input names for flexibility for the
   // input model. The input data is mapped to both names. Whichever Variable is
   // unused will be removed in compile().
-  Variable *inputImage = LD->getVariableByName(inputName);
+  Node *inputImageNode = LD->getNodeValueByName(inputName);
+  Variable *inputImage = llvm::cast<Variable>(inputImageNode);
   assert(inputImage->getVisibilityKind() == VisibilityKind::Public);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
