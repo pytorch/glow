@@ -160,8 +160,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendCompatibility)(
   }
 
   std::vector<std::pair<glow::Kinded::Kind, glow::ElemKind>> operations =
-      glow::onnxifi::ONNXIFIModelLoader::parseOperator(onnxModel,
-                                                       onnxModelSize);
+      glow::ONNXIFIModelLoader::parseOperator(onnxModel, onnxModelSize);
 
   // TODO: Make better error reporting.
   if (operations.empty()) {
