@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_ONNXIFILOADER_H
-#define GLOW_IMPORTER_ONNXIFILOADER_H
+#ifndef GLOW_IMPORTER_ONNXIFIMODELLOADER_H
+#define GLOW_IMPORTER_ONNXIFIMODELLOADER_H
 
 #include "onnx/onnxifi.h"
 
@@ -70,4 +70,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IMPORTER_ONNXIFILOADER_H
+#endif // GLOW_IMPORTER_ONNXIFIMODELLOADER_H

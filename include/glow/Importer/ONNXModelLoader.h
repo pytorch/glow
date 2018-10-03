@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_ONNX_H
-#define GLOW_IMPORTER_ONNX_H
+#ifndef GLOW_IMPORTER_ONNXMODELLOADER_H
+#define GLOW_IMPORTER_ONNXMODELLOADER_H
 
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/CommonOperatorLoader.h"
@@ -107,4 +107,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_IMPORTER_ONNX_H
+#endif // GLOW_IMPORTER_ONNXMODELLOADER_H
