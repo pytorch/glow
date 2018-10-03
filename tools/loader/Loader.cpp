@@ -268,8 +268,7 @@ void Loader::compile(Context &ctx) {
   }
 }
 
-void Loader::runInference(Context &ctx, llvm::ArrayRef<Variable *> variables,
-                          llvm::ArrayRef<Tensor *> tensors) {
+void Loader::runInference(Context &ctx) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
 
@@ -278,7 +277,6 @@ void Loader::runInference(Context &ctx, llvm::ArrayRef<Variable *> variables,
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterationsOpt; i++) {
-    updateVariables(variables, tensors);
     EE_.run();
   }
   if (timeOpt) {

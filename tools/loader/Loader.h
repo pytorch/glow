@@ -60,12 +60,10 @@ public:
   /// quantization profile guided information.
   void compile(Context &ctx);
 
-  /// Runs inference, unless emit bundle mode is enabled. If inference is run
-  /// then it will \return true, else false. \p ctx is the context that binds
-  /// specific placeholders to concrete tensors. The concrete tensors include
-  /// quantization profile guided information.
-  void runInference(Context &ctx, llvm::ArrayRef<Variable *> variables,
-                    llvm::ArrayRef<Tensor *> tensors);
+  /// Runs inference, unless emit bundle mode is enabled. \p ctx is the context
+  /// that binds specific placeholders to concrete tensors. The concrete
+  /// tensors include quantization profile guided information.
+  void runInference(Context &ctx);
 
   /// Create the Loader driver object, and parse/verify the command line
   /// parameters.
