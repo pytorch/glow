@@ -2530,6 +2530,24 @@ TEST_P(Operator, IntSplat) {
   }
 }
 
+TEST_P(InterpOnly, Fp16Splat) {
+  const float splatValue = 10;
+  const size_t size = 3;
+
+  auto splatTy = mod_.uniqueType(ElemKind::Float16Ty, {size});
+  auto *splat = F_->createSplat("splat", splatTy, splatValue);
+
+  auto *save = F_->createSave(ctx_, "save", splat);
+  ctx_.allocate(mod_.getPlaceholders());
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(save->getPlaceholder())->getHandle<float16_t>();
+  for (size_t i = 0; i < result.size(); i++) {
+    EXPECT_EQ(float16_t(splatValue), result.raw(i));
+  }
+}
+
 TEST_P(Operator, GroupConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
