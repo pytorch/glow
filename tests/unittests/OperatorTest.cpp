@@ -180,6 +180,27 @@ TEST_P(Operator, matmul) {
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
 }
 
+/// Check that the matmul operator behaves correctly with FP16.
+TEST_P(InterpOnly, FP16Matmul) {
+  auto *lhs = mod_.createPlaceholder(ElemKind::Float16Ty, {3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::Float16Ty, {2, 1}, "rhs", false);
+  ctx_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
+  ctx_.allocate(rhs)->getHandle<float16_t>() = {7, 10};
+
+  auto R = F_->createMatMul("MM", lhs, rhs);
+
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto H = saveTensor->getHandle<float16_t>();
+  EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
+}
+
 /// Test that the broadcasted batch mat mul operator works as expected.
 TEST_P(Operator, BroadcastedBatchMatMul) {
   auto *lhs =

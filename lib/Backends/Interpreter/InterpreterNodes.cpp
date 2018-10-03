@@ -1380,10 +1380,16 @@ void InterpreterFunction::fwdMatMulInst_I8Impl(const glow::MatMulInst *I) {
   }
 }
 
+template <typename ElemTy>
 void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
-  auto lhs = getWeightHandle(I->getLHS());
-  auto rhs = getWeightHandle(I->getRHS());
-  auto dest = getWeightHandle(I->getDest());
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
 
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
@@ -1397,9 +1403,9 @@ void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
       // Perform DOT on the row an column.
       float sum = 0;
       for (size_t i = 0; i < lhsDim[1]; i++) {
-        sum += lhs.at({x, i}) * rhs.at({i, y});
+        sum += float(lhs.at({x, i}) * rhs.at({i, y}));
       }
-      dest.at({x, y}) = sum;
+      dest.at({x, y}) = ElemTy(sum);
     }
   }
 }
@@ -1408,7 +1414,9 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdMatMulInst_I8Impl(I);
   } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdMatMulInst_FloatImpl(I);
+    fwdMatMulInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdMatMulInst_FloatImpl<float16_t>(I);
   } else {
     llvm_unreachable("Type is not supported");
   }
