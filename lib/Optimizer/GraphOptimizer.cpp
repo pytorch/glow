@@ -2015,11 +2015,13 @@ void glow::optimize(Function *F, CompilationMode mode) {
   DCE(F);
 
   if (mode == CompilationMode::Infer) {
-    // Merge batch normalization operations.
-    optimizeBatchNorm(F);
-
     // Constant-fold transpose operations.
     optimizeTranspose(F);
+
+    // Merge batch normalization operations.
+    // Do after transpose constant folding, as weight transposes can prevent
+    // the optimization from triggering.
+    optimizeBatchNorm(F);
   }
 
   // Perform Common Subexpression Elimination.
