@@ -38,16 +38,16 @@ private:
                    const onnxTensorDescriptorV1 *weightDescriptors);
 
   /// Mapping between ONNX names for inputs and actual Glow input vars.
-  llvm::StringMap<Variable *> onnxNameToInputVars_;
+  llvm::StringMap<Placeholder *> onnxNameToInputVars_;
 
 public:
   /// \returns mapping between ONNX names and actual Glow input vars.
-  const llvm::StringMap<Variable *> &getInputVarsMapping() const {
+  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
     return onnxNameToInputVars_;
   }
 
   /// \returns mapping between ONNX names and actual Glow output nodes.
-  const llvm::StringMap<Variable *> &getOutputVarsMapping() const {
+  const llvm::StringMap<Placeholder *> &getOutputVarsMapping() const {
     return outputVarsByName_;
   }
 

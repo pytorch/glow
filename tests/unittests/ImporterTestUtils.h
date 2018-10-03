@@ -50,7 +50,7 @@ unsigned countNodeKind(Function *F, Kinded::Kind kind) {
 
 /// Helper function to get the save node from a Variable \p var.
 /// \pre (var->getUsers().size() == 1)
-SaveNode *getSaveNodeFromVariable(Variable *var) {
+SaveNode *getSaveNodeFromDest(Storage *var) {
   auto &varUsers = var->getUsers();
   assert(varUsers.size() == 1);
   auto *saveNode = llvm::dyn_cast<SaveNode>(varUsers.begin()->getUser());

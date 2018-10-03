@@ -80,7 +80,7 @@ protected:
     T->template getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
-    createAndRememberVariable(opName, *T);
+    createAndRegisterConstant(opName, *T);
   }
 
   /// Loads Sqrt operator, given its protobuf representation and parsed args.

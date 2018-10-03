@@ -63,12 +63,12 @@ public:
   /// Loads the caffe2 model that's represented by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
   /// \p netWeightFilename, and populates the network in \p F.
-  /// The tensors in \p tensors are stored with the names in the list of names
-  /// \p names and used as inputs to the network.
+  /// The list \p types and \p names are used to initialized the inputs and
+  /// outputs with specific names and types.
   Caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, Function &F);
+                    llvm::ArrayRef<TypeRef> types, Function &F);
 };
 
 } // namespace glow
