@@ -108,7 +108,7 @@ static std::vector<unsigned_t> getSizeHW(ArgumentDictionaryTy &dict,
   return {defaultValue, defaultValue};
 }
 
-bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
+bool Caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
@@ -131,11 +131,11 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
   return true;
 }
 
-bool caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+bool Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
 }
 
-void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
+void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -606,7 +606,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
-void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
+void Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
@@ -624,7 +624,7 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   }
 }
 
-void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
+void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -787,13 +787,13 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   unexpectedNodeError(op, "Unsupported weight kind");
 }
 
-void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+void Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
     loadWeight(op);
   }
 }
 
-caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
+Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<Tensor *> tensors,

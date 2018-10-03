@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<ProtobufLoader> LD;
   bool c2Model = !loader.getCaffe2NetDescFilename().empty();
   if (c2Model) {
-    LD.reset(new caffe2ModelLoader(
+    LD.reset(new Caffe2ModelLoader(
         loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
         {inputName}, {&data}, *loader.getFunction()));
   } else {

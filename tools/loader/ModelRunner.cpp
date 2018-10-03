@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
   // Create the model based on the input net, and get SaveNode for the output.
   std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
-    LD.reset(new caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
+    LD.reset(new Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
                                    loader.getCaffe2NetWeightFilename(), {}, {},
                                    *loader.getFunction()));
   } else {
