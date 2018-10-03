@@ -161,6 +161,33 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+/// Check that transpose constant folding is done before BatchNorm optimization,
+/// which allows to merge BatchNorm into Convolution with transposed weights.
+TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input", false);
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 3, 5, 5}, "filter", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "bias", false);
+
+  auto *TN = F_->createTranspose("transpose", filter, NCHW2NHWC);
+  auto *CV = F_->createConv("conv", input, TN, bias,
+                            mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}),
+                            5, 1, 2, 1);
+  auto *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  auto *ret = F_->createSave(ctx_, "ret", BN);
+
+  // Initialize to ensure that constant tensors are not optimized out.
+  ctx_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ctx_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {input});
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+}
+
 /// Check that the batch normalization optimization is
 /// not blocked by predicates and that it preserves them.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
