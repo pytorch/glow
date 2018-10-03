@@ -395,7 +395,7 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   }
 }
 
-void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -405,52 +405,6 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
   float filterArea = kdim.height * kdim.width;
-
-  if (I->getSrc()->getType()->isQuantizedType()) {
-    auto inW = getWeightHandle<int8_t>(I->getSrc());
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
-                                  I->getSrc()->getType()->getOffset()};
-    TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
-                                   I->getDest()->getType()->getOffset()};
-
-    // For each input in the batch:
-    for (size_t n = 0; n < odim.n; n++) {
-      // For each layer in the output tensor:
-      for (size_t z = 0; z < idim.c; z++) {
-        // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-            int32_t sum = 0;
-
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
-
-                // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
-                  continue;
-                }
-
-                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
-              }
-            }
-            // Instead of dividing by filterArea, just change scale.
-            outW.at({n, ax, ay, z}) =
-                quantization::clip<int32_t, int8_t>(std::round(
-                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                    outQP.offset));
-          } // W
-        }   // H
-      }     // C
-    }       // N
-
-    return;
-  }
 
   auto inW = getWeightHandle(I->getSrc());
   auto outW = getWeightHandle(I->getDest());
@@ -485,6 +439,68 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
       }   // H
     }     // C
   }       // N
+}
+
+void InterpreterFunction::fwdAvgPoolInst_I8Impl(const AvgPoolInst *I) {
+  ShapeNHWC odim(I->getDest()->dims());
+  ShapeNHWC idim(I->getSrc()->dims());
+
+  PaddingTLBR pdim(I->getPads());
+  ShapeHW kdim(I->getKernels());
+  ShapeHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -ssize_t(pdim.top);
+      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+        ssize_t y = -ssize_t(pdim.left);
+        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          int32_t sum = 0;
+
+          for (size_t fx = 0; fx < kdim.height; fx++) {
+            for (size_t fy = 0; fy < kdim.width; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+
+              sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
+            }
+          }
+          // Instead of dividing by filterArea, just change scale.
+          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
+              std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                         outQP.offset));
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
+void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    fwdAvgPoolInst_I8Impl(I);
+    return;
+  }
+
+  fwdAvgPoolInst_FloatImpl(I);
 }
 
 void InterpreterFunction::fwdMaxPoolWithXYGradInst(

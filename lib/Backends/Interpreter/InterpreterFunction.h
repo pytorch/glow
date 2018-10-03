@@ -104,6 +104,9 @@ private:
                                     llvm::ArrayRef<unsigned_t> strides,
                                     llvm::ArrayRef<unsigned_t> pads,
                                     size_t group);
+
+  void fwdAvgPoolInst_I8Impl(const AvgPoolInst *I);
+  void fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I);
   ///@}
 };
 
