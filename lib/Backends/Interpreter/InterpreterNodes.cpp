@@ -622,31 +622,50 @@ void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+template <typename ElemTy>
+void InterpreterFunction::fwdSoftMaxInst_Impl(const SoftMaxInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto idim = inW.dims();
 
   for (size_t n = 0; n < idim[0]; n++) {
     // Find Max.
-    float max = inW.at({n, 0});
+    float max = float(inW.at({n, 0}));
     for (size_t i = 1; i < idim[1]; i++) {
-      max = std::max(max, inW.at({n, i}));
+      max = std::max(max, float(inW.at({n, i})));
     }
 
     // Compute exp.
     float sum = 0;
     for (size_t i = 0; i < idim[1]; i++) {
-      float e = std::exp(inW.at({n, i}) - max);
+      float e = std::exp(float(inW.at({n, i})) - max);
       sum += e;
-      outW.at({n, i}) = e;
+      outW.at({n, i}) = ElemTy(e);
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
-      outW.at({n, i}) = outW.at({n, i}) / sum;
+      outW.at({n, i}) = ElemTy(float(outW.at({n, i})) / sum);
     }
   } // N
+}
+
+void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
+  switch (I->getSrc()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdSoftMaxInst_Impl<float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdSoftMaxInst_Impl<float16_t>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
 void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {

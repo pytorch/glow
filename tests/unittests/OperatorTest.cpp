@@ -3692,6 +3692,27 @@ TEST_P(Operator, SoftMax) {
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
+/// Check that the softmax operator works properly with FP16.
+/// See the test that check the SoftMax operator for more details.
+TEST_P(InterpOnly, FP16SoftMax) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
+  ctx_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 6});
+  out.getHandle<float16_t>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
