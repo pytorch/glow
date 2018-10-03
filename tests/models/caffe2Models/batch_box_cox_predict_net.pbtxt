@@ -1,0 +1,13 @@
+name: "batch_box_cox"
+op {
+  input: "data"
+  input: "lambda1"
+  input: "lambda2"
+  output: "batch_box_cox"
+  name: ""
+  type: "BatchBoxCox"
+}
+external_input: "data"
+external_input: "lambda1"
+external_input: "lambda2"
+external_output: "batch_box_cox"

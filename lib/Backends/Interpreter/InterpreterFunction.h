@@ -125,6 +125,9 @@ private:
   void fwdBatchedAddInst_I8Impl(const BatchedAddInst *I);
   template <typename ElemTy>
   void fwdBatchedAddInst_FloatImpl(const BatchedAddInst *I);
+
+  template <typename ElemTy>
+  void fwdElementCmpEQInstImpl(const glow::ElementCmpEQInst *I);
   ///@}
 };
 

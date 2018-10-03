@@ -1293,12 +1293,30 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
-  auto outW = getWeightHandle<int64_t>(I->getDest());
-  auto lhsW = getWeightHandle<int64_t>(I->getLHS());
-  auto rhsW = getWeightHandle<int64_t>(I->getRHS());
+template <typename ElemTy>
+void InterpreterFunction::fwdElementCmpEQInstImpl(const ElementCmpEQInst *I) {
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) == rhsW.raw(i) ? 1 : 0;
+  }
+}
+
+void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
+  auto *T = getTensor(I->getDest());
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy: {
+    fwdElementCmpEQInstImpl<float>(I);
+    break;
+  }
+  case ElemKind::Int64ITy: {
+    fwdElementCmpEQInstImpl<int64_t>(I);
+    break;
+  }
+  default:
+    llvm_unreachable("fwdElementCmpEQInst not implemented for this type!");
   }
 }
 
