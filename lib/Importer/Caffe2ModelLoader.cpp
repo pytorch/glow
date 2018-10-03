@@ -292,7 +292,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "FC") {
+  if (typeName == "FC" || typeName == "FCTransposed") {
     // Load the inputs:
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     if (in.getType()->dims().size() > 2) {
@@ -307,14 +307,19 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
     // matrix size if necessay and then transpose it back.
-    Tensor wtag;
+    Tensor tmp;
     if (w->dims().size() > 2) {
       auto wDims = flattenCdr(w->dims(), axis_w);
-      Tensor tmp(ElemKind::FloatTy, {wDims.first, wDims.second});
+      tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
       tmp.copyRawFrom(w);
-      tmp.transpose(&wtag, {1, 0});
-    } else
+      w = &tmp;
+    }
+    Tensor wtag;
+    if (typeName == "FC") {
       w->transpose(&wtag, {1, 0});
+    } else {
+      wtag.assign(w);
+    }
 
     auto W =
         G_.getParent()->addConstant(new Constant("weights", std::move(wtag)));
