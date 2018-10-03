@@ -17,8 +17,8 @@
 #include "Loader.h"
 
 #include "glow/Graph/Nodes.h"
-#include "glow/Importer/Caffe2.h"
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Importer/ONNXModelLoader.h"
 
 #include "llvm/Support/raw_ostream.h"
 

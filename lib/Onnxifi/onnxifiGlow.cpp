@@ -16,7 +16,7 @@
 
 #include "Base.h"
 
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 /// Allow defining names for onnxifi implementation.
 #ifndef GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER

@@ -16,7 +16,7 @@
 #include "ImporterTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Importer/Caffe2.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 #include "gtest/gtest.h"
 
 using namespace glow;
