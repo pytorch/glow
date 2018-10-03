@@ -248,8 +248,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     unsigned_t group = dict.count("group") ? loadInt(dict["group"]) : 1;
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
     auto pads = getPads(dict);
-    if (!pads)
+    if (!pads) {
       return false;
+    }
 
     // Load the inputs
     NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
@@ -331,8 +332,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
         getShape<unsigned_t>(dict.at("kernel_shape"));
 
     auto pads = getPads(dict);
-    if (!pads)
+    if (!pads) {
       return false;
+    }
 
     if (in.dims().size() != 4 || kernels.size() != 2) {
       // Glow only handles 2D pooling currently.
@@ -372,8 +374,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     kernels[0] = in.dims()[2];
     kernels[1] = in.dims()[3];
     auto pads = getPads(dict);
-    if (!pads)
+    if (!pads) {
       return false;
+    }
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
     Node *node = G_.createAvgPool(opName, tr, kernels, strides, *pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
