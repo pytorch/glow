@@ -137,7 +137,6 @@ TEST(caffe2, concatAddAxis) {
     const auto inputsHandle = inputs[i]->getHandle();
     ASSERT_TRUE(llvm::isa<Placeholder>(concat->getInputs()[i]));
 
-
     for (size_t row = 0; row < 10; ++row) {
       for (size_t column = 0; column < 7; ++column) {
         EXPECT_FLOAT_EQ(result.at({row, i, column}),
@@ -343,7 +342,8 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
         llvm::dyn_cast<SliceNode>(lhsReshape->getInput().getNode());
     ASSERT_TRUE(lhsSlice);
     EXPECT_EQ(lhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *lhsInput = llvm::dyn_cast<Placeholder>(lhsSlice->getInput().getNode());
+    auto *lhsInput =
+        llvm::dyn_cast<Placeholder>(lhsSlice->getInput().getNode());
     ASSERT_TRUE(lhsInput);
     // RHS
     auto *rhsReshape = llvm::dyn_cast<ReshapeNode>(matmul->getRHS().getNode());
@@ -354,7 +354,8 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
         llvm::dyn_cast<SliceNode>(rhsReshape->getInput().getNode());
     ASSERT_TRUE(rhsSlice);
     EXPECT_EQ(rhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *rhsInput = llvm::dyn_cast<Placeholder>(rhsSlice->getInput().getNode());
+    auto *rhsInput =
+        llvm::dyn_cast<Placeholder>(rhsSlice->getInput().getNode());
     ASSERT_TRUE(rhsInput);
   }
   // We don't actually check that the output is correct, because this
@@ -481,7 +482,6 @@ TEST(caffe2, replaceNaN) {
     ctx.allocate(mod.getPlaceholders());
     updateInputsByName(ctx, &mod, {"input"}, {&input});
   }
-
 
   // Check that the shape of the output matches the input.
   std::vector<size_t> expectedDims = {10, 10};
@@ -628,7 +628,7 @@ TEST(caffe2, dotProduct2D) {
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
-   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X.getType(), &Y.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());

@@ -798,8 +798,7 @@ void Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<TypeRef> types,
-                                     Function &F)
+                                     llvm::ArrayRef<TypeRef> types, Function &F)
     : CommonOperatorLoader(names, types, F) {
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;

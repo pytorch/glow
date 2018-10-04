@@ -85,7 +85,7 @@ onnxStatus Graph::run() {
   // Copy outputs to the addresses specified in the outputNodeToBuffer_.
   for (auto outputVar : outputNodeToBuffer_) {
     void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-    const Tensor *res =  ctx_.get(outputVar.first);
+    const Tensor *res = ctx_.get(outputVar.first);
 
     memcpy(outputAddress, res->getUnsafePtr(),
            res->size() * res->getType().getElementSize());
