@@ -71,7 +71,6 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
   auto result = ctx.get(graphOutputVar)->getHandle();
