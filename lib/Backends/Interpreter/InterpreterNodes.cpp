@@ -998,45 +998,55 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
+void InterpreterFunction::fwdElementAddInst_I8Impl(const ElementAddInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
 
-void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
-    auto destTy = I->getDest()->getType();
+  float lhsScale = lhsTy->getScale();
+  float rhsScale = rhsTy->getScale();
+  float destScale = destTy->getScale();
 
-    float lhsScale = lhsTy->getScale();
-    float rhsScale = rhsTy->getScale();
-    float destScale = destTy->getScale();
+  int32_t lhsOffset = lhsTy->getOffset();
+  int32_t rhsOffset = rhsTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
 
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    int32_t L = lhsW.raw(i);
+    int32_t R = rhsW.raw(i);
 
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      int32_t L = lhsW.raw(i);
-      int32_t R = rhsW.raw(i);
-
-      // We increase the size of the integer up to 16 bits to prevent overflow.
-      const float largeScale = float(1) / (1 << 15);
-      // Scale both sides from 8-bit to 16-bits.
-      int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
-      int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
-      int32_t sum32 = L32 + R32;
-      sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
-      outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
-    }
-    return;
+    // We increase the size of the integer up to 16 bits to prevent overflow.
+    const float largeScale = float(1) / (1 << 15);
+    // Scale both sides from 8-bit to 16-bits.
+    int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
+    int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
+    int32_t sum32 = L32 + R32;
+    sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
+    outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
   }
+}
 
+void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
   auto outW = getWeightHandle(I->getDest());
   auto lhsW = getWeightHandle(I->getLHS());
   auto rhsW = getWeightHandle(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
+  }
+}
+
+void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    fwdElementAddInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdElementAddInst_FloatImpl(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
