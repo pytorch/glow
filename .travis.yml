@@ -72,4 +72,4 @@ script:
  - keep_alive &
  - ninja all
  - CTEST_PARALLEL_LEVEL=2 ninja test || ( cat Testing/Temporary/LastTest.log && exit 1 )
- - CTEST_PARALLEL_LEVEL=2 ninja test_unopt
+ - if [ "$TEST_NAME" = "DEBUG" ]; then CTEST_PARALLEL_LEVEL=2 ninja test_unopt; fi
