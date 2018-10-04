@@ -79,13 +79,11 @@ TEST(GraphScheduler, testMaxSizeLessThanResultSize) {
 
   // Find the positions of sliceBig and concatSmall in
   // the schedule.
-  std::vector<glow::Node *> vectorSchedule(schedule.begin(), schedule.end());
-  auto concatSmallIt =
-      std::find(vectorSchedule.begin(), vectorSchedule.end(), concatSmall);
-  auto sliceBigIt =
-      std::find(vectorSchedule.begin(), vectorSchedule.end(), sliceBig);
+  auto concatSmallIt = std::find(schedule.begin(), schedule.end(), concatSmall);
+  auto sliceBigIt = std::find(schedule.begin(), schedule.end(), sliceBig);
 
   // For the reason given above, sliceBig should be scheduled
   // before concatSmall.
-  EXPECT_LT(sliceBigIt, concatSmallIt);
+  EXPECT_LT(std::distance(schedule.begin(), sliceBigIt),
+            std::distance(schedule.begin(), concatSmallIt));
 }
