@@ -1549,11 +1549,17 @@ void InterpreterFunction::fwdBatchedAddInst_I8Impl(
   }
 }
 
+template <typename ElemTy>
 void InterpreterFunction::fwdBatchedAddInst_FloatImpl(
     const glow::BatchedAddInst *I) {
-  auto batch = getWeightHandle(I->getBatch());
-  auto slice = getWeightHandle(I->getSlice());
-  auto dest = getWeightHandle(I->getDest());
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto batch = getWeightHandle<ElemTy>(I->getBatch());
+  auto slice = getWeightHandle<ElemTy>(I->getSlice());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
 
   auto bdim = flattenCdr(batch.dims());
   assert(slice.size() == bdim.second && "Invalid slice size");
@@ -1574,7 +1580,10 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
     fwdBatchedAddInst_I8Impl(I);
   } else if (I->getBatch()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdBatchedAddInst_FloatImpl(I);
+    fwdBatchedAddInst_FloatImpl<float>(I);
+  } else if (I->getBatch()->getType()->getElementType() ==
+             ElemKind::Float16Ty) {
+    fwdBatchedAddInst_FloatImpl<float16_t>(I);
   } else {
     llvm_unreachable("Type is not supported");
   }
