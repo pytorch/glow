@@ -9,34 +9,39 @@ find_program(LLVM_LINK_BIN
                llvm-link-6.0
                llvm-link)
 
+set(CMAKE_LLIR_CREATE_SHARED_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
+set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
+set(CMAKE_LLIR_CREATE_STATIC_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
+
 add_library(CPURuntime
-            SHARED
               libjit/libjit.cpp
               libjit/libjit_conv.cpp
               libjit/libjit_matmul.cpp)
+
+# NOTE(abdulras) explicitly override the compiler invocations with a custom
+# rule.  The trailing `#` is the comment leader intended to nullify the compile
+# commands.  Doing this allows us to override the compiler (driver) used for
+# building the runtime which requires clang (to emit LLVM IR for the LTO'ed AOT
+# JIT runtime).  Use a custom linker language with the rule specified above to
+# invoke our custom linker to merge the bitcode files.
 set_target_properties(CPURuntime
                       PROPERTIES
-                        CXX_STANDARD 11)
+                        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+                        CXX_STANDARD 11
+                        CXX_STANDARD_REQUIRED YES
+                        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+                        LINKER_LANGUAGE LLIR
+                        OUTPUT_NAME libjit.bc
+                        POSITION_INDEPENDENT_CODE YES
+                        PREFIX ""
+                        SUFFIX ""
+                        RULE_LAUNCH_COMPILE "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> #")
 target_compile_options(CPURuntime
                        PRIVATE
                          -ffast-math
                          -g0
                          -emit-llvm
                          -O0)
-# NOTE(abdulras) explicitly override the compiler and linker invocations with
-# custom rules.  The trailing `#` is the comment leader intended to nullify the
-# compile and link commands.  Doing this allows us to override the compiler
-# (driver) and the linker used for building the runtime which requires clang (to
-# emit LLVM IR for the LTO'ed AOT JIT runtime) and uses the `llvm-link` as the
-# linker to merge the object files.
-set_target_properties(CPURuntime
-                      PROPERTIES
-                        RULE_LAUNCH_COMPILE
-                          "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> # "
-                        RULE_LAUNCH_LINK
-                          "${LLVM_LINK_BIN} -o ${CMAKE_BINARY_DIR}/libjit.bc <OBJECTS> # "
-                        OUTPUT_NAME
-                          libjit.bc)
 
 add_custom_command(
   OUTPUT "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
