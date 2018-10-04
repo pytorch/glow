@@ -1270,21 +1270,14 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                                   indices, lengths));
 }
 
-SaveNode *Function::createSavePH(llvm::StringRef name, NodeValue input) {
+SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
 
   return addNode(new SaveNode(name, input, dest));
 }
 
-SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
-  auto *dest = getParent()->createVariable(input.getType(), name,
-                                           VisibilityKind::Public, false);
-
-  return addNode(new SaveNode(name, input, dest));
-}
-
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
-                               Storage *output) {
+                               Placeholder *output) {
   return addNode(new SaveNode(name, input, output));
 }
 

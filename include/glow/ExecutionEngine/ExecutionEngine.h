@@ -70,7 +70,7 @@ public:
   /// target. This method should be invoked before the run method. The context
   /// \p ctx contains the mapping between symbolic values to concrete backing
   /// tensors.
-  void compile(CompilationMode mode, Function *F, const Context &ctx);
+  void compile(CompilationMode mode, Function *F, Context &ctx);
 
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to
