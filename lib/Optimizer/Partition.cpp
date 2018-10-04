@@ -151,7 +151,7 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
         }
 
         // Create a new variable to represent this dependence.
-        auto *save = inputF->createSavePH("tmp", input);
+        auto *save = inputF->createSave("tmp", input);
         auto *tmp = save->getPlaceholder();
         variables[input.getNode()] = tmp;
         N.setNthInput(inp, tmp);

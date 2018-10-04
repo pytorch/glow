@@ -621,7 +621,7 @@ void Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
     auto r = getNodeValueByName(outputName);
-    auto *SN = G_.createSavePH("save_" + outputName, r);
+    auto *SN = G_.createSave("save_" + outputName, r);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 }

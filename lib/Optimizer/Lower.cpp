@@ -336,9 +336,8 @@ static void lowerSGDNode(Function *F, const SGDNode &SGD) {
   // http://ufldl.stanford.edu/tutorial/supervised/
   // OptimizationStochasticGradientDescent/
   if (momentum > 0.0) {
-    Variable *Gsum = F->getParent()->createVariable(
-        W.getType(), "gsum", VisibilityKind::Private, true);
-    Gsum->getPayload().zero();
+    Placeholder *Gsum =
+        F->getParent()->createPlaceholder(W.getType(), "gsum", false);
 
     auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
     auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);

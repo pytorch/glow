@@ -503,7 +503,7 @@ bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.output_size(); i++) {
     const auto &outputName = net.output(i).name();
     auto r = getNodeValueByName(outputName);
-    SaveNode *SN = G_.createSavePH("save_" + outputName, r);
+    SaveNode *SN = G_.createSave("save_" + outputName, r);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
