@@ -1669,6 +1669,32 @@ TEST_P(Operator, Max) {
   }
 }
 
+/// Check that the max operator works properly with FP16.
+TEST_P(InterpOnly, FP16Max) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Max);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
+}
+
 TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
