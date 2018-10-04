@@ -132,6 +132,30 @@ public:
   }
 };
 
+/// Change the type to \p newTy for all the results of \p node
+/// whose element type is equal to \p origTy.
+/// \note This API does not support converting to a quantized type.
+inline void mutateNodeResTypeThatMatch(Module &mod, Node &node, ElemKind origTy,
+                                       ElemKind newTy) {
+  for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+    NodeValue res = node.getNthResult(idx);
+    if (res.getElementType() != origTy) {
+      continue;
+    }
+    TypeRef newTyRef = mod.uniqueType(newTy, res.dims());
+    res.setType(newTyRef);
+  }
+}
+
+/// Replace with \p newTy, the type of all the nodes, placeholders and so on
+/// that use \p origTy.
+/// If a \p context is provided, this method makes sure the tensors
+/// backing the placeholders are properly updated. Otherwise,
+/// this method assumes the placeholders are not bound to anything.
+/// \pre The parent module has only one function, this one.
+void mutateNodesType(Function &F, ElemKind origTy, ElemKind newTy,
+                     Context *context = nullptr);
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

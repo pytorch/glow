@@ -1070,3 +1070,72 @@ TEST(Graph, setType) {
   EXPECT_EQ(topK->getType(1), origTopKRes1);
   EXPECT_EQ(valRes1.getType(), origTopKRes1);
 }
+
+TEST(Graph, mutateNodeTypeThatMatch) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  const size_t inputDims[] = {4, 10};
+  const size_t top5Dims[] = {4, 5};
+  auto *input =
+      M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+  TopKNode *topK = F->createTopK("add", input, 5);
+  TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
+
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+
+  // Modify the type of all the results that match FloatTy.
+  // Just the first one should be modified.
+  TypeRef inputTy = M.uniqueType(ElemKind::FloatTy, inputDims);
+  TypeRef topKRes0 = M.uniqueType(ElemKind::Float16Ty, top5Dims);
+  mutateNodeResTypeThatMatch(M, *topK, /*origTy*/ ElemKind::FloatTy,
+                             /*newTy*/ ElemKind::Float16Ty);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+
+  // Modify the type of all the results that match Int64ITy.
+  // Now the second result will be modified.
+  mutateNodeResTypeThatMatch(M, *topK, /*origTy*/ ElemKind::Int64ITy,
+                             /*newTy*/ ElemKind::Float16Ty);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), topKRes0);
+
+  // Modify the type of all the results that match Float16Ty.
+  // Both results should be modified.
+  mutateNodeResTypeThatMatch(M, *topK, /*origTy*/ ElemKind::Float16Ty,
+                             /*newTy*/ ElemKind::FloatTy);
+  EXPECT_EQ(input->getType(), inputTy);
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes0);
+}
+
+TEST(Graph, mutateNodesType) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  const size_t inputDims[] = {4, 10};
+  const size_t top5Dims[] = {4, 5};
+  auto *input =
+      M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+  TopKNode *topK = F->createTopK("add", input, 5);
+  TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
+  TypeRef origInputTy = M.uniqueType(ElemKind::FloatTy, inputDims);
+
+  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(input->getType(), origInputTy);
+
+  // Update all nodes using float type to float16 type.
+  mutateNodesType(*F, ElemKind::FloatTy, ElemKind::Float16Ty);
+
+  TypeRef topKRes0 = M.uniqueType(ElemKind::Float16Ty, origTopKRes0->dims());
+  TypeRef inputTy = M.uniqueType(ElemKind::Float16Ty, origInputTy->dims());
+  EXPECT_EQ(topK->getType(0), topKRes0);
+  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(input->getType(), inputTy);
+}

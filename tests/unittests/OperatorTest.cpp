@@ -16,6 +16,7 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -157,6 +158,58 @@ TEST_P(InterpAndCPU, CmpEQ) {
   }
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(saveH.at({1, i}));
+  }
+}
+
+/// Check that the add operator works properly.
+TEST_P(Operator, add) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  auto handleA = ctx_.get(inputA)->getHandle();
+  auto handleB = ctx_.get(inputB)->getHandle();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
+  }
+}
+
+/// Check that the add operator works properly with FP16.
+TEST_P(InterpOnly, FP16Add) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
   }
 }
 
@@ -1434,6 +1487,62 @@ TEST_P(InterpOnly, FP16ConvolutionDepth8) {
   checkFloat16Convolution(EE_, F_, 8);
 }
 
+void checkFloat16ConvolutionWithCast(ExecutionEngine &EE, Function *F,
+                                     unsigned convDepth) {
+  // In this test we generate a half precision floating-point based
+  // convolution graph.
+  // Compile, run it.
+  // Then, convert the graph into single precision.
+  // Compile, run it.
+  // Finally, we check that the output are similar.
+
+  auto &mod = EE.getModule();
+  Context ctx;
+
+  auto *inputFloat16 = mod.createPlaceholder(
+      ElemKind::Float16Ty, {1, 10, 10, 3}, "in_float16", false);
+  ctx.allocate(inputFloat16);
+  auto *convFloat16 =
+      F->createConv(ctx, "convFloat16", inputFloat16, convDepth, 5, 1, 0, 1);
+
+  Tensor *inputFloat16Tensor = ctx.get(inputFloat16);
+  auto inputFloat16Handle = inputFloat16Tensor->getHandle<float16_t>();
+  inputFloat16Handle.randomize(-1.0, 1.0, mod.getPRNG());
+
+  SaveNode *saveFloat16 = F->createSave(ctx, "saveFloat16", convFloat16);
+
+  Tensor *out = ctx.allocate(llvm::cast<Placeholder>(saveFloat16->getOutput()));
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run();
+
+  // Save the value of the fp16 run.
+  Tensor float16OutTensor = out->clone();
+
+  // Convert the graph to single precision.
+  mutateNodesType(*F, ElemKind::Float16Ty, ElemKind::FloatTy, &ctx);
+
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run();
+
+  auto floatOut = out->getHandle<>();
+  auto float16Out = float16OutTensor.getHandle<float16_t>();
+  // Check that the difference in the results is less than 0.1.
+  for (int i = 0, e = floatOut.size(); i < e; i++) {
+    EXPECT_NEAR(floatOut.raw(i), float(float16Out.raw(i)), 0.1);
+  }
+}
+
+TEST_P(InterpOnly, FP16ConvolutionWithCastDepth10) {
+  checkFloat16ConvolutionWithCast(EE_, F_, 10);
+}
+
+TEST_P(InterpOnly, FP16ConvolutionWithCastDepth8) {
+  checkFloat16ConvolutionWithCast(EE_, F_, 8);
+}
+
 void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
                          Context &ctx) {
   // In this test we generate a Floating-point based convolution and an integer
@@ -1589,6 +1698,58 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
 
   auto R = ctx_.get(L->getPlaceholder())->getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
+}
+
+/// Check that the max operator works properly.
+TEST_P(Operator, Max) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Max);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float>();
+  auto handleA = ctx_.get(inputA)->getHandle<float>();
+  auto handleB = ctx_.get(inputB)->getHandle<float>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
+}
+
+/// Check that the max operator works properly with FP16.
+TEST_P(InterpOnly, FP16Max) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Max);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
 }
 
 TEST_P(Operator, RescaleNode) {
@@ -3118,6 +3279,60 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
 
   for (size_t i = 0; i < size; i++) {
     EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
+  }
+}
+
+/// Check that the batch add operator works properly.
+TEST_P(Operator, BatchAdd) {
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {13, 3, 3}, "A", false);
+  ctx_.allocate(input)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *slice =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "slice", false);
+  ctx_.allocate(slice)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
+  auto *S = F_->createSave(ctx_, "save", batchAdd);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float>();
+  auto handleInput = ctx_.get(input)->getHandle<float>();
+  auto handleSlice = ctx_.get(slice)->getHandle<float>();
+  ASSERT_EQ(result.size(), handleInput.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx),
+              handleInput.raw(idx) + handleSlice.raw(idx % handleSlice.size()));
+  }
+}
+
+/// Check that the batch add operator works properly for FP16.
+TEST_P(InterpOnly, FP16BatchAdd) {
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {13, 3, 3}, "A", false);
+  ctx_.allocate(input)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *slice =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 3}, "slice", false);
+  ctx_.allocate(slice)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
+  auto *S = F_->createSave(ctx_, "save", batchAdd);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleInput = ctx_.get(input)->getHandle<float16_t>();
+  auto handleSlice = ctx_.get(slice)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleInput.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx),
+              handleInput.raw(idx) + handleSlice.raw(idx % handleSlice.size()));
   }
 }
 

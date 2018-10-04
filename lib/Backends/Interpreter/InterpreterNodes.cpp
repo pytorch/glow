@@ -998,45 +998,63 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
+void InterpreterFunction::fwdElementAddInst_I8Impl(const ElementAddInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+
+  float lhsScale = lhsTy->getScale();
+  float rhsScale = rhsTy->getScale();
+  float destScale = destTy->getScale();
+
+  int32_t lhsOffset = lhsTy->getOffset();
+  int32_t rhsOffset = rhsTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
+
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    int32_t L = lhsW.raw(i);
+    int32_t R = rhsW.raw(i);
+
+    // We increase the size of the integer up to 16 bits to prevent overflow.
+    const float largeScale = float(1) / (1 << 15);
+    // Scale both sides from 8-bit to 16-bits.
+    int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
+    int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
+    int32_t sum32 = L32 + R32;
+    sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
+    outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
+  }
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
+  }
+}
 
 void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
-    auto destTy = I->getDest()->getType();
-
-    float lhsScale = lhsTy->getScale();
-    float rhsScale = rhsTy->getScale();
-    float destScale = destTy->getScale();
-
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
-
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      int32_t L = lhsW.raw(i);
-      int32_t R = rhsW.raw(i);
-
-      // We increase the size of the integer up to 16 bits to prevent overflow.
-      const float largeScale = float(1) / (1 << 15);
-      // Scale both sides from 8-bit to 16-bits.
-      int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
-      int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
-      int32_t sum32 = L32 + R32;
-      sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
-      outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
-    }
-    return;
-  }
-
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
+    fwdElementAddInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdElementAddInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementAddInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
@@ -1157,39 +1175,55 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
-    auto destTy = I->getDest()->getType();
+void InterpreterFunction::fwdElementMaxInst_I8Impl(const ElementMaxInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
 
-    TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
-    TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
-    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+  TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
+  TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
+  TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
 
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      // Convert both sides to the destination scale and perform a regular
-      // comparison.
-      int8_t L = quantization::quantize(
-          quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
-      int8_t R = quantization::quantize(
-          quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
-      outW.raw(i) = std::max(L, R);
-    }
-    return;
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    // Convert both sides to the destination scale and perform a regular
+    // comparison.
+    int8_t L = quantization::quantize(
+        quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
+    int8_t R = quantization::quantize(
+        quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
+    outW.raw(i) = std::max(L, R);
   }
+}
 
-  auto *lhs = getTensor(I->getLHS());
-  auto *rhs = getTensor(I->getRHS());
-  auto *out = getTensor(I->getDest());
-  auto outW = out->getHandle();
-  auto lhsW = lhs->getHandle();
-  auto rhsW = rhs->getHandle();
+template <typename ElemTy>
+void InterpreterFunction::fwdElementMaxInst_FloatImpl(const ElementMaxInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
+  }
+}
+
+void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    fwdElementMaxInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdElementMaxInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementMaxInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
@@ -1468,55 +1502,64 @@ void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
 //                       Batched operations
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
-  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
-    auto batch = getWeightHandle<int8_t>(I->getBatch());
-    auto slice = getWeightHandle<int8_t>(I->getSlice());
-    auto dest = getWeightHandle<int8_t>(I->getDest());
+void InterpreterFunction::fwdBatchedAddInst_I8Impl(
+    const glow::BatchedAddInst *I) {
+  assert(getTensor(I->getBatch())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto batch = getWeightHandle<int8_t>(I->getBatch());
+  auto slice = getWeightHandle<int8_t>(I->getSlice());
+  auto dest = getWeightHandle<int8_t>(I->getDest());
 
-    auto batchTy = I->getBatch()->getType();
-    auto sliceTy = I->getSlice()->getType();
-    auto destTy = I->getDest()->getType();
+  auto batchTy = I->getBatch()->getType();
+  auto sliceTy = I->getSlice()->getType();
+  auto destTy = I->getDest()->getType();
 
-    float sliceScale = sliceTy->getScale();
-    float batchScale = batchTy->getScale();
-    float destScale = destTy->getScale();
+  float sliceScale = sliceTy->getScale();
+  float batchScale = batchTy->getScale();
+  float destScale = destTy->getScale();
 
-    int32_t sliceOffset = sliceTy->getOffset();
-    int32_t batchOffset = batchTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
+  int32_t sliceOffset = sliceTy->getOffset();
+  int32_t batchOffset = batchTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
 
-    auto bdim = flattenCdr(batch.dims());
-    assert(slice.size() == bdim.second && "Invalid slice size");
-    assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
+  auto bdim = flattenCdr(batch.dims());
+  assert(slice.size() == bdim.second && "Invalid slice size");
+  assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
 
-    // For each layer in the batch:
-    for (size_t n = 0; n < bdim.first; n++) {
-      size_t base = batch.getElementPtr({n});
+  // For each layer in the batch:
+  for (size_t n = 0; n < bdim.first; n++) {
+    size_t base = batch.getElementPtr({n});
 
-      // For each element in the slice.
-      for (size_t i = 0; i < bdim.second; i++) {
-        int32_t batchVal = batch.raw(base + i);
-        int32_t sliceVal = slice.raw(i);
-        // We increase the size of the integer up to 16 bits for more accurate
-        // arithmetic.
-        const float largeScale = float(1) / (1 << 15);
-        // Scale both sides from 8-bit to 16-bits.
-        int32_t B = std::round(float(batchVal - batchOffset) *
-                               (batchScale / largeScale));
-        int32_t S = std::round(float(sliceVal - sliceOffset) *
-                               (sliceScale / largeScale));
-        int32_t R = B + S;
-        dest.raw(base + i) = quantization::clip<int32_t, int8_t>(
-            std::round(float(R) * (largeScale / destScale) + destOffset));
-      }
+    // For each element in the slice.
+    for (size_t i = 0; i < bdim.second; i++) {
+      int32_t batchVal = batch.raw(base + i);
+      int32_t sliceVal = slice.raw(i);
+      // We increase the size of the integer up to 16 bits for more accurate
+      // arithmetic.
+      const float largeScale = float(1) / (1 << 15);
+      // Scale both sides from 8-bit to 16-bits.
+      int32_t B =
+          std::round(float(batchVal - batchOffset) * (batchScale / largeScale));
+      int32_t S =
+          std::round(float(sliceVal - sliceOffset) * (sliceScale / largeScale));
+      int32_t R = B + S;
+      dest.raw(base + i) = quantization::clip<int32_t, int8_t>(
+          std::round(float(R) * (largeScale / destScale) + destOffset));
     }
-    return;
   }
+}
 
-  auto batch = getWeightHandle(I->getBatch());
-  auto slice = getWeightHandle(I->getSlice());
-  auto dest = getWeightHandle(I->getDest());
+template <typename ElemTy>
+void InterpreterFunction::fwdBatchedAddInst_FloatImpl(
+    const glow::BatchedAddInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto batch = getWeightHandle<ElemTy>(I->getBatch());
+  auto slice = getWeightHandle<ElemTy>(I->getSlice());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
 
   auto bdim = flattenCdr(batch.dims());
   assert(slice.size() == bdim.second && "Invalid slice size");
@@ -1533,6 +1576,18 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   }
 }
 
+void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
+  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
+    fwdBatchedAddInst_I8Impl(I);
+  } else if (I->getBatch()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdBatchedAddInst_FloatImpl<float>(I);
+  } else if (I->getBatch()->getType()->getElementType() ==
+             ElemKind::Float16Ty) {
+    fwdBatchedAddInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
+  }
+}
 void InterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
   static_assert(max_tensor_dimensions == 6,

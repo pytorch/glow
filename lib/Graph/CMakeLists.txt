@@ -46,7 +46,8 @@ add_library(Graph
             Node.cpp
             Nodes.cpp
             Graph.cpp
-            Grad.cpp)
+            Grad.cpp
+            Utils.cpp)
 
 target_link_libraries(Graph
                       PUBLIC

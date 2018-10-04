@@ -173,6 +173,11 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
   }
 }
 
+llvm::cl::opt<bool>
+    useFp16("run-fp16",
+            llvm::cl::desc("Run in fp16 for all floating-point computation."),
+            llvm::cl::init(false));
+
 int main(int argc, char **argv) {
   Context ctx;
   // The loader verifies/initializes command line parameters, and initializes
@@ -225,6 +230,11 @@ int main(int argc, char **argv) {
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
+
+    if (useFp16) {
+      // Force cast the tensors into fp16.
+      data.convertToType(ElemKind::Float16Ty);
+    }
 
     // Update the inputs.
     updateVariables({inputImage}, {&data});
