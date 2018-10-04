@@ -1059,7 +1059,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(ctx, PF);
-  Function *QP = quantization::quantizeFunction(EE, QI, F);
+  Function *QP = quantization::quantizeFunction(EE, QI, F, ctx);
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
@@ -1164,7 +1164,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(ctx, PF);
 
-  Function *QP = quantization::quantizeFunction(EE, QI, F);
+  Function *QP = quantization::quantizeFunction(EE, QI, F, ctx);
 
   // -- STEP3 - evaluate the quantized function. --
 

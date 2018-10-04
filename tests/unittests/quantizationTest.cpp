@@ -132,7 +132,7 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, F, ctx);
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -158,7 +158,7 @@ TEST(Quantization, quantizeReLU) {
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
        {0.2f, -128}}};
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, F, ctx);
   EE.compile(CompilationMode::Infer, F, ctx);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -255,7 +255,7 @@ TEST_P(Operator, end2end) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2, ctx);
   backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
   backendSpecificEE.run();
 
@@ -390,7 +390,7 @@ TEST_P(Operator, end2endGRU) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2, ctx);
   backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
   backendSpecificEE.run();
 
@@ -712,7 +712,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
       {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, F, ctx);
 
   auto *qLRN = cast<LocalResponseNormalizationNode>(F->getNodeByName("LRN1"));
   auto *qSM = cast<SoftMaxNode>(F->getNodeByName("softmax1"));
@@ -754,8 +754,8 @@ TEST(Quantization, quantizeGraphPartially) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, F, ctx, "_quantized",
+                                            doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -835,8 +835,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, F, ctx, "_quantized",
+                                            doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -926,8 +926,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
   doNotQuantize.insert(Kinded::Kind::AddNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, F, ctx, "_quantized",
+                                            doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
