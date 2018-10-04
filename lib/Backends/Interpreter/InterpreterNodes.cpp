@@ -1468,52 +1468,55 @@ void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
 //                       Batched operations
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
-  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
-    auto batch = getWeightHandle<int8_t>(I->getBatch());
-    auto slice = getWeightHandle<int8_t>(I->getSlice());
-    auto dest = getWeightHandle<int8_t>(I->getDest());
+void InterpreterFunction::fwdBatchedAddInst_I8Impl(
+    const glow::BatchedAddInst *I) {
+  assert(getTensor(I->getBatch())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto batch = getWeightHandle<int8_t>(I->getBatch());
+  auto slice = getWeightHandle<int8_t>(I->getSlice());
+  auto dest = getWeightHandle<int8_t>(I->getDest());
 
-    auto batchTy = I->getBatch()->getType();
-    auto sliceTy = I->getSlice()->getType();
-    auto destTy = I->getDest()->getType();
+  auto batchTy = I->getBatch()->getType();
+  auto sliceTy = I->getSlice()->getType();
+  auto destTy = I->getDest()->getType();
 
-    float sliceScale = sliceTy->getScale();
-    float batchScale = batchTy->getScale();
-    float destScale = destTy->getScale();
+  float sliceScale = sliceTy->getScale();
+  float batchScale = batchTy->getScale();
+  float destScale = destTy->getScale();
 
-    int32_t sliceOffset = sliceTy->getOffset();
-    int32_t batchOffset = batchTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
+  int32_t sliceOffset = sliceTy->getOffset();
+  int32_t batchOffset = batchTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
 
-    auto bdim = flattenCdr(batch.dims());
-    assert(slice.size() == bdim.second && "Invalid slice size");
-    assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
+  auto bdim = flattenCdr(batch.dims());
+  assert(slice.size() == bdim.second && "Invalid slice size");
+  assert(batch.dims().drop_front() == slice.dims() && "Invalid batch size");
 
-    // For each layer in the batch:
-    for (size_t n = 0; n < bdim.first; n++) {
-      size_t base = batch.getElementPtr({n});
+  // For each layer in the batch:
+  for (size_t n = 0; n < bdim.first; n++) {
+    size_t base = batch.getElementPtr({n});
 
-      // For each element in the slice.
-      for (size_t i = 0; i < bdim.second; i++) {
-        int32_t batchVal = batch.raw(base + i);
-        int32_t sliceVal = slice.raw(i);
-        // We increase the size of the integer up to 16 bits for more accurate
-        // arithmetic.
-        const float largeScale = float(1) / (1 << 15);
-        // Scale both sides from 8-bit to 16-bits.
-        int32_t B = std::round(float(batchVal - batchOffset) *
-                               (batchScale / largeScale));
-        int32_t S = std::round(float(sliceVal - sliceOffset) *
-                               (sliceScale / largeScale));
-        int32_t R = B + S;
-        dest.raw(base + i) = quantization::clip<int32_t, int8_t>(
-            std::round(float(R) * (largeScale / destScale) + destOffset));
-      }
+    // For each element in the slice.
+    for (size_t i = 0; i < bdim.second; i++) {
+      int32_t batchVal = batch.raw(base + i);
+      int32_t sliceVal = slice.raw(i);
+      // We increase the size of the integer up to 16 bits for more accurate
+      // arithmetic.
+      const float largeScale = float(1) / (1 << 15);
+      // Scale both sides from 8-bit to 16-bits.
+      int32_t B =
+          std::round(float(batchVal - batchOffset) * (batchScale / largeScale));
+      int32_t S =
+          std::round(float(sliceVal - sliceOffset) * (sliceScale / largeScale));
+      int32_t R = B + S;
+      dest.raw(base + i) = quantization::clip<int32_t, int8_t>(
+          std::round(float(R) * (largeScale / destScale) + destOffset));
     }
-    return;
   }
+}
 
+void InterpreterFunction::fwdBatchedAddInst_FloatImpl(
+    const glow::BatchedAddInst *I) {
   auto batch = getWeightHandle(I->getBatch());
   auto slice = getWeightHandle(I->getSlice());
   auto dest = getWeightHandle(I->getDest());
@@ -1533,6 +1536,15 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   }
 }
 
+void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
+  if (getTensor(I->getBatch())->getType().isQuantizedType()) {
+    fwdBatchedAddInst_I8Impl(I);
+  } else if (I->getBatch()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdBatchedAddInst_FloatImpl(I);
+  } else {
+    llvm_unreachable("Type is not supported");
+  }
+}
 void InterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
   static_assert(max_tensor_dimensions == 6,

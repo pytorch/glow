@@ -113,6 +113,9 @@ private:
   void fwdMatMulInst_I8Impl(const glow::MatMulInst *I);
   template <typename ElemTy>
   void fwdMatMulInst_FloatImpl(const glow::MatMulInst *I);
+
+  void fwdBatchedAddInst_I8Impl(const BatchedAddInst *I);
+  void fwdBatchedAddInst_FloatImpl(const BatchedAddInst *I);
   ///@}
 };
 
