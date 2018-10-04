@@ -123,6 +123,7 @@ private:
   void fwdElementMaxInst_FloatImpl(const ElementMaxInst *I);
 
   void fwdBatchedAddInst_I8Impl(const BatchedAddInst *I);
+  template <typename ElemTy>
   void fwdBatchedAddInst_FloatImpl(const BatchedAddInst *I);
   ///@}
 };
