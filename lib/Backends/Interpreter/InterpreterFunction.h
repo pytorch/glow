@@ -123,6 +123,7 @@ private:
   void fwdElementMaxInst_FloatImpl(const ElementMaxInst *I);
 
   void fwdElementAddInst_I8Impl(const ElementAddInst *I);
+  template <typename ElemTy>
   void fwdElementAddInst_FloatImpl(const ElementAddInst *I);
   ///@}
 };

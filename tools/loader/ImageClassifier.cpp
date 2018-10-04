@@ -177,6 +177,16 @@ llvm::cl::opt<bool>
     useFp16("run-fp16",
             llvm::cl::desc("Run in fp16 for all floating-point computation."),
             llvm::cl::init(false));
+template <typename ElemTy> void printoutInference(Variable *SMVar) {
+  Tensor &res = SMVar->getPayload();
+  auto H = res.getHandle<ElemTy>();
+  for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
+    Tensor slice = H.extractSlice(i);
+    auto SH = slice.getHandle<ElemTy>();
+    llvm::outs() << " File: " << inputImageFilenames[i]
+                 << " Result:" << SH.minMaxArg().second << "\n";
+  }
+}
 
 int main(int argc, char **argv) {
   Context ctx;
@@ -243,14 +253,11 @@ int main(int argc, char **argv) {
     loader.runInference(ctx);
 
     // Print out the inferred image classification.
-    Tensor &res = SMVar->getPayload();
-    auto H = res.getHandle<>();
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
-    for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
-      Tensor slice = H.extractSlice(i);
-      auto SH = slice.getHandle<>();
-      llvm::outs() << " File: " << inputImageFilenames[i]
-                   << " Result:" << SH.minMaxArg().second << "\n";
+    if (useFp16) {
+      printoutInference<float16_t>(SMVar);
+    } else {
+      printoutInference<float>(SMVar);
     }
   }
 
