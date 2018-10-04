@@ -1031,10 +1031,16 @@ void InterpreterFunction::fwdElementAddInst_I8Impl(const ElementAddInst *I) {
   }
 }
 
+template <typename ElemTy>
 void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
   }
@@ -1044,7 +1050,9 @@ void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementAddInst_I8Impl(I);
   } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdElementAddInst_FloatImpl(I);
+    fwdElementAddInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementAddInst_FloatImpl<float16_t>(I);
   } else {
     llvm_unreachable("Type is not supported");
   }
