@@ -45,7 +45,7 @@ using float8 = float __attribute__((vector_size(32)));
 #if defined(__clang__)
 #define BroadcastFloat8(VAL) ((float8)(VAL))
 #elif defined(__GNUC__) || defined(__GNUG__)
-#define BroadcastFloat8(VAL) ((VAL) - (float8){})
+#define BroadcastFloat8(VAL) ((VAL) - (float8){0})
 #endif
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
