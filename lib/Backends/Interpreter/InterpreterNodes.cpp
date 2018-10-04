@@ -1200,13 +1200,16 @@ void InterpreterFunction::fwdElementMaxInst_I8Impl(const ElementMaxInst *I) {
   }
 }
 
+template <typename ElemTy>
 void InterpreterFunction::fwdElementMaxInst_FloatImpl(const ElementMaxInst *I) {
-  auto *lhs = getTensor(I->getLHS());
-  auto *rhs = getTensor(I->getRHS());
-  auto *out = getTensor(I->getDest());
-  auto outW = out->getHandle();
-  auto lhsW = lhs->getHandle();
-  auto rhsW = rhs->getHandle();
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
   }
@@ -1216,7 +1219,9 @@ void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementMaxInst_I8Impl(I);
   } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdElementMaxInst_FloatImpl(I);
+    fwdElementMaxInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementMaxInst_FloatImpl<float16_t>(I);
   } else {
     llvm_unreachable("Type is not supported");
   }
