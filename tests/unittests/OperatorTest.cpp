@@ -3205,6 +3205,33 @@ TEST_P(Operator, BatchAdd) {
   }
 }
 
+/// Check that the batch add operator works properly for FP16.
+TEST_P(InterpOnly, FP16BatchAdd) {
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {13, 3, 3}, "A", false);
+  ctx_.allocate(input)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *slice =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {3, 3}, "slice", false);
+  ctx_.allocate(slice)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
+  auto *S = F_->createSave(ctx_, "save", batchAdd);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleInput = ctx_.get(input)->getHandle<float16_t>();
+  auto handleSlice = ctx_.get(slice)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleInput.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx),
+              handleInput.raw(idx) + handleSlice.raw(idx % handleSlice.size()));
+  }
+}
+
 TEST_P(InterpAndCPU, IntLookupTable) {
   constexpr size_t size = 6;
   auto *input =
