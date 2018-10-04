@@ -160,6 +160,58 @@ TEST_P(InterpAndCPU, CmpEQ) {
   }
 }
 
+/// Check that the add operator works properly.
+TEST_P(Operator, add) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  auto handleA = ctx_.get(inputA)->getHandle();
+  auto handleB = ctx_.get(inputB)->getHandle();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
+  }
+}
+
+/// Check that the add operator works properly with FP16.
+TEST_P(InterpOnly, FP16Add) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
+  }
+}
+
 TEST_P(Operator, matmul) {
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
@@ -175,6 +227,27 @@ TEST_P(Operator, matmul) {
   EE_.run();
 
   auto H = saveTensor->getHandle();
+  EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
+}
+
+/// Check that the matmul operator behaves correctly with FP16.
+TEST_P(InterpOnly, FP16Matmul) {
+  auto *lhs = mod_.createPlaceholder(ElemKind::Float16Ty, {3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::Float16Ty, {2, 1}, "rhs", false);
+  ctx_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
+  ctx_.allocate(rhs)->getHandle<float16_t>() = {7, 10};
+
+  auto R = F_->createMatMul("MM", lhs, rhs);
+
+  auto *save = F_->createSave(ctx_, "save", R);
+  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto H = saveTensor->getHandle<float16_t>();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
@@ -973,6 +1046,23 @@ TEST_P(Operator, Transpose2Dims) {
   EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
 }
 
+/// Check that transpose is supported for FP16.
+TEST_P(InterpOnly, FP16Transpose2Dims) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
+  ctx_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  Tensor dest(ElemKind::Float16Ty, {13, 20});
+  ctx_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
+}
+
 /// Check if the code generation of transposes
 /// is correct for tensors with 3 dimensions.
 /// Note: This assumes that Tensor::transpose is correct.
@@ -1551,6 +1641,58 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
 
   auto R = ctx_.get(L->getPlaceholder())->getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
+}
+
+/// Check that the max operator works properly.
+TEST_P(Operator, Max) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Max);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float>();
+  auto handleA = ctx_.get(inputA)->getHandle<float>();
+  auto handleB = ctx_.get(inputB)->getHandle<float>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
+}
+
+/// Check that the max operator works properly with FP16.
+TEST_P(InterpOnly, FP16Max) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Max);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
 }
 
 TEST_P(Operator, RescaleNode) {
@@ -2734,6 +2876,24 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
+TEST_P(InterpOnly, FP16AvgPool) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
+  ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
+                                                  5., 6., 7., 8.};
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto *result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 2, 2, 1});
+  out.getHandle<float16_t>() = {2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(Operator, Int8AvgPool) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
@@ -2751,6 +2911,24 @@ TEST_P(Operator, Int8AvgPool) {
   for (size_t i = 0; i < 2 * 2; i++) {
     EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
   }
+}
+
+TEST_P(InterpOnly, FP16MaxPool) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
+  ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
+                                                  5., 6., 7., 8.};
+  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 2, 2, 1});
+  out.getHandle<float16_t>() = {4., 5., 7., 8.};
+  EXPECT_TRUE(out.isEqual(*result));
 }
 
 TEST_P(Operator, Int8MaxPool) {
@@ -3273,6 +3451,26 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, FP16Reshape) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createReshape("tr", A, {13, 20, 1});
+  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto outputHandle =
+      ctx_.get(result->getPlaceholder())->getHandle<float16_t>();
+  ASSERT_EQ(outputHandle.size(), inputHandle.size());
+  for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
 /// Stack many slices/reshapes together. Some of these may be turned into tensor
 /// views stacked onto each other.
 TEST_P(Operator, sliceReshape) {
@@ -3538,7 +3736,7 @@ TEST_P(InterpAndCPU, insertTensorTest) {
 }
 
 /// Test RowwiseQuantizedFullyConnected Node.
-TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
+TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   // In this test we subtract the outputs of a row-wise quantized FC and a
   // floating-point FC and ensure that the error is below some low value.
   auto *input =
@@ -3571,7 +3769,7 @@ TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
   auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
 
   auto *fcq = F_->createRowwiseQuantizedFullyConnected(
-      ctx_, "fcq", inputq, newWeights, biasq, resTy);
+      "fcq", inputq, newWeights, biasq, resTy);
   auto *dequantRes = F_->createDequantize("dequant", fcq);
 
   // Subtract the results of the convolution from the rowwise quantized fc.
@@ -3590,6 +3788,54 @@ TEST_P(InterpOnly, rowwiseQuantizedFCTest) {
   for (int i = 0, e = H.size(); i < e; i++) {
     EXPECT_LE(std::abs(H.raw(i)), 0.05);
   }
+}
+
+/// Check the correctness of the SoftMax operator.
+/// The semantic of SoftMax is
+/// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).
+TEST_P(Operator, SoftMax) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
+  ctx_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 6});
+  // Expected results are:
+  // sum = exp(input_0) + ... + exp(input_N) = ~245.387
+  // res_0 = exp(1) / sum = ~0.011
+  // res_1 = exp(3) / sum = ~0.082
+  // And so on.
+  out.getHandle<float>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Check that the softmax operator works properly with FP16.
+/// See the test that check the SoftMax operator for more details.
+TEST_P(InterpOnly, FP16SoftMax) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
+  ctx_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 6});
+  out.getHandle<float16_t>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,

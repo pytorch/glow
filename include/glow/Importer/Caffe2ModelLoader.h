@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_CAFFE2_H
-#define GLOW_IMPORTER_CAFFE2_H
+#ifndef GLOW_IMPORTER_CAFFE2MODELLOADER_H
+#define GLOW_IMPORTER_CAFFE2MODELLOADER_H
 
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/CommonOperatorLoader.h"
@@ -36,7 +36,7 @@ class Tensor;
 class Value;
 
 /// Loads caffe2 models.
-class caffe2ModelLoader
+class Caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
   /// Get the broadcast attribute.
   bool getBroadcast(const ArgumentDictionaryTy &dict) override;
@@ -63,14 +63,14 @@ public:
   /// Loads the caffe2 model that's represented by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
   /// \p netWeightFilename, and populates the network in \p F.
-  /// The tensors in \p tensors are stored with the names in the list of names
-  /// \p names and used as inputs to the network.
-  caffe2ModelLoader(const std::string &netDescFilename,
+  /// The list \p types and \p names are used to initialized the inputs and
+  /// outputs with specific names and types.
+  Caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
-                    llvm::ArrayRef<Tensor *> tensors, Function &F);
+                    llvm::ArrayRef<TypeRef> types, Function &F);
 };
 
 } // namespace glow
 
-#endif // GLOW_IMPORTER_CAFFE2_H
+#endif // GLOW_IMPORTER_CAFFE2MODELLOADER_H

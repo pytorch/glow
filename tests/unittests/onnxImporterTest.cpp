@@ -17,7 +17,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "gtest/gtest.h"
 
 using namespace glow;
@@ -32,14 +32,17 @@ TEST(onnx, importConv) {
 
   std::string NetFilename("tests/models/onnxModels/simpleConv.onnxtxt");
 
-  Variable *graphOutputVar;
+  Context ctx;
+  Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
-    ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data}, *F);
+    ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = onnxLD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputsByName(ctx, &mod, {"data"}, {&data});
   }
 
   // ONNX importer loads a conv node and converts it to 4 ops:
@@ -51,9 +54,10 @@ TEST(onnx, importConv) {
   // Note that in case the convolution filter is a constant tensor, the filter
   // transpose node will be later optimized out by the optimizer.
   EXPECT_EQ(F->getNodes().size(), 5);
-  EXPECT_EQ(mod.getVars().size(), 4);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  EXPECT_EQ(mod.getVars().size(), 2);
 
-  auto *saveNode = getSaveNodeFromVariable(graphOutputVar);
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
   auto *node = saveNode->getInput().getNode();
 
   EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
@@ -67,10 +71,9 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-  Context ctx;
   EE.compile(CompilationMode::Infer, F, ctx);
   EE.run();
-  auto result = graphOutputVar->getHandle();
+  auto result = ctx.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
@@ -90,6 +93,7 @@ TEST(onnx, importAveragePool3D) {
   // will not depend on anyting from the loader.
   {
     Tensor data(ElemKind::FloatTy, {1, 3, 32, 32, 32});
-    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"x"}, {&data}, *F), "");
+    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"x"}, {&data.getType()}, *F),
+                 "");
   }
 }

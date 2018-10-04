@@ -32,9 +32,9 @@ add_custom_command(
 
 add_library(Importer
               ProtobufLoader.cpp
-              Caffe2.cpp
-              ONNX.cpp
-              ONNXIFILoader.cpp 
+              Caffe2ModelLoader.cpp
+              ONNXModelLoader.cpp
+              ONNXIFIModelLoader.cpp 
               ${CAFFE_SRCS}
               ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h)
 target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS})

@@ -97,6 +97,13 @@ void updateVariables(llvm::ArrayRef<Variable *> vars,
 void updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
                      llvm::ArrayRef<Tensor *> inputs);
 
+/// This method updates the placeholders in the module. The placeholders are
+/// found by name
+///  in \p ph with the tensor content values \p inputs.
+void updateInputsByName(Context &ctx, Module *mod,
+                        llvm::ArrayRef<llvm::StringRef> ph,
+                        llvm::ArrayRef<Tensor *> inputs);
+
 /// Update the content of the tensors \p vars with some slices that from \p
 /// inputs. The data starts at slice \p sampleIdx and wraps around until the
 /// data in \p v is filled. All dimensions, except for the first (batch)

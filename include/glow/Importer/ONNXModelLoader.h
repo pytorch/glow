@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_ONNX_H
-#define GLOW_IMPORTER_ONNX_H
+#ifndef GLOW_IMPORTER_ONNXMODELLOADER_H
+#define GLOW_IMPORTER_ONNXMODELLOADER_H
 
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/CommonOperatorLoader.h"
@@ -90,21 +90,21 @@ public:
                         size_t onnxModelSize);
 
   /// Checks that the inputs tensors are compatible with the inputs declared in
-  /// the ONNX model. The input tensors in \p tensors are stored with the names
-  /// in the list of names \p tensorNames.
+  /// the ONNX model. The input types in \p types match the list of names
+  /// \p tensorNames.
   void checkInputs(ONNX_NAMESPACE::GraphProto &net,
                    llvm::ArrayRef<const char *> tensorNames,
-                   llvm::ArrayRef<Tensor *> tensors);
+                   llvm::ArrayRef<TypeRef> types);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
-  /// The tensors in \p tensors are stored with the names in the list of names
-  /// \p tensorNames and used as inputs to the network.
+  /// The types in \p types match the list of names \p tensorNames and used as
+  /// inputs to the network.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
-                  llvm::ArrayRef<Tensor *> tensors, Function &F);
+                  llvm::ArrayRef<TypeRef> types, Function &F);
 };
 
 } // namespace glow
 
-#endif // GLOW_IMPORTER_ONNX_H
+#endif // GLOW_IMPORTER_ONNXMODELLOADER_H

@@ -16,7 +16,7 @@
 
 #include "Base.h"
 
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 /// Allow defining names for onnxifi implementation.
 #ifndef GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER
@@ -160,7 +160,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendCompatibility)(
   }
 
   std::vector<std::pair<glow::Kinded::Kind, glow::ElemKind>> operations =
-      glow::onnxifi::ModelLoader::parseOperator(onnxModel, onnxModelSize);
+      glow::ONNXIFIModelLoader::parseOperator(onnxModel, onnxModelSize);
 
   // TODO: Make better error reporting.
   if (operations.empty()) {

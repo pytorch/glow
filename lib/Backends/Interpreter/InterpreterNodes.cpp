@@ -365,9 +365,14 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else {
+  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
     fwdMaxPool<float>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                       I->getPads());
+  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
+    fwdMaxPool<float16_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
+                          I->getPads());
+  } else {
+    llvm_unreachable("Type not supported");
   }
 }
 
@@ -379,13 +384,24 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else {
+  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
     fwdMaxPool<float>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                       I->getPads());
+  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
+    fwdMaxPool<float16_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
+                          I->getPads());
+  } else {
+    llvm_unreachable("Type not supported");
   }
 }
 
-void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+template <typename ElemTy>
+void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -396,54 +412,8 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   // https://arxiv.org/abs/1312.4400
   float filterArea = kdim.height * kdim.width;
 
-  if (I->getSrc()->getType()->isQuantizedType()) {
-    auto inW = getWeightHandle<int8_t>(I->getSrc());
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
-                                  I->getSrc()->getType()->getOffset()};
-    TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
-                                   I->getDest()->getType()->getOffset()};
-
-    // For each input in the batch:
-    for (size_t n = 0; n < odim.n; n++) {
-      // For each layer in the output tensor:
-      for (size_t z = 0; z < idim.c; z++) {
-        // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-            int32_t sum = 0;
-
-            for (size_t fx = 0; fx < kdim.height; fx++) {
-              for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
-
-                // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= ssize_t(idim.w)) {
-                  continue;
-                }
-
-                sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
-              }
-            }
-            // Instead of dividing by filterArea, just change scale.
-            outW.at({n, ax, ay, z}) =
-                quantization::clip<int32_t, int8_t>(std::round(
-                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                    outQP.offset));
-          } // W
-        }   // H
-      }     // C
-    }       // N
-
-    return;
-  }
-
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -467,14 +437,79 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                 continue;
               }
 
-              sum += inW.at({n, (size_t)ox, (size_t)oy, z});
+              sum += float(inW.at({n, (size_t)ox, (size_t)oy, z}));
             }
           }
-          outW.at({n, ax, ay, z}) = sum / filterArea;
+          outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
         } // W
       }   // H
     }     // C
   }       // N
+}
+
+void InterpreterFunction::fwdAvgPoolInst_I8Impl(const AvgPoolInst *I) {
+  ShapeNHWC odim(I->getDest()->dims());
+  ShapeNHWC idim(I->getSrc()->dims());
+
+  PaddingTLBR pdim(I->getPads());
+  ShapeHW kdim(I->getKernels());
+  ShapeHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t x = -ssize_t(pdim.top);
+      for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+        ssize_t y = -ssize_t(pdim.left);
+        for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          int32_t sum = 0;
+
+          for (size_t fx = 0; fx < kdim.height; fx++) {
+            for (size_t fy = 0; fy < kdim.width; fy++) {
+              ssize_t ox = x + fx;
+              ssize_t oy = y + fy;
+
+              // Ignore index access below zero (this is due to padding).
+              if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                  oy >= ssize_t(idim.w)) {
+                continue;
+              }
+
+              sum += inW.at({n, (size_t)ox, (size_t)oy, z}) - inQP.offset;
+            }
+          }
+          // Instead of dividing by filterArea, just change scale.
+          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
+              std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                         outQP.offset));
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
+
+void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    fwdAvgPoolInst_I8Impl(I);
+  } else if (I->getSrc()->getType()->isType<float16_t>()) {
+    fwdAvgPoolInst_FloatImpl<float16_t>(I);
+  } else if (I->getSrc()->getType()->isType<float>()) {
+    fwdAvgPoolInst_FloatImpl<float>(I);
+  } else {
+    llvm_unreachable("Type not supported");
+  }
 }
 
 void InterpreterFunction::fwdMaxPoolWithXYGradInst(
@@ -587,31 +622,50 @@ void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
 //                        Loss Functions (Softmax/regression/...)
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+template <typename ElemTy>
+void InterpreterFunction::fwdSoftMaxInst_Impl(const SoftMaxInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto idim = inW.dims();
 
   for (size_t n = 0; n < idim[0]; n++) {
     // Find Max.
-    float max = inW.at({n, 0});
+    float max = float(inW.at({n, 0}));
     for (size_t i = 1; i < idim[1]; i++) {
-      max = std::max(max, inW.at({n, i}));
+      max = std::max(max, float(inW.at({n, i})));
     }
 
     // Compute exp.
     float sum = 0;
     for (size_t i = 0; i < idim[1]; i++) {
-      float e = std::exp(inW.at({n, i}) - max);
+      float e = std::exp(float(inW.at({n, i})) - max);
       sum += e;
-      outW.at({n, i}) = e;
+      outW.at({n, i}) = ElemTy(e);
     }
 
     // Normalize the output.
     for (size_t i = 0; i < idim[1]; i++) {
-      outW.at({n, i}) = outW.at({n, i}) / sum;
+      outW.at({n, i}) = ElemTy(float(outW.at({n, i})) / sum);
     }
   } // N
+}
+
+void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
+  switch (I->getSrc()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdSoftMaxInst_Impl<float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdSoftMaxInst_Impl<float16_t>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
 void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
@@ -944,45 +998,63 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
+void InterpreterFunction::fwdElementAddInst_I8Impl(const ElementAddInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+
+  float lhsScale = lhsTy->getScale();
+  float rhsScale = rhsTy->getScale();
+  float destScale = destTy->getScale();
+
+  int32_t lhsOffset = lhsTy->getOffset();
+  int32_t rhsOffset = rhsTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
+
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    int32_t L = lhsW.raw(i);
+    int32_t R = rhsW.raw(i);
+
+    // We increase the size of the integer up to 16 bits to prevent overflow.
+    const float largeScale = float(1) / (1 << 15);
+    // Scale both sides from 8-bit to 16-bits.
+    int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
+    int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
+    int32_t sum32 = L32 + R32;
+    sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
+    outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
+  }
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
+  }
+}
 
 void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
-    auto destTy = I->getDest()->getType();
-
-    float lhsScale = lhsTy->getScale();
-    float rhsScale = rhsTy->getScale();
-    float destScale = destTy->getScale();
-
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
-
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      int32_t L = lhsW.raw(i);
-      int32_t R = rhsW.raw(i);
-
-      // We increase the size of the integer up to 16 bits to prevent overflow.
-      const float largeScale = float(1) / (1 << 15);
-      // Scale both sides from 8-bit to 16-bits.
-      int32_t L32 = std::round(float(L - lhsOffset) * (lhsScale / largeScale));
-      int32_t R32 = std::round(float(R - rhsOffset) * (rhsScale / largeScale));
-      int32_t sum32 = L32 + R32;
-      sum32 = std::round(float(sum32) * (largeScale / destScale) + destOffset);
-      outW.raw(i) = quantization::clip<int32_t, int8_t>(sum32);
-    }
-    return;
-  }
-
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) + rhsW.raw(i);
+    fwdElementAddInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdElementAddInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementAddInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
@@ -1103,39 +1175,55 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
-    auto destTy = I->getDest()->getType();
+void InterpreterFunction::fwdElementMaxInst_I8Impl(const ElementMaxInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
+         "Wrong function");
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
 
-    TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
-    TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
-    TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
+  TensorQuantizationParams lhsQ{lhsTy->getScale(), lhsTy->getOffset()};
+  TensorQuantizationParams rhsQ{rhsTy->getScale(), rhsTy->getOffset()};
+  TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
 
-    auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      // Convert both sides to the destination scale and perform a regular
-      // comparison.
-      int8_t L = quantization::quantize(
-          quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
-      int8_t R = quantization::quantize(
-          quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
-      outW.raw(i) = std::max(L, R);
-    }
-    return;
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto lhsW = getWeightHandle<int8_t>(I->getLHS());
+  auto rhsW = getWeightHandle<int8_t>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    // Convert both sides to the destination scale and perform a regular
+    // comparison.
+    int8_t L = quantization::quantize(
+        quantization::dequantize(lhsW.raw(i), lhsQ), destQ);
+    int8_t R = quantization::quantize(
+        quantization::dequantize(rhsW.raw(i), rhsQ), destQ);
+    outW.raw(i) = std::max(L, R);
   }
+}
 
-  auto *lhs = getTensor(I->getLHS());
-  auto *rhs = getTensor(I->getRHS());
-  auto *out = getTensor(I->getDest());
-  auto outW = out->getHandle();
-  auto lhsW = lhs->getHandle();
-  auto rhsW = rhs->getHandle();
+template <typename ElemTy>
+void InterpreterFunction::fwdElementMaxInst_FloatImpl(const ElementMaxInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     outW.raw(i) = std::max(lhsW.raw(i), rhsW.raw(i));
+  }
+}
+
+void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    fwdElementMaxInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdElementMaxInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdElementMaxInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 
@@ -1282,54 +1370,60 @@ void InterpreterFunction::fwdElementSelectInst(
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhs = getWeightHandle<int8_t>(I->getLHS());
-    auto rhs = getWeightHandle<int8_t>(I->getRHS());
+void InterpreterFunction::fwdMatMulInst_I8Impl(const glow::MatMulInst *I) {
+  assert(getTensor(I->getLHS())->getType().isQuantizedType());
+  auto lhs = getWeightHandle<int8_t>(I->getLHS());
+  auto rhs = getWeightHandle<int8_t>(I->getRHS());
 
-    auto dest = getWeightHandle<int8_t>(I->getDest());
+  auto dest = getWeightHandle<int8_t>(I->getDest());
 
-    auto destDim = dest.dims();
-    auto lhsDim = lhs.dims();
+  auto destDim = dest.dims();
+  auto lhsDim = lhs.dims();
 
-    auto destTy = I->getDest()->getType();
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
+  auto destTy = I->getDest()->getType();
+  auto lhsTy = I->getLHS()->getType();
+  auto rhsTy = I->getRHS()->getType();
 
-    dest.clear(0);
+  dest.clear(0);
 
-    // For matrix multiplication, if the offset is equal to zero the scale
-    // is defined as the formula (L.scale * R.scale / D.scale).
-    // In here we assume that the offset for all buffers is zero.
-    float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-    int32_t destOffset = destTy->getOffset();
+  // For matrix multiplication, if the offset is equal to zero the scale
+  // is defined as the formula (L.scale * R.scale / D.scale).
+  // In here we assume that the offset for all buffers is zero.
+  float scale = lhsTy->getScale() * rhsTy->getScale() / destTy->getScale();
+  int32_t lhsOffset = lhsTy->getOffset();
+  int32_t rhsOffset = rhsTy->getOffset();
+  int32_t destOffset = destTy->getOffset();
 
-    // For each (x,y) in the destination matrix:
-    for (size_t x = 0; x < destDim[0]; x++) {
-      for (size_t y = 0; y < destDim[1]; y++) {
+  // For each (x,y) in the destination matrix:
+  for (size_t x = 0; x < destDim[0]; x++) {
+    for (size_t y = 0; y < destDim[1]; y++) {
 
-        // Perform DOT on the row an column.
-        int32_t sum = 0;
-        for (size_t i = 0; i < lhsDim[1]; i++) {
-          int32_t L = lhs.at({x, i});
-          int32_t R = rhs.at({i, y});
-          // We represent the element multiplication with offset as
-          // (value - offset).
-          sum += (L - lhsOffset) * (R - rhsOffset);
-        }
-
-        dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
-            std::round(scale * sum + destOffset));
+      // Perform DOT on the row an column.
+      int32_t sum = 0;
+      for (size_t i = 0; i < lhsDim[1]; i++) {
+        int32_t L = lhs.at({x, i});
+        int32_t R = rhs.at({i, y});
+        // We represent the element multiplication with offset as
+        // (value - offset).
+        sum += (L - lhsOffset) * (R - rhsOffset);
       }
-    }
-    return;
-  }
 
-  auto lhs = getWeightHandle(I->getLHS());
-  auto rhs = getWeightHandle(I->getRHS());
-  auto dest = getWeightHandle(I->getDest());
+      dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
+          std::round(scale * sum + destOffset));
+    }
+  }
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
+  static_assert(
+      std::is_floating_point<ElemTy>::value ||
+          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+      "This implementation is for floating-point values only");
+
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
 
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
@@ -1343,10 +1437,22 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
       // Perform DOT on the row an column.
       float sum = 0;
       for (size_t i = 0; i < lhsDim[1]; i++) {
-        sum += lhs.at({x, i}) * rhs.at({i, y});
+        sum += float(lhs.at({x, i}) * rhs.at({i, y}));
       }
-      dest.at({x, y}) = sum;
+      dest.at({x, y}) = ElemTy(sum);
     }
+  }
+}
+
+void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
+  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
+    fwdMatMulInst_I8Impl(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
+    fwdMatMulInst_FloatImpl<float>(I);
+  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
+    fwdMatMulInst_FloatImpl<float16_t>(I);
+  } else {
+    llvm_unreachable("Type is not supported");
   }
 }
 

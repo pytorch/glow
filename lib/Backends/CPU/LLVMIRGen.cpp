@@ -136,6 +136,15 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
   offsetsArray_ = F->args().begin() + 3;
 }
 
+/// We compile the standard library (libjit) to LLVM bitcode, and then convert
+/// that binary data to an include file using an external utility (include-bin).
+/// The resulting file is included here to compile the bitcode image into our
+/// library.
+static const unsigned char libjit_bc[] = {
+#include "glow/libjit_bc.inc"
+};
+static const size_t libjit_bc_size = sizeof(libjit_bc);
+
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
@@ -146,36 +155,13 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
 
   llvm::SMDiagnostic error;
 
-  auto *envPath = getenv("GLOW_LIBJIT_PATH");
-  if (envPath != nullptr) {
-    return llvm::parseIRFile(envPath, error, *ctx);
-  }
-
-  // Figure out the location of the current executable.
-  auto mainExec =
-      llvm::sys::fs::getMainExecutable(nullptr, (void *)&loadStandardLibrary);
-  llvm::StringRef basePath = parent_path(mainExec);
-
-  // Search for the standard library starting at the location of the executable.
-  // Go up the tree up to three levels (by removing the last directory name).
-  for (int i = 0; i < 3; i++) {
-    llvm::SmallString<256> libPath(basePath);
-    append(libPath, filename);
-    if (llvm::sys::fs::exists(libPath)) {
-      auto res = llvm::parseIRFile(libPath, error, *ctx);
-
-      // If we could not parse the bitcode file then print an error.
-      if (!res.get()) {
-        error.print(mainExec.c_str(), llvm::errs());
-      }
-      return res;
-    }
-
-    // Go up the filesystem tree.
-    basePath = parent_path(basePath);
-  }
-
-  return llvm::parseIRFile(filename, error, *ctx);
+  // Parse the compiled-in image of libjit and return the resulting Module.
+  return llvm::parseIR(
+      llvm::MemoryBufferRef(
+          llvm::StringRef(reinterpret_cast<const char *>(&libjit_bc[0]),
+                          libjit_bc_size),
+          "libjit.bc"),
+      error, *ctx);
 }
 
 /// Register a diagnostics handler that prevents the compiler from printing to
@@ -323,6 +309,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     break;
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::Int32QTy:
+    T = llvm::Type::getInt32PtrTy(ctx_);
     break;
   case ElemKind::Int64ITy:
     T = llvm::Type::getInt64PtrTy(ctx_);
@@ -1267,6 +1256,110 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       createCall(builder, F,
                  {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
     }
+    break;
+  }
+
+  case Kinded::Kind::RowwiseQuantizedFullyConnectedInstKind: {
+    auto *RWQFC = cast<RowwiseQuantizedFullyConnectedInst>(I);
+    // Since we can't get the variable from a glow::Value directly,
+    // we need to traverse the var list and find the one matching the given
+    // Value.
+    Tensor scalesT;
+    auto *F_ = getIRFunction();
+    for (auto &v : F_->getGraph()->getParent()->getVars()) {
+      assert(isa<WeightVar>(F_->getWeightForNode(v)));
+      auto *w = cast<glow::Value>(F_->getWeightForNode(v));
+      if (w == RWQFC->getScales()) {
+        scalesT.assign(&v->getPayload());
+        break;
+      }
+    }
+    GLOW_ASSERT(scalesT.getUnsafePtr() != nullptr &&
+                "Can't find the variable.");
+
+    auto scalesH = scalesT.getHandle();
+    size_t rowNum = scalesH.dims()[0];
+    float inputScale = RWQFC->getSrc()->getType()->getScale();
+
+    float bScale = RWQFC->getBias()->getType()->getScale();
+    int32_t bOffset = RWQFC->getBias()->getType()->getOffset();
+
+    float outputScale = RWQFC->getDest()->getType()->getScale();
+
+    std::vector<llvm::Constant *> biasPreV(rowNum);
+    std::vector<llvm::Constant *> biasPostV(rowNum);
+    std::vector<llvm::Constant *> biasScaleV(rowNum);
+    std::vector<llvm::Constant *> outputPreV(rowNum);
+    std::vector<llvm::Constant *> outputPostV(rowNum);
+    std::vector<llvm::Constant *> outputScaleV(rowNum);
+
+    for (size_t i = 0; i < rowNum; i++) {
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = inputScale * scalesH.raw(i);
+
+      // Calculate the scaling parameters for the bias and output.
+      auto biasScaleParam =
+          quantization::quantizeScaleOffset32To8(bScale / matMulScale, bOffset);
+      auto outScaleParam =
+          quantization::quantizeScaleOffset32To8(matMulScale / outputScale, 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // bias and output calculation.
+      biasPreV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                           biasScaleParam.pre, true);
+      biasPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                            biasScaleParam.post, true);
+      biasScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                             biasScaleParam.scale, true);
+      outputPreV[i] =
+          llvm::ConstantInt::get(builder.getInt32Ty(), outScaleParam.pre, true);
+      outputPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                              outScaleParam.post, true);
+      outputScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                               outScaleParam.scale, true);
+    }
+
+    auto *dest = RWQFC->getDest();
+    auto *src = RWQFC->getSrc();
+    auto *weights = RWQFC->getWeights();
+    auto *bias = RWQFC->getBias();
+    auto *weightsOffsets = RWQFC->getOffsets();
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *biasPtr = emitValueAddress(builder, bias);
+    auto *weightsOffsetsPtr = emitValueAddress(builder, weightsOffsets);
+    auto *biasPrePtr = emitConstArray(builder, biasPreV, builder.getInt32Ty());
+    auto *biasPostPtr =
+        emitConstArray(builder, biasPostV, builder.getInt32Ty());
+    auto *biasScalePtr =
+        emitConstArray(builder, biasScaleV, builder.getInt32Ty());
+    auto *outputPrePtr =
+        emitConstArray(builder, outputPreV, builder.getInt32Ty());
+    auto *outputPostPtr =
+        emitConstArray(builder, outputPostV, builder.getInt32Ty());
+    auto *outputScalePtr =
+        emitConstArray(builder, outputScaleV, builder.getInt32Ty());
+
+    auto *srcDims = emitValueDims(builder, src);
+    auto *weightsDims = emitValueDims(builder, weights);
+    auto *destDims = emitValueDims(builder, dest);
+    auto *biasDims = emitValueDims(builder, bias);
+    auto *row = emitConstSizeT(builder, weightsOffsets->dims()[0]);
+
+    auto *destOffset = emitConstI32(builder, dest->getType()->getOffset());
+    auto *srcOffset = emitConstI32(builder, src->getType()->getOffset());
+    auto *biasOffset = emitConstI32(builder, bOffset);
+
+    auto *F = getFunction("rowwise_quantized_fc", dest->getElementType());
+
+    createCall(builder, F,
+               {destPtr, srcPtr, weightsPtr, biasPtr, weightsOffsetsPtr,
+                biasPrePtr, biasPostPtr, biasScalePtr, outputPrePtr,
+                outputPostPtr, outputScalePtr, destDims, srcDims, weightsDims,
+                biasDims, row, destOffset, srcOffset, biasOffset});
     break;
   }
 

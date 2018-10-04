@@ -104,6 +104,23 @@ private:
                                     llvm::ArrayRef<unsigned_t> strides,
                                     llvm::ArrayRef<unsigned_t> pads,
                                     size_t group);
+
+  void fwdAvgPoolInst_I8Impl(const AvgPoolInst *I);
+  template <typename ElemTy>
+  void fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I);
+  template <typename ElemTy> void fwdSoftMaxInst_Impl(const SoftMaxInst *I);
+
+  void fwdMatMulInst_I8Impl(const glow::MatMulInst *I);
+  template <typename ElemTy>
+  void fwdMatMulInst_FloatImpl(const glow::MatMulInst *I);
+
+  void fwdElementAddInst_I8Impl(const ElementAddInst *I);
+  template <typename ElemTy>
+  void fwdElementAddInst_FloatImpl(const ElementAddInst *I);
+
+  void fwdElementMaxInst_I8Impl(const ElementMaxInst *I);
+  template <typename ElemTy>
+  void fwdElementMaxInst_FloatImpl(const ElementMaxInst *I);
   ///@}
 };
 

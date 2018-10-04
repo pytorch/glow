@@ -14,21 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_ONNXIFILOADER_H
-#define GLOW_IMPORTER_ONNXIFILOADER_H
+#ifndef GLOW_IMPORTER_ONNXIFIMODELLOADER_H
+#define GLOW_IMPORTER_ONNXIFIMODELLOADER_H
 
 #include "onnx/onnxifi.h"
 
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/ONNXModelLoader.h"
 
 #include "llvm/ADT/StringMap.h"
 
 namespace glow {
-namespace onnxifi {
 
-class ModelLoader : public ONNXModelLoader {
+class ONNXIFIModelLoader : public ONNXModelLoader {
 private:
-  ModelLoader(Function &F) : ONNXModelLoader(F) {}
+  ONNXIFIModelLoader(Function &F) : ONNXModelLoader(F) {}
 
   /// Load the inputs from the GraphProto. This is useful when the
   /// initializers are not available.
@@ -39,23 +38,23 @@ private:
                    const onnxTensorDescriptorV1 *weightDescriptors);
 
   /// Mapping between ONNX names for inputs and actual Glow input vars.
-  llvm::StringMap<Variable *> onnxNameToInputVars_;
+  llvm::StringMap<Placeholder *> onnxNameToInputVars_;
 
 public:
   /// \returns mapping between ONNX names and actual Glow input vars.
-  const llvm::StringMap<Variable *> &getInputVarsMapping() const {
+  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
     return onnxNameToInputVars_;
   }
 
   /// \returns mapping between ONNX names and actual Glow output nodes.
-  const llvm::StringMap<Variable *> &getOutputVarsMapping() const {
+  const llvm::StringMap<Placeholder *> &getOutputVarsMapping() const {
     return outputVarsByName_;
   }
 
-  /// \returns unique pointer to ModelLoader if \p onnxModel can be parsed
-  /// and static weights can be loaded from the \p wightDescriptors.
+  /// \returns unique pointer to ONNXIFIModelLoader if \p onnxModel can be
+  /// parsed and static weights can be loaded from the \p wightDescriptors.
   /// \returns nullptr otherwise.
-  static std::unique_ptr<ModelLoader>
+  static std::unique_ptr<ONNXIFIModelLoader>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
@@ -69,7 +68,6 @@ public:
   parseOperator(const void *onnxModel, size_t onnxModelSize);
 };
 
-} // namespace onnxifi
 } // namespace glow
 
-#endif // GLOW_IMPORTER_ONNXIFILOADER_H
+#endif // GLOW_IMPORTER_ONNXIFIMODELLOADER_H

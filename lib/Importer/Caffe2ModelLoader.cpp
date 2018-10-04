@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Importer/Caffe2.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -108,7 +108,7 @@ static std::vector<unsigned_t> getSizeHW(ArgumentDictionaryTy &dict,
   return {defaultValue, defaultValue};
 }
 
-bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
+bool Caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
                                       const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   GLOW_ASSERT(ff && "Can't find the model or network files.");
@@ -131,11 +131,11 @@ bool caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
   return true;
 }
 
-bool caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+bool Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
 }
 
-void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
+void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -453,8 +453,10 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU") {
-    // Glow does not support MKL now, just pass these two ops.
+  if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
+      typeName == "Copy" || typeName == "EnsureCPUOutput" ||
+      typeName == "EnsureDense") {
+    // Glow does not support any of these ops now, so implement them as no-ops.
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     addNodeAsOutput(op, in);
     return;
@@ -606,7 +608,7 @@ void caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
-void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
+void Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
@@ -619,12 +621,12 @@ void caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
     auto r = getNodeValueByName(outputName);
-    auto *SN = G_.createSave("save_" + outputName, r);
-    outputVarsByName_[outputName] = SN->getVariable();
+    auto *SN = G_.createSavePH("save_" + outputName, r);
+    outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 }
 
-void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
+void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -787,18 +789,17 @@ void caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   unexpectedNodeError(op, "Unsupported weight kind");
 }
 
-void caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+void Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
     loadWeight(op);
   }
 }
 
-caffe2ModelLoader::caffe2ModelLoader(const std::string &netDescFilename,
+Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<Tensor *> tensors,
-                                     Function &F)
-    : CommonOperatorLoader(names, tensors, F) {
+                                     llvm::ArrayRef<TypeRef> types, Function &F)
+    : CommonOperatorLoader(names, types, F) {
   // The caffe2 weights that we are deserializing.
   caffe2::NetDef weightsDef;
   // The caffe2 network descriptor that we are deserializing.

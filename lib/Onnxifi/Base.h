@@ -17,7 +17,7 @@
 #define GLOW_ONNXIFI_BASE_H
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "onnx/onnxifi.h"
 
@@ -119,19 +119,19 @@ private:
   Context ctx_;
 
   /// Mapping between ONNX name for the input variable and Glow variable.
-  llvm::StringMap<Variable *> onnxNameToInputVar_;
+  llvm::StringMap<Placeholder *> onnxNameToInputVar_;
 
   /// Mapping between ONNX name for the output variable and Glow output
   /// node.
-  llvm::StringMap<Variable *> onnxNameToOutputNode_;
+  llvm::StringMap<Placeholder *> onnxNameToOutputNode_;
 
   /// Mapping between input var and the actual memory address.
   /// Inputs will be read from these addresses.
-  llvm::DenseMap<Variable *, onnxPointer> inputVarToBuffer_;
+  llvm::DenseMap<Placeholder *, onnxPointer> inputVarToBuffer_;
 
   /// Mapping between output var and the actual memory address.
   /// Results must be written to these addresses.
-  llvm::DenseMap<Variable *, onnxPointer> outputNodeToBuffer_;
+  llvm::DenseMap<Placeholder *, onnxPointer> outputNodeToBuffer_;
 };
 
 typedef Graph *GraphPtr;

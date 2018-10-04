@@ -274,11 +274,11 @@ public:
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
   /// is the constant weights and will be row-wise quantized during node
-  /// creation time.
+  /// creation time. The output is quantized in the regular way, and its type
+  /// \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *
-  createRowwiseQuantizedFullyConnected(Context &ctx, llvm::StringRef name,
-                                       NodeValue input, Variable *W, Node *B,
-                                       TypeRef outTy);
+  createRowwiseQuantizedFullyConnected(llvm::StringRef name, NodeValue input,
+                                       Variable *W, Node *B, TypeRef outTy);
 
   /// Implement an operation that computes the row-wise dot product of its
   /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This

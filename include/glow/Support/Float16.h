@@ -50,6 +50,7 @@ public:
   bool operator==(const float16 &b) const {
     return operator float() == float(b);
   }
+  bool operator>=(const float16 &b) const { return !(operator<(b)); }
 
   /// Cast operators.
   operator double() const { return double(operator float()); }

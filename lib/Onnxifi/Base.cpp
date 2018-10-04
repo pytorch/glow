@@ -15,7 +15,7 @@
  */
 #include "Base.h"
 
-#include "glow/Importer/ONNXIFILoader.h"
+#include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -49,7 +49,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   // TODO: support multiple functions here.
   function_ = backendPtr_->getEE().getModule().createFunction("inference");
 
-  std::unique_ptr<ModelLoader> loader = ModelLoader::parse(
+  std::unique_ptr<ONNXIFIModelLoader> loader = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_);
   // TODO: make better error reporting.
   if (!loader) {
@@ -68,29 +68,28 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
 onnxStatus Graph::run() {
   // Copy tensors from the input addresses to the Glow tensors.
   llvm::SmallVector<Tensor *, 4> tensors;
-  llvm::SmallVector<Variable *, 4> vars;
+  llvm::SmallVector<Placeholder *, 4> phs;
   for (auto inputVar : inputVarToBuffer_) {
     auto *var = inputVar.first;
     auto *type = var->getType();
     void *inputBuffer = reinterpret_cast<void *>(inputVar.second);
     tensors.push_back(new Tensor(inputBuffer, type));
-    vars.push_back(var);
+    phs.push_back(var);
   }
 
   // Run inference.
   auto &EE = backendPtr_->getEE();
-  updateVariables(vars, tensors);
+  updateVariables(ctx_, phs, tensors);
   EE.run();
 
   // Copy outputs to the addresses specified in the outputNodeToBuffer_.
   for (auto outputVar : outputNodeToBuffer_) {
     void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-    const Tensor &res = outputVar.first->getPayload();
+    const Tensor *res = ctx_.get(outputVar.first);
 
-    memcpy(outputAddress, res.getUnsafePtr(),
-           res.size() * res.getType().getElementSize());
+    memcpy(outputAddress, res->getUnsafePtr(),
+           res->size() * res->getType().getElementSize());
   }
-
   return ONNXIFI_STATUS_SUCCESS;
 }
 

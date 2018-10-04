@@ -17,8 +17,8 @@
 #include "Loader.h"
 
 #include "glow/Graph/Nodes.h"
-#include "glow/Importer/Caffe2.h"
-#include "glow/Importer/ONNX.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Importer/ONNXModelLoader.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -35,14 +35,15 @@ int main(int argc, char **argv) {
   // Create the model based on the input net, and get SaveNode for the output.
   std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
-    LD.reset(new caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
+    LD.reset(new Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
                                    loader.getCaffe2NetWeightFilename(), {}, {},
                                    *loader.getFunction()));
   } else {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
                                  *loader.getFunction()));
   }
-  Variable *output = LD->getSingleOutput();
+  Placeholder *output = LD->getSingleOutput();
+  auto *outputT = ctx.allocate(output);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -55,7 +56,7 @@ int main(int argc, char **argv) {
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 
     // Print out the result of output operator.
-    output->getPayload().getHandle().dump();
+    outputT->getHandle().dump();
   }
 
   return 0;
