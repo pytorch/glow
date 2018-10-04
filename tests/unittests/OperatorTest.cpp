@@ -186,6 +186,32 @@ TEST_P(Operator, add) {
   }
 }
 
+/// Check that the add operator works properly with FP16.
+TEST_P(InterpOnly, FP16Add) {
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
+  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
+  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave(ctx_, "save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
+  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
+  }
+}
+
 TEST_P(Operator, matmul) {
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
