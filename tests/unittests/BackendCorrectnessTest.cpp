@@ -38,51 +38,6 @@ protected:
 
 class CPUOnly : public BackendCorrectnessTest {};
 
-TEST_P(BackendCorrectnessTest, batchedAddTest) {
-  PseudoRNG PRNG;
-  Tensor batch(ElemKind::FloatTy, {8, 3, 3, 6});
-  Tensor slice(ElemKind::FloatTy, {3, 3, 6});
-  batch.getHandle().initXavier(1, PRNG);
-  slice.getHandle().initXavier(1, PRNG);
-  Tensor out1(ElemKind::FloatTy, {8, 3, 3, 6});
-  Tensor out2(ElemKind::FloatTy, {8, 3, 3, 6});
-
-  inferBatchedAddNet(&batch, &slice, &out1, backendKind_);
-  inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, DISABLED_quantizedBatchedAddTest) {
-  PseudoRNG PRNG;
-  std::array<size_t, 4> S{{10, 1, 1, 2}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor batch(ElemKind::Int8QTy, shape, 0.875, -1);
-  Tensor slice(ElemKind::Int8QTy, {1, 1, 2}, 1.4, 5);
-  batch.getHandle<int8_t>().randomize(-128, 127, PRNG);
-  slice.getHandle<int8_t>().randomize(-128, 127, PRNG);
-  Tensor out1(ElemKind::Int8QTy, shape, 0.375, -10);
-  Tensor out2(ElemKind::Int8QTy, shape, 0.375, -10);
-
-  inferBatchedAddNet(&batch, &slice, &out1, backendKind_);
-  inferBatchedAddNet(&batch, &slice, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, batchedReduceAddTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {7, 5, 9, 2});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferBatchedReduceAddNet(&inputs, &out1, backendKind_);
-  inferBatchedReduceAddNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST_P(BackendCorrectnessTest, convTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {20, 41, 32, 6});
@@ -162,29 +117,6 @@ TEST_P(BackendCorrectnessTest, convGradTest) {
                shape2, &out1, backendKind_);
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
                shape2, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, gatherTest) {
-  constexpr size_t nSlices = 16;
-  constexpr size_t nGathered = 8;
-  PseudoRNG PRNG;
-
-  Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
-  data.getHandle().initXavier(1, PRNG);
-
-  Tensor indices(ElemKind::Int64ITy, {nGathered});
-  auto indicesH = indices.getHandle<int64_t>();
-  for (size_t i = 0; i < nGathered; i++) {
-    indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
-  }
-
-  Tensor out1;
-  Tensor out2;
-
-  inferGatherNet(&data, &indices, &out1, backendKind_);
-  inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -321,87 +253,6 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   EXPECT_EQ(H.at(1), 4);
 }
 
-TEST_P(BackendCorrectnessTest, matMulTest) {
-  PseudoRNG PRNG;
-  Tensor lhs(ElemKind::FloatTy, {10, 9});
-  Tensor rhs(ElemKind::FloatTy, {9, 8});
-  lhs.getHandle().randomize(-7.2, 8.3, PRNG);
-  rhs.getHandle().randomize(-6.3, 10.1, PRNG);
-  std::array<size_t, 2> S{{10, 8}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1(ElemKind::FloatTy, shape);
-  Tensor out2(ElemKind::FloatTy, shape);
-
-  inferMatMulNet(&lhs, &rhs, &out1, backendKind_);
-  inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2, 0.001));
-}
-
-TEST_P(CPUOnly, quantizedMatMulTest) {
-  PseudoRNG PRNG;
-  Tensor lhs(ElemKind::Int8QTy, {10, 9}, 2.7, 31);
-  Tensor rhs(ElemKind::Int8QTy, {9, 8}, 3.2, -12);
-  lhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
-  rhs.getHandle<int8_t>().randomize(-128, 127, PRNG);
-  std::array<size_t, 2> S{{10, 8}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1(ElemKind::Int8QTy, shape, 8.1, 7);
-  Tensor out2(ElemKind::Int8QTy, shape, 8.1, 7);
-
-  inferMatMulNet(&lhs, &rhs, &out1, backendKind_);
-  inferMatMulNet(&lhs, &rhs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, maxTest) {
-  PseudoRNG PRNG;
-  std::array<size_t, 1> S{{1941}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor inputs1(ElemKind::FloatTy, shape);
-  Tensor inputs2(ElemKind::FloatTy, shape);
-  inputs1.getHandle().initXavier(1, PRNG);
-  inputs2.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferMaxNet(&inputs1, &inputs2, &out1, backendKind_);
-  inferMaxNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, minTest) {
-  PseudoRNG PRNG;
-  std::array<size_t, 1> S{{1123}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor inputs1(ElemKind::FloatTy, shape);
-  Tensor inputs2(ElemKind::FloatTy, shape);
-  inputs1.getHandle().initXavier(1, PRNG);
-  inputs2.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferMinNet(&inputs1, &inputs2, &out1, backendKind_);
-  inferMinNet(&inputs1, &inputs2, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, AvgPoolTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {14, 12, 19, 7});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferAvgPoolNet(&inputs, &out1, backendKind_);
-  inferAvgPoolNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST_P(CPUOnly, AvgPoolGradTest) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
@@ -426,19 +277,6 @@ TEST_P(CPUOnly, AvgPoolGradTest) {
                   backendKind_);
   trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
                   BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, MaxPoolTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {5, 53, 71, 14});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferMaxPoolNet(&inputs, &out1, backendKind_);
-  inferMaxPoolNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -486,103 +324,6 @@ TEST_P(CPUOnly, intLookupTable) {
 
   inferIntLookupTableNet(&inputs, &out1, initValues, backendKind_);
   inferIntLookupTableNet(&inputs, &out2, initValues, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, quantizeTest) {
-  PseudoRNG PRNG;
-  std::array<size_t, 4> S{{26, 51, 29, 32}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor inputs(ElemKind::FloatTy, shape);
-  inputs.getHandle().randomize(-10000.0, 5000.0, PRNG);
-  float scale{4500.0 / 128};
-  int32_t offset{-2500};
-  Tensor out1;
-  Tensor out2;
-
-  inferQuantizeNet(&inputs, scale, offset, &out1, backendKind_);
-  inferQuantizeNet(&inputs, scale, offset, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, reluTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {2, 16});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferReluNet(&inputs, &out1, backendKind_);
-  inferReluNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, reshapeTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {12, 6, 8, 12});
-  inputs.getHandle().initXavier(1, PRNG);
-  std::array<size_t, 4> S{{18, 4, 24, 4}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1;
-  Tensor out2;
-
-  inferReshapeNet(&inputs, shape, &out1, backendKind_);
-  inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, reshapeIndexTest) {
-  Tensor inputs(ElemKind::Int64ITy, {12, 6, 8, 12});
-  auto H = inputs.getHandle<int64_t>();
-  for (size_t i = 0; i < H.size(); i++) {
-    H.raw(i) = i;
-  }
-  std::array<size_t, 4> S{{18, 4, 24, 4}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor out1;
-  Tensor out2;
-
-  inferReshapeNet(&inputs, shape, &out1, backendKind_);
-  inferReshapeNet(&inputs, shape, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, selectTest) {
-  PseudoRNG PRNG;
-  std::array<size_t, 4> S{{5, 3, 9, 2}};
-  llvm::ArrayRef<size_t> shape(S);
-  Tensor cond(ElemKind::FloatTy, shape);
-  Tensor inputs1(ElemKind::FloatTy, shape);
-  Tensor inputs2(ElemKind::FloatTy, shape);
-  auto condH = cond.getHandle();
-  for (size_t i = 0; i < 270; i++) {
-    condH.raw(i) = PRNG.nextRandInt(0, 1);
-  }
-  inputs1.getHandle().initXavier(1, PRNG);
-  inputs2.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferSelectNet(&cond, &inputs1, &inputs2, &out1, backendKind_);
-  inferSelectNet(&cond, &inputs1, &inputs2, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, sigmoidTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {11, 4, 5, 2});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferSigmoidNet(&inputs, &out1, backendKind_);
-  inferSigmoidNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -650,24 +391,6 @@ TEST_P(CPUOnly, convDKKC8Test) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(BackendCorrectnessTest, softmaxTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {14, 19});
-  Tensor selected(ElemKind::Int64ITy, {14, 1});
-  inputs.getHandle().initXavier(1, PRNG);
-  auto selectedH = selected.getHandle<int64_t>();
-  for (size_t i = 0; i < 14; i++) {
-    selectedH.raw(i) = PRNG.nextRandInt(0, 18);
-  }
-  Tensor out1;
-  Tensor out2;
-
-  inferSoftMaxNet(&inputs, &selected, &out1, backendKind_);
-  inferSoftMaxNet(&inputs, &selected, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST_P(BackendCorrectnessTest, softmaxGradTest) {
   PseudoRNG PRNG;
   std::array<size_t, 2> S{{8, 23}};
@@ -689,32 +412,6 @@ TEST_P(BackendCorrectnessTest, softmaxGradTest) {
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, backendKind_);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
                   BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, tanhTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {14151});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferTanhNet(&inputs, &out1, backendKind_);
-  inferTanhNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST_P(BackendCorrectnessTest, transposeTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {32, 32});
-  inputs.getHandle().randomize(-1.0, 1.0, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferTransposeNet(&inputs, &out1, backendKind_);
-  inferTransposeNet(&inputs, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
