@@ -180,7 +180,7 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatRELU) {
 
   Node *O = F->createConcat("concat", {FA, FB}, 1);
   O = F->createRegression("reg", O, Exp);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -208,7 +208,7 @@ static void gradientCheckGroupConv(size_t depth, size_t group,
 
   Node *O = F->createConv(ctx, "conv", A, depth, 2, 1, 1, group);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, depth});
   Tensor outputs(ElemKind::FloatTy, {1, numDim + 1, numDim + 1, depth});
@@ -246,7 +246,7 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
   O = F->createTanh("tanh", O);
   O = F->createFullyConnected(ctx, "fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -275,7 +275,7 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   Node *O = F->createBatchNormalization(ctx, "batch", A, 3, 0.0001, 0.9);
   O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
   O = F->createRegression("reg", O, Ex);
-  auto result = F->createSave(ctx, "ret", O);
+  auto result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -313,7 +313,7 @@ TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
 
   Node *O = F->createDiv("div", A, B);
   O = F->createRegression("reg", O, Exp);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor BValues(ElemKind::FloatTy, {1, numDim});
   Tensor ExpValues(ElemKind::FloatTy, {1, numDim});
@@ -353,7 +353,7 @@ TEST_P(InterpreterGrad, gradientCheckArithmetic) {
   O = F->createSub("sub", D, O);
   O = F->createDiv("div", O, E);
   O = F->createRegression("reg", O, Exp);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim});
   Tensor outputs(ElemKind::FloatTy, {1, numDim});
@@ -383,7 +383,7 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
   FA = F->createTanh("tanh", FA);
   FA = F->createRegression("reg", FA, Exp);
-  auto *result = F->createSave(ctx, "ret", FA);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -411,7 +411,7 @@ TEST_P(InterpreterGrad, gradientCheckFC) {
 
   Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
   FA = F->createRegression("reg", FA, Exp);
-  auto *result = F->createSave(ctx, "ret", FA);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -436,12 +436,12 @@ TEST_P(InterpreterGrad, gradientCheckSigmoid) {
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "A", false);
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
-  auto *result = F->createSave(ctx, "ret", A);
+  auto *result = F->createSave("ret", A);
   ctx.allocate(result->getPlaceholder());
 
   Node *FA = F->createSigmoid("sig", Exp);
   FA = F->createRegression("reg", FA, Exp);
-  result = F->createSave(ctx, "ret", FA);
+  result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -466,12 +466,12 @@ TEST_P(InterpreterGrad, gradientCheckRelu) {
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "A", false);
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
-  auto *result = F->createSave(ctx, "ret", A);
+  auto *result = F->createSave("ret", A);
   ctx.allocate(result->getPlaceholder());
 
   Node *FA = F->createRELU("relu", Exp);
   FA = F->createRegression("reg", FA, Exp);
-  result = F->createSave(ctx, "ret", FA);
+  result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -499,7 +499,7 @@ TEST_P(InterpreterGrad, gradientCheckTranspose) {
   Node *TA = F->createTranspose("transpose", A, NHWC2NCHW);
   TA = F->createFullyConnected(ctx, "fc", TA, numOutputElem);
   TA = F->createRegression("regress", TA, Exp);
-  auto *result = F->createSave(ctx, "ret", TA);
+  auto *result = F->createSave("ret", TA);
 
   Tensor inputs(ElemKind::FloatTy, {1, 5, 10, 5});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
@@ -530,7 +530,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
       mod.createPlaceholder(ElemKind::Int64ITy, {batchSize}, "Labels", false);
   ctx.allocate(Y);
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
-  auto *result = F->createSave(ctx, "ret", CE);
+  auto *result = F->createSave("ret", CE);
   auto *LTensor = ctx.allocate(result->getPlaceholder());
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});

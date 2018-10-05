@@ -121,7 +121,7 @@ TEST(Quantization, quantizeGraph) {
   ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
   auto *FC = F->createFullyConnected("FC", input, W, B);
-  auto *S = F->createSave(ctx, "ret", FC);
+  auto *S = F->createSave("ret", FC);
   ctx.allocate(S->getPlaceholder());
 
   std::vector<NodeQuantizationInfo> QI{
@@ -150,7 +150,7 @@ TEST(Quantization, quantizeReLU) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *relu = F->createRELU("ReLU", input);
   Context ctx;
-  F->createSave(ctx, "ret", relu);
+  F->createSave("ret", relu);
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
   std::vector<NodeQuantizationInfo> QI{
@@ -225,7 +225,7 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *MMN = F->createMatMul("batchedreduceadd", O, TN);
   auto *BRAN = F->createBatchedReduceAdd("batchedreduceadd", MMN, 0);
   auto *TLN = F->createTile("tile", BRAN, 2, 0);
-  auto *save = F->createSave(ctx, "save", TLN);
+  auto *save = F->createSave("save", TLN);
   ctx.allocate(save->getPlaceholder());
   return F;
 }
@@ -364,7 +364,7 @@ static Function *createGRUForQuantization(Module *M, Context &ctx,
   // No-op TopK selection to test quantization
   Node *downsample = F->createTopK("gru.downsample", hidden, embeddingSize / 2);
 
-  auto *save = F->createSave(ctx, "save", {downsample, 0});
+  auto *save = F->createSave("save", {downsample, 0});
   ctx.allocate(save->getPlaceholder());
   return F;
 }
@@ -421,7 +421,7 @@ TEST(Quantization, rescaleSameType) {
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
   auto *D = F->createDequantize("dequantize", Q);
-  auto *save = F->createSave(ctx, "ret", D);
+  auto *save = F->createSave("ret", D);
   auto *result = ctx.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -447,7 +447,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto *RS = F->createRescaleQuantized(
       "rescale", Q, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
   auto *D = F->createDequantize("dequantize", RS);
-  auto *save = F->createSave(ctx, "ret", D);
+  auto *save = F->createSave("ret", D);
   auto *result = ctx.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 4);
@@ -597,7 +597,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
                                        inputParams.scale, inputParams.offset));
   ReluNode *RN = F->createRELU("relu", QN, reluTy);
   DequantizeNode *DN = F->createDequantize("dequantize", RN);
-  SaveNode *SN = F->createSave(ctx, "save", DN);
+  SaveNode *SN = F->createSave("save", DN);
   auto *res = ctx.allocate(SN->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -703,7 +703,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto *LRN =
       F->createLocalResponseNormalization("LRN", input, 2, 1.0, 0.0001, 0.75);
   auto *SM = F->createSoftMax("softmax", LRN, selected);
-  F->createSave(ctx, "ret", SM);
+  F->createSave("ret", SM);
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -736,7 +736,7 @@ TEST(Quantization, quantizeGraphPartially) {
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *TN = F->createTanh("tanh", MMN);
-  auto *save = F->createSave(ctx, "ret", TN);
+  auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
   ctx.allocate(result);
 
@@ -815,7 +815,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   auto *TNLHS = F->createTanh("tanh", LHS);
   auto *MMN = F->createMatMul("matmul", TNLHS, RHS);
   auto *TN = F->createTanh("tanh", MMN);
-  auto *save = F->createSave(ctx, "ret", TN);
+  auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
   ctx.allocate(result);
 
@@ -906,7 +906,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *CN = F->createAdd("concat", LHS, MMN);
   auto *TN = F->createTanh("tanh", CN);
-  auto *save = F->createSave(ctx, "ret", TN);
+  auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
   ctx.allocate(result);
 

@@ -126,7 +126,7 @@ void testMNIST() {
   Placeholder *selected = mod.createPlaceholder(
       ElemKind::Int64ITy, {minibatchSize, 1}, "selected", false);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
-  SaveNode *result = F->createSave(ctx, "return", SM);
+  SaveNode *result = F->createSave("return", SM);
 
   Tensor *inputTensor = ctx.allocate(A);
   Tensor *resultTensor = ctx.allocate(result->getPlaceholder());

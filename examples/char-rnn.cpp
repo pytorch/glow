@@ -198,7 +198,7 @@ static Function *createNetwork(Module &mod, Context &ctx, size_t minibatchSize,
   }
 
   Node *O = F->createConcat("output", resX, 1);
-  auto *S = F->createSave(ctx, "result", O);
+  auto *S = F->createSave("result", O);
   ctx.allocate(S->getPlaceholder());
 
   return F;

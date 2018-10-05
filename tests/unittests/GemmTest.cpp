@@ -52,7 +52,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   ctx.allocate(rhsVar);
   auto OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
-  auto save = F->createSave(ctx, "ret", matmul);
+  auto save = F->createSave("ret", matmul);
   auto *res = ctx.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);

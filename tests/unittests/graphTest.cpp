@@ -83,7 +83,7 @@ TEST(Graph, simpleTestConv) {
   K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
-  F->createSave(ctx, "Save", K);
+  F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
   lower(F, MockBackend());
@@ -277,7 +277,7 @@ TEST(Graph, simpleTestFC) {
   O = F->createFullyConnected(ctx, "FC2", O, 1);
   O = F->createRELU("RELU2", O);
   O = F->createRegression("Regression", O, Ex);
-  F->createSave(ctx, "Save", O);
+  F->createSave("Save", O);
   F->dump();
   F->dumpDAG();
   lower(F, MockBackend());
@@ -301,7 +301,7 @@ TEST(Graph, QuantizationProfileNodes) {
   auto *quantize = F->createQuantize("quantize", A, outQTy);
   // Make sure that quantize is not optimized away.
   Context ctx;
-  F->createSave(ctx, "save", quantize);
+  F->createSave("save", quantize);
 
   // Multiple nodes read from the same variable.
   // Only one Quantization Profile node should be created for the output
@@ -309,8 +309,8 @@ TEST(Graph, QuantizationProfileNodes) {
   Node *O = F->createFullyConnected(ctx, "FC1", A, 6);
   Node *C = F->createFullyConnected(ctx, "FC2", A, 6);
   O = F->createRELU("RELU1", O);
-  F->createSave(ctx, "save", O);
-  F->createSave(ctx, "save", C);
+  F->createSave("save", O);
+  F->createSave("save", C);
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
@@ -362,7 +362,7 @@ TEST(Graph, simpleQuant) {
       MD.createPlaceholder(ElemKind::Int8QTy, {6}, 0.4, 2, "B", true);
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
   Context ctx;
-  F->createSave(ctx, "ret", O);
+  F->createSave("ret", O);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
@@ -382,7 +382,7 @@ TEST(Graph, quantizeDequantizeNodes) {
 
   auto *D = F->createDequantize("dequantize", A);
   Context ctx;
-  F->createSave(ctx, "ret", D);
+  F->createSave("ret", D);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
@@ -395,7 +395,7 @@ TEST(Graph, quantizeGather) {
   auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
   Context ctx;
-  F->createSave(ctx, "ret", gather);
+  F->createSave("ret", gather);
   EE.compile(CompilationMode::Infer, F, ctx);
 }
 
@@ -410,7 +410,7 @@ TEST(Graph, cloneTest) {
   Node *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
-  F->createSave(ctx, "Save", SM);
+  F->createSave("Save", SM);
 
   auto *newConv = F->addNode(conv->clone());
   auto *newRelu = F->addNode(relu->clone());
@@ -469,7 +469,7 @@ TEST(Graph, cloneTest2) {
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
 
   Node *SM = F->createSoftMax("SoftMax", concat, S);
-  F->createSave(ctx, "Save", SM);
+  F->createSave("Save", SM);
 
   auto *newF = F->clone("new_main");
   newF->verify();
@@ -491,7 +491,7 @@ TEST(Graph, NodeValue) {
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
   a = F->createAdd("x8", a, a);
-  auto *S = F->createSave(ctx, "Save", a);
+  auto *S = F->createSave("Save", a);
   auto *res = ctx.allocate(S->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -549,7 +549,7 @@ TEST(Graph, nodesWithPredicates) {
   auto *FCL1 = F->createFullyConnected(ctx, "fc", MP0, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
-  auto *save = F->createSave(ctx, "ret", SM);
+  auto *save = F->createSave("ret", SM);
   ctx.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -567,7 +567,7 @@ unsigned getConvNodeSize(BackendKind kind) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", true);
   ConvolutionNode *CN = F->createConv(ctx, "conv", input, 6, 1, 1, 0, 2);
-  F->createSave(ctx, "save", CN);
+  F->createSave("save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
   lower(F, *backend);
@@ -622,7 +622,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 
   auto *addAB = F->createAdd("addAB", A, B);
 
-  auto *saveNode = F->createSave(ctx, "ret", addAB);
+  auto *saveNode = F->createSave("ret", addAB);
   ctx.allocate(saveNode->getPlaceholder());
   F->createSave("resetA", zero, A);
 
@@ -668,7 +668,7 @@ TEST(Graph, schedulingOfSaves) {
 
   auto *addAB = F->createAdd("addAB", A, B);
 
-  auto *saveNode = F->createSave(ctx, "ret", addAB);
+  auto *saveNode = F->createSave("ret", addAB);
   ctx.allocate(saveNode->getPlaceholder());
 
   // Copy the value of A.
@@ -823,7 +823,7 @@ TEST(Graph, usesListsWithSeveralResult) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Now add a user to only one result of the topK node.
-  savesOfValues.insert(F->createSave(ctx, "saveValues1", values));
+  savesOfValues.insert(F->createSave("saveValues1", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 1);
@@ -839,7 +839,7 @@ TEST(Graph, usesListsWithSeveralResult) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add a user to the other result of the topK node.
-  savesOfIndices.insert(F->createSave(ctx, "saveIndices1", indices));
+  savesOfIndices.insert(F->createSave("saveIndices1", indices));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(topK->getNumUsers(), 2);
@@ -856,9 +856,9 @@ TEST(Graph, usesListsWithSeveralResult) {
 
   // Add a couple more users of values and indices.
   // Interleaves the insertions in the uses list for both values and indices.
-  savesOfValues.insert(F->createSave(ctx, "saveValues2", values));
-  savesOfValues.insert(F->createSave(ctx, "saveValues3", values));
-  savesOfIndices.insert(F->createSave(ctx, "saveIndices2", indices));
+  savesOfValues.insert(F->createSave("saveValues2", values));
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfIndices.insert(F->createSave("saveIndices2", indices));
 
   EXPECT_EQ(topK->getNumUsers(), 5);
 
@@ -895,7 +895,7 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Now add a user to only one result of the reLU node.
-  savesOfValues.insert(F->createSave(ctx, "saveValues1", values));
+  savesOfValues.insert(F->createSave("saveValues1", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(reLU->getNumUsers(), 1);
@@ -906,7 +906,7 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add one more use.
-  savesOfValues.insert(F->createSave(ctx, "saveValues2", values));
+  savesOfValues.insert(F->createSave("saveValues2", values));
 
   // The whole node should inherit the uses of each of its results.
   EXPECT_EQ(reLU->getNumUsers(), 2);
@@ -916,8 +916,8 @@ TEST(Graph, usesListsThroughNodeValues) {
   EXPECT_TRUE(hasAllTheseUses(savesOfValues, values));
 
   // Add a couple more users.
-  savesOfValues.insert(F->createSave(ctx, "saveValues3", values));
-  savesOfValues.insert(F->createSave(ctx, "saveValues4", values));
+  savesOfValues.insert(F->createSave("saveValues3", values));
+  savesOfValues.insert(F->createSave("saveValues4", values));
 
   EXPECT_EQ(reLU->getNumUsers(), 4);
 
@@ -940,13 +940,13 @@ TEST(Graph, PreOrderTest) {
   MulNode *mul1 = F->createMul("mul1", zero, input1);
   MulNode *mul2 = F->createMul("mul2", zero, input2);
   MulNode *mul3 = F->createMul("mul3", mul1, mul2);
-  SaveNode *ret1 = F->createSave(ctx, "ret1", mul3);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
 
   SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
   AddNode *add1 = F->createAdd("add1", input2, one);
   AddNode *add2 = F->createAdd("add2", add1, one);
   AddNode *add3 = F->createAdd("add3", add2, one);
-  SaveNode *ret2 = F->createSave(ctx, "ret2", add2);
+  SaveNode *ret2 = F->createSave("ret2", add2);
 
   GraphPreOrderVisitor visitor(*F);
   auto order = visitor.getPreOrder();
@@ -982,13 +982,13 @@ TEST(Graph, PostOrderTest) {
   MulNode *mul1 = F->createMul("mul1", zero, input1);
   MulNode *mul2 = F->createMul("mul2", zero, input2);
   MulNode *mul3 = F->createMul("mul3", mul1, mul2);
-  SaveNode *ret1 = F->createSave(ctx, "ret1", mul3);
+  SaveNode *ret1 = F->createSave("ret1", mul3);
 
   SplatNode *one = F->createSplat("one", input2->getType(), 1.0);
   AddNode *add1 = F->createAdd("add1", input2, one);
   AddNode *add2 = F->createAdd("add2", add1, one);
   AddNode *add3 = F->createAdd("add3", add2, one);
-  SaveNode *ret2 = F->createSave(ctx, "ret2", add2);
+  SaveNode *ret2 = F->createSave("ret2", add2);
 
   GraphPostOrderVisitor visitor(*F);
   auto order = visitor.getPostOrder();
@@ -1022,7 +1022,7 @@ TEST(Graph, placeholder) {
   K = F->createFullyConnected(ctx, "FC", K, 10);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
-  F->createSave(ctx, "Save", K);
+  F->createSave("Save", K);
 }
 
 /// Check that the setType API allows to change the type of the

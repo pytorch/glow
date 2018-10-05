@@ -71,7 +71,7 @@ TEST_F(PartitionTest, SerialExecution) {
 
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
-  auto *save = F_->createSave(ctx_, "ret", mul);
+  auto *save = F_->createSave("ret", mul);
   auto &res = *ctx_.allocate(save->getPlaceholder());
 
   auto G = glow::partition(F_);
@@ -122,7 +122,7 @@ TEST_F(PartitionTest, Branchover) {
   auto *FC1 = F_->createFullyConnected(ctx_, "fc1", input, 8);
   auto *FC2 = F_->createFullyConnected(ctx_, "fc2", FC1, 8);
   auto *add = F_->createAdd("add", FC1, FC2);
-  auto *save = F_->createSave(ctx_, "save", add);
+  auto *save = F_->createSave("save", add);
   auto &res = *ctx_.allocate(save->getPlaceholder());
 
   auto G = glow::partition(F_);
@@ -165,7 +165,7 @@ TEST_F(PartitionTest, Train) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 8}, "input", false);
   auto *FC = F_->createFullyConnected(ctx_, "fc", input, 8);
-  F_->createSave(ctx_, "save", FC);
+  F_->createSave("save", FC);
   auto *TF = glow::differentiate(F_, TrainingConfig());
   auto G = glow::partition(TF);
   ASSERT_EQ(G.getFunctions().size(), 6);

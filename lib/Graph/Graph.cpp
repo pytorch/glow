@@ -1596,12 +1596,6 @@ FullyConnectedNode *Function::createFullyConnected(Context &ctx,
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
 }
 
-SaveNode *Function::createSave(Context &ctx, llvm::StringRef name,
-                               NodeValue input) {
-  auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
-  return addNode(new SaveNode(name, input, dest));
-}
-
 Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
                                  NodeValue Y) {
   auto XDimsSize = X.dims().size();

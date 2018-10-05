@@ -59,7 +59,7 @@ TEST(GraphAutoGrad, autoGrad) {
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
-  auto *result = F->createSave(ctx, "return", SM);
+  auto *result = F->createSave("return", SM);
   (void)result;
 
   Function *TF = glow::differentiate(F, TC);
@@ -90,7 +90,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
-  auto *result = F->createSave(ctx, "return", SM);
+  auto *result = F->createSave("return", SM);
   (void)result;
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF, ctx);
@@ -124,7 +124,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   Node *label = M.createPlaceholder(ElemKind::FloatTy, {1}, "label", false);
   Node *reg = F->createRegression("reg", AplusB_F, label);
-  F->createSave(ctx, "return", reg);
+  F->createSave("return", reg);
 
   EXPECT_EQ(M.getPlaceholders().size(), 5);
 
@@ -168,7 +168,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   Placeholder *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", true);
   auto *RL = F->createRELU("relu", A);
-  F->createSave(ctx, "return", RL);
+  F->createSave("return", RL);
 
   // Expect a single user to the trainable input placeholder.
   EXPECT_EQ(A->getNumUsers(), 1);

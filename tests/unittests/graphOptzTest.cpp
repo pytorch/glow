@@ -106,7 +106,7 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
     K = F_->createAdd("arith", K, K);
   }
   K = F_->createSoftMax("Regression", K, Ex);
-  F_->createSave(ctx_, "ret", K);
+  F_->createSave("ret", K);
 
   // Check that we know how many nodes we've created.
   EXPECT_EQ(F_->getNodes().size(), 82);
@@ -124,7 +124,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  F_->createSave(ctx_, "ret", BN);
+  F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -145,7 +145,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  F_->createSave(ctx_, "ret", BN);
+  F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -175,7 +175,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
                             mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}),
                             5, 1, 2, 1);
   auto *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  auto *ret = F_->createSave(ctx_, "ret", BN);
+  F_->createSave("ret", BN);
 
   // Initialize to ensure that constant tensors are not optimized out.
   ctx_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
@@ -201,7 +201,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   CV->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
-  F_->createSave(ctx_, "ret", BN);
+  F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -224,8 +224,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
-  SaveNode *convSave = F_->createSave(ctx_, "convSave", CV);
+  SaveNode *ret = F_->createSave("ret", BN);
+  SaveNode *convSave = F_->createSave("convSave", CV);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -262,8 +262,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
 
   Node *BN = F_->createBatchNormalization("batch", CV, beta, gamma, mean, var,
                                           3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
-  SaveNode *filterSave = F_->createSave(ctx_, "filterSave", CV->getFilter());
+  SaveNode *ret = F_->createSave("ret", BN);
+  SaveNode *filterSave = F_->createSave("filterSave", CV->getFilter());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -288,7 +288,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
   Tensor transposedA;
   ctx_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  SaveNode *save = F_->createSave(ctx_, "ret", T);
+  SaveNode *save = F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
   ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
@@ -316,7 +316,7 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   // be correct, thus this optimization is still legal.
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred);
-  SaveNode *save = F_->createSave(ctx_, "ret", T);
+  SaveNode *save = F_->createSave("ret", T);
   save->setPredicate(pred);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -338,7 +338,7 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  F_->createSave(ctx_, "ret", BN);
+  F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -362,8 +362,8 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
   Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
-  SaveNode *convSave = F_->createSave(ctx_, "ret", CV);
-  SaveNode *ret = F_->createSave(ctx_, "ret", BN);
+  SaveNode *convSave = F_->createSave("ret", CV);
+  SaveNode *ret = F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -388,7 +388,7 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
-  SaveNode *O = F_->createSave(ctx_, "ret", BN);
+  SaveNode *O = F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(BN->dims(0), llvm::makeArrayRef(transposedDims));
@@ -420,7 +420,7 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   T->setPredicate(pred1);
   Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
-  SaveNode *O = F_->createSave(ctx_, "ret", BN);
+  SaveNode *O = F_->createSave("ret", BN);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -449,7 +449,7 @@ TEST_F(GraphOptz, sinkTransposeBelowRELU) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *K = F_->createRELU("relu", T);
-  SaveNode *O = F_->createSave(ctx_, "ret", K);
+  SaveNode *O = F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->dims(0), llvm::makeArrayRef(transposedDims));
@@ -481,7 +481,7 @@ TEST_F(GraphOptz, sinkTransposeBelowRELUWithPredicate) {
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
   K->setPredicate(pred2);
-  SaveNode *O = F_->createSave(ctx_, "ret", K);
+  SaveNode *O = F_->createSave("ret", K);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -510,7 +510,7 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoid) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *SI = F_->createSigmoid("sigmoid", T);
-  SaveNode *O = F_->createSave(ctx_, "ret", SI);
+  SaveNode *O = F_->createSave("ret", SI);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(SI->dims(0), llvm::makeArrayRef(transposedDims));
@@ -542,7 +542,7 @@ TEST_F(GraphOptz, sinkTransposeBelowSigmoidWithPredicate) {
   T->setPredicate(pred1);
   Node *SI = F_->createSigmoid("sigmoid", T);
   SI->setPredicate(pred2);
-  SaveNode *O = F_->createSave(ctx_, "ret", SI);
+  SaveNode *O = F_->createSave("ret", SI);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -571,7 +571,7 @@ TEST_F(GraphOptz, sinkTransposeBelowTanh) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   Node *TN = F_->createTanh("tanh", T);
-  SaveNode *O = F_->createSave(ctx_, "ret", TN);
+  SaveNode *O = F_->createSave("ret", TN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(TN->dims(0), llvm::makeArrayRef(transposedDims));
@@ -601,7 +601,7 @@ TEST_F(GraphOptz, sinkTransposeBelowTanhWithPredicate) {
   T->setPredicate(pred1);
   Node *TN = F_->createTanh("tanh", T);
   TN->setPredicate(pred2);
-  SaveNode *O = F_->createSave(ctx_, "ret", TN);
+  SaveNode *O = F_->createSave("ret", TN);
   O->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -630,7 +630,7 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   ReluNode *K = F_->createRELU("relu", T2);
-  SaveNode *save = F_->createSave(ctx_, "ret", K);
+  SaveNode *save = F_->createSave("ret", K);
 
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -660,7 +660,7 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
   T2->setPredicate(pred2);
   ReluNode *K = F_->createRELU("relu", T2);
   K->setPredicate(pred3);
-  SaveNode *save = F_->createSave(ctx_, "ret", K);
+  SaveNode *save = F_->createSave("ret", K);
   save->setPredicate(pred4);
 
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
@@ -682,7 +682,7 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   Node *K = F_->createRELU("relu", T);
-  F_->createSave(ctx_, "ret", K);
+  F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(K->getNthInput(0).getNode(), T);
@@ -709,7 +709,7 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   T->setPredicate(pred1);
   Node *K = F_->createRELU("relu", T);
   K->setPredicate(pred2);
-  SaveNode *save = F_->createSave(ctx_, "ret", K);
+  SaveNode *save = F_->createSave("ret", K);
   save->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -733,7 +733,7 @@ TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   TransposeNode *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   TransposeNode *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
-  SaveNode *save = F_->createSave(ctx_, "ret", T2);
+  SaveNode *save = F_->createSave("ret", T2);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -761,7 +761,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   Node *T1 = F_->createTranspose("transpose1", A1, NHWC2NCHW);
   Node *T2 = F_->createTranspose("transpose2", A2, NHWC2NCHW);
   Node *K = F_->createAdd("arith", T1, T2);
-  SaveNode *O = F_->createSave(ctx_, "ret", K);
+  SaveNode *O = F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -801,7 +801,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
   T2->setPredicate(pred2);
   Node *K = F_->createAdd("arith", T1, T2);
   K->setPredicate(pred3);
-  SaveNode *O = F_->createSave(ctx_, "ret", K);
+  SaveNode *O = F_->createSave("ret", K);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -837,7 +837,7 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
   Node *R1 = F_->createRELU("relu1", A1);
   Node *R2 = F_->createRELU("relu2", A2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
-  SaveNode *O = F_->createSave(ctx_, "ret", CN);
+  SaveNode *O = F_->createSave("ret", CN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -878,7 +878,7 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
   R2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {R1, R2}, 1);
   CN->setPredicate(pred3);
-  SaveNode *O = F_->createSave(ctx_, "ret", CN);
+  SaveNode *O = F_->createSave("ret", CN);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -914,7 +914,7 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
   Node *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", A2, NCHW2NHWC);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
-  SaveNode *O = F_->createSave(ctx_, "ret", CN);
+  SaveNode *O = F_->createSave("ret", CN);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -955,7 +955,7 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
   T2->setPredicate(pred2);
   Node *CN = F_->createConcat("concat", {T1, T2}, 1);
   CN->setPredicate(pred3);
-  SaveNode *O = F_->createSave(ctx_, "ret", CN);
+  SaveNode *O = F_->createSave("ret", CN);
   O->setPredicate(pred4);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -986,7 +986,7 @@ TEST_F(GraphOptz, poolBelowReluSwapped) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave(ctx_, "ret", PL);
+  Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1004,7 +1004,7 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave(ctx_, "ret", PL);
+  Node *O = F_->createSave("ret", PL);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1022,8 +1022,8 @@ TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
   Node *R = F_->createRELU("relu", A);
   Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave(ctx_, "ret", PL);
-  F_->createSave(ctx_, "ret", R);
+  Node *O = F_->createSave("ret", PL);
+  F_->createSave("ret", R);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -1067,7 +1067,7 @@ TEST_F(GraphOptz, mergeConcatNodes) {
   Node *CN2 = F_->createConcat("concat2", {A1, CN1}, 1);
   Node *CN3 = F_->createConcat("concat3", {A4, A5}, 2);
   Node *CN4 = F_->createConcat("concat4", {A3, CN2, CN3}, 1);
-  Node *O = F_->createSave(ctx_, "ret", CN4);
+  Node *O = F_->createSave("ret", CN4);
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
@@ -1117,7 +1117,7 @@ TEST_F(GraphOptz, CSE) {
   Node *CN1 = F_->createConcat("concat1", {A1, A2}, 1);
   Node *CN2 = F_->createConcat("concat2", {A1, A2}, 1);
   Node *CN3 = F_->createConcat("concat3", {CN1, CN2}, 2);
-  Node *O = F_->createSave(ctx_, "ret", CN3);
+  Node *O = F_->createSave("ret", CN3);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
@@ -1147,7 +1147,7 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   Type t(ElemKind::FloatTy, {1000, 1000, 1000});
   Node *Z = F_->createSplat("zero", &t, 0.);
   Node *S = F_->createSlice("slice", Z, {5, 15, 42}, {99, 88, 77});
-  Node *O = F_->createSave(ctx_, "ret", S);
+  Node *O = F_->createSave("ret", S);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1185,7 +1185,7 @@ TEST_F(GraphOptz, ZeroArithmetic) {
 
   auto *sub = F_->createSub("sub", add3, zero); // -> input
 
-  SaveNode *O = F_->createSave(ctx_, "ret", sub);
+  SaveNode *O = F_->createSave("ret", sub);
 
   // The expression evaluates to "I".
 
@@ -1216,7 +1216,7 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 
   MulNode *mul3 = F_->createMul("mul3", mul1, mul2); // -> 0
 
-  SaveNode *O = F_->createSave(ctx_, "ret", mul3);
+  SaveNode *O = F_->createSave("ret", mul3);
 
   // Expect 1 splat, 3 muls, 1 save.
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -1241,7 +1241,7 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
   DivNode *div = F_->createDiv("div", input, one);
   MulNode *mul = F_->createMul("mul", div, one);
-  SaveNode *SN = F_->createSave(ctx_, "ret", mul);
+  SaveNode *SN = F_->createSave("ret", mul);
 
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -1287,7 +1287,7 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
     Node *Z = F->createSplat("zero", &t, 0.);
     Node *S1 = F->createSlice("slice1", Z, {5, 15, 42}, {99, 88, 77});
     Node *S2 = F->createSlice("slice2", S1, {1, 1, 1}, {2, 3, 4});
-    F->createSave(ctx, "ret", S2);
+    F->createSave("ret", S2);
 
     if (shouldReverse) {
       auto &nodes = F->getNodes();
@@ -1309,7 +1309,7 @@ TEST_F(GraphOptz, ReshapeNoop) {
   Type t(ElemKind::FloatTy, shape);
   auto *Z = F_->createSplat("zero", &t, 0.);
   auto *R = F_->createReshape("reshape", Z, shape);
-  auto *O = F_->createSave(ctx_, "ret", R);
+  auto *O = F_->createSave("ret", R);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1348,7 +1348,7 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // Z2 is only used by R3.
   // The Z2,R3 nodes will be replaced by a new splat node with the shape of R3.
   auto *A3 = F_->createAdd("add", A2->getResult().getType(), A2, R3);
-  auto *O = F_->createSave(ctx_, "ret", A3);
+  auto *O = F_->createSave("ret", A3);
 
   // Before optimization, we have 9 nodes in the graph.
   EXPECT_EQ(F_->getNodes().size(), 9);
@@ -1385,7 +1385,7 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
                                                    "input", true);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
-  auto *O = F_->createSave(ctx_, "ret", R2);
+  auto *O = F_->createSave("ret", R2);
 
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -1427,7 +1427,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
-  auto S = F_->createSave(ctx_, "save", Q);
+  auto S = F_->createSave("save", Q);
 
   EXPECT_EQ(2, F_->getNodes().size());
   ::glow::convertPlaceholdersToConstants(F_, ctx_, {S->getPlaceholder()});
@@ -1448,7 +1448,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto Q = F_->createQuantize("quantize", input, qType);
-  F_->createSave(ctx_, "save", Q);
+  F_->createSave("save", Q);
   auto clonedF = F_->clone("cloned");
 
   EXPECT_EQ(2, clonedF->getNodes().size());
@@ -1482,7 +1482,7 @@ TEST_F(GraphOptz, quantizeToRescale) {
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
   auto *Q = F_->createQuantize("quantize", D, qType);
 
-  F_->createSave(ctx_, "ret", Q);
+  F_->createSave("ret", Q);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -1504,7 +1504,7 @@ TEST_F(GraphOptz, MaxOfQuantizedSplat) {
                                        "input", true);
 
   auto *max = F_->createMax("max", splat, input);
-  F_->createSave(ctx_, "save", max);
+  F_->createSave("save", max);
   EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1524,27 +1524,27 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 
   Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
   add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
-  add = F_->createSave(ctx_, "saveAdd", add);
+  add = F_->createSave("saveAdd", add);
 
   Node *sub = F_->createSub("qSub", opOutTy, LHS, RHS);
   sub = F_->createRescaleQuantized("rsSub", sub, rescaleOutTy);
-  sub = F_->createSave(ctx_, "saveSub", sub);
+  sub = F_->createSave("saveSub", sub);
 
   Node *div = F_->createDiv("qDiv", opOutTy, LHS, RHS);
   div = F_->createRescaleQuantized("rsDiv", div, rescaleOutTy);
-  div = F_->createSave(ctx_, "saveDiv", div);
+  div = F_->createSave("saveDiv", div);
 
   Node *mul = F_->createMul("qMul", opOutTy, LHS, RHS);
   mul = F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
-  mul = F_->createSave(ctx_, "saveMul", mul);
+  mul = F_->createSave("saveMul", mul);
 
   Node *min = F_->createMin("qMin", opOutTy, LHS, RHS);
   min = F_->createRescaleQuantized("rsMin", min, rescaleOutTy);
-  min = F_->createSave(ctx_, "saveMin", min);
+  min = F_->createSave("saveMin", min);
 
   Node *max = F_->createMax("qMax", opOutTy, LHS, RHS);
   max = F_->createRescaleQuantized("rsMax", max, rescaleOutTy);
-  max = F_->createSave(ctx_, "saveMax", max);
+  max = F_->createSave("saveMax", max);
 
   // All rescales must be fused into arithmetic operations above.
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1582,7 +1582,7 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   auto *rCV = F_->createRescaleQuantized(
       "rescale", CV,
       mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 16}, 0.4, 37));
-  F_->createSave(ctx_, "save", rCV);
+  F_->createSave("save", rCV);
 
   // All rescales must be fused into convolution.
   EXPECT_EQ(F_->getNodes().size(), 6);
@@ -1606,7 +1606,7 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
   auto *maxpool =
       F_->createMaxPool("maxpool", transpose, {3, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *save = F_->createSave(ctx_, "ret", maxpool);
+  auto *save = F_->createSave("ret", maxpool);
 
   EXPECT_EQ(F_->getNodes().size(), 7);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1632,7 +1632,7 @@ TEST_F(GraphOptz, mergeRescaleWithArithmeticNode) {
   auto *rescale4 = F_->createRescaleQuantized(
       "rescale", mul, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.1, 11));
   auto *div = F_->createDiv("div", rescale4, rescale4);
-  F_->createSave(ctx_, "save", div);
+  F_->createSave("save", div);
 
   EXPECT_EQ(F_->getNodes().size(), 9);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1647,7 +1647,7 @@ TEST_F(GraphOptz, mergeRescaleWithRelu) {
   auto *rescale1 = F_->createRescaleQuantized(
       "rescale", input, mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.4, 11));
   auto *relu = F_->createRELU("relu", rescale1);
-  F_->createSave(ctx_, "save", relu);
+  F_->createSave("save", relu);
 
   // Rescale, RELU, Save nodes.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -1677,7 +1677,7 @@ TEST_F(GraphOptz, mergeMatMulNodes) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave(ctx_, "save", cc);
+  F_->createSave("save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1702,7 +1702,7 @@ TEST_F(GraphOptz, mergeBANodes) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave(ctx_, "save", cc);
+  F_->createSave("save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1726,7 +1726,7 @@ TEST_F(GraphOptz, concatElim) {
   }
 
   auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave(ctx_, "save", cc);
+  F_->createSave("save", cc);
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -1773,7 +1773,7 @@ TEST_F(GraphOptz, concatReshapes) {
   inputs2.clear();
 
   auto *addNode = F_->createAdd("add", concatNode1, concatNode2);
-  auto *O = F_->createSave(ctx_, "ret", addNode);
+  auto *O = F_->createSave("ret", addNode);
 
   EXPECT_EQ(F_->getNodes().size(), 24);
 
@@ -1828,7 +1828,7 @@ TEST_F(GraphOptz, VarsCSE) {
   auto *SN = F_->createSigmoid("sigmoid", input2);
   auto *RN = F_->createRELU("relu", input3);
   auto *CN = F_->createConcat("concat", {TN, SN, RN}, /* axis */ 0);
-  F_->createSave(ctx_, "ret", CN);
+  F_->createSave("ret", CN);
 
   // Initially there are three variables: inputs 1, 2, and 3 (the save uses a
   // placeholder).
@@ -1886,8 +1886,8 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
   // to the RHS for both. Note that add1 has multiple users: add2 and save1.
   Node *AN1 = F_->createAdd("add1", SN, I1);
   Node *AN2 = F_->createAdd("add2", SN, AN1);
-  SaveNode *SN1 = F_->createSave(ctx_, "save1", AN1);
-  SaveNode *SN2 = F_->createSave(ctx_, "save2", AN2);
+  SaveNode *SN1 = F_->createSave("save1", AN1);
+  SaveNode *SN2 = F_->createSave("save2", AN2);
 
   // Five nodes in total: one splat, two adds, and two saves.
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -1932,7 +1932,7 @@ TEST_F(GraphOptz, eliminateSingleConcat) {
   Node *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
 
   ConcatNode *CN = F_->createConcat("concat1", {input}, 0);
-  SaveNode *SN = F_->createSave(ctx_, "ret", CN);
+  SaveNode *SN = F_->createSave("ret", CN);
 
   // The ConcatNode and SaveNode.
   EXPECT_EQ(F_->getNodes().size(), 2);
@@ -1959,7 +1959,7 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   ctx_.allocate(input);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
-  auto *O = F_->createSave(ctx_, "ret", R2);
+  auto *O = F_->createSave("ret", R2);
 
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -1990,7 +1990,7 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   auto *TN = F_->createTranspose("transpose", input, NHWC2NCHW);
   auto *RN = F_->createReshape("reshape", TN, {1, 6});
   auto *MMN = F_->createMatMul("matmul", RN, weights);
-  auto *SN = F_->createSave(ctx_, "ret", MMN);
+  auto *SN = F_->createSave("ret", MMN);
 
   // Transpose + Reshape + MatMul + Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -2014,9 +2014,9 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
   auto *input3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input3", true);
-  auto *save1 = F_->createSave(ctx_, "save1", input1);
-  auto *save2 = F_->createSave(ctx_, "save2", input2);
-  auto *save3 = F_->createSave(ctx_, "save3", input3);
+  auto *save1 = F_->createSave("save1", input1);
+  auto *save2 = F_->createSave("save2", input2);
+  auto *save3 = F_->createSave("save3", input3);
 
   // No variables, six PHs (3 inputs, 3 saves).
   EXPECT_EQ(mod_.getVars().size(), 0);
