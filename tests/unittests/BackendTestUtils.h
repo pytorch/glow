@@ -34,6 +34,10 @@ class MockBackend : public Backend {
   }
 };
 
+/// Pair representing a pointer to a Function with a single output, and the
+/// allocated Tensor that backs the Placeholder of the single output.
+using FunctionTensorPair = std::pair<Function *, Tensor *>;
+
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
 
@@ -84,7 +88,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
 void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
                         Tensor *out, BackendKind kind);
 
-void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind);
+FunctionTensorPair createAndInitBasicFCNet(Context &ctx, ExecutionEngine &EE);
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);
 

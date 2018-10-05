@@ -188,6 +188,7 @@ target_link_libraries(BackendCorrectnessTest
                         IR
                         ExecutionEngine
                         Support
+                        Quantization
                         gtest
                         testMain)
 
