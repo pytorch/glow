@@ -17,6 +17,7 @@ fix_format() {
   find lib tests/unittests/ tools/ include examples \
     -name \*.h -print0 \
     -o -name \*.cpp -print0 \
+    -o -name \*.cl -print0 \
   | xargs -0 -P8 -n1 $CLANG_COMMAND -i;
 }
 
