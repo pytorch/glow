@@ -523,7 +523,8 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
   }
 }
 
-TEST_P(Operator, batchedBatchedAdd) {
+/// Test that the BatchedAdd operator works.
+TEST_P(Operator, BatchedAdd) {
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 3}, "batch", false);
   auto *added =
@@ -540,11 +541,15 @@ TEST_P(Operator, batchedBatchedAdd) {
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
 
-  auto H = result->getHandle();
-  EXPECT_NEAR(H.at({0, 0, 0}), 10, 0.001);
-  EXPECT_NEAR(H.at({0, 0, 1}), 9, 0.001);
-  EXPECT_NEAR(H.at({0, 0, 2}), 8, 0.001);
-  EXPECT_NEAR(H.at({0, 1, 0}), 7, 0.001);
+  auto BH = ctx_.get(batch)->getHandle();
+  auto RH = result->getHandle();
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 3; j++) {
+      for (size_t k = 0; k < 3; k++) {
+        EXPECT_NEAR(RH.at({i, j, k}), BH.at({i, j, k}) + 1.0, 0.001);
+      }
+    }
+  }
 }
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
@@ -729,6 +734,55 @@ TEST_P(Operator, minElem) {
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_EQ(resultH.raw(i), std::min(LHSH.raw(i), RHSH.raw(i)));
+  }
+}
+
+/// Verify that the Max operator works correctly.
+TEST_P(Operator, maxElem) {
+  PseudoRNG PRNG;
+  unsigned len = 5;
+
+  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "lhs", false);
+  auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
+  auto *max = F_->createMax("max", LHS, RHS);
+  auto *save = F_->createSave("max", max);
+  auto *result = ctx_.allocate(save->getPlaceholder());
+
+  ctx_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
+  ctx_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto resultH = result->getHandle();
+  auto LHSH = ctx_.get(LHS)->getHandle();
+  auto RHSH = ctx_.get(RHS)->getHandle();
+
+  for (size_t i = 0; i < len; i++) {
+    EXPECT_EQ(resultH.raw(i), std::max(LHSH.raw(i), RHSH.raw(i)));
+  }
+}
+
+/// Verify that the RELU operator works correctly.
+TEST_P(Operator, ReluSimple) {
+  auto *in = mod_.createPlaceholder(ElemKind::FloatTy, {7}, "in", false);
+  auto *relu = F_->createRELU("relu", in);
+  auto *save = F_->createSave("relu", relu);
+  auto *result = ctx_.allocate(save->getPlaceholder());
+
+  ctx_.allocate(in)->getHandle() = {0, -1, -2, -3, 4, 5, 6};
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto resultH = result->getHandle();
+
+  for (size_t i = 0; i < 7; i++) {
+    if (i < 4) {
+      EXPECT_EQ(resultH.raw(i), 0);
+    } else {
+      EXPECT_EQ(resultH.raw(i), i);
+    }
   }
 }
 
@@ -2893,6 +2947,24 @@ TEST_P(InterpOnly, FP16AvgPool) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+/// Verify that the AvgPool operator works correctly.
+TEST_P(Operator, AvgPool) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  ctx_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto *result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 2, 2, 1});
+  out.getHandle() = {2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(Operator, Int8AvgPool) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
@@ -2912,13 +2984,30 @@ TEST_P(Operator, Int8AvgPool) {
   }
 }
 
+TEST_P(Operator, MaxPool) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  ctx_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", pool);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto result = ctx_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 2, 2, 1});
+  out.getHandle() = {4., 5., 7., 8.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(InterpOnly, FP16MaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
   ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                   5., 6., 7., 8.};
-  auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2984,6 +3073,28 @@ TEST_P(InterpAndCPU, Int8Tanh) {
 
   for (size_t i = 0; i < size; i++) {
     EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
+  }
+}
+
+/// Verify that the Tanh operator works correctly.
+TEST_P(Operator, Tanh) {
+  constexpr size_t size = 10;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+
+  auto *tanh = F_->createTanh("Tanh", input);
+  auto *save = F_->createSave("Save", tanh);
+  ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto resultH = ctx_.get(save->getPlaceholder())->getHandle();
+  auto inputH = ctx_.get(input)->getHandle();
+
+  for (size_t i = 0; i < size; i++) {
+    EXPECT_NEAR(resultH.at({i}), std::tanh(inputH.at({i})), 0.001);
   }
 }
 
@@ -3278,6 +3389,29 @@ TEST_P(InterpOnly, FP16BatchAdd) {
   }
 }
 
+/// Verify that the Sigmoid operator works correctly.
+TEST_P(Operator, Sigmoid) {
+  constexpr size_t size = 10;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+
+  auto *sigmoid = F_->createSigmoid("sigmoid", input);
+  auto *save = F_->createSave("Save", sigmoid);
+  ctx_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto RH = ctx_.get(save->getPlaceholder())->getHandle();
+  auto inH = ctx_.get(input)->getHandle();
+
+  for (size_t i = 0; i < size; i++) {
+    float val = 1 / (1 + std::exp(-inH.at({i})));
+    EXPECT_NEAR(RH.at({i}), val, 0.001);
+  }
+}
+
 TEST_P(InterpAndCPU, IntLookupTable) {
   constexpr size_t size = 6;
   auto *input =
@@ -3522,6 +3656,82 @@ TEST_P(InterpOnly, FP16Reshape) {
   for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
     EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
   }
+}
+
+/// Verify that the Reshape operator works correctly.
+TEST_P(Operator, Reshape) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5, 7}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *RN = F_->createReshape("reshape", A, {7, 5, 1});
+  auto *result = F_->createSave("saveReshape", RN);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto outputHandle = ctx_.get(result->getPlaceholder())->getHandle();
+  ASSERT_EQ(outputHandle.size(), inputHandle.size());
+  ASSERT_EQ(outputHandle.dims().size(), 3);
+  EXPECT_EQ(outputHandle.dims()[0], 7);
+  EXPECT_EQ(outputHandle.dims()[1], 5);
+  EXPECT_EQ(outputHandle.dims()[2], 1);
+
+  // Check values are still in the same order.
+  for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
+/// Verify that the Reshape operator works correctly with Int64ITy..
+TEST_P(Operator, ReshapeInt) {
+  auto *A = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 7}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle<int64_t>();
+  inputHandle.randomize<int64_t>(0, 100, mod_.getPRNG());
+
+  auto *RN = F_->createReshape("reshape", A, {7, 5, 1});
+  auto *result = F_->createSave("saveReshape", RN);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto outputHandle = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  ASSERT_EQ(outputHandle.size(), inputHandle.size());
+  ASSERT_EQ(outputHandle.dims().size(), 3);
+  EXPECT_EQ(outputHandle.dims()[0], 7);
+  EXPECT_EQ(outputHandle.dims()[1], 5);
+  EXPECT_EQ(outputHandle.dims()[2], 1);
+
+  // Check values are still in the same order.
+  for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
+/// Verify that the Select operator works correctly.
+TEST_P(Operator, Select) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "A", false);
+  ctx_.allocate(A)->getHandle() = {0.0, 1.0, 1.0, 0.0, 0.0};
+
+  auto SNTy = mod_.uniqueType(ElemKind::FloatTy, {5});
+  SplatNode *SN10 = F_->createSplat("zero", SNTy, 10.0);
+  SplatNode *SN20 = F_->createSplat("zero", SNTy, 20.0);
+
+  auto *SN = F_->createSelect("select", A, SN10, SN20);
+  auto *result = F_->createSave("saveSelect", SN);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto resH = ctx_.get(result->getPlaceholder())->getHandle();
+  EXPECT_EQ(resH.at({0}), 20.0);
+  EXPECT_EQ(resH.at({1}), 10.0);
+  EXPECT_EQ(resH.at({2}), 10.0);
+  EXPECT_EQ(resH.at({3}), 20.0);
+  EXPECT_EQ(resH.at({4}), 20.0);
 }
 
 /// Stack many slices/reshapes together. Some of these may be turned into tensor
@@ -3889,6 +4099,30 @@ TEST_P(InterpOnly, FP16SoftMax) {
   Tensor out(ElemKind::Float16Ty, {1, 6});
   out.getHandle<float16_t>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
+/// Verify that Quantize, Rescale, Dequantize work correctly together.
+TEST_P(Operator, QuantizeSimple) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input", true);
+  ctx_.allocate(input)->init(Tensor::InitKind::Broadcast, 21, mod_.getPRNG());
+
+  auto *Q = F_->createQuantize(
+      "quant", input, mod_.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
+  auto *RS = F_->createRescaleQuantized(
+      "rescale", Q, mod_.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
+  auto *D = F_->createDequantize("dequantize", RS);
+  auto *save = F_->createSave("ret", D);
+  auto *result = ctx_.allocate(save->getPlaceholder());
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+
+  EE_.run();
+  EXPECT_EQ(F_->getNodes().size(), 1);
+
+  auto RH = result->getHandle();
+  EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
