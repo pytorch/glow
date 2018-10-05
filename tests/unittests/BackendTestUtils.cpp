@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "BackendTestUtils.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
@@ -593,12 +595,12 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   out->assign(resultTensor);
 }
 
-void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
-  Context ctx;
-  ExecutionEngine EE(kind);
+FunctionTensorPair createAndInitBasicFCNet(Context &ctx, ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = createPlaceholder(mod, ctx, inputs, "var");
+
+  auto *var =
+      mod.createPlaceholder(ElemKind::FloatTy, {2, 3, 16, 16}, "var", false);
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected(ctx, "fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
@@ -609,11 +611,10 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *result = F->createSave("ret", rl1);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  PseudoRNG PRNG;
+  ctx.allocate(var)->getHandle().initXavier(1, PRNG);
 
-  updateVariables(ctx, {var}, {inputs});
-  EE.run();
-  out->assign(resultTensor);
+  return std::make_pair(F, resultTensor);
 }
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {

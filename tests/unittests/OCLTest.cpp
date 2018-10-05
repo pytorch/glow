@@ -40,19 +40,6 @@ TEST(OpenCLCorrectnessTest, convOps) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST(OpenCLCorrectnessTest, basicFCNet) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferBasicFCNet(&inputs, &out1, BackendKind::OpenCL);
-  inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST(OpenCLCorrectnessTest, inferMixedNet) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});

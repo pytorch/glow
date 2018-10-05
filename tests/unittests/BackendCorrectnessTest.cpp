@@ -22,6 +22,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"
@@ -37,6 +38,67 @@ protected:
 };
 
 class CPUOnly : public BackendCorrectnessTest {};
+
+namespace {
+
+/// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
+/// quantization parameters from the profile.
+static std::vector<NodeQuantizationInfo>
+profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
+                                  Function *origF) {
+  Function *profileF = glow::profileQuantization(ctx, origF);
+  EE.compile(CompilationMode::Infer, profileF, ctx);
+
+  EE.run();
+
+  return quantization::generateNodeQuantizationInfos(ctx, profileF);
+}
+
+/// Signature of functions used to create and init a Function. Returns a pair of
+/// the Function created and the Placeholder of the output of the Function.
+using CreateAndInitFunction =
+    std::function<FunctionTensorPair(Context &, ExecutionEngine &)>;
+
+/// Given a method \p createAndInitFunction that creates and initializes a
+/// Function with a single output Tensor, \returns a bool representing if the
+/// output Tensor of executing the Function on the Interpreter backend is equal
+/// to executing it on a backend of kind \p backendKind. If \p quantize is true
+/// the Function will be profiled on the Interpreter, and then both Interpreter
+/// and backendKind Functions will be quantized with the resulting profile.
+static bool
+compareAgainstInterpreter(BackendKind backendKind,
+                          CreateAndInitFunction createAndInitFunction,
+                          bool quantize) {
+  ExecutionEngine IEE{BackendKind::Interpreter};
+  ExecutionEngine BEE{backendKind};
+  Context ICtx, BCtx;
+
+  // Create the same network on the interpreter and the backend being tested.
+  FunctionTensorPair IFT = createAndInitFunction(ICtx, IEE);
+  FunctionTensorPair BFT = createAndInitFunction(BCtx, BEE);
+
+  Function *IF = IFT.first;
+  Function *BF = BFT.first;
+
+  // Profile the graph on the interpreter to get quantization info, and then
+  // quantize both the Interpreter and Backend Functions with this info.
+  if (quantize) {
+    std::vector<NodeQuantizationInfo> QI =
+        profileAndGetNodeQuantizationInfo(ICtx, IEE, IF);
+    IF = quantization::quantizeFunction(IEE, QI, IF);
+    BF = quantization::quantizeFunction(BEE, QI, BF);
+  }
+
+  IEE.compile(CompilationMode::Infer, IF, ICtx);
+  BEE.compile(CompilationMode::Infer, BF, BCtx);
+
+  IEE.run();
+  BEE.run();
+
+  return IFT.second->isEqual(*BFT.second);
+}
+
+} // namespace
 
 TEST_P(BackendCorrectnessTest, convTest) {
   PseudoRNG PRNG;
@@ -433,16 +495,13 @@ TEST_P(BackendCorrectnessTest, convOps) {
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
+  EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
+                                        /* quantize */ false));
+}
 
-  inferBasicFCNet(&inputs, &out1, backendKind_);
-  inferBasicFCNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
+TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
+  EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
+                                        /* quantize */ true));
 }
 
 TEST_P(CPUOnly, complexNet1) {
