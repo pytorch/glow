@@ -41,12 +41,30 @@ using llvm::isa;
 
 typedef uint32_t cl_size_t;
 
-// This defines the string "SHADER_CODE".
-#include "kernels.cl"
+/// We convert the OpenCL source code of kernels into an include file using an
+/// external utility (include-bin). The resulting file is included here to
+/// compile these sources into our the OpenCL backend. During the execution
+/// these sources are compiled by the OpenCL driver.
+
+// This defines kernels for most operations.
+static const unsigned char kernels_cl_src[] = {
+#include "glow/kernels.inc"
+};
+static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
+
 // This defines kernels for optimized convolutions.
-#include "kernels_fwd_conv.cl"
+static const unsigned char kernels_fwd_conv_cl_src[] = {
+#include "glow/kernels_fwd_conv.inc"
+};
+static const size_t kernels_fwd_conv_cl_src_size =
+    sizeof(kernels_fwd_conv_cl_src);
+
 // This defines kernels for quantized optimized convolutions.
-#include "kernels_fwd_quantized_conv.cl"
+static const unsigned char kernels_fwd_quantized_conv_cl_src[] = {
+#include "glow/kernels_fwd_quantized_conv.inc"
+};
+static const size_t kernels_fwd_quantized_conv_cl_src_size =
+    sizeof(kernels_fwd_quantized_conv_cl_src);
 
 namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
@@ -136,7 +154,9 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   // side using integer types of the same width.
   addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
   // Create the program from the source.
-  createProgram(SHADER_CODE, options, commands_);
+  std::string source(reinterpret_cast<const char *>(kernels_cl_src),
+                     kernels_cl_src_size);
+  createProgram(source, options, commands_);
   allocateMemory(ctx);
 }
 
@@ -504,8 +524,16 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
 
   // Generate a tailor-made convolution kernel using the provided options based
   // on the parameters of the current convolution.
-  auto &programName = isQuantized ? FWD_CONV_QUANTIZED_CODE : FWD_CONV_CODE;
-  auto prog = createProgram(programName, options, commands_);
+  std::string src;
+  if (isQuantized) {
+    src.append(
+        reinterpret_cast<const char *>(kernels_fwd_quantized_conv_cl_src),
+        kernels_fwd_quantized_conv_cl_src_size);
+  } else {
+    src.append(reinterpret_cast<const char *>(kernels_fwd_conv_cl_src),
+               kernels_fwd_conv_cl_src_size);
+  }
+  auto prog = createProgram(src, options, commands_);
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);

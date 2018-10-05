@@ -1,4 +1,4 @@
-/// Kernels for the forward convolution.
+// Kernels for the forward convolution.
 
 // This is a parameterized convolution kernel heavily based on the kernels
 // produced by libDNN (https://github.com/naibaf7/libdnn). The libDNN library
@@ -28,7 +28,6 @@
 // VWN - vector width in dimension N.
 // VWM - vector width in dimension M.
 
-static const char *FWD_CONV_CODE = R"(
 #define Dtype float
 #define Dtype1 float
 #define Dtype2 float2
@@ -319,4 +318,3 @@ __kernel
     }
   }
 }
-)";
