@@ -34,11 +34,6 @@ class MockBackend : public Backend {
   }
 };
 
-void inferBatchedAddNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
-                        BackendKind kind);
-
-void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind);
-
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
 
@@ -46,9 +41,6 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   Tensor *out, BackendKind kind);
-
-void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
-                    BackendKind kind);
 
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         BackendKind kind);
@@ -58,23 +50,10 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         llvm::ArrayRef<size_t> shape1,
                                         llvm::ArrayRef<size_t> shape2,
                                         Tensor *out, BackendKind kind);
-
-void inferMatMulNet(Tensor *lhs, Tensor *rhs, Tensor *out, BackendKind kind);
-
-void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
-                 BackendKind kind);
-
-void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
-                 BackendKind kind);
-
-void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
-
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind);
-
-void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
@@ -83,19 +62,6 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
                             llvm::ArrayRef<int8_t> table, BackendKind kind);
-
-void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
-                      BackendKind kind);
-
-void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind);
-
-void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
-                     BackendKind kind);
-
-void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
-                    BackendKind kind);
-
-void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void inferGroupConv(Tensor *out, BackendKind kind);
 
@@ -109,15 +75,8 @@ void inferConvDKKC8(Tensor *out, BackendKind kind);
 
 void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind);
 
-void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
-                     BackendKind kind);
-
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, BackendKind kind);
-
-void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind);
-
-void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind);
 
 void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
                        size_t convDepth);
