@@ -358,7 +358,7 @@ void Model::loadDecoder() {
   Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
                                     {MAX_LENGTH, batchSize_});
-  auto *save = F_->createSave(ctx, "decoder.output", reshape);
+  auto *save = F_->createSave("decoder.output", reshape);
   output_ = save->getPlaceholder();
   ctx.allocate(output_);
 }

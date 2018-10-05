@@ -40,7 +40,7 @@ TEST(Interpreter, NotImplementedSave) {
 
   // Create a few nodes to make sure IR can be normally generated.
   Function *F = mod.createFunction("main");
-  F->createSave(ctx, "save",
+  F->createSave("save",
                 mod.createPlaceholder(ElemKind::FloatTy, {2}, "A", false));
 
   EXPECT_DEATH(EE.save(CompilationMode::Infer, F, "output", "network"), "");
@@ -130,7 +130,7 @@ TEST_P(BackendTest, simpleInference) {
   auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
-  auto *S = F->createSave(ctx, "ret", SM);
+  auto *S = F->createSave("ret", SM);
 
   ctx.allocate(input);
   ctx.allocate(ex);
@@ -176,7 +176,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   auto *XTensor = ctx.allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
-  auto *save = F->createSave(ctx, "save", pow);
+  auto *save = F->createSave("save", pow);
   auto *saveTensor = ctx.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F, ctx);
 
@@ -202,7 +202,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", false);
   Context ctx({input}, {&data});
-  SaveNode *S = F->createSave(ctx, "ret", input);
+  SaveNode *S = F->createSave("ret", input);
   auto *STensor = ctx.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F, ctx);
@@ -226,7 +226,7 @@ TEST(Context, basicContextTest) {
   auto *input2 = mod.createPlaceholder(ty, "input2", false);
   auto *input3 = mod.createPlaceholder(ty, "input3", false);
   auto *add = F->createAdd("add", input1, input2);
-  auto *save = F->createSave(C, "ret", add);
+  auto *save = F->createSave("ret", add);
   auto *savePlaceholder = save->getPlaceholder();
   C.allocate(savePlaceholder);
 

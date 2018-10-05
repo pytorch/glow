@@ -95,7 +95,7 @@ void inferBatchedReduceAddNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *batchedreduce =
       F->createBatchedReduceAdd("batchedreduce", var, /* axis */ 0);
-  auto *result = F->createSave(ctx, "ret", batchedreduce);
+  auto *result = F->createSave("ret", batchedreduce);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -116,7 +116,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
   auto var = createQuantizedPlaceholder(mod, ctx, input, outTy->getScale(),
                                         outTy->getOffset(), "var");
   auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
-  auto *result = F->createSave(ctx, "ret", lookupTable);
+  auto *result = F->createSave("ret", lookupTable);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -196,7 +196,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   ctx.get(cast<Placeholder>(conv2->getBias()))->assign(bias2);
   auto *reshape2 = F->createReshape("reshape2", conv2, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
@@ -218,7 +218,7 @@ void inferGatherNet(Tensor *data, Tensor *indices, Tensor *dest,
   auto *dataP = createPlaceholder(mod, ctx, data, "dataP");
   auto *indicesP = createPlaceholder(mod, ctx, indices, "indicesP");
   auto *gather = F->createGather("gather", dataP, indicesP);
-  auto *result = F->createSave(ctx, "ret", gather);
+  auto *result = F->createSave("ret", gather);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -236,7 +236,7 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *lrn = F->createLocalResponseNormalization("lrn", var, 5, 3.0, 0.5, 1.5);
-  auto *result = F->createSave(ctx, "ret", lrn);
+  auto *result = F->createSave("ret", lrn);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -274,7 +274,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
       F->createLocalResponseNormalization("lrn", reshape1, 2, 2.0, 0.5, 1.0);
   auto *reshape2 = F->createReshape("reshape2", lrn, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
@@ -332,7 +332,7 @@ void inferMaxNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var1 = createPlaceholder(mod, ctx, inputs1, "var1");
   auto *var2 = createPlaceholder(mod, ctx, inputs2, "var2");
   auto *max = F->createMax("max", var1, var2);
-  auto *result = F->createSave(ctx, "ret", max);
+  auto *result = F->createSave("ret", max);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -351,7 +351,7 @@ void inferMinNet(Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var1 = createPlaceholder(mod, ctx, inputs1, "var1");
   auto *var2 = createPlaceholder(mod, ctx, inputs2, "var2");
   auto *min = F->createMin("min", var1, var2);
-  auto *result = F->createSave(ctx, "ret", min);
+  auto *result = F->createSave("ret", min);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -368,7 +368,7 @@ void inferAvgPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *pool = F->createAvgPool("pool", var, 3, 3, 1);
-  auto *result = F->createSave(ctx, "ret", pool);
+  auto *result = F->createSave("ret", pool);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -404,7 +404,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *pool = F->createAvgPool("pool", reshape1, 2, 2, 0);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
@@ -425,7 +425,7 @@ void inferMaxPoolNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *pool = F->createMaxPool("pool", var, 4, 2, 3);
-  auto *result = F->createSave(ctx, "ret", pool);
+  auto *result = F->createSave("ret", pool);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -461,7 +461,7 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *pool = F->createMaxPool("pool", reshape1, 5, 3, 4);
   auto *reshape2 = F->createReshape("reshape2", pool, shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
@@ -488,7 +488,7 @@ void inferQuantizeNet(Tensor *inputs, float scale, int32_t offset, Tensor *out,
   auto *quantize = F->createQuantize("quantize", var, QT1);
   auto *rescale = F->createRescaleQuantized("rescale", quantize, QT2);
   auto *dequantize = F->createDequantize("dequantize", rescale);
-  auto *result = F->createSave(ctx, "ret", dequantize);
+  auto *result = F->createSave("ret", dequantize);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -505,7 +505,7 @@ void inferReluNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *relu = F->createRELU("relu", var);
-  auto *result = F->createSave(ctx, "ret", relu);
+  auto *result = F->createSave("ret", relu);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -523,7 +523,7 @@ void inferReshapeNet(Tensor *inputs, llvm::ArrayRef<size_t> shape, Tensor *out,
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *reshape = F->createReshape("reshape", var, shape);
-  auto *result = F->createSave(ctx, "ret", reshape);
+  auto *result = F->createSave("ret", reshape);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -543,7 +543,7 @@ void inferSelectNet(Tensor *cond, Tensor *inputs1, Tensor *inputs2, Tensor *out,
   auto *var2 = createPlaceholder(mod, ctx, inputs1, "var2");
   auto *var3 = createPlaceholder(mod, ctx, inputs2, "var3");
   auto *select = F->createSelect("cond", var1, var2, var3);
-  auto *result = F->createSave(ctx, "ret", select);
+  auto *result = F->createSave("ret", select);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -561,7 +561,7 @@ void inferSigmoidNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *sigmoid = F->createSigmoid("sigmoid", var);
-  auto *result = F->createSave(ctx, "ret", sigmoid);
+  auto *result = F->createSave("ret", sigmoid);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -582,7 +582,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *C = F->createConv(ctx, "conv2a", in, 64, 1, 1, 0, 1);
   ctx.get(cast<Placeholder>(C->getFilter()))->getHandle().clear(0.3);
   ctx.get(cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
-  auto *result = F->createSave(ctx, "ret", C);
+  auto *result = F->createSave("ret", C);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -624,7 +624,7 @@ void inferGroupConv(Tensor *out, BackendKind kind) {
 
   ConvolutionNode *CN =
       F->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
-  SaveNode *result = F->createSave(ctx, "save", CN);
+  SaveNode *result = F->createSave("save", CN);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -663,7 +663,7 @@ void inferNonSquarePaddingConv(Tensor *out, BackendKind kind) {
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {1, 1}, {1, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave(ctx, "save", CN);
+  SaveNode *result = F->createSave("save", CN);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -703,7 +703,7 @@ void inferNonSquareKernelConv(Tensor *out, BackendKind kind) {
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {2, 1}, {1, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave(ctx, "save", CN);
+  SaveNode *result = F->createSave("save", CN);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -743,7 +743,7 @@ void inferNonSquareStrideConv(Tensor *out, BackendKind kind) {
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {2, 1}, {2, 1}, {0, 1, 2, 3}, 1);
-  SaveNode *result = F->createSave(ctx, "save", CN);
+  SaveNode *result = F->createSave("save", CN);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -784,7 +784,7 @@ void inferConvDKKC8(Tensor *out, BackendKind kind) {
 
   ConvolutionNode *CN = F->createConv("Conv", input, filter, zeroBias, outTy,
                                       {3, 3}, {1, 1}, {1, 1, 1, 1}, 1);
-  SaveNode *result = F->createSave(ctx, "save", CN);
+  SaveNode *result = F->createSave("save", CN);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -802,7 +802,7 @@ void inferSoftMaxNet(Tensor *inputs, Tensor *selected, Tensor *out,
   auto *var1 = createPlaceholder(mod, ctx, inputs, "var1");
   auto *var2 = createPlaceholder(mod, ctx, selected, "var2");
   auto *softmax = F->createSoftMax("softmax", var1, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -833,7 +833,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   ctx.get(cast<Placeholder>(fc->getWeights()))->assign(weights);
   ctx.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *softmax = F->createSoftMax("softmax", fc, var2);
-  auto *result = F->createSave(ctx, "ret", softmax);
+  auto *result = F->createSave("ret", softmax);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
@@ -855,7 +855,7 @@ void inferTanhNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tanh = F->createTanh("tanh", var);
-  auto *result = F->createSave(ctx, "ret", tanh);
+  auto *result = F->createSave("ret", tanh);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -872,7 +872,7 @@ void inferTransposeNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, ctx, inputs, "var");
   auto *tr = F->createTranspose("tr", var, {1, 0});
-  auto *result = F->createSave(ctx, "ret", tr);
+  auto *result = F->createSave("ret", tr);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -896,7 +896,7 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
   auto *T3 = F->createTanh("tanh3", var3);
   Node *C1 = F->createConcat("concat", {T1, T2}, 0);
   Node *C2 = F->createConcat("concat", {T2, T3, C1, T2}, 0);
-  auto *result = F->createSave(ctx, "ret", C2);
+  auto *result = F->createSave("ret", C2);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -919,7 +919,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   ctx.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(2);
   ctx.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);
-  auto *result = F->createSave(ctx, "ret", pool);
+  auto *result = F->createSave("ret", pool);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -942,7 +942,7 @@ void inferBasicFCNet(Tensor *inputs, Tensor *out, BackendKind kind) {
   auto *rl1 = F->createRELU("relu", fc2);
   ctx.get(cast<Placeholder>(fc->getWeights()))->getHandle().clear(0.8);
   ctx.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.5);
-  auto *result = F->createSave(ctx, "ret", rl1);
+  auto *result = F->createSave("ret", rl1);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -970,7 +970,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   auto *R = F->createRegression("reg", fc2, fc2);
   auto *SM = F->createSoftMax("SM", R, selected);
-  auto *result = F->createSave(ctx, "ret", SM);
+  auto *result = F->createSave("ret", SM);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   ctx.get(cast<Placeholder>(fc->getWeights()))->getHandle().clear(0.4);
@@ -1017,7 +1017,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *relu2 = F->createRELU("relu2", sub);
   auto *pool2 = F->createAvgPool("pool2", relu2, 3, 2, 1);
   auto *sigmoid3 = F->createSigmoid("sigmoid3", pool2);
-  auto *result = F->createSave(ctx, "ret", sigmoid3);
+  auto *result = F->createSave("ret", sigmoid3);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -1053,7 +1053,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   auto *conv2c = F->createConv(ctx, "conv2c", relu2b, 256, 1, 1, 0, 1);
   auto *add = F->createAdd("add", conv2c, conv1);
   auto *relu = F->createRELU("res2a_relu", add);
-  auto *result = F->createSave(ctx, "ret", relu);
+  auto *result = F->createSave("ret", relu);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   initConv(ctx, conv1, weights[0], weights[1]);
@@ -1091,7 +1091,7 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
   auto *add3 = F->createAdd("add1", add1, add2);
 
   auto *e = F->createSlice("slice", add3, {0, 55, 50}, {1, 150, 100});
-  auto *result = F->createSave(ctx, "ret", e);
+  auto *result = F->createSave("ret", e);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -1120,7 +1120,7 @@ void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
   auto *max1 = F->createMax("max1", rescale, splat1);
   auto *max2 = F->createMax("max2", splat2, max1);
 
-  auto *result = F->createSave(ctx, "ret", max2);
+  auto *result = F->createSave("ret", max2);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);

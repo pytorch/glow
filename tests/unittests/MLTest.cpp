@@ -58,7 +58,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 
   Node *M = F->createMul("Mult", A, A);
   M = F->createRegression("reg", M, E);
-  SaveNode *SN = F->createSave(ctx, "ret", M);
+  SaveNode *SN = F->createSave("ret", M);
 
   ctx.allocate(SN->getPlaceholder());
 
@@ -95,7 +95,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   O = F->createSigmoid("sig1", O);
   O = F->createFullyConnected(ctx, "fc2", O, 4);
   O = F->createRegression("reg", O, E);
-  SaveNode *result = F->createSave(ctx, "return", O);
+  SaveNode *result = F->createSave("return", O);
 
   ctx.allocate(A);
   ctx.allocate(E);
@@ -154,7 +154,7 @@ TEST_P(MLTest, simpleRegression) {
   Node *O = F->createFullyConnected(ctx, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave(ctx, "result", O);
+  auto *result = F->createSave("result", O);
 
   ctx.allocate(A);
   ctx.allocate(Ex);
@@ -217,7 +217,7 @@ TEST_P(MLTest, learnXor) {
   O = F->createTanh("tanh1", O);
   O = F->createFullyConnected(ctx, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   ctx.allocate(A);
   ctx.allocate(Ex);
@@ -295,7 +295,7 @@ TEST_P(MLTest, learnLog) {
   O = F->createTanh("tanh1", O);
   O = F->createFullyConnected(ctx, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
-  auto *result = F->createSave(ctx, "ret", O);
+  auto *result = F->createSave("ret", O);
 
   ctx.allocate(A);
   ctx.allocate(Ex);
@@ -412,7 +412,7 @@ TEST_P(MLTest, circle) {
   auto *T0 = F->createTanh("tanh1", FCL0);
   auto *FCL1 = F->createFullyConnected(ctx, "fc2", T0, 2);
   auto *SM = F->createSoftMax("soft", FCL1, S);
-  auto *result = F->createSave(ctx, "ret", SM);
+  auto *result = F->createSave("ret", SM);
 
   ctx.allocate(A);
   ctx.allocate(S);
@@ -518,7 +518,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   // Concat:
   auto *C = F->createConcat("con", {L, R}, 1);
   auto *RN = F->createRegression("reg", C, Ex);
-  auto *result = F->createSave(ctx, "ret", RN);
+  auto *result = F->createSave("ret", RN);
 
   ctx.allocate(A);
   ctx.allocate(B);
@@ -630,7 +630,7 @@ void testRNNCell(TCellGenerator cell) {
   };
 
   auto *R = F->createConcat("O", regressionNodes, 1);
-  SaveNode *result = F->createSave(ctx, "result", R);
+  SaveNode *result = F->createSave("result", R);
 
   Tensor *res = ctx.allocate(result->getPlaceholder());
 
@@ -711,7 +711,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
 
   FullyConnectedNode *FC = F->createFullyConnected(ctx, "fc", inputX, 1);
   Node *R = F->createRegression("reg", FC, expectedY);
-  SaveNode *SN = F->createSave(ctx, "return", R);
+  SaveNode *SN = F->createSave("return", R);
 
   ctx.allocate(inputX);
   ctx.allocate(expectedY);
@@ -787,7 +787,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 
   auto *FC = F->createFullyConnected(ctx, "fc", A, numClasses);
   auto *SM = F->createSoftMax("softmax", FC, S);
-  SaveNode *result = F->createSave(ctx, "result", SM);
+  SaveNode *result = F->createSave("result", SM);
 
   ctx.allocate(A);
   ctx.allocate(S);
@@ -875,7 +875,7 @@ TEST_P(MLTest, learnSinus) {
   Node *O = F->createSigmoid("sigmoid1", FC1);
   FullyConnectedNode *FC2 = F->createFullyConnected(ctx, "fc2", O, 1);
   Node *R = F->createRegression("reg", FC2, expectedY);
-  SaveNode *result = F->createSave(ctx, "return", R);
+  SaveNode *result = F->createSave("return", R);
 
   ctx.allocate(inputX);
   ctx.allocate(expectedY);
@@ -939,7 +939,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   auto *T1 = F->createTanh("tanh2", FCL1);
   auto *FCL2 = F->createFullyConnected(ctx, "fc2", T1, 2);
   auto *SM = F->createSoftMax("soft", FCL2, S);
-  SaveNode *result = F->createSave(ctx, "ret", SM);
+  SaveNode *result = F->createSave("ret", SM);
 
   ctx.allocate(A);
   ctx.allocate(S);
@@ -1035,7 +1035,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto *TANH = F->createTanh("tanh", CV);
   auto *FCL = F->createFullyConnected(ctx, "fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
-  SaveNode *result = F->createSave(ctx, "ret", SM);
+  SaveNode *result = F->createSave("ret", SM);
 
   ctx.allocate(input);
   ctx.allocate(ex);
@@ -1134,7 +1134,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto *RL0 = F->createRELU("relu0", FC0);
   auto *FC1 = F->createFullyConnected(ctx, "fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
-  SaveNode *result = F->createSave(ctx, "ret", R);
+  SaveNode *result = F->createSave("ret", R);
 
   ctx.allocate(input);
   ctx.allocate(ex);
@@ -1313,7 +1313,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   auto *finalReLU = F->createRELU("hidden_concat_ReLU", hiddenFC);
   auto *finalFC = F->createFullyConnected(ctx, "output_fc", finalReLU, 2);
   auto *softMax = F->createSoftMax("output", finalFC, varExpected);
-  SaveNode *result = F->createSave(ctx, "result", softMax);
+  SaveNode *result = F->createSave("result", softMax);
 
   ctx.allocate(varMatricesA);
   ctx.allocate(varMatricesB);

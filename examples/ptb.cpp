@@ -227,7 +227,7 @@ void testPTB() {
   Node *T = F->createReshape("Y.reshape", TN, {numSteps * minibatchSize, 1});
 
   auto *SM = F->createSoftMax("softmax", O, T);
-  auto *save = F->createSave(ctx, "result", SM);
+  auto *save = F->createSave("result", SM);
   auto *result = ctx.allocate(save->getPlaceholder());
 
   if (!dumpInitialGraphDAGFileOpt.empty()) {

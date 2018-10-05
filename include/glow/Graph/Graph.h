@@ -617,8 +617,6 @@ public:
   FullyConnectedNode *createFullyConnected(Context &ctx, llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
-  SaveNode *createSave(Context &ctx, llvm::StringRef name, NodeValue input);
-
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
   /// output state. \p inputs define the input for the cell at each time step

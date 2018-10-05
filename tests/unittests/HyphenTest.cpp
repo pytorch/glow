@@ -276,7 +276,7 @@ struct HyphenNetwork {
     n = infer_->createRELU("hidden", n);
     n = infer_->createFullyConnected(ctx_, "output_fc", n, 2);
     n = infer_->createSoftMax("output", n, expected_);
-    result_ = infer_->createSave(ctx_, "result", n);
+    result_ = infer_->createSave("result", n);
     ctx_.allocate(result_->getPlaceholder());
     train_ = glow::differentiate(infer_, conf);
   }

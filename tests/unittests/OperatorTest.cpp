@@ -57,13 +57,13 @@ TEST_P(Operator, pow) {
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
   auto *Pow3 = F_->createPow("Pow3", Y, Exp);
 
-  auto *save1 = F_->createSave(ctx_, "save", Pow1);
+  auto *save1 = F_->createSave("save", Pow1);
   auto *savePlaceholder1 = save1->getPlaceholder();
 
-  auto *save2 = F_->createSave(ctx_, "save", Pow2);
+  auto *save2 = F_->createSave("save", Pow2);
   auto *savePlaceholder2 = save2->getPlaceholder();
 
-  auto *save3 = F_->createSave(ctx_, "save", Pow3);
+  auto *save3 = F_->createSave("save", Pow3);
   auto *savePlaceholder3 = save3->getPlaceholder();
 
   ctx_.allocate(savePlaceholder1);
@@ -96,7 +96,7 @@ TEST_P(InterpAndCPU, replaceNaN) {
 
   auto *RNN = F_->createReplaceNaN("replaceNaN", X, value);
 
-  auto *save = F_->createSave(ctx_, "save", RNN);
+  auto *save = F_->createSave("save", RNN);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -121,7 +121,7 @@ TEST_P(InterpAndCPU, log) {
 
   auto *LN = F_->createLog("log", X);
 
-  auto *save = F_->createSave(ctx_, "save", LN);
+  auto *save = F_->createSave("save", LN);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -144,7 +144,7 @@ TEST_P(InterpAndCPU, CmpEQ) {
       1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
 
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave(ctx_, "save", cmpEQ);
+  auto *save = F_->createSave("save", cmpEQ);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -171,7 +171,7 @@ TEST_P(Operator, add) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
   ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *Pool = F_->createAdd("pool", inputA, inputB);
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -197,7 +197,7 @@ TEST_P(InterpOnly, FP16Add) {
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
   ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *Pool = F_->createAdd("pool", inputA, inputB);
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -220,7 +220,7 @@ TEST_P(Operator, matmul) {
 
   auto R = F_->createMatMul("MM", lhs, rhs);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -241,7 +241,7 @@ TEST_P(InterpOnly, FP16Matmul) {
 
   auto R = F_->createMatMul("MM", lhs, rhs);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -263,7 +263,7 @@ TEST_P(Operator, BroadcastedBatchMatMul) {
 
   auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -288,7 +288,7 @@ TEST_P(Operator, ParallelBatchMatMul) {
 
   auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -310,7 +310,7 @@ TEST_P(Operator, batchedReduceAdd) {
 
   auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -330,7 +330,7 @@ TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
 
   auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -360,7 +360,7 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 0);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -393,7 +393,7 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
 
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 1);
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -420,7 +420,7 @@ TEST_P(Operator, batchedReduceMean) {
 
   auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -440,7 +440,7 @@ TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
 
   auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -470,7 +470,7 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 0);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -503,7 +503,7 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
 
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 1);
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -534,7 +534,7 @@ TEST_P(Operator, batchedBatchedAdd) {
   ctx_.allocate(added)->getHandle().clear(1.0);
 
   auto R = F_->createBatchedAdd("batch.add", batch, added);
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -574,10 +574,10 @@ TEST_P(InterpAndCPU, broadcastSimple) {
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
   auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *broadcasted = ctx_.allocate(save->getPlaceholder());
 
-  auto *saveQ = F_->createSave(ctx_, "saveQ", QR);
+  auto *saveQ = F_->createSave("saveQ", QR);
   auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -638,10 +638,10 @@ TEST_P(InterpAndCPU, broadcast) {
   auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
   auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
-  auto *save = F_->createSave(ctx_, "save", R);
+  auto *save = F_->createSave("save", R);
   auto *broadcasted = ctx_.allocate(save->getPlaceholder());
 
-  auto *saveQ = F_->createSave(ctx_, "saveQ", QR);
+  auto *saveQ = F_->createSave("saveQ", QR);
   auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -693,7 +693,7 @@ TEST_P(Operator, weightedSum) {
 
   // Create the weighted sum with the data and weights, and save it.
   auto *WS = F_->createWeightedSum("ws", {A, B}, {AW, BW});
-  auto *save = F_->createSave(ctx_, "save", WS);
+  auto *save = F_->createSave("save", WS);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -714,7 +714,7 @@ TEST_P(Operator, minElem) {
   auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "lhs", false);
   auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
   auto *min = F_->createMin("min", LHS, RHS);
-  auto *save = F_->createSave(ctx_, "min", min);
+  auto *save = F_->createSave("min", min);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
   ctx_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
@@ -802,7 +802,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
   auto *CI = F_->createConcat("Concat.Indices",
                               {R1->getIndices(), R2->getIndices()}, 0);
 
-  auto *saveValues = F_->createSave(ctx_, "Save.Values", CV);
+  auto *saveValues = F_->createSave("Save.Values", CV);
   auto *saveValuesTensor = ctx_.allocate(saveValues->getPlaceholder());
 
   auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
@@ -865,11 +865,11 @@ TEST_P(Operator, matMul) {
   auto *A1 = F_->createMatMul("m1", inp1, rot);
   auto *A2 = F_->createMatMul("m2", inp2, rot);
 
-  auto *res0 = F_->createSave(ctx_, "save.values", A0);
+  auto *res0 = F_->createSave("save.values", A0);
   ctx_.allocate(res0->getPlaceholder());
-  auto *res1 = F_->createSave(ctx_, "save.values", A1);
+  auto *res1 = F_->createSave("save.values", A1);
   ctx_.allocate(res1->getPlaceholder());
-  auto *res2 = F_->createSave(ctx_, "save.values", A2);
+  auto *res2 = F_->createSave("save.values", A2);
   ctx_.allocate(res2->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -899,10 +899,10 @@ TEST_P(InterpAndCPU, TopK1) {
 
   auto R = F_->createTopK("TopK", inp, 1);
 
-  auto *values = F_->createSave(ctx_, "save.values", {R, 0});
+  auto *values = F_->createSave("save.values", {R, 0});
   ctx_.allocate(values->getPlaceholder());
 
-  auto *indices = F_->createSave(ctx_, "save.indices", {R, 1});
+  auto *indices = F_->createSave("save.indices", {R, 1});
   ctx_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -928,9 +928,9 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
 
   auto TK = F_->createTopK("TopK", INV, 3);
 
-  auto *values = F_->createSave(ctx_, "save.values", TK->getValues());
+  auto *values = F_->createSave("save.values", TK->getValues());
   ctx_.allocate(values->getPlaceholder());
-  auto *indices = F_->createSave(ctx_, "save.indices", TK->getIndices());
+  auto *indices = F_->createSave("save.indices", TK->getIndices());
   ctx_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1000,7 +1000,7 @@ TEST_P(Operator, Gather) {
 
   auto R = F_->createGather("gather", data, indices);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1035,7 +1035,7 @@ TEST_P(Operator, Transpose2Dims) {
   ctx_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
-  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  auto *result = F_->createSave("saveTranspose", tr);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1052,7 +1052,7 @@ TEST_P(InterpOnly, FP16Transpose2Dims) {
   ctx_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
-  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  auto *result = F_->createSave("saveTranspose", tr);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1088,8 +1088,7 @@ TEST_P(Operator, Transpose3Dims) {
         shuffles[nbOfShuffle][1] = j;
         shuffles[nbOfShuffle][2] = k;
         auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
-        savedTransposes[nbOfShuffle] =
-            F_->createSave(ctx_, "saveTranspose", tr);
+        savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
         ctx_.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
         ++nbOfShuffle;
       }
@@ -1151,7 +1150,7 @@ TEST_P(InterpAndCPU, GatherSizeT) {
 
   auto R = F_->createGather("gather", data, indices);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1209,7 +1208,7 @@ TEST_P(Operator, BatchedGather) {
   // Create a batched gather (a single batch dimension).
   auto R = F_->createGather("gather", data, indices, 1);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1237,7 +1236,7 @@ TEST_P(Operator, ScatterAssign) {
 
   auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1279,7 +1278,7 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   auto *SA = F_->createScatterAssign("scatterassign", dataQ, indices, slicesQ);
   auto *DQ = F_->createDequantize("dequantize", SA);
 
-  auto *result = F_->createSave(ctx_, "save", DQ);
+  auto *result = F_->createSave("save", DQ);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1310,11 +1309,11 @@ TEST_P(Operator, QuantizeAndDequantize) {
   auto *quantizeB = F_->createQuantize("quantize", B, qType);
   auto *add = F_->createAdd("add", quantizeA, quantizeB);
   auto *dequantize = F_->createDequantize("dequantize", add);
-  auto *result = F_->createSave(ctx_, "save", dequantize);
+  auto *result = F_->createSave("save", dequantize);
   ctx_.allocate(result->getPlaceholder());
 
   auto *fpAdd = F_->createAdd("fpAdd", A, B);
-  auto *fpResult = F_->createSave(ctx_, "fpSave", fpAdd);
+  auto *fpResult = F_->createSave("fpSave", fpAdd);
   ctx_.allocate(fpResult->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1349,7 +1348,7 @@ TEST_P(Operator, IntMatMul) {
 
   auto *rq = F_->createDequantize("dequant", matmulq);
 
-  auto *result = F_->createSave(ctx_, "save", rq);
+  auto *result = F_->createSave("save", rq);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1400,7 +1399,7 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
 
   auto *rq = F_->createDequantize("dequant", matmulq);
 
-  auto *result = F_->createSave(ctx_, "save", rq);
+  auto *result = F_->createSave("save", rq);
   ctx_.allocate(result->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
@@ -1459,8 +1458,8 @@ void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
   auto *biasVar = llvm::cast<Placeholder>(conv->getBias().getNode());
   ctx.get(biasVar)->copyWithCast<float, float16_t>(ctx.get(biasFloat16Var));
 
-  SaveNode *save = F->createSave(ctx, "save", conv);
-  SaveNode *saveFloat16 = F->createSave(ctx, "saveFloat16", convFloat16);
+  SaveNode *save = F->createSave("save", conv);
+  SaveNode *saveFloat16 = F->createSave("saveFloat16", convFloat16);
 
   auto floatOut =
       ctx.allocate(llvm::cast<Placeholder>(save->getOutput()))->getHandle();
@@ -1524,7 +1523,7 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
   // Subtract the results of the convolution from the quantized convolution.
   auto *sub = F->createSub("compare", dequantRes, conv);
 
-  auto *res = F->createSave(ctx, "save", sub);
+  auto *res = F->createSave("save", sub);
   ctx.allocate(res->getPlaceholder());
   EE.compile(CompilationMode::Infer, F, ctx);
 
@@ -1565,7 +1564,7 @@ TEST_P(InterpAndCPU, IntConcat) {
   // Subtract the results of the Concat from the quantized Concat.
   auto sub = F_->createSub("compare", C, DCQ);
 
-  auto *res = F_->createSave(ctx_, "save", sub);
+  auto *res = F_->createSave("save", sub);
   ctx_.allocate(res->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
@@ -1608,7 +1607,7 @@ TEST_P(InterpAndCPU, IntFC) {
   // Subtract the results of the convolution from the quantized fc.
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
-  auto *res = F_->createSave(ctx_, "save", sub);
+  auto *res = F_->createSave("save", sub);
   ctx_.allocate(res->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1633,7 +1632,7 @@ TEST_P(InterpAndCPU, EntropyLossTest) {
   ctx_.allocate(P)->getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
   ctx_.allocate(Y)->getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
-  auto *L = F_->createSave(ctx_, "save", ceLoss);
+  auto *L = F_->createSave("save", ceLoss);
   ctx_.allocate(L->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1654,7 +1653,7 @@ TEST_P(Operator, Max) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
   ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *Max = F_->createMax("max", inputA, inputB);
-  auto *S = F_->createSave(ctx_, "save", Max);
+  auto *S = F_->createSave("save", Max);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1680,7 +1679,7 @@ TEST_P(InterpOnly, FP16Max) {
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
   ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *Max = F_->createMax("max", inputA, inputB);
-  auto *S = F_->createSave(ctx_, "save", Max);
+  auto *S = F_->createSave("save", Max);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1711,7 +1710,7 @@ TEST_P(Operator, RescaleNode) {
   auto *Y = F_->createRescaleQuantized("R2", X, T2);
   auto *Z = F_->createRescaleQuantized("R3", Y, resTy);
 
-  auto *output = F_->createSave(ctx_, "save", Z);
+  auto *output = F_->createSave("save", Z);
   ctx_.allocate(output->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1789,12 +1788,12 @@ TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
   div = F_->createDequantize("divDQ", div);
 
   // Save results of the operations.
-  auto *O1 = F_->createSave(ctx_, "saveMax", max);
-  auto *O2 = F_->createSave(ctx_, "saveMin", min);
-  auto *O3 = F_->createSave(ctx_, "saveAdd", add);
-  auto *O4 = F_->createSave(ctx_, "saveSub", sub);
-  auto *O5 = F_->createSave(ctx_, "saveMul", mul);
-  auto *O6 = F_->createSave(ctx_, "saveDiv", div);
+  auto *O1 = F_->createSave("saveMax", max);
+  auto *O2 = F_->createSave("saveMin", min);
+  auto *O3 = F_->createSave("saveAdd", add);
+  auto *O4 = F_->createSave("saveSub", sub);
+  auto *O5 = F_->createSave("saveMul", mul);
+  auto *O6 = F_->createSave("saveDiv", div);
 
   ctx_.allocate(O1->getPlaceholder());
   ctx_.allocate(O2->getPlaceholder());
@@ -1836,11 +1835,11 @@ TEST_P(Operator, QuantizedTranspose) {
   auto *tr = F_->createTranspose("tr", quantizeA, {1, 0});
   auto *dequantize = F_->createDequantize("dequantize", tr);
 
-  auto *result = F_->createSave(ctx_, "ret", dequantize);
+  auto *result = F_->createSave("ret", dequantize);
   ctx_.allocate(result->getPlaceholder());
   auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
 
-  auto *fpResult = F_->createSave(ctx_, "fpRet", fpTr);
+  auto *fpResult = F_->createSave("fpRet", fpTr);
   ctx_.allocate(fpResult->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -1886,12 +1885,12 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   Node *div = F_->createDiv("div", TO6, QB, QC);
 
   // Save results of the operations.
-  auto *O1 = F_->createSave(ctx_, "saveMax", max);
-  auto *O2 = F_->createSave(ctx_, "saveMin", min);
-  auto *O3 = F_->createSave(ctx_, "saveAdd", add);
-  auto *O4 = F_->createSave(ctx_, "saveSub", sub);
-  auto *O5 = F_->createSave(ctx_, "saveMul", mul);
-  auto *O6 = F_->createSave(ctx_, "saveDiv", div);
+  auto *O1 = F_->createSave("saveMax", max);
+  auto *O2 = F_->createSave("saveMin", min);
+  auto *O3 = F_->createSave("saveAdd", add);
+  auto *O4 = F_->createSave("saveSub", sub);
+  auto *O5 = F_->createSave("saveMul", mul);
+  auto *O6 = F_->createSave("saveDiv", div);
 
   ctx_.allocate(O1->getPlaceholder());
   ctx_.allocate(O2->getPlaceholder());
@@ -1967,7 +1966,7 @@ TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
   Node *select = F_->createSelect("select", OT, cmpLTE, QC, QD);
 
   // Save result of the operation.
-  auto *out = F_->createSave(ctx_, "save", select);
+  auto *out = F_->createSave("save", select);
   auto OH = ctx_.allocate(out->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2028,7 +2027,7 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
   auto *DQ = F_->createDequantize("DQ", R);
 
   // Test a sequence of rescale operations t
-  auto *result = F_->createSave(ctx_, "save", DQ);
+  auto *result = F_->createSave("save", DQ);
   auto OH = ctx_.allocate(result->getPlaceholder())->getHandle();
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
@@ -2060,7 +2059,7 @@ TEST_P(Operator, FCGradientCheck) {
 
   auto *FC = F_->createFullyConnected("fc", A, X, Y);
   auto *S = F_->createRegression("reg", FC, B);
-  auto *save = F_->createSave(ctx_, "ret", S);
+  auto *save = F_->createSave("ret", S);
   ctx_.allocate(save->getPlaceholder());
 
   Tensor initA(ElemKind::FloatTy, {2, 1});
@@ -2088,7 +2087,7 @@ TEST_P(InterpAndCPU, concatVectors) {
   ctx_.allocate(V3);
 
   Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
-  auto *result = F_->createSave(ctx_, "ret", L);
+  auto *result = F_->createSave("ret", L);
   ctx_.allocate(result->getPlaceholder());
 
   Tensor I1(ElemKind::Int64ITy, {10});
@@ -2133,7 +2132,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   // Alternate adding sequences of V1 and V2, so that the IRGen'd InsertTensors
   // have different counts.
   Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
-  auto *result = F_->createSave(ctx_, "ret", L);
+  auto *result = F_->createSave("ret", L);
   ctx_.allocate(result->getPlaceholder());
 
   Tensor I1(ElemKind::Int64ITy, {10});
@@ -2175,9 +2174,9 @@ TEST_P(InterpAndCPU, sliceVectors) {
   Node *S2 = F_->createSlice("slice2", V, {1, 0}, {2, 30});
   Node *S3 = F_->createSlice("slice3", V, {2, 10}, {3, 12});
 
-  auto *result1 = F_->createSave(ctx_, "ret1", S1);
-  auto *result2 = F_->createSave(ctx_, "ret2", S2);
-  auto *result3 = F_->createSave(ctx_, "ret3", S3);
+  auto *result1 = F_->createSave("ret1", S1);
+  auto *result2 = F_->createSave("ret2", S2);
+  auto *result3 = F_->createSave("ret3", S3);
 
   ctx_.allocate(result1->getPlaceholder());
   ctx_.allocate(result2->getPlaceholder());
@@ -2244,7 +2243,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
   Node *C1 = F_->createConcat("concat1", {S3, S4}, 1);
   Node *C2 = F_->createConcat("concat2", {S2, C1, C0}, 0);
 
-  auto *result = F_->createSave(ctx_, "ret", C2);
+  auto *result = F_->createSave("ret", C2);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2274,11 +2273,11 @@ TEST_P(InterpAndCPU, Tile) {
   ctx_.allocate(V);
 
   Node *T0 = F_->createTile("tile0", V, /* tiles */ 3, /* axis */ 0);
-  auto *result0 = F_->createSave(ctx_, "res0", T0);
+  auto *result0 = F_->createSave("res0", T0);
   ctx_.allocate(result0->getPlaceholder());
 
   Node *T1 = F_->createTile("tile1", V, /* tiles */ 3, /* axis */ 1);
-  auto *result1 = F_->createSave(ctx_, "res1", T1);
+  auto *result1 = F_->createSave("res1", T1);
   ctx_.allocate(result1->getPlaceholder());
 
   Tensor VT(ElemKind::FloatTy, {4, 5});
@@ -2325,12 +2324,12 @@ TEST_P(InterpAndCPU, QuantizedTile) {
 
   Node *T0 = F_->createTile("tile0", Q, /* tiles */ 3, /* axis */ 0);
   auto *DQ0 = F_->createDequantize("dequantize0", T0);
-  auto *result0 = F_->createSave(ctx_, "res0", DQ0);
+  auto *result0 = F_->createSave("res0", DQ0);
   ctx_.allocate(result0->getPlaceholder());
 
   Node *T1 = F_->createTile("tile1", Q, /* tiles */ 3, /* axis */ 1);
   auto *DQ1 = F_->createDequantize("dequantize1", T1);
-  auto *result1 = F_->createSave(ctx_, "res1", DQ1);
+  auto *result1 = F_->createSave("res1", DQ1);
   ctx_.allocate(result1->getPlaceholder());
 
   Tensor VT(ElemKind::FloatTy, {4, 5});
@@ -2392,7 +2391,7 @@ TEST_P(Operator, simpleCmpSelectPredication) {
     data = F_->createSelect("select", pred, newData, data);
   }
 
-  auto *SN = F_->createSave(ctx_, "ret", data);
+  auto *SN = F_->createSave("ret", data);
   ctx_.allocate(SN->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2430,7 +2429,7 @@ TEST_P(Operator, simplePredication) {
   auto *FC2 = F_->createFullyConnected(ctx_, "FC2", RL1, 32);
   auto *RL2 = F_->createRELU("RL2", FC2);
 
-  auto *save = F_->createSave(ctx_, "ret", RL2);
+  auto *save = F_->createSave("ret", RL2);
   ctx_.allocate(save->getPlaceholder());
 
   FC0->setPredicate(pred);
@@ -2447,7 +2446,7 @@ TEST_P(InterpAndCPU, ChannelShuffle) {
   ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 
   Node *CS = F_->createChannelShuffle("CS", inputs, 3, 1);
-  SaveNode *S = F_->createSave(ctx_, "save", CS);
+  SaveNode *S = F_->createSave("save", CS);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2472,7 +2471,7 @@ TEST_P(Operator, Squeeze) {
   {
     std::vector<size_t> axes = {0};
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave(ctx_, "save", SQZ);
+    SaveNode *S = F_->createSave("save", SQZ);
     ctx_.allocate(S->getPlaceholder());
 
     EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2489,7 +2488,7 @@ TEST_P(Operator, Squeeze) {
   {
     std::vector<size_t> axes = {0, 2, 2};
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave(ctx_, "save", SQZ);
+    SaveNode *S = F_->createSave("save", SQZ);
     ctx_.allocate(S->getPlaceholder());
 
     EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2510,9 +2509,9 @@ TEST_P(Operator, Squeeze) {
 
     std::vector<size_t> axes = {0};
     Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
-    SaveNode *S1 = F_->createSave(ctx_, "save", SQZ);
+    SaveNode *S1 = F_->createSave("save", SQZ);
     Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
-    SaveNode *S2 = F_->createSave(ctx_, "save", UnSQZ);
+    SaveNode *S2 = F_->createSave("save", UnSQZ);
 
     ctx_.allocate(S1->getPlaceholder());
     ctx_.allocate(S2->getPlaceholder());
@@ -2540,7 +2539,7 @@ TEST_P(Operator, ExpandDims) {
   // This should be uniqued and sorted, so should become {0, 1, 3, 5}.
   std::vector<size_t> axes = {3, 0, 5, 1, 3};
   Node *EDN = F_->createExpandDims("expand", inputs, axes);
-  SaveNode *S = F_->createSave(ctx_, "save", EDN);
+  SaveNode *S = F_->createSave("save", EDN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2569,10 +2568,10 @@ TEST_P(InterpAndCPU, Split) {
   std::vector<Node *> outputs2;
   F_->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
                   /*split = */ {2, 4}, outputs2);
-  auto S1 = F_->createSave(ctx_, "save1", outputs1[0]);
-  auto S2 = F_->createSave(ctx_, "save2", outputs1[1]);
-  auto S3 = F_->createSave(ctx_, "save3", outputs2[0]);
-  auto S4 = F_->createSave(ctx_, "save4", outputs2[1]);
+  auto S1 = F_->createSave("save1", outputs1[0]);
+  auto S2 = F_->createSave("save2", outputs1[1]);
+  auto S3 = F_->createSave("save3", outputs2[0]);
+  auto S4 = F_->createSave("save4", outputs2[1]);
 
   ctx_.allocate(S1->getPlaceholder());
   ctx_.allocate(S2->getPlaceholder());
@@ -2638,7 +2637,7 @@ TEST_P(Operator, IntRelu) {
   auto *relu = F_->createRELU("relu", rescale, reluOutTy);
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
-  auto *save = F_->createSave(ctx_, "save", dequantize);
+  auto *save = F_->createSave("save", dequantize);
   ctx_.allocate(mod_.getPlaceholders());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2661,7 +2660,7 @@ TEST_P(Operator, IntSplat) {
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
   auto *dequantize = F_->createDequantize("dequantize", splat);
 
-  auto *save = F_->createSave(ctx_, "save", dequantize);
+  auto *save = F_->createSave("save", dequantize);
   ctx_.allocate(mod_.getPlaceholders());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
@@ -2679,7 +2678,7 @@ TEST_P(InterpOnly, Fp16Splat) {
   auto splatTy = mod_.uniqueType(ElemKind::Float16Ty, {size});
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
 
-  auto *save = F_->createSave(ctx_, "save", splat);
+  auto *save = F_->createSave("save", splat);
   ctx_.allocate(mod_.getPlaceholders());
   EE_.compile(CompilationMode::Infer, F_, ctx_);
   EE_.run();
@@ -2714,7 +2713,7 @@ TEST_P(Operator, GroupConvolution) {
 
   ConvolutionNode *CN =
       F_->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
-  SaveNode *S = F_->createSave(ctx_, "save", CN);
+  SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2764,7 +2763,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
 
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
-  SaveNode *S = F_->createSave(ctx_, "save", CN);
+  SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2785,7 +2784,7 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   Function *refF = mod_.createFunction("mainRef");
   CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
                         {1, 1}, {0, 0, 0, 0}, 1);
-  S = refF->createSave(ctx_, "save1", CN);
+  S = refF->createSave("save1", CN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF, ctx_);
@@ -2807,7 +2806,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2825,7 +2824,7 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
 
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
-  S = refF->createSave(ctx_, "save1", Pool);
+  S = refF->createSave("save1", Pool);
   ctx_.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, refF, ctx_);
   EE_.run();
@@ -2846,7 +2845,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2865,7 +2864,7 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
 
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
-  S = refF->createSave(ctx_, "save1", Pool);
+  S = refF->createSave("save1", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF, ctx_);
@@ -2882,7 +2881,7 @@ TEST_P(InterpOnly, FP16AvgPool) {
   ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                   5., 6., 7., 8.};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2899,7 +2898,7 @@ TEST_P(Operator, Int8AvgPool) {
                                        "input", false);
   ctx_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2919,7 +2918,7 @@ TEST_P(InterpOnly, FP16MaxPool) {
   ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                   5., 6., 7., 8.};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2936,7 +2935,7 @@ TEST_P(Operator, Int8MaxPool) {
                                        "input", false);
   ctx_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -2957,7 +2956,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
   ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *fpTanh = F_->createTanh("fpTanh", input);
-  auto *saveFp = F_->createSave(ctx_, "fpSave", fpTanh);
+  auto *saveFp = F_->createSave("fpSave", fpTanh);
   ctx_.allocate(saveFp->getPlaceholder());
 
   auto quantizationParams =
@@ -2974,7 +2973,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
 
   auto *intTanh = F_->createIntTanh("int8Tanh", quantize, tanhTy);
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
-  auto *saveInt = F_->createSave(ctx_, "int8Save", dequantize);
+  auto *saveInt = F_->createSave("int8Save", dequantize);
   ctx_.allocate(saveInt->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3000,7 +2999,7 @@ TEST_P(InterpAndCPU, Int8Log) {
 
   // Input some random data into an fp log.
   auto *fpLog = F_->createLog("fpLog", input);
-  auto *saveFp = F_->createSave(ctx_, "fpSave", fpLog);
+  auto *saveFp = F_->createSave("fpSave", fpLog);
   ctx_.allocate(saveFp->getPlaceholder());
 
   // Quantize the input that was also used for the fpLog, and pass it to the
@@ -3022,7 +3021,7 @@ TEST_P(InterpAndCPU, Int8Log) {
   // Create a quantized log with the quantized version of the input.
   auto *intLog = F_->createLog("int8Log", quantize, logTy);
   auto *dequantize = F_->createDequantize("dequantize", intLog);
-  auto *saveInt = F_->createSave(ctx_, "int8Save", dequantize);
+  auto *saveInt = F_->createSave("int8Save", dequantize);
   ctx_.allocate(saveInt->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3057,7 +3056,7 @@ TEST_P(Operator, NonSquareKernelConvolution) {
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
-  SaveNode *S = F_->createSave(ctx_, "save", CN);
+  SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3078,7 +3077,7 @@ TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3099,7 +3098,7 @@ TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3134,7 +3133,7 @@ TEST_P(Operator, NonSquareStrideConvolution) {
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 2, 1});
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
-  SaveNode *S = F_->createSave(ctx_, "save", CN);
+  SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3155,7 +3154,7 @@ TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3176,7 +3175,7 @@ TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3195,7 +3194,7 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
   ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
-  auto *saveFp = F_->createSave(ctx_, "fpSave", fpSigmoid);
+  auto *saveFp = F_->createSave("fpSave", fpSigmoid);
   ctx_.allocate(saveFp->getPlaceholder());
 
   auto quantizationParams =
@@ -3211,7 +3210,7 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
                       quantizationParams.offset);
   auto *intSigmoid = F_->createIntSigmoid("int8Sigmoid", quantize, sigmoidTy);
   auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
-  auto *saveInt = F_->createSave(ctx_, "int8Save", dequantize);
+  auto *saveInt = F_->createSave("int8Save", dequantize);
   ctx_.allocate(saveInt->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3236,7 +3235,7 @@ TEST_P(Operator, BatchAdd) {
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "slice", false);
   ctx_.allocate(slice)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
-  auto *S = F_->createSave(ctx_, "save", batchAdd);
+  auto *S = F_->createSave("save", batchAdd);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3263,7 +3262,7 @@ TEST_P(InterpOnly, FP16BatchAdd) {
       mod_.createPlaceholder(ElemKind::Float16Ty, {3, 3}, "slice", false);
   ctx_.allocate(slice)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
-  auto *S = F_->createSave(ctx_, "save", batchAdd);
+  auto *S = F_->createSave("save", batchAdd);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3295,7 +3294,7 @@ TEST_P(InterpAndCPU, IntLookupTable) {
 
   auto lookupTable =
       F_->createIntLookupTable("lookupTable", input, initValues, outTy);
-  auto save = F_->createSave(ctx_, "save", lookupTable);
+  auto save = F_->createSave("save", lookupTable);
   ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3330,7 +3329,7 @@ TEST_P(Operator, testBatchAdd) {
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  auto *result = F_->createSave(ctx_, "save", cc);
+  auto *result = F_->createSave("save", cc);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3379,7 +3378,7 @@ TEST_P(Operator, testQuantizedBatchAdd) {
 
   Node *cc = F_->createConcat("concat", adds, 0, qInType);
   cc = F_->createDequantize("dq", cc);
-  auto *result = F_->createSave(ctx_, "save", cc);
+  auto *result = F_->createSave("save", cc);
   ctx_.allocate(result->getPlaceholder());
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
@@ -3436,7 +3435,7 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   };
 
   auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
-  auto *S = F_->createSave(ctx_, "save", R);
+  auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3487,7 +3486,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
 
   auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
                                               lengths);
-  auto *S = F_->createSave(ctx_, "save", R);
+  auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3511,7 +3510,7 @@ TEST_P(InterpOnly, FP16Reshape) {
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createReshape("tr", A, {13, 20, 1});
-  auto *result = F_->createSave(ctx_, "saveTranspose", tr);
+  auto *result = F_->createSave("saveTranspose", tr);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3543,10 +3542,10 @@ TEST_P(Operator, sliceReshape) {
   auto *SSX = F_->createSlice("sliceSliceX", SX, {0, 2}, {1, 3});
   auto *RSSX = F_->createReshape("reshapeSliceSliceX", SSX, {1});
 
-  auto *resultSX = F_->createSave(ctx_, "saveSX", SX);
-  auto *resultRSX = F_->createSave(ctx_, "saveRSX", RSX);
-  auto *resultSSX = F_->createSave(ctx_, "saveSSX", SSX);
-  auto *resultRSSX = F_->createSave(ctx_, "saveRSSX", RSSX);
+  auto *resultSX = F_->createSave("saveSX", SX);
+  auto *resultRSX = F_->createSave("saveRSX", RSX);
+  auto *resultSSX = F_->createSave("saveSSX", SSX);
+  auto *resultRSSX = F_->createSave("saveRSSX", RSSX);
 
   ctx_.allocate(resultSX->getPlaceholder());
   ctx_.allocate(resultRSX->getPlaceholder());
@@ -3621,11 +3620,11 @@ TEST_P(Operator, Flatten) {
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
 
   // Save all the reshapes so that the optimizations won't kill the network.
-  auto *save1Dto2D = F_->createSave(ctx_, "save1Dto2D", reshape1Dto2DAxis1);
-  auto *save4Dto2Da1 = F_->createSave(ctx_, "save4Dto2Da1", reshape4Dto2DAxis1);
-  auto *save4Dto2Da2 = F_->createSave(ctx_, "save4Dto2Da2", reshape4Dto2DAxis2);
-  auto *save4Dto2Da3 = F_->createSave(ctx_, "save4Dto2Da3", reshape4Dto2DAxis3);
-  auto *save4Dto2Da4 = F_->createSave(ctx_, "save4Dto2Da4", reshape4Dto2DAxis4);
+  auto *save1Dto2D = F_->createSave("save1Dto2D", reshape1Dto2DAxis1);
+  auto *save4Dto2Da1 = F_->createSave("save4Dto2Da1", reshape4Dto2DAxis1);
+  auto *save4Dto2Da2 = F_->createSave("save4Dto2Da2", reshape4Dto2DAxis2);
+  auto *save4Dto2Da3 = F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3);
+  auto *save4Dto2Da4 = F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4);
 
   ctx_.allocate(save1Dto2D->getPlaceholder());
   ctx_.allocate(save4Dto2Da1->getPlaceholder());
@@ -3678,7 +3677,7 @@ TEST_P(InterpAndCPU, DivSizeT) {
 
   auto R = F_->createDiv("div", LHS, RHS);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3732,7 +3731,7 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
 
   auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
 
-  auto *result = F_->createSave(ctx_, "save", R);
+  auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3770,7 +3769,7 @@ TEST_P(InterpAndCPU, insertTensorTest) {
   // 0 0 0 0 0 0
   Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {1, 1},
                                     /* count */ 2, /* axis */ 1);
-  SaveNode *result = F_->createSave(ctx_, "result", IN);
+  SaveNode *result = F_->createSave("result", IN);
   ctx_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3829,7 +3828,7 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   // Subtract the results of the convolution from the rowwise quantized fc.
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
-  auto *save = F_->createSave(ctx_, "save", sub);
+  auto *save = F_->createSave("save", sub);
 
   ctx_.allocate(save->getPlaceholder());
 
@@ -3854,7 +3853,7 @@ TEST_P(Operator, SoftMax) {
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
@@ -3880,7 +3879,7 @@ TEST_P(InterpOnly, FP16SoftMax) {
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
-  auto *S = F_->createSave(ctx_, "save", Pool);
+  auto *S = F_->createSave("save", Pool);
   ctx_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);

@@ -129,7 +129,7 @@ void testCIFAR10() {
 
   auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
   auto *SM = F->createSoftMax("softmax", FCL1, E);
-  auto *save = F->createSave(ctx, "ret", SM);
+  auto *save = F->createSave("ret", SM);
   auto *result = ctx.allocate(save->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
