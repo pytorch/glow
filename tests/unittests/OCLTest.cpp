@@ -27,19 +27,6 @@
 using namespace glow;
 using llvm::cast;
 
-TEST(OpenCLCorrectnessTest, reluTest) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::FloatTy, {2, 16});
-  inputs.getHandle().initXavier(1, PRNG);
-  Tensor out1;
-  Tensor out2;
-
-  inferReluNet(&inputs, &out1, BackendKind::OpenCL);
-  inferReluNet(&inputs, &out2, BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
 TEST(OpenCLCorrectnessTest, convOps) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
@@ -101,29 +88,6 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
                   BackendKind::OpenCL);
   trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
                   BackendKind::Interpreter);
-
-  EXPECT_TRUE(out1.isEqual(out2));
-}
-
-TEST(OpenCLCorrectnessTest, gatherTest) {
-  PseudoRNG PRNG;
-  constexpr size_t nSlices = 16;
-  constexpr size_t nGathered = 8;
-
-  Tensor data(ElemKind::FloatTy, {nSlices, 16, 3, 2});
-  data.getHandle().initXavier(1, PRNG);
-
-  Tensor indices(ElemKind::Int64ITy, {nGathered});
-  auto indicesH = indices.getHandle<int64_t>();
-  for (size_t i = 0; i < nGathered; i++) {
-    indicesH.raw(i) = PRNG.nextRandInt(0, nSlices - 1);
-  }
-
-  Tensor out1(ElemKind::FloatTy, {nGathered, 16, 3, 2});
-  Tensor out2(ElemKind::FloatTy, {nGathered, 16, 3, 2});
-
-  inferGatherNet(&data, &indices, &out1, BackendKind::OpenCL);
-  inferGatherNet(&data, &indices, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
