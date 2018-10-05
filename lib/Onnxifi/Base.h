@@ -45,6 +45,9 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return executionEngine_; }
 
+  /// \returns the backend id.
+  int getID() { return id_; }
+
 private:
   int id_;
   glow::ExecutionEngine executionEngine_;
