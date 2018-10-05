@@ -1,6 +1,3 @@
-
-static const char *SHADER_CODE = R"(
-
 /// This type is always 32 bits.
 typedef unsigned cl_uint32_t;
 /// This type is always 64 bits.
@@ -21,10 +18,10 @@ typedef cl_uint64_t cl_host_size_t;
 typedef cl_uint32_t cl_host_size_t;
 #else
 #error "Unsupported size of size_t on the host side"
-#endif 
+#endif
 
-// The types of elements should be always matching the definitions of
-// ShapeNHWC in Type.h
+/// The types of elements should be always matching the definitions of
+/// ShapeNHWC in Type.h
 typedef struct {
   cl_host_size_t n; // Number of samples
   cl_host_size_t h; // Height
@@ -44,7 +41,7 @@ typedef struct {
   cl_host_size_t width;
 } ShapeHW;
 
-// Helper struct that contains the information for quantization.
+/// Helper struct that contains the information for quantization.
 typedef struct {
   cl_int32_t pre;
   cl_int32_t post;
@@ -52,8 +49,8 @@ typedef struct {
   cl_int32_t offset;
 } QuantizationTransform32To8;
 
-// The types of elements should be always matching the definitions of
-// PaddingTLBR in Type.h
+/// The types of elements should be always matching the definitions of
+/// PaddingTLBR in Type.h
 typedef struct {
   cl_host_size_t top;
   cl_host_size_t left;
@@ -318,12 +315,12 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
   __kernel void name##_i8K(__global cl_int8_t *dest, __global cl_int8_t *lhs,  \
                            __global cl_int8_t *rhs, cl_int32_t destOffset,     \
                            cl_int32_t lhsOffset, cl_int32_t rhsOffset,         \
-                           cl_int32_t pre, cl_int32_t post, cl_int32_t scale) {\
+                           cl_int32_t pre, cl_int32_t post,                    \
+                           cl_int32_t scale) {                                 \
     size_t i = get_global_id(0);                                               \
     cl_int32_t LHS = lhs[i] - lhsOffset;                                       \
     cl_int32_t RHS = rhs[i] - rhsOffset;                                       \
-    dest[i] =                                                                  \
-        clip(scale_i32i8((body), pre, post, scale, destOffset));               \
+    dest[i] = clip(scale_i32i8((body), pre, post, scale, destOffset));         \
   }                                                                            \
   __kernel void name##_i8W(                                                    \
       __global void *mem, cl_uint32_t dest, cl_uint32_t lhs, cl_uint32_t rhs,  \
@@ -1425,5 +1422,3 @@ __kernel void scatterassignW(__global void *mem, cl_uint32_t data,
                              cl_uint32_t sliceSize) {
   scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
-
-)";
