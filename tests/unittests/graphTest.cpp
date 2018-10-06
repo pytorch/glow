@@ -35,8 +35,7 @@ TEST(Graph, testVariableErasure) {
   EXPECT_EQ(vars.size(), 0);
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 
-  Variable *V = MD.createVariable(ElemKind::FloatTy, {1, 1}, "dummy",
-                                  VisibilityKind::Public);
+  Variable *V = MD.createVariable(ElemKind::FloatTy, {1, 1}, "dummy");
   EXPECT_EQ(vars.size(), 1);
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 
@@ -698,8 +697,7 @@ TEST(Graph, parentLink) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
-                             VisibilityKind::Private);
+  Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}));
 
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);

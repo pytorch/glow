@@ -249,10 +249,8 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto channel = getChannel(dict);
     auto *scaleV = G_.getParent()->createVariable("scale", *scale);
     auto *biasV = G_.getParent()->createVariable("bias", *bias);
-    auto *meanV =
-        G_.getParent()->createVariable("mean", *mean, VisibilityKind::Private);
-    auto *varV =
-        G_.getParent()->createVariable("var", *var, VisibilityKind::Private);
+    auto *meanV = G_.getParent()->createVariable("mean", *mean);
+    auto *varV = G_.getParent()->createVariable("var", *var);
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, channel, epsilon);
 
@@ -318,10 +316,8 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else
       w->transpose(&wtag, {1, 0});
 
-    auto W = G_.getParent()->addVar(
-        new Variable("weights", VisibilityKind::Private, std::move(wtag)));
-    auto B = G_.getParent()->addVar(
-        new Variable("biases", VisibilityKind::Private, std::move(*b)));
+    auto W = G_.getParent()->addVar(new Variable("weights", std::move(wtag)));
+    auto B = G_.getParent()->addVar(new Variable("biases", std::move(*b)));
     auto *node = G_.createFullyConnected(opName, in, W, B);
 
     // Save the outputs:

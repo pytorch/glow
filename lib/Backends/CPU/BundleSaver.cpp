@@ -54,8 +54,6 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   size_t maxPos = 0;
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
-    if (v->getVisibilityKind() == VisibilityKind::Public)
-      continue;
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
     auto addr = allocationsInfo_.allocatedAddressed_[w];
@@ -99,7 +97,6 @@ void BundleSaver::emitSymbolTable() {
   // size and kind.
   for (auto &v : F_->getGraph()->getParent()->getVars()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
-    bool isConstWeight = v->getVisibilityKind() != VisibilityKind::Public;
     auto size = w->getType()->size();
     auto addr = allocationsInfo_.allocatedAddressed_[w];
     // Create an SymbolTableEntry.
@@ -114,7 +111,7 @@ void BundleSaver::emitSymbolTable() {
          // size.
          llvm::ConstantInt::get(sizeTTy, size),
          // kind.
-         llvm::ConstantInt::get(charTy, isConstWeight ? 0 : 1)});
+         llvm::ConstantInt::get(charTy, /*isConstWeight*/ 0)});
     entries.push_back(entry);
   }
 
