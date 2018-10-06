@@ -54,7 +54,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
     return nullptr;
   }
 
-  // Create a new variable filter with the layout [D/8, K, K, C, 8];
+  // Create a new constant filter with the layout [D/8, K, K, C, 8];
   TypeRef filterTy = filter->getType();
   auto dims = filterTy->dims();
   assert(dims.size() == 4 && "Invalid filter size");

@@ -28,7 +28,7 @@
 
 namespace glow {
 
-// Storage is the base class for Variables, which are bound to tensors, and
+// Storage is the base class for Constants, which are bound to tensors, and
 // Placeholder nodes which are unbound.
 class Storage : public Node {
 public:
@@ -50,7 +50,7 @@ public:
   Node *clone() const;
   /// @}
 
-  /// \returns result type of the variable.
+  /// \returns result type of the storage.
   TypeRef getType() const { return Node::getType(0); }
 
   /// Methods that forward to the result type (that must be valid):
@@ -66,7 +66,7 @@ public:
 };
 
 class Constant : public Storage {
-  /// The tensor payload that the variable holds.
+  /// The tensor payload that the constant holds.
   Tensor payload_;
 
 public:
@@ -106,18 +106,18 @@ public:
 /// this node at runtime. Placeholders are used as inputs and output nodes to
 /// the network.
 class Placeholder : public Storage {
-  /// Specifies if the variable or placeholder is trainable.
+  /// Specifies if the placeholder is trainable.
   bool isTrainable_;
 
 public:
-  /// Create a new placeholder variable.
+  /// Create a new placeholder.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
       : Storage(Kinded::Kind::PlaceholderKind, name),
         isTrainable_(isTrainable) {
     addResult(Ty);
   }
 
-  /// \returns True if the Variable or placeholder are trainable during
+  /// \returns True if the placeholder are trainable during
   /// differentiation.
   bool isTraining() const { return isTrainable_; }
 

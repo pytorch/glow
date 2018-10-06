@@ -75,7 +75,7 @@ llvm::StringRef Storage::getOutputName(unsigned idx) const {
 
 bool Storage::hasSideEffects() const { return false; }
 
-Node *Storage::clone() const { llvm_unreachable("variables can't be cloned."); }
+Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 
 //===----------------------------------------------------------------------===//
 //                     Debug description methods
