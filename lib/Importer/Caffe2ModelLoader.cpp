@@ -249,10 +249,10 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto channel = getChannel(dict);
     auto *scaleV = G_.getParent()->createVariable("scale", *scale);
     auto *biasV = G_.getParent()->createVariable("bias", *bias);
-    auto *meanV = G_.getParent()->createVariable(
-        "mean", *mean, VisibilityKind::Private, false);
-    auto *varV = G_.getParent()->createVariable("var", *var,
-                                                VisibilityKind::Private, false);
+    auto *meanV =
+        G_.getParent()->createVariable("mean", *mean, VisibilityKind::Private);
+    auto *varV =
+        G_.getParent()->createVariable("var", *var, VisibilityKind::Private);
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, channel, epsilon);
 

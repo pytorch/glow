@@ -27,7 +27,7 @@ bool Storage::isEqual(const Storage &other) const {
 }
 
 llvm::hash_code Variable::getHash() const {
-  return llvm::hash_combine(getName(), isTraining(), getType());
+  return llvm::hash_combine(getName(), getType());
 }
 
 llvm::hash_code Placeholder::getHash() const {
@@ -91,7 +91,6 @@ std::string Variable::getDebugDesc() const {
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
       .addParam("visibility", getVariableVisibilityKindStr(visibility_));
-  db.addParam("train", isTraining());
   db.addParam("users", getNumUsers());
   return db;
 }

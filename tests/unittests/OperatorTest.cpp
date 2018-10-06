@@ -4018,7 +4018,7 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   // So get the tranpose of weights from the above FC.
   auto *newWeights = mod_.createVariable(
       ElemKind::FloatTy, {weights->dims()[1], weights->dims()[0]}, "newW",
-      VisibilityKind::Private, false);
+      VisibilityKind::Private);
   ctx_.get(weights)->transpose(&newWeights->getPayload(), {1, 0});
 
   TypeRef inputTy =

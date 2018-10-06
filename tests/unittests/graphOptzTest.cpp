@@ -1814,11 +1814,11 @@ TEST_F(GraphOptz, VarsCSE) {
   // combined via variable CSE. The third variable differs by the last value,
   // and so should not be combined.
   auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
-                                     VisibilityKind::Private, false);
+                                     VisibilityKind::Private);
   auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
-                                     VisibilityKind::Private, false);
+                                     VisibilityKind::Private);
   auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
-                                     VisibilityKind::Private, false);
+                                     VisibilityKind::Private);
   input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};

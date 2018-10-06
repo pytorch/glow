@@ -118,9 +118,9 @@ protected:
     // We do not do training right now on loaded protos. C2 and ONNX do not even
     // have an option for a selected input anyway. So I am creating this as a
     // placeholder which goes unused during inference.
-    auto selected = G_.getParent()->createVariable(
-        ElemKind::Int64ITy, {in.dims()[0], 1}, "selected",
-        VisibilityKind::Private, false);
+    auto selected =
+        G_.getParent()->createVariable(ElemKind::Int64ITy, {in.dims()[0], 1},
+                                       "selected", VisibilityKind::Private);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.

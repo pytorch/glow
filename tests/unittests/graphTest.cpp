@@ -699,7 +699,7 @@ TEST(Graph, parentLink) {
 
   auto &mod = EE.getModule();
   Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}),
-                             VisibilityKind::Private, true);
+                             VisibilityKind::Private);
 
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
