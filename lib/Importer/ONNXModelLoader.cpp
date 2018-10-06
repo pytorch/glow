@@ -298,7 +298,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
         biasTensor.assign(b);
       }
     }
-    auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
+    auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
 
     // ONNX passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -415,10 +415,10 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       epsilon = loadFloat(epsilonIt->second);
     }
 
-    auto *scaleV = G_.getParent()->createVariable("scale", *scale);
-    auto *biasV = G_.getParent()->createVariable("bias", *bias);
-    auto *meanV = G_.getParent()->createVariable("mean", *mean);
-    auto *varV = G_.getParent()->createVariable("var", *var);
+    auto *scaleV = G_.getParent()->createConstant("scale", *scale);
+    auto *biasV = G_.getParent()->createConstant("bias", *bias);
+    auto *meanV = G_.getParent()->createConstant("mean", *mean);
+    auto *varV = G_.getParent()->createConstant("var", *var);
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, 1, epsilon);
 

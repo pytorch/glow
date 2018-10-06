@@ -171,7 +171,7 @@ void ChildMemSizeBasedScheduler::schedule() {
 
 void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
-  for (auto &N : G_->getParent()->getVars()) {
+  for (auto &N : G_->getParent()->getConstants()) {
     Schedule.push_back(N);
   }
   for (auto &N : G_->getParent()->getPlaceholders()) {
@@ -179,7 +179,7 @@ void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   }
   ChildMemSizeBasedScheduler CMSBScheduler(*G_, Schedule);
   CMSBScheduler.schedule();
-  auto numVars = G_->getParent()->getVars().size();
+  auto numVars = G_->getParent()->getConstants().size();
   auto numPlaceholders = G_->getParent()->getPlaceholders().size();
   (void)numVars;
   (void)numPlaceholders;

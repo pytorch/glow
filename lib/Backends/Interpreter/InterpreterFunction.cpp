@@ -35,7 +35,7 @@ InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
     externalTensors_[w] = ph.second;
   }
 
-  for (auto &v : F_->getGraph()->getParent()->getVars()) {
+  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();

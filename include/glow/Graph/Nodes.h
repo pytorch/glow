@@ -60,31 +60,31 @@ public:
   /// @}
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::VariableKind ||
+    return k->getKind() == Kinded::Kind::ConstantKind ||
            k->getKind() == Kinded::Kind::PlaceholderKind;
   }
 };
 
-class Variable : public Storage {
+class Constant : public Storage {
   /// The tensor payload that the variable holds.
   Tensor payload_;
 
 public:
-  /// Create a new variable and initialize its payload.
-  Variable(llvm::StringRef name, TypeRef Ty)
-      : Storage(Kinded::Kind::VariableKind, name) {
+  /// Create a new constant and initialize its payload.
+  Constant(llvm::StringRef name, TypeRef Ty)
+      : Storage(Kinded::Kind::ConstantKind, name) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
-  Variable(llvm::StringRef name, Tensor &&payload)
-      : Storage(Kinded::Kind::VariableKind, name),
+  Constant(llvm::StringRef name, Tensor &&payload)
+      : Storage(Kinded::Kind::ConstantKind, name),
         payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
 
   static bool classof(const Kinded *k) {
-    return k->getKind() == Kinded::Kind::VariableKind;
+    return k->getKind() == Kinded::Kind::ConstantKind;
   }
 
   Tensor &getPayload() { return payload_; }

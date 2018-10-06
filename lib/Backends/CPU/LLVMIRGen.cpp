@@ -1266,7 +1266,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Value.
     Tensor scalesT;
     auto *F_ = getIRFunction();
-    for (auto &v : F_->getGraph()->getParent()->getVars()) {
+    for (auto &v : F_->getGraph()->getParent()->getConstants()) {
       assert(isa<WeightVar>(F_->getWeightForNode(v)));
       auto *w = cast<glow::Value>(F_->getWeightForNode(v));
       if (w == RWQFC->getScales()) {

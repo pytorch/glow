@@ -58,9 +58,9 @@ static bool shouldDeleteNode(Node *N) {
 /// Dead code elimination.
 static void DCE(Function *F) {
   auto &nodes = F->getNodes();
-  auto &vars = F->getParent()->getVars();
+  auto &vars = F->getParent()->getConstants();
 
-  std::vector<VariablesList::iterator> erasedVars{};
+  std::vector<ConstList::iterator> erasedVars{};
   std::vector<NodesList::iterator> erasedNodes{};
 
   // Remove unused nodes. Do not remove unused vars because they are the
@@ -101,7 +101,7 @@ static void DCE(Function *F) {
 
   while (!erasedVars.empty()) {
     auto it = erasedVars.back();
-    F->getParent()->eraseVariable(it);
+    F->getParent()->eraseConstant(it);
     erasedVars.pop_back();
   }
 }
@@ -604,7 +604,7 @@ static bool mergeTransposeIntoMatMul(Function *F) {
     }
 
     // MatMul RHS is constant weights.
-    auto *W = dyn_cast<Variable>(MMN->getRHS());
+    auto *W = dyn_cast<Constant>(MMN->getRHS());
     if (!W) {
       continue;
     }
@@ -651,7 +651,7 @@ static bool mergeTransposeIntoMatMul(Function *F) {
         F->getParent()->uniqueTypeWithNewShape(W->getType(), newShape);
 
     // New reordered weights.
-    auto *newW = F->getParent()->createVariable(W->getType(), W->getName());
+    auto *newW = F->getParent()->createConstant(W->getType(), W->getName());
     Tensor reshapedSrc(W->getPayload().getUnsafePtr(), reshapedWTy);
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
@@ -888,13 +888,13 @@ static void optimizePool(Function *F) {
 
 /// \returns The uniquely used variable from node or nullptr
 /// if node has more than one user or is not a variable.
-static Variable *getUniquelyUsedVariable(Node &node) {
+static Constant *getUniquelyUsedVariable(Node &node) {
   // If that node has more than one use, it may not
   // be okay to modify the underlying variable.
   if (!node.hasOneUse()) {
     return nullptr;
   }
-  return dyn_cast<Variable>(&node);
+  return dyn_cast<Constant>(&node);
 }
 
 /// Normalize the weight of \p CV with what \p BN is doing.
@@ -907,8 +907,8 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
           std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
       "This implementation is for floating-point values only");
 
-  Variable *filterV = getUniquelyUsedVariable(*CV.getFilter().getNode());
-  Variable *cbiasV = getUniquelyUsedVariable(*CV.getBias().getNode());
+  Constant *filterV = getUniquelyUsedVariable(*CV.getFilter().getNode());
+  Constant *cbiasV = getUniquelyUsedVariable(*CV.getBias().getNode());
 
   if (!filterV || !cbiasV) {
     return false;
@@ -948,10 +948,10 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
   // Q = W * A
   // C = b * A + B
 
-  Variable *scaleV = cast<Variable>(BN.getScale());
-  Variable *biasV = cast<Variable>(BN.getBias());
-  Variable *meanV = cast<Variable>(BN.getMean());
-  Variable *var = cast<Variable>(BN.getVar());
+  Constant *scaleV = cast<Constant>(BN.getScale());
+  Constant *biasV = cast<Constant>(BN.getBias());
+  Constant *meanV = cast<Constant>(BN.getMean());
+  Constant *var = cast<Constant>(BN.getVar());
 
   auto filterH = filterV->getHandle<ElemTy>();
 
@@ -1308,14 +1308,14 @@ static void optimizeTranspose(Function *F) {
     if (!TN) {
       continue;
     }
-    auto *V = dyn_cast<Variable>(TN->getInput());
+    auto *V = dyn_cast<Constant>(TN->getInput());
     // V must have a single use.
     if (!V || !V->hasOneUse()) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
     auto *NV =
-        F->getParent()->createVariable(TN->getResult().getType(), V->getName());
+        F->getParent()->createConstant(TN->getResult().getType(), V->getName());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1393,7 +1393,7 @@ struct CSEVisitor : NodeWalker {
 /// (element type, dimensions), as well as a constant number of elements from
 /// the Variable to balance collisions with hash calclulation time.
 struct VarsHasherDedup {
-  size_t operator()(Variable *V) const {
+  size_t operator()(Constant *V) const {
     auto hash = llvm::hash_value(V->getType());
     auto &T = V->getPayload();
     // Only use the first 8 elements in the hash. It's likely that if two
@@ -1415,7 +1415,7 @@ struct VarsHasherDedup {
 /// is assumed the Visibility and training mode are the same, as deduplication
 /// only inserts if Private and None, respectively.
 struct VarsEqDedup {
-  bool operator()(const Variable *lhs, const Variable *rhs) const {
+  bool operator()(const Constant *lhs, const Constant *rhs) const {
     // Only consider Vars for deduplication if they have the same type. The
     // train kind and visibility must already be the same.
     if (lhs->getType() != rhs->getType()) {
@@ -1430,7 +1430,7 @@ struct VarsEqDedup {
 
 /// \returns true if Variable \p V is written into, either as a result, or as an
 /// overwritten input.
-static bool hasWriters(Variable *V) {
+static bool hasWriters(Constant *V) {
   for (auto &U : V->getUsers()) {
     auto *N = U.getUser();
 
@@ -1453,10 +1453,10 @@ static bool hasWriters(Variable *V) {
 static void deduplicateConstants(Module *M) {
   // Map from Variables to other Variables that are equivalent for purposes of
   // deduplication.
-  std::unordered_map<Variable *, Variable *, VarsHasherDedup, VarsEqDedup>
+  std::unordered_map<Constant *, Constant *, VarsHasherDedup, VarsEqDedup>
       duplicateVars;
 
-  for (auto &V : M->getVars()) {
+  for (auto &V : M->getConstants()) {
     // Only perform deduplication on vars of small enough size. Otherwise just
     // skip them. constVarDedupSizeOpt defaults to 256 as a heuristic, to keep
     // compile time reasonable.
@@ -1480,7 +1480,7 @@ static void deduplicateConstants(Module *M) {
       assert(duplicateVars.find(V) != duplicateVars.end());
       continue;
     }
-    Variable *foundV = foundI->second;
+    Constant *foundV = foundI->second;
     assert(V != foundV && "Variables should not be visited multiple times.");
 
     // Replace current var by a found var, which is equivalent to it.
@@ -1553,10 +1553,10 @@ static void optimizeReshape(Function *F) {
     // Reshape(PrivateVariable) -> PrivateVariable'.
     // Only do this if the Variable has a single use, as otherwise we would
     // duplicate the Variable and increase the memory footprint.
-    auto *V = dyn_cast<Variable>(inputNode);
+    auto *V = dyn_cast<Constant>(inputNode);
     if (V && V->hasOneUse()) {
       // Create a new variable with the type of the reshape.
-      auto *newV = F->getParent()->createVariable(
+      auto *newV = F->getParent()->createConstant(
           reshapeNode->getResult().getType(), V->getName());
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Variable.
@@ -1651,7 +1651,7 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      if (auto *V = dyn_cast<Variable>(Q->getInput())) {
+      if (auto *V = dyn_cast<Constant>(Q->getInput())) {
         // Quantize(Variable) -> Variable
         // Note, it does not really matter how many usages this var has.
         // Quantized graph will use optimized var and other functions will
@@ -1660,7 +1660,7 @@ static void optimizeQuantization(Function *F) {
           continue;
         }
         // Create a new variable NV to hold the quantized result.
-        auto *NV = F->getParent()->createVariable(Q->getResult().getType(),
+        auto *NV = F->getParent()->createConstant(Q->getResult().getType(),
                                                   V->getName());
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
@@ -1961,7 +1961,7 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
     if (!tensor) {
       continue;
     }
-    auto *constantV = M->createVariable(PH->getName(), *tensor);
+    auto *constantV = M->createConstant(PH->getName(), *tensor);
     PH->getOutput().replaceAllUsesOfWith(constantV, F);
   }
 }

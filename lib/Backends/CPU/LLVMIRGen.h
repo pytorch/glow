@@ -34,7 +34,7 @@ class Context;
 class IRFunction;
 class Value;
 class Tensor;
-class Variable;
+class Constant;
 class Instruction;
 class WeightVar;
 struct AllocationsInfo;

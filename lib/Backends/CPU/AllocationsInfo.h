@@ -24,7 +24,7 @@ namespace glow {
 class Value;
 class IRFunction;
 class WeightVar;
-class Variable;
+class Constant;
 class Context;
 
 /// Information about allocations for activations, constant weight variables

@@ -26,7 +26,7 @@ bool Storage::isEqual(const Storage &other) const {
   return this == &other;
 }
 
-llvm::hash_code Variable::getHash() const {
+llvm::hash_code Constant::getHash() const {
   return llvm::hash_combine(getName(), getType());
 }
 
@@ -81,7 +81,7 @@ Node *Storage::clone() const { llvm_unreachable("variables can't be cloned."); }
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
 
-std::string Variable::getDebugDesc() const {
+std::string Constant::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())

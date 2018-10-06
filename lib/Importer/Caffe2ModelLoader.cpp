@@ -169,7 +169,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t depth = wtag.dims()[0];
 
     // Construct the Filter field.
-    auto *filter = G_.getParent()->createVariable("conv.filter", wtag);
+    auto *filter = G_.getParent()->createConstant("conv.filter", wtag);
 
     // Construct the Bias field.
     Tensor biasTensor(ElemKind::FloatTy, {depth});
@@ -184,7 +184,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         biasTensor.assign(b);
       }
     }
-    auto *bias = G_.getParent()->createVariable("conv.bias", biasTensor);
+    auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
 
     // Caffe passes the input as NCHW, and we expect the input to be NHWC.
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -247,10 +247,10 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     auto channel = getChannel(dict);
-    auto *scaleV = G_.getParent()->createVariable("scale", *scale);
-    auto *biasV = G_.getParent()->createVariable("bias", *bias);
-    auto *meanV = G_.getParent()->createVariable("mean", *mean);
-    auto *varV = G_.getParent()->createVariable("var", *var);
+    auto *scaleV = G_.getParent()->createConstant("scale", *scale);
+    auto *biasV = G_.getParent()->createConstant("bias", *bias);
+    auto *meanV = G_.getParent()->createConstant("mean", *mean);
+    auto *varV = G_.getParent()->createConstant("var", *var);
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, channel, epsilon);
 
@@ -316,8 +316,9 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else
       w->transpose(&wtag, {1, 0});
 
-    auto W = G_.getParent()->addVar(new Variable("weights", std::move(wtag)));
-    auto B = G_.getParent()->addVar(new Variable("biases", std::move(*b)));
+    auto W =
+        G_.getParent()->addConstant(new Constant("weights", std::move(wtag)));
+    auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
     auto *node = G_.createFullyConnected(opName, in, W, B);
 
     // Save the outputs:

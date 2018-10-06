@@ -415,7 +415,7 @@ void LLVMIRGen::generateDebugInfo() {
 
   // Emit the debug info for weight variables and activations variables used by
   // the Glow IR. Represent those variables as global variables.
-  for (auto &v : F_->getGraph()->getParent()->getVars()) {
+  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     emitDebugGlobalVariableForValue(w);
   }

@@ -365,8 +365,8 @@ public:
       V->setName(N->getName());
       break;
     }
-    case glow::Kinded::Kind::VariableKind: {
-      auto *V = cast<Variable>(N);
+    case glow::Kinded::Kind::ConstantKind: {
+      auto *V = cast<Constant>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          WeightVar::MutabilityKind::Mutable,
                                          VisibilityKind::Private);

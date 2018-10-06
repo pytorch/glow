@@ -39,7 +39,7 @@ using NodesList = llvm::iplist<glow::Node>;
 using NodesPtrList = std::list<glow::Node *>;
 /// List of Functions.
 using FunctionList = std::list<Function *>;
-using VariablesList = std::list<Variable *>;
+using ConstList = std::list<Constant *>;
 using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 
@@ -52,8 +52,8 @@ class Module final {
   /// Stores a list of unique variable names that were used by the module at
   /// some point.
   llvm::StringSet<> uniqueVariableNames_{};
-  /// A list of variables that the Module owns.
-  VariablesList vars_;
+  /// A list of constants that the Module owns.
+  ConstList constants_;
   /// A list of placeholder nodes that the Module owns.
   PlaceholderList placeholders_;
   /// Deterministic PRNG used to initialize weights in this module.
@@ -69,8 +69,8 @@ public:
   static llvm::StringRef uniqueName(llvm::StringRef name,
                                     llvm::StringSet<> &stringTable);
 
-  /// Inserts the variable \p V to the list of variables.
-  Variable *addVar(Variable *V);
+  /// Inserts the constant \p V to the list of constants.
+  Constant *addConstant(Constant *V);
 
   /// Inserts the placeholder node \p ph to the list of variables.
   Placeholder *addPlaceholder(Placeholder *ph);
@@ -104,20 +104,20 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
-  /// Erase the variable \p N from the Module.
-  void eraseVariable(Variable *N);
+  /// Erase the constant \p N from the Module.
+  void eraseConstant(Constant *N);
 
   /// Erase the variable \p I from the Module.
-  void eraseVariable(VariablesList::iterator I);
+  void eraseConstant(ConstList::iterator I);
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
-  Variable *getVariableByName(llvm::StringRef name);
+  Constant *getConstantByName(llvm::StringRef name);
 
-  /// \returns the list of variables that the Module owns.
-  VariablesList &getVars() { return vars_; }
+  /// \returns the list of constants that the Module owns.
+  ConstList &getConstants() { return constants_; }
 
-  const VariablesList &getVars() const { return vars_; }
+  const ConstList &getConstants() const { return constants_; }
 
   /// \returns the list of placeholders that the Module owns.
   PlaceholderList &getPlaceholders() { return placeholders_; }
@@ -141,15 +141,15 @@ public:
                                  float scale, int32_t offset,
                                  llvm::StringRef name, bool isTrainable);
 
-  Variable *createVariable(TypeRef T, llvm::StringRef name);
+  Constant *createConstant(TypeRef T, llvm::StringRef name);
 
-  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                            llvm::StringRef name);
 
-  Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
                            int32_t offset, llvm::StringRef name);
 
-  Variable *createVariable(llvm::StringRef name, const Tensor &tensor);
+  Constant *createConstant(llvm::StringRef name, const Tensor &tensor);
 
   ///@}
 
@@ -270,7 +270,7 @@ public:
   /// \p outTy is a quantized type.
   RowwiseQuantizedFullyConnectedNode *
   createRowwiseQuantizedFullyConnected(llvm::StringRef name, NodeValue input,
-                                       Variable *W, Node *B, TypeRef outTy);
+                                       Constant *W, Node *B, TypeRef outTy);
 
   /// Implement an operation that computes the row-wise dot product of its
   /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This

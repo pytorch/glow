@@ -66,7 +66,7 @@ TEST_F(GraphOptz, DCE) {
 
   //  All of the nodes are gone.
   EXPECT_EQ(F_->getNodes().size(), 0);
-  EXPECT_EQ(mod_.getVars().size(), 0);
+  EXPECT_EQ(mod_.getConstants().size(), 0);
 }
 
 /// Check that predicated instructions are DCE'ed like
@@ -93,7 +93,7 @@ TEST_F(GraphOptz, DCEwithPredicate) {
 
   //  All of the nodes are gone.
   EXPECT_EQ(F_->getNodes().size(), 0);
-  EXPECT_EQ(mod_.getVars().size(), 0);
+  EXPECT_EQ(mod_.getConstants().size(), 0);
 }
 
 TEST_F(GraphOptz, liveCodeNotEliminated) {
@@ -295,7 +295,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
   ::glow::optimize(F_, CompilationMode::Infer);
   ASSERT_EQ(F_->getNodes().size(), 1);
   EXPECT_EQ(&*F_->getNodes().begin(), save);
-  Variable *optimizedA = llvm::dyn_cast<Variable>(save->getInput().getNode());
+  Constant *optimizedA = llvm::dyn_cast<Constant>(save->getInput().getNode());
   ASSERT_NE(optimizedA, nullptr);
   // Check that A has been properly transposed.
   EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
@@ -327,7 +327,7 @@ TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
   // We should have kept the predicate on the save node.
   ASSERT_EQ(pred->getNumUsers(), 1);
   EXPECT_EQ(pred->getUsers().begin()->getUser(), save);
-  Variable *optimizedA = llvm::dyn_cast<Variable>(save->getInput().getNode());
+  Constant *optimizedA = llvm::dyn_cast<Constant>(save->getInput().getNode());
   ASSERT_NE(optimizedA, nullptr);
   // Check that A has been properly transposed.
   EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
@@ -1435,7 +1435,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
   // Quantization node was merged into input var.
   EXPECT_EQ(1, F_->getNodes().size());
 
-  auto quantizedInput = llvm::cast<Variable>(S->getInput());
+  auto quantizedInput = llvm::cast<Constant>(S->getInput());
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
   for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
@@ -1465,7 +1465,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   // Quantization node was merged into input var.
   EXPECT_EQ(1, clonedF->getNodes().size());
   auto quantizedInput =
-      llvm::cast<Variable>(clonedF->getNodes().front().getNthInput(0));
+      llvm::cast<Constant>(clonedF->getNodes().front().getNthInput(0));
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
   for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
@@ -1813,9 +1813,9 @@ TEST_F(GraphOptz, VarsCSE) {
   // writers. The first two variables have the same data, and so should be
   // combined via variable CSE. The third variable differs by the last value,
   // and so should not be combined.
-  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1");
-  auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2");
-  auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3");
+  auto *input1 = mod_.createConstant(ElemKind::FloatTy, {10}, "input1");
+  auto *input2 = mod_.createConstant(ElemKind::FloatTy, {10}, "input2");
+  auto *input3 = mod_.createConstant(ElemKind::FloatTy, {10}, "input3");
   input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};
@@ -1829,19 +1829,19 @@ TEST_F(GraphOptz, VarsCSE) {
 
   // Initially there are three variables: inputs 1, 2, and 3 (the save uses a
   // placeholder).
-  EXPECT_EQ(mod_.getVars().size(), 3);
+  EXPECT_EQ(mod_.getConstants().size(), 3);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Now only two variables are left; input1 and input2 have been combined,
   // but input3 has not.
-  EXPECT_EQ(mod_.getVars().size(), 2);
+  EXPECT_EQ(mod_.getConstants().size(), 2);
 
   // Verify that only one of input1 and input2 exists, and that input3 still
   // exists.
-  Variable *varOneOrTwo = nullptr;
+  Constant *varOneOrTwo = nullptr;
   bool foundVarThree = false;
-  for (auto *V : mod_.getVars()) {
+  for (auto *V : mod_.getConstants()) {
     if (V == input1 || V == input2) {
       EXPECT_TRUE(varOneOrTwo == nullptr);
       varOneOrTwo = V;
@@ -1968,7 +1968,7 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   EXPECT_EQ(F_->getNodes().size(), 1);
 
   // Save should have the new Variable as input.
-  auto *V = llvm::dyn_cast<Variable>(O->getInput());
+  auto *V = llvm::dyn_cast<Constant>(O->getInput());
   ASSERT_TRUE(V);
   // The new Variable should have the same shape as the original second Reshape.
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
@@ -1979,7 +1979,7 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3}, "input", false);
   auto *weights =
-      F_->getParent()->createVariable(ElemKind::FloatTy, {6, 1}, "weights");
+      F_->getParent()->createConstant(ElemKind::FloatTy, {6, 1}, "weights");
 
   weights->getHandle() = {0, 1, 2, 3, 4, 5};
   float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
@@ -2000,7 +2000,7 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   // Check reordered weights.
   auto *newMMN = llvm::dyn_cast<MatMulNode>(SN->getInput());
   ASSERT_TRUE(newMMN != nullptr);
-  auto *newW = llvm::dyn_cast<Variable>(newMMN->getRHS());
+  auto *newW = llvm::dyn_cast<Constant>(newMMN->getRHS());
   ASSERT_TRUE(newW != nullptr);
   for (unsigned i = 0; i < 6; ++i) {
     EXPECT_EQ(newWeightsRef[i], newW->getHandle().raw(i));
@@ -2016,7 +2016,7 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   auto *save3 = F_->createSave("save3", input3);
 
   // No variables, six PHs (3 inputs, 3 saves).
-  EXPECT_EQ(mod_.getVars().size(), 0);
+  EXPECT_EQ(mod_.getConstants().size(), 0);
   EXPECT_EQ(mod_.getPlaceholders().size(), 6);
 
   // Allocate two of the three inputs, but mark input2 of them as non-constant.
@@ -2026,10 +2026,10 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   ::glow::convertPlaceholdersToConstants(F_, ctx_, {input2});
 
   // input1 becomes a variable.
-  EXPECT_EQ(mod_.getVars().size(), 1);
+  EXPECT_EQ(mod_.getConstants().size(), 1);
   EXPECT_EQ(mod_.getPlaceholders().size(), 6);
 
-  EXPECT_TRUE(llvm::isa<Variable>(save1->getInput()));
+  EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
   EXPECT_TRUE(llvm::isa<Placeholder>(save2->getInput()));
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }

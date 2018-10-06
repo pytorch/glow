@@ -105,7 +105,7 @@ void updateInputsByName(Context &ctx, Module *mod,
 /// global counter and future invocations of this method continue running
 /// iterations of the batch at the next available slice.
 ///
-/// The method updates the variables in \p vars with the tensors \p inputs. The
+/// The method updates the placeholder in \p ph with the tensors \p inputs. The
 /// shape of the slice has to be identical to the shape of slices in the batch.
 /// All dimensions, except for the first (batch) dimension must be identical.
 ///

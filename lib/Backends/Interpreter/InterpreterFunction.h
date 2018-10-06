@@ -31,7 +31,7 @@ class Context;
 class IRFunction;
 class Value;
 class Tensor;
-class Variable;
+class Constant;
 
 // Forward declare all of the classes.
 #define DEF_VALUE(CLASS, NAME) class CLASS;
