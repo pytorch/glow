@@ -113,6 +113,11 @@ llvm::cl::alias imageLayoutA("l", llvm::cl::desc("Alias for -image_layout"),
                              llvm::cl::aliasopt(imageLayout),
                              llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> labelOffset(
+    "label_offset",
+    llvm::cl::desc("Label offset for TF ONNX models with 1001 classes"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
+
 llvm::cl::opt<std::string> modelInputName(
     "model_input_name",
     llvm::cl::desc("The name of the variable for the model's input image."),
@@ -241,8 +246,11 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
       Tensor slice = H.extractSlice(i);
       auto SH = slice.getHandle<>();
+      // Some models are trained with more classes. E.g. Some imagenet models
+      // exported from TensorFlow have 1 extra "neutral" class.
+      size_t result = SH.minMaxArg().second - labelOffset;
       llvm::outs() << " File: " << inputImageFilenames[i]
-                   << " Result:" << SH.minMaxArg().second << "\n";
+                   << " Result:" << result << "\n";
     }
   }
 
