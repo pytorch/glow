@@ -88,7 +88,7 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
   // Each child should be scheduled just once.
   if (isScheduled(N))
     return;
-  // Do not explicitly schedule variables.
+  // Do not explicitly schedule storage nodes.
   if (isa<Storage>(N))
     return;
   // A set of node's sorted children.
@@ -111,13 +111,13 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
       if (user == save) {
         continue;
       }
-      // Variables may have users scattered across different functions.
+      // Storage nodes may have users scattered across different functions.
       // Only accounts for the ones in that function.
       if (&G_ != user->getParent()) {
         continue;
       }
       assert(!isa<SaveNode>(user) &&
-             "Variables must be saved at most once in each function");
+             "Placeholder must be saved at most once in each function");
       orderedChildren.push_back(user);
     }
   }

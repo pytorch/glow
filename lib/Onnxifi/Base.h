@@ -121,7 +121,7 @@ private:
   /// the state properly.
   Context ctx_;
 
-  /// Mapping between ONNX name for the input variable and Glow variable.
+  /// Mapping between ONNX name for the input variable and Glow placeholder.
   llvm::StringMap<Placeholder *> onnxNameToInputVar_;
 
   /// Mapping between ONNX name for the output variable and Glow output
