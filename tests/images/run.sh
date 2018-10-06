@@ -34,3 +34,10 @@ done
 for png_filename in tests/images/imagenet/*.png; do
   ./bin/image-classifier "$png_filename" -image_mode=0to256 -m=bvlc_alexnet/model.onnx -model_input_name=data_0 "$@"
 done
+#Inference test for TF ONNX models
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -image_mode=0to1 -m=googlenet_v1_slim/googlenet_v1_slim.onnx -model_input_name=input:0 -image_layout=NHWC -label_offset=1 "$@"
+done
+for png_filename in tests/images/imagenet_299/*.png; do
+  ./bin/image-classifier "$png_filename" -image_mode=0to1 -m=googlenet_v4_slim/googlenet_v4_slim.onnx -model_input_name=input:0 -image_layout=NHWC -label_offset=1 "$@"
+done
