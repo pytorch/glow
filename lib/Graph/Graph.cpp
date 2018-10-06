@@ -199,7 +199,7 @@ public:
 };
 
 class ModuleDottyPrinter : public AbstractDottyPrinter {
-  /// Dump Function as a vertix. Then iterate through Variables, used in the
+  /// Dump Function as a vertix. Then iterate through constants, used in the
   /// function, and create corresponding edges.
   void visitFunction(Function *F) {
     std::ostringstream os;
@@ -283,7 +283,7 @@ void Module::eraseFunction(Function *F) {
 }
 
 Function::~Function() {
-  // Delete all of the nodes and the variables.
+  // Delete all of the nodes.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
     auto cur = it++;
     eraseNode(&*cur);
@@ -2240,7 +2240,7 @@ static void verifyNodeInput(const Node &N, size_t idx) {
       "Any node referencing another node N be in the use-list of the node N");
 }
 
-/// \returns True if \p n is a storage node (variable or placeholder) of the
+/// \returns True if \p n is a storage node (constant or placeholder) of the
 /// function \p F.
 static bool isGraphStorageNode(Node *n, const Function *F) {
   auto &vars = F->getParent()->getConstants();
@@ -2318,12 +2318,12 @@ void Function::verify() const {
     }
   }
 
-  std::unordered_map<const Constant *, const Node *> variablesWrittenTo;
+  std::unordered_map<const Placeholder *, const Node *> placeholderWrittenTo;
   for (const auto &N : nodes_) {
     assert(N.getParent() == this &&
            "Node is not linked to the function it belongs");
     N.verify();
-    // Make sure all the variables are at most written once.
+    // Make sure all the placeholders are at most written once.
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
       if (!N.isOverwrittenNthInput(idx)) {
         continue;
@@ -2332,17 +2332,17 @@ void Function::verify() const {
       if (!isa<Constant>(input)) {
         continue;
       }
-      const auto *var = cast<Constant>(input);
-      auto varToFirstDef = variablesWrittenTo.find(var);
-      if (varToFirstDef != variablesWrittenTo.end()) {
-        llvm::errs() << "Variable " << var->getDebugDesc() << '\n';
+      const auto *ph = cast<Placeholder>(input);
+      auto varToFirstDef = placeholderWrittenTo.find(ph);
+      if (varToFirstDef != placeholderWrittenTo.end()) {
+        llvm::errs() << "Constant " << ph->getDebugDesc() << '\n';
         llvm::errs() << "has more than one write:\n";
         llvm::errs() << N.getDebugDesc() << '\n';
         llvm::errs() << varToFirstDef->second->getDebugDesc() << '\n';
       }
-      assert(varToFirstDef == variablesWrittenTo.end() &&
-             "Variable has more than one write");
-      variablesWrittenTo[var] = &N;
+      assert(varToFirstDef == placeholderWrittenTo.end() &&
+             "Placeholder has more than one write");
+      placeholderWrittenTo[ph] = &N;
     }
   }
 
@@ -2353,8 +2353,8 @@ void Function::verify() const {
   // dependencies that may not be honored by the scheduler.
   // Either the input IR is incorrect or the scheduler needs
   // fixing.
-  for (const std::pair<const Constant *, const Node *> &varToWrite :
-       variablesWrittenTo) {
+  for (const std::pair<const Placeholder *, const Node *> &varToWrite :
+       placeholderWrittenTo) {
     if (isa<SaveNode>(varToWrite.second)) {
       continue;
     }
