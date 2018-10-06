@@ -89,11 +89,8 @@ public:
 //         Helper methods for running the execution engine.
 //===----------------------------------------------------------------------===//
 
-/// This method updates the variables in \p vars with the tensor content
-/// values \p inputs.
-void updateVariables(llvm::ArrayRef<Variable *> vars,
-                     llvm::ArrayRef<Tensor *> inputs);
-
+/// This method updates the placeholders in \p ph with the tensor content
+/// values \p inputs, in \p ctx.
 void updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
                      llvm::ArrayRef<Tensor *> inputs);
 
@@ -103,14 +100,6 @@ void updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
 void updateInputsByName(Context &ctx, Module *mod,
                         llvm::ArrayRef<llvm::StringRef> ph,
                         llvm::ArrayRef<Tensor *> inputs);
-
-/// Update the content of the tensors \p vars with some slices that from \p
-/// inputs. The data starts at slice \p sampleIdx and wraps around until the
-/// data in \p v is filled. All dimensions, except for the first (batch)
-/// dimension must be identical.
-void updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
-                              llvm::ArrayRef<Tensor *> inputs,
-                              size_t sampleIdx);
 
 /// Runs \p iterations iterations of the compiled function. The method updates a
 /// global counter and future invocations of this method continue running
@@ -124,9 +113,6 @@ void updateVariablesFromBatch(llvm::ArrayRef<Variable *> vars,
 /// variable records the number of samples that were consumed by the network in
 /// previous iterations. The next input to be loaded is
 /// (sampleCounter % batchsize).
-void runBatch(ExecutionEngine &EE, size_t iterations, size_t &sampleCounter,
-              llvm::ArrayRef<Variable *> vars, llvm::ArrayRef<Tensor *> inputs);
-
 void runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
               size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
               llvm::ArrayRef<Tensor *> inputs);
