@@ -354,30 +354,30 @@ Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
-                                 VisibilityKind visibility, bool isTrainable) {
+                                 VisibilityKind visibility) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT, visibility, isTrainable));
+  return addVar(new Variable(name, FT, visibility));
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility, bool isTrainable) {
+                                 VisibilityKind visibility) {
   auto FT = uniqueType(T, dims);
-  return createVariable(FT, name, visibility, isTrainable);
+  return createVariable(FT, name, visibility);
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name,
-                                 VisibilityKind visibility, bool isTrainable) {
+                                 VisibilityKind visibility) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createVariable(FT, name, visibility, isTrainable);
+  return createVariable(FT, name, visibility);
 }
 
 Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
-                                 VisibilityKind visibility, bool trainable) {
-  auto *V = createVariable(tensor.getElementType(), tensor.dims(), name,
-                           visibility, trainable);
+                                 VisibilityKind visibility) {
+  auto *V =
+      createVariable(tensor.getElementType(), tensor.dims(), name, visibility);
   V->assign(&tensor);
   return V;
 }
@@ -574,15 +574,14 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
-  auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
-                                               0.0, 0, "weights.rwqfc",
-                                               VisibilityKind::Private, false);
-  auto *scales =
-      getParent()->createVariable(ElemKind::FloatTy, {numRows}, "scales.rwqfc",
-                                  VisibilityKind::Private, false);
-  auto *offsets = getParent()->createVariable(ElemKind::Int32QTy, {numRows},
-                                              0.0, 0, "offsets.rwqfc",
-                                              VisibilityKind::Private, false);
+  auto *qWeights =
+      getParent()->createVariable(ElemKind::Int8QTy, W->dims(), 0.0, 0,
+                                  "weights.rwqfc", VisibilityKind::Private);
+  auto *scales = getParent()->createVariable(
+      ElemKind::FloatTy, {numRows}, "scales.rwqfc", VisibilityKind::Private);
+  auto *offsets =
+      getParent()->createVariable(ElemKind::Int32QTy, {numRows}, 0.0, 0,
+                                  "offsets.rwqfc", VisibilityKind::Private);
 
   quantization::tensorRowwiseQuantization(
       weights->getPayload(), qWeights->getPayload(), scales->getPayload(),
@@ -1306,7 +1305,7 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                TypeRef outTy) {
   auto *mapping = getParent()->createVariable(
       ElemKind::Int8QTy, {initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping", VisibilityKind::Private, false);
+      outTy->getOffset(), "mapping", VisibilityKind::Private);
   mapping->getHandle<int8_t>() = initValues;
 
   return addNode(new IntLookupTableNode(name, outTy, input, mapping));

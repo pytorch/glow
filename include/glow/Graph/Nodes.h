@@ -31,12 +31,8 @@ namespace glow {
 // Storage is the base class for Variables, which are bound to tensors, and
 // Placeholder nodes which are unbound.
 class Storage : public Node {
-  /// Specifies if the variable or placeholder is trainable.
-  bool isTrainable_;
-
 public:
-  Storage(Kinded::Kind k, llvm::StringRef name, bool isTrainable)
-      : Node(k, name), isTrainable_(isTrainable) {}
+  Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
@@ -53,10 +49,6 @@ public:
   bool hasSideEffects() const;
   Node *clone() const;
   /// @}
-
-  /// \returns True if the Variable or placeholder are trainable during
-  /// differentiation.
-  bool isTraining() const { return isTrainable_; }
 
   /// \returns result type of the variable.
   TypeRef getType() const { return Node::getType(0); }
@@ -81,17 +73,15 @@ class Variable : public Storage {
 
 public:
   /// Create a new variable and initialize its payload.
-  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility,
-           bool isTrainable)
-      : Storage(Kinded::Kind::VariableKind, name, isTrainable),
-        visibility_(visibility) {
+  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility)
+      : Storage(Kinded::Kind::VariableKind, name), visibility_(visibility) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
   Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Storage(Kinded::Kind::VariableKind, name, false),
-        visibility_(visibility), payload_(std::move(payload)) {
+      : Storage(Kinded::Kind::VariableKind, name), visibility_(visibility),
+        payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
 
@@ -124,12 +114,20 @@ public:
 /// this node at runtime. Placeholders are used as inputs and output nodes to
 /// the network.
 class Placeholder : public Storage {
+  /// Specifies if the variable or placeholder is trainable.
+  bool isTrainable_;
+
 public:
   /// Create a new placeholder variable.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
-      : Storage(Kinded::Kind::PlaceholderKind, name, isTrainable) {
+      : Storage(Kinded::Kind::PlaceholderKind, name),
+        isTrainable_(isTrainable) {
     addResult(Ty);
   }
+
+  /// \returns True if the Variable or placeholder are trainable during
+  /// differentiation.
+  bool isTraining() const { return isTrainable_; }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;

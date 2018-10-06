@@ -658,8 +658,8 @@ static bool mergeTransposeIntoMatMul(Function *F) {
         F->getParent()->uniqueTypeWithNewShape(W->getType(), newShape);
 
     // New reordered weights.
-    auto *newW = F->getParent()->createVariable(
-        W->getType(), W->getName(), W->getVisibilityKind(), W->isTraining());
+    auto *newW = F->getParent()->createVariable(W->getType(), W->getName(),
+                                                W->getVisibilityKind());
     Tensor reshapedSrc(W->getPayload().getUnsafePtr(), reshapedWTy);
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
@@ -1322,9 +1322,8 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV =
-        F->getParent()->createVariable(TN->getResult().getType(), V->getName(),
-                                       V->getVisibilityKind(), V->isTraining());
+    auto *NV = F->getParent()->createVariable(
+        TN->getResult().getType(), V->getName(), V->getVisibilityKind());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1432,8 +1431,6 @@ struct VarsEqDedup {
     }
     assert(lhs->getVisibilityKind() == rhs->getVisibilityKind() &&
            "Should only be comparing Variables with same VisibilityKind.");
-    assert(lhs->isTraining() == rhs->isTraining() &&
-           "Should only be comparing Variables with same training mode.");
     // Only combine Vars if their data matches exactly, so allowed error is 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
   }
@@ -1481,7 +1478,7 @@ static void deduplicateConstants(Module *M) {
     }
 
     // Only perform deduplication on private vars that have no train kind.
-    if (V->getVisibilityKind() != VisibilityKind::Private || V->isTraining()) {
+    if (V->getVisibilityKind() != VisibilityKind::Private) {
       continue;
     }
 
@@ -1575,9 +1572,9 @@ static void optimizeReshape(Function *F) {
     auto *V = dyn_cast<Variable>(inputNode);
     if (V && V->isPrivate() && V->hasOneUse()) {
       // Create a new variable with the type of the reshape.
-      auto *newV = F->getParent()->createVariable(
-          reshapeNode->getResult().getType(), V->getName(),
-          V->getVisibilityKind(), /* isTrainable */ false);
+      auto *newV =
+          F->getParent()->createVariable(reshapeNode->getResult().getType(),
+                                         V->getName(), V->getVisibilityKind());
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Variable.
       Tensor reshapedT = V->getPayload().getUnowned(reshapeNode->getDims());
@@ -1682,8 +1679,7 @@ static void optimizeQuantization(Function *F) {
         }
         // Create a new variable NV to hold the quantized result.
         auto *NV = F->getParent()->createVariable(
-            Q->getResult().getType(), V->getName(), V->getVisibilityKind(),
-            false);
+            Q->getResult().getType(), V->getName(), V->getVisibilityKind());
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
         auto destHandle = NV->getHandle<int8_t>();
@@ -1983,8 +1979,8 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
     if (!tensor) {
       continue;
     }
-    auto *constantV = M->createVariable(PH->getName(), *tensor,
-                                        VisibilityKind::Private, false);
+    auto *constantV =
+        M->createVariable(PH->getName(), *tensor, VisibilityKind::Private);
     PH->getOutput().replaceAllUsesOfWith(constantV, F);
   }
 }

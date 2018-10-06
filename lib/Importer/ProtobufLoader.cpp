@@ -66,8 +66,7 @@ Variable *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Variable *node =
-      G_.getParent()->createVariable(name, tensor, VisibilityKind::Private,
-                                     /* trainable */ false);
+      G_.getParent()->createVariable(name, tensor, VisibilityKind::Private);
   nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }
