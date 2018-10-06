@@ -1516,7 +1516,7 @@ void OpenCLFunction::allocateMemory(const Context &ctx) {
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
 
   // Register the bound locations of the variables.
-  for (auto &v : F_->getGraph()->getParent()->getVars()) {
+  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
     auto *w = F_->getWeightForNode(v);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = &v->getPayload();

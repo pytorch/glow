@@ -55,7 +55,7 @@ TEST(onnx, importConv) {
   // transpose node will be later optimized out by the optimizer.
   EXPECT_EQ(F->getNodes().size(), 5);
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  EXPECT_EQ(mod.getVars().size(), 2);
+  EXPECT_EQ(mod.getConstants().size(), 2);
 
   auto *saveNode = getSaveNodeFromDest(graphOutputVar);
   auto *node = saveNode->getInput().getNode();

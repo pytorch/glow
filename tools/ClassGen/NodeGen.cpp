@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
   BB.declareNode("Storage");
-  BB.declareNode("Variable");
+  BB.declareNode("Constant");
   BB.declareNode("Placeholder");
 
   BB.newNode("Save")

@@ -59,7 +59,7 @@ public:
 class GraphPostOrderVisitor : public PostOrderVisitor {
   Function &G;
   void visit() {
-    for (const auto *V : G.getParent()->getVars()) {
+    for (const auto *V : G.getParent()->getConstants()) {
       V->visit(nullptr, this);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.
@@ -112,7 +112,7 @@ public:
 class GraphPreOrderVisitor : public PreOrderVisitor {
   Function &G;
   void visit() {
-    for (const auto *V : G.getParent()->getVars()) {
+    for (const auto *V : G.getParent()->getConstants()) {
       V->visit(nullptr, this);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.

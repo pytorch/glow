@@ -55,8 +55,8 @@ Function *Module::createFunction(llvm::StringRef name) {
 void Module::clear() {
   eraseFunctions();
 
-  for (auto it = vars_.begin(), e = vars_.end(); it != e; it++) {
-    Variable *v = *it;
+  for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
+    Constant *v = *it;
     delete v;
   }
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
@@ -64,7 +64,7 @@ void Module::clear() {
     Placeholder *p = *it;
     delete p;
   }
-  vars_.clear();
+  constants_.clear();
   placeholders_.clear();
 }
 
@@ -77,7 +77,7 @@ void Module::verify() const {
 
 void Module::dump() const {
   llvm::outs() << "Module structure:\n";
-  for (auto v : getVars()) {
+  for (auto v : getConstants()) {
     llvm::outs() << v->getDebugDesc() << "\n";
   }
 
@@ -157,7 +157,7 @@ protected:
     unsigned arrayLen = sizeof(colorNames) / sizeof(colorNames[0]);
     auto nodeColor = colorNames[colorIdx % arrayLen];
 
-    if (auto V = llvm::dyn_cast<Variable>(N)) {
+    if (auto V = llvm::dyn_cast<Constant>(N)) {
       os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";
     } else {
       os << "\tfillcolor=" << nodeColor << "\n";
@@ -221,7 +221,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
         Node *to = N.getNthInput(i).getNode();
         size_t resNo = N.getNthInput(i).getResNo();
 
-        if (!isa<Variable>(to))
+        if (!isa<Constant>(to))
           continue;
 
         std::ostringstream edge;
@@ -235,7 +235,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
 
 public:
   void visitModule(Module *M) {
-    for (auto N : M->getVars()) {
+    for (auto N : M->getConstants()) {
       dumpNode(N);
     }
 
@@ -349,26 +349,26 @@ Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createPlaceholder(FT, name, isTrainable);
 }
 
-Variable *Module::createVariable(TypeRef T, llvm::StringRef name) {
+Constant *Module::createConstant(TypeRef T, llvm::StringRef name) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT));
+  return addConstant(new Constant(name, FT));
 }
 
-Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name) {
   auto FT = uniqueType(T, dims);
-  return createVariable(FT, name);
+  return createConstant(FT, name);
 }
 
-Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
+Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createVariable(FT, name);
+  return createConstant(FT, name);
 }
 
-Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor) {
-  auto *V = createVariable(tensor.getElementType(), tensor.dims(), name);
+Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
+  auto *V = createConstant(tensor.getElementType(), tensor.dims(), name);
   V->assign(&tensor);
   return V;
 }
@@ -408,9 +408,9 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
   llvm_unreachable("Unable to find a unique a name.");
 }
 
-Variable *Module::addVar(Variable *V) {
+Constant *Module::addConstant(Constant *V) {
   V->setName(uniqueName(V->getName(), uniqueVariableNames_));
-  vars_.push_back(V);
+  constants_.push_back(V);
   return V;
 }
 
@@ -553,23 +553,23 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
-                                               NodeValue input, Variable *W,
+                                               NodeValue input, Constant *W,
                                                Node *B, TypeRef outTy) {
   // Since W is constant, quantize it in compilation time.
   // The quantized data is in qWeights, the scale of each row is in scales,
   // and the offset of each row is in offsets.
-  Variable *weights = llvm::cast<Variable>(W);
+  Constant *weights = llvm::cast<Constant>(W);
   size_t numRows = W->getType()->dims()[0];
 
   // So far, if we want to create a storage with Int8QTy/Int16QTy/Int32QTy,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
-  auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
+  auto *qWeights = getParent()->createConstant(ElemKind::Int8QTy, W->dims(),
                                                0.0, 0, "weights.rwqfc");
   auto *scales =
-      getParent()->createVariable(ElemKind::FloatTy, {numRows}, "scales.rwqfc");
-  auto *offsets = getParent()->createVariable(ElemKind::Int32QTy, {numRows},
+      getParent()->createConstant(ElemKind::FloatTy, {numRows}, "scales.rwqfc");
+  auto *offsets = getParent()->createConstant(ElemKind::Int32QTy, {numRows},
                                               0.0, 0, "offsets.rwqfc");
 
   quantization::tensorRowwiseQuantization(
@@ -1292,7 +1292,7 @@ IntLookupTableNode *
 Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                llvm::ArrayRef<int8_t> initValues,
                                TypeRef outTy) {
-  auto *mapping = getParent()->createVariable(
+  auto *mapping = getParent()->createConstant(
       ElemKind::Int8QTy, {initValues.size()}, outTy->getScale(),
       outTy->getOffset(), "mapping");
   mapping->getHandle<int8_t>() = initValues;
@@ -2134,17 +2134,17 @@ Node *Function::getNodeByName(llvm::StringRef name) {
   return nullptr;
 }
 
-void Module::eraseVariable(VariablesList::iterator I) {
-  if (I == vars_.end())
+void Module::eraseConstant(ConstList::iterator I) {
+  if (I == constants_.end())
     return;
   delete *I;
-  vars_.erase(I);
+  constants_.erase(I);
 }
 
 void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
 
-Variable *Module::getVariableByName(llvm::StringRef name) {
-  for (auto *V : getVars()) {
+Constant *Module::getConstantByName(llvm::StringRef name) {
+  for (auto *V : getConstants()) {
     if (V->getName() == name)
       return V;
   }
@@ -2161,15 +2161,15 @@ Placeholder *Module::getPlaceholderByName(llvm::StringRef name) {
   return nullptr;
 }
 
-void Module::eraseVariable(Variable *N) {
-  auto &vars = getVars();
+void Module::eraseConstant(Constant *N) {
+  auto &vars = getConstants();
   auto I = std::find(vars.begin(), vars.end(), N);
-  eraseVariable(I);
+  eraseConstant(I);
 }
 
 void Function::eraseNode(Node *N) {
-  if (Variable *V = dyn_cast<Variable>(N)) {
-    return getParent()->eraseVariable(V);
+  if (Constant *V = dyn_cast<Constant>(N)) {
+    return getParent()->eraseConstant(V);
   }
   auto I = std::find(nodes_.begin(), nodes_.end(), *N);
   assert(I != nodes_.end() && "Could not find node to delete!");
@@ -2243,10 +2243,10 @@ static void verifyNodeInput(const Node &N, size_t idx) {
 /// \returns True if \p n is a storage node (variable or placeholder) of the
 /// function \p F.
 static bool isGraphStorageNode(Node *n, const Function *F) {
-  auto &vars = F->getParent()->getVars();
+  auto &vars = F->getParent()->getConstants();
   auto &placeholders = F->getParent()->getPlaceholders();
 
-  if (Variable *V = dyn_cast<Variable>(n)) {
+  if (Constant *V = dyn_cast<Constant>(n)) {
     return std::find(vars.begin(), vars.end(), V) != vars.end();
   }
 
@@ -2261,7 +2261,7 @@ static bool isGraphStorageNode(Node *n, const Function *F) {
 void Function::verify() const {
   std::unordered_map<std::string, const Node *> NameToNode;
 
-  for (auto *V : getParent()->getVars()) {
+  for (auto *V : getParent()->getConstants()) {
     if (NameToNode.insert({V->getName(), V}).second)
       continue;
     /// Output extra information helping to find the error.
@@ -2289,7 +2289,7 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
-  const auto &vars = getParent()->getVars();
+  const auto &vars = getParent()->getConstants();
   (void)vars;
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
@@ -2318,7 +2318,7 @@ void Function::verify() const {
     }
   }
 
-  std::unordered_map<const Variable *, const Node *> variablesWrittenTo;
+  std::unordered_map<const Constant *, const Node *> variablesWrittenTo;
   for (const auto &N : nodes_) {
     assert(N.getParent() == this &&
            "Node is not linked to the function it belongs");
@@ -2329,10 +2329,10 @@ void Function::verify() const {
         continue;
       }
       auto &input = N.getNthInput(idx);
-      if (!isa<Variable>(input)) {
+      if (!isa<Constant>(input)) {
         continue;
       }
-      const auto *var = cast<Variable>(input);
+      const auto *var = cast<Constant>(input);
       auto varToFirstDef = variablesWrittenTo.find(var);
       if (varToFirstDef != variablesWrittenTo.end()) {
         llvm::errs() << "Variable " << var->getDebugDesc() << '\n';
@@ -2353,7 +2353,7 @@ void Function::verify() const {
   // dependencies that may not be honored by the scheduler.
   // Either the input IR is incorrect or the scheduler needs
   // fixing.
-  for (const std::pair<const Variable *, const Node *> &varToWrite :
+  for (const std::pair<const Constant *, const Node *> &varToWrite :
        variablesWrittenTo) {
     if (isa<SaveNode>(varToWrite.second)) {
       continue;

@@ -789,11 +789,11 @@ TEST(Quantization, quantizeGraphPartially) {
     EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
 
     // Verify that the variable inputs to the matmul are quantized.
-    auto *LHS = llvm::dyn_cast<Variable>(MMN->getLHS());
+    auto *LHS = llvm::dyn_cast<Constant>(MMN->getLHS());
     ASSERT_TRUE(LHS);
     EXPECT_TRUE(LHS->getType()->isQuantizedType());
 
-    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    auto *RHS = llvm::dyn_cast<Constant>(MMN->getRHS());
     ASSERT_TRUE(RHS);
     EXPECT_TRUE(RHS->getType()->isQuantizedType());
   }
@@ -879,12 +879,12 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
     EXPECT_TRUE(!TN2->getResult().getType()->isQuantizedType());
 
     // Verify that the input variable to the tanh is not quantized.
-    auto *varTN2 = llvm::dyn_cast<Variable>(TN2->getInput());
+    auto *varTN2 = llvm::dyn_cast<Constant>(TN2->getInput());
     ASSERT_TRUE(varTN2);
     EXPECT_TRUE(!varTN2->getType()->isQuantizedType());
 
     // Verify that the RHS input to the matmul is a quantized variable.
-    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    auto *RHS = llvm::dyn_cast<Constant>(MMN->getRHS());
     ASSERT_TRUE(RHS);
     EXPECT_TRUE(RHS->getType()->isQuantizedType());
   }
@@ -957,7 +957,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
     EXPECT_TRUE(!TN->getResult().getType()->isQuantizedType());
 
     // Verify that the LHS input to the AddNode is an unquantized variable.
-    auto varANLHS = llvm::dyn_cast<Variable>(AN->getLHS());
+    auto varANLHS = llvm::dyn_cast<Constant>(AN->getLHS());
     ASSERT_TRUE(varANLHS);
     EXPECT_TRUE(!varANLHS->getType()->isQuantizedType());
 
@@ -971,11 +971,11 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
     EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
 
     // Verify that the variable inputs to the matmul are quantized.
-    auto *LHS = llvm::dyn_cast<Variable>(MMN->getLHS());
+    auto *LHS = llvm::dyn_cast<Constant>(MMN->getLHS());
     ASSERT_TRUE(LHS);
     EXPECT_TRUE(LHS->getType()->isQuantizedType());
 
-    auto *RHS = llvm::dyn_cast<Variable>(MMN->getRHS());
+    auto *RHS = llvm::dyn_cast<Constant>(MMN->getRHS());
     ASSERT_TRUE(RHS);
     EXPECT_TRUE(RHS->getType()->isQuantizedType());
   }

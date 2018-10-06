@@ -60,12 +60,12 @@ NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   return node;
 }
 
-Variable *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+Constant *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
                                                     const Tensor &tensor) {
   assert(!hasNodeByName(name) && "Creating an already existing node");
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
-  Variable *node = G_.getParent()->createVariable(name, tensor);
+  Constant *node = G_.getParent()->createConstant(name, tensor);
   nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }

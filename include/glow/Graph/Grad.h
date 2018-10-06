@@ -25,7 +25,7 @@ namespace glow {
 class Function;
 
 /// A Helper class that manages the mapping between gradients and activations,
-/// and helps to accumulate gradients into variables.
+/// and helps to accumulate gradients into placeholders.
 class GraphGradMapper {
   /// The graph that we mutate.
   Function *F_;

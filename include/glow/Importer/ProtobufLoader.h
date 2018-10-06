@@ -106,7 +106,7 @@ protected:
 
   /// Create a new constant that's initialized with \p tensor, and register it
   /// under the name \p name. \returns The newly created constant.
-  Variable *createAndRegisterConstant(llvm::StringRef name,
+  Constant *createAndRegisterConstant(llvm::StringRef name,
                                       const Tensor &tensor);
 
   /// Create a new Placeholder of type \p T, and register it

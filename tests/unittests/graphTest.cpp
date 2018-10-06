@@ -31,15 +31,15 @@ using namespace glow;
 
 TEST(Graph, testVariableErasure) {
   Module MD;
-  auto &vars = MD.getVars();
+  auto &vars = MD.getConstants();
   EXPECT_EQ(vars.size(), 0);
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 
-  Variable *V = MD.createVariable(ElemKind::FloatTy, {1, 1}, "dummy");
+  Constant *V = MD.createConstant(ElemKind::FloatTy, {1, 1}, "dummy");
   EXPECT_EQ(vars.size(), 1);
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 
-  MD.eraseVariable(V);
+  MD.eraseConstant(V);
   EXPECT_EQ(vars.size(), 0);
   EXPECT_EQ(std::distance(vars.begin(), vars.end()), vars.size());
 }
@@ -49,23 +49,23 @@ TEST(Graph, clear) {
   Module M;
 
   // Check that the module is initially empty.
-  EXPECT_EQ(M.getVars().size(), 0);
+  EXPECT_EQ(M.getConstants().size(), 0);
   EXPECT_EQ(M.getPlaceholders().size(), 0);
   EXPECT_EQ(M.getFunctions().size(), 0);
 
   // Create a few things.
   M.createFunction("main");
   M.createPlaceholder(ElemKind::FloatTy, {1}, "placeholder", true);
-  M.createVariable(ElemKind::FloatTy, {1}, "var");
+  M.createConstant(ElemKind::FloatTy, {1}, "var");
 
-  EXPECT_EQ(M.getVars().size(), 1);
+  EXPECT_EQ(M.getConstants().size(), 1);
   EXPECT_EQ(M.getPlaceholders().size(), 1);
   EXPECT_EQ(M.getFunctions().size(), 1);
 
   // Check that clearing the module makes it completely free of any kind of
   // objects.
   M.clear();
-  EXPECT_EQ(M.getVars().size(), 0);
+  EXPECT_EQ(M.getConstants().size(), 0);
   EXPECT_EQ(M.getPlaceholders().size(), 0);
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
@@ -97,7 +97,7 @@ TEST(Graph, float16Conv) {
   Module MD;
   Function *F = MD.createFunction("F");
   Context ctx;
-  Node *K = MD.createVariable(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
+  Node *K = MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
 
   auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
   conv->verify();
@@ -697,15 +697,15 @@ TEST(Graph, parentLink) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  Variable *V = new Variable("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}));
+  Constant *V = new Constant("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}));
 
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
   // Even when we create them from a module...
-  Variable *V2 = mod.createVariable(V->getType(), "V2");
+  Constant *V2 = mod.createConstant(V->getType(), "V2");
   EXPECT_EQ(V2->getParent(), nullptr);
   // Or add them to a module.
-  mod.addVar(V);
+  mod.addConstant(V);
   EXPECT_EQ(V->getParent(), nullptr);
 
   Function *F = mod.createFunction("main");

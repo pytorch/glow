@@ -42,7 +42,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
 
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
-  for (auto &v : F->getGraph()->getParent()->getVars()) {
+  for (auto &v : F->getGraph()->getParent()->getConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
@@ -186,7 +186,7 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 void AllocationsInfo::numberValues(const IRFunction *F) {
   size_t valueIdx = 0;
   // Assign numbers to all weights.
-  for (auto &v : F->getGraph()->getParent()->getVars()) {
+  for (auto &v : F->getGraph()->getParent()->getConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     valueNumbers_[w] = std::make_pair(ValueKind::ConstantWeight, valueIdx++);

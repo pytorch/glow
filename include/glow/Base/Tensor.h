@@ -52,7 +52,7 @@ public:
   enum class InitKind {
     Zero,      // The tensor is initialized to zero.
     Broadcast, // Broadcast a single value to all elements.
-    Xavier,    // Init the variable with random values using the Xavier method.
+    Xavier,    // Init the tensor with random values using the Xavier method.
   };
 
 private:
