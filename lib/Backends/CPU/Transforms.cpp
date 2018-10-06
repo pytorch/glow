@@ -44,7 +44,7 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   }
 
   Variable *filter = dyn_cast<Variable>(CN->getFilter());
-  if (!filter || filter->getNumUsers() != 1 || !filter->isPrivate()) {
+  if (!filter || filter->getNumUsers() != 1) {
     // Can't mutate the filter.
     return nullptr;
   }
@@ -58,9 +58,9 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
   TypeRef filterTy = filter->getType();
   auto dims = filterTy->dims();
   assert(dims.size() == 4 && "Invalid filter size");
-  auto *filter8 = M->createVariable(
-      filterTy->getElementType(), {dims[0] / 8, dims[1], dims[2], dims[3], 8},
-      filter->getName(), VisibilityKind::Private);
+  auto *filter8 = M->createVariable(filterTy->getElementType(),
+                                    {dims[0] / 8, dims[1], dims[2], dims[3], 8},
+                                    filter->getName());
 
   auto F8H = filter8->getHandle();
   auto FH = filter->getHandle();

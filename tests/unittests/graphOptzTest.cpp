@@ -1813,12 +1813,9 @@ TEST_F(GraphOptz, VarsCSE) {
   // writers. The first two variables have the same data, and so should be
   // combined via variable CSE. The third variable differs by the last value,
   // and so should not be combined.
-  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1",
-                                     VisibilityKind::Private);
-  auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2",
-                                     VisibilityKind::Private);
-  auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3",
-                                     VisibilityKind::Private);
+  auto *input1 = mod_.createVariable(ElemKind::FloatTy, {10}, "input1");
+  auto *input2 = mod_.createVariable(ElemKind::FloatTy, {10}, "input2");
+  auto *input3 = mod_.createVariable(ElemKind::FloatTy, {10}, "input3");
   input1->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input2->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   input3->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, -1};
@@ -1981,8 +1978,8 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
 TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3}, "input", false);
-  auto *weights = F_->getParent()->createVariable(
-      ElemKind::FloatTy, {6, 1}, "weights", VisibilityKind::Private);
+  auto *weights =
+      F_->getParent()->createVariable(ElemKind::FloatTy, {6, 1}, "weights");
 
   weights->getHandle() = {0, 1, 2, 3, 4, 5};
   float newWeightsRef[] = {0, 2, 4, 1, 3, 5};

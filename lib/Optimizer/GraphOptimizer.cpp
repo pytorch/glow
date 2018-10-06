@@ -52,13 +52,6 @@ static bool shouldDeleteNode(Node *N) {
     return false;
   }
 
-  if (Variable *V = dyn_cast<Variable>(N)) {
-    // We don't want to delete unused public variables because they are
-    // accessible to the outside world that may hold a reference to them.
-    if (V->getVisibilityKind() == VisibilityKind::Public)
-      return false;
-  }
-
   return true;
 }
 
@@ -612,7 +605,7 @@ static bool mergeTransposeIntoMatMul(Function *F) {
 
     // MatMul RHS is constant weights.
     auto *W = dyn_cast<Variable>(MMN->getRHS());
-    if (!W || !W->isPrivate()) {
+    if (!W) {
       continue;
     }
 
@@ -658,8 +651,7 @@ static bool mergeTransposeIntoMatMul(Function *F) {
         F->getParent()->uniqueTypeWithNewShape(W->getType(), newShape);
 
     // New reordered weights.
-    auto *newW = F->getParent()->createVariable(W->getType(), W->getName(),
-                                                W->getVisibilityKind());
+    auto *newW = F->getParent()->createVariable(W->getType(), W->getName());
     Tensor reshapedSrc(W->getPayload().getUnsafePtr(), reshapedWTy);
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
@@ -1317,13 +1309,13 @@ static void optimizeTranspose(Function *F) {
       continue;
     }
     auto *V = dyn_cast<Variable>(TN->getInput());
-    // V must have a single use and be private.
-    if (!V || !V->hasOneUse() || !V->isPrivate()) {
+    // V must have a single use.
+    if (!V || !V->hasOneUse()) {
       continue;
     }
     // Create a new variable NV to hold the transposed result.
-    auto *NV = F->getParent()->createVariable(
-        TN->getResult().getType(), V->getName(), V->getVisibilityKind());
+    auto *NV =
+        F->getParent()->createVariable(TN->getResult().getType(), V->getName());
     // Transpose the value of V into NV.
     genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
     // Rewrite uses of TN to reference NV.
@@ -1429,8 +1421,6 @@ struct VarsEqDedup {
     if (lhs->getType() != rhs->getType()) {
       return false;
     }
-    assert(lhs->getVisibilityKind() == rhs->getVisibilityKind() &&
-           "Should only be comparing Variables with same VisibilityKind.");
     // Only combine Vars if their data matches exactly, so allowed error is 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
   }
@@ -1460,7 +1450,6 @@ static bool hasWriters(Variable *V) {
 
 /// Deduplicates constant variables in the Module \p M. Applicable constant
 /// variables for deduplication must have the same data, have
-/// VisibilityKind::Private, not trainable, and have no writers.
 static void deduplicateConstants(Module *M) {
   // Map from Variables to other Variables that are equivalent for purposes of
   // deduplication.
@@ -1474,11 +1463,6 @@ static void deduplicateConstants(Module *M) {
     size_t maxNumEls = constVarDedupSizeOpt;
     size_t numEls = V->getType()->size();
     if (numEls > maxNumEls) {
-      continue;
-    }
-
-    // Only perform deduplication on private vars that have no train kind.
-    if (V->getVisibilityKind() != VisibilityKind::Private) {
       continue;
     }
 
@@ -1570,11 +1554,10 @@ static void optimizeReshape(Function *F) {
     // Only do this if the Variable has a single use, as otherwise we would
     // duplicate the Variable and increase the memory footprint.
     auto *V = dyn_cast<Variable>(inputNode);
-    if (V && V->isPrivate() && V->hasOneUse()) {
+    if (V && V->hasOneUse()) {
       // Create a new variable with the type of the reshape.
-      auto *newV =
-          F->getParent()->createVariable(reshapeNode->getResult().getType(),
-                                         V->getName(), V->getVisibilityKind());
+      auto *newV = F->getParent()->createVariable(
+          reshapeNode->getResult().getType(), V->getName());
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Variable.
       Tensor reshapedT = V->getPayload().getUnowned(reshapeNode->getDims());
@@ -1670,16 +1653,15 @@ static void optimizeQuantization(Function *F) {
 
       if (auto *V = dyn_cast<Variable>(Q->getInput())) {
         // Quantize(Variable) -> Variable
-        // V must be a private variable.
         // Note, it does not really matter how many usages this var has.
         // Quantized graph will use optimized var and other functions will
         // refer to the floating point original var.
-        if (!V || !V->isPrivate()) {
+        if (!V) {
           continue;
         }
         // Create a new variable NV to hold the quantized result.
-        auto *NV = F->getParent()->createVariable(
-            Q->getResult().getType(), V->getName(), V->getVisibilityKind());
+        auto *NV = F->getParent()->createVariable(Q->getResult().getType(),
+                                                  V->getName());
         // Quantize V into NV.
         auto srcHandle = V->getHandle();
         auto destHandle = NV->getHandle<int8_t>();
@@ -1979,8 +1961,7 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
     if (!tensor) {
       continue;
     }
-    auto *constantV =
-        M->createVariable(PH->getName(), *tensor, VisibilityKind::Private);
+    auto *constantV = M->createVariable(PH->getName(), *tensor);
     PH->getOutput().replaceAllUsesOfWith(constantV, F);
   }
 }

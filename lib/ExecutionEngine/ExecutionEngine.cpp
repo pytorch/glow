@@ -49,8 +49,6 @@ void glow::updateVariables(llvm::ArrayRef<Variable *> vars,
   // Update the input variables.
   for (int i = 0, e = vars.size(); i < e; i++) {
     assert(vars[i] && "Invalid value");
-    assert(vars[i]->getVisibilityKind() == VisibilityKind::Public &&
-           "Trying to update a private variable");
     auto &t = vars[i]->getPayload();
     auto dim = inputs[i]->dims();
     (void)dim;

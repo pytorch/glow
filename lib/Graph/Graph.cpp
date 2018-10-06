@@ -158,11 +158,7 @@ protected:
     auto nodeColor = colorNames[colorIdx % arrayLen];
 
     if (auto V = llvm::dyn_cast<Variable>(N)) {
-      if (V->getVisibilityKind() == VisibilityKind::Public) {
-        os << "\tfillcolor=Snow2 color=DarkOliveGreen4\n";
-      } else {
-        os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";
-      }
+      os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";
     } else {
       os << "\tfillcolor=" << nodeColor << "\n";
     }
@@ -353,31 +349,26 @@ Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
   return createPlaceholder(FT, name, isTrainable);
 }
 
-Variable *Module::createVariable(TypeRef T, llvm::StringRef name,
-                                 VisibilityKind visibility) {
+Variable *Module::createVariable(TypeRef T, llvm::StringRef name) {
   auto FT = uniqueType(*T);
-  return addVar(new Variable(name, FT, visibility));
+  return addVar(new Variable(name, FT));
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 llvm::StringRef name,
-                                 VisibilityKind visibility) {
+                                 llvm::StringRef name) {
   auto FT = uniqueType(T, dims);
-  return createVariable(FT, name, visibility);
+  return createVariable(FT, name);
 }
 
 Variable *Module::createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
-                                 llvm::StringRef name,
-                                 VisibilityKind visibility) {
+                                 llvm::StringRef name) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createVariable(FT, name, visibility);
+  return createVariable(FT, name);
 }
 
-Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor,
-                                 VisibilityKind visibility) {
-  auto *V =
-      createVariable(tensor.getElementType(), tensor.dims(), name, visibility);
+Variable *Module::createVariable(llvm::StringRef name, const Tensor &tensor) {
+  auto *V = createVariable(tensor.getElementType(), tensor.dims(), name);
   V->assign(&tensor);
   return V;
 }
@@ -574,14 +565,12 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
-  auto *qWeights =
-      getParent()->createVariable(ElemKind::Int8QTy, W->dims(), 0.0, 0,
-                                  "weights.rwqfc", VisibilityKind::Private);
-  auto *scales = getParent()->createVariable(
-      ElemKind::FloatTy, {numRows}, "scales.rwqfc", VisibilityKind::Private);
-  auto *offsets =
-      getParent()->createVariable(ElemKind::Int32QTy, {numRows}, 0.0, 0,
-                                  "offsets.rwqfc", VisibilityKind::Private);
+  auto *qWeights = getParent()->createVariable(ElemKind::Int8QTy, W->dims(),
+                                               0.0, 0, "weights.rwqfc");
+  auto *scales =
+      getParent()->createVariable(ElemKind::FloatTy, {numRows}, "scales.rwqfc");
+  auto *offsets = getParent()->createVariable(ElemKind::Int32QTy, {numRows},
+                                              0.0, 0, "offsets.rwqfc");
 
   quantization::tensorRowwiseQuantization(
       weights->getPayload(), qWeights->getPayload(), scales->getPayload(),
@@ -1305,7 +1294,7 @@ Function::createIntLookupTable(llvm::StringRef name, NodeValue input,
                                TypeRef outTy) {
   auto *mapping = getParent()->createVariable(
       ElemKind::Int8QTy, {initValues.size()}, outTy->getScale(),
-      outTy->getOffset(), "mapping", VisibilityKind::Private);
+      outTy->getOffset(), "mapping");
   mapping->getHandle<int8_t>() = initValues;
 
   return addNode(new IntLookupTableNode(name, outTy, input, mapping));

@@ -45,27 +45,8 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
   for (auto &v : F->getGraph()->getParent()->getVars()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    if (v->getVisibilityKind() == VisibilityKind::Public)
-      continue;
     auto numBytes = w->getSizeInBytes();
     size_t addr = constantWeightVarsAllocator.allocate(numBytes, w);
-    if (!absoluteAddr) {
-      allocatedAddressed_[w] = addr;
-    } else {
-      // Reuse the address used by the payload.
-      allocatedAddressed_[w] =
-          v->getPayload().getUnsafePtr() - static_cast<char *>(nullptr);
-    }
-  }
-
-  // Process all mutable WeightVars afterwards.
-  for (auto &v : F->getGraph()->getParent()->getVars()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    if (v->getVisibilityKind() != VisibilityKind::Public)
-      continue;
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
     if (!absoluteAddr) {
       allocatedAddressed_[w] = addr;
     } else {
@@ -208,10 +189,7 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
   for (auto &v : F->getGraph()->getParent()->getVars()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto kind = v->getVisibilityKind() != VisibilityKind::Public
-                    ? ValueKind::ConstantWeight
-                    : ValueKind::MutableWeight;
-    valueNumbers_[w] = std::make_pair(kind, valueIdx++);
+    valueNumbers_[w] = std::make_pair(ValueKind::ConstantWeight, valueIdx++);
   }
 
   // Assign numbers to all placeholders.

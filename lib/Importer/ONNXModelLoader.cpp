@@ -417,10 +417,8 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     auto *scaleV = G_.getParent()->createVariable("scale", *scale);
     auto *biasV = G_.getParent()->createVariable("bias", *bias);
-    auto *meanV =
-        G_.getParent()->createVariable("mean", *mean, VisibilityKind::Private);
-    auto *varV =
-        G_.getParent()->createVariable("var", *var, VisibilityKind::Private);
+    auto *meanV = G_.getParent()->createVariable("mean", *mean);
+    auto *varV = G_.getParent()->createVariable("var", *var);
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, 1, epsilon);
 

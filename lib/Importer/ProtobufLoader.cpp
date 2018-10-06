@@ -65,8 +65,7 @@ Variable *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   assert(!hasNodeByName(name) && "Creating an already existing node");
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
-  Variable *node =
-      G_.getParent()->createVariable(name, tensor, VisibilityKind::Private);
+  Variable *node = G_.getParent()->createVariable(name, tensor);
   nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }

@@ -4017,8 +4017,7 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   // The FC fomula is I * W + B, while the RWQFC is I * transpose(W) + B.
   // So get the tranpose of weights from the above FC.
   auto *newWeights = mod_.createVariable(
-      ElemKind::FloatTy, {weights->dims()[1], weights->dims()[0]}, "newW",
-      VisibilityKind::Private);
+      ElemKind::FloatTy, {weights->dims()[1], weights->dims()[0]}, "newW");
   ctx_.get(weights)->transpose(&newWeights->getPayload(), {1, 0});
 
   TypeRef inputTy =

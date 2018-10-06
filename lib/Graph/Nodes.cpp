@@ -81,17 +81,11 @@ Node *Storage::clone() const { llvm_unreachable("variables can't be cloned."); }
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
 
-static const char *getVariableVisibilityKindStr(VisibilityKind kind) {
-  const char *names[] = {"public", "private", nullptr};
-  return names[static_cast<int>(kind)];
-}
-
 std::string Variable::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("output", *getType())
-      .addParam("visibility", getVariableVisibilityKindStr(visibility_));
-  db.addParam("users", getNumUsers());
+      .addParam("users", getNumUsers());
   return db;
 }
 

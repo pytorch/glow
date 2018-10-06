@@ -141,19 +141,15 @@ public:
                                  float scale, int32_t offset,
                                  llvm::StringRef name, bool isTrainable);
 
-  Variable *createVariable(TypeRef T, llvm::StringRef name,
-                           VisibilityKind visibility = VisibilityKind::Private);
+  Variable *createVariable(TypeRef T, llvm::StringRef name);
 
   Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims,
-                           llvm::StringRef name,
-                           VisibilityKind visibility = VisibilityKind::Private);
+                           llvm::StringRef name);
 
   Variable *createVariable(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                           int32_t offset, llvm::StringRef name,
-                           VisibilityKind visibility = VisibilityKind::Private);
+                           int32_t offset, llvm::StringRef name);
 
-  Variable *createVariable(llvm::StringRef name, const Tensor &tensor,
-                           VisibilityKind visibility = VisibilityKind::Private);
+  Variable *createVariable(llvm::StringRef name, const Tensor &tensor);
 
   ///@}
 

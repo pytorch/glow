@@ -66,34 +66,26 @@ public:
 };
 
 class Variable : public Storage {
-  /// Specifies the visibility of the variable.
-  VisibilityKind visibility_;
   /// The tensor payload that the variable holds.
   Tensor payload_;
 
 public:
   /// Create a new variable and initialize its payload.
-  Variable(llvm::StringRef name, TypeRef Ty, VisibilityKind visibility)
-      : Storage(Kinded::Kind::VariableKind, name), visibility_(visibility) {
+  Variable(llvm::StringRef name, TypeRef Ty)
+      : Storage(Kinded::Kind::VariableKind, name) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
-  Variable(llvm::StringRef name, VisibilityKind visibility, Tensor &&payload)
-      : Storage(Kinded::Kind::VariableKind, name), visibility_(visibility),
+  Variable(llvm::StringRef name, Tensor &&payload)
+      : Storage(Kinded::Kind::VariableKind, name),
         payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
 
-  /// \returns True if the Variable is private.
-  bool isPrivate() const { return visibility_ == VisibilityKind::Private; }
-
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::VariableKind;
   }
-
-  /// \returns the visibility of the variable.
-  VisibilityKind getVisibilityKind() const { return visibility_; }
 
   Tensor &getPayload() { return payload_; }
 

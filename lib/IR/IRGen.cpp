@@ -369,7 +369,7 @@ public:
       auto *V = cast<Variable>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          WeightVar::MutabilityKind::Mutable,
-                                         V->getVisibilityKind());
+                                         VisibilityKind::Private);
       W->setName(N->getName());
       registerIR(N, W);
       break;
