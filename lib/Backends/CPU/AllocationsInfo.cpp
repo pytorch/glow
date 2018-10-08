@@ -209,9 +209,8 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
       auto *viewOrigin = getOrigin(A);
       auto kind = ValueKind::Activation;
       if (auto *w = dyn_cast<WeightVar>(viewOrigin)) {
-        kind = w->getVisibility() != VisibilityKind::Public
-                   ? ValueKind::ConstantWeight
-                   : ValueKind::MutableWeight;
+        kind = w->isConstant() ? ValueKind::ConstantWeight
+                               : ValueKind::MutableWeight;
       }
       valueNumbers_[A] = std::make_pair(kind, valueIdx++);
       continue;
