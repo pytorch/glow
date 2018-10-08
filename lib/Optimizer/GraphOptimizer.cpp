@@ -30,10 +30,10 @@
 #include <unordered_set>
 
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
-llvm::cl::opt<unsigned> constVarDedupSizeOpt(
-    "const_var_dedup_size",
+llvm::cl::opt<unsigned> constDedupSizeOpt(
+    "const_dedup_size",
     llvm::cl::desc(
-        "Max number of elements allowed for deduplicating constant variables"),
+        "Max number of elements allowed for deduplicating Constants"),
     llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
@@ -1299,7 +1299,7 @@ static void optimizeArithmeticNodes(Function *F) {
   }
 }
 
-/// Statically transpose private variables.
+/// Statically transpose Constants.
 static void optimizeTranspose(Function *F) {
   auto &nodes = F->getNodes();
 
@@ -1308,18 +1308,18 @@ static void optimizeTranspose(Function *F) {
     if (!TN) {
       continue;
     }
-    auto *V = dyn_cast<Constant>(TN->getInput());
-    // V must have a single use.
-    if (!V || !V->hasOneUse()) {
+    auto *C = dyn_cast<Constant>(TN->getInput());
+    // C must have a single use.
+    if (!C || !C->hasOneUse()) {
       continue;
     }
-    // Create a new variable NV to hold the transposed result.
-    auto *NV =
-        F->getParent()->createConstant(TN->getResult().getType(), V->getName());
-    // Transpose the value of V into NV.
-    genericTranspose(&V->getPayload(), &NV->getPayload(), TN->getShuffle());
-    // Rewrite uses of TN to reference NV.
-    TN->getResult().replaceAllUsesOfWith(NV);
+    // Create a new Constant NC to hold the transposed result.
+    auto *NC =
+        F->getParent()->createConstant(TN->getResult().getType(), C->getName());
+    // Transpose the value of C into NC.
+    genericTranspose(&C->getPayload(), &NC->getPayload(), TN->getShuffle());
+    // Rewrite uses of TN to reference NC.
+    TN->getResult().replaceAllUsesOfWith(NC);
   }
 }
 
@@ -1388,17 +1388,17 @@ struct CSEVisitor : NodeWalker {
   }
 };
 
-/// A helper type for hashing Variable pointers when they are used as keys in
-/// hash maps for deduplication. The hash is based on the type of the Variable
+/// A helper type for hashing Constant pointers when they are used as keys in
+/// hash maps for deduplication. The hash is based on the type of the Constant
 /// (element type, dimensions), as well as a constant number of elements from
-/// the Variable to balance collisions with hash calclulation time.
-struct VarsHasherDedup {
+/// the backing Tensor to balance collisions with hash calclulation time.
+struct ConstsHasherDedup {
   size_t operator()(Constant *V) const {
     auto hash = llvm::hash_value(V->getType());
     auto &T = V->getPayload();
     // Only use the first 8 elements in the hash. It's likely that if two
     // tensors have different content they will diverge quickly. Fall back to
-    // full equality check in VarsEqDedup.
+    // full equality check in ConstsEqDedup.
     constexpr size_t maxNumEls = 8;
     size_t numEls = std::min(T.getType().size(), maxNumEls);
     size_t bufSize = T.getType().getElementSize() * numEls;
@@ -1410,81 +1410,54 @@ struct VarsHasherDedup {
   }
 };
 
-/// A helper type implementing the Variable equality predicate that can be used
-/// when Variable pointers are used as keys in hash maps for deduplication. It
-/// is assumed the Visibility and training mode are the same, as deduplication
-/// only inserts if Private and None, respectively.
-struct VarsEqDedup {
+/// A helper type implementing the Constants equality predicate that can be used
+/// when Constant pointers are used as keys in hash maps for deduplication.
+struct ConstsEqDedup {
   bool operator()(const Constant *lhs, const Constant *rhs) const {
-    // Only consider Vars for deduplication if they have the same type. The
-    // train kind and visibility must already be the same.
+    // Only consider Constants for deduplication if they have the same type.
     if (lhs->getType() != rhs->getType()) {
       return false;
     }
-    // Only combine Vars if their data matches exactly, so allowed error is 0.0.
+    // Only dedup Constants if their data matches exactly, so allowed error is
+    // 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
   }
 };
 
 } // namespace
 
-/// \returns true if Variable \p V is written into, either as a result, or as an
-/// overwritten input.
-static bool hasWriters(Constant *V) {
-  for (auto &U : V->getUsers()) {
-    auto *N = U.getUser();
-
-    // See if V is used as a result anywhere.
-    for (unsigned i = 0; i < N->getNumResults(); i++)
-      if (V == N->getNthResult(i))
-        return true;
-
-    // See if V is used as an overwritten input anywhere.
-    for (unsigned i = 0; i < N->getNumInputs(); i++)
-      if (N->isOverwrittenNthInput(i))
-        if (V == N->getNthInput(i))
-          return true;
-  }
-  return false;
-}
-
-/// Deduplicates constant variables in the Module \p M. Applicable constant
-/// variables for deduplication must have the same data, have
+/// Deduplicates Constants in the Module \p M. Applicable Constants for
+/// deduplication must have the same data.
 static void deduplicateConstants(Module *M) {
-  // Map from Variables to other Variables that are equivalent for purposes of
+  // Map from Constants to other Constants that are equivalent for purposes of
   // deduplication.
-  std::unordered_map<Constant *, Constant *, VarsHasherDedup, VarsEqDedup>
-      duplicateVars;
+  std::unordered_map<Constant *, Constant *, ConstsHasherDedup, ConstsEqDedup>
+      duplicateConstants;
 
-  for (auto &V : M->getConstants()) {
-    // Only perform deduplication on vars of small enough size. Otherwise just
-    // skip them. constVarDedupSizeOpt defaults to 256 as a heuristic, to keep
+  for (auto &C : M->getConstants()) {
+    // Only perform deduplication on consts of small enough size. Otherwise just
+    // skip them. constDedupSizeOpt defaults to 256 as a heuristic, to keep
     // compile time reasonable.
-    size_t maxNumEls = constVarDedupSizeOpt;
-    size_t numEls = V->getType()->size();
+    size_t maxNumEls = constDedupSizeOpt;
+    size_t numEls = C->getType()->size();
     if (numEls > maxNumEls) {
       continue;
     }
 
-    // Only perform deduplication on vars that have no writers.
-    if (hasWriters(V)) {
-      continue;
-    }
-
-    // Try to find a var that has the same data as the current one.
-    auto foundI = duplicateVars.find(V);
-    if (foundI == duplicateVars.end()) {
+    // Try to find a Constant that has the same data as the current one.
+    auto foundI = duplicateConstants.find(C);
+    if (foundI == duplicateConstants.end()) {
       // No node equivalent to the current one has been seen yet. Remember this
-      // variable, so that the next occurrence can be replaced by this one.
-      duplicateVars.emplace(V, V);
-      assert(duplicateVars.find(V) != duplicateVars.end());
+      // Constant, so that the next occurrence can be replaced by this one.
+      duplicateConstants.emplace(C, C);
+      assert(duplicateConstants.find(C) != duplicateConstants.end());
       continue;
     }
-    Constant *foundV = foundI->second;
-    assert(V != foundV && "Variables should not be visited multiple times.");
+    Constant *foundC = foundI->second;
+    assert(C != foundC && "Constants should not be visited multiple times.");
 
-    // Replace current var by a found var, which is equivalent to it.
-    V->getOutput().replaceAllUsesOfWith(foundV);
+    // Replace current Constant by a found Constant, which is equivalent to it.
+    C->getOutput().replaceAllUsesOfWith(foundC);
   }
 }
 
