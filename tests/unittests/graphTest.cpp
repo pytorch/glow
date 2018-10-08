@@ -1068,3 +1068,25 @@ TEST(Graph, setType) {
   EXPECT_EQ(topK->getType(1), origTopKRes1);
   EXPECT_EQ(valRes1.getType(), origTopKRes1);
 }
+
+/// Tests that expect death from the verifier cannot currently run in Release
+/// mode as they would not die, since the verifier uses assertions for
+/// verification. Once the verifier moves to returning false instead of aborting
+/// (GH issue #1517), this can be removed and EXPECT_DEATH can be replaced by
+/// EXPECT_FALSE.
+#ifndef NDEBUG
+
+/// Check that verify doesn't allow for multiple writers to the same node.
+TEST(Graph, verifyOneWriter) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  auto *input = M.createPlaceholder(ElemKind::FloatTy, {5}, "input", false);
+  auto *output = M.createPlaceholder(ElemKind::FloatTy, {5}, "output", false);
+  F->createSave("Save1", input, output);
+  F->createSave("Save2", input, output);
+
+  EXPECT_DEATH(M.verify(), "");
+}
+
+#endif /* NDEBUG */

@@ -2328,11 +2328,10 @@ void Function::verify() const {
       if (!N.isOverwrittenNthInput(idx)) {
         continue;
       }
-      auto &input = N.getNthInput(idx);
-      if (!isa<Constant>(input)) {
+      const auto *ph = dyn_cast<Placeholder>(N.getNthInput(idx));
+      if (!ph) {
         continue;
       }
-      const auto *ph = cast<Placeholder>(input);
       auto varToFirstDef = placeholderWrittenTo.find(ph);
       if (varToFirstDef != placeholderWrittenTo.end()) {
         llvm::errs() << "Constant " << ph->getDebugDesc() << '\n';
