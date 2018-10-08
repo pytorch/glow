@@ -2289,9 +2289,6 @@ void Function::verify() const {
     llvm_unreachable("Multiple nodes with the same name");
   }
 
-  const auto &vars = getParent()->getConstants();
-  (void)vars;
-
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
@@ -2323,18 +2320,30 @@ void Function::verify() const {
     assert(N.getParent() == this &&
            "Node is not linked to the function it belongs");
     N.verify();
-    // Make sure all the placeholders are at most written once.
+    // Make sure all the placeholders are at most written once, and that
+    // constants are never written to.
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
+      // Placeholders and Constants have no input, so they can only be
+      // written to via overwritten inputs.
       if (!N.isOverwrittenNthInput(idx)) {
         continue;
       }
-      const auto *ph = dyn_cast<Placeholder>(N.getNthInput(idx));
+
+      const Node *nthInputNode = N.getNthInput(idx).getNode();
+      assert(!isa<Constant>(nthInputNode) &&
+             "Constants can never be used as an overwritten input.");
+
+      // Unlike Constants, Placeholders can be used at most once as overwritten
+      // inputs. Keep a map of Placeholders to Nodes that used them as
+      // overwritten inputs, which is also used later to check for
+      // read-after-write dependence violations.
+      const auto *ph = dyn_cast<Placeholder>(nthInputNode);
       if (!ph) {
         continue;
       }
       auto varToFirstDef = placeholderWrittenTo.find(ph);
       if (varToFirstDef != placeholderWrittenTo.end()) {
-        llvm::errs() << "Constant " << ph->getDebugDesc() << '\n';
+        llvm::errs() << "Placeholder " << ph->getDebugDesc() << '\n';
         llvm::errs() << "has more than one write:\n";
         llvm::errs() << N.getDebugDesc() << '\n';
         llvm::errs() << varToFirstDef->second->getDebugDesc() << '\n';
