@@ -18,32 +18,33 @@ to a graph that you may find inside Caffe or in ONNX format. When we load a
 neural network model from some file we construct this graph with a direct
 translation of one operator to one or more nodes. The high-level IR is a simple
 graph that allows basic transformations such as replacing all uses of some node
-with another node and modifying the content of variables. The graph is strongly
-typed, which means that inputs and output have a known tensor type (consisting
-of the tensor's shape and element type), and that the types of nodes are
-verified by the compiler. For example, the element-wise add instruction must
+with another node and modifying the content of constant nodes. The graph is
+strongly typed, which means that inputs and output have a known tensor type
+(consisting of the tensor's shape and element type), and that the types of nodes
+are verified by the compiler. For example, the element-wise add instruction must
 operate on operands of the same type.
 
 The Glow graph is structured as a module that contains multiple functions that
-contain multiple nodes. Variables, which are similar to global variables in C
-programs, are persistent tensors shared between the functions. Nodes inside
-functions are able to reference variables which are owned by the module. A
-module may have multiple functions. For example, one module could contain both
-an inference function and the gradient of that inference function. The gradient
-function could perform training of the weights variables, and the inference
-function could read from those same weights variables.
+contain multiple nodes. Placeholders and Constants, which are similar to global
+variables in C programs, are nodes that are shared between the functions. Nodes
+inside functions are able to reference Placeholders and Constants which are
+owned by the module. A module may have multiple functions. For example, one
+module could contain both an inference function and the gradient of that
+inference function. The gradient function could perform training of the
+placeholder weights, and the inference function could read from those same
+weights.
 
 ![](module.png)
 
 Glow functions contain nodes that represent the different operations of a neural
-network. The function owns the nodes and has access to the variables in the
-module. The image below depicts the compute graph that represents the expression
-"A / B". The graph is automatically differentiated by Glow, and the value of
-variable A is updated with the gradient of the expression. Glow lowers the nodes
-that compute the gradient of the expression and the stochastic gradient descent
-(SGD) node into a sequence of low-level operators (Div, Mul, Add and Save). The
-different compiler backends do not need to implement support for the DivGrad,
-ReLUGrad or SGD nodes.
+network. The function owns the nodes and has access to the placeholders and
+constants in the module. The image below depicts the compute graph that
+represents the expression "A / B". The graph is automatically differentiated by
+Glow, and the value of variable A is updated with the gradient of the
+expression. Glow lowers the nodes that compute the gradient of the expression
+and the stochastic gradient descent (SGD) node into a sequence of low-level
+operators (Div, Mul, Add and Save). The different compiler backends do not need
+to implement support for the DivGrad, ReLUGrad or SGD nodes.
 
 <p align="center">
 <img src="nodes.png" width="420"/>
@@ -85,28 +86,14 @@ lowered into the mid-level IR in a phase that's called "IRGen" (stands for IR
 generation). This is a one-to-many translation where each operator is translated
 into one or more instructions.
 
-### Variable Visibility
+### Constants
 
-Glow variables are similar to PyTorch and TensorFlow variables. They are
-persistent tensors that live across different executions of the neural network.
-Variables are annotated with Public or Private labels. These labels specify
-whether the node is visible outside of the graph. If the node is public, then it
-means that C++ code from outside the graph may access the variable directly and
-change its content before or after the execution of the program. This means that
-the optimizer is not allowed to delete unused public variables or change their
-dimensions. However, in the case of private variables, the optimizer is allowed
-to delete unused variables, transpose, perform constant propagation, etc. The
-semantics of variables in the program, both private and public, is that all
-writes must happen before the end of the execution of the program.
-
-### Variable Mutability
-
-During IRGen, Variables are converted into WeightVars. These WeightVars are
-annotated with Mutable or Constant labels, depending on if other instructions
-write into them. However, Variables which are defined as Public cannot be
-considered Constant even if only ever read by other instructions. Thus, the
-visibility of the Variable is also annotated on its generated WeightVar, and all
-Public WeightVars are kept Mutable.
+Constants are special nodes that represent tensors that are a part of the graph.
+These nodes can be used to represent things like the weights of neural networks.
+Constants are immutable during the execution of the program, but graph
+optimizations can access the constants and modify them. This feature is useful
+for transformations that prepare the weights by transposing them or quantizing
+them before the execution of the program.
 
 ### Placeholders
 
@@ -114,13 +101,15 @@ Placeholders are symbolic nodes that are not backed by a concrete tensor during
 the compilation of the program. Inputs and outputs of Glow programs should be
 modeled using Placeholder nodes. Concrete tensors are attached to placeholder
 nodes during the compilation of the program, and not before. This means that
-unlike variables, the optimizer can’t inspect or mutate the content of
+unlike constants, the optimizer can’t inspect or mutate the content of
 Placeholder nodes. The same program could be compiled using different bound
 tensors without changing the semantics of the program.
 
-We are in the process of migrating the project from mutable variables into
-constant variables and Placeholder nodes.  The motivation, plan and status of
-this project are described in the github issue #1334.
+### Variable Mutability
+
+During IRGen, constants and placeholders are converted into WeightVars. These
+WeightVars are annotated with Mutable or Constant labels, depending on the
+source and whether the weights are modified during the execution of the program.
 
 ### Predicates
 
