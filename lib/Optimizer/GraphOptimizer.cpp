@@ -1623,26 +1623,26 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      if (auto *V = dyn_cast<Constant>(Q->getInput())) {
-        // Quantize(Variable) -> Variable
-        // Note, it does not really matter how many usages this var has.
-        // Quantized graph will use optimized var and other functions will
-        // refer to the floating point original var.
-        if (!V) {
+      if (auto *C = dyn_cast<Constant>(Q->getInput())) {
+        // Quantize(Constant) -> Constant
+        // Note, it does not really matter how many usages this Constant has.
+        // Quantized graph will use optimized Constant and other functions will
+        // refer to the floating point original Constant.
+        if (!C) {
           continue;
         }
-        // Create a new variable NV to hold the quantized result.
-        auto *NV = F->getParent()->createConstant(Q->getResult().getType(),
-                                                  V->getName());
-        // Quantize V into NV.
-        auto srcHandle = V->getHandle();
-        auto destHandle = NV->getHandle<int8_t>();
+        // Create a new Constant NC to hold the quantized result.
+        auto *NC = F->getParent()->createConstant(Q->getResult().getType(),
+                                                  C->getName());
+        // Quantize C into NC.
+        auto srcHandle = C->getHandle();
+        auto destHandle = NC->getHandle<int8_t>();
         TensorQuantizationParams params{Q->getResult().getType()->getScale(),
                                         Q->getResult().getType()->getOffset()};
         for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
           destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
         }
-        Q->getResult().replaceAllUsesOfWith(NV);
+        Q->getResult().replaceAllUsesOfWith(NC);
         continue;
       }
     }
