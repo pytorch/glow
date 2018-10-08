@@ -157,7 +157,7 @@ protected:
     unsigned arrayLen = sizeof(colorNames) / sizeof(colorNames[0]);
     auto nodeColor = colorNames[colorIdx % arrayLen];
 
-    if (auto V = llvm::dyn_cast<Constant>(N)) {
+    if (isa<Constant>(N)) {
       os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";
     } else {
       os << "\tfillcolor=" << nodeColor << "\n";
