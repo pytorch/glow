@@ -83,11 +83,12 @@ But in addition to those there are quantization specific optimizations:
 
     A sequence of RescaleQuantized operators can be replaced by just a single RescaleQuantized.
 
-  * Private variables optimization
+  * Constants optimization
 
-    Private variables which have single use could be quantized at the optimization phase.
-    This optimization replaces Quantize(Var) with just a Var with updated quantized weights
-    based on the quantization parameters from the Quantize node.
+    Constants which have single use could be quantized at the optimization
+    phase. This optimization replaces Quantize(Constant) with just a Constant
+    with updated quantized weights based on the quantization parameters from the
+    Quantize node.
 
   * RescaleQuantized(Max(X,Y)) -> Max(RescaleQuantized(X), RescaleQuantized(Y))
 
