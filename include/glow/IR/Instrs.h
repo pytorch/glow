@@ -37,13 +37,9 @@ private:
   /// The mutability mode.
   MutabilityKind mut_;
 
-  /// The visibility of the WeightVar.
-  VisibilityKind vis_;
-
 public:
-  WeightVar(llvm::StringRef name, TypeRef Ty, MutabilityKind mut,
-            VisibilityKind vis)
-      : Value(name, Ty, Kinded::Kind::WeightVarKind), mut_(mut), vis_(vis) {}
+  WeightVar(llvm::StringRef name, TypeRef Ty, MutabilityKind mut)
+      : Value(name, Ty, Kinded::Kind::WeightVarKind), mut_(mut) {}
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::WeightVarKind;
@@ -53,13 +49,16 @@ public:
 
   const char *getMutabilityStr() const;
 
+  /// \returns true if the mutability kind of the weight is constant.
+  bool isConstant() const {
+    return getMutability() == MutabilityKind::Constant;
+  }
+
+  /// \returns the mutability kind of the weight.
   MutabilityKind getMutability() const { return mut_; }
 
+  /// Updates the mutability kind of the weight to \p mut.
   void setMutability(MutabilityKind mut) { mut_ = mut; }
-
-  VisibilityKind getVisibility() const { return vis_; }
-
-  void setVisibility(VisibilityKind vis) { vis_ = vis; }
 
   void dump(llvm::raw_ostream &os) const;
   void verify() const {}

@@ -467,9 +467,7 @@ static Instruction *getSingleWriter(const Value *V) {
 void makeWeightsConst(IRFunction &M) {
   // For each weight:
   for (auto *W : M.getWeights()) {
-    if (W->getVisibility() == VisibilityKind::Public) {
-      assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
-             "Public vars can not be Constant.");
+    if (!W->isConstant()) {
       continue;
     }
     bool readOnly = true;

@@ -368,8 +368,7 @@ public:
     case glow::Kinded::Kind::ConstantKind: {
       auto *V = cast<Constant>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
-                                         WeightVar::MutabilityKind::Mutable,
-                                         VisibilityKind::Private);
+                                         WeightVar::MutabilityKind::Constant);
       W->setName(N->getName());
       registerIR(N, W);
       break;
@@ -377,8 +376,7 @@ public:
     case glow::Kinded::Kind::PlaceholderKind: {
       auto *P = cast<Placeholder>(N);
       auto *W = builder_.createWeightVar(P->getType(), P->getName(),
-                                         WeightVar::MutabilityKind::Mutable,
-                                         VisibilityKind::Public);
+                                         WeightVar::MutabilityKind::Mutable);
       W->setName(N->getName());
       registerIR(N, W);
       break;

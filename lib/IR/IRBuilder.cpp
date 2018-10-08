@@ -149,8 +149,7 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
 
 Value *IRBuilder::createReturnOp(Value *input) {
   auto *W = createWeightVar(input->getType(), "result",
-                            WeightVar::MutabilityKind::Mutable,
-                            VisibilityKind::Public);
+                            WeightVar::MutabilityKind::Mutable);
   createCopyInst("return", W, input);
   return W;
 }
@@ -162,19 +161,14 @@ Value *IRBuilder::createReturnOp(Value *input) {
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
                                       llvm::ArrayRef<size_t> dims,
                                       llvm::StringRef name,
-                                      WeightVar::MutabilityKind m,
-                                      VisibilityKind v) {
+                                      WeightVar::MutabilityKind m) {
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
-  return createWeightVar(T, name, m, v);
+  return createWeightVar(T, name, m);
 }
 
 WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
-                                      WeightVar::MutabilityKind m,
-                                      VisibilityKind v) {
-  assert(!(m == WeightVar::MutabilityKind::Constant &&
-           v == VisibilityKind::Public) &&
-         "Cannot have a Constant Public Variable.");
-  auto *A = new WeightVar(uniqueName(name), T, m, v);
+                                      WeightVar::MutabilityKind m) {
+  auto *A = new WeightVar(uniqueName(name), T, m);
   F_->getWeights().push_back(A);
   A->setName(name);
   return A;

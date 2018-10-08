@@ -100,15 +100,6 @@ public:
   const char *getKindName() const { return getKindName(kind_); }
 };
 
-/// Specifies the visibility of a WeightVar. Public nodes can't be
-/// optimized because they are visible to external users that may hold a
-/// reference or handles. Their equivalent WeightVar must be left Mutable at the
-/// Instr level.
-enum class VisibilityKind {
-  Public,  // The weight is visible from outside the graph.
-  Private, // The weight isn't visible from outside the graph.
-};
-
 using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
 
 } // namespace glow
