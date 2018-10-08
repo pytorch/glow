@@ -58,13 +58,12 @@ static bool shouldDeleteNode(Node *N) {
 /// Dead code elimination.
 static void DCE(Function *F) {
   auto &nodes = F->getNodes();
-  auto &vars = F->getParent()->getConstants();
+  auto &consts = F->getParent()->getConstants();
 
-  std::vector<ConstList::iterator> erasedVars{};
+  std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
 
-  // Remove unused nodes. Do not remove unused vars because they are the
-  // interface to the user program.
+  // Remove unused nodes.
   while (true) {
     bool changedLocally = false;
     for (auto it = nodes.begin(), e = nodes.end(); it != e;) {
@@ -89,20 +88,20 @@ static void DCE(Function *F) {
     }
   }
 
-  // Delete unused variables.
-  for (auto it = vars.begin(), e = vars.end(); it != e;) {
+  // Delete unused Constants.
+  for (auto it = consts.begin(), e = consts.end(); it != e;) {
     if (!shouldDeleteNode(*it)) {
       ++it;
       continue;
     }
-    erasedVars.push_back(it);
+    erasedConsts.push_back(it);
     ++it;
   }
 
-  while (!erasedVars.empty()) {
-    auto it = erasedVars.back();
+  while (!erasedConsts.empty()) {
+    auto it = erasedConsts.back();
     F->getParent()->eraseConstant(it);
-    erasedVars.pop_back();
+    erasedConsts.pop_back();
   }
 }
 
