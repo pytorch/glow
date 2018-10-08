@@ -1089,4 +1089,24 @@ TEST(Graph, verifyOneWriter) {
   EXPECT_DEATH(M.verify(), "");
 }
 
+/// Check that verify doesn't allow for Constants to be written to. Note that
+/// createSave() cannot do this as the API only accepts Placeholders to write
+/// to, however it could happen during graph transformations, e.g. via
+/// replaceAllUsesOfWith() as shown here.
+TEST(Graph, verifyConstantNoWriters) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  auto *input = M.createPlaceholder(ElemKind::FloatTy, {5}, "input", false);
+  auto *outputPH = M.createPlaceholder(ElemKind::FloatTy, {5}, "outPH", false);
+  F->createSave("save", input, outputPH);
+
+  // Replace the output Placeholder with a Constant. This should fail
+  // verification.
+  auto *outputC = M.createConstant(ElemKind::FloatTy, {5}, "outC");
+  NodeValue(outputPH).replaceAllUsesOfWith(outputC);
+
+  EXPECT_DEATH(M.verify(), "");
+}
+
 #endif /* NDEBUG */
