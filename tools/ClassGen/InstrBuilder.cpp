@@ -329,34 +329,58 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
 
   // Note: The convention is for Nodes to have 'Input's and 'Output's, and for
   // Instrs to have 'Src's and 'Dest's. Thus we map between the two below.
-  std::string destOpName = "";
-  std::string resNodeName = "";
+
+  // A list of pairs (nodeResultName, destOpName).
+  llvm::SmallVector<std::pair<std::string, std::string>, 4>
+      nodeResultNameToValueName;
   for (const auto &opPair : operands_) {
     if (opPair.second == OperandKind::In) {
+      // All inputs of a node were mapped to the glow::Values already.
+      // So, just lookup for each input operand it's Value by using the
+      // corresponding input of a node as a key.
       const std::string opNodeName =
           (opPair.first == "Src") ? "Input" : opPair.first;
       os << "  auto *" << opPair.first << " = valueForNode(CN__->get"
          << opNodeName << "());\n";
     } else if (opPair.second == OperandKind::Out) {
-      assert(resNodeName.empty() && destOpName.empty() &&
-             "Must have multiple results; don't support autogen yet.");
-      resNodeName = (opPair.first == "Dest") ? "Result" : opPair.first;
-      destOpName = opPair.first;
+      // Remember for each output operand which result of a node produces it.
+      auto destOpName = opPair.first;
+      auto resNodeName = (destOpName == "Dest") ? "Result" : destOpName;
+      nodeResultNameToValueName.emplace_back(
+          std::make_pair(resNodeName, destOpName));
     }
   }
 
-  assert(!resNodeName.empty() && !destOpName.empty() &&
+  assert(!nodeResultNameToValueName.empty() &&
          "Didn't find a result; Maybe using InOut which isn't yet supported");
   os << "  std::string allocName = std::string(N->getName()) + \".res\";\n";
-  os << "  auto *dest__ = builder_.createAllocActivationInst(allocName,"
-     << "CN__->get" << resNodeName << "().getType());\n";
+  // Allocate activations for all output operands.
+  for (auto &kv : nodeResultNameToValueName) {
+    auto &nodeResultName = kv.first;
+    auto &valueName = kv.second;
+    // Create activation for the output operand with name valueName using the
+    // type of the corresponding node result nodeResultName.
+    os << "  auto *" << valueName
+       << "__ = builder_.createAllocActivationInst(allocName,"
+       << "CN__->get" << nodeResultName << "().getType());\n";
+  }
   os << "  auto *V = builder_.create" << name_ << "Inst(\"" << autoIRGenNodeName
-     << "\", dest__";
+     << "\"";
+  // Pass down all the output operand Values as Instruction's constructor
+  // arguments.
+  for (auto &kv : nodeResultNameToValueName) {
+    auto &valueName = kv.second;
+    os << ", " << valueName << "__";
+  }
+  // Pass down all the input operand Values as Instruction's constructor
+  // arguments.
   for (const auto &opPair : operands_) {
     if (opPair.second == OperandKind::In) {
       os << ", " << opPair.first;
     }
   }
+  // Pass down all the additional members as Instruction's constructor
+  // arguments.
   for (const auto &memPair : members_) {
     os << ", CN__->get" << memPair.second << "()";
   }
@@ -365,7 +389,14 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   os << "  V->setName(N->getName());\n";
   os << "  if (N->hasPredicate()) { "
         "V->setPredicate(valueForNode(N->getPredicate())); }\n";
-  os << "  registerIR(N, V->get" << destOpName << "());\n";
+  // Register which outputs of a node are mapped to which output operands of the
+  // generated instruction.
+  for (auto &kv : nodeResultNameToValueName) {
+    auto &nodeResultName = kv.first;
+    auto &valueName = kv.second;
+    os << "  registerIR(CN__->get" << nodeResultName << "(), V->get"
+       << valueName << "());\n";
+  }
   os << "  nodeToInstr_[N] = V;\n";
   os << "  break;\n";
   os << "}\n";
