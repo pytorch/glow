@@ -885,11 +885,11 @@ static void optimizePool(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// \returns The uniquely used variable from node or nullptr
-/// if node has more than one user or is not a variable.
-static Constant *getUniquelyUsedVariable(Node &node) {
+/// \returns The uniquely used Constant from node or nullptr
+/// if node has more than one user or is not a Constant.
+static Constant *getUniquelyUsedConstant(Node &node) {
   // If that node has more than one use, it may not
-  // be okay to modify the underlying variable.
+  // be okay to modify the underlying Constant.
   if (!node.hasOneUse()) {
     return nullptr;
   }
@@ -906,10 +906,10 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
           std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
       "This implementation is for floating-point values only");
 
-  Constant *filterV = getUniquelyUsedVariable(*CV.getFilter().getNode());
-  Constant *cbiasV = getUniquelyUsedVariable(*CV.getBias().getNode());
+  Constant *filterC = getUniquelyUsedConstant(*CV.getFilter().getNode());
+  Constant *cbiasC = getUniquelyUsedConstant(*CV.getBias().getNode());
 
-  if (!filterV || !cbiasV) {
+  if (!filterC || !cbiasC) {
     return false;
   }
 
@@ -947,21 +947,21 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
   // Q = W * A
   // C = b * A + B
 
-  Constant *scaleV = cast<Constant>(BN.getScale());
-  Constant *biasV = cast<Constant>(BN.getBias());
-  Constant *meanV = cast<Constant>(BN.getMean());
+  Constant *scaleC = cast<Constant>(BN.getScale());
+  Constant *biasC = cast<Constant>(BN.getBias());
+  Constant *meanC = cast<Constant>(BN.getMean());
   Constant *var = cast<Constant>(BN.getVar());
 
-  auto filterH = filterV->getHandle<ElemTy>();
+  auto filterH = filterC->getHandle<ElemTy>();
 
-  auto cbiasH = cbiasV->getHandle<ElemTy>();
+  auto cbiasH = cbiasC->getHandle<ElemTy>();
 
-  auto scaleH = scaleV->getHandle<ElemTy>();
-  auto biasH = biasV->getHandle<ElemTy>();
-  auto meanH = meanV->getHandle<ElemTy>();
+  auto scaleH = scaleC->getHandle<ElemTy>();
+  auto biasH = biasC->getHandle<ElemTy>();
+  auto meanH = meanC->getHandle<ElemTy>();
   auto varH = var->getHandle<ElemTy>();
 
-  // Update the filter/bias variables of the Conv node.
+  // Update the filter/bias constants of the Conv node.
   auto epsilon = BN.getEpsilon();
   for (size_t i = 0, e = filterH.size(); i < e; i++) {
     // Dimension zero is the 'channel' dimension. If we ever change the
