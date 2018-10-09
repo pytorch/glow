@@ -1623,6 +1623,11 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
   return createConv(ctx, name, input, depth, kernels, strides, pads, group);
 }
 
+ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
+                                         TypeRef outTy) {
+  return addNode(new ConvertToNode(name, outTy, input));
+}
+
 FullyConnectedNode *Function::createFullyConnected(Context &ctx,
                                                    llvm::StringRef name,
                                                    NodeValue input,

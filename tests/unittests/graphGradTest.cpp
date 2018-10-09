@@ -181,3 +181,30 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   /// node will be added.
   EXPECT_GE(A->getNumUsers(), 1);
 }
+
+/// Check that we can differentiate functions that use ConvertToNode.
+TEST(GraphAutoGrad, checkConvertToGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  Context ctx;
+
+  // Construct the network:
+  TC.learningRate = 0.001;
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
+  auto inputHandle = ctx.allocate(A)->getHandle<float>();
+  inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
+
+  TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, A->dims());
+
+  auto *convertTo = F->createConvertTo("convertTo", A, outTy);
+  auto *result = F->createSave("save", convertTo);
+  ctx.allocate(result->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Infer, F, ctx);
+}

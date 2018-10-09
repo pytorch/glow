@@ -4124,6 +4124,50 @@ TEST_P(Operator, QuantizeSimple) {
   EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
 }
 
+/// Check that convertTo node works properly from float16_t to float.
+TEST_P(InterpOnly, ConvertFromFloat16ToFloat) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle<float>();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  TypeRef outTy = mod_.uniqueType(ElemKind::Float16Ty, A->dims());
+
+  auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
+  auto *result = F_->createSave("save", convertTo);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto *outputTensor = ctx_.get(result->getPlaceholder());
+  Tensor convertedInput = ctx_.get(A)->clone();
+  convertedInput.convertToType(ElemKind::Float16Ty);
+  ASSERT_EQ(outputTensor->size(), inputHandle.size());
+  EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
+}
+
+/// Check that convertTo node works properly from float to float16_t.
+TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
+  auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, A->dims());
+
+  auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
+  auto *result = F_->createSave("save", convertTo);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto *outputTensor = ctx_.get(result->getPlaceholder());
+  Tensor convertedInput = ctx_.get(A)->clone();
+  convertedInput.convertToType(ElemKind::FloatTy);
+  ASSERT_EQ(outputTensor->size(), inputHandle.size());
+  EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
