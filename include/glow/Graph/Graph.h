@@ -235,6 +235,9 @@ public:
                               unsigned_t kernel, unsigned_t stride,
                               unsigned_t pad, unsigned_t group);
 
+  ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
+                                 TypeRef outTy);
+
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,

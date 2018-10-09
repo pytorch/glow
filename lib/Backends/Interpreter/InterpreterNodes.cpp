@@ -1902,3 +1902,22 @@ void InterpreterFunction::fwdIntLookupTableInst(const IntLookupTableInst *I) {
     destH.raw(i) = mappingH.raw((int)srcH.raw(i) + 128);
   }
 }
+
+void InterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
+  Tensor *source = getTensor(I->getInput());
+  Tensor *dest = getTensor(I->getResult());
+  switch (source->getElementType()) {
+  case ElemKind::FloatTy:
+    assert(dest->getElementType() == ElemKind::Float16Ty &&
+           "Conversion not supported");
+    dest->copyWithCast<float16_t, float>(source);
+    break;
+  case ElemKind::Float16Ty:
+    assert(dest->getElementType() == ElemKind::FloatTy &&
+           "Conversion not supported");
+    dest->copyWithCast<float, float16_t>(source);
+    break;
+  default:
+    llvm_unreachable("Type not supported");
+  }
+}

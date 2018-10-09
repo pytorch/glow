@@ -299,6 +299,17 @@ void ConvolutionGradNode::verify() const {
                     Kernels_, Strides_, Pads_, Group_);
 }
 
+void ConvertToNode::verify() const {
+  assert(getInput().dims() == getResult().dims() && "Shape must be the same");
+  TypeRef srcTy = getInput().getType();
+  (void)srcTy;
+  TypeRef dstTy = getResult().getType();
+  (void)dstTy;
+  assert(srcTy != dstTy && "Nothing to convert");
+  assert(!srcTy->isQuantizedType() && !dstTy->isQuantizedType() &&
+         "Quantized conversion should use Dequantize, Quantize and Rescale");
+}
+
 void MaxPoolNode::verify() const {
   verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }

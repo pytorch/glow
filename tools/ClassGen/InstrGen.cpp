@@ -481,6 +481,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
 
   //===--------------------------------------------------------------------===//
+  //                   Conversions
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("ConvertTo")
+      .addOperand("Result", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .autoVerify(VerifyKind::SameShape, {"Result", "Input"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 
