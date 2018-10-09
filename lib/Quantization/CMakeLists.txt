@@ -6,6 +6,7 @@ add_library(Quantization
 
 target_link_libraries(Quantization
                       PRIVATE
+                        Converter
                         Graph
                         ExecutionEngine
                         QuantizationBase)

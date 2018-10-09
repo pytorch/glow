@@ -714,12 +714,18 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
 
   F = quantization::quantizeFunction(EE, QI, F);
 
-  auto *qLRN = cast<LocalResponseNormalizationNode>(F->getNodeByName("LRN1"));
-  auto *qSM = cast<SoftMaxNode>(F->getNodeByName("softmax1"));
-  ASSERT_NE(qLRN, nullptr);
-  ASSERT_NE(qSM, nullptr);
-  EXPECT_TRUE(qLRN->getInput().getType()->isQuantizedType());
-  EXPECT_TRUE(qSM->getInput().getType()->isQuantizedType());
+  auto qLRNIt = std::find_if(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        return llvm::isa<LocalResponseNormalizationNode>(&node) &&
+               node.getNthResult(0).getType()->isQuantizedType();
+      });
+  ASSERT_NE(qLRNIt, F->getNodes().end());
+  auto qSMIt = std::find_if(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        return llvm::isa<SoftMaxNode>(&node) &&
+               node.getNthResult(0).getType()->isQuantizedType();
+      });
+  ASSERT_NE(qSMIt, F->getNodes().end());
 }
 
 /// Test option to disable quantization of specific node kinds in the graph.
