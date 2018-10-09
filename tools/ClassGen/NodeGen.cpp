@@ -521,6 +521,16 @@ int main(int argc, char **argv) {
                     "tensor. The input shape {D_0, D_1, ... D_n} results in "
                     "the outputs {D_0, D_1, ... D_n-1, K}, sorted in "
                     "non-decreasing order.");
+  //===--------------------------------------------------------------------===//
+  //                Conversions
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("ConvertTo")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Convert the input from its current type to the destination "
+          "type. The input and output types must have the same shapes");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

@@ -132,6 +132,18 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
+    if (N->getKind() == Kind::ConvertToNodeKind) {
+      auto *RN = cast<ConvertToNode>(N);
+      NodeValue outputG = map.getGradient(RN->getResult());
+      NodeValue inputW = RN->getInput();
+
+      // Swap the src and dest.
+      auto *X = new ConvertToNode(N->getName(), inputW.getType(), outputG);
+      toAppend.push_back(X);
+      map.addGradient(RN->getInput(), X);
+      continue;
+    }
+
     if (N->getKind() == Kind::TransposeNodeKind) {
       TransposeNode *TN = cast<TransposeNode>(N);
       NodeValue outputG = map.getGradient(TN->getResult());
