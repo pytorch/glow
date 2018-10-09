@@ -388,13 +388,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     return ONNXIFI_STATUS_UNSUPPORTED_TAG;
   }
 
-  auto initStatus = onnxInitEvent(glowGraph->backend(), &outputFence->event);
+  auto initStatus = GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitEvent)(
+      glowGraph->backend(), &outputFence->event);
   if (initStatus != ONNXIFI_STATUS_SUCCESS) {
     return initStatus;
   }
 
   // Wait for all inputs to be ready.
-  auto waitStatus = onnxWaitEvent(inputFence->event);
+  auto waitStatus =
+      GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(inputFence->event);
   if (waitStatus != ONNXIFI_STATUS_SUCCESS) {
     return waitStatus;
   }
@@ -402,7 +404,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
   // TODO: Implement async graph run procedure. For now run that sync.
   glowGraph->run();
 
-  auto signalStatus = onnxSignalEvent(outputFence->event);
+  auto signalStatus = GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(
+      outputFence->event);
   if (signalStatus != ONNXIFI_STATUS_SUCCESS) {
     return signalStatus;
   }
