@@ -1,5 +1,6 @@
 add_library(Converter
-            FunctionConverter.cpp)
+            FunctionConverter.cpp
+            TypeAToTypeBFunctionConverter.cpp)
 
 target_link_libraries(Converter
                       PRIVATE
