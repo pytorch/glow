@@ -1922,19 +1922,19 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 }
 
 void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
-                                          llvm::ArrayRef<Placeholder *> vars) {
+                                          llvm::ArrayRef<Placeholder *> phs) {
   auto *M = F->getParent();
   auto &placeholders = M->getPlaceholders();
   for (auto &PH : placeholders) {
-    if (std::find(vars.begin(), vars.end(), PH) != vars.end()) {
+    if (std::find(phs.begin(), phs.end(), PH) != phs.end()) {
       continue;
     }
     auto *tensor = ctx.get(PH);
     if (!tensor) {
       continue;
     }
-    auto *constantV = M->createConstant(PH->getName(), *tensor);
-    PH->getOutput().replaceAllUsesOfWith(constantV, F);
+    auto *constant = M->createConstant(PH->getName(), *tensor);
+    PH->getOutput().replaceAllUsesOfWith(constant, F);
   }
 }
 
