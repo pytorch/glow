@@ -155,6 +155,18 @@ target_link_libraries(float16Test
                         testMain)
 add_glow_test(float16Test ${GLOW_BINARY_DIR}/tests/float16Test)
 
+add_executable(typeAToTypeBFunctionConverterTest
+               typeAToTypeBFunctionConverterTest.cpp)
+target_link_libraries(typeAToTypeBFunctionConverterTest
+                      PRIVATE
+                        Converter
+                        ExecutionEngine
+                        Graph
+                        gtest
+                        testMain)
+add_glow_test(typeAToTypeBFunctionConverterTest
+              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest)
+
 add_executable(UtilsTest
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
