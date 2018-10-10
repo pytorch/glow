@@ -27,6 +27,19 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP) {
   return quantization::clip<int32_t, int8_t>((int32_t)nearbyintf(result));
 }
 
+Tensor quantizeTensor(const Tensor &tensor,
+                      const TensorQuantizationParams &TQP) {
+  Tensor tmp(ElemKind::Int8QTy, tensor.dims(), TQP.scale, TQP.offset);
+  assert(tensor.getElementType() == ElemKind::FloatTy &&
+         "Type not supported yet");
+  auto srcHandle = tensor.getHandle();
+  auto destHandle = tmp.getHandle<int8_t>();
+  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+    destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), TQP);
+  }
+  return tmp;
+}
+
 float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
   return TQP.scale * (input - TQP.offset);
 }

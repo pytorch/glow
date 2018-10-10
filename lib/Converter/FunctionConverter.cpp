@@ -33,20 +33,6 @@ TypeRef FunctionConverter::getTargetTypeForInput(const Node &use,
   return nullptr;
 }
 
-DstTySrcTy FunctionConverter::getConversionType(const Node &conversion) const {
-  // Although that function would work on something not added by
-  // the conversion process, we assert on that to make sure this
-  // method is called like expected.
-  assert(std::find(conversions_.begin(), conversions_.end(), &conversion) !=
-             conversions_.end() &&
-         "This conversion wasn't added by this converter");
-  assert(conversion.getNumResults() == 1 &&
-         "This needs target specific overloading");
-  assert(conversion.getNumInputs() == 1 &&
-         "This needs target specific overloading");
-  return DstTySrcTy(conversion.getType(0), conversion.getNthInput(0).getType());
-}
-
 bool FunctionConverter::canConvert(const Node &node) const {
   // By default, we assume everything is convertible.
   switch (node.getKind()) {
@@ -118,7 +104,6 @@ void FunctionConverter::convert() {
       val.setType(targetTy);
       // Create the conversion.
       Node *conversion = createConversion(val, origTy);
-      conversions_.push_back(conversion);
       // "conversion" uses val so after this call,
       // we will get a use of conversion inside conversion.
       NodeValue conversionVal = getConversionOutput(*conversion);
@@ -152,7 +137,6 @@ void FunctionConverter::convert() {
              "Conversion does not preserve shape");
       // Create the conversion.
       Node *conversion = createConversion(val, targetTy);
-      conversions_.push_back(conversion);
       node.setNthInput(idx, getConversionOutput(*conversion));
     }
     // All the surrounding code is properly typed, finally the morph node.
