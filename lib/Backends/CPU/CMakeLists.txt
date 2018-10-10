@@ -76,24 +76,24 @@ target_link_libraries(CPUBackend
                         IR
                         Optimizer
                         QuantizationBase
+                        ${LLVM_TARGET_LIBRARIES}
                         LLVMAnalysis
+                        LLVMBitWriter
                         LLVMCodeGen
                         LLVMCore
-                        LLVMipo
+                        LLVMExecutionEngine
                         LLVMIRReader
                         LLVMInstCombine
+                        LLVMInterpreter
                         LLVMMC
+                        LLVMObject
+                        LLVMPasses
                         LLVMScalarOpts
                         LLVMSupport
                         LLVMTarget
                         LLVMTransformUtils
                         LLVMVectorize
-                        ${LLVM_TARGET_LIBRARIES}
-                        LLVMCore
-                        LLVMExecutionEngine
-                        LLVMInterpreter
-                        LLVMSupport
-                        LLVMPasses)
+                        LLVMipo)
 if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
   target_link_libraries(CPUBackend
                         PRIVATE
