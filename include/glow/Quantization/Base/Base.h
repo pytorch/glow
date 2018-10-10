@@ -76,6 +76,11 @@ enum Schema {
 /// parameters \p TQP.
 int8_t quantize(float input, const TensorQuantizationParams &TQP);
 
+/// Converts a floating point \p tensor to int8 based on the quantization
+/// parameters \p TQP.
+Tensor quantizeTensor(const Tensor &tensor,
+                      const TensorQuantizationParams &TQP);
+
 /// Converts int8 quantized value back to floating point number based on
 /// the quantization parameters \p TQP.
 float dequantize(int8_t input, const TensorQuantizationParams &TQP);

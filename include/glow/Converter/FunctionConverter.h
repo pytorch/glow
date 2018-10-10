@@ -20,8 +20,6 @@
 
 #include "glow/Base/Type.h"
 
-#include "llvm/ADT/SmallVector.h"
-
 #include <utility> // For std::pair.
 
 namespace glow {
@@ -30,10 +28,6 @@ class Function;
 class Node;
 struct NodeValue;
 
-/// Pair representing the destination and source type of a conversion.
-/// dstTy = cast(srcTy).
-using DstTySrcTy = std::pair<TypeRef, TypeRef>;
-
 /// This class implements the high-level APIs used to convert a function
 /// to one type to another. The actual conversions must be implemented
 /// by derived classes.
@@ -41,8 +35,6 @@ class FunctionConverter {
 protected:
   /// The function to be converted.
   Function &function_;
-  /// The list of all the conversions inserted during ::convert.
-  llvm::SmallVector<Node *, 16> conversions_;
 
   /// \return the type that \p out needs to have at the end of the conversion
   /// procedure. In other words, this is the type this value will have at the
@@ -93,12 +85,6 @@ protected:
   /// type of the related value, no conversion will be inserted by the
   /// conversion procedure.
   virtual TypeRef getTargetTypeForInput(const Node &use, unsigned idx) const;
-
-  /// \returns the source and destination type of a \p conversion.
-  /// E.g., dstTy = cast(srcTy) should return (dstTy, srcTy).
-  /// The default implementation returns the zero-th result as destination type
-  /// and the zero-th input as source type.
-  virtual DstTySrcTy getConversionType(const Node &conversion) const;
 
   /// Check if \p node can be converted.
   /// \return false if \p node shouldn't be considered for conversion.

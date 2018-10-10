@@ -1609,6 +1609,135 @@ static void optimizeQuantizedMaxSplat(Function *F) {
   }
 }
 
+/// \returns A value representing the given \p constant converted
+/// to the destination type \p dstTy. If the conversion is not
+/// possible, this method returns NodeValue().
+static NodeValue convertConstant(Module &mod, Constant &constant,
+                                 TypeRef dstTy) {
+  // Sort out the easy case first.
+  if (constant.getType() == dstTy) {
+    return NodeValue(&constant, 0);
+  }
+  auto modifyConstantTyAndGet = [&]() -> Constant & {
+    Constant *oneUseCst = getUniquelyUsedConstant(&mod, constant);
+    assert(oneUseCst &&
+           "We should always be able to get a constant from a constant!");
+    // This type setting updates the type of the node.
+    // The underlying tensor still needs to be converted after this call.
+    oneUseCst->setType(0, dstTy);
+    return *oneUseCst;
+  };
+  const Tensor &tensor = constant.getPayload();
+  switch (tensor.getElementType()) {
+  case ElemKind::FloatTy:
+  case ElemKind::Float16Ty:
+    switch (dstTy->getElementType()) {
+    case ElemKind::FloatTy:
+    case ElemKind::Float16Ty: {
+      // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayload().convertToType(dstTy->getElementType());
+      return NodeValue(&constantToBeModified, 0);
+    }
+    case ElemKind::Int8QTy: {
+      // Quantization: {FloatTy, Float16Ty} -> Int8QTy.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
+      Tensor &tensorToBeModified = constantToBeModified.getPayload();
+      // Right now we only quantize fp32 value.
+      // Add an assert on that, so that if it changes, we adapt the
+      // following code. Adapting the code would required to
+      // teach quantizeTensor how to deal with Float16Ty.
+      assert(tensor.getElementType() == ElemKind::FloatTy &&
+             "Type quantization not implemented");
+      tensorToBeModified =
+          quantization::quantizeTensor(tensorToBeModified, params);
+      return NodeValue(&constantToBeModified, 0);
+    }
+    default:
+      // Right now we only use int8 for quantization and fp32/fp16 conversions.
+      // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
+      // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
+      return NodeValue();
+    }
+  default:
+    // For now we don't see other quantize, dequantize, or rescale nodes
+    // directly attached to constants.
+    // Thus don't add code that will never be executed.
+    // Dequantization: Int[8|16|32]QTy -> {FloatTy, Float16Ty, Int64I}.
+    // Rescale: Int[8|16|32]QTy -> Int[8|16|32]QTy.
+    // Plain conversion: Int64ITy -> {FloatTy, Float16Ty}.
+    // Quantization: Int64ITy -> Int[8|16|32]QTy.
+    return NodeValue();
+  }
+}
+
+/// Optimize away ConvertToNode.
+/// This basically turns conversion(conversion A to B) to C"
+/// into noop if the type of A and C are the same.
+///
+/// This method potentially changes the semantic of the program
+/// because it eliminates some precision loss steps.
+/// However, this actually improves accuracy so we can always do it.
+static void optimizeConversions(Function *F) {
+
+  llvm::SmallVector<Node *, 8> conversions;
+
+  for (auto &node : F->getNodes()) {
+    if (isa<ConvertToNode>(&node)) {
+      conversions.push_back(&node);
+    }
+  }
+
+  llvm::SmallPtrSet<Node *, 8> deadConversions;
+  Module &mod = *F->getParent();
+  for (Node *node : conversions) {
+    if (deadConversions.count(node)) {
+      continue;
+    }
+    ConvertToNode &conversion = *cast<ConvertToNode>(node);
+    NodeValue conversionInput = conversion.getInput();
+    NodeValue dstVal = conversion.getResult();
+    NodeValue srcVal;
+    switch (conversionInput.getNode()->getKind()) {
+    case Kinded::Kind::ConstantKind:
+      srcVal =
+          convertConstant(mod, *llvm::cast<Constant>(conversionInput.getNode()),
+                          dstVal.getType());
+      // Reset conversionInput because it may not be valid anymore.
+      conversionInput = NodeValue();
+      break;
+    case Kinded::Kind::ConvertToNodeKind:
+      // So we have "conversion(conversion srcVal to tmpVal) to dstVal".
+      // If the type of srcVal is equal to the type of dstVal, we can replace
+      // the uses of dstVal with srcVal.
+      srcVal = cast<ConvertToNode>(conversionInput.getNode())->getInput();
+      break;
+    default:
+      break;
+    }
+    // Check if we found a suitable new source for dstVal.
+    if (srcVal == NodeValue() || srcVal.getType() != dstVal.getType()) {
+      continue;
+    }
+    // Use srcVal instead of dstVal.
+    dstVal.replaceAllUsesOfWith(srcVal, F);
+    bool inserted = deadConversions.insert(dstVal.getNode()).second;
+    (void)inserted;
+    assert(inserted && "Conversion was already dead");
+    if (conversionInput != NodeValue() && conversionInput.hasOneUse()) {
+      // The only user of conversionInput is outVal.
+      // This conversion is now dead too.
+      inserted = deadConversions.insert(conversionInput.getNode()).second;
+      (void)inserted;
+      assert(inserted && "Conversion was already dead");
+    }
+  }
+  for (Node *conversion : deadConversions) {
+    F->eraseNode(conversion);
+  }
+}
+
 /// Eliminate node sequences that are related to quantization.
 static void optimizeQuantization(Function *F) {
   // A worklist that contains the nodes to process.
@@ -1652,19 +1781,10 @@ static void optimizeQuantization(Function *F) {
         // Note, it does not really matter how many usages this Constant has.
         // Quantized graph will use optimized Constant and other functions will
         // refer to the floating point original Constant.
-        if (!C) {
+        NodeValue NC =
+            convertConstant(*F->getParent(), *C, Q->getResult().getType());
+        if (NC == NodeValue()) {
           continue;
-        }
-        // Create a new Constant NC to hold the quantized result.
-        auto *NC = F->getParent()->createConstant(Q->getResult().getType(),
-                                                  C->getName());
-        // Quantize C into NC.
-        auto srcHandle = C->getHandle();
-        auto destHandle = NC->getHandle<int8_t>();
-        TensorQuantizationParams params{Q->getResult().getType()->getScale(),
-                                        Q->getResult().getType()->getOffset()};
-        for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-          destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
         }
         Q->getResult().replaceAllUsesOfWith(NC);
         continue;
@@ -2016,6 +2136,9 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Run DCE to ensure correct number of node users.
   DCE(F);
   mergeTransposeIntoMatMul(F);
+
+  // Optimize away intermediate type conversions.
+  optimizeConversions(F);
 
   // Optimize quantization related operators.
   optimizeQuantization(F);
