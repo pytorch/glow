@@ -71,7 +71,7 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F,
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 Function *F, llvm::StringRef newFuncName = "",
+                 Function *F, Context &ctx, llvm::StringRef newFuncName = "",
                  const KindSet &doNotQuantizeKinds = {});
 
 } // namespace quantization

@@ -243,7 +243,7 @@ void Loader::compile(Context &ctx) {
     }
 
     // Quantize the graph based on the captured profile.
-    auto *Q = quantization::quantizeFunction(EE_, quantizationInfos, F_,
+    auto *Q = quantization::quantizeFunction(EE_, quantizationInfos, F_, ctx,
                                              oldName, doNotQuantizeKinds);
 
     // Erase the original function so that the redundant variables that are only

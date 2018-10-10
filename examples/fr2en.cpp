@@ -165,7 +165,7 @@ struct Model {
 
       // Quantize the graph based on the captured profile.
       auto *Q =
-          glow::quantization::quantizeFunction(EE_, quantizationInfos, F_);
+          glow::quantization::quantizeFunction(EE_, quantizationInfos, F_, ctx);
 
       // Erase the original function so that the redundant variables that are
       // only referenced by the original function will be removed.
