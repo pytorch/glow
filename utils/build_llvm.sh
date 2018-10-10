@@ -12,7 +12,7 @@ mkdir -p llvm_install
 BASE=$PWD
 
 cd llvm_build
-cmake ../llvm_src/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake ../llvm_src/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" -DCMAKE_BUILD_TYPE=Release
 cmake --build . --target install
 
 echo "Built LLVM into " "$BASE/llvm_install"
