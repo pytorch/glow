@@ -2171,9 +2171,11 @@ void Function::eraseNode(Node *N) {
   if (Constant *V = dyn_cast<Constant>(N)) {
     return getParent()->eraseConstant(V);
   }
-  auto I = std::find(nodes_.begin(), nodes_.end(), *N);
-  assert(I != nodes_.end() && "Could not find node to delete!");
-  eraseNode(I);
+  assert(std::find_if(nodes_.begin(), nodes_.end(),
+                      [N](const Node &node) -> bool { return &node == N; }) !=
+             nodes_.end() &&
+         "Could not find node to delete!");
+  eraseNode(N->getIterator());
 }
 
 Function *Function::clone(llvm::StringRef newName,
