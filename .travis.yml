@@ -3,6 +3,12 @@ dist: trusty
 sudo: required
 language: cpp
 
+cache:
+  apt: true
+  directories:
+    - $BUILD_CCACHE_DIR
+    - $HOME/.ccache
+    - $HOME/.cache/pb
 addons:
   apt:
     sources:
@@ -24,6 +30,7 @@ jobs:
     - env:
         - TEST_NAME=ASAN
       install:
+        - export PATH="/usr/lib/ccache:$PATH"
         - mkdir build && cd build
         - CC=clang-6.0 CXX=clang++-6.0 cmake -G Ninja
           -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
