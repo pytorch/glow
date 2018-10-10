@@ -1069,6 +1069,33 @@ TEST(Graph, setType) {
   EXPECT_EQ(valRes1.getType(), origTopKRes1);
 }
 
+/// Check that we fixed the bug with Function::eraseNode. This method used to
+/// erase a node that was equal to the node we wanted to delete, which may be
+/// two different entities.
+/// To see this bug in action, we create a bunch of nodes with the same value.
+/// Then we erase them in reserve order. This reserve ordering was actually
+/// freeing the node in the original order, thus at some point we try to delete
+/// a node that has already deleted and an assert (debug mode) or segmentation
+/// fault (release would occur).
+/// Note: Which node is actually freed depend on the implementation of
+/// std::find, thus we cannot really predict when the bug occurs.
+TEST(Graph, eraseNodeBug) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  auto *input = M.createPlaceholder(ElemKind::FloatTy, {3, 2}, "input", true);
+  std::vector<Node *> ReLUs;
+  // Create a bunch of ReLUs.
+  for (unsigned idx = 0; idx != 5; ++idx) {
+    ReLUs.push_back(F->createRELU("relu", input));
+  }
+  // Check that we can erase all the nodes.
+  for (int idx = 4; idx != -1; --idx) {
+    F->eraseNode(ReLUs[idx]);
+  }
+  EXPECT_EQ(F->getNodes().size(), 0);
+}
+
 /// Tests that expect death from the verifier cannot currently run in Release
 /// mode as they would not die, since the verifier uses assertions for
 /// verification. Once the verifier moves to returning false instead of aborting
