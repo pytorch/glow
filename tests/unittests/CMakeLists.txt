@@ -189,6 +189,7 @@ add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest --gtest_out
 
 add_executable(UtilsTest
                StrCheck.cpp
+               TaggedListTest.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE
