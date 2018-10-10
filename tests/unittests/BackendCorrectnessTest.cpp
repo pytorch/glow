@@ -68,7 +68,7 @@ using CreateAndInitFunction =
 static bool
 compareAgainstInterpreter(BackendKind backendKind,
                           CreateAndInitFunction createAndInitFunction,
-                          bool quantize) {
+                          bool quantize, float allowedError = 0.0001) {
   ExecutionEngine IEE{BackendKind::Interpreter};
   ExecutionEngine BEE{backendKind};
   Context ICtx, BCtx;
@@ -95,7 +95,7 @@ compareAgainstInterpreter(BackendKind backendKind,
   IEE.run();
   BEE.run();
 
-  return IFT.second->isEqual(*BFT.second);
+  return IFT.second->isEqual(*BFT.second, allowedError);
 }
 
 } // namespace
@@ -496,7 +496,7 @@ TEST_P(BackendCorrectnessTest, convOps) {
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
   EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                                        /* quantize */ false));
+                                        /* quantize */ false, 0.0002));
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
