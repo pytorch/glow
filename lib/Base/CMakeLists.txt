@@ -1,7 +1,8 @@
 add_library(Base
               Tensor.cpp
               Type.cpp
-              Image.cpp)
+              Image.cpp
+              TaggedList.cpp)
 
 target_link_libraries(Base
                       PUBLIC
