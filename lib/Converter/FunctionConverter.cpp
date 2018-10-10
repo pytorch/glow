@@ -33,20 +33,6 @@ TypeRef FunctionConverter::getTargetTypeForInput(const Node &use,
   return nullptr;
 }
 
-DstTySrcTy FunctionConverter::getConversionType(const Node &conversion) const {
-  // Although that function would work on something not added by
-  // the conversion process, we assert on that to make sure this
-  // method is called like expected.
-  assert(std::find(conversions_.begin(), conversions_.end(), &conversion) !=
-             conversions_.end() &&
-         "This conversion wasn't added by this converter");
-  assert(conversion.getNumResults() == 1 &&
-         "This needs target specific overloading");
-  assert(conversion.getNumInputs() == 1 &&
-         "This needs target specific overloading");
-  return DstTySrcTy(conversion.getType(0), conversion.getNthInput(0).getType());
-}
-
 bool FunctionConverter::canConvert(const Node &node) const {
   // By default, we assume everything is convertible.
   switch (node.getKind()) {
@@ -67,6 +53,11 @@ bool FunctionConverter::canConvert(const Node &node) const {
 NodeValue FunctionConverter::getConversionOutput(Node &conversion) const {
   assert(conversion.getNumResults() == 1 && "This method should be overloaded");
   return NodeValue(&conversion, 0);
+}
+
+NodeValue FunctionConverter::getConversionInput(Node &conversion) const {
+  assert(conversion.getNumInputs() == 1 && "This method should be overloaded");
+  return conversion.getNthInput(0);
 }
 
 Node &FunctionConverter::morphNode(Node &node) { return node; }
@@ -118,7 +109,7 @@ void FunctionConverter::convert() {
       val.setType(targetTy);
       // Create the conversion.
       Node *conversion = createConversion(val, origTy);
-      conversions_.push_back(conversion);
+      conversions_.insert(conversion);
       // "conversion" uses val so after this call,
       // we will get a use of conversion inside conversion.
       NodeValue conversionVal = getConversionOutput(*conversion);
@@ -152,7 +143,7 @@ void FunctionConverter::convert() {
              "Conversion does not preserve shape");
       // Create the conversion.
       Node *conversion = createConversion(val, targetTy);
-      conversions_.push_back(conversion);
+      conversions_.insert(conversion);
       node.setNthInput(idx, getConversionOutput(*conversion));
     }
     // All the surrounding code is properly typed, finally the morph node.
@@ -166,4 +157,50 @@ void FunctionConverter::convert() {
   cleanUp();
 
   function_.verify();
+}
+
+bool FunctionConverter::optimizeConversions() {
+  // Traverse all the conversions introduced during the conversion step and
+  // remove them.
+  llvm::SmallPtrSet<Node *, 8> deadConversions;
+  bool changed = false;
+  for (Node *conversion : conversions_) {
+    if (deadConversions.count(conversion)) {
+      continue;
+    }
+    NodeValue conversionInput = getConversionInput(*conversion);
+    // Check if the input of this conversion is a conversion that we know.
+    if (!conversions_.count(conversionInput)) {
+      continue;
+    }
+    // So we have "conversion(conversion A to B) to C". Check if type A == type
+    // C, in that case, we can replace the use of this conversion by the input
+    // of the other conversion.
+    // Note: This potentially changes the semantic of the program, for instance
+    // if going through B implies a loss in precision. However, since this
+    // method is not run by default that means the caller knows what it is
+    // doing.
+    NodeValue A = getConversionInput(*conversionInput.getNode());
+    NodeValue C = getConversionOutput(*conversion);
+    if (A.getType() != C.getType()) {
+      continue;
+    }
+    // Use A instead of C.
+    C.replaceAllUsesOfWith(A, &function_);
+    changed = true;
+    bool inserted = deadConversions.insert(C.getNode()).second;
+    (void)inserted;
+    assert(inserted && "Conversion was already dead");
+    if (conversionInput.hasOneUse()) {
+      // The only user of conversionInput is C.
+      // This conversion is now dead too.
+      inserted = deadConversions.insert(conversionInput.getNode()).second;
+      (void)inserted;
+      assert(inserted && "Conversion was already dead");
+    }
+  }
+  for (Node *conversion : deadConversions) {
+    function_.eraseNode(conversion);
+  }
+  return changed;
 }

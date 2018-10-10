@@ -339,6 +339,7 @@ quantizeFunction(const ExecutionEngine &EE,
 
   FunctionQuantizer quantizer(*G, EE, quantizationInfos, doNotQuantizeKinds);
   quantizer.convert();
+  quantizer.optimizeConversions();
 
   return G;
 }

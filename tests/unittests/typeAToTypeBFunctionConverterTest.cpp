@@ -439,6 +439,107 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
 }
 
+/// Check that a graph with a simple chain of computation is converted
+/// properly. In particular, check that the intermediate conversion
+/// steps are not eliminated by default.
+/// Namely, check that:
+/// \verbatim
+/// Input: Placeholder(float)
+///    |
+///    V
+///   FC(float)
+///    |
+///    V
+///   ReLU(float)  Output: Placeholder(float)
+///    |            |
+///    |    +-------+
+///    |   /
+///    V  V
+///   Save
+/// \endverbatim
+///
+/// Gets converted into:
+/// \verbatim
+/// Input: Placeholder(float)
+///    |
+///    V
+/// ConvertTo(float16)
+///    |
+///    V
+///   FC(float16)
+///    |
+///    V
+///   ReLU(float16)  Output: Placeholder(float)
+///    |              |
+///    V              |
+/// ConvertTo(float)  |
+///    |    +---------+
+///    |   /
+///    V  V
+///   Save
+/// \endverbatim
+///
+/// In particular, the input and output of the network shouldn't be modified.
+TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Context ctx;
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
+  auto *output =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
+
+  auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
+  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *result = F->createSave("save", ReLU, output);
+
+  size_t origGraphSize = F->getNodes().size();
+
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty);
+  converter.convert();
+  bool changed = converter.optimizeConversions();
+  EXPECT_TRUE(changed);
+
+  // We should have 4 more nodes:
+  // 1 conversion float to float16 for each input of FC (3)
+  // 1 conversion float16 to float for the result of ReLU.
+  EXPECT_EQ(F->getNodes().size(), origGraphSize + 4);
+  // Make sure the save node is still in the function and is unchanged.
+  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
+              F->getNodes().end());
+  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  // Check that the save is fed from a conversion from float16 to float.
+  auto *convertedBackReLURes =
+      llvm::dyn_cast<ConvertToNode>(result->getInput());
+  ASSERT_NE(convertedBackReLURes, nullptr);
+  EXPECT_EQ(convertedBackReLURes->getElementType(0), ElemKind::FloatTy);
+  auto *convertedReLU =
+      llvm::dyn_cast<ReluNode>(convertedBackReLURes->getInput());
+  ASSERT_NE(convertedReLU, nullptr);
+  EXPECT_EQ(convertedReLU->getElementType(0), ElemKind::Float16Ty);
+
+  // Check that the ReLU is fed directly by FC float16.
+  auto *convertedFC =
+      llvm::dyn_cast<FullyConnectedNode>(convertedReLU->getInput());
+  ASSERT_NE(convertedFC, nullptr);
+  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
+  // Check that all the input of FC are convertTo node with from float to
+  // Float16Ty.
+  for (unsigned idx = 0, end = convertedFC->getNumInputs(); idx != end; ++idx) {
+    auto *convertedFCInput =
+        llvm::dyn_cast<ConvertToNode>(convertedFC->getNthInput(idx));
+    ASSERT_NE(convertedFCInput, nullptr);
+    EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+    EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
+    EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
+  }
+  // At this point we know the input of FC is convertTo(placeholder).
+  // Check that this placeholder is the expected input.
+  EXPECT_EQ(convertedFC->getInput().getNode()->getNthInput(0).getNode(), input);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
                         ::testing::Values(BackendKind::Interpreter));
 
