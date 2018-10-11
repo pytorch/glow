@@ -94,7 +94,15 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
       ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           [this](const std::string &Name) -> JITSymbol {
-            if (auto Sym = compileLayer_.findSymbol(Name, false))
+            // Search for symbols which may not be exported.  On PE/COFF targets
+            // (i.e. Windows), not all symbols are implicitly exported.  If the
+            // symbols is not marked as DLLExport, it is not considered
+            // exported, and the symbol lookup may fail.  This may also occur on
+            // ELF/MachO targets if built with hidden visibility.  The JIT
+            // however maintains a list of all symbols and can find unexported
+            // symbols as well.
+            if (auto Sym = compileLayer_.findSymbol(
+                    Name, /*ExportedSymbolsOnly=*/false))
               return Sym;
             else if (auto Err = Sym.takeError())
               return std::move(Err);

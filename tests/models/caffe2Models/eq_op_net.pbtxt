@@ -1,0 +1,11 @@
+name: "eq"
+op {
+  input: "X"
+  input: "Y"
+  output: "eq"
+  name: ""
+  type: "EQ"
+}
+external_input: "X"
+external_input: "Y"
+external_output: "eq"
