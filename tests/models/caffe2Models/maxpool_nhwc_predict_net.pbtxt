@@ -1,0 +1,23 @@
+name: "maxpool_test"
+op {
+  input: "inputs"
+  output: "output"
+  type: "MaxPool"
+  arg {
+    name: "order"
+    s: "NHWC"
+  }
+  arg {
+    name: "kernel"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+}
+external_output: "output"
