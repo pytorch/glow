@@ -36,7 +36,7 @@ check_format() {
     echo "***post.status***"
     cat post.status
     echo "***git diff***"
-    git diff master
+    git diff
 
     exit 1
   fi
