@@ -137,7 +137,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
-GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<Module> M) {
+GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
 // Add the set to the JIT with the resolver and a newly created
 // SectionMemoryManager.
 #if LLVM_VERSION_MAJOR > 6
