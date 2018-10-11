@@ -265,6 +265,21 @@ protected:
     }
   }
 
+  /// Check if \p tensor can be converted to \p dstTy.
+  /// \see FunctionConverter::canConvert.
+  bool canConvert(const Tensor &tensor, TypeRef dstTy) const override {
+    return !tensor.getType().isQuantizedType() && dstTy->isQuantizedType();
+  }
+
+  /// Convert a \p tensor to \p dstTy.
+  /// \see FunctionConverter::convertTensor.
+  void convertTensor(Tensor &tensor, TypeRef dstTy) override {
+    assert(dstTy->getElementType() == ElemKind::Int8QTy &&
+           "Type not supported yet");
+    TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
+    tensor = quantizeTensor(tensor, params);
+  }
+
 private:
   /// Execution engine used to check is a quantized operator is
   /// supported.
