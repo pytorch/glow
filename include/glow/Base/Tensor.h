@@ -386,7 +386,7 @@ public:
   /// \return a new handle that points and manages this tensor.
   template <class ElemTy = float> Handle<ElemTy> getHandle() &;
 
-  template <class ElemTy = float> const Handle<ElemTy> getHandle() const;
+  template <class ElemTy = float> const Handle<ElemTy> getHandle() const &;
 
   /// If Tensor is rvalue, it is an error to get its Handle.
   template <class ElemTy = float> Handle<ElemTy> getHandle() && = delete;
@@ -792,7 +792,7 @@ template <class ElemTy> Handle<ElemTy> Tensor::getHandle() & {
   return Handle<ElemTy>(this);
 }
 
-template <class ElemTy> const Handle<ElemTy> Tensor::getHandle() const {
+template <class ElemTy> const Handle<ElemTy> Tensor::getHandle() const & {
   assert(type_.isType<ElemTy>() && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(const_cast<Tensor *>(this));
 }
