@@ -25,16 +25,21 @@
 #include <utility> // For std::pair.
 
 namespace glow {
+class Constant;
 class Context;
 class Function;
+class Module;
 class Node;
 struct NodeValue;
+class Tensor;
 
 /// This class implements the high-level APIs used to convert a function
 /// to one type to another. The actual conversions must be implemented
 /// by derived classes.
 class FunctionConverter {
 protected:
+  /// The module containing function_.
+  Module &mod_;
   /// The function to be converted.
   Function &function_;
   /// The list of all the conversions inserted during ::convert.
@@ -132,13 +137,26 @@ protected:
   /// Hook to do a final clean-up after all operations have been converted.
   virtual void cleanUp() {}
 
+  /// \returns true if the given \p tensor can be convert to the
+  /// destination type \p dstTy using ::convertTensor.
+  virtual bool canConvert(const Tensor &tensor, TypeRef dstTy) const;
+
+  /// Converts the content of the given \p tensor to the destination
+  /// type \p dstTy.
+  virtual void convertTensor(Tensor &tensor, TypeRef dstTy);
+
+  /// \returns A value representing the given \p constant converted
+  /// to the destination type \p dstTy. If the conversion is not
+  /// possible, this method returns NodeValue().
+  NodeValue convertConstant(Constant &constant, TypeRef dstTy);
+
 public:
   /// Create a function converter for \p F.
   ///
   /// \note This method will modify \p F when calling ::convert.
   ///       If one wants to keep the original function around,
   ///       they need to clone it before creating this converter.
-  FunctionConverter(Function &F) : function_(F) {}
+  FunctionConverter(Function &F);
 
   virtual ~FunctionConverter() {}
 

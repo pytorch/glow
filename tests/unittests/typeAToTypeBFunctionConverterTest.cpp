@@ -439,14 +439,16 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
 }
 
-/// Check that a graph with a simple chain of computation is converted
-/// properly. In particular, check that the intermediate conversion
-/// steps are not eliminated by default.
+/// Check that the conversion optimization can get rid of conversion of
+/// constants and intermediate conversions.
 /// Namely, check that:
 /// \verbatim
 /// Input: Placeholder(float)
 ///    |
-///    V
+///    |  Weight: Constant(float)
+///    |   |   Bias: Constant(float)
+///    |   |   /
+///    V   V  V
 ///   FC(float)
 ///    |
 ///    V
@@ -465,7 +467,10 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
 ///    V
 /// ConvertTo(float16)
 ///    |
-///    V
+///    |  Weight: Constant(float16)
+///    |   |   Bias: Constant(float16)
+///    |   |   /
+///    V   V  V
 ///   FC(float16)
 ///    |
 ///    V
@@ -490,7 +495,22 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
-  auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
+  auto *weights = mod.createConstant(
+      mod.uniqueType(ElemKind::FloatTy, {13, 10}), "weights");
+  weights->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  Tensor origWeights;
+  origWeights.assign(&weights->getPayload());
+  auto *bias =
+      mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10, 20}), "bias");
+  bias->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  Tensor origBias;
+  origBias.assign(&bias->getPayload());
+
+  // This save is just to test that we do the right thing for constants with
+  // more than one use.
+  auto *saveBias = F->createSave("saveBias", bias);
+  TypeRef FCTy = mod.uniqueType(ElemKind::FloatTy, {20, 10});
+  auto *FC = F->createFullyConnected("FC", input, weights, bias, FCTy);
   auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
   auto *result = F->createSave("save", ReLU, output);
 
@@ -502,10 +522,10 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   bool changed = converter.optimizeConversions();
   EXPECT_TRUE(changed);
 
-  // We should have 4 more nodes:
-  // 1 conversion float to float16 for each input of FC (3)
+  // We should have 2 more nodes:
+  // 1 conversion float to float16 for the input of FC
   // 1 conversion float16 to float for the result of ReLU.
-  EXPECT_EQ(F->getNodes().size(), origGraphSize + 4);
+  EXPECT_EQ(F->getNodes().size(), origGraphSize + 2);
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
@@ -525,19 +545,36 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
       llvm::dyn_cast<FullyConnectedNode>(convertedReLU->getInput());
   ASSERT_NE(convertedFC, nullptr);
   EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
-  // Check that all the input of FC are convertTo node with from float to
+  // Check that the input of FC is a convertTo node from "input" from float to
   // Float16Ty.
-  for (unsigned idx = 0, end = convertedFC->getNumInputs(); idx != end; ++idx) {
-    auto *convertedFCInput =
-        llvm::dyn_cast<ConvertToNode>(convertedFC->getNthInput(idx));
-    ASSERT_NE(convertedFCInput, nullptr);
-    EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
-    EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
-    EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
-  }
-  // At this point we know the input of FC is convertTo(placeholder).
-  // Check that this placeholder is the expected input.
-  EXPECT_EQ(convertedFC->getInput().getNode()->getNthInput(0).getNode(), input);
+  auto *convertedFCInput =
+      llvm::dyn_cast<ConvertToNode>(convertedFC->getInput());
+  ASSERT_NE(convertedFCInput, nullptr);
+  EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
+  EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(convertedFCInput->getInput().getNode(), input);
+
+  // Check that the weights have been updated to float16.
+  auto *convertedFCWeights =
+      llvm::dyn_cast<Constant>(convertedFC->getWeights());
+  ASSERT_NE(convertedFCWeights, nullptr);
+  EXPECT_EQ(convertedFCWeights->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFCWeights, weights);
+  origWeights.convertToType(ElemKind::Float16Ty);
+  EXPECT_TRUE(origWeights.isEqual(weights->getPayload()));
+
+  // Check that the bias has been duplicated and converted.
+  auto *convertedFCBias = llvm::dyn_cast<Constant>(convertedFC->getBias());
+  ASSERT_NE(convertedFCBias, nullptr);
+  EXPECT_EQ(convertedFCBias->getElementType(), ElemKind::Float16Ty);
+  EXPECT_NE(convertedFCBias, bias);
+  origBias.convertToType(ElemKind::Float16Ty);
+  EXPECT_TRUE(origBias.isEqual(convertedFCBias->getPayload()));
+
+  // Check that the original bias hasn't been altered.
+  EXPECT_EQ(bias->getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(saveBias->getInput().getNode(), bias);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,

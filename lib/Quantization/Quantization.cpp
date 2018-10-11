@@ -266,8 +266,6 @@ protected:
   }
 
 private:
-  /// Shortcut to the module of function_.
-  Module &mod_;
   /// Execution engine used to check is a quantized operator is
   /// supported.
   const ExecutionEngine &EE_;
@@ -284,8 +282,7 @@ public:
   FunctionQuantizer(Function &F, const ExecutionEngine &EE,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     const KindSet &doNotQuantizeKinds)
-      : FunctionConverter(F), mod_(*F.getParent()), EE_(EE),
-        doNotQuantizeKinds_(doNotQuantizeKinds) {
+      : FunctionConverter(F), EE_(EE), doNotQuantizeKinds_(doNotQuantizeKinds) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
