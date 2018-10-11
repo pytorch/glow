@@ -140,6 +140,50 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+/// Verify that the Conv-BatchNorm merging optimization is not impacted by
+/// multiple users on the filter/bias.
+TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  ConvolutionNode *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  BatchNormalizationNode *BN =
+      F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  // Adding these saves means the filter and bias have multiple uses. This
+  // should not impact the Conv-BatchNorm merging optimization.
+  F_->createSave("saveFilter", CV->getFilter());
+  F_->createSave("saveBias", CV->getBias());
+
+  // Three Saves, one Conv, and one BatchNorm.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+
+  // Conv's Filter and Bias, plus BN's Scale, Bias, Mean, and Var.
+  EXPECT_EQ(mod_.getConstants().size(), 6);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // BatchNorm should have been merged into the Conv.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  // Filter and Bias should have been duplicated so that the Conv-BN
+  // optimization does not modify the filter/bias being saved, equaling 4
+  // Constants. Additionally, the BN's Scale, Bias, Mean, and Var should be
+  // eliminated due to the opti.
+  EXPECT_EQ(mod_.getConstants().size(), 4);
+
+  ASSERT_EQ(A->getNumUsers(), 1);
+  Node *newCV = A->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *save = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+}
+
 TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   Node *A =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "A", false);
