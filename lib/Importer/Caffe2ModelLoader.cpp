@@ -153,6 +153,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     std::vector<unsigned_t> pads = getPads(dict);
     std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
     unsigned_t group = dict.count("group") ? loadInt(dict["group"]) : 1;
+    std::string order = dict.count("order") ? loadStr(dict["order"]) : "NCHW";
 
     auto in = getNodeValueOrCreateVariableByName(op.input(0));
     Tensor *w = getTensorByName(op.input(1));
@@ -186,23 +187,30 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
 
-    // Caffe passes the input as NCHW, and we expect the input to be NHWC.
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    // We expect the input to be NHWC.
+    Node *tr;
+    if (order == "NCHW") {
+      tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    } else {
+      tr = in;
+    }
 
     // Calculate the size and allocate the output buffer.
-    ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+    ShapeNHWC idim = ShapeNHWC(tr->getType(0)->dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-    auto *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
+    Node *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
                                strides, pads, group);
 
-    // Transpose the output back.
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    addNodeAsOutput(op, N);
+    if (order == "NCHW") {
+      // Transpose the output back.
+      node = G_.createTranspose(opName, node, NHWC2NCHW);
+    }
+    addNodeAsOutput(op, node);
     return;
   }
 
@@ -212,8 +220,14 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
     std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
     std::vector<unsigned_t> pads = getPads(dict);
-
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    std::string order = dict.count("order") ? loadStr(dict["order"]) : "NCHW";
+    // We expect the input to be NHWC.
+    Node *tr;
+    if (order == "NCHW") {
+      tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    } else {
+      tr = in;
+    }
 
     // If 'global_pooling' is set then the operation will pool over the size of
     // the input by doing: kernels = {height, width}.
@@ -229,8 +243,11 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     } else {
       node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     }
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    addNodeAsOutput(op, N);
+    if (order == "NCHW") {
+      // Transpose the output back.
+      node = G_.createTranspose(opName, node, NHWC2NCHW);
+    }
+    addNodeAsOutput(op, node);
     return;
   }
 

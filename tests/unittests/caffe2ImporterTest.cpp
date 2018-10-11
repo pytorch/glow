@@ -61,6 +61,207 @@ TEST(caffe2, importConv) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
 
+/// Test loading conv op from a Caffe2 model.
+/// The input is N*H*W*C (1*3*3*1), the kernel is 2,
+/// stride is 1, pad is 1, group is 1.
+TEST(caffe2, convNHWC) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/conv_nhwc_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/conv_nhwc_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 conv and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *convNode =
+      llvm::dyn_cast<ConvolutionNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(convNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 2 constants: Weights and bias.
+  EXPECT_EQ(mod.getConstants().size(), 2);
+}
+
+/// Test loading MaxPool with NHWC order input.
+TEST(caffe2, maxPoolNHWC) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/maxpool_nhwc_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 maxpool and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *maxPoolNode =
+      llvm::dyn_cast<MaxPoolNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(maxPoolNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 0 constants.
+  EXPECT_EQ(mod.getConstants().size(), 0);
+}
+
+/// Test loading MaxPool with default NCHW order input.
+TEST(caffe2, maxPool) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/maxpool_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 maxpool, 1 save
+  // and 2 transpose.
+  EXPECT_EQ(F->getNodes().size(), 4);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *transNode1 =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode1);
+  auto *maxPoolNode =
+      llvm::dyn_cast<MaxPoolNode>(transNode1->getInput().getNode());
+  ASSERT_TRUE(maxPoolNode);
+  auto *transNode2 =
+      llvm::dyn_cast<TransposeNode>(maxPoolNode->getInput().getNode());
+  ASSERT_TRUE(transNode2);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 0 constants.
+  EXPECT_EQ(mod.getConstants().size(), 0);
+}
+
+/// Test loading AvgPool with NHWC order input.
+TEST(caffe2, avgPoolNHWC) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/avgpool_nhwc_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 maxpool and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *avgPoolNode =
+      llvm::dyn_cast<AvgPoolNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(avgPoolNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 0 constants.
+  EXPECT_EQ(mod.getConstants().size(), 0);
+}
+
+/// Test loading AveragePool with default NCHW order input.
+TEST(caffe2, avgPool) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/avgpool_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 maxpool, 1 save
+  // and 2 transpose.
+  EXPECT_EQ(F->getNodes().size(), 4);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *transNode1 =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode1);
+  auto *avgPoolNode =
+      llvm::dyn_cast<AvgPoolNode>(transNode1->getInput().getNode());
+  ASSERT_TRUE(avgPoolNode);
+  auto *transNode2 =
+      llvm::dyn_cast<TransposeNode>(avgPoolNode->getInput().getNode());
+  ASSERT_TRUE(transNode2);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 0 constants.
+  EXPECT_EQ(mod.getConstants().size(), 0);
+}
+
 /// Test loading a concat node with add_axis.
 /// Concat nodes with add_axis have a different semantic
 /// than the plain glow concat.

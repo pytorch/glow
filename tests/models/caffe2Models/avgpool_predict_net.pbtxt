@@ -1,0 +1,19 @@
+name: "averagePool_test"
+op {
+  input: "inputs"
+  output: "output"
+  type: "AveragePool"
+  arg {
+    name: "kernel"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+}
+external_output: "output"
