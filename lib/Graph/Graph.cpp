@@ -1655,7 +1655,7 @@ Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
   (void)XDimsSize;
 
   assert(X.dims() == Y.dims() && "X and Y must have the same shape");
-  assert((XDimsSize == 1) || (XDimsSize == 2) && "X and Y must be 1D or 2D");
+  assert(((XDimsSize == 1) || (XDimsSize == 2)) && "X and Y must be 1D or 2D");
 
   // Create Mul node.
   auto *MN = createMul(name.str() + ".mul", X, Y);
