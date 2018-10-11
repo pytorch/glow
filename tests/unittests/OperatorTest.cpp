@@ -4075,7 +4075,7 @@ TEST_P(Operator, SoftMax) {
   // res_0 = exp(1) / sum = ~0.011
   // res_1 = exp(3) / sum = ~0.082
   // And so on.
-  out.getHandle<float>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  out.getHandle<float>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
@@ -4096,7 +4096,7 @@ TEST_P(InterpOnly, FP16SoftMax) {
 
   auto result = ctx_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 6});
-  out.getHandle<float16_t>() = {0.011, 0.082, 0.05, 0.605, 0.222, 0.03};
+  out.getHandle<float16_t>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 

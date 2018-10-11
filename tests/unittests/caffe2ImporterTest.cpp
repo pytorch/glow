@@ -394,8 +394,8 @@ TEST(caffe2, FC) {
 
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
-                                       32.1, 77.2, 122.3, 167.4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 2 * 4; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
@@ -442,8 +442,8 @@ TEST(caffe2, FCWithFlatten) {
   EE.run();
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
-                                       32.1, 77.2, 122.3, 167.4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
   result = ctx.get(output)->getHandle();
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 2 * 4; i++)
@@ -492,8 +492,8 @@ TEST(caffe2, FCTransposed) {
 
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
-                                       32.1, 77.2, 122.3, 167.4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 2 * 4; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
@@ -541,8 +541,8 @@ TEST(caffe2, FCTransposedWithFlatten) {
   EE.run();
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1, 32.2, 50.3,  68.4,
-                                       32.1, 77.2, 122.3, 167.4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
   result = ctx.get(output)->getHandle();
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < 2 * 4; i++)
