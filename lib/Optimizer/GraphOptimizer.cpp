@@ -885,32 +885,55 @@ static void optimizePool(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// \returns The uniquely used Constant from node or nullptr
-/// if node has more than one user or is not a Constant.
-static Constant *getUniquelyUsedConstant(Node &node) {
-  // If that node has more than one use, it may not
-  // be okay to modify the underlying Constant.
-  if (!node.hasOneUse()) {
+/// \returns a uniquely used Constant with the same contents as \p node. If \p
+/// node is not a Constant then \returns a nullptr. If \node is a Constant which
+/// has a single use, \p node is returned. If \node is a Constant which has
+/// multiple uses, then \returns a new duplicate Constant that has the same
+/// contents as \p node contained in \p M.
+static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
+  Constant *constant = dyn_cast<Constant>(&node);
+  if (!constant) {
     return nullptr;
   }
-  return dyn_cast<Constant>(&node);
+
+  if (constant->hasOneUse()) {
+    return constant;
+  }
+
+  // If constant has more than one use, duplicate it and return the duplicate.
+  auto *NC = M->createConstant(constant->getType(), constant->getName());
+  NC->getPayload().assign(&constant->getPayload());
+  return NC;
 }
 
-/// Normalize the weight of \p CV with what \p BN is doing.
-/// \return Whether or not the normalization was possible.
+/// Normalize the weight of \p CV with what \p BN is doing, given containing
+/// Module \p M. \returns whether or not the normalization was possible.
 template <typename ElemTy>
-bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
-
+bool normalizeWeights(Module *M, ConvolutionNode &CV,
+                      BatchNormalizationNode &BN) {
   static_assert(
       std::is_floating_point<ElemTy>::value ||
           std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
       "This implementation is for floating-point values only");
 
-  Constant *filterC = getUniquelyUsedConstant(*CV.getFilter().getNode());
-  Constant *cbiasC = getUniquelyUsedConstant(*CV.getBias().getNode());
+  Constant *filterC = getUniquelyUsedConstant(M, *CV.getFilter().getNode());
+  Constant *cbiasC = getUniquelyUsedConstant(M, *CV.getBias().getNode());
 
   if (!filterC || !cbiasC) {
     return false;
+  }
+
+  // Set the new filter and bias on CV if necessary.
+  if (filterC != CV.getFilter().getNode()) {
+    constexpr size_t idxFilter = 1;
+    assert(CV.getNthInput(idxFilter) == CV.getFilter() &&
+           "Filter idx is incorrect");
+    CV.setNthInput(idxFilter, filterC);
+  }
+  if (cbiasC != CV.getBias().getNode()) {
+    constexpr size_t idxBias = 2;
+    assert(CV.getNthInput(idxBias) == CV.getBias() && "Bias idx is incorrect");
+    CV.setNthInput(idxBias, cbiasC);
   }
 
   // First, BN computation can be phrased as follows:
@@ -992,6 +1015,7 @@ bool normalizeWeights(ConvolutionNode &CV, BatchNormalizationNode &BN) {
 
 static void optimizeBatchNorm(Function *F) {
   auto &nodes = F->getNodes();
+  auto *M = F->getParent();
 
   // For each node:
   for (auto &node : nodes) {
@@ -1011,10 +1035,10 @@ static void optimizeBatchNorm(Function *F) {
       bool normalizationHappened = false;
       switch (CV->getElementType(0)) {
       case ElemKind::FloatTy:
-        normalizationHappened = normalizeWeights<float>(*CV, *BN);
+        normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
         break;
       case ElemKind::Float16Ty:
-        normalizationHappened = normalizeWeights<float16_t>(*CV, *BN);
+        normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
         break;
       default:
         llvm_unreachable("Type not supported");
