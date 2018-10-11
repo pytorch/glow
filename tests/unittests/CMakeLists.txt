@@ -212,6 +212,7 @@ LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 if(GLOW_WITH_CPU)
 target_sources(BackendCorrectnessTest PUBLIC HyphenTest.cpp)
 
+if (NOT MSVC)
 add_executable(GemmTest
                GemmTest.cpp)
 target_link_libraries(GemmTest
@@ -225,6 +226,7 @@ target_link_libraries(GemmTest
                         testMain)
 add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
 LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
+endif()
 
 add_executable(LLVMIRGenTest
                LLVMIRGenTest.cpp)
