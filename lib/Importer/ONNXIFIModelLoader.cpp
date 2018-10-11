@@ -146,55 +146,50 @@ ONNXIFIModelLoader::parseOperator(const void *onnxModel, size_t onnxModelSize) {
 
   ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
 
-  // Only single operator is allowed to be in the onnxModel.
-  if (graph.node_size() != 1) {
-    return result;
-  }
-
-  const std::string &operation = graph.node(0).op_type();
-
 #define ADD_OP_MAPPING(NODE_KIND_, ELEM_KIND_)                                 \
   result.emplace_back(Kinded::Kind::NODE_KIND_, ElemKind::ELEM_KIND_);
-
-  // Single ONNX node can be represented by several Glow nodes,
-  // collect corresponding mapping in result vector.
-  // Quantized and non-quantized operations are handled by
-  // different ONNX operators, for now only handle fp32.
-  // TODO: Add more operators.
-  if (operation == "BatchNormalization") {
-    ADD_OP_MAPPING(BatchNormalizationNodeKind, FloatTy);
-  } else if (operation == "Conv") {
-    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
-    ADD_OP_MAPPING(ConvolutionNodeKind, FloatTy);
-  } else if (operation == "Relu") {
-    ADD_OP_MAPPING(ReluNodeKind, FloatTy);
-  } else if (operation == "Softmax") {
-    ADD_OP_MAPPING(SoftMaxNodeKind, FloatTy);
-    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
-  } else if (operation == "Transpose") {
-    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
-  } else if (operation == "MaxPool") {
-    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
-    ADD_OP_MAPPING(MaxPoolNodeKind, FloatTy);
-  } else if (operation == "AveragePool") {
-    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
-    ADD_OP_MAPPING(AvgPoolNodeKind, FloatTy);
-  } else if (operation == "Add") {
-    ADD_OP_MAPPING(AddNodeKind, FloatTy);
-  } else if (operation == "Reshape") {
-    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
-  } else if (operation == "Sum") {
-    ADD_OP_MAPPING(AddNodeKind, FloatTy);
-  } else if (operation == "Gemm") {
-    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
-    ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
-    ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
-  } else if (operation == "Sigmoid") {
-    ADD_OP_MAPPING(SigmoidNodeKind, FloatTy);
-  } else if (operation == "Flatten") {
-    ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
-  } else if (operation == "Concat") {
-    ADD_OP_MAPPING(ConcatNodeKind, FloatTy);
+  for (const auto &node : graph.node()) {
+    const auto &operation = node.op_type();
+    // Single ONNX node can be represented by several Glow nodes,
+    // collect corresponding mapping in result vector.
+    // Quantized and non-quantized operations are handled by
+    // different ONNX operators, for now only handle fp32.
+    // TODO: Add more operators.
+    if (operation == "BatchNormalization") {
+      ADD_OP_MAPPING(BatchNormalizationNodeKind, FloatTy);
+    } else if (operation == "Conv") {
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+      ADD_OP_MAPPING(ConvolutionNodeKind, FloatTy);
+    } else if (operation == "Relu") {
+      ADD_OP_MAPPING(ReluNodeKind, FloatTy);
+    } else if (operation == "Softmax") {
+      ADD_OP_MAPPING(SoftMaxNodeKind, FloatTy);
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+    } else if (operation == "Transpose") {
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+    } else if (operation == "MaxPool") {
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+      ADD_OP_MAPPING(MaxPoolNodeKind, FloatTy);
+    } else if (operation == "AveragePool") {
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+      ADD_OP_MAPPING(AvgPoolNodeKind, FloatTy);
+    } else if (operation == "Add") {
+      ADD_OP_MAPPING(AddNodeKind, FloatTy);
+    } else if (operation == "Reshape") {
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+    } else if (operation == "Sum") {
+      ADD_OP_MAPPING(AddNodeKind, FloatTy);
+    } else if (operation == "Gemm") {
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+      ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
+    } else if (operation == "Sigmoid") {
+      ADD_OP_MAPPING(SigmoidNodeKind, FloatTy);
+    } else if (operation == "Flatten") {
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+    } else if (operation == "Concat") {
+      ADD_OP_MAPPING(ConcatNodeKind, FloatTy);
+    }
   }
 #undef ADD_OP_MAPPING
 
