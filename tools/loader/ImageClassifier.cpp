@@ -23,9 +23,11 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <memory>
+#include <queue>
 
 using namespace glow;
 
@@ -118,6 +120,10 @@ llvm::cl::opt<unsigned> labelOffset(
     llvm::cl::desc("Label offset for TF ONNX models with 1001 classes"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> topKCount(
+    "topk", llvm::cl::desc("Number of highest likelihood labels to print"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(imageLoaderCat));
+
 llvm::cl::opt<std::string> modelInputName(
     "model_input_name",
     llvm::cl::desc("The name of the variable for the model's input image."),
@@ -175,6 +181,56 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
         }
       }
     }
+  }
+}
+
+/// A pair representing a float and the index where the float was found.
+using FloatIndexPair = std::pair<float, size_t>;
+
+/// Given a Handle \p H of a 1D tensor with float elements, \returns the top K
+/// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
+static std::vector<FloatIndexPair> getTopKPairs(Handle<float> H) {
+  assert(topKCount <= H.size() && "Function requires k < number of labels.");
+  assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
+
+  // Use a priority queue of pairs of floats (probabilities) to size_t (indices)
+  // to determine the top K pairs, and then return the indices from it.
+  std::priority_queue<FloatIndexPair, std::vector<FloatIndexPair>,
+                      std::greater<FloatIndexPair>>
+      topKQueue;
+
+  // Loop over all the probabilites, finding the highest k probability pairs.
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    float currProbability = H.at({i});
+    if (topKQueue.size() < topKCount) {
+      // Always push the first k elements.
+      topKQueue.push(std::make_pair(currProbability, i));
+    } else if (topKQueue.top().first < currProbability) {
+      // If the lowest element has lower probability than the current, then pop
+      // the lowest and insert the current pair.
+      topKQueue.pop();
+      topKQueue.push(std::make_pair(currProbability, i));
+    }
+  }
+
+  // We now have the top K pairs in reverse order.
+  std::vector<FloatIndexPair> res(topKCount);
+  for (size_t i = 0; i < topKCount; i++) {
+    res[topKCount - i - 1] = topKQueue.top();
+    topKQueue.pop();
+  }
+
+  return res;
+}
+
+/// Print out the top K pairs to stdout, which were passed in via \p topKPairs.
+static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
+  for (size_t i = 0; i < topKPairs.size(); i++) {
+    // Some models are trained with more classes. E.g. Some imagenet models
+    // exported from TensorFlow have 1 extra "neutral" class.
+    const size_t label = topKPairs[i].second - labelOffset;
+    llvm::outs() << "   Label-K" << i + 1 << ": " << label << " (probability: "
+                 << llvm::format("%0.4f", topKPairs[i].first) << ")\n";
   }
 }
 
@@ -246,11 +302,10 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
       Tensor slice = H.extractSlice(i);
       auto SH = slice.getHandle<>();
-      // Some models are trained with more classes. E.g. Some imagenet models
-      // exported from TensorFlow have 1 extra "neutral" class.
-      size_t result = SH.minMaxArg().second - labelOffset;
-      llvm::outs() << " File: " << inputImageFilenames[i]
-                   << " Result:" << result << "\n";
+      llvm::outs() << " File: " << inputImageFilenames[i] << "\n";
+
+      auto topKPairs = getTopKPairs(SH);
+      printTopKPairs(topKPairs);
     }
   }
 
