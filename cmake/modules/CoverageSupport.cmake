@@ -23,28 +23,28 @@ if(GLOW_USE_COVERAGE)
 
   # Add compilation flags for coverage.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
-   
+
   # Add glow_coverage target.
-  add_custom_target(glow_coverage 
+  add_custom_target(glow_coverage
     # Cleanup lcov counters.
     COMMAND ${LCOV_PATH} --directory . --zerocounters
     COMMAND echo "Cleaning is done. Running tests"
-    
+
     # Run all tests.
     COMMAND ctest -j 4
 
     # Capture lcov counters based on the test run.
     COMMAND ${LCOV_PATH} --no-checksum --directory . --capture --output-file glow_coverage.info
-    
+
     # Ignore not related files.
     COMMAND ${LCOV_PATH} --remove glow_coverage.info '*v1*' '/usr/*' '*tests/*' '*llvm_install*' --output-file ${PROJECT_BINARY_DIR}/glow_coverage_result.info
 
     # Generate HTML report based on the profiles.
     COMMAND ${GENHTML_PATH} -o glow_coverage ${PROJECT_BINARY_DIR}/glow_coverage_result.info
-   
-    # Cleanup info files. 
+
+    # Cleanup info files.
     COMMAND ${CMAKE_COMMAND} -E remove glow_coverage.info ${PROJECT_BINARY_DIR}/glow_coverage_result.info
-    
+
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
   )
 

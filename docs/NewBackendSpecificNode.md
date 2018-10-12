@@ -20,7 +20,7 @@ In TensorRT, the convolution, bias and ReLU layers of various sizes can be combi
 
 Actually, a Tensor is a view of a block of memory. Besides a pointer to the memory, we also have to get some other descriptions of this block of memory, such as shape, stride and layout.
 
-Different layout leads to different implementation of the operator kernel on certain backend. 
+Different layout leads to different implementation of the operator kernel on certain backend.
 For example, in the subgraph from ResNet50, a `CPUConvDKKC8` node with memory layout modified for efficient SIMD access is introduced to optimized for CPU backend. Please refer to "5.3 Use Case: Optimizing Resnet50 for the CPU" in [Glow paper](https://arxiv.org/abs/1805.00907).
 
 We should take both fast operator kernel implementation and extra potential layout transformation into consideration to get better performance.
@@ -44,7 +44,7 @@ Here are mainly three steps to add a new backend-specific node in Glow:
 
 ReLU is max between zero and the input value. Glow lowers `ReLUNode` to two basic low-level linear algebra operator nodes, `SplatNode` and `MaxNode`. The `SplatNode` first fills a Tensor with zero, and `MaxNode` compare `Input` with the filling Tensor. We can fuse these two operations which work with the same shape of tensors into a single kernel.
 
-Please refer to the document in [Backend](https://github.com/pytorch/glow/blob/master/docs/Backends.md#backend-specific-nodes-and-instructions) part for source code details on adding a new backend-specific CPUMaxSplatNode on CPU. 
+Please refer to the document in [Backend](https://github.com/pytorch/glow/blob/master/docs/Backends.md#backend-specific-nodes-and-instructions) part for source code details on adding a new backend-specific CPUMaxSplatNode on CPU.
 
 #### Data Layout Transformation for Conv Operator in OpenCL
 
@@ -67,7 +67,7 @@ BB.newNode("OCLConvolution")
         "filter, the bias and the input are in the NCHW format");
 ```
 
-During `transformPostLowering()`, this `convertConvToNCHWConv` node which contains a `NCHWConvNode` node and multiple`Transpose` nodes for `Input`, `Filter` and `Result` replaces the aforementioned pattern. 
+During `transformPostLowering()`, this `convertConvToNCHWConv` node which contains a `NCHWConvNode` node and multiple`Transpose` nodes for `Input`, `Filter` and `Result` replaces the aforementioned pattern.
 
 A corresponding backend-specific `OCLConvolution` instruction is also needed, defined in
 `tools/ClassGen/Backends/OpenCL/OpenCLSpecificInstrs.h`:

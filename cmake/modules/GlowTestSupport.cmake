@@ -11,7 +11,7 @@ function(add_glow_test)
     list(GET ARG_UNPARSED_ARGUMENTS 0 ARG_NAME)
     list(REMOVE_AT ARG_UNPARSED_ARGUMENTS 0)
   endif()
-  
+
   if (NOT ARG_NAME)
     message(FATAL_ERROR "Name mandatory")
   endif()
@@ -26,7 +26,7 @@ function(add_glow_test)
 
   list(GET ARG_COMMAND 0 TEST_EXEC)
   list(APPEND ARG_DEPENDS ${TEST_EXEC})
-  
+
   set_property(GLOBAL APPEND PROPERTY GLOW_TEST_DEPENDS ${ARG_DEPENDS})
 
   # Produce the specific test rule using the default built-in.

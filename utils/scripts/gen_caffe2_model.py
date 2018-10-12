@@ -1,6 +1,6 @@
 ## This is a helper script that generates Caffe2 models.
-## The generated model will be used for Caffe2 importer unittest:    
-## ./tests/unittests/caffe2ImporterTest.cpp 
+## The generated model will be used for Caffe2 importer unittest:
+## ./tests/unittests/caffe2ImporterTest.cpp
 ## Run $>python gen_caffe2_model.py to get the model files.
 
 from caffe2.proto import caffe2_pb2
