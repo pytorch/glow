@@ -64,8 +64,8 @@ find_package(LLVM 7 CONFIG)
 if (NOT LLVM_FOUND)
   # Fallback to LLVM 6
   find_package(LLVM 6 CONFIG)
- 
-  # Fallback to whatever is available. 
+
+  # Fallback to whatever is available.
   if (NOT LLVM_FOUND)
     find_package(LLVM CONFIG)
   endif()

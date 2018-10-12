@@ -1,6 +1,6 @@
 add_custom_command(
   OUTPUT "${CMAKE_BINARY_DIR}/glow/kernels.inc"
-  COMMAND include-bin 
+  COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl"
           "${CMAKE_BINARY_DIR}/glow/kernels.inc"
   DEPENDS include-bin CPURuntime "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl")
@@ -24,7 +24,7 @@ add_custom_command(
 add_library(OpenCL
             "${CMAKE_BINARY_DIR}/glow/kernels.inc"
             "${CMAKE_BINARY_DIR}/glow/kernels_fwd_conv.inc"
-            "${CMAKE_BINARY_DIR}/glow/kernels_fwd_quantized_conv.inc" 
+            "${CMAKE_BINARY_DIR}/glow/kernels_fwd_quantized_conv.inc"
             OpenCL.cpp
             Transforms.cpp)
 
