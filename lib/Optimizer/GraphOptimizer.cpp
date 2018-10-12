@@ -1659,13 +1659,10 @@ static void optimizeQuantization(Function *F) {
         auto *NC = F->getParent()->createConstant(Q->getResult().getType(),
                                                   C->getName());
         // Quantize C into NC.
-        auto srcHandle = C->getHandle();
-        auto destHandle = NC->getHandle<int8_t>();
         TensorQuantizationParams params{Q->getResult().getType()->getScale(),
                                         Q->getResult().getType()->getOffset()};
-        for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-          destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
-        }
+        NC->getPayload() =
+            quantization::quantizeTensor(C->getPayload(), params);
         Q->getResult().replaceAllUsesOfWith(NC);
         continue;
       }

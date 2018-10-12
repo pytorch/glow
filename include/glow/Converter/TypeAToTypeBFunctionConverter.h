@@ -23,16 +23,11 @@
 
 namespace glow {
 
-class Function;
-class Module;
-
 /// This helper class converts values of typeA into values of typeB.
 /// The nodes producing these values are morphed into the new type
 /// and proper conversions from/to typeA and typeB are inserted.
 class TypeAToTypeBFunctionConverter : public FunctionConverter {
 protected:
-  /// Module of the function to be converted.
-  Module &mod_;
   /// Destination type of the conversions.
   ElemKind dstKind_;
   /// Source type of the conversions. I.e., the values of this

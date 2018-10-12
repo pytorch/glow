@@ -20,29 +20,30 @@
 
 #include "glow/Base/Type.h"
 
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 #include <utility> // For std::pair.
 
 namespace glow {
+class Constant;
 class Context;
 class Function;
+class Module;
 class Node;
 struct NodeValue;
-
-/// Pair representing the destination and source type of a conversion.
-/// dstTy = cast(srcTy).
-using DstTySrcTy = std::pair<TypeRef, TypeRef>;
+class Tensor;
 
 /// This class implements the high-level APIs used to convert a function
 /// to one type to another. The actual conversions must be implemented
 /// by derived classes.
 class FunctionConverter {
 protected:
+  /// The module containing function_.
+  Module &mod_;
   /// The function to be converted.
   Function &function_;
   /// The list of all the conversions inserted during ::convert.
-  llvm::SmallVector<Node *, 16> conversions_;
+  llvm::SmallPtrSet<Node *, 16> conversions_;
 
   /// \return the type that \p out needs to have at the end of the conversion
   /// procedure. In other words, this is the type this value will have at the
@@ -94,12 +95,6 @@ protected:
   /// conversion procedure.
   virtual TypeRef getTargetTypeForInput(const Node &use, unsigned idx) const;
 
-  /// \returns the source and destination type of a \p conversion.
-  /// E.g., dstTy = cast(srcTy) should return (dstTy, srcTy).
-  /// The default implementation returns the zero-th result as destination type
-  /// and the zero-th input as source type.
-  virtual DstTySrcTy getConversionType(const Node &conversion) const;
-
   /// Check if \p node can be converted.
   /// \return false if \p node shouldn't be considered for conversion.
   virtual bool canConvert(const Node &node) const;
@@ -113,6 +108,12 @@ protected:
   /// If a conversion node defined more than one value, this
   /// method must be overloaded.
   virtual NodeValue getConversionOutput(Node &conversion) const;
+
+  /// Given a \p conversion, get its input value.
+  /// The default implementation returns the zero-th argument.
+  /// If a conversion node uses more than one value, this
+  /// method must be overloaded.
+  virtual NodeValue getConversionInput(Node &conversion) const;
 
   /// Morph \p node into its final form. For the most part
   /// this method should be a noop and just return \p node.
@@ -136,13 +137,26 @@ protected:
   /// Hook to do a final clean-up after all operations have been converted.
   virtual void cleanUp() {}
 
+  /// \returns true if the given \p tensor can be convert to the
+  /// destination type \p dstTy using ::convertTensor.
+  virtual bool canConvert(const Tensor &tensor, TypeRef dstTy) const;
+
+  /// Converts the content of the given \p tensor to the destination
+  /// type \p dstTy.
+  virtual void convertTensor(Tensor &tensor, TypeRef dstTy);
+
+  /// \returns A value representing the given \p constant converted
+  /// to the destination type \p dstTy. If the conversion is not
+  /// possible, this method returns NodeValue().
+  NodeValue convertConstant(Constant &constant, TypeRef dstTy);
+
 public:
   /// Create a function converter for \p F.
   ///
   /// \note This method will modify \p F when calling ::convert.
   ///       If one wants to keep the original function around,
   ///       they need to clone it before creating this converter.
-  FunctionConverter(Function &F) : function_(F) {}
+  FunctionConverter(Function &F);
 
   virtual ~FunctionConverter() {}
 
@@ -161,6 +175,17 @@ public:
   /// cleanUp
   /// \endcode
   void convert();
+
+  /// Optimize away the conversions inserted by ::convert.
+  /// This basically turns conversion(conversion A to B) to C"
+  /// into noop if the type of A and C are the same.
+  ///
+  /// This method is not part of the main ::convert process
+  /// because removing such intermediate conversions changes
+  /// the semantic of the function when those conversions implied
+  /// a precision loss. Therefore, deciding to call this function
+  /// should be though carefully.
+  bool optimizeConversions();
 };
 } // namespace glow
 #endif

@@ -15,11 +15,15 @@
  */
 #include "glow/Converter/FunctionConverter.h"
 
+#include "glow/Base/Tensor.h" // For Tensor.
 #include "glow/Graph/Graph.h" // For Function.
 #include "glow/Graph/Node.h"  // For Node.
 #include "glow/Graph/Nodes.h" // For Placeholder and Variable.
 
 using namespace glow;
+
+FunctionConverter::FunctionConverter(Function &F)
+    : mod_(*F.getParent()), function_(F) {}
 
 TypeRef
 FunctionConverter::getTargetTypeForOutput(const NodeValue &nodeVal) const {
@@ -31,20 +35,6 @@ TypeRef FunctionConverter::getTargetTypeForInput(const Node &use,
                                                  unsigned idx) const {
   // Default implementation says there is nothing to do.
   return nullptr;
-}
-
-DstTySrcTy FunctionConverter::getConversionType(const Node &conversion) const {
-  // Although that function would work on something not added by
-  // the conversion process, we assert on that to make sure this
-  // method is called like expected.
-  assert(std::find(conversions_.begin(), conversions_.end(), &conversion) !=
-             conversions_.end() &&
-         "This conversion wasn't added by this converter");
-  assert(conversion.getNumResults() == 1 &&
-         "This needs target specific overloading");
-  assert(conversion.getNumInputs() == 1 &&
-         "This needs target specific overloading");
-  return DstTySrcTy(conversion.getType(0), conversion.getNthInput(0).getType());
 }
 
 bool FunctionConverter::canConvert(const Node &node) const {
@@ -67,6 +57,11 @@ bool FunctionConverter::canConvert(const Node &node) const {
 NodeValue FunctionConverter::getConversionOutput(Node &conversion) const {
   assert(conversion.getNumResults() == 1 && "This method should be overloaded");
   return NodeValue(&conversion, 0);
+}
+
+NodeValue FunctionConverter::getConversionInput(Node &conversion) const {
+  assert(conversion.getNumInputs() == 1 && "This method should be overloaded");
+  return conversion.getNthInput(0);
 }
 
 Node &FunctionConverter::morphNode(Node &node) { return node; }
@@ -118,7 +113,7 @@ void FunctionConverter::convert() {
       val.setType(targetTy);
       // Create the conversion.
       Node *conversion = createConversion(val, origTy);
-      conversions_.push_back(conversion);
+      conversions_.insert(conversion);
       // "conversion" uses val so after this call,
       // we will get a use of conversion inside conversion.
       NodeValue conversionVal = getConversionOutput(*conversion);
@@ -152,7 +147,7 @@ void FunctionConverter::convert() {
              "Conversion does not preserve shape");
       // Create the conversion.
       Node *conversion = createConversion(val, targetTy);
-      conversions_.push_back(conversion);
+      conversions_.insert(conversion);
       node.setNthInput(idx, getConversionOutput(*conversion));
     }
     // All the surrounding code is properly typed, finally the morph node.
@@ -166,4 +161,96 @@ void FunctionConverter::convert() {
   cleanUp();
 
   function_.verify();
+}
+
+bool FunctionConverter::canConvert(const Tensor &tensor, TypeRef dstTy) const {
+  // The default implementation of convertTensor uses Tensor::convertToType
+  // which does not support quantization for now.
+  return !dstTy->isQuantizedType() && !tensor.getType().isQuantizedType();
+}
+
+void FunctionConverter::convertTensor(Tensor &tensor, TypeRef dstTy) {
+  assert(canConvert(tensor, dstTy) && "We shouldn't call this method");
+  assert(tensor.dims() == dstTy->dims() &&
+         "Conversion should only change the values, not the shape");
+  tensor.convertToType(dstTy->getElementType());
+}
+
+NodeValue FunctionConverter::convertConstant(Constant &constant,
+                                             TypeRef dstTy) {
+  const Tensor &tensor = constant.getPayload();
+  if (!canConvert(tensor, dstTy)) {
+    return NodeValue();
+  }
+
+  Constant *constantToBeModified = &constant;
+  if (!constant.hasOneUse()) {
+    // Could be a simple clone, but storage classes don't support cloning for
+    // now.
+    constantToBeModified =
+        mod_.createConstant(constant.getType(), constant.getName());
+    constantToBeModified->getPayload().assign(&constant.getPayload());
+  }
+  Tensor &tensorToBeModified = constantToBeModified->getPayload();
+  constantToBeModified->setType(0, dstTy);
+  convertTensor(tensorToBeModified, dstTy);
+  return NodeValue(constantToBeModified, 0);
+}
+
+bool FunctionConverter::optimizeConversions() {
+  // Traverse all the conversions introduced during the conversion step and
+  // remove them.
+  llvm::SmallPtrSet<Node *, 8> deadConversions;
+  bool changed = false;
+  for (Node *conversion : conversions_) {
+    if (deadConversions.count(conversion)) {
+      continue;
+    }
+    NodeValue conversionInput = getConversionInput(*conversion);
+    NodeValue dstVal = getConversionOutput(*conversion);
+    NodeValue srcVal;
+    switch (conversionInput.getNode()->getKind()) {
+    case Kinded::Kind::ConstantKind:
+      srcVal = convertConstant(*llvm::cast<Constant>(conversionInput.getNode()),
+                               dstVal.getType());
+      // Reset conversionInput because it may not be valid anymore.
+      conversionInput = NodeValue();
+      break;
+    default:
+      // Check if the input of this conversion is a conversion that we know.
+      if (!conversions_.count(conversionInput)) {
+        break;
+      }
+      // So we have "conversion(conversion srcVal to tmpVal) to dstVal".
+      // If the type of srcVal is equal to the type of dstVal, we can replace
+      // the uses of dstVal with srcVal.
+      // Note: This potentially changes the semantic of the program, for
+      // instance if going through tmpVal implies a loss in precision. However,
+      // since this method is not run by default that means the caller knows
+      // what it is doing.
+      srcVal = getConversionInput(*conversionInput.getNode());
+      break;
+    }
+    // Check if we found a suitable new source for dstVal.
+    if (srcVal == NodeValue() || srcVal.getType() != dstVal.getType()) {
+      continue;
+    }
+    // Use srcVal instead of dstVal.
+    dstVal.replaceAllUsesOfWith(srcVal, &function_);
+    changed = true;
+    bool inserted = deadConversions.insert(dstVal.getNode()).second;
+    (void)inserted;
+    assert(inserted && "Conversion was already dead");
+    if (conversionInput != NodeValue() && conversionInput.hasOneUse()) {
+      // The only user of conversionInput is outVal.
+      // This conversion is now dead too.
+      inserted = deadConversions.insert(conversionInput.getNode()).second;
+      (void)inserted;
+      assert(inserted && "Conversion was already dead");
+    }
+  }
+  for (Node *conversion : deadConversions) {
+    function_.eraseNode(conversion);
+  }
+  return changed;
 }
