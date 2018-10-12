@@ -58,14 +58,14 @@ public:
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 
-  /// \returns empty std::vector if ONNX operator from the \p onnxModel is not
-  /// supported by the ONNX model parser.
+  /// \returns empty std::vector if any of the ONNX operators from
+  /// the \p onnxModel is not supported by the ONNX model parser.
   /// \returns std::vector of Glow operation kind and element kind otherwise.
-  ///          It represents a mapping between ONNX node and Glow operations.
+  ///          It represents a mapping between ONNX nodes and Glow operations.
   ///
   /// \param onnxModel contains a single ONNX operator.
   static std::vector<std::pair<Kinded::Kind, ElemKind>>
-  parseOperator(const void *onnxModel, size_t onnxModelSize);
+  parseOperators(const void *onnxModel, size_t onnxModelSize);
 };
 
 } // namespace glow
