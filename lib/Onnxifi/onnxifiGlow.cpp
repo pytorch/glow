@@ -52,15 +52,21 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   // In case backendIDs are not set, just return total number of supported
   // backends.
   if (!backendIDs) {
+#ifdef GLOW_WITH_CPU
+    *numBackends = 2;
+#else
     *numBackends = 1;
+#endif
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-  // Glow represents a single backend.
-  *numBackends = 1;
 #ifdef GLOW_WITH_CPU
+  *numBackends = 2;
   backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::CPU, 1);
+  backendIDs[1] =
+      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter, 2);
 #else
+  *numBackends = 1;
   backendIDs[0] =
       new glow::onnxifi::BackendId(glow::BackendKind::Interpreter, 1);
 #endif

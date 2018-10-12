@@ -137,7 +137,8 @@ std::unique_ptr<ONNXIFIModelLoader> ONNXIFIModelLoader::parse(
 }
 
 std::vector<std::pair<Kinded::Kind, ElemKind>>
-ONNXIFIModelLoader::parseOperators(const void *onnxModel, size_t onnxModelSize) {
+ONNXIFIModelLoader::parseOperators(const void *onnxModel,
+                                   size_t onnxModelSize) {
   std::vector<std::pair<Kinded::Kind, ElemKind>> result;
   ONNX_NAMESPACE::ModelProto modelDef;
   if (!ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
