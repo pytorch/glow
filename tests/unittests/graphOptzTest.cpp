@@ -219,6 +219,37 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+/// Check CSE will not merge two nodes that have all the same inputs but
+/// different predicates.
+TEST_F(GraphOptz, cseRespectsPredicates) {
+  Node *in = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "in", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+
+  Node *RN1 = F_->createRELU("relu1", in);
+  RN1->setPredicate(pred1);
+  SaveNode *save1 = F_->createSave("save1", RN1);
+  save1->setPredicate(pred1);
+
+  Node *RN2 = F_->createRELU("relu2", in);
+  RN2->setPredicate(pred2);
+  SaveNode *save2 = F_->createSave("save2", RN2);
+  save2->setPredicate(pred2);
+
+  // Two RELUS and two Saves.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Two RELUS and two Saves should still be there.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+}
+
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);

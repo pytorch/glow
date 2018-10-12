@@ -322,6 +322,8 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
     os << " &&\n      " << op << "_ == other." << op << "_";
   }
 
+  os << " &&\n      predicate_ == other.predicate_";
+
   for (const auto &mem : members_) {
     os << " &&\n      " << mem.second << "_ == other." << mem.second << "_";
   }
