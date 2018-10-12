@@ -1214,3 +1214,42 @@ TEST(caffe2, batchBoxCox) {
     EXPECT_FLOAT_EQ(result.raw(i), OH.raw(i));
   }
 }
+
+// Test loading a EQ operator with 1D inputs.
+TEST(caffe2, EQ1D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/eq_op_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  // Input tensors.
+  const size_t kDataSize = 10;
+  Tensor X(ElemKind::FloatTy, {kDataSize});
+  Tensor Y(ElemKind::FloatTy, {kDataSize});
+
+  // Destroy the loader after the graph is loaded
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
+                               {&X.getType(), &Y.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level checks on the content of the graph.
+  // We have 1 EQ and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Check that the graph has the expected shape (EQ -> Save),
+  // starting from the output.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *EQN = llvm::dyn_cast<CmpEQNode>(saveNode->getInput());
+  ASSERT_TRUE(EQN);
+
+  // Graph has two inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+}
