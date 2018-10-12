@@ -17,6 +17,7 @@
 #include "Loader.h"
 
 #include "glow/Base/Tensor.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
 #include "glow/Quantization/Serialization.h"
@@ -89,13 +90,14 @@ llvm::cl::opt<std::string> loadProfileFileOpt(
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
 
-llvm::cl::list<std::string> doNotQuantizeNodesOpt(
-    "do_not_quantize_nodes",
+llvm::cl::list<std::string> keepOriginalPrecisionForNodesOpt(
+    "keep-original-precision-for-nodes",
     llvm::cl::desc(
         "Use to specify the name of nodes (e.g. Add, Div, etc.) that should "
-        "not be quantized. All nodes of the listed kinds would not be "
-        "quantized; e.g. if Add is specififed and there are multiple Add nodes "
-        "in the input loaded model, none would be quantized."),
+        "be kept as is when conversion/quantization is requested. "
+        "All nodes of the listed kinds will be kept as is;"
+        "e.g. if Add is specified and there are multiple Add nodes "
+        "in the input loaded model, none would be quantized/converted."),
     llvm::cl::value_desc("NodeNames (e.g. Add,Div)"), llvm::cl::ZeroOrMore,
     llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
 
@@ -122,6 +124,11 @@ llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
 llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
                                  llvm::cl::desc("Prints Graph to stdout"),
                                  llvm::cl::cat(modelExportCat));
+
+llvm::cl::opt<bool>
+    convertToFP16("convert-to-fp16",
+                  llvm::cl::desc("Run all floating-point computation in fp16."),
+                  llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
 /// Emit a bundle into the specified output directory.
 llvm::cl::opt<std::string>
@@ -217,6 +224,16 @@ void Loader::compile(Context &ctx) {
     F_ = ::profileQuantization(ctx, F_);
   }
 
+  // By default, when converting models, all nodes that can be
+  // converted are converted. However, some models may need to
+  // keep higher precision for some nodes to prevent high accuracy loss.
+  // Those nodes are gathered via the keepOriginalPrecisionForNodesOpt
+  // option and passed to the related conversion function.
+  KindSet keepOriginalPrecisionForNodes;
+  for (llvm::StringRef kindName : keepOriginalPrecisionForNodesOpt) {
+    keepOriginalPrecisionForNodes.insert(getKindFromNodeName(kindName));
+  }
+
   // Load the quantization profile and transform the graph.
   if (!loadProfileFileOpt.empty()) {
     // The profiled graph was optimized before it was instrumentated. In this
@@ -233,23 +250,22 @@ void Loader::compile(Context &ctx) {
     std::string oldName = F_->getName();
     F_->setName("old");
 
-    // By default, when quantizing loaded models, all nodes that can be
-    // quantized are quantized. However, some models that are loaded may need to
-    // keep higher precision for some nodes to prevent high accuracy loss. This
-    // set is passed into quantizeFunction() to prevent quantization.
-    KindSet doNotQuantizeKinds;
-    for (llvm::StringRef kindName : doNotQuantizeNodesOpt) {
-      doNotQuantizeKinds.insert(getKindFromNodeName(kindName));
-    }
-
     // Quantize the graph based on the captured profile.
-    auto *Q = quantization::quantizeFunction(EE_, quantizationInfos, F_,
-                                             oldName, doNotQuantizeKinds);
+    auto *Q = quantization::quantizeFunction(
+        EE_, quantizationInfos, F_, oldName, keepOriginalPrecisionForNodes);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.
     Q->getParent()->eraseFunction(F_);
     F_ = Q;
+  }
+
+  if (convertToFP16) {
+    TypeAToTypeBFunctionConverter converter(*F_, ElemKind::FloatTy,
+                                            ElemKind::Float16Ty,
+                                            &keepOriginalPrecisionForNodes);
+    converter.convert();
+    ::optimize(F_, glow::CompilationMode::Infer);
   }
 
   if (emittingBundle()) {

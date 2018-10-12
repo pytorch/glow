@@ -5,6 +5,7 @@ add_executable(image-classifier
 target_link_libraries(image-classifier
                       PRIVATE
                         Base
+                        Converter
                         Importer
                         ExecutionEngine
                         Quantization)
