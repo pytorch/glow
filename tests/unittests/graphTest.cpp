@@ -1096,6 +1096,25 @@ TEST(Graph, eraseNodeBug) {
   EXPECT_EQ(F->getNodes().size(), 0);
 }
 
+/// Verify that two Nodes with different predicates but the same inputs are not
+/// considered equal.
+TEST(Graph, nodeEqualityWithDifferentPredicates) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  Node *in = M.createPlaceholder(ElemKind::FloatTy, {5}, "in", false);
+  Node *pred1 = M.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = M.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+
+  Node *RN1 = F->createRELU("relu1", in);
+  RN1->setPredicate(pred1);
+
+  Node *RN2 = F->createRELU("relu2", in);
+  RN2->setPredicate(pred2);
+
+  EXPECT_FALSE(RN1->isEqual(*RN2));
+}
+
 /// Tests that expect death from the verifier cannot currently run in Release
 /// mode as they would not die, since the verifier uses assertions for
 /// verification. Once the verifier moves to returning false instead of aborting
