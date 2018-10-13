@@ -530,7 +530,10 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring(
           "Convert the input from its current type to the destination "
-          "type. The input and output types must have the same shapes");
+          "type. The input and output types must have the same shapes. "
+          "Moreover the input and output types must not be quantized types. "
+          "Quantized types should use the appropriate Quantize, Dequantize, "
+          "and Rescale nodes.");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
