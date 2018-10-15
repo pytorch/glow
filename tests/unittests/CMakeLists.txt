@@ -278,6 +278,18 @@ add_glow_test(NAME onnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(onnxifiThreadPoolTest
+               onnxifiThreadPoolTest.cpp)
+target_link_libraries(onnxifiThreadPoolTest
+                      PRIVATE
+                        onnxifi-glow-thread-pool
+                        gtest
+                        testMain)
+target_include_directories(onnxifiThreadPoolTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi)
+add_glow_test(NAME onnxifiThreadPoolTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/onnxifiThreadPoolTest
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 LIST(APPEND UNOPT_TESTS
        ./tests/backendTest -optimize-ir=false &&
        ./tests/MLTest -optimize-ir=false &&

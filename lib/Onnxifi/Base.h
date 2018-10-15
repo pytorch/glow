@@ -16,6 +16,8 @@
 #ifndef GLOW_ONNXIFI_BASE_H
 #define GLOW_ONNXIFI_BASE_H
 
+#include "ThreadPool.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
@@ -62,8 +64,13 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
 
+  /// Run async using backend thread pool.
+  void runAsync(const std::function<void(void)> &fn);
+
 private:
   BackendIdPtr backendIdPtr_;
+  // ThreadPool instance for the backend.
+  ThreadPool threadPool_;
 };
 
 typedef Backend *BackendPtr;
