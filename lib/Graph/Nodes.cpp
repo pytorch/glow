@@ -287,6 +287,11 @@ static void verifyOutputAndGradOutputTypes(NodeValue output,
          "Types of output and its gradient should be the same");
 }
 
+void Constant::verify() const {
+  assert(*getType() == getPayload().getType() &&
+         "Underlying tensor type doesn't match constant type");
+}
+
 void ConvolutionGradNode::verify() const {
   verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
   verifyInputAndGradInputTypes(getFilter(), getGradOfInputNamedFilter());
