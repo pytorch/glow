@@ -1673,7 +1673,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 }
 
 /// Optimize away ConvertToNode.
-/// This basically turns conversion(conversion A to B) to C"
+/// This basically turns "conversion(conversion A to B) to C"
 /// into noop if the type of A and C are the same.
 ///
 /// This method potentially changes the semantic of the program
