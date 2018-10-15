@@ -5,7 +5,12 @@ add_library(onnxifi-glow
               Base.cpp
               onnxifiGlow.cpp)
 
+add_library(onnxifi-glow-thread-pool
+              ThreadPool.cpp)
+
 target_link_libraries(onnxifi-glow
                       PUBLIC
                         ExecutionEngine
-                        Importer)
+                        Importer
+                      PRIVATE
+                        onnxifi-glow-thread-pool)

@@ -402,21 +402,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     return initStatus;
   }
 
-  // Wait for all inputs to be ready.
-  auto waitStatus =
-      GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(inputFence->event);
-  if (waitStatus != ONNXIFI_STATUS_SUCCESS) {
-    return waitStatus;
-  }
+  // Submit graph for asynchronous execution.
+  glowGraph->backend()->runAsync([inputFence, outputFence, glowGraph]() {
+    // Wait for all inputs to be ready.
+    auto waitStatus =
+        GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(inputFence->event);
 
-  // TODO: Implement async graph run procedure. For now run that sync.
-  glowGraph->run();
+    // If all inputs are ready, run the graph.
+    if (waitStatus == ONNXIFI_STATUS_SUCCESS) {
+      // Run graph.
+      glowGraph->run();
+    }
 
-  auto signalStatus = GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(
-      outputFence->event);
-  if (signalStatus != ONNXIFI_STATUS_SUCCESS) {
-    return signalStatus;
-  }
+    // Signal that the output is ready.
+    (void)GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(
+        outputFence->event);
+  });
 
   return ONNXIFI_STATUS_SUCCESS;
 }

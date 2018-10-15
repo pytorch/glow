@@ -26,6 +26,10 @@ bool BackendId::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) {
   return executionEngine_.isOpSupported(opKind, elementTy);
 }
 
+void Backend::runAsync(const std::function<void(void)> &fn) {
+  threadPool_.submit(fn);
+}
+
 bool Event::signal() {
   {
     std::lock_guard<std::mutex> guard(mutex_);
