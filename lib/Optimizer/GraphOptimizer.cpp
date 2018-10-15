@@ -1323,7 +1323,7 @@ static void optimizeArithmeticNodes(Function *F) {
 }
 
 /// Statically transpose Constants.
-static void optimizeTranspose(Function *F) {
+static void transposeConstants(Function *F) {
   auto &nodes = F->getNodes();
 
   for (auto &node : nodes) {
@@ -2092,6 +2092,13 @@ void glow::optimize(Function *F, CompilationMode mode) {
     DCE(F);
   }
 
+  // Reshapes and transposes can prevent other optimizations from triggering, so
+  // try to optimize them out first.
+  optimizeReshape(F);
+  if (mode == CompilationMode::Infer) {
+    transposeConstants(F);
+  }
+
   // Optimize the pooling operation.
   optimizePool(F);
 
@@ -2108,9 +2115,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
   DCE(F);
 
   if (mode == CompilationMode::Infer) {
-    // Constant-fold transpose operations.
-    optimizeTranspose(F);
-
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
@@ -2129,10 +2133,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
 
-  optimizeReshape(F);
-
   // Merge Transpose into MatMul.
-  // Run after optimizeReshape to ensure a single Reshapes precedes MatMul.
   // Run DCE to ensure correct number of node users.
   DCE(F);
   mergeTransposeIntoMatMul(F);
