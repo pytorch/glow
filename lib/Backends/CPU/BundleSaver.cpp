@@ -93,9 +93,9 @@ void BundleSaver::emitSymbolTable() {
                             {charTy->getPointerTo(), sizeTTy, sizeTTy, charTy});
   // Set of entries in the symbol table.
   llvm::SmallVector<llvm::Constant *, 128> entries;
-  // Iterate over all weights and record information about their names, offset,
-  // size and kind.
-  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
+  // Iterate over all Placeholders and record information about their names,
+  // offset, size and kind.
+  for (auto &v : F_->getGraph()->getParent()->getPlaceholders()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto size = w->getType()->size();
     auto addr = allocationsInfo_.allocatedAddressed_[w];
@@ -110,8 +110,8 @@ void BundleSaver::emitSymbolTable() {
          llvm::ConstantInt::get(sizeTTy, addr),
          // size.
          llvm::ConstantInt::get(sizeTTy, size),
-         // kind.
-         llvm::ConstantInt::get(charTy, /*isConstWeight*/ 0)});
+         // 1 for Mutable Kind
+         llvm::ConstantInt::get(charTy, 1)});
     entries.push_back(entry);
   }
 
