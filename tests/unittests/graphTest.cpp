@@ -1155,4 +1155,33 @@ TEST(Graph, verifyConstantNoWriters) {
   EXPECT_DEATH(M.verify(), "");
 }
 
+/// Check that the verifier will complain if a constant and its
+/// underlying tensor have mismatching types.
+/// Here the constant is updated but not the tensor.
+TEST(Graph, verifyConstantTensorTypeMatchesConstantTypeChanged) {
+  Module M;
+
+  auto *input = M.createConstant(ElemKind::FloatTy, {5}, "input");
+  // Fresh constant should verify just fine.
+  input->verify();
+
+  input->setType(0, M.uniqueType(ElemKind::Float16Ty, {5}));
+
+  EXPECT_DEATH(input->verify(), "");
+}
+
+/// Check that the verifier will complain if a constant and its
+/// underlying tensor have mismatching types.
+/// Here the tensor is updated but not the constant.
+TEST(Graph, verifyConstantTensorTypeMatchesTensorTypeChanged) {
+  Module M;
+
+  auto *input = M.createConstant(ElemKind::FloatTy, {5}, "input");
+  // Fresh constant should verify just fine.
+  input->verify();
+  input->getPayload().convertToType(ElemKind::Float16Ty);
+
+  EXPECT_DEATH(input->verify(), "");
+}
+
 #endif /* NDEBUG */

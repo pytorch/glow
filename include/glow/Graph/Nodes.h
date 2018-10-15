@@ -100,6 +100,8 @@ public:
   std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;
+
+  void verify() const;
 };
 
 /// Placeholder nodes are unbound-storage. The content tensors are attached to
