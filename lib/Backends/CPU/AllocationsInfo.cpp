@@ -56,18 +56,26 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
     }
   }
 
-  // Allocate addresses for the Placeholders.
-  for (auto PH : ctx.pairs()) {
-    assert(isa<WeightVar>(F->getWeightForNode(PH.first)));
-    auto *w = cast<WeightVar>(F->getWeightForNode(PH.first));
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
-    if (!absoluteAddr) {
-      allocatedAddressed_[w] = addr;
-    } else {
+  if (absoluteAddr) {
+    // Allocate addresses for the Placeholders that have payloads defined at
+    // compile-time.
+    // TODO: Remove this branch once Context becomes a parameter of the
+    // CompiledFunction::execute method.
+    for (auto PH : ctx.pairs()) {
+      assert(isa<WeightVar>(F->getWeightForNode(PH.first)));
+      auto *w = cast<WeightVar>(F->getWeightForNode(PH.first));
       // Reuse the address used by the payload.
       allocatedAddressed_[w] =
           PH.second->getUnsafePtr() - static_cast<char *>(nullptr);
+    }
+  } else {
+    // Allocate based on size as reported by the formal type of Placeholders
+    for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+      assert(isa<WeightVar>(F->getWeightForNode(v)));
+      auto *w = cast<WeightVar>(F->getWeightForNode(v));
+      auto numBytes = w->getSizeInBytes();
+      size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+      allocatedAddressed_[w] = addr;
     }
   }
 
