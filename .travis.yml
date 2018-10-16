@@ -73,10 +73,5 @@ jobs:
       script:
         - CLANG_COMMAND=/usr/bin/clang-format-6.0 ./utils/format.sh check
 
-# Note: keep_alive() prevents travis from exiting early on tests that take a while.
 script:
- - function keep_alive() { while true; do echo -en "\a"; sleep 60; done }
- - keep_alive &
- - ninja all
- - CTEST_PARALLEL_LEVEL=2 ninja test || ( cat Testing/Temporary/LastTest.log && exit 1 )
- - if [ "$TEST_NAME" = "DEBUG" ]; then CTEST_PARALLEL_LEVEL=2 ninja test_unopt; fi
+  - ../.travis/run_tests.sh ${TEST_NAME}
