@@ -229,7 +229,11 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
     // Some models are trained with more classes. E.g. Some imagenet models
     // exported from TensorFlow have 1 extra "neutral" class.
     const size_t label = topKPairs[i].second - labelOffset;
-    llvm::outs() << "   Label-K" << i + 1 << ": " << label << " (probability: "
+    // Tab out the label so it aligns nicely with Label-K1.
+    if (i != 0) {
+      llvm::outs() << "\t\t\t\t\t";
+    }
+    llvm::outs() << "\tLabel-K" << i + 1 << ": " << label << " (probability: "
                  << llvm::format("%0.4f", topKPairs[i].first) << ")\n";
   }
 }
@@ -302,7 +306,7 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
       Tensor slice = H.extractSlice(i);
       auto SH = slice.getHandle<>();
-      llvm::outs() << " File: " << inputImageFilenames[i] << "\n";
+      llvm::outs() << " File: " << inputImageFilenames[i];
 
       auto topKPairs = getTopKPairs(SH);
       printTopKPairs(topKPairs);
