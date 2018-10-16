@@ -1184,6 +1184,12 @@ int8_t libjit_element_quantize_kernel_i8(size_t idx, const float *inW,
   return (int8_t)MAX(INT8_MIN, MIN(INT8_MAX, result));
 }
 
+int32_t libjit_element_quantize_kernel_i32(size_t idx, const float *inW,
+                                           float scale, int32_t offset) {
+  int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
+  return result;
+}
+
 float libjit_element_dequantize_kernel_f(size_t idx, const int8_t *inW,
                                          float scale, int32_t offset) {
   return scale * (inW[idx] - offset);

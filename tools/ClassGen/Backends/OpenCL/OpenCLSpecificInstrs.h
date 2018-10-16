@@ -26,7 +26,7 @@ BB.newBackendSpecificInstr("OCLConvolution")
     .addMember(MemberType::VectorUnsigned, "Pads")
     .addMember(MemberType::Unsigned, "Group")
     .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
+    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
 
 BB.newBackendSpecificInstr("OCLAvgPool")
     .addOperand("Dest", OperandKind::Out)

@@ -22,35 +22,41 @@
 namespace glow {
 namespace quantization {
 
-int8_t quantize(float input, const TensorQuantizationParams &TQP) {
-  float result = input / TQP.scale + TQP.offset;
-  return quantization::clip<int32_t, int8_t>((int32_t)nearbyintf(result));
-}
-
-Tensor quantizeTensor(const Tensor &tensor,
-                      const TensorQuantizationParams &TQP) {
-  Tensor tmp(ElemKind::Int8QTy, tensor.dims(), TQP.scale, TQP.offset);
-  auto destHandle = tmp.getHandle<int8_t>();
-  assert(tensor.getType().isFPType() && "Type not supported yet");
-  switch (tensor.getElementType()) {
+template <class eTy = int8_t>
+static void quantizeTensorUtil(Tensor *dest, const Tensor &src) {
+  auto destH = dest->getHandle<eTy>();
+  TensorQuantizationParams TQP{dest->getType().getScale(),
+                               dest->getType().getOffset()};
+  switch (src.getElementType()) {
   case ElemKind::FloatTy: {
-    auto srcHandle = tensor.getHandle<float>();
-    for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-      destHandle.raw(i) =
-          quantization::quantize(static_cast<float>(srcHandle.raw(i)), TQP);
+    auto srcHandle = src.getHandle<float>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::quantize<eTy>(
+          static_cast<float>(srcHandle.raw(i)), TQP);
     }
     break;
   }
   case ElemKind::Float16Ty: {
-    auto srcHandle = tensor.getHandle<float16>();
-    for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-      destHandle.raw(i) =
-          quantization::quantize(static_cast<float>(srcHandle.raw(i)), TQP);
+    auto srcHandle = src.getHandle<float16>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::quantize<eTy>(
+          static_cast<float>(srcHandle.raw(i)), TQP);
     }
     break;
   }
   default:
     llvm_unreachable("Cannot quantize a type");
+  }
+}
+
+Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
+                      ElemKind Ty) {
+  Tensor tmp(Ty, tensor.dims(), TQP.scale, TQP.offset);
+  assert(tensor.getType().isFPType() && "Type not supported yet");
+  if (Ty == ElemKind::Int8QTy) {
+    quantizeTensorUtil<int8_t>(&tmp, tensor);
+  } else {
+    quantizeTensorUtil<int32_t>(&tmp, tensor);
   }
   return tmp;
 }

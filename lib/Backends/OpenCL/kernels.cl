@@ -129,6 +129,12 @@ cl_int8_t quantize(float input, float scale, cl_int32_t offset) {
   return clip((cl_int32_t)round(result));
 }
 
+/// Quantizes \p input from float to int32.
+cl_int32_t quantize_i32(float input, float scale, cl_int32_t offset) {
+  float result = input / scale + offset;
+  return (cl_int32_t)round(result);
+}
+
 /// Dequantizes \p input from int8 to float.
 float dequantize(cl_int8_t input, float scale, cl_int32_t offset) {
   return scale * (input - offset);
@@ -140,9 +146,20 @@ __kernel void quantize_i8K(__global cl_int8_t *dest, __global float *src,
   dest[i] = quantize(src[i], scale, offset);
 }
 
+__kernel void quantize_i32K(__global cl_int32_t *dest, __global float *src,
+                            float scale, cl_int32_t offset) {
+  size_t i = get_global_id(0);
+  dest[i] = quantize_i32(src[i], scale, offset);
+}
+
 __kernel void quantize_i8W(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, float scale, cl_int32_t offset) {
   quantize_i8K(&mem[dest], &mem[src], scale, offset);
+}
+
+__kernel void quantize_i32W(__global void *mem, cl_uint32_t dest,
+                            cl_uint32_t src, float scale, cl_int32_t offset) {
+  quantize_i32K(&mem[dest], &mem[src], scale, offset);
 }
 
 __kernel void rescalequantized_i8K(__global cl_int8_t *dest,
@@ -834,7 +851,7 @@ __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
 
 __kernel void convolution_i8K(
     __global cl_int8_t *dest, __global cl_int8_t *src,
-    __global cl_int8_t *filter, __global cl_int8_t *bias, ShapeHW kernelSizes,
+    __global cl_int8_t *filter, __global cl_int32_t *bias, ShapeHW kernelSizes,
     ShapeHW strides, cl_int32_t destOffset, float destScale,
     cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
     float filterScale, cl_int32_t biasOffset, float biasScale, PaddingTLBR pads,

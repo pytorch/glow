@@ -344,7 +344,7 @@ TEST(Graph, simpleQuant) {
   auto *filter =
       MD.createPlaceholder(ElemKind::Int8QTy, filterDim, 3.3, 4, "F", true);
   auto *bias =
-      MD.createPlaceholder(ElemKind::Int8QTy, {depth}, 1.3, 5, "B", true);
+      MD.createPlaceholder(ElemKind::Int32QTy, {depth}, 1.3, 5, "B", true);
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvPoolOutputDims(width, width, kernels, steps, pads);

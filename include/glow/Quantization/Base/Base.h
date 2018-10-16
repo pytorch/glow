@@ -72,27 +72,31 @@ enum Schema {
   SymmetricWithUInt8,
 };
 
-/// Converts floating point value to int8 based on the quantization
-/// parameters \p TQP.
-int8_t quantize(float input, const TensorQuantizationParams &TQP);
-
-/// Converts a floating point \p tensor to int8 based on the quantization
-/// parameters \p TQP.
-Tensor quantizeTensor(const Tensor &tensor,
-                      const TensorQuantizationParams &TQP);
-
-/// Converts int8 quantized value back to floating point number based on
-/// the quantization parameters \p TQP.
-float dequantize(int8_t input, const TensorQuantizationParams &TQP);
-
 /// \returns the value \p in as clipped to the range of \p DestTy.
 template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
-  assert(sizeof(SrcTy) >= sizeof(DestTy) && "Invalid types");
+  static_assert(sizeof(SrcTy) >= sizeof(DestTy), "Invalid types");
 
   auto mx = std::numeric_limits<DestTy>::max();
   auto mn = std::numeric_limits<DestTy>::min();
   return std::max<SrcTy>(mn, std::min<SrcTy>(mx, in));
 }
+
+/// Converts floating point value to DestTy (int8 or int32) based on the
+/// quantization parameters \p TQP.
+template <class DestTy = int8_t>
+inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
+  float result = input / TQP.scale + TQP.offset;
+  return quantization::clip<int32_t, DestTy>((int32_t)nearbyintf(result));
+}
+
+/// Converts a floating point \p tensor to int8 or int32 based on the
+/// quantization parameters \p TQP and \p Ty.
+Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
+                      ElemKind Ty = ElemKind::Int8QTy);
+
+/// Converts int8 quantized value back to floating point number based on
+/// the quantization parameters \p TQP.
+float dequantize(int8_t input, const TensorQuantizationParams &TQP);
 
 /// Convert the floating point quantization parameters \p scale and \p offset
 /// into the integer sequence of:

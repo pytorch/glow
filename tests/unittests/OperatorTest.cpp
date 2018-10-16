@@ -1588,7 +1588,7 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
   TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
   TypeRef filterTy =
       mod.uniqueType(ElemKind::Int8QTy, filter->dims(), 0.01, 0.0);
-  TypeRef biasTy = mod.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.04, 0.0);
+  TypeRef biasTy = mod.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.04, 0.0);
 
   auto *inputq = F->createQuantize("input.q", input, inputTy);
   auto *filterq = F->createQuantize("filter.q", filter, filterTy);

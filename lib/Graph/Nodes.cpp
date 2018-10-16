@@ -144,8 +144,14 @@ static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               unsigned_t group) {
   assert(src.getElementType() == dest.getElementType() && "Invalid Type");
   assert(src.getElementType() == filter.getElementType() && "Invalid Type");
-  assert(src.getElementType() == bias.getElementType() && "Invalid Type");
-
+  // Non quantization type check.
+  if (src.getElementType() == ElemKind::FloatTy) {
+    assert(bias.getElementType() == ElemKind::FloatTy && "Invalid Type");
+  }
+  // Quantization type check.
+  if (src.getElementType() == ElemKind::Int8QTy) {
+    assert(bias.getElementType() == ElemKind::Int32QTy && "Invalid Type");
+  }
   ShapeNHWC idim(src.getType()->dims());
   ShapeNHWC odim(dest.getType()->dims());
   PaddingTLBR pdim(pads);
@@ -643,7 +649,9 @@ void IntLookupTableNode::verify() const {
 
 void QuantizeNode::verify() const {
   // Dest must be quantized.
-  checkType(getResult(), ElemKind::Int8QTy);
+  assert((getResult().getElementType() == ElemKind::Int8QTy ||
+          getResult().getElementType() == ElemKind::Int32QTy) &&
+         "Invalid type");
   // Src must be an FP type.
   assert(getInput().getType()->isFPType() && "Invalid type");
   checkSameShape(getResult(), getInput());

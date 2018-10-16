@@ -67,8 +67,22 @@ protected:
            "Missing quantization params for a node");
 
     const TensorQuantizationParams &TQP = valTQPIt->second;
-    return mod_.uniqueType(ElemKind::Int8QTy, val.dims(), TQP.scale,
-                           TQP.offset);
+    // For bias of a conv op, it is quantized to int32.
+    if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind && idx == 2) {
+      // For bias of a conv op, it is quantized to int32. Also, we should make
+      // sure its scale should be (scale of input) * (scale of weights).
+      auto convN = llvm::dyn_cast<ConvolutionNode>(&use);
+      NodeValue input = convN->getInput();
+      NodeValue weights = convN->getFilter();
+      float scaleInput = input.getNode()->getNthResult(0).getType()->getScale();
+      float scaleWeights =
+          weights.getNode()->getNthResult(0).getType()->getScale();
+      return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
+                             scaleInput * scaleWeights, TQP.offset);
+    } else {
+      return mod_.uniqueType(ElemKind::Int8QTy, val.dims(), TQP.scale,
+                             TQP.offset);
+    }
   }
 
   /// \see FunctionConverter::canConvert.
@@ -122,7 +136,9 @@ protected:
   Node *createConversion(Function &function, NodeValue &val,
                          TypeRef destTy) override {
     if (destTy->isQuantizedType()) {
-      assert(destTy->getElementType() == ElemKind::Int8QTy && "");
+      assert((destTy->getElementType() == ElemKind::Int8QTy ||
+              destTy->getElementType() == ElemKind::Int32QTy) &&
+             "We only support int8_t and int32_t quantization now");
       return function_.createQuantize("quantize", val, destTy);
     }
     assert(destTy->getElementType() == ElemKind::FloatTy && "");
