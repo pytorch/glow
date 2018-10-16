@@ -57,7 +57,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {lhsVar, rhsVar}, {lhs, rhs});
+  updateInputPlaceholders(ctx, {lhsVar, rhsVar}, {lhs, rhs});
   EE.run();
 
   out->assign(res);

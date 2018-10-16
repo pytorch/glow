@@ -293,7 +293,7 @@ static void lowerSGDNode(Function *F, const SGDNode &SGD) {
 
   float momentum = SGD.getMomentum();
 
-  assert(W.dims() == G.dims() && "Invalid variables sizes for SGDNode");
+  assert(W.dims() == G.dims() && "Invalid weight/gradient sizes for SGDNode");
 
   float L1Decay = SGD.getL1Decay();
   float L2Decay = SGD.getL2Decay();

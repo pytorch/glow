@@ -2361,7 +2361,7 @@ void Function::verify() const {
     }
   }
 
-  // Now check that the variables that are written to are either:
+  // Now check that the placeholders that are written to are either:
   // - Written by a save node, or
   // - Are only used by the node that writes them
   // If this check fails, that means we have implicit memory

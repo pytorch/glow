@@ -553,7 +553,7 @@ TEST(Graph, nodesWithPredicates) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {input}, {&inputs});
+  updateInputPlaceholders(ctx, {input}, {&inputs});
   EE.run();
 }
 

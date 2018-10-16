@@ -481,12 +481,12 @@ void makeWeightsConst(IRFunction &M) {
       }
     }
 
-    // Mark the variable as read only.
+    // Mark the constant as read only.
     if (readOnly) {
       W->setMutability(WeightVar::MutabilityKind::Constant);
     } else {
       assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
-             "Variables defined as Const cannot be written into.");
+             "Const cannot be written into.");
     }
   }
 }

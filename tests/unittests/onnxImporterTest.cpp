@@ -42,7 +42,7 @@ TEST(onnx, importConv) {
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = onnxLD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
   }
 
   // ONNX importer loads a conv node and converts it to 4 ops:

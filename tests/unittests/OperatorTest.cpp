@@ -2161,7 +2161,7 @@ TEST_P(InterpAndCPU, concatVectors) {
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output vector.
-  updateVariables(ctx_, {V1, V2, V3}, {&I1, &I2, &I3});
+  updateInputPlaceholders(ctx_, {V1, V2, V3}, {&I1, &I2, &I3});
   EE_.run();
 
   auto RNWH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -2202,7 +2202,7 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output vector.
-  updateVariables(ctx_, {V1, V2}, {&I1, &I2});
+  updateInputPlaceholders(ctx_, {V1, V2}, {&I1, &I2});
   EE_.run();
 
   auto outH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -2247,7 +2247,7 @@ TEST_P(InterpAndCPU, sliceVectors) {
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
   // Testing the output slices.
-  updateVariables(ctx_, {V}, {&I});
+  updateInputPlaceholders(ctx_, {V}, {&I});
   EE_.run();
 
   auto RNWH1 = ctx_.get(result1->getPlaceholder())->getHandle<int64_t>();
@@ -2302,7 +2302,7 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
-  updateVariables(ctx_, {V}, {&I});
+  updateInputPlaceholders(ctx_, {V}, {&I});
   EE_.run();
 
   const size_t expected[7][4] = {{300, 301, 302, 303}, {400, 401, 402, 403},
@@ -2344,7 +2344,7 @@ TEST_P(InterpAndCPU, Tile) {
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
-  updateVariables(ctx_, {V}, {&VT});
+  updateInputPlaceholders(ctx_, {V}, {&VT});
   EE_.run();
 
   // Testing the output vector with axis 0.
@@ -2396,7 +2396,7 @@ TEST_P(InterpAndCPU, QuantizedTile) {
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
 
-  updateVariables(ctx_, {V}, {&VT});
+  updateInputPlaceholders(ctx_, {V}, {&VT});
   EE_.run();
 
   // Testing the output vector with axis 0.

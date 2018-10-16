@@ -133,13 +133,13 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
     auto old = inputsH.raw(i);
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    updateVariables(ctx, {inputVar}, {inputs});
+    updateInputPlaceholders(ctx, {inputVar}, {inputs});
     EE.run();
     auto plusLoss = computeL2Loss(outputs, resultTensor);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    updateVariables(ctx, {inputVar}, {inputs});
+    updateInputPlaceholders(ctx, {inputVar}, {inputs});
     EE.run();
 
     auto minusLoss = computeL2Loss(outputs, resultTensor);
@@ -555,23 +555,23 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      updateVariables(ctx, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
       EE_.run();
       LTensor->zero();
       auto x = inputsH.raw(j);
       auto g = gradTensorHandle.raw(j);
       inputsH.raw(j) = x + stepSize;
-      updateVariables(ctx, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
       EE_.run();
       auto lp = LTensor->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       LTensor->zero();
-      updateVariables(ctx, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
       EE_.run();
       auto lm = LTensor->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      updateVariables(ctx, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
       EE_.run();
       EXPECT_NEAR(diff, g, delta);
     }

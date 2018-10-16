@@ -159,7 +159,7 @@ void testCIFAR10() {
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      updateVariables(ctx, {A}, {&sample});
+      updateInputPlaceholders(ctx, {A}, {&sample});
       EE.run();
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {

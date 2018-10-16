@@ -291,7 +291,7 @@ int main(int argc, char **argv) {
   if (!emittingBundle()) {
 
     // Update the inputs.
-    updateVariables(ctx, {inputImage}, {&data});
+    updateInputPlaceholders(ctx, {inputImage}, {&data});
 
     // Perform the inference execution.
     loader.runInference(ctx);

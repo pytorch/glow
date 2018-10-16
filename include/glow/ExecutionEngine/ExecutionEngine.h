@@ -91,15 +91,15 @@ public:
 
 /// This method updates the placeholders in \p ph with the tensor content
 /// values \p inputs, in \p ctx.
-void updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
-                     llvm::ArrayRef<Tensor *> inputs);
+void updateInputPlaceholders(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
+                             llvm::ArrayRef<Tensor *> inputs);
 
 /// This method updates the placeholders in the module. The placeholders are
 /// found by name
 ///  in \p ph with the tensor content values \p inputs.
-void updateInputsByName(Context &ctx, Module *mod,
-                        llvm::ArrayRef<llvm::StringRef> ph,
-                        llvm::ArrayRef<Tensor *> inputs);
+void updateInputPlaceholdersByName(Context &ctx, Module *mod,
+                                   llvm::ArrayRef<llvm::StringRef> ph,
+                                   llvm::ArrayRef<Tensor *> inputs);
 
 /// Runs \p iterations iterations of the compiled function. The method updates a
 /// global counter and future invocations of this method continue running

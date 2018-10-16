@@ -304,7 +304,7 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      updateVariables(ctx_, {input_}, {&batchInputs});
+      updateInputPlaceholders(ctx_, {input_}, {&batchInputs});
       EE.run();
 
       // Check each output in the batch.
