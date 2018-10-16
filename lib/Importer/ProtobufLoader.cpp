@@ -79,7 +79,7 @@ Placeholder *ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name,
 }
 
 NodeValue
-ProtobufLoader::getNodeValueOrCreateVariableByName(llvm::StringRef name) {
+ProtobufLoader::getNodeValueOrCreateConstantByName(llvm::StringRef name) {
   auto node = getNodeValueByNameOrNullNodeValue(name);
   if (node.getNode()) {
     return node;
