@@ -928,8 +928,17 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     auto *stackedOpCall =
         createCall(builder, F, {loopCount, srcPtr, destScale, destOffset});
-    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
-                                       "buffer.element.addr");
+    llvm::Value *destAddr = nullptr;
+    if (dest->getElementType() == ElemKind::Int8QTy) {
+      destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    } else if (dest->getElementType() == ElemKind::Int32QTy) {
+      destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    } else {
+      GLOW_ASSERT("Type is not supported.");
+    }
+
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }

@@ -418,13 +418,13 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 }
 
 void libjit_convolution_i8(
-    int8_t *outW, const int8_t *inW, const int8_t *filterW, const int8_t *biasW,
-    const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
-    const size_t *biasWdims, const size_t *kernelSizes, const size_t *strides,
-    const size_t *pads, size_t group, int32_t outOffset, int32_t inOffset,
-    int32_t filterOffset, int32_t biasOffset, int32_t biasPre, int32_t biasPost,
-    int32_t biasScale, int32_t outPre, int32_t outPost, int32_t outScale,
-    unsigned depthUnroll) {
+    int8_t *outW, const int8_t *inW, const int8_t *filterW,
+    const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
+    const size_t *filterWdims, const size_t *biasWdims,
+    const size_t *kernelSizes, const size_t *strides, const size_t *pads,
+    size_t group, int32_t outOffset, int32_t inOffset, int32_t filterOffset,
+    int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
+    int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;

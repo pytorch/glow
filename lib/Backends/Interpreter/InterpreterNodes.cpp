@@ -103,6 +103,7 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
 }
 
 // This is the quantized i8 implementation of Convolution.
+// For bias, we support int32 quantization.
 void InterpreterFunction::fwdConvolutionInst_I8Impl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
@@ -110,7 +111,7 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
   auto inW = getWeightHandle<int8_t>(inV);
   auto outW = getWeightHandle<int8_t>(outV);
   auto filterW = getWeightHandle<int8_t>(filterV);
-  auto biasW = getWeightHandle<int8_t>(biasV);
+  auto biasW = getWeightHandle<int32_t>(biasV);
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -1932,7 +1933,6 @@ void InterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
 //===----------------------------------------------------------------------===//
 //                Instructions used by Quantization
 //===----------------------------------------------------------------------===//
-
 void InterpreterFunction::fwdQuantizationProfileInst(
     const glow::QuantizationProfileInst *I) {
   auto inputTensor = getWeightHandle(I->getInputTensor());
@@ -1946,7 +1946,7 @@ void InterpreterFunction::fwdQuantizationProfileInst(
   quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
                                         max);
 }
-
+/*
 template <typename ElemTy>
 static void fwdQuantize(Handle<ElemTy> srcHandle, Tensor *destTensor) {
   TensorQuantizationParams params{destTensor->getType().getScale(),
@@ -1956,8 +1956,21 @@ static void fwdQuantize(Handle<ElemTy> srcHandle, Tensor *destTensor) {
   for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
     destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
   }
+  }*/
+
+/// Quantize floating point tensor. Scale and Offset are based on return type
+/// of the instruction \p I.
+void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
+  auto *srcTensor = getTensor(I->getSrc());
+  auto *destTensor = getTensor(I->getDest());
+  auto destTy = destTensor->getType();
+  Tensor qTensor = quantization::quantizeTensor(
+      *srcTensor, {destTy.getScale(), destTy.getOffset()},
+      destTy.getElementType());
+  destTensor->assign(&qTensor);
 }
 
+/*
 /// Quantize floating point tensor. Scale and Offset are based on return type
 /// of the instruction \p I.
 void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
@@ -1976,7 +1989,7 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
   default:
     llvm_unreachable("Type not supported");
   }
-}
+  }*/
 
 template <typename ElemTy>
 static void fwdDequantize(Tensor *srcTensor, Handle<ElemTy> destHandle) {

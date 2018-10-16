@@ -1639,8 +1639,9 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       constantToBeModified.getPayload().convertToType(dstTy->getElementType());
       return NodeValue(&constantToBeModified, 0);
     }
+    case ElemKind::Int32QTy:
     case ElemKind::Int8QTy: {
-      // Quantization: {FloatTy, Float16Ty} -> Int8QTy.
+      // Quantization: {FloatTy, Float16Ty} -> Int8QTy or Int32QTy.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
       Tensor &tensorToBeModified = constantToBeModified.getPayload();
@@ -1650,8 +1651,8 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // teach quantizeTensor how to deal with Float16Ty.
       assert(tensor.getType().isFPType() &&
              "Type quantization not implemented");
-      tensorToBeModified =
-          quantization::quantizeTensor(tensorToBeModified, params);
+      tensorToBeModified = quantization::quantizeTensor(
+          tensorToBeModified, params, dstTy->getElementType());
       return NodeValue(&constantToBeModified, 0);
     }
     default:

@@ -86,8 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Dest", "Src", "Filter", "Bias"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
   // MaxPool version caching XY coordinates to speedup gradient-based
@@ -472,9 +471,6 @@ int main(int argc, char **argv) {
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int8QTy"})
-      .autoVerify(VerifyKind::TypeCheck, {"Src", "isFPType()"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .dataParallel()
       .autoIRGen();
 

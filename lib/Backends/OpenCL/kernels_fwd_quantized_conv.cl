@@ -136,7 +136,7 @@ __kernel
                         float c_scale, int d_offset, float d_scale) {
   __global const Dtype *im_in = &mem[im_in_offset];
   __global const Dtype *wg = &mem[wg_offset];
-  __global const Dtype *bias = &mem[bias_offset];
+  __global const int *bias = &mem[bias_offset];
   __global Dtype *im_out = &mem[im_out_offset];
   // Thread identifiers.
   // Local row ID (max: RTSM=TSM/WPTM).
@@ -156,7 +156,7 @@ __kernel
   __global const Dtype *Aptr = wg;
   __global const Dtype *Bptr = im_in + v_B_off * batch;
   __global Dtype *Cptr = im_out + v_C_off * batch;
-  __global const Dtype *Dptr = bias;
+  __global const int *Dptr = bias;
   // Initialize the accumulation registers.
   {
     int4 Creg[WPTM][WPTN / VWN];
