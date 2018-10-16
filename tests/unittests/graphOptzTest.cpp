@@ -457,6 +457,47 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   EXPECT_EQ(conv->getInput().getNode(), A);
 }
 
+TEST_F(GraphOptz, sinkTransposeBelowSlice) {
+  Node *A = mod_.createVariable(ElemKind::FloatTy, {1, 10, 15, 5}, "input",
+                                VisibilityKind::Public, false);
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
+  Node *SA = F_->createSlice("sliceInput", A, {0, 0, 0, 0}, {1, 10, 15, 5});
+  Node *ST = F_->createSlice("sliceTranspose", T, {0, 4, 0, 0}, {1, 5, 10, 15});
+  F_->createSave("saveSliceInput", SA);
+  Node *OT = F_->createSave("saveSliceTranspose", ST);
+
+  // The graph created above looks like this:
+  //                        input
+  //                    {1, 10, 15, 5}
+  //                   /              \
+  //                  v               v
+  //  sliceInput {0, 0, 0, 0}         transpose {NHWC2NCHW}
+  //      {1, 10, 15, 5}                  {1, 5, 10, 15}
+  //           |                                |
+  //           v                                v
+  //     saveSliceInput               sliceTranspose {0, 4, 0, 0}
+  //                                      {1, 1, 10, 15}
+  //                                            |
+  //                                            v
+  //                                    saveSliceTranspose
+  //
+  // The expected output is the same, but with the 'transpose' and
+  // 'sliceTranspose' nodes interchanged. Note that without the path from
+  // input -> saveSliceInput, the input will be statically transposed and the
+  // code path that sinks Tranpose below Slice will not be triggered.
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Slice->Output.
+  EXPECT_TRUE(llvm::isa<SaveNode>(OT));
+  EXPECT_TRUE(
+      llvm::isa<TransposeNode>(llvm::dyn_cast<SaveNode>(OT)->getInput()));
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
+}
+
 TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
