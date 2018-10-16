@@ -50,28 +50,28 @@ protected:
   /// Loads RELU operator, given its protobuf representation and parsed args.
   void loadRelu(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *R = G_.createRELU(opName, in);
     addNodeAsOutput(op, R);
   }
 
   void loadSigmoid(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *S = G_.createSigmoid(opName, in);
     addNodeAsOutput(op, S);
   }
 
   void loadTanh(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *T = G_.createTanh(opName, in);
     addNodeAsOutput(op, T);
   }
 
   void loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
 
     // This is statically known data, and so we create a Tensor for it and
     // register it in tensors_.
@@ -86,7 +86,7 @@ protected:
   /// Loads Sqrt operator, given its protobuf representation and parsed args.
   void loadSqrt(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *R = G_.createPow(opName, in, 0.5f);
     addNodeAsOutput(op, R);
   }
@@ -95,7 +95,7 @@ protected:
   /// args.
   void loadReciprocal(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *R = G_.createPow(opName, in, -1.0f);
     addNodeAsOutput(op, R);
   }
@@ -104,8 +104,8 @@ protected:
     // TODO: support variadic arguments
     assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
     const std::string &opName = loadOperatorName(op);
-    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
-    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
     auto *node = G_.createAdd(opName, in0, in1);
     addNodeAsOutput(op, node);
   }
@@ -113,7 +113,7 @@ protected:
   void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
 
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
 
     // We do not do training right now on loaded protos. C2 and ONNX do not even
     // have an option for a selected input anyway. So I am creating this as a
@@ -136,7 +136,7 @@ protected:
 
   void loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
 
     size_t size = loadInt(dict["size"]);
     float alpha = loadFloat(dict["alpha"]);
@@ -158,8 +158,8 @@ protected:
   void loadMinMax(llvm::StringRef typeName, const OpType &op,
                   ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
-    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
 
     Node *node = nullptr;
     if (typeName == "Min") {
@@ -176,8 +176,8 @@ protected:
   void loadArithmetic(llvm::StringRef typeName, const OpType &op,
                       ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in0 = getNodeValueOrCreateVariableByName(op.input(0));
-    auto in1 = getNodeValueOrCreateVariableByName(op.input(1));
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
 
     bool broadcast = getBroadcast(dict);
 
@@ -212,7 +212,7 @@ protected:
 
   void loadSplit(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 0;
     std::vector<size_t> split;
     if (dict.count("split"))
@@ -230,7 +230,7 @@ protected:
 
   bool loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
+    NodeValue in = getNodeValueOrCreateConstantByName(op.input(0));
 
     // Get the requested shape from the model.
     // First look at input tensors, then at the "shape" attribute.
@@ -296,7 +296,7 @@ protected:
   void loadTranspose(const OpType &op, ArgumentDictionaryTy &dict,
                      llvm::StringRef permArgName) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
 
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
@@ -316,20 +316,20 @@ protected:
 
   void loadFlatten(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
     auto *node = G_.createFlatten(opName, in, axis);
     addNodeAsOutput(op, node);
   }
 
   void loadIdentity(const OpType &op, ArgumentDictionaryTy &dict) {
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     nodeValueByName_[op.output(0)] = NodeValue(in, 0);
   }
 
   void loadTopK(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     unsigned_t k = loadInt(dict["k"]);
 
     int axis = dict.count("axis") ? loadInt(dict["axis"]) : -1;
@@ -348,7 +348,7 @@ protected:
   void loadReduceMeanOrSum(llvm::StringRef typeName, const OpType &op,
                            ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto axes = getShape(dict["axes"]);
     assert(axes.size() == 1 && "Only supporting single reduction for now.");
     auto axis = axes[0];

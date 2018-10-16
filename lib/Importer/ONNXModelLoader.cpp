@@ -253,8 +253,8 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
 
     // Load the inputs
-    NodeValue in = getNodeValueOrCreateVariableByName(op.input(0));
-    NodeValue filterValue = getNodeValueOrCreateVariableByName(op.input(1));
+    NodeValue in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue filterValue = getNodeValueOrCreateConstantByName(op.input(1));
 
     // Transpose the filter to the right format. Glow expects to read the
     // weights in the format CRSK. ONNX stores the operators as KCRS.
@@ -326,7 +326,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     if (op.output_size() > 1)
       return false;
     // Load the inputs:
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     std::vector<unsigned_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape<unsigned_t>(dict.at("strides"));
@@ -367,7 +367,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
   if (typeName == "GlobalAveragePool") {
     // Load the inputs:
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     std::vector<unsigned_t> strides(2, 1);
     if (dict.count("strides")) {
       strides = getShape<unsigned_t>(dict.at("strides"));
@@ -388,7 +388,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "Squeeze") {
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createSqueeze(opName, in, axes);
     addNodeAsOutput(op, node);
@@ -396,7 +396,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "Unsqueeze") {
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createExpandDims(opName, in, axes);
     addNodeAsOutput(op, node);
@@ -404,7 +404,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "BatchNormalization") {
-    auto in = getNodeValueOrCreateVariableByName(op.input(0));
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *scale = getTensorByName(op.input(1));
     auto *bias = getTensorByName(op.input(2));
     auto *mean = getTensorByName(op.input(3));
@@ -431,7 +431,7 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
-      inputs.push_back(getNodeValueOrCreateVariableByName(op.input(i)));
+      inputs.push_back(getNodeValueOrCreateConstantByName(op.input(i)));
     }
 
     auto axis = loadInt(dict["axis"]);
@@ -442,9 +442,9 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "Gemm") {
-    auto A = getNodeValueOrCreateVariableByName(op.input(0));
-    auto B = getNodeValueOrCreateVariableByName(op.input(1));
-    auto C = getNodeValueOrCreateVariableByName(op.input(2));
+    auto A = getNodeValueOrCreateConstantByName(op.input(0));
+    auto B = getNodeValueOrCreateConstantByName(op.input(1));
+    auto C = getNodeValueOrCreateConstantByName(op.input(2));
 
     bool broadcastC = getBroadcast(dict);
     bool transA = dict.count("transA") && loadInt(dict["transA"]);
@@ -473,8 +473,8 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
 
   if (typeName == "MatMul") {
-    auto LHS = getNodeValueOrCreateVariableByName(op.input(0));
-    auto RHS = getNodeValueOrCreateVariableByName(op.input(1));
+    auto LHS = getNodeValueOrCreateConstantByName(op.input(0));
+    auto RHS = getNodeValueOrCreateConstantByName(op.input(1));
 
     Node *node = G_.createMatMul(opName, LHS, RHS);
     addNodeAsOutput(op, node);
