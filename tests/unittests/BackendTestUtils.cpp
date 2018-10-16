@@ -66,7 +66,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var}, {input});
+  updateInputPlaceholders(ctx, {var}, {input});
   EE.run();
   out->assign(resultTensor);
 }
@@ -107,7 +107,8 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {inputP, filterP, biasP}, {inputs, filter, bias});
+  updateInputPlaceholders(ctx, {inputP, filterP, biasP},
+                          {inputs, filter, bias});
   EE.run();
   out->assign(resultTensor);
 }
@@ -149,7 +150,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
 
   runBatch(EE, ctx, 8, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
-  updateVariables(ctx, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(ctx, {var1, var2}, {inputs, selected});
   EE.run();
   out->assign(resultTensor);
 }
@@ -167,7 +168,7 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var}, {inputs});
+  updateInputPlaceholders(ctx, {var}, {inputs});
   EE.run();
   out->assign(resultTensor);
 }
@@ -248,7 +249,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   runBatch(EE, ctx, 10, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(ctx, {var1, var2}, {inputs, selected});
   EE.run();
   out->assign(resultTensor);
 }
@@ -306,7 +307,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {in}, {inputs});
+  updateInputPlaceholders(ctx, {in}, {inputs});
   EE.run();
 
   out->assign(resultTensor);
@@ -543,7 +544,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   runBatch(EE, ctx, 30, sampleCounter, {var1, var2}, {inputs, selected});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(ctx, {var1, var2}, {inputs, selected});
   EE.run();
   out->assign(resultTensor);
 }
@@ -567,7 +568,7 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var1, var2, var3}, {input1, input2, input3});
+  updateInputPlaceholders(ctx, {var1, var2, var3}, {input1, input2, input3});
   EE.run();
   out->assign(resultTensor);
 }
@@ -590,7 +591,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var}, {inputs});
+  updateInputPlaceholders(ctx, {var}, {inputs});
   EE.run();
   out->assign(resultTensor);
 }
@@ -643,7 +644,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var}, {inputs});
+  updateInputPlaceholders(ctx, {var}, {inputs});
   EE.run();
   out->assign(resultTensor);
 }
@@ -687,8 +688,8 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var1, var2, var3, var4},
-                  {inputs1, inputs2, inputs3, inputs4});
+  updateInputPlaceholders(ctx, {var1, var2, var3, var4},
+                          {inputs1, inputs2, inputs3, inputs4});
   EE.run();
   out->assign(resultTensor);
 }
@@ -728,7 +729,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {in}, {input});
+  updateInputPlaceholders(ctx, {in}, {input});
   EE.run();
   out->assign(resultTensor);
 }
@@ -761,7 +762,7 @@ void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {inputs}, {input});
+  updateInputPlaceholders(ctx, {inputs}, {input});
   EE.run();
   out->assign(resultTensor);
 }
@@ -790,7 +791,7 @@ void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {var}, {input});
+  updateInputPlaceholders(ctx, {var}, {input});
   EE.run();
   out->assign(resultTensor);
 }

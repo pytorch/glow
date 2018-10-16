@@ -17,7 +17,7 @@
 
 #include "glow/Graph/Graph.h" // For Function.
 #include "glow/Graph/Node.h"  // For Node.
-#include "glow/Graph/Nodes.h" // For Placeholder and Variable.
+#include "glow/Graph/Nodes.h" // For Placeholder and Constant.
 
 using namespace glow;
 

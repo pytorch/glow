@@ -45,7 +45,7 @@ TEST(caffe2, importConv) {
     output = caffe2LD.getSingleOutput();
 
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
   }
 
   auto res = ctx.get(output);
@@ -301,8 +301,9 @@ TEST(caffe2, concatAddAxis) {
     output = caffe2LD.getSingleOutput();
 
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs_0", "inputs_1", "inputs_2"},
-                       {&inputs_0, &inputs_1, &inputs_2});
+    updateInputPlaceholdersByName(ctx, &mod,
+                                  {"inputs_0", "inputs_1", "inputs_2"},
+                                  {&inputs_0, &inputs_1, &inputs_2});
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -376,8 +377,9 @@ TEST(caffe2, concat) {
     output = caffe2LD.getSingleOutput();
 
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs_0", "inputs_1", "inputs_2"},
-                       {&inputs_0, &inputs_1, &inputs_2});
+    updateInputPlaceholdersByName(ctx, &mod,
+                                  {"inputs_0", "inputs_1", "inputs_2"},
+                                  {&inputs_0, &inputs_1, &inputs_2});
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -587,7 +589,7 @@ TEST(caffe2, FC) {
                                {&inputs.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -626,7 +628,7 @@ TEST(caffe2, FCWithFlatten) {
                                {&inputs.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 reshape, 1 FC,
@@ -678,7 +680,7 @@ TEST(caffe2, FCTransposed) {
                                {&inputs.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 FC and 1 save,
@@ -725,7 +727,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
                                {&inputs.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 reshape, 1 FC,
@@ -775,7 +777,7 @@ TEST(caffe2, importClip) {
                                {&inputs_0.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
 
   auto *res = ctx.get(output);
@@ -822,7 +824,7 @@ TEST(caffe2, importClipDefault) {
                                {&inputs_0.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
+    updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
 
   auto *res = ctx.get(output);
@@ -868,7 +870,7 @@ TEST(caffe2, replaceNaN) {
                                {&input.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"input"}, {&input});
+    updateInputPlaceholdersByName(ctx, &mod, {"input"}, {&input});
   }
 
   // Check that the shape of the output matches the input.
@@ -940,7 +942,7 @@ TEST(caffe2, dotProduct1D) {
                                {&X.getType(), &Y.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
+    updateInputPlaceholdersByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
 
   // Check that the shape of the output matches that of the expected output.
@@ -1020,7 +1022,7 @@ TEST(caffe2, dotProduct2D) {
                                {&X.getType(), &Y.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
+    updateInputPlaceholdersByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
 
   // Check that the shape of the output matches that of the expected output.
@@ -1119,8 +1121,8 @@ TEST(caffe2, batchBoxCox) {
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
     output = caffe2LD.getSingleOutput();
     ctx.allocate(mod.getPlaceholders());
-    updateInputsByName(ctx, &mod, {"data", "lambda1", "lambda2"},
-                       {&data, &lambda1, &lambda2});
+    updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
+                                  {&data, &lambda1, &lambda2});
   }
 
   // Check that the shape of the output matches that of the expected output.

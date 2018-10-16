@@ -64,9 +64,9 @@ public:
   Function *operator[](Node *n) { return nodeToFunction_[n]; }
 };
 
-/// If \p node has a single input that is not a variable, return it.  Otherwise
+/// If \p node has a single input that is not a storage, return it.  Otherwise
 /// return nullptr.
-Node *singleNonVariableInput(Node *node) {
+Node *singleNonStorageInput(Node *node) {
   Node *nonVarInput = nullptr;
 
   for (unsigned i = 0, e = node->getNumInputs(); i < e; i++) {
@@ -96,7 +96,7 @@ NodeFunctionMap selectBasicBlockPartitions(Function *F) {
 
     // If node has only one input, and that input has only one output, place it
     // in the same partition.
-    auto *in = singleNonVariableInput(node);
+    auto *in = singleNonStorageInput(node);
     if (in && in->getNumUsers() == 1) {
       auto it = mapping.find(in);
       assert(it != mapping.end());
@@ -126,9 +126,9 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
     mapping[&N]->addNode(clone);
   }
 
-  // For any dependency that crosses a partition, add a variable and save
+  // For any dependency that crosses a partition, add a placeholder and save
   // node. Record the dependence in the function graph.
-  llvm::DenseMap<Node *, Placeholder *> variables;
+  llvm::DenseMap<Node *, Placeholder *> placeholders;
   for (auto *F : mapping.getFunctions()) {
     for (auto &N : F->getNodes()) {
       for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
@@ -143,23 +143,23 @@ FunctionDAG doPartitioning(Function *F, NodeFunctionMap &mapping) {
         // Add this dependence to the FunctionDAG.
         G.add(F, inputF);
 
-        // If we've already created a variable for this dependence, use it.
-        auto it = variables.find(input.getNode());
-        if (it != variables.end()) {
+        // If we've already created a placeholder for this dependence, use it.
+        auto it = placeholders.find(input.getNode());
+        if (it != placeholders.end()) {
           N.setNthInput(inp, it->second);
           continue;
         }
 
-        // Create a new variable to represent this dependence.
+        // Create a new placeholder to represent this dependence.
         auto *save = inputF->createSave("tmp", input);
         auto *tmp = save->getPlaceholder();
-        variables[input.getNode()] = tmp;
+        placeholders[input.getNode()] = tmp;
         N.setNthInput(inp, tmp);
       }
     }
   }
 
-  // Update links between nodes in the cloned functions.  Add variables (and
+  // Update links between nodes in the cloned functions. Add placeholders (and
   // save nodes) where a link crosses a partition boundary.
   for (auto *F : mapping.getFunctions()) {
     for (auto &N : F->getNodes()) {

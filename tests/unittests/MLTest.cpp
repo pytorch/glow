@@ -116,7 +116,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   // Testing the output vector.
 
   EE_.compile(CompilationMode::Infer, F, ctx);
-  updateVariables(ctx, {A}, {&inputs});
+  updateInputPlaceholders(ctx, {A}, {&inputs});
   EE_.run();
 
   auto RNWH = res->getHandle<>();
@@ -181,7 +181,7 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    updateVariables(ctx, {A}, {&inputs});
+    updateInputPlaceholders(ctx, {A}, {&inputs});
     EE_.run();
 
     auto resH = res->getHandle<>();
@@ -256,7 +256,7 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  updateVariables(ctx, {A}, {&trainingSet});
+  updateInputPlaceholders(ctx, {A}, {&trainingSet});
   EE_.run();
 
   auto resH = res->getHandle<>();
@@ -341,7 +341,7 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
 
-  updateVariables(ctx, {A}, {&testSet});
+  updateInputPlaceholders(ctx, {A}, {&testSet});
   EE_.run();
 
   auto resH = res->getHandle<>();
@@ -439,7 +439,7 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      updateVariables(ctx, {A}, {&sample});
+      updateInputPlaceholders(ctx, {A}, {&sample});
       EE_.run();
 
       auto SMH = res->getHandle<>();
@@ -463,7 +463,7 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    updateVariables(ctx, {A}, {&sample});
+    updateInputPlaceholders(ctx, {A}, {&sample});
     EE_.run();
 
     auto SMH = res->getHandle<>();
@@ -476,7 +476,7 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    updateVariables(ctx, {A}, {&sample});
+    updateInputPlaceholders(ctx, {A}, {&sample});
     EE_.run();
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
@@ -540,7 +540,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Infer, F, ctx);
 
   // Testing the output vector.
-  updateVariables(ctx, {A}, {&inputs});
+  updateInputPlaceholders(ctx, {A}, {&inputs});
   EE_.run();
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -653,7 +653,7 @@ void testRNNCell(TCellGenerator cell) {
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {X}, {&inputs});
+  updateInputPlaceholders(ctx, {X}, {&inputs});
   EE.run();
 
   auto RNWH = res->getHandle<>();
@@ -819,7 +819,7 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  updateVariables(ctx, {A}, {&testPlayersTensor});
+  updateInputPlaceholders(ctx, {A}, {&testPlayersTensor});
   EE_.run();
 
   auto SMH = ctx.get(result->getPlaceholder())->getHandle<>();
@@ -899,7 +899,7 @@ TEST_P(MLTest, learnSinus) {
   }
 
   EE_.compile(CompilationMode::Infer, F, ctx);
-  updateVariables(ctx, {inputX}, {&tensorX});
+  updateInputPlaceholders(ctx, {inputX}, {&tensorX});
   EE_.run();
   auto resH = res->getHandle<>();
 
@@ -974,7 +974,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    updateVariables(ctx, {A}, {&T});
+    updateInputPlaceholders(ctx, {A}, {&T});
     EE_.run();
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
@@ -1070,7 +1070,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  updateVariables(ctx, {input}, {&testImages});
+  updateInputPlaceholders(ctx, {input}, {&testImages});
   EE.run();
   auto SMH = res->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
@@ -1179,7 +1179,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
-  updateVariables(ctx, {input}, {&testImages});
+  updateInputPlaceholders(ctx, {input}, {&testImages});
   EE.run();
 
   // A handle to the projected result.
@@ -1349,8 +1349,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  updateVariables(ctx, {varMatricesA, varMatricesB},
-                  {&batchMatricesA, &batchMatricesB});
+  updateInputPlaceholders(ctx, {varMatricesA, varMatricesB},
+                          {&batchMatricesA, &batchMatricesB});
   EE_.run();
 
   unsigned errors = 0;

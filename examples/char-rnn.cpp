@@ -275,7 +275,7 @@ int main(int argc, char **argv) {
     // Generate a sentence by running inference over and over again.
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
-      updateVariables(ctx, {X}, {&currCharInfer});
+      updateInputPlaceholders(ctx, {X}, {&currCharInfer});
       EE.run();
 
       // Pick a char at random from the softmax distribution.

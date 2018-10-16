@@ -79,7 +79,7 @@ onnxStatus Graph::run() {
 
   // Run inference.
   auto &EE = backendPtr_->getEE();
-  updateVariables(ctx_, phs, tensors);
+  updateInputPlaceholders(ctx_, phs, tensors);
   EE.run();
 
   // Copy outputs to the addresses specified in the outputNodeToBuffer_.

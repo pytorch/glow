@@ -103,7 +103,8 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
 
   // SaveNode hack:
   // We don't model memory dependencies, but we still need to honor them.
-  // Make sure the SaveNode happens after the last use of the output variable.
+  // Make sure the SaveNode happens after the last use of the output
+  // placeholder.
   if (auto *save = dyn_cast<SaveNode>(N)) {
     auto *destination = save->getOutput().getNode();
     for (NodeUse &use : destination->getUsers()) {

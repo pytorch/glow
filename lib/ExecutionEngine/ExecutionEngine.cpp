@@ -41,12 +41,12 @@ void ExecutionEngine::setBackend(Backend *backend) {
 
 ExecutionEngine::~ExecutionEngine() = default;
 
-void glow::updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
-                           llvm::ArrayRef<Tensor *> inputs) {
+void glow::updateInputPlaceholders(Context &ctx,
+                                   llvm::ArrayRef<Placeholder *> ph,
+                                   llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
          "The number of inputs does not match the number of Placeholders");
 
-  // Update the input variables.
   for (int i = 0, e = ph.size(); i < e; i++) {
     assert(ph[i] && "Invalid value");
     auto *backingTensor = ctx.get(ph[i]);
@@ -54,14 +54,14 @@ void glow::updateVariables(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
     auto dim = inputs[i]->dims();
     (void)dim;
     assert(backingTensor->getType().isEqual(inputs[i]->getType()) &&
-           "Mismatch on Variable and Tensor types.");
+           "Mismatch on Placeholder and Tensor types.");
     backingTensor->assign(inputs[i]);
   }
 }
 
-void glow::updateInputsByName(Context &ctx, Module *mod,
-                              llvm::ArrayRef<llvm::StringRef> ph,
-                              llvm::ArrayRef<Tensor *> inputs) {
+void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
+                                         llvm::ArrayRef<llvm::StringRef> ph,
+                                         llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
          "The number of inputs does not match the number of Placeholders");
 
@@ -70,7 +70,7 @@ void glow::updateInputsByName(Context &ctx, Module *mod,
     Tensor *t = inputs[i];
     assert(t && "Invalid tensor.");
     assert(p && "Invalid placeholder.");
-    updateVariables(ctx, {p}, {t});
+    updateInputPlaceholders(ctx, {p}, {t});
   }
 }
 
@@ -87,7 +87,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
 
   assert(!inputs.empty() && "No inputs");
   assert(inputs.size() == ph.size() &&
-         "The number of inputs does not match the number of variables");
+         "The number of inputs does not match the number of placeholders");
 
   // For each iteration in the batch:
   for (size_t j = 0; j < iterations; j++) {

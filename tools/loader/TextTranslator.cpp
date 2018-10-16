@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
     loadNextInputTranslationText(&encoderInputs);
 
     // update the inputs.
-    updateVariables(ctx, {encoderInputsVar}, {&encoderInputs});
+    updateInputPlaceholders(ctx, {encoderInputsVar}, {&encoderInputs});
 
     // Run actual translation.
     loader.runInference(ctx);

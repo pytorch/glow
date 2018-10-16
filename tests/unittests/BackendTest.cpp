@@ -68,7 +68,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  updateVariables(ctx, {A}, {&inputs});
+  updateInputPlaceholders(ctx, {A}, {&inputs});
   EE.run();
 
   QuantizationProfileNode *profile{nullptr};
@@ -95,7 +95,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  updateVariables(ctx, {A}, {&inputs});
+  updateInputPlaceholders(ctx, {A}, {&inputs});
   EE.run();
   min = CI.raw(0);
   max = CI.raw(1);
@@ -137,7 +137,7 @@ TEST_P(BackendTest, simpleInference) {
   ctx.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F, ctx);
 
-  updateVariables(ctx, {input}, {&inputs});
+  updateInputPlaceholders(ctx, {input}, {&inputs});
   EE_.run();
 }
 

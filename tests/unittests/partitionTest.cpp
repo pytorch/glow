@@ -43,7 +43,7 @@ static void executeSerial(const FunctionDAG &G, Context &ctx,
     ExecutionEngine EE;
     EE.compile(CompilationMode::Infer, F, ctx);
 
-    updateVariables(ctx, vars, inputs);
+    updateInputPlaceholders(ctx, vars, inputs);
     EE.run();
   }
 }
@@ -104,7 +104,7 @@ TEST_F(PartitionTest, SerialExecution) {
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_, ctx_);
-  updateVariables(ctx_, {input}, {&in});
+  updateInputPlaceholders(ctx_, {input}, {&in});
   EE.run();
   Tensor ref = res.clone();
 
@@ -150,7 +150,7 @@ TEST_F(PartitionTest, Branchover) {
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_, ctx_);
-  updateVariables(ctx_, {input}, {&in});
+  updateInputPlaceholders(ctx_, {input}, {&in});
   EE.run();
   Tensor ref = res.clone();
 
