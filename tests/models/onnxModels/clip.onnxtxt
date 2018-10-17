@@ -1,0 +1,55 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "Clip"
+    attribute {
+      name: "min"
+      f: 20.0
+      type: FLOAT
+    }
+    attribute {
+      name: "max"
+      f: 60.0
+      type: FLOAT
+    }
+  }
+  name: "test_clip"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

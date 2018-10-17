@@ -97,3 +97,38 @@ TEST(onnx, importAveragePool3D) {
                  "");
   }
 }
+
+/// Test loading clip op from an ONNX model.
+/// Test with arg min = 20.0 max = 60.0
+TEST(onnx, importClip) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/clip.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {3, 3});
+    x.getHandle() = {1, 2, 3, 40, 5, 6, 7, 8, 90};
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {3, 3};
+  std::vector<float> expectedValues = {20, 20, 20, 40, 20, 20, 20, 20, 60};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 3 * 3; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
