@@ -194,6 +194,18 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(MinNodeKind, FloatTy);
       ADD_OP_MAPPING(MaxNodeKind, FloatTy);
       ADD_OP_MAPPING(SplatNodeKind, FloatTy);
+    } else if (operation == "BatchBoxCox") {
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+      ADD_OP_MAPPING(TileNodeKind, FloatTy);
+      ADD_OP_MAPPING(SplatNodeKind, FloatTy);
+      ADD_OP_MAPPING(AddNodeKind, FloatTy);
+      ADD_OP_MAPPING(MaxNodeKind, FloatTy);
+      ADD_OP_MAPPING(LogNodeKind, FloatTy);
+      ADD_OP_MAPPING(PowNodeKind, FloatTy);
+      ADD_OP_MAPPING(SubNodeKind, FloatTy);
+      ADD_OP_MAPPING(DivNodeKind, FloatTy);
+      ADD_OP_MAPPING(CmpEQNodeKind, FloatTy);
+      ADD_OP_MAPPING(SelectNodeKind, FloatTy);
     }
   }
 #undef ADD_OP_MAPPING
