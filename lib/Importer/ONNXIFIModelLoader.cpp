@@ -205,6 +205,9 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(SubNodeKind, FloatTy);
       ADD_OP_MAPPING(DivNodeKind, FloatTy);
       ADD_OP_MAPPING(CmpEQNodeKind, FloatTy);
+    } else if (operation == "ReplaceNaN") {
+      ADD_OP_MAPPING(IsNaNNodeKind, FloatTy);
+      ADD_OP_MAPPING(SplatNodeKind, FloatTy);
       ADD_OP_MAPPING(SelectNodeKind, FloatTy);
     } else if (operation == "DotProduct") {
       ADD_OP_MAPPING(BatchedReduceAddNodeKind, FloatTy);

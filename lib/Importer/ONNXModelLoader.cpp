@@ -519,6 +519,16 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "ReplaceNaN") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    float replacementValue =
+        dict.count("value") ? loadFloat(dict["value"]) : 0.0f;
+
+    auto *node = G_.createReplaceNaN(opName, in, replacementValue);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 
