@@ -503,6 +503,15 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "DotProduct") {
+    auto X = getNodeValueOrCreateConstantByName(op.input(0));
+    auto Y = getNodeValueOrCreateConstantByName(op.input(1));
+
+    auto *node = G_.createDotProduct(opName, X, Y);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 
