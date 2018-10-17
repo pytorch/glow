@@ -295,3 +295,37 @@ TEST(onnx, importLengthsToRanges) {
   ASSERT_TRUE(LTR);
   ASSERT_TRUE(llvm::isa<Placeholder>(LTR->getLengths()));
 }
+
+/// Test loading ReplaceNaN op from an ONNX model.
+/// Test with arg value = 1.0.
+TEST(onnx, importReplaceNaN) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/replaceNaN.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  Tensor x(ElemKind::FloatTy, {3, 3});
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  // Verify structure: Input, IsNan, Splat -> Select -> Save.
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 4);
+  auto *save = getSaveNodeFromDest(output);
+  auto *select = llvm::dyn_cast<SelectNode>(save->getInput().getNode());
+  ASSERT_TRUE(select);
+  auto *isNaN = llvm::dyn_cast<IsNaNNode>(select->getNthInput(0).getNode());
+  ASSERT_TRUE(isNaN);
+  auto *splat = llvm::dyn_cast<SplatNode>(select->getNthInput(1).getNode());
+  ASSERT_TRUE(splat);
+  auto *input = llvm::dyn_cast<Placeholder>(select->getNthInput(2).getNode());
+  ASSERT_EQ(input, mod.getPlaceholderByName("x"));
+}

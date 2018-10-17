@@ -1,0 +1,50 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "ReplaceNaN"
+    attribute {
+      name: "value"
+      f: 1.0
+      type: FLOAT
+    }
+  }
+  name: "test_replaceNaN"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
