@@ -481,6 +481,18 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "Clip") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    float min = dict.count("min") ? loadFloat(dict["min"])
+                                  : std::numeric_limits<float>::lowest();
+    float max = dict.count("max") ? loadFloat(dict["max"])
+                                  : std::numeric_limits<float>::max();
+
+    auto *node = G_.createClip(opName, in, min, max);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 
