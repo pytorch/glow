@@ -206,6 +206,9 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(DivNodeKind, FloatTy);
       ADD_OP_MAPPING(CmpEQNodeKind, FloatTy);
       ADD_OP_MAPPING(SelectNodeKind, FloatTy);
+    } else if (operation == "DotProduct") {
+      ADD_OP_MAPPING(BatchedReduceAddNodeKind, FloatTy);
+      ADD_OP_MAPPING(MulNodeKind, FloatTy);
     }
   }
 #undef ADD_OP_MAPPING

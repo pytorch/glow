@@ -206,3 +206,32 @@ TEST(onnx, importBatchBoxCox) {
     }
   }
 }
+
+/// Test loading DotProduct op from an ONNX model.
+TEST(onnx, importDotProduct) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/dot_product.onnxtxt");
+
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {3, 3});
+    Tensor y(ElemKind::FloatTy, {3, 3});
+
+    ONNXModelLoader onnxLD(netFilename, {"x", "y"},
+                           {&x.getType(), &y.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+
+  // Just verify the structure.
+  // SaveNode + MulNode + BatchedReduceAddNode.
+  ASSERT_EQ(3, F->getNodes().size());
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *saveInput = saveNode->getInput().getNode();
+  ASSERT_TRUE(llvm::isa<BatchedReduceAddNode>(saveInput));
+
+  auto *batchedReduceAdd = llvm::cast<BatchedReduceAddNode>(saveInput);
+  ASSERT_TRUE(llvm::isa<MulNode>(batchedReduceAdd->getBatch()));
+}
