@@ -132,3 +132,77 @@ TEST(onnx, importClip) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 }
+
+/// Test loading BatchBoxCox op from an ONNX model.
+TEST(onnx, importBatchBoxCox) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/batchBoxCox.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+
+  // Make input tensors.
+  const size_t kRows = 3;
+  const size_t kCols = 3;
+  Tensor data(ElemKind::FloatTy, {kRows, kCols});
+  Tensor lambda1(ElemKind::FloatTy, {kCols});
+  Tensor lambda2(ElemKind::FloatTy, {kCols});
+  auto dataH = data.getHandle();
+  auto lambda1H = lambda1.getHandle();
+  auto lambda2H = lambda2.getHandle();
+
+  // Fill inputs with random positive values.
+  dataH.randomize(0.0, 5.0, mod.getPRNG());
+  lambda1H.randomize(1.0, 2.0, mod.getPRNG());
+  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
+
+  // Zero out every other element to lambda1 to test that case of the transform.
+  for (size_t i = 0; i < kCols; i += 2) {
+    lambda1H.at({i}) = 0;
+  }
+
+  {
+    ONNXModelLoader onnxLD(
+        netFilename, {"data", "lambda1", "lambda2"},
+        {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
+                                  {&data, &lambda1, &lambda2});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = res->getHandle();
+
+  // Output should have the same dims as the inputs.
+  EXPECT_TRUE(result.dims().vec() == data.dims().vec());
+
+  // Compute elementwise Box-Cox transform and compare with corresponding
+  // element of result.
+  for (size_t i = 0; i < kRows; ++i) {
+    for (size_t j = 0; j < kCols; ++j) {
+      float d = dataH.at({i, j});
+      float l1 = lambda1H.at({j});
+      float l2 = lambda2H.at({j});
+
+      float tmp = std::max(d + l2, 1e-6f);
+      float y = 0;
+
+      if (l1 == 0) {
+        // Clip argument to log and pow at 1e-6 to avoid saturation.
+        y = std::log(tmp);
+      } else {
+        y = (std::pow(tmp, l1) - 1) / l1;
+      }
+
+      EXPECT_FLOAT_EQ(y, result.at({i, j}));
+    }
+  }
+}

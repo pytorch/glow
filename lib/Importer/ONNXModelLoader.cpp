@@ -493,6 +493,16 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "BatchBoxCox") {
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto lambda1 = getNodeValueOrCreateConstantByName(op.input(1));
+    auto lambda2 = getNodeValueOrCreateConstantByName(op.input(2));
+
+    auto *node = G_.createBatchBoxCox(opName, data, lambda1, lambda2);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 
