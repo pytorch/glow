@@ -62,13 +62,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
 #ifdef GLOW_WITH_CPU
   *numBackends = 2;
-  backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::CPU, 1);
-  backendIDs[1] =
-      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter, 2);
+  backendIDs[0] = new glow::onnxifi::BackendId(
+      glow::BackendKind::CPU, /*id*/ 1,
+      /*concurrency*/ std::thread::hardware_concurrency());
+  backendIDs[1] = new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
+                                               /*id*/ 2, /*concurrency*/ 1);
 #else
   *numBackends = 1;
-  backendIDs[0] =
-      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter, 1);
+  backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
+                                               /*id*/ 1, /*concurrency*/ 1);
 #endif
 
   return ONNXIFI_STATUS_SUCCESS;

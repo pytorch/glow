@@ -15,8 +15,6 @@
  */
 #include "ThreadPool.h"
 
-#include <iostream>
-
 namespace glow {
 namespace onnxifi {
 
