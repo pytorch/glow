@@ -27,26 +27,6 @@ before_install:
 
 jobs:
   include:
-    - env:
-        - TEST_NAME=ASAN
-      install:
-        - export PATH="/usr/lib/ccache:$PATH"
-        - mkdir build && cd build
-        - CC=clang-6.0 CXX=clang++-6.0 cmake -G Ninja
-          -DCMAKE_BUILD_TYPE=Release -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
-          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
-          -DGLOW_USE_SANITIZER="Address;Undefined"
-          ../
-
-    - env:
-        - TEST_NAME=DEBUG
-      install:
-        - mkdir build && cd build
-        - CC=clang-6.0 CXX=clang++-6.0 cmake -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
-          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-6.0/include/
-          ../
-
     - compiler: g++
       env:
         - TEST_NAME=COVERAGE
@@ -72,6 +52,3 @@ jobs:
         - sudo apt-get install -y clang-format-6.0
       script:
         - CLANG_COMMAND=/usr/bin/clang-format-6.0 ./utils/format.sh check
-
-script:
-  - ../.travis/run_tests.sh ${TEST_NAME}
