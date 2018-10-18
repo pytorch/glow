@@ -29,6 +29,8 @@ function(add_glow_test)
 
   set_property(GLOBAL APPEND PROPERTY GLOW_TEST_DEPENDS ${ARG_DEPENDS})
 
+  set_property(GLOBAL APPEND PROPERTY GLOW_TEST_NAME_DEPENDS ${ARG_NAME})
+
   # Produce the specific test rule using the default built-in.
   add_test(NAME ${ARG_NAME} COMMAND ${ARG_COMMAND})
 endfunction()
