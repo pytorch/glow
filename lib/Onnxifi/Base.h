@@ -37,9 +37,9 @@ namespace onnxifi {
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind and \p id.
-  explicit BackendId(glow::BackendKind kind, int id)
-      : id_(id), executionEngine_(kind) {}
+  /// given Glow backend \p kind, \p id and \p concurrency.
+  explicit BackendId(glow::BackendKind kind, int id, int concurrency)
+      : id_(id), concurrency_(concurrency), executionEngine_(kind) {}
 
   /// Verify that given operation kind is supported by the backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
@@ -50,8 +50,12 @@ public:
   /// \returns the backend id.
   int getID() { return id_; }
 
+  /// \returns concurrency for the backend.
+  int getConcurrency() { return concurrency_; }
+
 private:
   int id_;
+  int concurrency_;
   glow::ExecutionEngine executionEngine_;
 };
 
@@ -59,7 +63,9 @@ typedef BackendId *BackendIdPtr;
 
 class Backend {
 public:
-  explicit Backend(BackendIdPtr backendId) : backendIdPtr_(backendId) {}
+  explicit Backend(BackendIdPtr backendId)
+      : backendIdPtr_(backendId), threadPool_(backendIdPtr_->getConcurrency()) {
+  }
 
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
