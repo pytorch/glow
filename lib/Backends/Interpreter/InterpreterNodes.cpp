@@ -1747,6 +1747,18 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
   }
 }
 
+void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
+  auto ranges = getTensor(I->getDest())->getHandle<int64_t>();
+  auto lengths = getTensor(I->getLengths())->getHandle<int64_t>();
+  int64_t offset = 0;
+  for (size_t i = 0; i < lengths.dims()[0]; i++) {
+    auto length = lengths.at({i});
+    ranges.at({i, 0}) = offset;
+    ranges.at({i, 1}) = length;
+    offset += length;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//

@@ -310,6 +310,14 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("LengthsToRanges")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Given a vector of segment lengths, calculates offsets of "
+                    "each segment and packs them next to the lengths. For the "
+                    "input vector of length N the output is a Nx2 matrix with "
+                    "(offset, lengths) packaged for each segment.");
+
   // clang-format off
   BB.newNode("IsNaN")
     .addInput("Input")

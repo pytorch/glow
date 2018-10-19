@@ -1258,6 +1258,13 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                                   indices, lengths));
 }
 
+LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
+                                                     NodeValue lengths) {
+  ShapeVector outDims({lengths.dims()[0], 2});
+  auto outTy = getParent()->uniqueTypeWithNewShape(lengths.getType(), outDims);
+  return addNode(new LengthsToRangesNode(name, outTy, lengths));
+}
+
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
 

@@ -219,6 +219,14 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
+  BB.newInstr("LengthsToRanges")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int64ITy"});
+
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
       .addOperand("Dest", OperandKind::Out)
