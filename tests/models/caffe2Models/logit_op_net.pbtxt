@@ -1,0 +1,13 @@
+name: "logit"
+op {
+  input: "inputs_0"
+  output: "logit_result"
+  name: ""
+  type: "Logit"
+  arg {
+    name: "eps"
+    f: 1e-6
+  }
+}
+external_input: "inputs_0"
+external_output: "logit_result"

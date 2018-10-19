@@ -412,6 +412,18 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "Logit") {
+    // Load the input and (optional) epsilon clamping value:
+    auto input = getNodeValueOrCreateConstantByName(op.input(0));
+    auto epsIt = dict.find("eps");
+    // default: 1e-6 (as in Caffe2)
+    auto eps = epsIt != dict.end() ? loadFloat(epsIt->second) : 1E-6f;
+    auto *node = G_.createLogit(opName, input, eps);
+    // Save the outputs:
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "EQ") {
     auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
     auto in1 = getNodeValueOrCreateConstantByName(op.input(1));

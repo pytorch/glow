@@ -1289,6 +1289,42 @@ TEST(caffe2, LengthsToRanges) {
   EXPECT_EQ(mod.getPlaceholders().size(), 1);
 }
 
+// Test loading Logit operator from a Caffe2 model.
+TEST(caffe2, Logit) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/logit_op_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+
+  // Input tensors.
+  const std::size_t kDataSize = 10;
+  Tensor X(ElemKind::FloatTy, {kDataSize});
+
+  // Destroy the loader after the graph is loaded
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
+                               {&X.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // Check that the shape of the output matches what Caffe2 expects.
+  std::vector<size_t> expectedDims = {kDataSize};
+  EXPECT_EQ(output->dims().vec(), expectedDims);
+
+  // High level checks on the content of the graph.
+  // We have 1 Clip (1 Splat, 1 Max, 1 Splat, 1 Min),
+  // 1 Splat, 1 Sub, 1 Div, 1 Log, and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 9);
+
+  // Graph has one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+}
+
 // Test loading a SparseToDense operator.
 TEST(caffe2, sparseToDense) {
   ExecutionEngine EE{BackendKind::Interpreter};
