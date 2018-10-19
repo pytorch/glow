@@ -190,3 +190,7 @@ To get started, please refer to the following guides:
 * forums: discuss implementations, research, etc. http://discuss.pytorch.org.
   Make sure to label topic with the ["glow"](https://discuss.pytorch.org/c/glow) category.
 * GitHub issues: bug reports, feature requests, install issues, RFCs, thoughts, etc.
+
+## License
+
+Glow is licensed under the [Apache 2.0 License](LICENSE).
