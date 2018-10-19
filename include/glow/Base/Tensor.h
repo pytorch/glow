@@ -282,6 +282,8 @@ public:
       return isEqualImpl<int16_t>(other, allowedError);
     case ElemKind::Int32QTy:
       return isEqualImpl<int32_t>(other, allowedError);
+    case ElemKind::Int32ITy:
+      return isEqualImpl<int32_t>(other, allowedError);
     case ElemKind::Int64ITy:
       return isEqualImpl<int64_t>(other, allowedError);
     }

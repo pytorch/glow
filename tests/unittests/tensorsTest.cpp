@@ -191,6 +191,7 @@ TEST(Tensor, assignment) {
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
   testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
+  testAssignment<int32_t>(Type{ElemKind::Int32ITy, dim});
   testAssignment<int64_t>(Type{ElemKind::Int64ITy, dim});
 }
 

@@ -190,6 +190,7 @@ enum class ElemKind : unsigned char {
   Int8QTy,   // 8-bit quantized type (int8_t)
   Int16QTy,  // 16-bit quantized type (int16_t)
   Int32QTy,  // 32-bit quantized type (int32_t)
+  Int32ITy,  // 32-bit index type (int32_t)
   Int64ITy,  // 64-bit index type (int64_t)
 };
 
@@ -355,17 +356,19 @@ struct Type final {
       return std::is_same<ElemTy, int16_t>::value;
     case ElemKind::Int32QTy:
       return std::is_same<ElemTy, int32_t>::value;
+    case ElemKind::Int32ITy:
+      return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::Int64ITy:
       return std::is_same<ElemTy, int64_t>::value;
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
 
-  /// \returns true if the type of this Tensor is one of the integer types.
-  /// Notice that we don't consider Int64ITy as an integer because we are not
-  /// performing calculations on this type.
+  /// \returns true if the type of this Tensor is one of the quantized types.
   bool isQuantizedType() const {
-    return isType<int8_t>() || isType<int16_t>() || isType<int32_t>();
+    return elementType_ == ElemKind::Int8QTy ||
+           elementType_ == ElemKind::Int16QTy ||
+           elementType_ == ElemKind::Int32QTy;
   }
 
   /// \return the size of the type element.
@@ -387,6 +390,8 @@ struct Type final {
       return sizeof(int16_t);
     case ElemKind::Int32QTy:
       return sizeof(int32_t);
+    case ElemKind::Int32ITy:
+      return sizeof(int32_t);
     case ElemKind::Int64ITy:
       return sizeof(int64_t);
     }
@@ -401,7 +406,7 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float", "float16", "i8", "i16", "i32", "index",
+        "float", "float16", "i8", "i16", "i32", "index32", "index64",
     };
     return names[(int)Ty];
   }

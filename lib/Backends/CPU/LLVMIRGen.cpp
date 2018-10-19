@@ -232,6 +232,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt16Ty();
   case ElemKind::Int32QTy:
     return builder.getInt32Ty();
+  case ElemKind::Int32ITy:
+    return builder.getInt32Ty();
   }
   return nullptr;
 }
@@ -459,6 +461,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt16(static_cast<int16_t>(val));
   case ElemKind::Int32QTy:
     return builder.getInt32(static_cast<int32_t>(val));
+  case ElemKind::Int32ITy:
+    return builder.getInt32(static_cast<int32_t>(val));
   }
   llvm_unreachable("Unknown element type");
 }
@@ -507,6 +511,8 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   case ElemKind::Int8QTy:
     return get("libjit_" + name + "_i8");
   case ElemKind::Int32QTy:
+    return get("libjit_" + name + "_i32");
+  case ElemKind::Int32ITy:
     return get("libjit_" + name + "_i32");
   case ElemKind::Int64ITy:
     return get("libjit_" + name + "_u");
