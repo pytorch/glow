@@ -507,6 +507,12 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
+  /// Given a vector of segment lengths, calculates offsets of each segment and
+  /// packs them next to the lengths. For the input vector of length N the
+  /// output is a Nx2 matrix with (offset, lengths) packaged for each segment.
+  LengthsToRangesNode *createLengthsToRanges(llvm::StringRef name,
+                                             NodeValue lengths);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
                        Placeholder *output);

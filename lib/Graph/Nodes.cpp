@@ -591,6 +591,18 @@ void SparseLengthsWeightedSumNode::verify() const {
          "Weights and Indices must have the same size");
 }
 
+void LengthsToRangesNode::verify() const {
+  assert(getResult().getElementType() == getLengths().getElementType() &&
+         "Mismatched element types");
+  assert(getLengths().getElementType() == ElemKind::Int64ITy &&
+         "Lengths must have index type");
+  assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
+  assert(getResult().dims().size() == 2 && "Ranges must be 2D vector");
+  assert(getResult().dims()[0] == getLengths().dims()[0] &&
+         "Lengths and Ranges must have the same outer dimensions");
+  assert(getResult().dims()[1] == 2 && "Inner dimension of Ranges must be 2");
+}
+
 void SGDNode::verify() const {
   assert(getGradient().getType() == getWeight().getType() &&
          "Invalid weight or gradient type");

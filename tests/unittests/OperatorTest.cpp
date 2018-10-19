@@ -4168,6 +4168,32 @@ TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
   EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
 }
 
+TEST_P(InterpOnly, LengthsToRanges) {
+  /*
+    LENGTHS = [1, 3, 0, 2]
+    OUTPUT =  [[0, 1], [1, 3], [4, 0], [4, 2]]
+  */
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+
+  ctx_.allocate(lengths)->getHandle<int64_t>() = {1, 3, 0, 2};
+
+  auto R = F_->createLengthsToRanges("LTR", lengths);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::Int64ITy, {4, 2});
+  expected.getHandle<int64_t>() = {
+      0, 1, 1, 3, 4, 0, 4, 2,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
