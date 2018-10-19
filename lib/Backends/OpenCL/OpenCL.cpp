@@ -15,6 +15,9 @@
  */
 #define DEBUG_TYPE "opencl"
 
+// Silence Apple's warning about the deprecation of OpenCL.
+#define CL_SILENCE_DEPRECATION
+
 #include "OpenCL.h"
 
 #include "glow/CodeGen/MemoryAllocator.h"
