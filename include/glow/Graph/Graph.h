@@ -513,6 +513,19 @@ public:
   LengthsToRangesNode *createLengthsToRanges(llvm::StringRef name,
                                              NodeValue lengths);
 
+  /// Implements an operation that converts the sparse representation given by
+  /// the pair of \p indices and \p values into a dense representation.
+  /// This representation contains each value of \p values at the corresponding
+  /// index given by \p indices. All indices that are not present in \p indices
+  /// are filled with zeroes. \p indices can contain duplicates, and in this
+  /// case, the corresponding values in \p values are added.
+  ///
+  /// \p dataToInferDim acts as a hint about the shape of the output. The first
+  /// dimension of the output is the first dimension of this tensor.
+  SparseToDenseNode *createSparseToDense(llvm::StringRef name,
+                                         NodeValue indices, NodeValue values,
+                                         NodeValue dataToInferDim);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
                        Placeholder *output);

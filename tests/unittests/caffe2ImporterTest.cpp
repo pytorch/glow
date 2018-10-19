@@ -1201,7 +1201,7 @@ TEST(caffe2, batchBoxCox) {
   auto *BN2 = llvm::dyn_cast<TileNode>(AN2->getNthInput(1));
   EXPECT_TRUE(BN2);
 
-  // With have three inputs and one output.
+  // There are three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
 
   // Compile and run the model.
@@ -1287,4 +1287,57 @@ TEST(caffe2, LengthsToRanges) {
 
   // Graph has one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 1);
+}
+
+// Test loading a SparseToDense operator.
+TEST(caffe2, sparseToDense) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/sparse_to_dense.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  // Create inputs.
+  constexpr size_t kNumIndices = 5;
+  constexpr size_t kMaxIndex = 20;
+  constexpr size_t kRows = 10;
+  constexpr size_t kCols = 5;
+  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
+  Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
+  Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"indices", "values", "dataToInferDim"},
+        {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {"indices", "values"},
+                                  {&indices, &values});
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(output->dims().vec() == dataToInferDim.dims().vec());
+
+  // High level checks on the content of the graph.
+  // We should have 1 SparseToDense and 1 Output node = 2 nodes in total.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Check that the graph has the expected shape (SparseToDense -> Save),
+  // starting from the output.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *STDN = llvm::dyn_cast<SparseToDenseNode>(saveNode->getInput());
+  ASSERT_TRUE(STDN);
+
+  // Graph has three inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
 }
