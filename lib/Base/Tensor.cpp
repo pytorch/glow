@@ -278,6 +278,8 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
     return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
+  case ElemKind::Int32ITy:
+    return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
     return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
   }
@@ -296,6 +298,8 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
   case ElemKind::Int16QTy:
     return dumpGenericImpl(T->getHandle<int16_t>(), os);
   case ElemKind::Int32QTy:
+    return dumpGenericImpl(T->getHandle<int32_t>(), os);
+  case ElemKind::Int32ITy:
     return dumpGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
     return dumpGenericImpl(T->getHandle<int64_t>(), os);
@@ -351,6 +355,12 @@ void glow::genericTranspose(Tensor *src, Tensor *dest,
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
+  case ElemKind::Int32ITy: {
+    auto srcH = src->getHandle<int32_t>();
+    auto destH = dest->getHandle<int32_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   case ElemKind::Int64ITy: {
     auto srcH = src->getHandle<int64_t>();
     auto destH = dest->getHandle<int64_t>();
@@ -396,6 +406,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<int32_t>().clear(val);
       break;
     }
+    case ElemKind::Int32ITy: {
+      getHandle<int32_t>().clear(val);
+      break;
+    }
     case ElemKind::Int64ITy: {
       getHandle<int64_t>().clear(val);
       break;
@@ -423,6 +437,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       break;
     }
     case ElemKind::Int32QTy: {
+      getHandle<int32_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int32ITy: {
       getHandle<int32_t>().initXavier(val, PRNG);
       break;
     }
