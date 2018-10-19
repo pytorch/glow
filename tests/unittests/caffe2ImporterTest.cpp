@@ -1255,3 +1255,36 @@ TEST(caffe2, EQ1D) {
   // Graph has two inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
 }
+
+// Test loading a LengthsToRanges operator.
+TEST(caffe2, LengthsToRanges) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/lengths_to_ranges.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/lengths_to_ranges_init_net.pbtxt");
+
+  Placeholder *output;
+
+  // Destroy the loader after the graph is loaded
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {}, {}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // High level checks on the content of the graph.
+  // We have 1 LengthsToRanges and 1 Save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Check that the graph has the expected shape (LengthsToRanges -> Save),
+  // starting from the output.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *N = llvm::dyn_cast<LengthsToRangesNode>(saveNode->getInput());
+  ASSERT_TRUE(N);
+
+  // Graph has one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 1);
+}

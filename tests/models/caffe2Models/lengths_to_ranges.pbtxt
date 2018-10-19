@@ -1,0 +1,8 @@
+name: "lengths_to_ranges"
+op {
+   input: "input"
+   output: "output"
+   type: "LengthsToRanges"
+}
+external_input: "input"
+external_output: "output"

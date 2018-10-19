@@ -594,6 +594,7 @@ void SparseLengthsWeightedSumNode::verify() const {
 void LengthsToRangesNode::verify() const {
   assert(getResult().getElementType() == getLengths().getElementType() &&
          "Mismatched element types");
+  // TODO: Lengths should be Int32ITy once that type is implemented.
   assert(getLengths().getElementType() == ElemKind::Int64ITy &&
          "Lengths must have index type");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
