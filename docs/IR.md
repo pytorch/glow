@@ -101,7 +101,7 @@ Placeholders are symbolic nodes that are not backed by a concrete tensor during
 the compilation of the program. Inputs and outputs of Glow programs should be
 modeled using Placeholder nodes. Concrete tensors are attached to placeholder
 nodes during the compilation of the program, and not before. This means that
-unlike constants, the optimizer can’t inspect or mutate the content of
+unlike constants, the optimizer can't inspect or mutate the content of
 Placeholder nodes. The same program could be compiled using different bound
 tensors without changing the semantics of the program.
 
