@@ -135,6 +135,64 @@ TEST_P(InterpAndCPU, log) {
   }
 }
 
+TEST_P(Operator, logit) {
+  auto eps = 1E-6f;                // the default in Caffe2
+  constexpr std::size_t size = 10; // sample size for randomized tests
+
+  // differential test:
+  // ensure we match an oracle `logit_test` (a C++ reimplementation test)
+  auto clamp_test = [](float v, float lo, float hi) {
+    return std::max(std::min(v, hi), lo);
+  };
+  auto logit_test = [clamp_test](float x, float eps = 1E-6f) {
+    float p = clamp_test(x, eps, 1.0f - eps);
+    return std::log(p / (1.0f - p));
+  };
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  // generate the input data in (0.0f, 1.0f) (probabilites including degenerate
+  // cases) and test that afterward the input data is clamped in
+  // (eps, 1 - eps) as in Caffe2.
+  ctx_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+
+  auto *logitDiff = F_->createLogit("logitDiff", input, eps);
+  auto *saveDiff = F_->createSave("saveDiff", logitDiff);
+  ctx_.allocate(saveDiff->getPlaceholder());
+
+  // property: zero-sum for the log-odds for complementary events probabilities
+  // i.e., logit(p) + logit(1 - p) == 0
+  Node *const1 = F_->createSplat("const1", input->getType(), 1.0);
+  Node *complInput = F_->createSub("sub", const1, input);
+  Node *logitCompl = F_->createLogit("logitCompl", complInput, eps);
+  auto *saveCompl = F_->createSave("saveCompl", logitCompl);
+  ctx_.allocate(saveCompl->getPlaceholder());
+
+  // property: the logit function is the right-inverse of the logistic function
+  // i.e., logistic(logit(p)) == p
+  auto logistic_test = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run(ctx_);
+
+  // results: differential test against the oracle
+  auto resultDiffH = ctx_.get(saveDiff->getPlaceholder())->getHandle();
+  auto inputH = ctx_.get(input)->getHandle();
+
+  // results: zero-sum property
+  auto resultComplH = ctx_.get(saveCompl->getPlaceholder())->getHandle();
+
+  for (std::size_t i = 0; i != size; ++i) {
+    // differential test against the oracle
+    EXPECT_NEAR(resultDiffH.at({i}), logit_test(inputH.at({i})), 1E-5);
+    // zero-sum property
+    EXPECT_NEAR(resultComplH.at({i}) + resultDiffH.at({i}), 0.0f, 1E-5);
+    // right-inverse property
+    EXPECT_NEAR(logistic_test(resultDiffH.at({i})),
+                clamp_test(inputH.at({i}), eps, 1.0f - eps), 1E-5);
+  }
+}
+
 TEST_P(InterpAndCPU, CmpEQ) {
   auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
   ctx_.allocate(X)->getHandle<int64_t>() = {
