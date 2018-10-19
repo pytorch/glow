@@ -107,7 +107,7 @@ void InterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-void InterpreterFunction::execute() {
+void InterpreterFunction::execute(Context &ctx) {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

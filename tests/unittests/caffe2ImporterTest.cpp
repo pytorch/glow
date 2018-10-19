@@ -51,7 +51,7 @@ TEST(caffe2, importConv) {
   auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
@@ -313,7 +313,7 @@ TEST(caffe2, concatAddAxis) {
   auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   // High level check on the content of the graph.
   // We have 1 reshape, 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -390,7 +390,7 @@ TEST(caffe2, concat) {
   auto res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   // High level check on the content of the graph.
   // We have 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 2);
@@ -593,7 +593,7 @@ TEST(caffe2, FC) {
   }
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
@@ -642,7 +642,7 @@ TEST(caffe2, FCWithFlatten) {
   ASSERT_TRUE(reshape);
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
   std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
@@ -691,7 +691,7 @@ TEST(caffe2, FCTransposed) {
   ASSERT_TRUE(fcNode);
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
@@ -741,7 +741,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
   ASSERT_TRUE(reshape);
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
   std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
@@ -782,7 +782,7 @@ TEST(caffe2, importClip) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {5, 5};
@@ -829,7 +829,7 @@ TEST(caffe2, importClipDefault) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {5, 5};
@@ -880,7 +880,7 @@ TEST(caffe2, replaceNaN) {
   // Compile and run the model.
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
 
@@ -965,7 +965,7 @@ TEST(caffe2, dotProduct1D) {
   ctx.allocate(mod.getPlaceholders());
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   // Check that the output tensor is the same as the expected output.
@@ -1048,7 +1048,7 @@ TEST(caffe2, dotProduct2D) {
   // Compile and run the model.
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
 
@@ -1207,7 +1207,7 @@ TEST(caffe2, batchBoxCox) {
   // Compile and run the model.
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
 

@@ -160,7 +160,7 @@ void testCIFAR10() {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
       updateInputPlaceholders(ctx, {A}, {&sample});
-      EE.run();
+      EE.run(ctx);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = result->getHandle<>().extractSlice(iter);

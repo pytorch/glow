@@ -618,8 +618,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
     }
   }
 }
-
-void OpenCLFunction::execute() {
+void OpenCLFunction::execute(Context &ctx) {
   auto copiedToDeviceBytes = copyMutableWeightsToDevice();
   (void)copiedToDeviceBytes;
   DEBUG_GLOW(llvm::dbgs() << "Copied " << copiedToDeviceBytes

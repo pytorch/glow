@@ -44,7 +44,7 @@ static void executeSerial(const FunctionDAG &G, Context &ctx,
     EE.compile(CompilationMode::Infer, F, ctx);
 
     updateInputPlaceholders(ctx, vars, inputs);
-    EE.run();
+    EE.run(ctx);
   }
 }
 
@@ -105,7 +105,7 @@ TEST_F(PartitionTest, SerialExecution) {
 
   EE.compile(CompilationMode::Infer, F_, ctx_);
   updateInputPlaceholders(ctx_, {input}, {&in});
-  EE.run();
+  EE.run(ctx_);
   Tensor ref = res.clone();
 
   // Infer using the partitioned graph.
@@ -151,7 +151,7 @@ TEST_F(PartitionTest, Branchover) {
 
   EE.compile(CompilationMode::Infer, F_, ctx_);
   updateInputPlaceholders(ctx_, {input}, {&in});
-  EE.run();
+  EE.run(ctx_);
   Tensor ref = res.clone();
 
   // Infer using the partitioned graph.

@@ -26,7 +26,7 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap)
 
 CPUFunction::~CPUFunction() { alignedFree(heap_); }
 
-void CPUFunction::execute() {
+void CPUFunction::execute(Context &ctx) {
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType = void (*)(void);

@@ -72,7 +72,7 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
   auto result = ctx.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
@@ -121,7 +121,7 @@ TEST(onnx, importClip) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3, 3};
@@ -177,7 +177,7 @@ TEST(onnx, importBatchBoxCox) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
 
@@ -264,7 +264,7 @@ TEST(onnx, importSumN) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3};
@@ -313,7 +313,7 @@ TEST(onnx, importSum1) {
 
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3};

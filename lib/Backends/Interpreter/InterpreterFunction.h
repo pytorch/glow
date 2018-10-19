@@ -55,7 +55,7 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  void execute() override;
+  void execute(Context &ctx) override;
   ///@}
 
 private:

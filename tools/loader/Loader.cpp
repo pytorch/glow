@@ -293,7 +293,7 @@ void Loader::runInference(Context &ctx) {
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterationsOpt; i++) {
-    EE_.run();
+    EE_.run(ctx);
   }
   if (timeOpt) {
     timer.stopTimer();
