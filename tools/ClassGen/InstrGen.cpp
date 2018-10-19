@@ -227,6 +227,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int64ITy"});
 
+  /// Converts the given sparse representation into a dense one.
+  BB.newInstr("SparseToDense")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
+      .autoIRGen();
+
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
       .addOperand("Dest", OperandKind::Out)

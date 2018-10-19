@@ -1265,6 +1265,18 @@ LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
   return addNode(new LengthsToRangesNode(name, outTy, lengths));
 }
 
+SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
+                                                 NodeValue indices,
+                                                 NodeValue values,
+                                                 NodeValue dataToInferDim) {
+  // The dimensions of the output are the same as the values tensor except for
+  // the first dimension, which should match that of dataToInferDim.
+  ShapeVector outDims(values.dims().begin(), values.dims().end());
+  outDims[0] = dataToInferDim.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
+  return addNode(new SparseToDenseNode(name, outTy, indices, values));
+}
+
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
 

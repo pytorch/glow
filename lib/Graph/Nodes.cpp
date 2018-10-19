@@ -604,6 +604,16 @@ void LengthsToRangesNode::verify() const {
   assert(getResult().dims()[1] == 2 && "Inner dimension of Ranges must be 2");
 }
 
+void SparseToDenseNode::verify() const {
+  assert(getResult().getElementType() == getValues().getElementType() &&
+         "Mismatched element types");
+  assert(getIndices().getElementType() == ElemKind::Int64ITy &&
+         "Indices must have integer type");
+  assert(getIndices().dims().size() == 1 && "Indices must be a 1D vector");
+  assert(getIndices().dims()[0] == getValues().dims()[0] &&
+         "Indices and Values must have the same first dimension");
+}
+
 void SGDNode::verify() const {
   assert(getGradient().getType() == getWeight().getType() &&
          "Invalid weight or gradient type");

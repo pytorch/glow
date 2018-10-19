@@ -1,0 +1,13 @@
+name: "sparseToDense"
+op {
+  input: "indices"
+  input: "values"
+  input: "dataToInferDim"
+  output: "dense_result"
+  name: ""
+  type: "SparseToDense"
+}
+external_input: "indices"
+external_input: "values"
+external_input: "dataToInferDim"
+external_output: "dense_result"

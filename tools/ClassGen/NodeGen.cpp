@@ -318,6 +318,19 @@ int main(int argc, char **argv) {
                     "input vector of length N the output is a Nx2 matrix with "
                     "(offset, lengths) packaged for each segment.");
 
+  BB.newNode("SparseToDense")
+      .addInput("Indices")
+      .addInput("Values")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Converts the sparse representation specified by the pair "
+          "(Indices, Values) into a dense one. This dense "
+          "representation contains each value from Values at the "
+          "corresponding index specified in Indices. Unspecified indices "
+          "are filled with zeroes. Indices may contain duplicate values "
+          "and in this case, all of the corresponding values in Values "
+          "are added together.");
+
   // clang-format off
   BB.newNode("IsNaN")
     .addInput("Input")

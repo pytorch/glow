@@ -3638,6 +3638,54 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, SparseToDense) {
+  // Create and initialize inputs. Make input 3D to make sure
+  // multidimensional values are handled properly.
+  constexpr size_t kNumIndices = 4;
+  constexpr size_t kRows = 10;
+  constexpr size_t kCols = 5;
+  constexpr size_t kMaxIndex = 10;
+
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
+                                         "indices", false);
+  auto *values = mod_.createPlaceholder(
+      ElemKind::FloatTy, {kNumIndices, kRows, kCols}, "data", false);
+  auto *dataToInferDim = mod_.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
+                                                "dataToInferDim", false);
+
+  auto IH = ctx_.allocate(indices)->getHandle<int64_t>();
+  auto VH = ctx_.allocate(values)->getHandle();
+
+  // Duplicate one index to test that the corresponding values are added.
+  IH = {1, 3, 1, 9};
+  VH.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
+  auto *S = F_->createSave("save", STDN);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+
+  // Compute expected output.
+  Tensor expected(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+  auto EH = expected.getHandle();
+
+  expected.zero();
+  for (size_t i = 0; i < kNumIndices; ++i) {
+    size_t idx = IH.at({i});
+    for (size_t j = 0; j < kRows; ++j) {
+      for (size_t k = 0; k < kCols; ++k) {
+        EH.at({idx, j, k}) += VH.at({i, j, k});
+      }
+    }
+  }
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 TEST_P(InterpOnly, FP16Reshape) {
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();

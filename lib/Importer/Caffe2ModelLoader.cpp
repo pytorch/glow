@@ -641,6 +641,17 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
+  if (typeName == "SparseToDense") {
+    auto indices = getNodeValueOrCreateConstantByName(op.input(0));
+    auto values = getNodeValueOrCreateConstantByName(op.input(1));
+    auto dataToInferDim = getNodeValueOrCreateConstantByName(op.input(2));
+
+    auto *node =
+        G_.createSparseToDense(opName, indices, values, dataToInferDim);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   unexpectedNodeError(op, "Unsupported operator.");
 }
 
