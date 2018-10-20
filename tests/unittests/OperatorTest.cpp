@@ -4168,7 +4168,7 @@ TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
   EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
 }
 
-TEST_P(InterpOnly, LengthsToRanges) {
+TEST_P(InterpAndCPU, LengthsToRanges) {
   /*
     LENGTHS = [1, 3, 0, 2]
     OUTPUT =  [[0, 1], [1, 3], [4, 0], [4, 2]]
