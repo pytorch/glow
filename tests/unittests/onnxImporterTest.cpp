@@ -274,3 +274,24 @@ TEST(onnx, importSum1) {
   auto *save = getSaveNodeFromDest(output);
   ASSERT_TRUE(llvm::isa<Placeholder>(save->getInput().getNode()));
 }
+
+/// Test loading LengthsToRanges from an ONNX model.
+TEST(onnx, importLengthsToRanges) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/lengths_to_ranges.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor lengths(ElemKind::Int64ITy, {4});
+    ONNXModelLoader onnxLD(netFilename, {"lengths"}, {&lengths.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+  // Verify structure: PH -> LengthsToRanges -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *LTR = llvm::dyn_cast<LengthsToRangesNode>(save->getInput().getNode());
+  ASSERT_TRUE(LTR);
+  ASSERT_TRUE(llvm::isa<Placeholder>(LTR->getLengths()));
+}

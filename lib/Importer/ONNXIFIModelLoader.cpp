@@ -209,6 +209,8 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
     } else if (operation == "DotProduct") {
       ADD_OP_MAPPING(BatchedReduceAddNodeKind, FloatTy);
       ADD_OP_MAPPING(MulNodeKind, FloatTy);
+    } else if (operation == "LengthsToRanges") {
+      ADD_OP_MAPPING(LengthsToRangesNodeKind, Int64ITy);
     }
   }
 #undef ADD_OP_MAPPING
