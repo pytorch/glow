@@ -883,6 +883,17 @@ void libjit_scatterassign_i8(int8_t *data, const size_t *indices,
   libjit_scatterassign(data, indices, slices, numIndices, sliceSize);
 }
 
+void libjit_lengths_to_ranges_u(size_t *ranges, const size_t *lengths,
+                                size_t size) {
+  size_t offset = 0;
+  for (size_t i = 0; i < size; i++) {
+    auto length = lengths[i];
+    ranges[i * 2] = offset;
+    ranges[i * 2 + 1] = length;
+    offset += length;
+  }
+}
+
 void libjit_local_response_normalization_f(float *outW, const float *inW,
                                            float *scaleCache,
                                            const size_t *outWdims,

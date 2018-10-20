@@ -1672,6 +1672,18 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::LengthsToRangesInstKind: {
+    auto *LTR = cast<LengthsToRangesInst>(I);
+    auto *dest = LTR->getDest();
+    auto *lengths = LTR->getLengths();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *size = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *F = getFunction("lengths_to_ranges", dest->getElementType());
+    createCall(builder, F, {destPtr, lengthsPtr, size});
+    break;
+  }
+
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
     auto *LRN = cast<LocalResponseNormalizationInst>(I);
     auto *dest = LRN->getDest();
