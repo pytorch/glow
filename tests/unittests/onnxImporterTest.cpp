@@ -235,3 +235,42 @@ TEST(onnx, importDotProduct) {
   auto *batchedReduceAdd = llvm::cast<BatchedReduceAddNode>(saveInput);
   ASSERT_TRUE(llvm::isa<MulNode>(batchedReduceAdd->getBatch()));
 }
+
+/// Test loading Sum with one input and one output
+TEST(onnx, importSum1) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/sum1.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {3});
+    x.getHandle() = {1, 2, 3};
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {3};
+  std::vector<float> expectedValues = {1, 2, 3};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Verify structure: input -> Save -> output
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 1);
+  auto *save = getSaveNodeFromDest(output);
+  ASSERT_TRUE(llvm::isa<Placeholder>(save->getInput().getNode()));
+}

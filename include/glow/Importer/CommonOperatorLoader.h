@@ -102,12 +102,17 @@ protected:
 
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
     // TODO: support variadic arguments
-    assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
-    const std::string &opName = loadOperatorName(op);
-    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
-    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
-    auto *node = G_.createAdd(opName, in0, in1);
-    addNodeAsOutput(op, node);
+    if (op.input_size() == 1) {
+      auto in = getNodeValueOrCreateConstantByName(op.input(0));
+      addNodeAsOutput(op, in);
+    } else {
+      assert(op.input_size() == 2 && "Only Sum of 1 or 2 inputs is supported.");
+      const std::string &opName = loadOperatorName(op);
+      auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+      auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
+      auto *node = G_.createAdd(opName, in0, in1);
+      addNodeAsOutput(op, node);
+    }
   }
 
   void loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
