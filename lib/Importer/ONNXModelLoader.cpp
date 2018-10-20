@@ -512,6 +512,13 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "LengthsToRanges") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto *node = G_.createLengthsToRanges(opName, in);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 
