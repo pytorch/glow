@@ -100,6 +100,15 @@ protected:
   /// method must be overloaded.
   virtual NodeValue getConversionOutput(Node &conversion) const;
 
+  /// Mutate the outputs of \p node to the expected output target
+  /// type (\see getTargetTypeForOutput) and insert the conversions
+  /// to preserve the type consistency with the rest of the network.
+  void convertOutputs(Node &node);
+
+  /// Insert conversion node for each input of \p node that don't
+  /// match getTargetTypeForInput.
+  void convertInputs(Node &node);
+
   /// Morph \p node into its final form. For the most part
   /// this method should be a noop and just return \p node.
   /// However, this hook provides a way to perform changes
