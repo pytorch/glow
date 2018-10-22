@@ -59,6 +59,60 @@ Node &FunctionConverter::morphNode(Node &node) { return node; }
 
 void FunctionConverter::postProcessing(Node &node) {}
 
+void FunctionConverter::convertOutputs(Node &node) {
+  for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+    NodeValue val = node.getNthResult(idx);
+    TypeRef targetTy = getTargetTypeForOutput(val);
+    if (!targetTy || targetTy == val.getType()) {
+      continue;
+    }
+    // convert the node and create a conversion to keep the users happy.
+    assert(targetTy->dims() == val.getType()->dims() &&
+           "Conversion does not preserve shape");
+    TypeRef origTy = val.getType();
+    // Fake the morphing of the node so that the creation
+    // of the conversion works properly.
+    val.setType(targetTy);
+    // Create the conversion.
+    Node *conversion = createConversion(val, origTy);
+    // "conversion" uses val so after this call,
+    // we will get a use of conversion inside conversion.
+    NodeValue conversionVal = getConversionOutput(*conversion);
+    // Store the users in a temporary object because setOperand
+    // will invalidate the iterator.
+    llvm::SmallVector<NodeUse, 4> users(val.getUsers().begin(),
+                                        val.getUsers().end());
+    // We cannot use replaceAllUsesWith here because:
+    // 1. At this point, val and conversion don't have the same type
+    //    (one is converted the other is the original type), and that
+    //    would trigger an assertion.
+    // 2. We would end up replacing the use of val in "conversion" by
+    //   "conversion".
+    for (auto use : users) {
+      if (use.getUser() == conversion) {
+        continue;
+      }
+      use.get()->setOperand(conversionVal.getNode(), conversionVal.getResNo());
+    }
+  }
+}
+
+void FunctionConverter::convertInputs(Node &node) {
+  for (unsigned idx = 0, end = node.getNumInputs(); idx != end; ++idx) {
+    NodeValue val = node.getNthInput(idx);
+    TypeRef targetTy = getTargetTypeForInput(node, idx);
+    if (!targetTy || targetTy == val.getType()) {
+      continue;
+    }
+    // convert the node and create a conversion to keep the users happy.
+    assert(targetTy->dims() == val.getType()->dims() &&
+           "Conversion does not preserve shape");
+    // Create the conversion.
+    Node *conversion = createConversion(val, targetTy);
+    node.setNthInput(idx, getConversionOutput(*conversion));
+  }
+}
+
 void FunctionConverter::convert() {
   // Traverse all nodes.
   // Check what the conversion should look like, if any.
@@ -89,56 +143,9 @@ void FunctionConverter::convert() {
     }
     // Mutate the output types and insert the conversion to keep our
     // invariant.
-    for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
-      NodeValue val = node.getNthResult(idx);
-      TypeRef targetTy = getTargetTypeForOutput(val);
-      if (!targetTy || targetTy == val.getType()) {
-        continue;
-      }
-      // convert the node and create a conversion to keep the users happy.
-      assert(targetTy->dims() == val.getType()->dims() &&
-             "Conversion does not preserve shape");
-      TypeRef origTy = val.getType();
-      // Fake the morphing of the node so that the creation
-      // of the conversion works properly.
-      val.setType(targetTy);
-      // Create the conversion.
-      Node *conversion = createConversion(val, origTy);
-      // "conversion" uses val so after this call,
-      // we will get a use of conversion inside conversion.
-      NodeValue conversionVal = getConversionOutput(*conversion);
-      // Store the users in a temporary object because setOperand
-      // will invalidate the iterator.
-      llvm::SmallVector<NodeUse, 4> users(val.getUsers().begin(),
-                                          val.getUsers().end());
-      // We cannot use replaceAllUsesWith here because:
-      // 1. At this point, val and conversion don't have the same type
-      //    (one is converted the other is the original type), and that
-      //    would trigger an assertion.
-      // 2. We would end up replacing the use of val in "conversion" by
-      //   "conversion".
-      for (auto use : users) {
-        if (use.getUser() == conversion) {
-          continue;
-        }
-        use.get()->setOperand(conversionVal.getNode(),
-                              conversionVal.getResNo());
-      }
-    }
+    convertOutputs(node);
     // Convert the inputs of the node.
-    for (unsigned idx = 0, end = node.getNumInputs(); idx != end; ++idx) {
-      NodeValue val = node.getNthInput(idx);
-      TypeRef targetTy = getTargetTypeForInput(node, idx);
-      if (!targetTy || targetTy == val.getType()) {
-        continue;
-      }
-      // convert the node and create a conversion to keep the users happy.
-      assert(targetTy->dims() == val.getType()->dims() &&
-             "Conversion does not preserve shape");
-      // Create the conversion.
-      Node *conversion = createConversion(val, targetTy);
-      node.setNthInput(idx, getConversionOutput(*conversion));
-    }
+    convertInputs(node);
     // All the surrounding code is properly typed, finally the morph node.
     Node &morphedNode = morphNode(node);
     // Do some post processing if need be.
