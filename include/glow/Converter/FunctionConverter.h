@@ -91,8 +91,10 @@ protected:
   virtual bool canConvert(const Node &node) const;
 
   /// Create a conversion with \p val as input and \p destTy as the destination
-  /// type. In other words, creates something like cast val to destTy.
-  virtual Node *createConversion(NodeValue &val, TypeRef destTy) = 0;
+  /// type in \p function. In other words, creates something like cast val to
+  /// destTy.
+  virtual Node *createConversion(Function &function, NodeValue &val,
+                                 TypeRef destTy) = 0;
 
   /// Given a \p conversion, get its output value.
   /// The default implementation returns the zero-th result.

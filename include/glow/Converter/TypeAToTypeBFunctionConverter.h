@@ -53,9 +53,10 @@ protected:
   /// is used.
   TypeRef getTargetTypeForInput(const Node &use, unsigned idx) const override;
 
-  /// Create a node that converts \p val to \p destTy.
+  /// Create a node in \p function that converts \p val to \p destTy.
   /// \p val and \p destTy must have the same shape.
-  Node *createConversion(NodeValue &val, TypeRef destTy) override;
+  Node *createConversion(Function &function, NodeValue &val,
+                         TypeRef destTy) override;
 
   /// Check if \p node can be converted.
   bool canConvert(const Node &node) const override;

@@ -110,8 +110,8 @@ protected:
     return true;
   }
 
-  /// Create either a QuantizeNode or DequantizeNode base on the \p destTy
-  /// and the type of \p val.
+  /// Create either a QuantizeNode or DequantizeNode in \p function based on the
+  /// \p destTy and the type of \p val.
   /// Basically, if \p val's type is floating point, this creates a
   /// QuantizeNode of \p val.
   /// If \p val's type is a quantized type, this creates a
@@ -119,13 +119,14 @@ protected:
   ///
   /// \pre One of t\p val's type and \p destTy must be FloatTy and
   ///      the other must be a quantized type.
-  Node *createConversion(NodeValue &val, TypeRef destTy) override {
+  Node *createConversion(Function &function, NodeValue &val,
+                         TypeRef destTy) override {
     if (destTy->isQuantizedType()) {
       assert(destTy->getElementType() == ElemKind::Int8QTy && "");
       return function_.createQuantize("quantize", val, destTy);
     }
     assert(destTy->getElementType() == ElemKind::FloatTy && "");
-    return function_.createDequantize("quantize", val);
+    return function.createDequantize("quantize", val);
   }
 
   /// \see FunctionConverter::morphNode.

@@ -74,7 +74,7 @@ void FunctionConverter::convertOutputs(Node &node) {
     // of the conversion works properly.
     val.setType(targetTy);
     // Create the conversion.
-    Node *conversion = createConversion(val, origTy);
+    Node *conversion = createConversion(function_, val, origTy);
     // "conversion" uses val so after this call,
     // we will get a use of conversion inside conversion.
     NodeValue conversionVal = getConversionOutput(*conversion);
@@ -108,7 +108,7 @@ void FunctionConverter::convertInputs(Node &node) {
     assert(targetTy->dims() == val.getType()->dims() &&
            "Conversion does not preserve shape");
     // Create the conversion.
-    Node *conversion = createConversion(val, targetTy);
+    Node *conversion = createConversion(function_, val, targetTy);
     node.setNthInput(idx, getConversionOutput(*conversion));
   }
 }
