@@ -2108,3 +2108,29 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_TRUE(llvm::isa<Placeholder>(save2->getInput()));
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
+
+TEST_F(GraphOptz, optimizeSameTypeConversions) {
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
+  auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
+  auto *conv1 = F_->createConvertTo("cast1", input1, input1->getType());
+  auto *conv2 = F_->createConvertTo(
+      "cast2", input2, mod_.uniqueType(ElemKind::Float16Ty, input2->dims()));
+  auto *save1 = F_->createSave("save1", conv1);
+  auto *save2 = F_->createSave("save1", conv2);
+
+  // convert_to1 + save1 + convert_to2 + save2 nodes.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_TRUE(llvm::isa<ConvertToNode>(save1->getInput()));
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // save1 + convert_to2 + save2 nodes.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  // convert_to1 node should be eliminated, because it converts the node into
+  // the same type.
+  EXPECT_TRUE(llvm::isa<Placeholder>(save1->getInput()));
+  // convert_to1 node should not be eliminated, because it converts the node
+  // into a different type.
+  EXPECT_TRUE(llvm::isa<ConvertToNode>(save2->getInput()));
+  EXPECT_EQ(save2->getInput(), NodeValue(conv2));
+}

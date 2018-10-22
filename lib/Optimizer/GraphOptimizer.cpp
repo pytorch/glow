@@ -1716,6 +1716,11 @@ static void optimizeConversions(Function *F) {
     default:
       break;
     }
+    // If it is a conversion between the same types, it can be eliminated.
+    if (srcVal == NodeValue() &&
+        conversionInput.getType() == dstVal.getType()) {
+      srcVal = conversionInput;
+    }
     // Check if we found a suitable new source for dstVal.
     if (srcVal == NodeValue() || srcVal.getType() != dstVal.getType()) {
       continue;
