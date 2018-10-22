@@ -310,7 +310,6 @@ void ConvertToNode::verify() const {
   (void)srcTy;
   TypeRef dstTy = getResult().getType();
   (void)dstTy;
-  assert(srcTy != dstTy && "Nothing to convert");
   assert(!srcTy->isQuantizedType() && !dstTy->isQuantizedType() &&
          "Quantized conversion should use Dequantize, Quantize and Rescale");
 }

@@ -800,6 +800,61 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   EXPECT_TRUE(origInput.isEqual(*inputTensor));
 }
 
+/// Check that the verify doesn't complain when there are
+/// noop conversion. This may happen on unoptimized network.
+/// E.g.,
+/// Input: Placeholder(float)
+/// |
+/// V
+/// OrigConvert: ConvertTo(float16)
+/// |
+/// V
+/// Save
+///
+/// Now converting the network to float16 will yield:
+/// Input: Placeholder(float)
+/// |
+/// V
+/// ConvertTo(float16); convert the input to fp16
+/// |
+/// V
+/// OrigConvert: ConvertTo(float16); <-- now this is a noop conversion.
+/// |
+/// V
+/// Save
+TEST_P(AllBackends, convertExistingConversionToNoop) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  auto *placeholder =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
+
+  TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, placeholder->dims());
+  auto *convert = F->createConvertTo("convert", placeholder, outTy);
+  auto *save = F->createSave("save", convert);
+
+  size_t origSize = F->getNodes().size();
+
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty);
+  converter.convert();
+
+  EXPECT_EQ(F->getNodes().size(), origSize + 1);
+
+  auto *convertToSave = llvm::dyn_cast<ConvertToNode>(save->getInput());
+  EXPECT_EQ(convertToSave, convert);
+  EXPECT_EQ(convert->getElementType(0), ElemKind::Float16Ty);
+
+  auto *addedConversion = llvm::dyn_cast<ConvertToNode>(convert->getInput());
+  ASSERT_NE(addedConversion, nullptr);
+  // At this point both the input and output of convert are FP16.
+  EXPECT_EQ(addedConversion->getElementType(0), ElemKind::Float16Ty);
+
+  EXPECT_EQ(addedConversion->getInput().getNode(), placeholder);
+  EXPECT_EQ(placeholder->getElementType(), ElemKind::FloatTy);
+
+  F->verify();
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
                         ::testing::Values(BackendKind::Interpreter));
 
