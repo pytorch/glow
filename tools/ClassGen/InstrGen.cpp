@@ -463,14 +463,14 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int8QTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isFPType()"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Dequantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::TypeCheck, {"Dest", "isFPType()"})
       .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::Int8QTy"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
