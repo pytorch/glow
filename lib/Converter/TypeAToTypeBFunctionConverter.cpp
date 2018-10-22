@@ -51,12 +51,13 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
   return getTargetTypeForOutput(use.getNthInput(idx));
 }
 
-Node *TypeAToTypeBFunctionConverter::createConversion(NodeValue &val,
+Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
+                                                      NodeValue &val,
                                                       TypeRef destTy) {
   assert(((destTy->getElementType() == dstKind_ &&
            val.getType()->getElementType() == srcKind_) ||
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
-  return function_.createConvertTo(val.getNode()->getName(), val, destTy);
+  return function.createConvertTo(val.getNode()->getName(), val, destTy);
 }
