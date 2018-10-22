@@ -15,9 +15,12 @@
  */
 #include "glow/Converter/FunctionConverter.h"
 
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h" // For Function.
 #include "glow/Graph/Node.h"  // For Node.
 #include "glow/Graph/Nodes.h" // For Placeholder and Constant.
+
+#include "llvm/ADT/DenseMap.h"
 
 using namespace glow;
 
@@ -60,6 +63,8 @@ Node &FunctionConverter::morphNode(Node &node) { return node; }
 void FunctionConverter::postProcessing(Node &node) {}
 
 void FunctionConverter::convertOutputs(Node &node) {
+  using FunctionAndValIdx = std::pair<Function *, unsigned>;
+  llvm::DenseMap<FunctionAndValIdx, NodeValue> functionAndValToConversion;
   for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
     NodeValue val = node.getNthResult(idx);
     TypeRef targetTy = getTargetTypeForOutput(val);
@@ -73,11 +78,6 @@ void FunctionConverter::convertOutputs(Node &node) {
     // Fake the morphing of the node so that the creation
     // of the conversion works properly.
     val.setType(targetTy);
-    // Create the conversion.
-    Node *conversion = createConversion(function_, val, origTy);
-    // "conversion" uses val so after this call,
-    // we will get a use of conversion inside conversion.
-    NodeValue conversionVal = getConversionOutput(*conversion);
     // Store the users in a temporary object because setOperand
     // will invalidate the iterator.
     llvm::SmallVector<NodeUse, 4> users(val.getUsers().begin(),
@@ -88,8 +88,50 @@ void FunctionConverter::convertOutputs(Node &node) {
     //    would trigger an assertion.
     // 2. We would end up replacing the use of val in "conversion" by
     //   "conversion".
+    // 3. Node may be a module level value and we need one conversion per
+    //    function.
     for (auto use : users) {
-      if (use.getUser() == conversion) {
+      Node *user = use.getUser();
+      Function *parent = user->getParent();
+      assert(parent && "User not in a function?!");
+
+      SaveNode *saveNode = llvm::dyn_cast<SaveNode>(user);
+      if (saveNode) {
+        // The output of save nodes is special because it doesn't use
+        // the value of the node, but its address.
+        // Thus, if we want to change the value of the output of
+        // a save node, we actually have to convert the input.
+        if (saveNode->getOutput() == val) {
+          // This save is a noop nothing to be done.
+          if (saveNode->getInput() == val) {
+            continue;
+          }
+          unsigned inputIdx = 0;
+          assert(saveNode->getInput() == saveNode->getNthInput(inputIdx) &&
+                 "Input is not idx 0");
+          NodeValue input = saveNode->getInput();
+          Node *conversion = createConversion(*parent, input, targetTy);
+          saveNode->setNthInput(inputIdx, getConversionOutput(*conversion));
+          continue;
+        }
+      }
+
+      FunctionAndValIdx functionAndVal = std::make_pair(parent, idx);
+      auto conversionValIt = functionAndValToConversion.find(functionAndVal);
+      if (conversionValIt == functionAndValToConversion.end()) {
+        // Create the conversion.
+        Node *conversion = createConversion(*parent, val, origTy);
+        // "conversion" uses val so after this call,
+        // we will get a use of conversion inside conversion.
+        NodeValue conversionVal = getConversionOutput(*conversion);
+        auto insertion =
+            functionAndValToConversion.insert({functionAndVal, conversionVal});
+        assert(insertion.second && "Conversion already there?!");
+        conversionValIt = insertion.first;
+      }
+
+      NodeValue conversionVal = conversionValIt->second;
+      if (user == conversionVal.getNode()) {
         continue;
       }
       use.get()->setOperand(conversionVal.getNode(), conversionVal.getResNo());
@@ -98,6 +140,10 @@ void FunctionConverter::convertOutputs(Node &node) {
 }
 
 void FunctionConverter::convertInputs(Node &node) {
+  // We shouldn't have to convert the inputs of something that is not in
+  // function_.
+  assert((node.getNumInputs() == 0 || node.getParent() == &function_) &&
+         "Invalid requested conversion");
   for (unsigned idx = 0, end = node.getNumInputs(); idx != end; ++idx) {
     NodeValue val = node.getNthInput(idx);
     TypeRef targetTy = getTargetTypeForInput(node, idx);
