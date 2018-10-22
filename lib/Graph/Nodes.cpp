@@ -644,14 +644,14 @@ void IntLookupTableNode::verify() const {
 void QuantizeNode::verify() const {
   // Dest must be quantized.
   checkType(getResult(), ElemKind::Int8QTy);
-  // Src must be float.
-  checkType(getInput(), ElemKind::FloatTy);
+  // Src must be an FP type.
+  assert(getInput().getType()->isFPType() && "Invalid type");
   checkSameShape(getResult(), getInput());
 }
 
 void DequantizeNode::verify() const {
-  // Dest must be float.
-  checkType(getResult(), ElemKind::FloatTy);
+  // Dest must be an FP type.
+  assert(getResult().getType()->isFPType() && "Invalid type");
   // Src must be quantized.
   checkType(getInput(), ElemKind::Int8QTy);
   checkSameShape(getResult(), getInput());

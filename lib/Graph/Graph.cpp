@@ -1414,8 +1414,7 @@ ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
-  assert(input.getElementType() == ElemKind::FloatTy &&
-         "Input must be a floating type");
+  assert(input.getType()->isFPType() && "Input must be a floating type");
   assert(outTy->getElementType() == ElemKind::Int8QTy &&
          "Output must be a quantized type");
   assert(input.dims().equals(outTy->dims()) &&
