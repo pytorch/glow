@@ -371,6 +371,13 @@ struct Type final {
            elementType_ == ElemKind::Int32QTy;
   }
 
+  /// \returns true if the type of this Tensor is one of the floating point
+  /// types.
+  bool isFPType() const {
+    return getElementType() == ElemKind::FloatTy ||
+           getElementType() == ElemKind::Float16Ty;
+  }
+
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
 
