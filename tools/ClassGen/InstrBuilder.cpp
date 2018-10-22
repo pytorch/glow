@@ -214,8 +214,11 @@ void InstrBuilder::emitClass(std::ostream &os) const {
     os << "  void verify() const;\n";
   } else {
     os << "  void verify() const {\n";
+    // Generate auto-verification checks for the current type of the node.
     for (auto &pair : autoVerificationPairs_) {
       switch (pair.first) {
+      // Generates a check that two operands of an instruction are of the same
+      // type.
       case VerifyKind::SameType: {
         for (size_t i = 1, e = pair.second.size(); i < e; i++) {
           os << "    assert(get" << pair.second[0] << "()->getType() == get"
@@ -223,6 +226,8 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         }
         break;
       }
+      // Generates a check that two operands of an instruction are of the same
+      // shape.
       case VerifyKind::SameShape: {
         for (size_t i = 1, e = pair.second.size(); i < e; i++) {
           os << "    assert(get" << pair.second[0] << "()->dims().equals(get"
@@ -230,6 +235,8 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         }
         break;
       }
+      // Generates a check that two operands of an instruction have elements of
+      // the same type.
       case VerifyKind::SameElementType: {
         auto firstOp = getOpElementType(pair.second[0]);
         for (size_t i = 1, e = pair.second.size(); i < e; i++) {
@@ -239,6 +246,16 @@ void InstrBuilder::emitClass(std::ostream &os) const {
         }
         break;
       }
+      // Generates a check that the type of an operand satisfies a specific
+      // check performed by a predicate method on a type.
+      case VerifyKind::TypeCheck: {
+        for (size_t i = 1, e = pair.second.size(); i < e; i++) {
+          os << "    assert(get" << pair.second[0] << "()->getType()->"
+             << pair.second[i] << " && \"Invalid Type\");\n";
+        }
+        break;
+      }
+      // No verification check needs to be generated.
       case VerifyKind::NoVerify: {
         assert(autoVerificationPairs_.size() == 1);
         os << "    // Nothing to verify.\n";
