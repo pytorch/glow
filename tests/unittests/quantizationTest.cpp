@@ -18,6 +18,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
+#include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
@@ -104,6 +105,53 @@ TEST(Quantization, quantScaleOffset) {
 
       EXPECT_NEAR(input, computed, 1);
     }
+  }
+}
+
+TEST(Quantization, quantizeTensor) {
+  // Map float [0.0; 5.0] to int [-128; 127].
+  // With symmetric mapping, we basically map [-5.0; 5.0]
+  TensorQuantizationParams symmetricParams =
+      chooseQuantizationParams(0.0, 6.0, quantization::Schema::Symmetric);
+
+  // Create an FP32 tensor with 6 elements and initialize it with numbers from 0
+  // to 5.
+  Tensor inputFP32(ElemKind::FloatTy, {6});
+  Handle<float> THFP32 = inputFP32.getHandle<float>();
+  for (unsigned i = 0; i < 6; ++i) {
+    THFP32.at({i}) = i * 1.0f;
+  }
+
+  // Quantize the tensor.
+  auto quantizedFP32 = quantization::quantizeTensor(inputFP32, symmetricParams);
+  // Check that the dequantized result is close to the original values before
+  // the quantization.
+  Handle<int8_t> THquantizedFP32 = quantizedFP32.getHandle<int8_t>();
+  for (unsigned i = 0; i < 6; ++i) {
+    EXPECT_NEAR(
+        THFP32.at({i}),
+        quantization::dequantize(THquantizedFP32.at({i}), symmetricParams),
+        0.05f);
+  }
+
+  // Create an FP16 tensor with 6 elements and initialize it with numbers from 0
+  // to 5.
+  Tensor inputFP16(ElemKind::Float16Ty, {6});
+  Handle<float16> THFP16 = inputFP16.getHandle<float16>();
+  for (unsigned i = 0; i < 6; ++i) {
+    THFP16.at({i}) = i * 1.0f;
+  }
+
+  // Quantize the tensor.
+  auto quantizedFP16 = quantization::quantizeTensor(inputFP16, symmetricParams);
+  // Check that the dequantized result is close to the original values before
+  // the quantization.
+  Handle<int8_t> THquantizedFP16 = quantizedFP16.getHandle<int8_t>();
+  for (unsigned i = 0; i < 6; ++i) {
+    EXPECT_NEAR(
+        THFP16.at({i}),
+        quantization::dequantize(THquantizedFP16.at({i}), symmetricParams),
+        0.05f);
   }
 }
 

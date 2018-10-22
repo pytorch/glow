@@ -30,12 +30,27 @@ int8_t quantize(float input, const TensorQuantizationParams &TQP) {
 Tensor quantizeTensor(const Tensor &tensor,
                       const TensorQuantizationParams &TQP) {
   Tensor tmp(ElemKind::Int8QTy, tensor.dims(), TQP.scale, TQP.offset);
-  assert(tensor.getElementType() == ElemKind::FloatTy &&
-         "Type not supported yet");
-  auto srcHandle = tensor.getHandle();
   auto destHandle = tmp.getHandle<int8_t>();
-  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-    destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), TQP);
+  assert(tensor.getType().isFPType() && "Type not supported yet");
+  switch (tensor.getElementType()) {
+  case ElemKind::FloatTy: {
+    auto srcHandle = tensor.getHandle<float>();
+    for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+      destHandle.raw(i) =
+          quantization::quantize(static_cast<float>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::Float16Ty: {
+    auto srcHandle = tensor.getHandle<float16>();
+    for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
+      destHandle.raw(i) =
+          quantization::quantize(static_cast<float>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  default:
+    llvm_unreachable("Cannot quantize a type");
   }
   return tmp;
 }
