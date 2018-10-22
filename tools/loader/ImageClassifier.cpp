@@ -17,6 +17,7 @@
 #include "Loader.h"
 
 #include "glow/Base/Image.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
@@ -128,6 +129,12 @@ llvm::cl::opt<std::string> modelInputName(
     "model_input_name",
     llvm::cl::desc("The name of the variable for the model's input image."),
     llvm::cl::value_desc("string_name"), llvm::cl::Required,
+    llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<bool> convertInAndOutToFp16(
+    "convert-inout-to-fp16",
+    llvm::cl::desc(
+        "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
 } // namespace
 
@@ -276,6 +283,15 @@ int main(int argc, char **argv) {
 
   // Allocate tensors to back all inputs and outputs.
   ctx.allocate(loader.getModule()->getPlaceholders());
+  if (convertInAndOutToFp16) {
+    // Convert the raw input to fp16.
+    data.convertToType(ElemKind::Float16Ty);
+    TypeAToTypeBFunctionConverter converter(
+        *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
+    for (auto *placeholder : loader.getModule()->getPlaceholders()) {
+      converter.convertPlaceholder(*placeholder, &ctx);
+    }
+  }
 
   // Get the Variable that the final expected Softmax writes into at the end of
   // image inference.
@@ -299,6 +315,13 @@ int main(int argc, char **argv) {
 
     // Perform the inference execution.
     loader.runInference(ctx);
+    if (convertInAndOutToFp16) {
+      // SMVarT contains the output of the network
+      // in FP16. Convert it back to FP32 so that
+      // we don't have to special case the printing
+      // of the result for FP16.
+      SMVarT->convertToType(ElemKind::FloatTy);
+    }
 
     // Print out the inferred image classification.
     auto H = SMVarT->getHandle<>();
