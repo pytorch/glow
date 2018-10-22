@@ -1648,7 +1648,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Add an assert on that, so that if it changes, we adapt the
       // following code. Adapting the code would required to
       // teach quantizeTensor how to deal with Float16Ty.
-      assert(tensor.getElementType() == ElemKind::FloatTy &&
+      assert(tensor.getType().isFPType() &&
              "Type quantization not implemented");
       tensorToBeModified =
           quantization::quantizeTensor(tensorToBeModified, params);
