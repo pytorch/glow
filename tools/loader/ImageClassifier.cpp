@@ -27,8 +27,10 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <iostream>
 #include <memory>
 #include <queue>
+#include <sstream>
 
 using namespace glow;
 
@@ -78,9 +80,12 @@ namespace {
 
 /// Image loader options.
 llvm::cl::OptionCategory imageLoaderCat("Image Loader Options");
-llvm::cl::list<std::string> inputImageFilenames(llvm::cl::Positional,
-                                                llvm::cl::desc("<input files>"),
-                                                llvm::cl::OneOrMore);
+llvm::cl::list<std::string> inputImageFilenames(
+    llvm::cl::Positional,
+    llvm::cl::desc("<input files> (note: specifying '-' enables streaming "
+                   "mode, where the model is compiled once and then can be run "
+                   "many times with new input filenames passed via stdin)"),
+    llvm::cl::OneOrMore);
 llvm::cl::opt<ImageNormalizationMode> imageNormMode(
     "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
     llvm::cl::cat(imageLoaderCat),
@@ -141,7 +146,7 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
 void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
-                             Tensor *result) {
+                             Tensor *inputImageData) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
   auto range = normModeToRange(imageNormMode);
@@ -154,12 +159,12 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
   const size_t numChannels = isGray ? 1 : 3;
 
   // N x C x H x W
-  result->reset(ElemKind::FloatTy,
-                {numImages, numChannels, imgHeight, imgWidth});
-  auto RH = result->getHandle<>();
+  inputImageData->reset(ElemKind::FloatTy,
+                        {numImages, numChannels, imgHeight, imgWidth});
+  auto IIDH = inputImageData->getHandle<>();
 
-  // We iterate over all the png files, reading them all into our result tensor
-  // for processing
+  // We iterate over all the png files, reading them all into our inputImageData
+  // tensor for processing
   for (unsigned n = 0; n < filenames.size(); n++) {
     Tensor localCopy;
     // PNG images are loaded as NHWC & RGB
@@ -181,14 +186,113 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
       for (unsigned y = 0; y < dims[1]; y++) {
         for (unsigned x = 0; x < dims[0]; x++) {
           if (imageChannelOrder == ImageChannelOrder::BGR) {
-            RH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
+            IIDH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
           } else { // RGB
-            RH.at({n, z, x, y}) = (imageH.at({x, y, z}));
+            IIDH.at({n, z, x, y}) = (imageH.at({x, y, z}));
           }
         }
       }
     }
   }
+
+  // For ONNX graphs with input in NHWC layout, we transpose the image data.
+  switch (imageLayout) {
+  case ImageLayout::NCHW:
+    break;
+  case ImageLayout::NHWC:
+    Tensor dataNHWC;
+    inputImageData->transpose(&dataNHWC, NCHW2NHWC);
+    *inputImageData = std::move(dataNHWC);
+    break;
+  }
+
+  // Convert the raw input to fp16.
+  if (convertInAndOutToFp16) {
+    inputImageData->convertToType(ElemKind::Float16Ty);
+  }
+}
+
+/// Write a prompt to stdout asking for filenames for classification. Read in
+/// those filenames and add them to \p filenames. \p filenames is cleared before
+/// adding the new set of filenames from stdin. \returns false if the passed in
+/// line was empty.
+static bool getNextImageFilenames(std::vector<std::string> *filenames) {
+  // Clear out old filenames before adding new ones.
+  filenames->clear();
+
+  llvm::outs() << "Enter image filenames to classify: ";
+
+  // Add in each filename to the vector.
+  std::string filenamesRaw;
+  getline(std::cin, filenamesRaw);
+  std::istringstream iss(filenamesRaw);
+  std::string filename;
+  while (iss >> filename) {
+    filenames->push_back(filename);
+  }
+
+  return !filenames->empty();
+}
+
+/// Creates and \returns the ProtobufLoader given \p loader and the
+/// \p inputImageType. Note that this must come after loading images for
+/// inference so that \p inputImageType is known.
+static std::unique_ptr<ProtobufLoader>
+createProtofbufLoader(Loader &loader, TypeRef inputImageType) {
+  // The image name that the model expects must be passed on the command line.
+  const char *inputName = modelInputName.c_str();
+
+  // Create the model based on the input model format.
+  std::unique_ptr<ProtobufLoader> LD;
+  bool c2Model = !loader.getCaffe2NetDescFilename().empty();
+  if (c2Model) {
+    LD.reset(new Caffe2ModelLoader(
+        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
+        {inputName}, {inputImageType}, *loader.getFunction()));
+  } else {
+    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
+                                 {inputImageType}, *loader.getFunction()));
+  }
+
+  return LD;
+}
+
+/// Given \p loader, the \p ctx, and \p inputImageType, build the graph from the
+/// provided protobuf file found via \p loader. Then compiles and \returns a
+/// pair of pointers to the input Placeholder and output Tensor for the Softmax.
+static std::pair<Placeholder *, Tensor *>
+buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
+                                  TypeRef inputImageType) {
+  auto LD = createProtofbufLoader(loader, inputImageType);
+
+  // Allocate tensors to back all inputs and outputs.
+  ctx.allocate(loader.getModule()->getPlaceholders());
+
+  // Convert the placeholders for now. The backing Tensor's data will be
+  // converted later.
+  if (convertInAndOutToFp16) {
+    TypeAToTypeBFunctionConverter converter(
+        *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
+    for (auto *placeholder : loader.getModule()->getPlaceholders()) {
+      converter.convertPlaceholder(*placeholder, &ctx);
+    }
+  }
+
+  // Compile the model, and perform quantization/emit a bundle/dump debug info
+  // if requested from command line.
+  loader.compile(ctx);
+
+  // The image name that the model expects must be passed on the command line.
+  const char *inputName = modelInputName.c_str();
+  Placeholder *inputImagePH =
+      llvm::cast<Placeholder>(LD->getNodeValueByName(inputName));
+
+  // Get the Tensor from the Placeholder that the final expected Softmax writes
+  // into at the end of image inference.
+  Placeholder *SMVarPH = LD->getSingleOutput();
+  Tensor *SMVarT = ctx.get(SMVarPH);
+
+  return std::make_pair(inputImagePH, SMVarT);
 }
 
 /// A pair representing a float and the index where the float was found.
@@ -245,95 +349,88 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
+/// Given the output Softmax Tensor \p SMTarT and \p functionName, print the
+/// results of inference.
+static void processAndPrintResults(Tensor *SMVarT,
+                                   llvm::StringRef functionName) {
+  if (convertInAndOutToFp16) {
+    // SMVarT contains the output of the network in FP16. Convert it back to
+    // FP32 so that we don't have to special case the printing of the result
+    // for FP16.
+    SMVarT->convertToType(ElemKind::FloatTy);
+  }
+
+  // Print out the inferred image classification.
+  auto H = SMVarT->getHandle<>();
+  llvm::outs() << "Model: " << functionName << "\n";
+  for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
+    Tensor slice = H.extractSlice(i);
+    auto SH = slice.getHandle<>();
+    llvm::outs() << " File: " << inputImageFilenames[i];
+
+    auto topKPairs = getTopKPairs(SH);
+    printTopKPairs(topKPairs);
+  }
+}
+
 int main(int argc, char **argv) {
   Context ctx;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
 
-  // Load and process the image data into the data Tensor.
-  Tensor data;
-  loadImagesAndPreprocess(inputImageFilenames, &data);
+  const bool streamInputFilenamesMode =
+      inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
 
-  // For ONNX graphs with input in NHWC layout, we transpose the data.
-  switch (imageLayout) {
-  case ImageLayout::NCHW:
-    break;
-  case ImageLayout::NHWC:
-    Tensor dataNHWC;
-    data.transpose(&dataNHWC, NCHW2NHWC);
-    data = std::move(dataNHWC);
-    break;
-  }
+  GLOW_ASSERT(!(streamInputFilenamesMode && emittingBundle()) &&
+              "Cannot emit a bundle and also stream inputs.");
 
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
+  // Used to make sure we only compile once, and run only once if not streaming.
+  bool isFirstRun = true;
 
-  // Create the model based on the input model format.
-  std::unique_ptr<ProtobufLoader> LD;
-  bool c2Model = !loader.getCaffe2NetDescFilename().empty();
-  if (c2Model) {
-    LD.reset(new Caffe2ModelLoader(
-        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {inputName}, {&data.getType()}, *loader.getFunction()));
-  } else {
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
-                                 {&data.getType()}, *loader.getFunction()));
-  }
+  // These will be set during the first run.
+  Placeholder *inputImagePH = nullptr;
+  Tensor *SMVarT = nullptr;
 
-  // Allocate tensors to back all inputs and outputs.
-  ctx.allocate(loader.getModule()->getPlaceholders());
-  if (convertInAndOutToFp16) {
-    // Convert the raw input to fp16.
-    data.convertToType(ElemKind::Float16Ty);
-    TypeAToTypeBFunctionConverter converter(
-        *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
-    for (auto *placeholder : loader.getModule()->getPlaceholders()) {
-      converter.convertPlaceholder(*placeholder, &ctx);
+  Tensor inputImageData;
+  while ((streamInputFilenamesMode &&
+          getNextImageFilenames(&inputImageFilenames)) ||
+         isFirstRun) {
+    // Load and process the image data into the inputImageData Tensor.
+    loadImagesAndPreprocess(inputImageFilenames, &inputImageData);
+
+    // If this is the first run, then we need to build and compile the model.
+    if (isFirstRun) {
+      isFirstRun = false;
+
+      // Build and compile the graph, and then get back the input Placeholder
+      // and output Softmax Tensor.
+      std::pair<Placeholder *, Tensor *> inputOutputPair =
+          buildAndCompileAndGetInAndOutPair(loader, ctx,
+                                            &inputImageData.getType());
+
+      // If in bundle mode, the bundle has been saved by the above call, so we
+      // can safely return.
+      if (emittingBundle()) {
+        return 0;
+      }
+
+      inputImagePH = inputOutputPair.first;
+      SMVarT = inputOutputPair.second;
     }
-  }
+    assert(inputImagePH && SMVarT && "Input and output must be valid.");
+    GLOW_ASSERT(inputImagePH->dims() == inputImageData.dims() &&
+                "New input shape does not match the compiled function.");
 
-  // Get the Variable that the final expected Softmax writes into at the end of
-  // image inference.
-  Placeholder *SMVar = LD->getSingleOutput();
-  Tensor *SMVarT = ctx.get(SMVar);
+    // About to run inference, so update the input image Placeholder's backing
+    // Tensor with inputImageData.
+    updateInputPlaceholders(ctx, {inputImagePH}, {&inputImageData});
 
-  // Create Variables for both possible input names for flexibility for the
-  // input model. The input data is mapped to both names. Whichever Variable is
-  // unused will be removed in compile().
-  auto *inputImage = llvm::cast<Placeholder>(LD->getNodeValueByName(inputName));
-
-  // Compile the model, and perform quantization/emit a bundle/dump debug info
-  // if requested from command line.
-  loader.compile(ctx);
-
-  // If in bundle mode, do not run inference.
-  if (!emittingBundle()) {
-
-    // Update the inputs.
-    updateInputPlaceholders(ctx, {inputImage}, {&data});
-
-    // Perform the inference execution.
+    // Perform the inference execution, updating SMVarT.
     loader.runInference(ctx);
-    if (convertInAndOutToFp16) {
-      // SMVarT contains the output of the network
-      // in FP16. Convert it back to FP32 so that
-      // we don't have to special case the printing
-      // of the result for FP16.
-      SMVarT->convertToType(ElemKind::FloatTy);
-    }
 
-    // Print out the inferred image classification.
-    auto H = SMVarT->getHandle<>();
-    llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
-    for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
-      Tensor slice = H.extractSlice(i);
-      auto SH = slice.getHandle<>();
-      llvm::outs() << " File: " << inputImageFilenames[i];
-
-      auto topKPairs = getTopKPairs(SH);
-      printTopKPairs(topKPairs);
-    }
+    // Print the top-k results from the output Softmax tensor.
+    processAndPrintResults(SMVarT, loader.getFunction()->getName());
   }
 
   return 0;
