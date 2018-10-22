@@ -266,6 +266,14 @@ protected:
     }
   }
 
+  void convertTensor(Tensor &tensor, TypeRef destTy) override {
+    assert(tensor.getElementType() == ElemKind::FloatTy &&
+           destTy->getElementType() == ElemKind::Int8QTy &&
+           "Dequantization not implemented");
+
+    tensor = quantizeTensor(tensor, {destTy->getScale(), destTy->getOffset()});
+  }
+
 private:
   /// Shortcut to the module of function_.
   Module &mod_;

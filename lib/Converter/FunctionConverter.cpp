@@ -96,24 +96,18 @@ void FunctionConverter::convertOutputs(Node &node) {
       assert(parent && "User not in a function?!");
 
       SaveNode *saveNode = llvm::dyn_cast<SaveNode>(user);
-      if (saveNode) {
-        // The output of save nodes is special because it doesn't use
-        // the value of the node, but its address.
-        // Thus, if we want to change the value of the output of
-        // a save node, we actually have to convert the input.
-        if (saveNode->getOutput() == val) {
-          // This save is a noop nothing to be done.
-          if (saveNode->getInput() == val) {
-            continue;
-          }
-          unsigned inputIdx = 0;
-          assert(saveNode->getInput() == saveNode->getNthInput(inputIdx) &&
-                 "Input is not idx 0");
-          NodeValue input = saveNode->getInput();
-          Node *conversion = createConversion(*parent, input, targetTy);
-          saveNode->setNthInput(inputIdx, getConversionOutput(*conversion));
-          continue;
-        }
+      // The output of save nodes is special because it doesn't use
+      // the value of the node, but its address.
+      // Thus, if we want to change the value of the output of
+      // a save node, we actually have to convert the input.
+      if (saveNode && saveNode->getOutput() == val) {
+        unsigned inputIdx = 0;
+        assert(saveNode->getInput() == saveNode->getNthInput(inputIdx) &&
+               "Input is not idx 0");
+        NodeValue input = saveNode->getInput();
+        Node *conversion = createConversion(*parent, input, targetTy);
+        saveNode->setNthInput(inputIdx, getConversionOutput(*conversion));
+        continue;
       }
 
       FunctionAndValIdx functionAndVal = std::make_pair(parent, idx);
@@ -203,4 +197,20 @@ void FunctionConverter::convert() {
   cleanUp();
 
   function_.verify();
+}
+
+void FunctionConverter::convertPlaceholder(Placeholder &placeholder,
+                                           Context *context) {
+  TypeRef destTy = getTargetTypeForOutput(placeholder.getOutput());
+  if (!destTy || destTy == placeholder.getType()) {
+    return;
+  }
+  convertOutputs(placeholder);
+  if (!context) {
+    return;
+  }
+  Tensor *tensor = context->get(&placeholder);
+  if (tensor) {
+    convertTensor(*tensor, destTy);
+  }
 }
