@@ -27,6 +27,8 @@ class Context;
 class Function;
 class Node;
 struct NodeValue;
+class Placeholder;
+class Tensor;
 
 /// This class implements the high-level APIs used to convert a function
 /// to one type to another. The actual conversions must be implemented
@@ -111,6 +113,9 @@ protected:
   /// match getTargetTypeForInput.
   void convertInputs(Node &node);
 
+  /// Convert the \p input tensor to the \p destTy destination type.
+  virtual void convertTensor(Tensor &input, TypeRef destTy) = 0;
+
   /// Morph \p node into its final form. For the most part
   /// this method should be a noop and just return \p node.
   /// However, this hook provides a way to perform changes
@@ -158,6 +163,11 @@ public:
   /// cleanUp
   /// \endcode
   void convert();
+
+  /// Modify the type of \p placeholder according to getTargetTypeForOutput.
+  /// If the \p context is provided and \p placeholder has a backing tensor,
+  /// this tensor is also updated.
+  void convertPlaceholder(Placeholder &placeholder, Context *context);
 };
 } // namespace glow
 #endif

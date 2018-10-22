@@ -577,6 +577,229 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   EXPECT_EQ(saveBias->getInput().getNode(), bias);
 }
 
+/// Check that the conversion of placeholder inserts conversion
+/// at the right places, and in all the functions.
+/// Namely, check that:
+/// \verbatim
+///    #### F ####
+/// Input: Placeholder(float)
+/// |   |
+/// |   |  Weight: Constant(float)
+/// |   |   |   Bias: Constant(float)
+/// |   |   |   /
+/// |   V   V  V
+/// |  FC(float)
+/// |   |
+/// |   V
+/// |  ReLU(float)  Output: Placeholder(float)
+/// |   |            |
+/// |   |    +-------+
+/// |   |   /
+/// |   V  V
+/// |  Save
+/// |
+/// |  #### F2 ####
+/// |  Output2: Placeholder(float)
+/// +-+   /
+/// | |  |
+/// | V  V
+/// | Save
+/// |
+/// |  #### F3 ####
+/// |  Output3: Placeholder(float)
+/// |  /
+/// V V
+/// Save
+/// \endverbatim
+///
+/// Gets converted into:
+/// \verbatim
+///    #### F ####
+/// Input: Placeholder(float16)
+/// |   |
+/// |   V
+/// |ConvertTo(float)
+/// |   |
+/// |   |  Weight: Constant(float)
+/// |   |   |   Bias: Constant(float)
+/// |   |   |   /
+/// |   V   V  V
+/// |  FC(float)
+/// |   |
+/// |   V
+/// |  ReLU(float)  Output: Placeholder(float16)
+/// |   |              |
+/// |   V              |
+/// |ConvertTo(float16)|
+/// |   |    +---------+
+/// |   |   /
+/// |   V  V
+/// |  Save
+/// |  #### F2 ####
+/// +-+
+/// | |
+/// | V
+/// | ConvertTo(float)
+/// | |
+/// | | Output2: Placeholder(float)
+/// | |  |
+/// | V  V
+/// | Save
+/// |
+/// |  #### F3 ####
+/// V
+/// ConvertTo(float)
+/// |
+/// V
+/// ConvertTo(float16)
+/// |
+/// |  Output3: Placeholder(float16)
+/// |  /
+/// V V
+/// Save
+/// \endverbatim
+///
+/// In particular, the input and output of the network should be modified
+/// and the input of the last save node should be converted to the expected
+/// output type.
+TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Function *F2 = mod.createFunction("test2");
+  Function *F3 = mod.createFunction("test3");
+  Context ctx;
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
+  Tensor *inputTensor = ctx.allocate(input);
+  inputTensor->getHandle().randomize(-6.0, 6.0, mod.getPRNG());
+  Tensor origInput;
+  origInput.assign(inputTensor);
+
+  auto *output =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
+  auto *output2 =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Output2", false);
+
+  auto *saveOutput2 = F2->createSave("saveOutput2", input, output2);
+
+  auto *output3 =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Output2", false);
+  auto *saveOutput3 = F3->createSave("saveOutput3", input, output3);
+
+  auto *weights = mod.createConstant(
+      mod.uniqueType(ElemKind::FloatTy, {13, 10}), "weights");
+  weights->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  Tensor origWeights;
+  origWeights.assign(&weights->getPayload());
+  auto *bias =
+      mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10, 20}), "bias");
+  bias->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+
+  TypeRef FCTy = mod.uniqueType(ElemKind::FloatTy, {20, 10});
+  auto *FC = F->createFullyConnected("FC", input, weights, bias, FCTy);
+  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *result = F->createSave("save", ReLU, output);
+
+  size_t origGraphSize = F->getNodes().size();
+  size_t f2OrigGraphSize = F2->getNodes().size();
+  size_t f3OrigGraphSize = F3->getNodes().size();
+
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty);
+  for (auto *placeholder : mod.getPlaceholders()) {
+    if (output2 == placeholder) {
+      continue;
+    }
+    converter.convertPlaceholder(*placeholder, &ctx);
+  }
+
+  // We should have 2 more nodes in F:
+  // 1 conversion for each conversion for the input of the save node of output
+  // 1 conversion from the input to the FC
+  EXPECT_EQ(F->getNodes().size(), origGraphSize + 2);
+  // Make the save node of F is still in the function and is unchanged.
+  EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
+              F->getNodes().end());
+  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  // Check that the save is fed from a conversion from float16 to float.
+  auto *convertedBackReLURes =
+      llvm::dyn_cast<ConvertToNode>(result->getInput());
+  ASSERT_NE(convertedBackReLURes, nullptr);
+  EXPECT_EQ(convertedBackReLURes->getElementType(0), ElemKind::Float16Ty);
+  auto *convertedReLU =
+      llvm::dyn_cast<ReluNode>(convertedBackReLURes->getInput());
+  ASSERT_NE(convertedReLU, nullptr);
+  EXPECT_EQ(convertedReLU->getElementType(0), ElemKind::FloatTy);
+
+  // Check that the ReLU is fed directly by FC float.
+  auto *convertedFC =
+      llvm::dyn_cast<FullyConnectedNode>(convertedReLU->getInput());
+  ASSERT_NE(convertedFC, nullptr);
+  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::FloatTy);
+  // Check that the input of FC is a convertTo node from "input" from float to
+  // Float16Ty.
+  auto *convertedFCInput =
+      llvm::dyn_cast<ConvertToNode>(convertedFC->getInput());
+  ASSERT_NE(convertedFCInput, nullptr);
+  EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::FloatTy);
+  EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
+  EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFCInput->getInput().getNode(), input);
+
+  // Checks for F2.
+
+  // We should have 1 more node in F2:
+  // 1 conversion from the input to the input of the save node
+
+  // Make the save node of F2 is still in the function and is unchanged.
+  EXPECT_EQ(F2->getNodes().size(), f2OrigGraphSize + 1);
+  EXPECT_TRUE(std::find(F2->getNodes().begin(), F2->getNodes().end(),
+                        *saveOutput2) != F2->getNodes().end());
+  EXPECT_EQ(saveOutput2->getOutput(), NodeValue(output2, 0));
+
+  // Check that the save is fed from a conversion from float16 to float.
+  auto *inputToFloat = llvm::dyn_cast<ConvertToNode>(saveOutput2->getInput());
+  ASSERT_NE(inputToFloat, nullptr);
+  EXPECT_EQ(inputToFloat->getElementType(0), ElemKind::FloatTy);
+  // Check that this input is "input".
+  auto *inputOfF2 = llvm::dyn_cast<Placeholder>(inputToFloat->getInput());
+  ASSERT_NE(inputOfF2, nullptr);
+  EXPECT_EQ(inputOfF2, input);
+
+  // Checks for F3.
+
+  // We should have 2 more nodes in F3:
+  // 1 conversion from the input to the input of the save node (coming
+  //   from the input)
+  // 1 conversion from the input to the input of the save node (coming
+  //   from the requirement for the output)
+
+  // Make the save node of F3 is still in the function and is unchanged.
+  EXPECT_EQ(F3->getNodes().size(), f3OrigGraphSize + 2);
+  EXPECT_TRUE(std::find(F3->getNodes().begin(), F3->getNodes().end(),
+                        *saveOutput3) != F3->getNodes().end());
+  EXPECT_EQ(saveOutput3->getOutput(), NodeValue(output3, 0));
+  EXPECT_EQ(output3->getElementType(), ElemKind::Float16Ty);
+
+  // Check that the save is fed from a conversion from float16 to float.
+  auto *convertOutput3 = llvm::dyn_cast<ConvertToNode>(saveOutput3->getInput());
+  ASSERT_NE(convertOutput3, nullptr);
+  EXPECT_EQ(convertOutput3->getElementType(0), ElemKind::Float16Ty);
+
+  auto *convertInputFor3 =
+      llvm::dyn_cast<ConvertToNode>(convertOutput3->getInput());
+  ASSERT_NE(convertInputFor3, nullptr);
+  EXPECT_EQ(convertInputFor3->getElementType(0), ElemKind::FloatTy);
+  // Check that this input is "input".
+  auto *inputOfF3 = llvm::dyn_cast<Placeholder>(convertInputFor3->getInput());
+  ASSERT_NE(inputOfF3, nullptr);
+  EXPECT_EQ(inputOfF3, input);
+
+  origInput.convertToType(ElemKind::Float16Ty);
+  EXPECT_TRUE(origInput.isEqual(*inputTensor));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
                         ::testing::Values(BackendKind::Interpreter));
 

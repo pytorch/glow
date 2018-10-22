@@ -61,6 +61,8 @@ protected:
   /// Check if \p node can be converted.
   bool canConvert(const Node &node) const override;
 
+  void convertTensor(Tensor &tensor, TypeRef destTy) override;
+
 public:
   /// Create a type converter from \p fromKind to \p toKind for \p F.
   /// If \p doNotConvertKinds is not nullptr, the nodes which kind

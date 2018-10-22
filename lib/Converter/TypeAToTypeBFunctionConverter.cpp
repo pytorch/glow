@@ -16,6 +16,7 @@
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 
+#include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 
 using namespace glow;
@@ -60,4 +61,9 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
   return function.createConvertTo(val.getNode()->getName(), val, destTy);
+}
+
+void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,
+                                                  TypeRef destTy) {
+  tensor.convertToType(dstKind_);
 }
