@@ -6,8 +6,10 @@ target_link_libraries(image-classifier
                       PRIVATE
                         Base
                         Converter
-                        Importer
                         ExecutionEngine
+                        Graph
+                        Importer
+                        Optimizer
                         Quantization)
 
 add_executable(text-translator
@@ -17,8 +19,11 @@ add_executable(text-translator
 target_link_libraries(text-translator
                       PRIVATE
                         Base
+                        Converter
+                        Graph
                         Importer
                         ExecutionEngine
+                        Optimizer
                         Quantization)
 
 add_executable(model-runner
@@ -28,6 +33,9 @@ add_executable(model-runner
 target_link_libraries(model-runner
                       PRIVATE
                         Base
+                        Converter
+                        Graph
                         Importer
                         ExecutionEngine
+                        Optimizer
                         Quantization)

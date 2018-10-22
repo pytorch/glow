@@ -16,6 +16,7 @@ target_link_libraries(mnist
                         ExecutionEngine
                         Graph
                         IR
+                        Optimizer
                         Support)
 
 add_executable(ptb
@@ -36,6 +37,7 @@ target_link_libraries(char-rnn
                         ExecutionEngine
                         Graph
                         IR
+                        Optimizer
                         Support)
 
 add_executable(fr2en
@@ -45,5 +47,6 @@ target_link_libraries(fr2en
                         Base
                         ExecutionEngine
                         IR
+                        Optimizer
                         Quantization
                         Support)
