@@ -65,5 +65,6 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
 
 void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,
                                                   TypeRef destTy) {
+  assert(destTy->getElementType() == dstKind_);
   tensor.convertToType(dstKind_);
 }
