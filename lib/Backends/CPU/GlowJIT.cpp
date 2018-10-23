@@ -90,7 +90,7 @@ public:
 
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
-#if FACEBOOK_INTERNAL
+#if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
       ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           [this](const std::string &Name) -> JITSymbol {
