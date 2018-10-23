@@ -529,6 +529,21 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "SparseToDense") {
+    if (op.input_size() != 3) {
+      return false;
+    }
+
+    auto indices = getNodeValueOrCreateConstantByName(op.input(0));
+    auto values = getNodeValueOrCreateConstantByName(op.input(1));
+    auto dataToInferDim = getNodeValueOrCreateConstantByName(op.input(2));
+
+    auto *node =
+        G_.createSparseToDense(opName, indices, values, dataToInferDim);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   return false;
 }
 

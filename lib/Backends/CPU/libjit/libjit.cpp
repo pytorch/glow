@@ -894,6 +894,22 @@ void libjit_lengths_to_ranges_u(size_t *ranges, const size_t *lengths,
   }
 }
 
+void libjit_sparse_to_dense_f(float *dest, const size_t *indices,
+                              const float *values, size_t numIndices,
+                              size_t destSize, size_t valueSize) {
+  memset(dest, 0, destSize * sizeof(float));
+
+  for (size_t i = 0, valuesOffset = 0; i < numIndices;
+       ++i, valuesOffset += valueSize) {
+    size_t idx = indices[i];
+    size_t destOffset = idx * valueSize;
+
+    for (size_t j = 0; j < valueSize; ++j) {
+      dest[destOffset + j] += values[valuesOffset + j];
+    }
+  }
+}
+
 void libjit_local_response_normalization_f(float *outW, const float *inW,
                                            float *scaleCache,
                                            const size_t *outWdims,

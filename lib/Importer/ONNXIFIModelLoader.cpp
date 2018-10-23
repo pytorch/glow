@@ -214,6 +214,8 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(MulNodeKind, FloatTy);
     } else if (operation == "LengthsToRanges") {
       ADD_OP_MAPPING(LengthsToRangesNodeKind, Int64ITy);
+    } else if (operation == "SparseToDense") {
+      ADD_OP_MAPPING(SparseToDenseNodeKind, FloatTy);
     }
   }
 #undef ADD_OP_MAPPING
