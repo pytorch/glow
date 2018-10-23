@@ -440,6 +440,16 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Tile an Input tensor Count times along Axis.");
 
+  BB.newNode("BatchOneHot")
+      .addInput("Data")
+      .addInput("Lengths")
+      .addInput("Values")
+      .addResultFromCtorArg()
+      .setDocstring("Expands each row of the Data to a row of zeros and ones, "
+                    "according to One Hot Encoding. i-th element of Result's "
+                    "row is one iff Values[i] equals to the corresponding "
+                    "element of Data.");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//

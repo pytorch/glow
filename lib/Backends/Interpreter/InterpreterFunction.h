@@ -128,6 +128,9 @@ private:
 
   template <typename ElemTy>
   void fwdElementCmpEQInstImpl(const glow::ElementCmpEQInst *I);
+
+  template <typename ElemTy>
+  void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
   ///@}
 };
 

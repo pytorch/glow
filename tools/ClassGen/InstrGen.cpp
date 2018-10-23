@@ -431,6 +431,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"});
 
+  BB.newInstr("BatchOneHot")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Values", "Data", "Dest"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int64ITy"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//

@@ -4260,6 +4260,39 @@ TEST_P(InterpAndCPU, LengthsToRanges) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, BatchOneHot) {
+  /*
+    DATA = [[5, 0], [11, 3], [0, 5]]
+    LENGTHS = [4, 2]
+    VALUES = [5, 0, 11, 0, 5, 0]
+    OUTPUT =  [[1, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0], [0, 1, 0, 1, 1, 0]]
+  */
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "lengths", false);
+  auto *values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
+
+  ctx_.allocate(data)->getHandle<float>() = {5, 0, 11, 3, 0, 5};
+  ctx_.allocate(lengths)->getHandle<int64_t>() = {4, 2};
+  ctx_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
+
+  auto R = F_->createBatchOneHot("BOH", data, lengths, values);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {3, 6});
+  expected.getHandle<float>() = {
+      1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
