@@ -1341,3 +1341,47 @@ TEST(caffe2, sparseToDense) {
   // Graph has three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
 }
+
+/// Test loading NCHW2NHWC op.
+TEST(caffe2, testNCHW2NHWC) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      "tests/models/caffe2Models/NCHW2NHWC_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 2, 3, 4});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+  }
+
+  // Check output shape.
+  auto res = ctx.get(output);
+  std::vector<size_t> expectedDims = {1, 3, 4, 2};
+  EXPECT_TRUE(res->getHandle<float>().dims().vec() == expectedDims);
+
+  // High level check on the content of the graph. We have 1 transpose and 1
+  // save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *transNode =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 0 constants.
+  EXPECT_EQ(mod.getConstants().size(), 0);
+}
