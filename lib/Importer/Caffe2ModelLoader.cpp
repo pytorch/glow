@@ -445,6 +445,13 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return loadTranspose(op, dict, "axes");
   }
 
+  if (typeName == "NCHW2NHWC") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto *node = G_.createTranspose(opName, in, NCHW2NHWC);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
   if (typeName == "SparseLengthsSum") {
     auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
     auto in1 = getNodeValueOrCreateConstantByName(op.input(1));

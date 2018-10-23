@@ -1,0 +1,7 @@
+name: "NCHW2NHWC_test"
+op {
+  input: "inputs"
+  output: "output"
+  type: "NCHW2NHWC"
+}
+external_output: "output"
