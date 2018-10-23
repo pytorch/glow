@@ -749,6 +749,21 @@ void ScatterAssignNode::verify() const {
   }
 }
 
+void BatchOneHotNode::verify() const {
+  const auto &dataDims = getData().dims();
+  const auto &lengthsDims = getLengths().dims();
+  const auto &valuesDims = getValues().dims();
+  (void)dataDims;
+  (void)lengthsDims;
+  (void)valuesDims;
+
+  assert(dataDims.size() == 2 && "Data should be a two dimensional matrix.");
+  assert(lengthsDims.size() == 1 && valuesDims.size() == 1 &&
+         "Lengths and Values should be a single dimensional vectors.");
+  assert(lengthsDims[0] == dataDims[1] &&
+         "Size of Lengths should be equal to width of Data.");
+}
+
 void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
 
 void LogNode::verify() const {

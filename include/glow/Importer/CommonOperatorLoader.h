@@ -378,6 +378,16 @@ protected:
     addNodeAsOutput(op, node);
   }
 
+  void loadBatchOneHot(const OpType &op) {
+    const std::string &opName = loadOperatorName(op);
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto lengths = getNodeValueOrCreateConstantByName(op.input(1));
+    auto values = getNodeValueOrCreateConstantByName(op.input(2));
+
+    auto *node = G_.createBatchOneHot(opName, data, lengths, values);
+    addNodeAsOutput(op, node);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -457,6 +467,10 @@ protected:
     }
     if (typeName == "ReduceMean" || typeName == "ReduceSum") {
       loadReduceMeanOrSum(typeName, op, dict);
+      return true;
+    }
+    if (typeName == "BatchOneHot") {
+      loadBatchOneHot(op);
       return true;
     }
     return false;

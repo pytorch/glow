@@ -866,6 +866,50 @@ void InterpreterFunction::fwdScatterAssignInst(
   }
 }
 
+template <typename ElemTy>
+void InterpreterFunction::fwdBatchOneHotImpl(const glow::BatchOneHotInst *I) {
+  auto dataH = getWeightHandle<ElemTy>(I->getData());
+  auto lengthsH = getWeightHandle<int64_t>(I->getLengths());
+  auto valuesH = getWeightHandle<ElemTy>(I->getValues());
+  auto destH = getWeightHandle<ElemTy>(I->getDest());
+
+  auto batchSize = dataH.dims()[0];
+  auto featureCnt = dataH.dims()[1];
+
+  for (size_t batchId = 0; batchId < batchSize; batchId++) {
+    size_t offset = 0;
+    for (size_t featureId = 0; featureId < featureCnt; featureId++) {
+      auto curValue = dataH.at({batchId, featureId});
+      auto curLength = lengthsH.at({featureId});
+      for (size_t i = offset, e = offset + curLength; i != e; i++) {
+        destH.at({batchId, i}) = curValue == valuesH.at({i});
+      }
+      offset += curLength;
+    }
+    assert(offset == destH.dims()[1] &&
+           "Sum of Lengths must be equal to size of Values");
+  }
+}
+
+void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
+  switch (I->getData()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdBatchOneHotImpl<float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdBatchOneHotImpl<float16_t>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdBatchOneHotImpl<int64_t>(I);
+    break;
+  case ElemKind::Int8QTy:
+    fwdBatchOneHotImpl<int8_t>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//

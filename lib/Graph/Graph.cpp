@@ -1412,6 +1412,14 @@ ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
   return addNode(new ScatterAssignNode(name, data, indices, slices));
 }
 
+BatchOneHotNode *Function::createBatchOneHot(llvm::StringRef name,
+                                             NodeValue data, NodeValue lengths,
+                                             NodeValue values) {
+  auto outTy = getParent()->uniqueTypeWithNewShape(
+      data.getType(), {data.dims()[0], values.dims()[0]});
+  return addNode(new BatchOneHotNode(name, outTy, data, lengths, values));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getElementType() == ElemKind::FloatTy &&

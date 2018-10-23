@@ -571,6 +571,14 @@ public:
   ScatterAssignNode *createScatterAssign(llvm::StringRef name, NodeValue data,
                                          NodeValue indices, NodeValue slices);
 
+  /// Given 2D matrix \p data, 1D vector \p lengths (of the same size as width
+  /// of \p data), and 1D vector \p values (of the same size as sum of
+  /// \p lengths), expand each row of the \p data to a row of zeros and ones,
+  /// according to One Hot Encoding. j-th element of resulting i-th row is one
+  /// iff \p values[j] == \p data[i][some index within range of j].
+  BatchOneHotNode *createBatchOneHot(llvm::StringRef name, NodeValue data,
+                                     NodeValue lengths, NodeValue values);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.
