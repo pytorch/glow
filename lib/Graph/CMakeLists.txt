@@ -45,6 +45,7 @@ add_library(Graph
             Context.cpp
             Node.cpp
             Nodes.cpp
+            NodeValue.cpp
             Graph.cpp
             Grad.cpp)
 
