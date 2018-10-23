@@ -3663,7 +3663,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseToDense) {
+TEST_P(InterpAndCPU, SparseToDense) {
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
   constexpr size_t kNumIndices = 4;

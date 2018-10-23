@@ -385,3 +385,47 @@ TEST(onnx, importReplaceNaN) {
   auto *input = llvm::dyn_cast<Placeholder>(select->getNthInput(2).getNode());
   ASSERT_EQ(input, mod.getPlaceholderByName("x"));
 }
+
+/// Test loading SparseToDense op from an ONNX model.
+TEST(onnx, importSparseToDense) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/sparseToDense.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+
+  // Create inputs.
+  constexpr size_t kNumIndices = 5;
+  constexpr size_t kMaxIndex = 20;
+  constexpr size_t kRows = 10;
+  constexpr size_t kCols = 5;
+  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
+  Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
+  Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
+
+  // Load model.
+  {
+    ONNXModelLoader onnxLD(
+        netFilename, {"indices", "values", "dataToInferDim"},
+        {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+
+  // Verify structure: Inputs -> SparseToDense -> Save.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 2);
+
+  auto *save = getSaveNodeFromDest(output);
+  auto *out = save->getPlaceholder();
+  EXPECT_TRUE(out->dims().vec() == dataToInferDim.dims().vec());
+
+  auto *STD = llvm::dyn_cast<SparseToDenseNode>(save->getInput().getNode());
+  ASSERT_TRUE(STD);
+  auto *idx = llvm::dyn_cast<Placeholder>(STD->getIndices().getNode());
+  EXPECT_EQ(idx, mod.getPlaceholderByName("indices"));
+  auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
+  EXPECT_EQ(vals, mod.getPlaceholderByName("values"));
+}

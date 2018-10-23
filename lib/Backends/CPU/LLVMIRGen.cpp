@@ -2108,6 +2108,30 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SparseToDenseInstKind: {
+    auto *STDI = llvm::cast<SparseToDenseInst>(I);
+    auto *indices = STDI->getIndices();
+    auto *values = STDI->getValues();
+    auto *dest = STDI->getDest();
+
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *valuesPtr = emitValueAddress(builder, values);
+    auto *destPtr = emitValueAddress(builder, dest);
+
+    auto *indicesSize = emitConstSizeT(builder, indices->size());
+    auto *destSize = emitConstSizeT(builder, dest->size());
+
+    auto *valuesType = values->getType();
+    auto *valueSize =
+        emitConstSizeT(builder, valuesType->size() / valuesType->dims()[0]);
+
+    auto *F = getFunction("sparse_to_dense", dest->getElementType());
+    createCall(
+        builder, F,
+        {destPtr, indicesPtr, valuesPtr, indicesSize, destSize, valueSize});
+    break;
+  }
+
   case Kinded::Kind::DebugPrintInstKind: {
     auto *DPI = llvm::cast<DebugPrintInst>(I);
     auto *src = DPI->getSrc();
