@@ -23,6 +23,16 @@ target_link_libraries(tensorsTest
                         testMain)
 add_glow_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
+add_executable(imageTest
+               imageTest.cpp)
+target_link_libraries(imageTest
+                      PRIVATE
+                        Base
+                        gtest
+                        testMain)
+add_glow_test(imageTest ${GLOW_BINARY_DIR}/tests/imageTest
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(gradCheckTest
                gradCheckTest.cpp)
 target_link_libraries(gradCheckTest

@@ -227,9 +227,9 @@ bool glow::writePngImage(Tensor *T, const char *filename,
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = H.at({x, y, 0}) * scale + bias;
-      ptr[1] = H.at({x, y, 1}) * scale + bias;
-      ptr[2] = H.at({x, y, 2}) * scale + bias;
+      ptr[0] = (H.at({y, x, 0}) - bias) / scale;
+      ptr[1] = (H.at({y, x, 1}) - bias) / scale;
+      ptr[2] = (H.at({y, x, 2}) - bias) / scale;
       ptr[3] = 0xff;
     }
   }
@@ -247,7 +247,7 @@ bool glow::writePngImage(Tensor *T, const char *filename,
     free(row_pointers[y]);
   }
   free(row_pointers);
-  png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
+  png_destroy_write_struct(&png_ptr, &info_ptr);
   fclose(fp);
   return false;
 }
