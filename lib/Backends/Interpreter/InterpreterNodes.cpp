@@ -1963,6 +1963,11 @@ void InterpreterFunction::fwdIntLookupTableInst(const IntLookupTableInst *I) {
 void InterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   Tensor *source = getTensor(I->getInput());
   Tensor *dest = getTensor(I->getResult());
+  if (source->getType() == dest->getType()) {
+    // This is a noop conversion.
+    dest->copyRawFrom(source);
+    return;
+  }
   switch (source->getElementType()) {
   case ElemKind::FloatTy:
     assert(dest->getElementType() == ElemKind::Float16Ty &&

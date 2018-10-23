@@ -4216,6 +4216,24 @@ TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
   EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
 }
 
+/// Noop convert can happen on unoptimized graphs.
+/// Make sure we support them.
+TEST_P(InterpOnly, NoopConvertFromFloatToFloat) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
+  auto *inputTensor = ctx_.allocate(A);
+  inputTensor->getHandle<float>().randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *convertTo = F_->createConvertTo("convertTo", A, A->getType());
+  auto *result = F_->createSave("save", convertTo);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  auto *outputTensor = ctx_.get(result->getPlaceholder());
+  EXPECT_TRUE(inputTensor->isEqual(*outputTensor));
+}
+
 TEST_P(InterpAndCPU, LengthsToRanges) {
   /*
     LENGTHS = [1, 3, 0, 2]
