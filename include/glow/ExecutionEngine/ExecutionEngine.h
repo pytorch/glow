@@ -81,8 +81,8 @@ public:
   void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName);
 
-  /// Runs a single execution of the function.
-  void run();
+  /// Context aware single execution of the function.
+  void run(Context &ctx);
 };
 
 //===----------------------------------------------------------------------===//

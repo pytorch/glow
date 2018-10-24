@@ -170,7 +170,7 @@ void testMNIST() {
 
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
     inputTensor->copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
-    EE.run();
+    EE.run(ctx);
 
     for (unsigned i = 0; i < minibatchSize; i++) {
       auto T = resultTensor->getHandle<>().extractSlice(i);

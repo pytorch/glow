@@ -392,7 +392,7 @@ void Model::translate(const std::vector<std::string> &batch) {
   }
 
   updateInputPlaceholders(ctx, {input_, seqLength_}, {&input, &seqLength});
-  EE_.run();
+  EE_.run(ctx);
 
   auto OH = ctx.get(output_)->getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {

@@ -99,7 +99,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute() override;
+  void execute(Context &ctx) override;
   ///@}
 
 private:

@@ -38,7 +38,7 @@ public:
   ///@{
   ~CPUFunction() override;
 
-  void execute() override;
+  void execute(Context &ctx) override;
   ///@}
 };
 

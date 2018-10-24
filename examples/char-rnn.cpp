@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
       updateInputPlaceholders(ctx, {X}, {&currCharInfer});
-      EE.run();
+      EE.run(ctx);
 
       // Pick a char at random from the softmax distribution.
       char c = getPredictedChar(*T, 0, numSteps - 1);

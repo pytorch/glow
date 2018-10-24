@@ -69,7 +69,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
   updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE.run();
+  EE.run(ctx);
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
@@ -96,7 +96,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
   updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE.run();
+  EE.run(ctx);
   min = CI.raw(0);
   max = CI.raw(1);
   EXPECT_NEAR(0.2, min, 0.00001);
@@ -138,7 +138,7 @@ TEST_P(BackendTest, simpleInference) {
   EE_.compile(CompilationMode::Infer, F, ctx);
 
   updateInputPlaceholders(ctx, {input}, {&inputs});
-  EE_.run();
+  EE_.run(ctx);
 }
 
 /// Test that the DebugPrint instruction works correctly for the backend. Note
@@ -161,7 +161,7 @@ TEST_P(BackendTest, debugPrint) {
   std::unique_ptr<BackendUsingGlowIR> backend(
       static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
   auto function = backend->compileIR(std::move(IR), ctx);
-  function->execute();
+  function->execute(ctx);
 }
 
 /// This test checks that we can compile a function without depending on the
@@ -186,7 +186,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
 
   // We can run the compiled code without having the graph representation
   // around.
-  EE_.run();
+  EE_.run(ctx);
 
   auto HX = saveTensor->getHandle();
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
@@ -206,7 +206,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   auto *STensor = ctx.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F, ctx);
-  EE_.run();
+  EE_.run(ctx);
   EXPECT_TRUE(STensor->isEqual(data));
 }
 

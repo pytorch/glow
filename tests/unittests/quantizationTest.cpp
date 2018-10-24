@@ -185,7 +185,7 @@ TEST(Quantization, quantizeGraph) {
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 }
 
 /// Quantize ReLU node and make sure that quantized version
@@ -294,7 +294,7 @@ TEST_P(Operator, end2end) {
   interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
-  interpreterEE.run();
+  interpreterEE.run(ctx);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -305,7 +305,7 @@ TEST_P(Operator, end2end) {
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
-  backendSpecificEE.run();
+  backendSpecificEE.run(ctx);
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = ctx.get(result1->getPlaceholder())->getHandle();
@@ -429,7 +429,7 @@ TEST_P(Operator, end2endGRU) {
   interpreterEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
-  interpreterEE.run();
+  interpreterEE.run(ctx);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -440,7 +440,7 @@ TEST_P(Operator, end2endGRU) {
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
-  backendSpecificEE.run();
+  backendSpecificEE.run(ctx);
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle = ctx.get(result1->getPlaceholder())->getHandle();
@@ -475,7 +475,7 @@ TEST(Quantization, rescaleSameType) {
   EXPECT_EQ(F->getNodes().size(), 3);
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   EXPECT_EQ(F->getNodes().size(), 2);
 
   auto RH = result->getHandle();
@@ -501,7 +501,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
   EXPECT_EQ(F->getNodes().size(), 4);
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   EXPECT_EQ(F->getNodes().size(), 1);
 
   auto RH = result->getHandle();
@@ -649,7 +649,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
   auto *res = ctx.allocate(SN->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F, ctx);
-  EE.run();
+  EE.run(ctx);
 
   // Verify all negative values were correctly set to zero.
   auto RH = res->getHandle();
@@ -817,7 +817,7 @@ TEST(Quantization, quantizeGraphPartially) {
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -898,7 +898,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -989,7 +989,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -1099,7 +1099,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,

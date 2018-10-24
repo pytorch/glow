@@ -20,14 +20,17 @@
 
 namespace glow {
 
+class Context;
+
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:
   /// Dtor.
   virtual ~CompiledFunction() = default;
 
-  /// Execute the network.
-  virtual void execute() = 0;
+  /// Execute the network and allocate Placeholder memory with given
+  /// \p ctx providing mapping between Placeholder and populated tensor.
+  virtual void execute(Context &ctx) = 0;
 };
 
 } // end namespace glow

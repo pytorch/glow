@@ -49,7 +49,7 @@ profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
   Function *profileF = glow::profileQuantization(ctx, origF);
   EE.compile(CompilationMode::Infer, profileF, ctx);
 
-  EE.run();
+  EE.run(ctx);
 
   return quantization::generateNodeQuantizationInfos(ctx, profileF);
 }
@@ -92,8 +92,8 @@ compareAgainstInterpreter(BackendKind backendKind,
   IEE.compile(CompilationMode::Infer, IF, ICtx);
   BEE.compile(CompilationMode::Infer, BF, BCtx);
 
-  IEE.run();
-  BEE.run();
+  IEE.run(ICtx);
+  BEE.run(BCtx);
 
   return IFT.second->isEqual(*BFT.second, allowedError);
 }
@@ -309,7 +309,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  backend.compileIR(std::move(M), ctx)->execute();
+  backend.compileIR(std::move(M), ctx)->execute(ctx);
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

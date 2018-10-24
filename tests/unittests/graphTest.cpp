@@ -495,7 +495,7 @@ TEST(Graph, NodeValue) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
 
   EXPECT_EQ(res->getHandle().raw(0), 24);
 }
@@ -554,7 +554,7 @@ TEST(Graph, nodesWithPredicates) {
   EE.compile(CompilationMode::Infer, F, ctx);
 
   updateInputPlaceholders(ctx, {input}, {&inputs});
-  EE.run();
+  EE.run(ctx);
 }
 
 // Return the number of ConvolutionNode after lower.
@@ -630,7 +630,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   auto *ret = ctx.get(saveNode->getPlaceholder());
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = ctx.get(B)->getHandle<>();
@@ -675,7 +675,7 @@ TEST(Graph, schedulingOfSaves) {
 
   EE.compile(CompilationMode::Infer, F, ctx);
 
-  EE.run();
+  EE.run(ctx);
   auto *ret = saveNode->getPlaceholder();
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = ctx.get(B)->getHandle<>();

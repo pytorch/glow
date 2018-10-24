@@ -67,7 +67,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 
   // Train the network:
   for (int i = 0; i < 100; i++) {
-    EE_.run();
+    EE_.run(ctx);
   }
 
   float res = inputTensor->getHandle().at({0});
@@ -117,7 +117,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
 
   EE_.compile(CompilationMode::Infer, F, ctx);
   updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE_.run();
+  EE_.run(ctx);
 
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -182,7 +182,7 @@ TEST_P(MLTest, simpleRegression) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
     updateInputPlaceholders(ctx, {A}, {&inputs});
-    EE_.run();
+    EE_.run(ctx);
 
     auto resH = res->getHandle<>();
     (void)resH;
@@ -257,7 +257,7 @@ TEST_P(MLTest, learnXor) {
   }
 
   updateInputPlaceholders(ctx, {A}, {&trainingSet});
-  EE_.run();
+  EE_.run(ctx);
 
   auto resH = res->getHandle<>();
 
@@ -342,7 +342,7 @@ TEST_P(MLTest, learnLog) {
   }
 
   updateInputPlaceholders(ctx, {A}, {&testSet});
-  EE_.run();
+  EE_.run(ctx);
 
   auto resH = res->getHandle<>();
 
@@ -440,7 +440,7 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
       updateInputPlaceholders(ctx, {A}, {&sample});
-      EE_.run();
+      EE_.run(ctx);
 
       auto SMH = res->getHandle<>();
       auto A = SMH.at({0, 0});
@@ -464,7 +464,7 @@ TEST_P(MLTest, circle) {
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
     updateInputPlaceholders(ctx, {A}, {&sample});
-    EE_.run();
+    EE_.run(ctx);
 
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
@@ -477,7 +477,7 @@ TEST_P(MLTest, circle) {
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
     updateInputPlaceholders(ctx, {A}, {&sample});
-    EE_.run();
+    EE_.run(ctx);
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -541,7 +541,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
 
   // Testing the output vector.
   updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE_.run();
+  EE_.run(ctx);
   auto RNWH = res->getHandle<>();
   (void)RNWH;
 
@@ -654,7 +654,7 @@ void testRNNCell(TCellGenerator cell) {
   EE.compile(CompilationMode::Infer, F, ctx);
 
   updateInputPlaceholders(ctx, {X}, {&inputs});
-  EE.run();
+  EE.run(ctx);
 
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -820,7 +820,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   }
 
   updateInputPlaceholders(ctx, {A}, {&testPlayersTensor});
-  EE_.run();
+  EE_.run(ctx);
 
   auto SMH = ctx.get(result->getPlaceholder())->getHandle<>();
   for (size_t i = 0; i < testPlayers.size(); i++) {
@@ -900,7 +900,7 @@ TEST_P(MLTest, learnSinus) {
 
   EE_.compile(CompilationMode::Infer, F, ctx);
   updateInputPlaceholders(ctx, {inputX}, {&tensorX});
-  EE_.run();
+  EE_.run(ctx);
   auto resH = res->getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
@@ -975,7 +975,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
     updateInputPlaceholders(ctx, {A}, {&T});
-    EE_.run();
+    EE_.run(ctx);
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
 }
@@ -1071,7 +1071,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
   updateInputPlaceholders(ctx, {input}, {&testImages});
-  EE.run();
+  EE.run(ctx);
   auto SMH = res->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
@@ -1180,7 +1180,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // Run the inference:
   updateInputPlaceholders(ctx, {input}, {&testImages});
-  EE.run();
+  EE.run(ctx);
 
   // A handle to the projected result.
   auto RH = res->getHandle<>();
@@ -1351,7 +1351,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   updateInputPlaceholders(ctx, {varMatricesA, varMatricesB},
                           {&batchMatricesA, &batchMatricesB});
-  EE_.run();
+  EE_.run(ctx);
 
   unsigned errors = 0;
   // Check each output in the batch.

@@ -74,9 +74,9 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
   }
 }
 
-void ExecutionEngine::run() {
+void ExecutionEngine::run(Context &ctx) {
   assert(function_ && "No function has been compiled");
-  function_->execute();
+  function_->execute(ctx);
 }
 
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
@@ -109,7 +109,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
     }
 
     // Run the network.
-    EE.run();
+    EE.run(ctx);
     sampleCounter += batchSize;
   }
 }
