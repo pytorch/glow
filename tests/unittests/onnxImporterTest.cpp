@@ -236,6 +236,62 @@ TEST(onnx, importDotProduct) {
   ASSERT_TRUE(llvm::isa<MulNode>(batchedReduceAdd->getBatch()));
 }
 
+/// Test loading Sum with more than 2 inputs
+TEST(onnx, importSumN) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/sumN.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor i0(ElemKind::FloatTy, {3});
+    i0.getHandle() = {1, 2, 3};
+    Tensor i1(ElemKind::FloatTy, {3});
+    i1.getHandle() = {4, 5, 6};
+    Tensor i2(ElemKind::FloatTy, {3});
+    i2.getHandle() = {7, 8, 9};
+
+    ONNXModelLoader onnxLD(netFilename, {"i0", "i1", "i2"},
+                           {&i0.getType(), &i1.getType(), &i2.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {"i0", "i1", "i2"},
+                                  {&i0, &i1, &i2});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run();
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {3};
+  std::vector<float> expectedValues = {12, 15, 18};
+
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Verify the structure
+  // Reshape x 3 -> Concat -> batchedReduceAdd -> Save
+  ASSERT_EQ(6, F->getNodes().size());
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *batchedReduceAdd =
+      llvm::dyn_cast<BatchedReduceAddNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(batchedReduceAdd);
+  auto *concat =
+      llvm::dyn_cast<ConcatNode>(batchedReduceAdd->getNthInput(0).getNode());
+  ASSERT_TRUE(concat);
+  for (size_t i = 0; i < 3; ++i) {
+    auto *reshape =
+        llvm::dyn_cast<ReshapeNode>(concat->getNthInput(i).getNode());
+    ASSERT_TRUE(reshape);
+  }
+}
+
 /// Test loading Sum with one input and one output
 TEST(onnx, importSum1) {
   ExecutionEngine EE{BackendKind::Interpreter};
@@ -263,7 +319,7 @@ TEST(onnx, importSum1) {
   std::vector<size_t> expectedDims = {3};
   std::vector<float> expectedValues = {1, 2, 3};
 
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_EQ(result.dims().vec(), expectedDims);
   for (size_t i = 0; i < 3; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
