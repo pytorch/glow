@@ -1426,10 +1426,16 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
                                            NodeValue input) {
-  assert(input.getElementType() == ElemKind::Int8QTy &&
-         "Input must be a quantized type");
   TypeRef outTy =
       getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  return createDequantize(name, input, outTy);
+}
+
+DequantizeNode *Function::createDequantize(llvm::StringRef name,
+                                           NodeValue input, TypeRef outTy) {
+  assert(input.getElementType() == ElemKind::Int8QTy &&
+         "Input must be a quantized type");
+  assert(outTy->isFPType() && "Output should be an FP type");
   return addNode(new DequantizeNode(name, outTy, input));
 }
 

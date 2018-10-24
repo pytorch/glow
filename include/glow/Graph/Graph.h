@@ -582,6 +582,12 @@ public:
   /// are part of the \p input.
   DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input);
 
+  /// Create dequantization node which transforms quantized tensor to a
+  /// floating point type \p outTy one with given Scale and Offset. Scale and
+  /// Offset params are part of the \p input.
+  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input,
+                                   TypeRef outTy);
+
   /// Create transformation for quantized tensors to rescale based on the new
   /// Scale and Offset.
   RescaleQuantizedNode *createRescaleQuantized(llvm::StringRef name,
