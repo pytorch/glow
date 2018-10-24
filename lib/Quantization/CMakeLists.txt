@@ -9,4 +9,5 @@ target_link_libraries(Quantization
                         Converter
                         Graph
                         ExecutionEngine
-                        QuantizationBase)
+                        QuantizationBase
+                        LLVMSupport)

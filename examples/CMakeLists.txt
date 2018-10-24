@@ -6,7 +6,8 @@ target_link_libraries(cifar10
                         ExecutionEngine
                         Graph
                         IR
-                        Support)
+                        Support
+                        LLVMSupport)
 
 add_executable(mnist
                  mnist.cpp)
@@ -16,7 +17,9 @@ target_link_libraries(mnist
                         ExecutionEngine
                         Graph
                         IR
-                        Support)
+                        Optimizer
+                        Support
+                        LLVMSupport)
 
 add_executable(ptb
                  ptb.cpp)
@@ -26,7 +29,8 @@ target_link_libraries(ptb
                         ExecutionEngine
                         Graph
                         IR
-                        Support)
+                        Support
+                        LLVMSupport)
 
 add_executable(char-rnn
                  char-rnn.cpp)
@@ -36,6 +40,7 @@ target_link_libraries(char-rnn
                         ExecutionEngine
                         Graph
                         IR
+                        Optimizer
                         Support)
 
 add_executable(fr2en
@@ -45,5 +50,7 @@ target_link_libraries(fr2en
                         Base
                         ExecutionEngine
                         IR
+                        Optimizer
                         Quantization
-                        Support)
+                        Support
+                        LLVMSupport)
