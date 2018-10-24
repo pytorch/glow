@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 #define GLOW_BACKENDS_CPU_ALLOCATIONSINFO_H
 
+#include "glow/Graph/Nodes.h"
 #include "llvm/IR/Module.h"
 
 #include <functional>
@@ -27,6 +28,9 @@ class WeightVar;
 class Constant;
 class Context;
 
+namespace runtime {
+struct RuntimeBundle;
+}
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
 struct AllocationsInfo {
@@ -39,42 +43,39 @@ struct AllocationsInfo {
   /// numberOffsets_[valueNumbers_[v]]
 
   /// Maps Values in the module to their offsets.
-  llvm::DenseMap<const Value *, uint64_t> allocatedAddressed_;
+  llvm::DenseMap<const Value *, uint64_t> allocatedAddress_;
   /// Amount of memory to be allocated for constant WeightVars.
   size_t constantWeightVarsMemSize_{0};
   /// Amount of memory to be allocated for mutable WeightVars.
   size_t mutableWeightVarsMemSize_{0};
   /// Amount of memory to be allocated for activations.
   size_t activationsMemSize_{0};
+  /// Base address of stored constant weights.
+  uint8_t *baseConstantWeightVarsStore_{nullptr};
   /// Base address of constant weights.
-  uint8_t *baseConstantWeightVarsAddress_{nullptr};
-  /// Base address of mutable WeightVars.
-  uint8_t *baseMutableWeightVarsAddress_{nullptr};
-  /// Base address of activations.
-  uint8_t *baseActivationsAddress_{nullptr};
 
   /// Assign offsets to all of the variables in the module \p M and to the
-  /// placeholders. \p ctx is the context that maps the graph to the concrete
-  /// execution environment for a specific function.
-  /// If the \p absoluteAddr is true, simply reuse the addresses already used
-  /// by the payloads of tensors corresponding to those WeightVars as offsets.
-  /// This is useful in a JIT setup. If \p absoluteAddr is false, then all the
-  /// WeightVars will get new offsets assigned.
-  void allocateWeightVars(const IRFunction *F, const Context &ctx,
-                          bool absoluteAddr);
+  /// placeholders.
+  void allocateWeightVars(const IRFunction *F);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be
   /// performed by the client based on the information provided by the
-  /// AllocationsInfo.
+  /// AllocationsInfo or RuntimeBundle.
   void allocateActivations(const IRFunction *F);
   /// Assign offsets to all tensorviews.
   /// No memory allocation is performed. Sets up all offsets into already
   /// defined offsets for WeightVars and AllocActivations. Assumes the weight
-  /// vars and alloc activations have already been added to allocatedAddressed_.
+  /// vars and alloc activations have already been added to allocatedAddress_.
   void allocateTensorViews(const IRFunction *F);
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   void numberValues(const IRFunction *F);
+
+  /// Collect Constants into a single block of memory.
+  void collectConstants(const IRFunction *F);
+  /// Returns runtimeBundle object containing offsets and allocation sizes
+  /// needed for runtime.
+  runtime::RuntimeBundle generateRuntimeBundle(const IRFunction *F);
 };
 
 } // namespace glow

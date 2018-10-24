@@ -27,21 +27,36 @@ class CPUFunction final : public CompiledFunction {
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_;
-  /// This represents the heap, that stores the activations at runtime.
-  void *heap_;
+  /// runtimeBundle contains symbol offsets and allocation sizes.
+  runtime::RuntimeBundle runtimeBundle_;
+  /// Base address for Activations memory block.
+  uint8_t *baseActivationsAddress_;
+  /// Base address for Mutable weights memory block, Inputs and Outputs.
+  uint8_t *baseMutableWeightVarsAddress_;
 
 public:
   /// Ctor.
-  CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap);
-
+  CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+              const runtime::RuntimeBundle &runtimeBundle);
+  /// Copy Function to device, an empty function for CPU.
+  void copyFunctionToDevice(){};
+  /// Copy Constants to device, an empty function for CPU.
+  void copyConstantsToDevice(){};
+  /// Allocate Mutable buffers on device this includes Activations and
+  /// Placeholders.
+  void allocateMutableBuffersOnDevice();
+  /// Copy Input Placeholder data to device.
+  void copyInputsToDevice(Context &ctx);
+  /// Copy Outputs from Device to Placeholders in \p ctx.
+  void copyOutputsFromDevice(Context &ctx);
+  /// Free all allocations.
+  void freeAllocations();
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;
-
   void execute(Context &ctx) override;
   ///@}
 };
-
 } // end namespace glow
 
 #endif // GLOW_BACKENDS_CPU_CPUFUNCTION_H

@@ -76,6 +76,17 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
 
 void ExecutionEngine::run(Context &ctx) {
   assert(function_ && "No function has been compiled");
+  // TODO call runtime functions from EE instead of in the compiled function.
+  // copyFunctionToDevice()
+  // allocateMutableBuffersOnDevice()
+  // copyMutablesToDevice(ctx)
+  // copyMutablesFromDevice(ctx)
+  // freeAllocations()
+  // We are working toward moving memory allocation and initialization to
+  // runtime. As an intermediate the runtime functions are being called within
+  // execute to maintain the current API. Once all backends are ported the API
+  // will expose the runtime functions from the ExecutionEngine interface. This
+  // is related to Issue #1904.
   function_->execute(ctx);
 }
 

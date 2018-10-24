@@ -356,9 +356,9 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
   // DWARF operations to be performed with the base address to compute the
   // address of the logical global variable.
   llvm::SmallVector<uint64_t, 4> ops;
-  assert(allocationsInfo_.allocatedAddressed_.count(val) &&
+  assert(allocationsInfo_.allocatedAddress_.count(val) &&
          "The weight should be in the map");
-  auto offset = allocationsInfo_.allocatedAddressed_[val];
+  auto offset = allocationsInfo_.allocatedAddress_[val];
   // Get the value of the global var.
   ops.push_back(llvm::dwarf::DW_OP_deref);
   // Add the offset to the value of the global var to get the address of the

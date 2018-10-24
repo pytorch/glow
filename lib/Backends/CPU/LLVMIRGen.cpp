@@ -300,7 +300,7 @@ void LLVMIRGen::performCodeGen() {
 
 llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
                                          const glow::Value *val) {
-  assert(allocationsInfo_.allocatedAddressed_.count(val) &&
+  assert(allocationsInfo_.allocatedAddress_.count(val) &&
          "Value address was not allocated");
   auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
   llvm::Type *T = nullptr;
@@ -359,7 +359,7 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
     auto *V = I.first;
     auto offset = I.second.second;
     elems[offset] = llvm::ConstantInt::get(
-        sizeTType, allocationsInfo.allocatedAddressed_.lookup(V));
+        sizeTType, allocationsInfo.allocatedAddress_.lookup(V));
   }
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(sizeTType, elems.size()), elems);
@@ -684,12 +684,12 @@ void LLVMIRGen::emitDataParallelKernel(
 static bool isOverlappingWithAnyBundleBufferOperands(
     AllocationsInfo &allocationsInfo,
     llvm::SmallVectorImpl<const Instruction *> &bundle, Value *buf) {
-  auto addr1 = allocationsInfo.allocatedAddressed_[buf];
+  auto addr1 = allocationsInfo.allocatedAddress_[buf];
   auto size1 = buf->getSizeInBytes();
   for (auto bi : bundle) {
     for (auto bop : bi->getOperands()) {
       auto buf2 = bop.first;
-      auto addr2 = allocationsInfo.allocatedAddressed_[buf2];
+      auto addr2 = allocationsInfo.allocatedAddress_[buf2];
       auto size2 = buf2->getSizeInBytes();
       // It is fine, if buffers of different data-parallel instructions are
       // allocated exactly the same memory region.

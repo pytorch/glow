@@ -56,7 +56,7 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
-    auto addr = allocationsInfo_.allocatedAddressed_[w];
+    auto addr = allocationsInfo_.allocatedAddress_[w];
     if (addr < pos) {
       // The payload was written already. It aliases something we have seen
       // already.
@@ -98,7 +98,7 @@ void BundleSaver::emitSymbolTable() {
   for (auto &v : F_->getGraph()->getParent()->getPlaceholders()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto size = w->getType()->size();
-    auto addr = allocationsInfo_.allocatedAddressed_[w];
+    auto addr = allocationsInfo_.allocatedAddress_[w];
     // Create an SymbolTableEntry.
     auto *entry = llvm::ConstantStruct::get(
         symbolTableEntryTy,
@@ -259,8 +259,7 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateActivations(F_);
   // Tell the allocateWeightVars to not reuse any existing addresses for weights
   // and to assign new ones.
-  Context empty;
-  allocationsInfo_.allocateWeightVars(F_, empty, false);
+  allocationsInfo_.allocateWeightVars(F_);
   allocationsInfo_.allocateTensorViews(F_);
 }
 
