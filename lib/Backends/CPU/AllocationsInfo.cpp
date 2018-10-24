@@ -16,6 +16,7 @@
 #define DEBUG_TYPE "jit-allocations"
 
 #include "AllocationsInfo.h"
+#include "glow/Backends/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
@@ -23,6 +24,7 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
+#include "glow/Support/Memory.h"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -32,9 +34,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-void AllocationsInfo::allocateWeightVars(const IRFunction *F,
-                                         const Context &ctx,
-                                         bool absoluteAddr) {
+void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   // Use two different allocators, because constant weights and mutable weights
   // may use different memory blocks.
   MemoryAllocator constantWeightVarsAllocator("ConstantWeights", 0);
@@ -43,40 +43,21 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
   for (auto &v : F->getGraph()->getParent()->getConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
+    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
     size_t addr = constantWeightVarsAllocator.allocate(numBytes, w);
-    if (!absoluteAddr) {
-      allocatedAddressed_[w] = addr;
-    } else {
-      // Reuse the address used by the payload.
-      allocatedAddressed_[w] =
-          v->getPayload().getUnsafePtr() - static_cast<char *>(nullptr);
-    }
+    allocatedAddress_[w] = addr;
   }
 
-  if (absoluteAddr) {
-    // Allocate addresses for the Placeholders that have payloads defined at
-    // compile-time.
-    // TODO: Remove this branch once Context becomes a parameter of the
-    // CompiledFunction::execute method.
-    for (auto PH : ctx.pairs()) {
-      assert(isa<WeightVar>(F->getWeightForNode(PH.first)));
-      auto *w = cast<WeightVar>(F->getWeightForNode(PH.first));
-      // Reuse the address used by the payload.
-      allocatedAddressed_[w] =
-          PH.second->getUnsafePtr() - static_cast<char *>(nullptr);
-    }
-  } else {
-    // Allocate based on size as reported by the formal type of Placeholders
-    for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
-      assert(isa<WeightVar>(F->getWeightForNode(v)));
-      auto *w = cast<WeightVar>(F->getWeightForNode(v));
-      auto numBytes = w->getSizeInBytes();
-      size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
-      allocatedAddressed_[w] = addr;
-    }
+  // Compute the offsets and total memory requirements for Placeholders.
+  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+    // Get the WeightVar for each Placeholder to calculate offsets.
+    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
+    auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    auto numBytes = w->getSizeInBytes();
+    size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
+    allocatedAddress_[w] = addr;
   }
 
   // Remember that max required memory size for each kind of weights.
@@ -84,7 +65,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
   mutableWeightVarsMemSize_ = mutableWeightVarsAllocator.getMaxMemoryUsage();
 
   DEBUG_GLOW(for (auto &A
-                  : allocatedAddressed_) {
+                  : allocatedAddress_) {
     if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
     assert(valueNumbers_.count(A.first) && "Unknown weight");
@@ -94,11 +75,45 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F,
             : "mutable weight";
     llvm::errs() << "Allocated " << kind << " " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddressed_[A.first]
-                 << ", "
-                 << allocatedAddressed_[A.first] + A.first->getSizeInBytes()
+                 << "  address range:  [" << allocatedAddress_[A.first] << ", "
+                 << allocatedAddress_[A.first] + A.first->getSizeInBytes()
                  << "]\n";
   });
+}
+
+void AllocationsInfo::collectConstants(const IRFunction *F) {
+
+  // At compile time condense constants to a single block of memory.
+  // This allows the graph to go away after compile time.
+  baseConstantWeightVarsStore_ =
+      (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
+  for (auto &v : F->getGraph()->getParent()->getConstants()) {
+    assert(isa<WeightVar>(F->getWeightForNode(v)));
+    auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    auto payload = v->getPayload().getUnsafePtr();
+    auto numBytes = w->getSizeInBytes();
+    auto addr = allocatedAddress_[w];
+    // Copy weight to offset.
+    memcpy(baseConstantWeightVarsStore_ + addr, payload, numBytes);
+  }
+}
+
+runtime::RuntimeBundle
+AllocationsInfo::generateRuntimeBundle(const IRFunction *F) {
+  runtime::RuntimeBundle info(constantWeightVarsMemSize_,
+                              mutableWeightVarsMemSize_, activationsMemSize_);
+  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  info.constants = baseConstantWeightVarsStore_;
+  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
+    auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    runtime::RuntimeSymbolInfo symbol;
+    symbol.offset = allocatedAddress_[w];
+    symbol.size = w->getSizeInBytes();
+    symbolTable.emplace(std::string(v->getName()), symbol);
+  }
+  info.symbolTable = std::move(symbolTable);
+  return info;
 }
 
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
@@ -131,15 +146,14 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
 
   // Register specific addresses within the heap to activations.
   for (auto &A : activationAddr) {
-    allocatedAddressed_[A.first] = A.second;
+    allocatedAddress_[A.first] = A.second;
   }
   DEBUG_GLOW(for (auto &A
-                  : allocatedAddressed_) {
+                  : allocatedAddress_) {
     llvm::errs() << "Allocated activation " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddressed_[A.first]
-                 << ", "
-                 << allocatedAddressed_[A.first] + A.first->getSizeInBytes()
+                 << "  address range:  [" << allocatedAddress_[A.first] << ", "
+                 << allocatedAddress_[A.first] + A.first->getSizeInBytes()
                  << "]\n";
   });
 }
@@ -174,18 +188,18 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (const auto *TVI = dyn_cast<TensorViewInst>(&I)) {
       auto *viewOrigin = getOrigin(TVI);
-      assert(allocatedAddressed_.count(viewOrigin) &&
+      assert(allocatedAddress_.count(viewOrigin) &&
              "Did not find original WeightVar or AllocActivation for a "
              "TensorView.");
-      size_t originAddr = allocatedAddressed_[viewOrigin];
+      size_t originAddr = allocatedAddress_[viewOrigin];
 
       // Calculate the offset into the underlying alloc activation.
       size_t offset = calculateTensorViewOffset(TVI);
 
       // Calculate the correct address using this offset into the alloc
       // activation and map from the original TVI to it.
-      assert(!allocatedAddressed_.count(TVI) && "Allocation already made!");
-      allocatedAddressed_[TVI] = originAddr + offset;
+      assert(!allocatedAddress_.count(TVI) && "Allocation already made!");
+      allocatedAddress_[TVI] = originAddr + offset;
       continue;
     }
   }

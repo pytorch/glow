@@ -41,16 +41,17 @@ namespace {
 //                   Functions for executing code using JIT
 //===----------------------------------------------------------------------===//
 
-/// Emit the entry point for JIT called "jitmain". It simply calls the main
-/// entry of the module with the constant concrete addresses of all the memory
-/// areas. Since these addresses are constants, the LLVM optimizer will constant
-/// propagate them into relative addressing computations and the like and
-/// produce a very efficient code that uses absolute addressing whenever
-/// possible.
+/// Emit the entry point for JIT called "jitmain".
+/// Function has the following API:
+///   void jitmain(uint8_t *baseConstantWeightVars,
+///                uint8_t *baseInOutWeightVars,
+///                nuint8_t *baseActivations);
 static void emitJitMain(LLVMIRGen &irgen) {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());
-  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(voidTy, {}, false);
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
+  llvm::FunctionType *jitFuncTy =
+      llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
       llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
                              "jitmain", &irgen.getModule());
@@ -60,25 +61,9 @@ static void emitJitMain(LLVMIRGen &irgen) {
 
   // Prepare arguments for the "main" function.
   llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
-  // Get the integer type having the same size in bits as size_t.
-  auto *sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
-
-  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
-      llvm::ConstantInt::get(
-          sizeTType, reinterpret_cast<size_t>(
-                         allocationsInfo.baseConstantWeightVarsAddress_)),
-      int8PtrTy));
-  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
-      llvm::ConstantInt::get(
-          sizeTType, reinterpret_cast<size_t>(
-                         allocationsInfo.baseMutableWeightVarsAddress_)),
-      int8PtrTy));
-  initFunctionCallArgs.push_back(builder.CreateIntToPtr(
-      llvm::ConstantInt::get(
-          sizeTType,
-          reinterpret_cast<size_t>(allocationsInfo.baseActivationsAddress_)),
-      int8PtrTy));
+  initFunctionCallArgs.push_back(func->args().begin());
+  initFunctionCallArgs.push_back(func->args().begin() + 1);
+  initFunctionCallArgs.push_back(func->args().begin() + 2);
   // Now form the offsets array and pass it as the last argument.
   auto offsetsArray =
       irgen.emitConstOffsetsArray(irgen.getBuilder(), allocationsInfo);
@@ -95,23 +80,12 @@ static void emitJitMain(LLVMIRGen &irgen) {
 }
 
 /// Perform memory allocation for a JIT execution.
-static void *allocateJITMemory(const IRFunction *F,
-                               AllocationsInfo &allocationsInfo,
-                               const Context &ctx) {
+void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
   allocationsInfo.numberValues(F);
   allocationsInfo.allocateActivations(F);
-  // Tell the allocateWeightVars to use absolute addresses for weights.
-  allocationsInfo.allocateWeightVars(F, ctx, true);
+  allocationsInfo.allocateWeightVars(F);
   allocationsInfo.allocateTensorViews(F);
-
-  // Allocate the heap to match the max memory usage for activations.
-  if (allocationsInfo.activationsMemSize_ == 0) {
-    return nullptr;
-  }
-  auto heap =
-      alignedAlloc(allocationsInfo.activationsMemSize_, TensorAlignment);
-  allocationsInfo.baseActivationsAddress_ = (uint8_t *)heap;
-  return heap;
+  allocationsInfo.collectConstants(F);
 }
 
 } // end namespace
@@ -132,7 +106,8 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR,
                            llvm::CodeModel::Model::Large);
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
-  auto heap = allocateJITMemory(IR.get(), irgen->getAllocationsInfo(), ctx);
+
+  allocateJITMemory(IR.get(), irgen->getAllocationsInfo());
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
@@ -140,7 +115,10 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR,
   // Hand over the module to JIT for the machine code generation.
   auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
   JIT->addModule(irgen->borrowModule());
-  return llvm::make_unique<CPUFunction>(std::move(JIT), heap);
+  // Build runtimeBundle object containing offsets and allocation sizes.
+  runtime::RuntimeBundle runtimeInfo =
+      allocationsInfo.generateRuntimeBundle(IR.get());
+  return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeInfo);
 }
 
 std::unique_ptr<CompiledFunction>

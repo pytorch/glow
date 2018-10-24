@@ -19,12 +19,10 @@ The JIT, on the other hand, generates a single stream of highly optimized
 instructions that don't go back to the interpreter. Moreover, each instruction
 is optimized based on specific information on the context in which the
 instruction is executed. When a matrix multiplication is compiled the JIT knows
-exactly the dimensions of the matrices that are being executed and where the
-tensors are placed in memory. The JIT knows that the buffers do or do-not
-alias, and exactly the number of iterations for the loop. The knowledge enables
+exactly the dimensions of the matrices that are being executed. The knowledge enables
 much better code generation and vectorization. The JIT is also able to eliminate
 all calls to 'malloc', because the memory is statically allocated. The whole
-network is allocated by a single malloc call.
+network is allocated by a single malloc call, all inputs and outputs a single seperate call.
 
 ### How the JIT Works
 
@@ -35,9 +33,8 @@ allocate concrete memory addresses for the AllocActivation instructions in the
 module. The allocation is done by scanning the module and updating the memory
 allocator. After this process the allocator reports the high water mark, which
 is the maximum number of bytes that the network consumes. The allocator assigns
-offsets for each alloc activation within the buffer. Then, the JIT performs a
-single call to 'malloc' to allocates the heap. At this point each activation and
-each weight has a concrete address on the heap.
+offsets for each alloc activation within the buffer. This information is stored
+in a runtimeBundle where a single call to malloc initializes the heap for activations.
 
 Next, the JIT opens a new LLVM functions and prepares for code generation. The
 compiler goes over each low-level instruction and generates a sequence of

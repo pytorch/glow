@@ -13,28 +13,80 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "CPUFunction.h"
 
+#include "glow/Graph/Context.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
 
 using namespace glow;
 
-CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT, void *heap)
-    : JIT_(std::move(JIT)), heap_(heap) {}
+CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+                         const runtime::RuntimeBundle &runtimeBundle)
+    : JIT_(std::move(JIT)), runtimeBundle_(runtimeBundle) {}
 
-CPUFunction::~CPUFunction() { alignedFree(heap_); }
+CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.constants); }
+
+void CPUFunction::allocateMutableBuffersOnDevice() {
+  baseActivationsAddress_ = (uint8_t *)alignedAlloc(
+      runtimeBundle_.activationsMemSize, TensorAlignment);
+
+  baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
+      runtimeBundle_.mutableWeightVarsMemSize, TensorAlignment);
+}
+
+void CPUFunction::copyInputsToDevice(Context &ctx) {
+  // Copy Placeholders into allocated memory.
+  for (auto PH : ctx.pairs()) {
+    auto payload = PH.second->getUnsafePtr();
+    auto symbolInfo =
+        runtimeBundle_.symbolTable.find(std::string(PH.first->getName()));
+    assert(symbolInfo != runtimeBundle_.symbolTable.end() &&
+           "Symbol not found");
+    auto addr = symbolInfo->second.offset;
+    auto numBytes = symbolInfo->second.size;
+    // copy PH to allocated memory.
+    memcpy(baseMutableWeightVarsAddress_ + addr, payload, numBytes);
+  }
+}
+
+void CPUFunction::copyOutputsFromDevice(Context &ctx) {
+  // Copy placeholders from device back into context.
+  for (auto PH : ctx.pairs()) {
+    auto symbolInfo =
+        runtimeBundle_.symbolTable.find(std::string(PH.first->getName()));
+    auto payload = baseMutableWeightVarsAddress_ + symbolInfo->second.offset;
+    auto numBytes = symbolInfo->second.size;
+    auto addr = PH.second->getUnsafePtr();
+    // copy PH from allocated memory.
+    memcpy(addr, payload, numBytes);
+  }
+}
+
+void CPUFunction::freeAllocations() {
+  alignedFree(baseMutableWeightVarsAddress_);
+  alignedFree(baseActivationsAddress_);
+}
 
 void CPUFunction::execute(Context &ctx) {
+  copyFunctionToDevice();
+  copyConstantsToDevice();
+  allocateMutableBuffersOnDevice();
+  copyInputsToDevice(ctx);
+
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
-  using JitFuncType = void (*)(void);
+  using JitFuncType =
+      void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
+               uint8_t * activations);
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    funcPtr();
+    funcPtr(runtimeBundle_.constants, baseMutableWeightVarsAddress_,
+            baseActivationsAddress_);
+    copyOutputsFromDevice(ctx);
   } else {
     GLOW_ASSERT(false && "Error getting address.");
   }
+  freeAllocations();
 }
