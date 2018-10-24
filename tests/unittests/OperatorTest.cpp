@@ -1396,7 +1396,7 @@ TEST_P(InterpOnly, FP16QuantizeAndDequantize) {
   ctx_.allocate(fpResult->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_, ctx_);
-  EE_.run();
+  EE_.run(ctx_);
 
   EXPECT_TRUE(ctx_.get(result->getPlaceholder())
                   ->isEqual(*ctx_.get(fpResult->getPlaceholder()), 0.01));
