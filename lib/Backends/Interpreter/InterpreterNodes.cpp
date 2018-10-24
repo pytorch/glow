@@ -1946,12 +1946,9 @@ void InterpreterFunction::fwdQuantizationProfileInst(
   quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
                                         max);
 }
-/// Quantize floating point tensor. Scale and Offset are based on return type
-/// of the instruction \p I.
-void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
-  auto srcHandle = getWeightHandle(I->getSrc());
-  auto *destTensor = getTensor(I->getDest());
 
+template <typename ElemTy>
+static void fwdQuantize(Handle<ElemTy> srcHandle, Tensor *destTensor) {
   TensorQuantizationParams params{destTensor->getType().getScale(),
                                   destTensor->getType().getOffset()};
 
@@ -1960,18 +1957,55 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
     destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
   }
 }
-/// Dequantize integer tensor. Scale and Offset are based
-/// on the source tensor type.
-void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
-  auto *srcTensor = getTensor(I->getSrc());
-  auto destHandle = getWeightHandle(I->getDest());
 
+/// Quantize floating point tensor. Scale and Offset are based on return type
+/// of the instruction \p I.
+void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
+  auto *destTensor = getTensor(I->getDest());
+  switch (I->getSrc()->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto srcHandle = getWeightHandle<float>(I->getSrc());
+    fwdQuantize(srcHandle, destTensor);
+    return;
+  }
+  case ElemKind::Float16Ty: {
+    auto srcHandle = getWeightHandle<float16>(I->getSrc());
+    fwdQuantize(srcHandle, destTensor);
+    return;
+  }
+  default:
+    llvm_unreachable("Type not supported");
+  }
+}
+
+template <typename ElemTy>
+static void fwdDequantize(Tensor *srcTensor, Handle<ElemTy> destHandle) {
   TensorQuantizationParams params{srcTensor->getType().getScale(),
                                   srcTensor->getType().getOffset()};
 
   auto srcHandle = srcTensor->getHandle<int8_t>();
   for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
     destHandle.raw(i) = quantization::dequantize(srcHandle.raw(i), params);
+  }
+}
+
+/// Dequantize integer tensor. Scale and Offset are based
+/// on the source tensor type.
+void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
+  auto *srcTensor = getTensor(I->getSrc());
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto destHandle = getWeightHandle<float>(I->getDest());
+    fwdDequantize(srcTensor, destHandle);
+    return;
+  }
+  case ElemKind::Float16Ty: {
+    auto destHandle = getWeightHandle<float16>(I->getDest());
+    fwdDequantize(srcTensor, destHandle);
+    return;
+  }
+  default:
+    llvm_unreachable("Type not supported");
   }
 }
 

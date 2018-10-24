@@ -1377,6 +1377,31 @@ TEST_P(Operator, QuantizeAndDequantize) {
                   ->isEqual(*ctx_.get(fpResult->getPlaceholder())));
 }
 
+TEST_P(InterpOnly, FP16QuantizeAndDequantize) {
+  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4}, "A", false);
+  auto *B = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4}, "B", false);
+  ctx_.allocate(A)->getHandle<float16>() = {1, 1.2f, 0.5f, 1.3f};
+  ctx_.allocate(B)->getHandle<float16>() = {1.8f, 5.2f, 3.5f, 11.3f};
+
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto *quantizeA = F_->createQuantize("quantize", A, qType);
+  auto *quantizeB = F_->createQuantize("quantize", B, qType);
+  auto *add = F_->createAdd("add", quantizeA, quantizeB);
+  auto *dequantize = F_->createDequantize("dequantize", add, A->getType());
+  auto *result = F_->createSave("save", dequantize);
+  ctx_.allocate(result->getPlaceholder());
+
+  auto *fpAdd = F_->createAdd("fpAdd", A, B);
+  auto *fpResult = F_->createSave("fpSave", fpAdd);
+  ctx_.allocate(fpResult->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run();
+
+  EXPECT_TRUE(ctx_.get(result->getPlaceholder())
+                  ->isEqual(*ctx_.get(fpResult->getPlaceholder()), 0.01));
+}
+
 TEST_P(Operator, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
