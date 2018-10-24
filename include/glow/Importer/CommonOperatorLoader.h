@@ -101,16 +101,26 @@ protected:
   }
 
   void loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
-    // TODO: support variadic arguments
     if (op.input_size() == 1) {
       auto in = getNodeValueOrCreateConstantByName(op.input(0));
       addNodeAsOutput(op, in);
-    } else {
-      assert(op.input_size() == 2 && "Only Sum of 1 or 2 inputs is supported.");
+    } else if (op.input_size() == 2) {
       const std::string &opName = loadOperatorName(op);
       auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
       auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
       auto *node = G_.createAdd(opName, in0, in1);
+      addNodeAsOutput(op, node);
+    } else {
+      const std::string &opName = loadOperatorName(op);
+      const unsigned numInputs = op.input_size();
+      llvm::SmallVector<NodeValue, 4> inputs;
+      inputs.reserve(numInputs);
+      for (unsigned i = 0; i < numInputs; i++) {
+        inputs.push_back(G_.createExpandDims(
+            opName, getNodeValueOrCreateConstantByName(op.input(i)), {0}));
+      }
+      ConcatNode *concat = G_.createConcat(opName, inputs, /* axis */ 0);
+      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ 0);
       addNodeAsOutput(op, node);
     }
   }
