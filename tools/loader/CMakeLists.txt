@@ -10,7 +10,8 @@ target_link_libraries(image-classifier
                         Graph
                         Importer
                         Optimizer
-                        Quantization)
+                        Quantization
+                        LLVMSupport)
 
 add_executable(text-translator
   Loader.cpp
@@ -24,7 +25,8 @@ target_link_libraries(text-translator
                         Importer
                         ExecutionEngine
                         Optimizer
-                        Quantization)
+                        Quantization
+                        LLVMSupport)
 
 add_executable(model-runner
   Loader.cpp
@@ -38,4 +40,5 @@ target_link_libraries(model-runner
                         Importer
                         ExecutionEngine
                         Optimizer
-                        Quantization)
+                        Quantization
+                        LLVMSupport)
