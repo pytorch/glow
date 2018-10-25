@@ -70,7 +70,7 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
 
-  /// Run async using backend thread pool.
+  /// Run inference async using backend thread pool.
   void runAsync(const std::function<void(void)> &fn);
 
 private:
@@ -122,8 +122,20 @@ public:
                    uint32_t outputsCount,
                    const onnxTensorDescriptorV1 *outputDescriptors);
 
-  /// Run inference.
-  onnxStatus run();
+  /// Run inference synchronously.
+  /// \params inputPlaceholderToBuffer contains mapping between input
+  ///         placeholders and memory addresses input can be read from.
+  /// \params outputPlaceholderToBuffer contains mapping between output
+  ///         placeholders and memory addresses output needs to be written to.
+  void run(const llvm::DenseMap<Placeholder *, onnxPointer>
+               &inputPlaceholderToBuffer,
+           const llvm::DenseMap<Placeholder *, onnxPointer>
+               &outputPlaceholderToBuffer);
+
+  /// Run inference asynchronously.
+  /// Inputs are ready when \p inputEvent is signalled.
+  /// \p outputEvent needs to be signalled when outputs are computed.
+  void runAsync(EventPtr inputEvent, EventPtr outputEvent);
 
 private:
   BackendPtr backendPtr_;
@@ -134,20 +146,25 @@ private:
   /// the state properly.
   Context ctx_;
 
-  /// Mapping between ONNX name for the input variable and Glow placeholder.
-  llvm::StringMap<Placeholder *> onnxNameToInputVar_;
+  /// Mapping between ONNX name for the input variable and Glow
+  /// placeholder for input.
+  llvm::StringMap<Placeholder *> onnxInputToPlaceholder_;
 
-  /// Mapping between ONNX name for the output variable and Glow output
-  /// node.
-  llvm::StringMap<Placeholder *> onnxNameToOutputNode_;
+  /// Mapping between ONNX name for the output variable and Glow
+  /// placeholder for output.
+  llvm::StringMap<Placeholder *> onnxOutputToPlaceholder_;
 
-  /// Mapping between input var and the actual memory address.
+  /// Mapping between input placeholder and the actual memory address.
   /// Inputs will be read from these addresses.
-  llvm::DenseMap<Placeholder *, onnxPointer> inputVarToBuffer_;
+  llvm::DenseMap<Placeholder *, onnxPointer> inputPlaceholderToBuffer_;
 
-  /// Mapping between output var and the actual memory address.
+  /// Mapping between output placeholder and the actual memory address.
   /// Results must be written to these addresses.
-  llvm::DenseMap<Placeholder *, onnxPointer> outputNodeToBuffer_;
+  llvm::DenseMap<Placeholder *, onnxPointer> outputPlaceholderToBuffer_;
+
+  /// Guard setIO and run. Make sequence of setIO and run
+  /// to be atomic.
+  std::mutex inputRunMutex_;
 };
 
 typedef Graph *GraphPtr;
