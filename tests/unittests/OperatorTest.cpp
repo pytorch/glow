@@ -135,7 +135,7 @@ TEST_P(InterpAndCPU, log) {
   }
 }
 
-TEST_P(Operator, logit) {
+TEST_P(InterpAndCPU, logit) {
   auto eps = 1E-6f;                // the default in Caffe2
   constexpr std::size_t size = 10; // sample size for randomized tests
 
