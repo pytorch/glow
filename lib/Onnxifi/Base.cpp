@@ -60,8 +60,8 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  onnxNameToInputVar_ = loader->getInputVarsMapping();
-  onnxNameToOutputNode_ = loader->getOutputVarsMapping();
+  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
+  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
   // Emit IR for the graph and compile it.
   backendPtr_->getEE().compile(CompilationMode::Infer, function_, ctx_);
@@ -69,11 +69,37 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus Graph::run() {
+void Graph::runAsync(EventPtr inputEvent, EventPtr outputEvent) {
+  llvm::DenseMap<Placeholder *, onnxPointer> inputPlaceholderToBuffer =
+      inputPlaceholderToBuffer_;
+  llvm::DenseMap<Placeholder *, onnxPointer> outputPlaceholderToBuffer =
+      outputPlaceholderToBuffer_;
+
+  // Once inputs are copied we can allow processing concurrent requests.
+  inputRunMutex_.unlock();
+
+  // Submit graph for asynchronous execution.
+  // Concurrency for executing 'run' method is limited by number of threads in
+  // the backend specific thread pool.
+  backend()->runAsync([inputEvent, outputEvent, inputPlaceholderToBuffer,
+                       outputPlaceholderToBuffer, this]() {
+    // Wait for all inputs to be ready.
+    inputEvent->wait();
+    // Run inference.
+    this->run(inputPlaceholderToBuffer, outputPlaceholderToBuffer);
+    // Signal that the outputs are ready.
+    outputEvent->signal();
+  });
+}
+
+void Graph::run(
+    const llvm::DenseMap<Placeholder *, onnxPointer> &inputPlaceholderToBuffer,
+    const llvm::DenseMap<Placeholder *, onnxPointer>
+        &outputPlaceholderToBuffer) {
   // Copy tensors from the input addresses to the Glow tensors.
   llvm::SmallVector<Tensor *, 4> tensors;
   llvm::SmallVector<Placeholder *, 4> phs;
-  for (auto inputVar : inputVarToBuffer_) {
+  for (auto inputVar : inputPlaceholderToBuffer) {
     auto *var = inputVar.first;
     auto *type = var->getType();
     void *inputBuffer = reinterpret_cast<void *>(inputVar.second);
@@ -86,21 +112,27 @@ onnxStatus Graph::run() {
   updateInputPlaceholders(ctx_, phs, tensors);
   EE.run(ctx_);
 
-  // Copy outputs to the addresses specified in the outputNodeToBuffer_.
-  for (auto outputVar : outputNodeToBuffer_) {
+  // Copy outputs to the addresses specified in the outputPlaceholderToBuffer.
+  for (auto outputVar : outputPlaceholderToBuffer) {
     void *outputAddress = reinterpret_cast<void *>(outputVar.second);
     const Tensor *res = ctx_.get(outputVar.first);
 
     memcpy(outputAddress, res->getUnsafePtr(),
            res->size() * res->getType().getElementSize());
   }
-  return ONNXIFI_STATUS_SUCCESS;
 }
 
 onnxStatus Graph::setIO(uint32_t inputsCount,
                         const onnxTensorDescriptorV1 *inputDescriptors,
                         uint32_t outputsCount,
                         const onnxTensorDescriptorV1 *outputDescriptors) {
+  // Avoid race on setting inputs/outputs and graph run.
+  inputRunMutex_.lock();
+
+  // Build name to buffer mapping for inputs and outputs from scratch.
+  inputPlaceholderToBuffer_.clear();
+  outputPlaceholderToBuffer_.clear();
+
   // Process inputs.
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &in = inputDescriptors[i];
@@ -109,24 +141,24 @@ onnxStatus Graph::setIO(uint32_t inputsCount,
     // The issue needs to be fixed on the caller side first. Once it is fixed
     // we'd need to handle missing variable accordingly here, e.g., return
     // ONNXIFI_STATUS_UNIDENTIFIED_NAME.
-    if (!onnxNameToInputVar_.count(in.name)) {
+    if (!onnxInputToPlaceholder_.count(in.name)) {
       continue;
     }
 
-    auto *input = onnxNameToInputVar_[in.name];
-    inputVarToBuffer_.insert({input, in.buffer});
+    auto *input = onnxInputToPlaceholder_[in.name];
+    inputPlaceholderToBuffer_.insert({input, in.buffer});
   }
 
   // Process outputs.
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &out = outputDescriptors[i];
 
-    if (!onnxNameToOutputNode_.count(out.name)) {
+    if (!onnxOutputToPlaceholder_.count(out.name)) {
       return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
     }
 
-    auto *output = onnxNameToOutputNode_[out.name];
-    outputNodeToBuffer_.insert({output, out.buffer});
+    auto *output = onnxOutputToPlaceholder_[out.name];
+    outputPlaceholderToBuffer_.insert({output, out.buffer});
   }
 
   return ONNXIFI_STATUS_SUCCESS;

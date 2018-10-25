@@ -62,9 +62,12 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
 #ifdef GLOW_WITH_CPU
   *numBackends = 2;
-  backendIDs[0] = new glow::onnxifi::BackendId(
-      glow::BackendKind::CPU, /*id*/ 1,
-      /*concurrency*/ std::thread::hardware_concurrency());
+
+  // TODO: change concurrency level to std::thread::hardware_concurrency()
+  // when Glow CPU backend can handle concurrent execution.
+  // For now, limit concurrent execution to a single worker thread..
+  backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::CPU, /*id*/ 1,
+                                               /*concurrency*/ 1);
   backendIDs[1] = new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
                                                /*id*/ 2, /*concurrency*/ 1);
 #else
@@ -404,23 +407,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     return initStatus;
   }
 
-  // Submit graph for asynchronous execution.
-  glowGraph->backend()->runAsync([inputFence, outputFence, glowGraph]() {
-    // Wait for all inputs to be ready.
-    auto waitStatus =
-        GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(inputFence->event);
+  auto *inputEvent = static_cast<glow::onnxifi::EventPtr>(inputFence->event);
+  auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
 
-    // If all inputs are ready, run the graph.
-    if (waitStatus == ONNXIFI_STATUS_SUCCESS) {
-      // Run graph.
-      glowGraph->run();
-    }
-
-    // Signal that the output is ready.
-    (void)GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(
-        outputFence->event);
-  });
-
+  glowGraph->runAsync(inputEvent, outputEvent);
   return ONNXIFI_STATUS_SUCCESS;
 }
 
