@@ -580,6 +580,10 @@ void BatchedReduceAddNode::verify() const {
   assert(getBatch().dims().size() > 0 && "Invalid shape");
 }
 
+void LengthsSumNode::verify() const {
+  assert(getLengths().dims().size() == 1 && "Lengths must be a 1D vector");
+}
+
 void SparseLengthsWeightedSumNode::verify() const {
   assert(getResult().getElementType() == getData().getElementType() &&
          "Mismatched element types");

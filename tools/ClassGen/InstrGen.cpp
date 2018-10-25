@@ -204,6 +204,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  /// Sums together groups of consecutive slices of Data as per the group sizes
+  /// specified by Lengths.
+  BB.newInstr("LengthsSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int64ITy"});
+
   BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)

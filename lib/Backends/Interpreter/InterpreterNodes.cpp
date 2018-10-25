@@ -1750,6 +1750,37 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
   }
 }
 
+void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto LH = lengths->getHandle<int64_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t sliceSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<float>();
+  auto OH = out->getHandle<float>();
+
+  size_t offsetIn = 0;
+  size_t offsetOut = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      for (size_t k = 0; k < sliceSize; k++) {
+        OH.raw(offsetOut + k) += DH.raw(offsetIn + k);
+      }
+      offsetIn += sliceSize;
+    }
+    offsetOut += sliceSize;
+  }
+
+  assert(offsetIn == data->size() && "All values in Data should be consumed");
+  assert(offsetOut == out->size() && "All values in Dest should be written to");
+}
+
 void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
   auto out = getTensor(I->getDest());
