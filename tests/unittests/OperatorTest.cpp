@@ -3618,6 +3618,46 @@ TEST_P(Operator, testQuantizedBatchAdd) {
   }
 }
 
+TEST_P(InterpAndCPU, LengthsSum) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 3.7],
+        [3.0, 2.9],
+        [1.1, 1.4],
+        [2.8, 8.4],
+    ]
+    LENGTHS = [2, 0, 3, 1]
+    OUTPUT = [
+        [3.3, 4.6],
+        [0.0, 0.0],
+        [8.6, 8.0],
+        [2.8, 8.4],
+    ]
+  */
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {6, 2}, "data", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+
+  ctx_.allocate(data)->getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 3.7f,
+                                      3.0f, 2.9f, 1.1f, 1.4f, 2.8f, 8.4f};
+  ctx_.allocate(lengths)->getHandle<int64_t>() = {2, 0, 3, 1};
+
+  auto R = F_->createLengthsSum("LS", data, lengths);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {4, 2});
+  expected.getHandle() = {3.3f, 4.6f, 0.0f, 0.0f, 8.6f, 8.0f, 2.8f, 8.4f};
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 TEST_P(InterpOnly, SparseLengthsSum) {
   /*
     DATA  = [

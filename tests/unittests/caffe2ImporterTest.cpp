@@ -1421,3 +1421,47 @@ TEST(caffe2, testNCHW2NHWC) {
   // We have 0 constants.
   EXPECT_EQ(mod.getConstants().size(), 0);
 }
+
+// Test loading a LengthsSum operator.
+TEST(caffe2, lengthsSum) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/lengths_sum.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  // Create inputs.
+  Tensor data(ElemKind::Int64ITy, {10, 2, 3});
+  Tensor lengths(ElemKind::FloatTy, {5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"data", "lengths"},
+                               {&data.getType(), &lengths.getType()}, *F);
+    output = caffe2LD.getSingleOutput();
+  }
+
+  // Check that the shape of the output matches that of the expected output.
+  std::vector<size_t> expectedShape{5, 2, 3};
+  EXPECT_TRUE(output->dims().vec() == expectedShape);
+
+  // High level checks on the content of the graph.
+  // We should have 1 LengthsSum and 1 Output node = 2 nodes in total.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Check that the graph has the expected shape (LengthsSum -> Save),
+  // starting from the output.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *LSN = llvm::dyn_cast<LengthsSumNode>(saveNode->getInput());
+  ASSERT_TRUE(LSN);
+
+  // Graph has two inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+}

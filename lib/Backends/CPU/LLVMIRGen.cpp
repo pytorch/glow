@@ -1760,6 +1760,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::LengthsSumInstKind: {
+    auto *LS = cast<LengthsSumInst>(I);
+    auto *dest = LS->getDest();
+    auto *data = LS->getData();
+    auto *lengths = LS->getLengths();
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+
+    auto *lengthsSize = emitConstSizeT(builder, lengths->size());
+    auto *dataType = data->getType();
+    auto *destSize = emitConstSizeT(builder, dest->size());
+    auto *sliceSize =
+        emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
+
+    auto *F = getFunction("lengths_sum", data->getElementType());
+    createCall(
+        builder, F,
+        {destPtr, dataPtr, lengthsPtr, destSize, lengthsSize, sliceSize});
+    break;
+  }
+
   case Kinded::Kind::LocalResponseNormalizationInstKind: {
     auto *LRN = cast<LocalResponseNormalizationInst>(I);
     auto *dest = LRN->getDest();

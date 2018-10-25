@@ -429,3 +429,27 @@ TEST(onnx, importSparseToDense) {
   auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
   EXPECT_EQ(vals, mod.getPlaceholderByName("values"));
 }
+
+/// Test loading LengthsSum from an ONNX model.
+TEST(onnx, importLengthsSum) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/lengths_sum.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor data(ElemKind::FloatTy, {10, 2, 3});
+    Tensor lengths(ElemKind::Int64ITy, {5});
+    ONNXModelLoader onnxLD(netFilename, {"data", "lengths"},
+                           {&data.getType(), &lengths.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+  // Verify structure: PH, PH -> LengthsSum -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *LS = llvm::dyn_cast<LengthsSumNode>(save->getInput().getNode());
+  ASSERT_TRUE(LS);
+  ASSERT_TRUE(llvm::isa<Placeholder>(LS->getData()));
+  ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
+}

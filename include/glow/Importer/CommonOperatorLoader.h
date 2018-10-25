@@ -429,6 +429,21 @@ protected:
     addNodeAsOutput(op, node);
   }
 
+  bool loadLengthsSum(const OpType &op) {
+    const std::string &opName = loadOperatorName(op);
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto lengths = getNodeValueOrCreateConstantByName(op.input(1));
+
+    if (lengths.dims().size() != 1) {
+      assert("Lengths must be a 1D vector");
+      return false;
+    }
+
+    auto *node = G_.createLengthsSum(opName, data, lengths);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -529,6 +544,9 @@ protected:
     if (typeName == "ReplaceNaN") {
       loadReplaceNaN(op, dict);
       return true;
+    }
+    if (typeName == "LengthsSum") {
+      return loadLengthsSum(op);
     }
     return false;
   }

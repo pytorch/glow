@@ -1,0 +1,11 @@
+name: "lengthsSum"
+op {
+  input: "data"
+  input: "lengths"
+  output: "result"
+  name: ""
+  type: "LengthsSum"
+}
+external_input: "data"
+external_input: "lengths"
+external_output: "result"

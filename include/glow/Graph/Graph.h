@@ -504,6 +504,15 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue sample);
 
+  /// Implements an operation that accumulates the values in \p data along the
+  /// first dimension into len(\p lengths) entries by summing together the first
+  /// lengths[0] values, then the subsequent lengths[1] values, etc.
+  /// sum(\p lengths) must equal the first dimension of \p data. This operation
+  /// is similar to SparseLengthsSum but the input is a dense represention
+  /// instead of a sparse one. In other words, it has already been Gathered.
+  LengthsSumNode *createLengthsSum(llvm::StringRef name, NodeValue data,
+                                   NodeValue lengths);
+
   /// Create a node, performing SparseLengthsSum operation:
   /// Gathers slices of the outer-most dimension of Data indexed by Indices
   /// vector, and then accumulates them into len(Lengths) entries:

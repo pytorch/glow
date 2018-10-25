@@ -910,6 +910,25 @@ void libjit_sparse_to_dense_f(float *dest, const size_t *indices,
   }
 }
 
+void libjit_lengths_sum_f(float *dest, const float *data, const size_t *lengths,
+                          size_t destSize, size_t lengthsSize,
+                          size_t sliceSize) {
+  memset(dest, 0, destSize * sizeof(float));
+
+  size_t offsetOut = 0;
+  size_t offsetIn = 0;
+
+  for (size_t i = 0; i < lengthsSize; ++i) {
+    for (size_t j = 0; j < lengths[i]; ++j) {
+      for (size_t k = 0; k < sliceSize; ++k) {
+        dest[offsetOut + k] += data[offsetIn + k];
+      }
+      offsetIn += sliceSize;
+    }
+    offsetOut += sliceSize;
+  }
+}
+
 void libjit_local_response_normalization_f(float *outW, const float *inW,
                                            float *scaleCache,
                                            const size_t *outWdims,

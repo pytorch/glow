@@ -1,0 +1,65 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "data"
+    input: "lengths"
+    output: "result"
+    op_type: "LengthsSum"
+  }
+  name: "lengths_sum"
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 10
+          }
+	  dim {
+	    dim_value: 2
+	  }
+	  dim {
+	    dim_value: 3
+	  }
+        }
+      }
+    }
+  }
+  input {
+    name: "lengths"
+    type {
+      tensor_type {
+        elem_type: INT64
+        shape {
+          dim {
+            dim_value: 5 
+          }
+	}
+      }
+    }
+  }
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 2
+          }
+	  dim {
+	    dim_value: 3
+	  }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

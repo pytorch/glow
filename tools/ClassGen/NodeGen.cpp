@@ -294,6 +294,16 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("LengthsSum")
+      .addInput("Data")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Sums slices of the outermost dimension of Data in groups "
+                    "defined by Lengths. The first Lengths[0] slices are "
+                    "added together and stored in Result[0], the subsequent "
+                    "Lengths[1] slices are added together and stored in "
+                    "Result[1], etc.");
+
   BB.newNode("SparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Weights")

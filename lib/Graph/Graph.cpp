@@ -1263,6 +1263,14 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
+LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
+                                           NodeValue lengths) {
+  ShapeVector outDims(data.dims().begin(), data.dims().end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(new LengthsSumNode(name, outTy, data, lengths));
+}
+
 SparseLengthsWeightedSumNode *
 Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
                                  NodeValue indices, NodeValue lengths) {
