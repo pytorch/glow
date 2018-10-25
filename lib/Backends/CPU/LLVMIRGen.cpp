@@ -915,6 +915,73 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(ElementIsNaN, "element_is_nan");
 #undef ARITHMETIC_UNARY_OP_CASE
 
+  case Kinded::Kind::QuantizeInstKind: {
+    auto *QI = cast<QuantizeInst>(I);
+    auto *src = QI->getSrc();
+    auto *dest = QI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *destTy = dest->getType();
+    auto *destScale = emitConstF32(builder, destTy->getScale());
+    auto *destOffset = emitConstI32(builder, destTy->getOffset());
+    auto *F = getFunction("element_quantize_kernel", dest->getElementType());
+
+    auto *stackedOpCall =
+        createCall(builder, F, {loopCount, srcPtr, destScale, destOffset});
+    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
+                                       "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::DequantizeInstKind: {
+    auto *DI = cast<DequantizeInst>(I);
+    auto *src = DI->getSrc();
+    auto *dest = DI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcTy = src->getType();
+    auto *srcScale = emitConstF32(builder, srcTy->getScale());
+    auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+    auto *F = getFunction("element_dequantize_kernel", dest->getElementType());
+
+    auto *stackedOpCall =
+        createCall(builder, F, {loopCount, srcPtr, srcScale, srcOffset});
+    auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr, loopCount,
+                                       "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::RescaleQuantizedInstKind: {
+    auto *RQI = cast<RescaleQuantizedInst>(I);
+    auto *dest = RQI->getDest();
+    auto *src = RQI->getSrc();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+
+    auto *destType = dest->getType();
+    auto *srcType = src->getType();
+
+    auto rescaleParams = quantization::quantizeScaleOffset32To8(
+        srcType->getScale() / destType->getScale(), srcType->getOffset());
+
+    auto *destOffset = emitConstI32(builder, destType->getOffset());
+    auto *srcOffset = emitConstI32(builder, srcType->getOffset());
+    auto *preShift = emitConstI32(builder, rescaleParams.pre);
+    auto *postShift = emitConstI32(builder, rescaleParams.post);
+    auto *scale = emitConstI32(builder, rescaleParams.scale);
+    auto *F = getFunction("element_rescale_kernel", dest->getElementType());
+
+    auto *stackedOpCall = createCall(
+        builder, F,
+        {loopCount, srcPtr, destOffset, srcOffset, preShift, postShift, scale});
+    auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
+                                       "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
   case Kinded::Kind::CopyInstKind: {
     auto *CI = cast<CopyInst>(I);
     auto *dest = CI->getDest();
@@ -1849,66 +1916,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
                 strides, pads});
-    break;
-  }
-
-  case Kinded::Kind::QuantizeInstKind: {
-    auto *QI = cast<QuantizeInst>(I);
-    auto *dest = QI->getDest();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, QI->getSrc());
-
-    auto *destType = dest->getType();
-    auto *numElem = emitConstSizeT(builder, destType->size());
-    auto *scale = emitConstF32(builder, destType->getScale());
-    auto *offset = emitConstI32(builder, destType->getOffset());
-
-    auto *F = getFunction("quantize", dest->getElementType());
-    createCall(builder, F, {destPtr, srcPtr, numElem, scale, offset});
-    break;
-  }
-
-  case Kinded::Kind::DequantizeInstKind: {
-    auto *DQI = cast<DequantizeInst>(I);
-    auto *dest = DQI->getDest();
-    auto *src = DQI->getSrc();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
-
-    auto *srcType = src->getType();
-    auto *numElem = emitConstSizeT(builder, dest->size());
-    auto *scale = emitConstF32(builder, srcType->getScale());
-    auto *offset = emitConstI32(builder, srcType->getOffset());
-
-    auto *F = getFunction("dequantize", dest->getElementType());
-    createCall(builder, F, {destPtr, srcPtr, numElem, scale, offset});
-    break;
-  }
-
-  case Kinded::Kind::RescaleQuantizedInstKind: {
-    auto *RQI = cast<RescaleQuantizedInst>(I);
-    auto *dest = RQI->getDest();
-    auto *src = RQI->getSrc();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
-
-    auto *destType = dest->getType();
-    auto *srcType = src->getType();
-    auto *numElem = emitConstSizeT(builder, destType->size());
-
-    auto rescaleParams = quantization::quantizeScaleOffset32To8(
-        srcType->getScale() / destType->getScale(), srcType->getOffset());
-
-    auto *destOffset = emitConstI32(builder, destType->getOffset());
-    auto *srcOffset = emitConstI32(builder, srcType->getOffset());
-    auto *preShift = emitConstI32(builder, rescaleParams.pre);
-    auto *postShift = emitConstI32(builder, rescaleParams.post);
-    auto *scale = emitConstI32(builder, rescaleParams.scale);
-
-    auto *F = getFunction("rescale", dest->getElementType());
-    createCall(builder, F,
-               {destPtr, srcPtr, numElem, destOffset, srcOffset, preShift,
-                postShift, scale});
     break;
   }
 
