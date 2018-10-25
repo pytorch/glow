@@ -43,6 +43,14 @@ public:
   float16 operator-(const float16 &b) const {
     return float16(operator float() - float(b));
   }
+  float16 operator+=(const float16 &b) {
+    *this = *this + b;
+    return *this;
+  }
+  float16 operator-=(const float16 &b) {
+    *this = *this - b;
+    return *this;
+  }
 
   /// Comparisons.
   bool operator<(const float16 &b) const { return operator float() < float(b); }
@@ -51,6 +59,7 @@ public:
     return operator float() == float(b);
   }
   bool operator>=(const float16 &b) const { return !(operator<(b)); }
+  bool operator<=(const float16 &b) const { return !(operator>(b)); }
 
   /// Cast operators.
   operator double() const { return double(operator float()); }
