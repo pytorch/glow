@@ -131,6 +131,61 @@ private:
 
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
+
+  template <typename ElemTy>
+  void fwdSigmoidInst_FloatImpl(const SigmoidInst *I);
+
+  template <typename ElemTy> void fwdTanhInst_FloatImpl(const TanhInst *I);
+
+  template <typename ElemTy>
+  void fwdCrossEntropyLossInst_FloatImpl(const CrossEntropyLossInst *I);
+
+  template <typename ElemTy>
+  void fwdLocalResponseNormalizationInst_FloatImpl(
+      const glow::LocalResponseNormalizationInst *I);
+
+  template <typename ElemTy>
+  void fwdElementSubInst_FloatImpl(const ElementSubInst *I);
+
+  template <typename ElemTy>
+  void fwdElementMulInst_FloatImpl(const ElementMulInst *I);
+
+  template <typename ElemTy>
+  void fwdElementMinInst_FloatImpl(const ElementMinInst *I);
+
+  template <typename ElemTy>
+  void fwdElementCmpLTEInst_FloatImpl(const ElementCmpLTEInst *I);
+
+  template <typename ElemTy>
+  void fwdElementPowInst_FloatImpl(const ElementPowInst *I);
+
+  template <typename ElemTy>
+  void fwdElementIsNaNInst_FloatImpl(const ElementIsNaNInst *I);
+
+  template <typename ElemTy>
+  void fwdElementLogInst_FloatImpl(const ElementLogInst *I);
+
+  template <typename ElemTy>
+  void fwdElementSelectInst_FloatImpl(const ElementSelectInst *I);
+
+  template <typename ElemTy>
+  void fwdBatchedReduceAddInst_FloatImpl(Value *batch, Value *dest,
+                                         unsigned_t axis,
+                                         const ShapeVector &eBatchDims,
+                                         const ShapeVector &eDestDims);
+
+  template <typename ElemTy>
+  void fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I);
+
+  template <typename ElemTy>
+  void fwdSparseLengthsWeightedSumInst_FloatImpl(
+      const SparseLengthsWeightedSumInst *I);
+
+  template <typename ElemTy>
+  void fwdSparseToDenseInst_FloatImpl(const SparseToDenseInst *I);
+
+  template <typename ElemTy>
+  void fwdDequantizeInst_Impl(const DequantizeInst *I);
   ///@}
 };
 

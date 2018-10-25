@@ -26,6 +26,25 @@
 
 using namespace glow;
 
+#define dispatchFloatingPointImpl(functionName, elemTy, ...)                   \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
+#define staticAssertFloatingPointType(ElemTy)                                  \
+  static_assert(                                                               \
+      std::is_floating_point<ElemTy>::value ||                                 \
+          std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value,          \
+      "This implementation is for floating-point values only")
+
 //===----------------------------------------------------------------------===//
 //                       Convolution
 //===----------------------------------------------------------------------===//
@@ -36,11 +55,8 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
+  staticAssertFloatingPointType(ElemTy);
 
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
@@ -210,15 +226,10 @@ void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
     return;
   }
 
-  if (I->getSrc()->getType()->isType<float16_t>()) {
-    fwdConvolutionInst_FloatImpl<float16_t>(I->getSrc(), I->getDest(),
-                                            I->getFilter(), I->getBias(),
-                                            kernelSizes, strides, pads, group);
-    return;
-  }
-  fwdConvolutionInst_FloatImpl<float>(I->getSrc(), I->getDest(), I->getFilter(),
-                                      I->getBias(), kernelSizes, strides, pads,
-                                      group);
+  dispatchFloatingPointImpl(fwdConvolutionInst_FloatImpl,
+                            I->getSrc()->getElementType(), I->getSrc(),
+                            I->getDest(), I->getFilter(), I->getBias(),
+                            kernelSizes, strides, pads, group);
 }
 
 void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
@@ -366,15 +377,12 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
-    fwdMaxPool<float>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
-                      I->getPads());
-  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
-    fwdMaxPool<float16_t>(inW, outW, nullptr, I->getKernels(), I->getStrides(),
-                          I->getPads());
-  } else {
-    llvm_unreachable("Type not supported");
+    return;
   }
+
+  dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
+                            outW, nullptr, I->getKernels(), I->getStrides(),
+                            I->getPads());
 }
 
 void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
@@ -385,23 +393,16 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
   if (inW->getType().isQuantizedType()) {
     fwdMaxPool<int8_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
                        I->getPads());
-  } else if (inW->getType().getElementType() == ElemKind::FloatTy) {
-    fwdMaxPool<float>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
-                      I->getPads());
-  } else if (inW->getType().getElementType() == ElemKind::Float16Ty) {
-    fwdMaxPool<float16_t>(inW, outW, &SXY, I->getKernels(), I->getStrides(),
-                          I->getPads());
-  } else {
-    llvm_unreachable("Type not supported");
+    return;
   }
+  dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
+                            outW, &SXY, I->getKernels(), I->getStrides(),
+                            I->getPads());
 }
 
 template <typename ElemTy>
 void InterpreterFunction::fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
@@ -504,13 +505,11 @@ void InterpreterFunction::fwdAvgPoolInst_I8Impl(const AvgPoolInst *I) {
 void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInst_I8Impl(I);
-  } else if (I->getSrc()->getType()->isType<float16_t>()) {
-    fwdAvgPoolInst_FloatImpl<float16_t>(I);
-  } else if (I->getSrc()->getType()->isType<float>()) {
-    fwdAvgPoolInst_FloatImpl<float>(I);
-  } else {
-    llvm_unreachable("Type not supported");
+    return;
   }
+
+  dispatchFloatingPointImpl(fwdAvgPoolInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
 }
 
 void InterpreterFunction::fwdMaxPoolWithXYGradInst(
@@ -598,25 +597,40 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
 //===----------------------------------------------------------------------===//
 //                       Activation functions
 //===----------------------------------------------------------------------===//
+template <typename ElemTy>
+void InterpreterFunction::fwdSigmoidInst_FloatImpl(const SigmoidInst *I) {
+  staticAssertFloatingPointType(ElemTy);
 
-void InterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
 
   for (size_t i = 0, e = outW.size(); i < e; i++) {
     float val = inW.raw(i);
-    outW.raw(i) = 1 / (1 + std::exp(-val));
+    outW.raw(i) = ElemTy(1 / (1 + std::exp(-val)));
+  }
+}
+
+void InterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
+  dispatchFloatingPointImpl(fwdSigmoidInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdTanhInst_FloatImpl(const TanhInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(std::tanh(val));
   }
 }
 
 void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    float val = inW.raw(i);
-    outW.raw(i) = std::tanh(val);
-  }
+  dispatchFloatingPointImpl(fwdTanhInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -625,10 +639,7 @@ void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
 
 template <typename ElemTy>
 void InterpreterFunction::fwdSoftMaxInst_Impl(const SoftMaxInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -657,16 +668,8 @@ void InterpreterFunction::fwdSoftMaxInst_Impl(const SoftMaxInst *I) {
 }
 
 void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
-  switch (I->getSrc()->getElementType()) {
-  case ElemKind::FloatTy:
-    fwdSoftMaxInst_Impl<float>(I);
-    break;
-  case ElemKind::Float16Ty:
-    fwdSoftMaxInst_Impl<float16_t>(I);
-    break;
-  default:
-    llvm_unreachable("Type is not supported");
-  }
+  dispatchFloatingPointImpl(fwdSoftMaxInst_Impl, I->getSrc()->getElementType(),
+                            I);
 }
 
 void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
@@ -687,18 +690,27 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   }
 }
 
-void InterpreterFunction::fwdCrossEntropyLossInst(
+template <typename ElemTy>
+void InterpreterFunction::fwdCrossEntropyLossInst_FloatImpl(
     const CrossEntropyLossInst *I) {
-  auto P = getWeightHandle(I->getP());
+  staticAssertFloatingPointType(ElemTy);
+
+  auto P = getWeightHandle<ElemTy>(I->getP());
   auto labels = getWeightHandle<int64_t>(I->getLabels());
-  auto CE = getWeightHandle(I->getCE());
+  auto CE = getWeightHandle<ElemTy>(I->getCE());
   auto dims = P.dims();
   for (size_t n = 0; n < dims[0]; ++n) {
     assert(labels.raw(n) >= 0 && "Cannot use negative index.");
     size_t y = labels.raw(n);
-    auto p_n = P.at({n, y});
+    float p_n = P.at({n, y});
     CE.at({0}) -= log(p_n);
   }
+}
+
+void InterpreterFunction::fwdCrossEntropyLossInst(
+    const CrossEntropyLossInst *I) {
+  dispatchFloatingPointImpl(fwdCrossEntropyLossInst_FloatImpl,
+                            I->getP()->getElementType(), I);
 }
 
 void InterpreterFunction::fwdCrossEntropyLossGradInst(
@@ -784,6 +796,7 @@ void InterpreterFunction::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
 
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
+  TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
 #undef TYPED_INSERT
 
@@ -804,6 +817,7 @@ void InterpreterFunction::fwdExtractTensorInst(
 
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
+  TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy)
 #undef TYPED_INSERT
 
@@ -894,12 +908,6 @@ void InterpreterFunction::fwdBatchOneHotImpl(const glow::BatchOneHotInst *I) {
 
 void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
   switch (I->getData()->getElementType()) {
-  case ElemKind::FloatTy:
-    fwdBatchOneHotImpl<float>(I);
-    break;
-  case ElemKind::Float16Ty:
-    fwdBatchOneHotImpl<float16_t>(I);
-    break;
   case ElemKind::Int64ITy:
     fwdBatchOneHotImpl<int64_t>(I);
     break;
@@ -907,7 +915,8 @@ void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
     fwdBatchOneHotImpl<int8_t>(I);
     break;
   default:
-    llvm_unreachable("Type is not supported");
+    dispatchFloatingPointImpl(fwdBatchOneHotImpl,
+                              I->getData()->getElementType(), I);
   }
 }
 
@@ -915,11 +924,14 @@ void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdLocalResponseNormalizationInst(
+template <typename ElemTy>
+void InterpreterFunction::fwdLocalResponseNormalizationInst_FloatImpl(
     const glow::LocalResponseNormalizationInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  auto scaleCache = getWeightHandle(I->getScale());
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto scaleCache = getWeightHandle<ElemTy>(I->getScale());
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -953,21 +965,28 @@ void InterpreterFunction::fwdLocalResponseNormalizationInst(
           float squareSum = 0.0;
           for (size_t i = (c >= halfWindowSize ? c - halfWindowSize : 0);
                i <= std::min(c + halfWindowSize, idim.c - 1); i++) {
-            auto val = inW.at({n, h, w, i});
+            float val = inW.at({n, h, w, i});
             squareSum += val * val;
           }
 
           auto scale = k + normedAlpha * squareSum;
 
           // This will be used to accelerate the backward pass.
-          scaleCache.at({n, h, w, c}) = scale;
+          scaleCache.at({n, h, w, c}) = ElemTy(scale);
 
           auto normFactor = std::pow(scale, -beta);
-          outW.at({n, h, w, c}) = inW.at({n, h, w, c}) * normFactor;
+          outW.at({n, h, w, c}) =
+              ElemTy(float(inW.at({n, h, w, c})) * normFactor);
         }
       }
     }
   }
+}
+
+void InterpreterFunction::fwdLocalResponseNormalizationInst(
+    const LocalResponseNormalizationInst *I) {
+  dispatchFloatingPointImpl(fwdLocalResponseNormalizationInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
 }
 
 void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
@@ -1078,10 +1097,7 @@ void InterpreterFunction::fwdElementAddInst_I8Impl(const ElementAddInst *I) {
 
 template <typename ElemTy>
 void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1094,12 +1110,22 @@ void InterpreterFunction::fwdElementAddInst_FloatImpl(const ElementAddInst *I) {
 void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementAddInst_I8Impl(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdElementAddInst_FloatImpl<float>(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
-    fwdElementAddInst_FloatImpl<float16_t>(I);
-  } else {
-    llvm_unreachable("Type is not supported");
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdElementAddInst_FloatImpl,
+                            I->getLHS()->getType()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementSubInst_FloatImpl(const ElementSubInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = lhsW.raw(i) - rhsW.raw(i);
   }
 }
 
@@ -1131,11 +1157,19 @@ void InterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
+  dispatchFloatingPointImpl(fwdElementSubInst_FloatImpl,
+                            I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementMulInst_FloatImpl(const ElementMulInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) - rhsW.raw(i);
+    outW.raw(i) = lhsW.raw(i) * rhsW.raw(i);
   }
 }
 
@@ -1161,12 +1195,8 @@ void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) * rhsW.raw(i);
-  }
+  dispatchFloatingPointImpl(fwdElementMulInst_FloatImpl,
+                            I->getDest()->getElementType(), I);
 }
 
 void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
@@ -1215,6 +1245,10 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     DIV_LOOP(float);
     return;
   }
+  case ElemKind::Float16Ty: {
+    DIV_LOOP(float16_t);
+    return;
+  }
   default:
     llvm_unreachable("Unsupported type for Div.");
   }
@@ -1247,10 +1281,7 @@ void InterpreterFunction::fwdElementMaxInst_I8Impl(const ElementMaxInst *I) {
 
 template <typename ElemTy>
 void InterpreterFunction::fwdElementMaxInst_FloatImpl(const ElementMaxInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1263,12 +1294,22 @@ void InterpreterFunction::fwdElementMaxInst_FloatImpl(const ElementMaxInst *I) {
 void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementMaxInst_I8Impl(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdElementMaxInst_FloatImpl<float>(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
-    fwdElementMaxInst_FloatImpl<float16_t>(I);
-  } else {
-    llvm_unreachable("Type is not supported");
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdElementMaxInst_FloatImpl,
+                            I->getLHS()->getType()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementMinInst_FloatImpl(const ElementMinInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = std::min(lhsW.raw(i), rhsW.raw(i));
   }
 }
 
@@ -1297,11 +1338,20 @@ void InterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
+  dispatchFloatingPointImpl(fwdElementMinInst_FloatImpl,
+                            I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementCmpLTEInst_FloatImpl(
+    const ElementCmpLTEInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = std::min(lhsW.raw(i), rhsW.raw(i));
+    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i) ? 1.0 : 0.0;
   }
 }
 
@@ -1330,12 +1380,8 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i) ? 1.0 : 0.0;
-  }
+  dispatchFloatingPointImpl(fwdElementCmpLTEInst_FloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 template <typename ElemTy>
@@ -1352,43 +1398,78 @@ void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getDest());
 
   switch (T->getElementType()) {
-  case ElemKind::FloatTy: {
-    fwdElementCmpEQInstImpl<float>(I);
-    break;
-  }
   case ElemKind::Int64ITy: {
     fwdElementCmpEQInstImpl<int64_t>(I);
     break;
   }
   default:
-    llvm_unreachable("fwdElementCmpEQInst not implemented for this type!");
+    dispatchFloatingPointImpl(fwdElementCmpEQInstImpl, T->getElementType(), I);
+  }
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementPowInst_FloatImpl(const ElementPowInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto baseW = getWeightHandle<ElemTy>(I->getLHS());
+  auto expW = getWeightHandle<ElemTy>(I->getRHS());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = ElemTy(pow(float(baseW.raw(i)), float(expW.raw(i))));
   }
 }
 
 void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
-  auto baseW = getWeightHandle(I->getLHS());
-  auto expW = getWeightHandle(I->getRHS());
-  auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = pow(baseW.raw(i), expW.raw(i));
+  dispatchFloatingPointImpl(fwdElementPowInst_FloatImpl,
+                            I->getLHS()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementIsNaNInst_FloatImpl(
+    const ElementIsNaNInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(std::isnan(val));
   }
 }
 
 void InterpreterFunction::fwdElementIsNaNInst(const glow::ElementIsNaNInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
+  dispatchFloatingPointImpl(fwdElementIsNaNInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementLogInst_FloatImpl(const ElementLogInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
-    outW.raw(i) = std::isnan(val);
+    outW.raw(i) = ElemTy(log(val));
   }
 }
 
 void InterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
-  auto inW = getWeightHandle(I->getSrc());
-  auto outW = getWeightHandle(I->getDest());
-  for (size_t i = 0, e = inW.size(); i < e; i++) {
-    float val = inW.raw(i);
-    outW.raw(i) = log(val);
+  dispatchFloatingPointImpl(fwdElementLogInst_FloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdElementSelectInst_FloatImpl(
+    const glow::ElementSelectInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto condW = getWeightHandle<ElemTy>(I->getCond());
+  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
+  for (size_t i = 0, e = outW.size(); i < e; i++) {
+    outW.raw(i) = (float(condW.raw(i)) != 0.0) ? lhsW.raw(i) : rhsW.raw(i);
   }
 }
 
@@ -1420,13 +1501,8 @@ void InterpreterFunction::fwdElementSelectInst(
     return;
   }
 
-  auto outW = getWeightHandle(I->getDest());
-  auto condW = getWeightHandle(I->getCond());
-  auto lhsW = getWeightHandle(I->getLHS());
-  auto rhsW = getWeightHandle(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = (condW.raw(i) != 0.0) ? lhsW.raw(i) : rhsW.raw(i);
-  }
+  dispatchFloatingPointImpl(fwdElementSelectInst_FloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1479,10 +1555,7 @@ void InterpreterFunction::fwdMatMulInst_I8Impl(const glow::MatMulInst *I) {
 
 template <typename ElemTy>
 void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   auto lhs = getWeightHandle<ElemTy>(I->getLHS());
   auto rhs = getWeightHandle<ElemTy>(I->getRHS());
@@ -1510,13 +1583,11 @@ void InterpreterFunction::fwdMatMulInst_FloatImpl(const MatMulInst *I) {
 void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdMatMulInst_I8Impl(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdMatMulInst_FloatImpl<float>(I);
-  } else if (I->getLHS()->getType()->getElementType() == ElemKind::Float16Ty) {
-    fwdMatMulInst_FloatImpl<float16_t>(I);
-  } else {
-    llvm_unreachable("Type is not supported");
+    return;
   }
+
+  dispatchFloatingPointImpl(fwdMatMulInst_FloatImpl,
+                            I->getLHS()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1628,10 +1699,7 @@ void InterpreterFunction::fwdBatchedAddInst_I8Impl(
 template <typename ElemTy>
 void InterpreterFunction::fwdBatchedAddInst_FloatImpl(
     const glow::BatchedAddInst *I) {
-  static_assert(
-      std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
-      "This implementation is for floating-point values only");
+  staticAssertFloatingPointType(ElemTy);
 
   auto batch = getWeightHandle<ElemTy>(I->getBatch());
   auto slice = getWeightHandle<ElemTy>(I->getSlice());
@@ -1655,15 +1723,45 @@ void InterpreterFunction::fwdBatchedAddInst_FloatImpl(
 void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
     fwdBatchedAddInst_I8Impl(I);
-  } else if (I->getBatch()->getType()->getElementType() == ElemKind::FloatTy) {
-    fwdBatchedAddInst_FloatImpl<float>(I);
-  } else if (I->getBatch()->getType()->getElementType() ==
-             ElemKind::Float16Ty) {
-    fwdBatchedAddInst_FloatImpl<float16_t>(I);
-  } else {
-    llvm_unreachable("Type is not supported");
+    return;
+  }
+  dispatchFloatingPointImpl(fwdBatchedAddInst_FloatImpl,
+                            I->getBatch()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdBatchedReduceAddInst_FloatImpl(
+    Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
+    const ShapeVector &eDestDims) {
+  staticAssertFloatingPointType(ElemTy);
+
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle<ElemTy>();
+  auto eDestH = eDest.getHandle<ElemTy>();
+  eDestH.clear();
+
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (size_t x = 0; x < eBatchDims[0]; x++) {
+    for (size_t y = 0; y < eBatchDims[1]; y++) {
+      for (size_t z = 0; z < eBatchDims[2]; z++) {
+        for (size_t w = 0; w < eBatchDims[3]; w++) {
+          for (size_t q = 0; q < eBatchDims[4]; q++) {
+            for (size_t r = 0; r < eBatchDims[5]; r++) {
+              size_t destIndices[] = {x, y, z, w, q, r};
+              destIndices[axis] = 0;
+              eDestH.at(destIndices) =
+                  eDestH.at(destIndices) + eBatchH.at({x, y, z, w, q, r});
+            }
+          }
+        }
+      }
+    }
   }
 }
+
 void InterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
   static_assert(max_tensor_dimensions == 6,
@@ -1736,34 +1834,15 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
       llvm_unreachable("Axis should be less than max_tensor_dimensions.");
     }
   }
-
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle();
-  auto eDestH = eDest.getHandle();
-  eDestH.clear();
-
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (size_t x = 0; x < eBatchDims[0]; x++) {
-    for (size_t y = 0; y < eBatchDims[1]; y++) {
-      for (size_t z = 0; z < eBatchDims[2]; z++) {
-        for (size_t w = 0; w < eBatchDims[3]; w++) {
-          for (size_t q = 0; q < eBatchDims[4]; q++) {
-            for (size_t r = 0; r < eBatchDims[5]; r++) {
-              size_t destIndices[] = {x, y, z, w, q, r};
-              destIndices[axis] = 0;
-              eDestH.at(destIndices) += eBatchH.at({x, y, z, w, q, r});
-            }
-          }
-        }
-      }
-    }
-  }
+  dispatchFloatingPointImpl(fwdBatchedReduceAddInst_FloatImpl,
+                            batch->getElementType(), batch, dest, axis,
+                            eBatchDims, eDestDims);
 }
 
-void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
+template <typename ElemTy>
+void InterpreterFunction::fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
   auto out = getTensor(I->getDest());
   auto data = getTensor(I->getData());
   auto lengths = getTensor(I->getLengths());
@@ -1775,8 +1854,8 @@ void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
   size_t segments = lengths->dims()[0];
   size_t sliceSize = data->size() / data->dims()[0];
 
-  auto DH = data->getHandle<float>();
-  auto OH = out->getHandle<float>();
+  auto DH = data->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
 
   size_t offsetIn = 0;
   size_t offsetOut = 0;
@@ -1794,8 +1873,16 @@ void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
   assert(offsetOut == out->size() && "All values in Dest should be written to");
 }
 
-void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
+void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
+  dispatchFloatingPointImpl(fwdLengthsSumInst_FloatImpl,
+                            I->getData()->getElementType(), I)
+}
+
+template <typename ElemTy>
+void InterpreterFunction::fwdSparseLengthsWeightedSumInst_FloatImpl(
     const SparseLengthsWeightedSumInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
   auto out = getTensor(I->getDest());
   auto data = getTensor(I->getData());
   auto weights = getTensor(I->getWeights());
@@ -1820,14 +1907,14 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
   assert(!data->getType().isQuantizedType() &&
          "Quantization is not yet supported for SparseLengthsWeightedSum.");
 
-  auto DH = data->getHandle<float>();
-  auto WH = weights->getHandle<float>();
-  auto OH = out->getHandle<float>();
+  auto DH = data->getHandle<ElemTy>();
+  auto WH = weights->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
-      float weight = WH.raw(curIdx);
+      ElemTy weight = WH.raw(curIdx);
       size_t offsetIn = IH.raw(curIdx++) * lineSize;
       size_t offsetOut = i * lineSize;
       for (size_t k = 0; k < lineSize; k++)
@@ -1836,6 +1923,11 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
   }
 }
 
+void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
+    const SparseLengthsWeightedSumInst *I) {
+  dispatchFloatingPointImpl(fwdSparseLengthsWeightedSumInst_FloatImpl,
+                            I->getData()->getElementType(), I);
+}
 void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int64_t>();
   auto lengths = getTensor(I->getLengths())->getHandle<int64_t>();
@@ -1848,7 +1940,11 @@ void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
   }
 }
 
-void InterpreterFunction::fwdSparseToDenseInst(const SparseToDenseInst *I) {
+template <typename ElemTy>
+void InterpreterFunction::fwdSparseToDenseInst_FloatImpl(
+    const SparseToDenseInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
   auto out = getTensor(I->getDest());
   auto indices = getTensor(I->getIndices());
   auto values = getTensor(I->getValues());
@@ -1878,12 +1974,12 @@ void InterpreterFunction::fwdSparseToDenseInst(const SparseToDenseInst *I) {
     // Create values slice with offsets {j, 0, ...}.
     sliceOffsets[0] = j;
     auto VS = values->getUnowned(sliceDims, sliceOffsets);
-    auto VSH = VS.getHandle<float>();
+    auto VSH = VS.getHandle<ElemTy>();
 
     // Create output slice with offsets {indices[j], 0, ...}.
     sliceOffsets[0] = IH.at({j});
     auto OS = out->getUnowned(sliceDims, sliceOffsets);
-    auto OSH = OS.getHandle<float>();
+    auto OSH = OS.getHandle<ElemTy>();
 
     // Accumulate values slice into output slice.
     size_t outputSliceSize = OS.size();
@@ -1891,6 +1987,11 @@ void InterpreterFunction::fwdSparseToDenseInst(const SparseToDenseInst *I) {
       OSH.raw(k) += VSH.raw(k);
     }
   }
+}
+
+void InterpreterFunction::fwdSparseToDenseInst(const SparseToDenseInst *I) {
+  dispatchFloatingPointImpl(fwdSparseToDenseInst_FloatImpl,
+                            I->getDest()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1939,9 +2040,10 @@ void InterpreterFunction::fwdTopKInst(const TopKInst *I) {
 
   if (inW->getType().isQuantizedType()) {
     fwdTopK<int8_t>(outW, indW, inW, k);
-  } else {
-    fwdTopK<float>(outW, indW, inW, k);
+    return;
   }
+
+  dispatchFloatingPointImpl(fwdTopK, inW->getElementType(), outW, indW, inW, k);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2004,10 +2106,14 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
 }
 
 template <typename ElemTy>
-static void fwdDequantize(Tensor *srcTensor, Handle<ElemTy> destHandle) {
+void InterpreterFunction::fwdDequantizeInst_Impl(
+    const glow::DequantizeInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+  auto *srcTensor = getTensor(I->getSrc());
   TensorQuantizationParams params{srcTensor->getType().getScale(),
                                   srcTensor->getType().getOffset()};
 
+  auto destHandle = getWeightHandle<ElemTy>(I->getDest());
   auto srcHandle = srcTensor->getHandle<int8_t>();
   for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
     destHandle.raw(i) = quantization::dequantize(srcHandle.raw(i), params);
@@ -2017,21 +2123,8 @@ static void fwdDequantize(Tensor *srcTensor, Handle<ElemTy> destHandle) {
 /// Dequantize integer tensor. Scale and Offset are based
 /// on the source tensor type.
 void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
-  auto *srcTensor = getTensor(I->getSrc());
-  switch (I->getDest()->getElementType()) {
-  case ElemKind::FloatTy: {
-    auto destHandle = getWeightHandle<float>(I->getDest());
-    fwdDequantize(srcTensor, destHandle);
-    return;
-  }
-  case ElemKind::Float16Ty: {
-    auto destHandle = getWeightHandle<float16>(I->getDest());
-    fwdDequantize(srcTensor, destHandle);
-    return;
-  }
-  default:
-    llvm_unreachable("Type not supported");
-  }
+  dispatchFloatingPointImpl(fwdDequantizeInst_Impl,
+                            I->getDest()->getElementType(), I);
 }
 
 void InterpreterFunction::fwdRescaleQuantizedInst(
