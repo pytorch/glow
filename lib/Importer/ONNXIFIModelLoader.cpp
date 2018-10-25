@@ -218,6 +218,10 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(SparseToDenseNodeKind, FloatTy);
     } else if (operation == "LengthsSum") {
       ADD_OP_MAPPING(LengthsSumNodeKind, FloatTy);
+    } else if (operation == "FCTransposed") {
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+      ADD_OP_MAPPING(BatchedAddNodeKind, FloatTy);
+      ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
     }
   }
 #undef ADD_OP_MAPPING

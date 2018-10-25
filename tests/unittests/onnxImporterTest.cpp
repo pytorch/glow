@@ -453,3 +453,31 @@ TEST(onnx, importLengthsSum) {
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getData()));
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
 }
+
+/// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
+TEST(onnx, FCTransposedWithFlatten) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/FCTransposed.onnxtxt");
+
+  Placeholder *output;
+
+  {
+    Tensor data(ElemKind::FloatTy, {2, 1, 3});
+    data.getHandle() = {1, 2, 3, 4, 5, 6};
+    ONNXModelLoader onnxLD(netFilename, {"data"}, {&data.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+
+  // High level check on the content of the graph. We have 1 reshape, 1 FC,
+  // and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *fcNode =
+      llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(fcNode);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
+  ASSERT_TRUE(reshape);
+}
