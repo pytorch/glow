@@ -1946,17 +1946,6 @@ void InterpreterFunction::fwdQuantizationProfileInst(
   quantization::generateTensorHistogram(inputTensor, currentHistogram, min,
                                         max);
 }
-/*
-template <typename ElemTy>
-static void fwdQuantize(Handle<ElemTy> srcHandle, Tensor *destTensor) {
-  TensorQuantizationParams params{destTensor->getType().getScale(),
-                                  destTensor->getType().getOffset()};
-
-  auto destHandle = destTensor->getHandle<int8_t>();
-  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-    destHandle.raw(i) = quantization::quantize(srcHandle.raw(i), params);
-  }
-  }*/
 
 /// Quantize floating point tensor. Scale and Offset are based on return type
 /// of the instruction \p I.
@@ -1969,27 +1958,6 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
       destTy.getElementType());
   destTensor->assign(&qTensor);
 }
-
-/*
-/// Quantize floating point tensor. Scale and Offset are based on return type
-/// of the instruction \p I.
-void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
-  auto *destTensor = getTensor(I->getDest());
-  switch (I->getSrc()->getElementType()) {
-  case ElemKind::FloatTy: {
-    auto srcHandle = getWeightHandle<float>(I->getSrc());
-    fwdQuantize(srcHandle, destTensor);
-    return;
-  }
-  case ElemKind::Float16Ty: {
-    auto srcHandle = getWeightHandle<float16>(I->getSrc());
-    fwdQuantize(srcHandle, destTensor);
-    return;
-  }
-  default:
-    llvm_unreachable("Type not supported");
-  }
-  }*/
 
 template <typename ElemTy>
 static void fwdDequantize(Tensor *srcTensor, Handle<ElemTy> destHandle) {
