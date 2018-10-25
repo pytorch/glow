@@ -29,10 +29,26 @@ TEST(Float16, add) {
   EXPECT_EQ(a + b, float16(float(a) + float(b)));
 }
 
+TEST(Float16, addEqual) {
+  float16 a = 46.2;
+  float16 b = 13.66;
+  float16 aPlusB = a + b;
+  a += b;
+  EXPECT_EQ(a, aPlusB);
+}
+
 TEST(Float16, sub) {
   float16 a = 2.0;
   float16 b = 0.5;
   EXPECT_EQ(a - b, float16(float(a) - float(b)));
+}
+
+TEST(Float16, minusEqual) {
+  float16 a = -146.2;
+  float16 b = 131.66;
+  float16 aMinusB = a - b;
+  a -= b;
+  EXPECT_EQ(a, aMinusB);
 }
 
 TEST(Float16, mul) {
@@ -74,4 +90,11 @@ TEST(Float16, ge) {
   float16 b = 4543.4;
   EXPECT_EQ(a >= b, float(a) >= float(b));
   EXPECT_FALSE(a >= b);
+}
+
+TEST(Float16, le) {
+  float16 a = 214.1;
+  float16 b = 4543.4;
+  EXPECT_EQ(a <= b, float(a) <= float(b));
+  EXPECT_TRUE(a <= b);
 }
