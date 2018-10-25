@@ -475,6 +475,7 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int8QTy"})
       .autoVerify(VerifyKind::TypeCheck, {"Src", "isFPType()"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .dataParallel()
       .autoIRGen();
 
   BB.newInstr("Dequantize")
@@ -483,6 +484,7 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isFPType()"})
       .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::Int8QTy"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .dataParallel()
       .autoIRGen();
 
   BB.newInstr("RescaleQuantized")
@@ -491,6 +493,7 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "ElemKind::Int8QTy"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .dataParallel()
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

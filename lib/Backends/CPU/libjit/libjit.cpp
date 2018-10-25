@@ -1178,29 +1178,24 @@ void libjit_avg_pool_grad_f(float *inG, const float *outG,
   }       // N
 }
 
-void libjit_quantize_i8(int8_t *outW, const float *inW, size_t numElem,
-                        float scale, int32_t offset) {
-  for (size_t i = 0; i < numElem; i++) {
-    int32_t result = (int32_t)nearbyintf(inW[i] / scale + offset);
-    outW[i] = MAX(INT8_MIN, MIN(INT8_MAX, result));
-  }
+int8_t libjit_element_quantize_kernel_i8(size_t idx, const float *inW,
+                                         float scale, int32_t offset) {
+  int32_t result = (int32_t)nearbyintf(inW[idx] / scale + offset);
+  return (int8_t)MAX(INT8_MIN, MIN(INT8_MAX, result));
 }
 
-void libjit_dequantize_f(float *outW, const int8_t *inW, size_t numElem,
-                         float scale, int32_t offset) {
-  for (size_t i = 0; i < numElem; i++) {
-    outW[i] = scale * (inW[i] - offset);
-  }
+float libjit_element_dequantize_kernel_f(size_t idx, const int8_t *inW,
+                                         float scale, int32_t offset) {
+  return scale * (inW[idx] - offset);
 }
 
-void libjit_rescale_i8(int8_t *outW, const int8_t *inW, size_t numElem,
-                       int32_t outOffset, int32_t inOffset, int32_t pre,
-                       int32_t post, int32_t scale) {
-  for (size_t i = 0; i < numElem; i++) {
-    int32_t s =
-        libjit_scale_i32i8(inW[i] - inOffset, pre, post, scale, outOffset);
-    outW[i] = libjit_clip(s);
-  }
+int8_t libjit_element_rescale_kernel_i8(size_t idx, const int8_t *inW,
+                                        int32_t outOffset, int32_t inOffset,
+                                        int32_t pre, int32_t post,
+                                        int32_t scale) {
+  int32_t s =
+      libjit_scale_i32i8(inW[idx] - inOffset, pre, post, scale, outOffset);
+  return libjit_clip(s);
 }
 
 void libjit_softmax_f(const float *inW, float *outW, const size_t *idim,

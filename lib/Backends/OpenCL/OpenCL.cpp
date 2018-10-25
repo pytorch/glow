@@ -632,9 +632,13 @@ void OpenCLFunction::execute(Context &ctx) {
                                      : ElemKind::FloatTy;
     std::string kernelName = getKernelName(I.getKindName(), elemTy);
 
-    //  Check if the instruction is quantized.
+    //  Check if the instruction is quantized. Consider an instruction to be
+    //  quantized if its destination or source operands are quantized.
     bool isQuantized = I.getNumOperands() &&
-                       I.getOperand(0).first->getType()->isQuantizedType();
+                       (I.getOperand(0).first->getType()->isQuantizedType() ||
+                        I.getOperand(I.getNumOperands() - 1)
+                            .first->getType()
+                            ->isQuantizedType());
 
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -670,6 +674,7 @@ void OpenCLFunction::execute(Context &ctx) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
+      auto numMandatoryArgs = numArgs;
 
       if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
@@ -712,63 +717,44 @@ void OpenCLFunction::execute(Context &ctx) {
             setKernelArg(kernel, ++numArgs, resultScaleParams);
           }
         }
+        // Quantize floating point tensor. Scale and Offset are based on return
+        // type of the instruction \p I.
+        if (auto *QI = dyn_cast<QuantizeInst>(&I)) {
+          float destTensorQuantizationScale =
+              QI->getDest()->getType()->getScale();
+          int32_t destTensorQuantizationOffset =
+              QI->getDest()->getType()->getOffset();
+          setKernelArg(kernel, ++numArgs, destTensorQuantizationScale);
+          setKernelArg(kernel, ++numArgs, destTensorQuantizationOffset);
+        }
+        // Rescale quantized tensor. Scale and Offset are based on return type
+        // of the instruction \p I.
+        if (auto *RQI = dyn_cast<RescaleQuantizedInst>(&I)) {
+          auto *dest = RQI->getDest();
+          auto *src = RQI->getSrc();
+          auto *destType = dest->getType();
+          auto *srcType = src->getType();
+          auto rescaleParams = quantization::quantizeScaleOffset32To8(
+              srcType->getScale() / destType->getScale(), srcType->getOffset());
+
+          setKernelArg(kernel, ++numArgs, destType->getOffset());
+          setKernelArg(kernel, ++numArgs, srcType->getOffset());
+          setKernelArg(kernel, ++numArgs, rescaleParams);
+        }
+        // Dequantize integer tensor. Scale and Offset are based
+        // on the source tensor type.
+        if (auto *QI = dyn_cast<DequantizeInst>(&I)) {
+          float srcTensorQuantizationScale =
+              QI->getSrc()->getType()->getScale();
+          int32_t srcTensorQuantizationOffset =
+              QI->getSrc()->getType()->getOffset();
+          setKernelArg(kernel, ++numArgs, srcTensorQuantizationScale);
+          setKernelArg(kernel, ++numArgs, srcTensorQuantizationOffset);
+        }
       }
-      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
-      continue;
-    }
 
-    // Quantize floating point tensor. Scale and Offset are based on return type
-    // of the instruction \p I.
-    if (auto *QI = dyn_cast<QuantizeInst>(&I)) {
-      float destTensorQuantizationScale = QI->getDest()->getType()->getScale();
-      int32_t destTensorQuantizationOffset =
-          QI->getDest()->getType()->getOffset();
-      size_t global = QI->getDest()->getType()->size();
-
-      cl_kernel kernel = createKernel(kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
-      setKernelArg(kernel, ++numArgs, destTensorQuantizationScale);
-      setKernelArg(kernel, ++numArgs, destTensorQuantizationOffset);
-      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
-      continue;
-    }
-
-    // Rescale quantized tensor. Scale and Offset are based on return type
-    // of the instruction \p I.
-    if (auto *RQI = dyn_cast<RescaleQuantizedInst>(&I)) {
-      auto *dest = RQI->getDest();
-      auto *src = RQI->getSrc();
-      auto *destType = dest->getType();
-      auto *srcType = src->getType();
-      size_t global = destType->size();
-
-      auto rescaleParams = quantization::quantizeScaleOffset32To8(
-          srcType->getScale() / destType->getScale(), srcType->getOffset());
-
-      cl_kernel kernel = createKernel(kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
-      setKernelArg(kernel, ++numArgs, destType->getOffset());
-      setKernelArg(kernel, ++numArgs, srcType->getOffset());
-      setKernelArg(kernel, ++numArgs, rescaleParams);
-      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
-      continue;
-    }
-
-    // Dequantize integer tensor. Scale and Offset are based
-    // on the source tensor type.
-    if (auto *QI = dyn_cast<DequantizeInst>(&I)) {
-      float srcTensorQuantizationScale = QI->getSrc()->getType()->getScale();
-      int32_t srcTensorQuantizationOffset =
-          QI->getSrc()->getType()->getOffset();
-      size_t global = QI->getDest()->getType()->size();
-
-      cl_kernel kernel = createKernel(kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
-      setKernelArg(kernel, ++numArgs, srcTensorQuantizationScale);
-      setKernelArg(kernel, ++numArgs, srcTensorQuantizationOffset);
+      assert((!isQuantized) ||
+             numArgs > numMandatoryArgs && "Not enough kernel arguments");
       enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
       continue;
     }
