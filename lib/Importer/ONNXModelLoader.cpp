@@ -441,6 +441,35 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "FCTransposed") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    if (in.getType()->dims().size() > 2) {
+      size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+      in = G_.createFlatten("fc.in", in, axis);
+    }
+
+    Tensor *w = getTensorByName(op.input(1));
+    Tensor *b = getTensorByName(op.input(2));
+    unsigned_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
+
+    // w is stored already transposed. No need to additionally transpose it.
+    Tensor tmp;
+    if (w->dims().size() > 2) {
+      auto wDims = flattenCdr(w->dims(), axis_w);
+      tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
+      tmp.copyRawFrom(w);
+      w = &tmp;
+    }
+
+    auto W =
+        G_.getParent()->addConstant(new Constant("weights", std::move(*w)));
+    auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
+    auto *node = G_.createFullyConnected(opName, in, W, B);
+
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   if (typeName == "Gemm") {
     auto A = getNodeValueOrCreateConstantByName(op.input(0));
     auto B = getNodeValueOrCreateConstantByName(op.input(1));
