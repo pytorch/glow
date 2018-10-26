@@ -61,6 +61,9 @@ public:
   /// \returns the internal graph.
   Module &getModule() { return M_; }
 
+  /// \returns the compiled function.
+  CompiledFunction &getCompiledFunction() { return *function_; }
+
   /// \returns whether operation is supported by the underlying backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     return backend_->isOpSupported(opKind, elementTy);
