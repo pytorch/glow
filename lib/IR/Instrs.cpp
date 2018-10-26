@@ -95,7 +95,8 @@ void QuantizeInst::verify() const {
   assert((getDest()->getElementType() == ElemKind::Int8QTy ||
           getDest()->getElementType() == ElemKind::Int32QTy) &&
          "Invalid type");
-  assert(getSrc()->getElementType() == ElemKind::FloatTy ||
-         getSrc()->getElementType() == ElemKind::Float16Ty && "Invalid type");
+  assert((getSrc()->getElementType() == ElemKind::FloatTy ||
+          getSrc()->getElementType() == ElemKind::Float16Ty) &&
+         "Invalid type");
   assert(getSrc()->dims() == getDest()->dims() && "Invalid shape");
 }
