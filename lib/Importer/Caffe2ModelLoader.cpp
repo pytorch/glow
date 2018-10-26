@@ -348,32 +348,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "DotProduct") {
-    // Load the inputs.
-    auto X = getNodeValueOrCreateConstantByName(op.input(0));
-    auto Y = getNodeValueOrCreateConstantByName(op.input(1));
-
-    // Create dot product node.
-    auto *node = G_.createDotProduct(opName, X, Y);
-
-    // Save the output.
-    addNodeAsOutput(op, node);
-    return;
-  }
-
-  if (typeName == "ReplaceNaN") {
-    // Load the input and NaN replacement value:
-    auto input = getNodeValueOrCreateConstantByName(op.input(0));
-    auto valueIt = dict.find("value");
-    auto value = valueIt != dict.end() ? loadFloat(valueIt->second) : 0.0f;
-
-    auto *node = G_.createReplaceNaN(opName, input, value);
-
-    // Save the outputs:
-    addNodeAsOutput(op, node);
-    return;
-  }
-
   if (typeName == "ChannelShuffle") {
     auto in = getNodeValueOrCreateConstantByName(op.input(0));
 
@@ -479,13 +453,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto in2 = getNodeValueOrCreateConstantByName(op.input(2));
     auto in3 = getNodeValueOrCreateConstantByName(op.input(3));
     auto *node = G_.createSparseLengthsWeightedSum(opName, in0, in1, in2, in3);
-    addNodeAsOutput(op, node);
-    return;
-  }
-
-  if (typeName == "LengthsToRanges") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    auto *node = G_.createLengthsToRanges(opName, in);
     addNodeAsOutput(op, node);
     return;
   }
@@ -646,16 +613,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                      : std::numeric_limits<float>::max();
 
     auto *node = G_.createClip(opName, in, cmin, cmax);
-    addNodeAsOutput(op, node);
-    return;
-  }
-
-  if (typeName == "BatchBoxCox") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
-    auto lambda1 = getNodeValueOrCreateConstantByName(op.input(1));
-    auto lambda2 = getNodeValueOrCreateConstantByName(op.input(2));
-
-    auto *node = G_.createBatchBoxCox(opName, data, lambda1, lambda2);
     addNodeAsOutput(op, node);
     return;
   }

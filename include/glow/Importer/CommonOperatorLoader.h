@@ -398,6 +398,37 @@ protected:
     addNodeAsOutput(op, node);
   }
 
+  void loadLengthsToRanges(const OpType &op) {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto *node = G_.createLengthsToRanges(loadOperatorName(op), in);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadBatchBoxCox(const OpType &op) {
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto lambda1 = getNodeValueOrCreateConstantByName(op.input(1));
+    auto lambda2 = getNodeValueOrCreateConstantByName(op.input(2));
+    auto *node =
+        G_.createBatchBoxCox(loadOperatorName(op), data, lambda1, lambda2);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadDotProduct(const OpType &op) {
+    auto X = getNodeValueOrCreateConstantByName(op.input(0));
+    auto Y = getNodeValueOrCreateConstantByName(op.input(1));
+    auto *node = G_.createDotProduct(loadOperatorName(op), X, Y);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadReplaceNaN(const OpType &op, const ArgumentDictionaryTy &dict) {
+    // Load the input and NaN replacement value:
+    auto input = getNodeValueOrCreateConstantByName(op.input(0));
+    auto valueIt = dict.find("value");
+    auto value = valueIt != dict.end() ? loadFloat(valueIt->second) : 0.0f;
+    auto *node = G_.createReplaceNaN(loadOperatorName(op), input, value);
+    addNodeAsOutput(op, node);
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -481,6 +512,22 @@ protected:
     }
     if (typeName == "BatchOneHot") {
       loadBatchOneHot(op);
+      return true;
+    }
+    if (typeName == "LengthsToRanges") {
+      loadLengthsToRanges(op);
+      return true;
+    }
+    if (typeName == "BatchBoxCox") {
+      loadBatchBoxCox(op);
+      return true;
+    }
+    if (typeName == "DotProduct") {
+      loadDotProduct(op);
+      return true;
+    }
+    if (typeName == "ReplaceNaN") {
+      loadReplaceNaN(op, dict);
       return true;
     }
     return false;

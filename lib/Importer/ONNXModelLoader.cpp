@@ -493,42 +493,6 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
-  if (typeName == "BatchBoxCox") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
-    auto lambda1 = getNodeValueOrCreateConstantByName(op.input(1));
-    auto lambda2 = getNodeValueOrCreateConstantByName(op.input(2));
-
-    auto *node = G_.createBatchBoxCox(opName, data, lambda1, lambda2);
-    addNodeAsOutput(op, node);
-    return true;
-  }
-
-  if (typeName == "DotProduct") {
-    auto X = getNodeValueOrCreateConstantByName(op.input(0));
-    auto Y = getNodeValueOrCreateConstantByName(op.input(1));
-
-    auto *node = G_.createDotProduct(opName, X, Y);
-    addNodeAsOutput(op, node);
-    return true;
-  }
-
-  if (typeName == "LengthsToRanges") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    auto *node = G_.createLengthsToRanges(opName, in);
-    addNodeAsOutput(op, node);
-    return true;
-  }
-
-  if (typeName == "ReplaceNaN") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    float replacementValue =
-        dict.count("value") ? loadFloat(dict["value"]) : 0.0f;
-
-    auto *node = G_.createReplaceNaN(opName, in, replacementValue);
-    addNodeAsOutput(op, node);
-    return true;
-  }
-
   if (typeName == "SparseToDense") {
     if (op.input_size() != 3) {
       return false;
