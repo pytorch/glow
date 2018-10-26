@@ -2089,6 +2089,11 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
+  // Optimize may be called after backend specific transformations and some
+  // nodes may have become unused. It is a good idea to remove them, before
+  // proceeding with any further optimizations.
+  DCE(F);
+
   // Sink transpose operations in an attempt to cancel them out.
   // Perform code sinking until a fixed-point is reached.
   // On big functions, the number of iterations until the fixpoint

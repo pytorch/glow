@@ -2134,3 +2134,21 @@ TEST_F(GraphOptz, optimizeSameTypeConversions) {
   EXPECT_TRUE(llvm::isa<ConvertToNode>(save2->getInput()));
   EXPECT_EQ(save2->getInput(), NodeValue(conv2));
 }
+
+TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
+  auto *input1 = mod_.createConstant(ElemKind::FloatTy, {5, 10}, "input1");
+  // Create an unused node.
+  F_->createAdd("add", input1, input1);
+  auto *transposedInput1 = F_->createTranspose("transpose", input1, {1, 0});
+  auto *save1 = F_->createSave("save1", transposedInput1);
+
+  // add + transpose + save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // A single node: save.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  // transpose should be eliminated and replaced by the transposed constant.
+  EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
+}
