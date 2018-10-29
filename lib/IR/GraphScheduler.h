@@ -21,6 +21,15 @@
 #include <unordered_map>
 
 namespace glow {
+
+/// Specifies the kind of graph scheduling to perform.
+enum class SchedulerKind {
+  /// This is a heuristics that tries to minimize memory usage.
+  ChildMemSizeBased,
+  /// Performs a standard topological search
+  TopologicalSortBased,
+};
+
 class Scheduler {
 protected:
   /// Graph being processed.
@@ -79,6 +88,24 @@ public:
 
   void schedule() override;
 };
+
+/// This is a simple scheduler based on topological sort based
+/// on post order traversal.
+
+class TopologicalSortBasedScheduler : public Scheduler {
+  std::unordered_map<const Node *, int64_t> indegree_;
+
+public:
+  TopologicalSortBasedScheduler(Function &G, NodesPtrList &Schedule)
+      : Scheduler(G, Schedule) {}
+
+  ~TopologicalSortBasedScheduler() override = default;
+
+  void schedule() override;
+};
+
+Scheduler *createScheduler(SchedulerKind schedulerKind, Function &G,
+                           NodesPtrList &scheduled);
 
 } // namespace glow
 
