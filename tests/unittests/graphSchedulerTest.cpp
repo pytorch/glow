@@ -68,22 +68,48 @@ TEST(GraphScheduler, testMaxSizeLessThanResultSize) {
   //     --------> concat {0} <-------
   //               {3, 4, 4}
   //
-  // Since all of the tensors are Variables, they don't need
-  // memory for storing their outputs. Consequently, sliceBig
-  // should be scheduled before concatSmall in this example
-  // because the former frees up some memory while the latter
-  // uses up more memory after execution.
-  NodesPtrList schedule;
-  ChildMemSizeBasedScheduler scheduler(*F, schedule);
-  scheduler.schedule();
 
-  // Find the positions of sliceBig and concatSmall in
-  // the schedule.
-  auto concatSmallIt = std::find(schedule.begin(), schedule.end(), concatSmall);
-  auto sliceBigIt = std::find(schedule.begin(), schedule.end(), sliceBig);
+  {
+    // Since all of the tensors are Variables, they don't need
+    // memory for storing their outputs. Consequently, sliceBig
+    // should be scheduled before concatSmall in this example
+    // because the former frees up some memory while the latter
+    // uses up more memory after execution.
+    NodesPtrList schedule;
+    ChildMemSizeBasedScheduler scheduler(*F, schedule);
+    scheduler.schedule();
 
-  // For the reason given above, sliceBig should be scheduled
-  // before concatSmall.
-  EXPECT_LT(std::distance(schedule.begin(), sliceBigIt),
-            std::distance(schedule.begin(), concatSmallIt));
+    // Find the positions of sliceBig and concatSmall in
+    // the schedule.
+    auto concatSmallIt =
+        std::find(schedule.begin(), schedule.end(), concatSmall);
+    auto sliceBigIt = std::find(schedule.begin(), schedule.end(), sliceBig);
+
+    // For the reason given above, sliceBig should be scheduled
+    // before concatSmall.
+    EXPECT_LT(std::distance(schedule.begin(), sliceBigIt),
+              std::distance(schedule.begin(), concatSmallIt));
+  }
+
+  {
+    // The graph will be traversed in post order. The root
+    // node is concat node in this case. Then, concatSmall node
+    // will be visited, since it's the left operand of concat node.
+    // Consequently, sliceBig should be scheduled after concatSmall.
+
+    NodesPtrList schedule;
+    TopologicalSortBasedScheduler scheduler(*F, schedule);
+    scheduler.schedule();
+
+    // Find the positions of sliceBig and concatSmall in
+    // the schedule.
+    auto concatSmallIt =
+        std::find(schedule.begin(), schedule.end(), concatSmall);
+    auto sliceBigIt = std::find(schedule.begin(), schedule.end(), sliceBig);
+
+    // For the reason given above, sliceBig should be scheduled
+    // after concatSmall.
+    EXPECT_GT(std::distance(schedule.begin(), sliceBigIt),
+              std::distance(schedule.begin(), concatSmallIt));
+  }
 }

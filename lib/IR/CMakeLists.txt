@@ -4,7 +4,9 @@ add_library(IR
               IRUtils.cpp
               IRBuilder.cpp
               Instrs.cpp
-              GraphScheduler.cpp)
+              GraphScheduler.cpp
+              ChildMemSizeBasedScheduler.cpp
+              TopologicalSortBasedScheduler.cpp)
 
 target_link_libraries(IR
                       PUBLIC
