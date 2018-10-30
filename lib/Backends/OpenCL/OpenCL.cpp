@@ -675,6 +675,7 @@ void OpenCLFunction::execute(Context &ctx) {
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);
       auto numMandatoryArgs = numArgs;
+      (void)numMandatoryArgs;
 
       if (auto *SI = dyn_cast<SplatInst>(&I)) {
         // Pass the splat as a parameter.
@@ -931,6 +932,10 @@ void OpenCLFunction::execute(Context &ctx) {
     }
 
     if (auto *BA = dyn_cast<BatchedAddInst>(&I)) {
+      if (isQuantized &&
+          BA->getSlice()->getType()->getElementType() == ElemKind::Int32QTy) {
+        kernelName += "_32";
+      }
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, tensors_);

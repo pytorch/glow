@@ -1458,8 +1458,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSlice = emitConstSizeT(builder, bdim.first);
     auto *sliceSize = emitConstSizeT(builder, bdim.second);
 
-    auto *F = getFunction("batchedadd", dest->getElementType());
-
     if (batch->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
       auto *batchTy = batch->getType();
@@ -1485,11 +1483,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *slicePost = emitConstI32(builder, sliceScaleParams.post);
       auto *sliceScale = emitConstI32(builder, sliceScaleParams.scale);
 
+      llvm::Function *F = nullptr;
+      if (sliceTy->getElementType() == ElemKind::Int8QTy) {
+        F = getFunction("batchedadd", dest->getElementType());
+      } else if (sliceTy->getElementType() == ElemKind::Int32QTy) {
+        F = getFunction("batchedadd_i32", dest->getElementType());
+      } else {
+        GLOW_ASSERT("Type is not supported.");
+      }
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize, destOffset,
                   batchOffset, sliceOffset, batchPre, batchPost, batchScale,
                   slicePre, slicePost, sliceScale});
     } else {
+      auto *F = getFunction("batchedadd", dest->getElementType());
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize});
     }

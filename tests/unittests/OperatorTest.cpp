@@ -1713,7 +1713,7 @@ TEST_P(InterpAndCPU, IntConcat) {
   }
 }
 
-TEST_P(InterpAndCPU, IntFC) {
+TEST_P(Operator, IntFC) {
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
   auto *input =
@@ -1732,7 +1732,7 @@ TEST_P(InterpAndCPU, IntFC) {
   TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
   TypeRef weightsTy =
       mod_.uniqueType(ElemKind::Int8QTy, weights->dims(), 0.01, 2);
-  TypeRef biasTy = mod_.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.02, 1);
+  TypeRef biasTy = mod_.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.02, 1);
 
   auto *inputq = F_->createQuantize("input.q", input, inputTy);
   auto *weightsq = F_->createQuantize("filter.q", weights, weightsTy);
@@ -3567,46 +3567,47 @@ TEST_P(Operator, testBatchAdd) {
   }
 }
 
-/// Tests quantized batched-add arithmetic.
-TEST_P(Operator, testQuantizedBatchAdd) {
+static void quantizedBatchAdd(ExecutionEngine &EE, Function *F, Context &ctx,
+                              ElemKind Ty) {
+  auto &mod = EE.getModule();
   unsigned numSlices = 10;
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
-                                       "input", false);
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
+                                      "input", false);
   auto *slice =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
 
-  ctx_.allocate(input)->getHandle().randomize(-5.0, 5.0, mod_.getPRNG());
-  ctx_.allocate(slice)->getHandle().randomize(-5.0, 5.0, mod_.getPRNG());
+  ctx.allocate(input)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  ctx.allocate(slice)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
 
   // Scale the numbers in the range (-5. .. 5.) to (-50 .. 50).
-  auto qInType = mod_.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
-  auto qSliceType2 = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, .1, 0);
-  auto qSliceType3 = mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 10}, .1, 0);
+  auto qInType = mod.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
+  auto qSliceType2 = mod.uniqueType(Ty, {10, 10}, .1, 0);
+  auto qSliceType3 = mod.uniqueType(ElemKind::Int8QTy, {1, 10, 10}, .1, 0);
 
-  auto *intInput = F_->createQuantize("qinput", input, qInType);
-  auto *intSlice = F_->createQuantize("qslice", slice, qSliceType2);
+  auto *intInput = F->createQuantize("qinput", input, qInType);
+  auto *intSlice = F->createQuantize("qslice", slice, qSliceType2);
 
   std::vector<NodeValue> adds;
   for (size_t i = 0; i < numSlices; i++) {
-    auto *ex = F_->createSlice("slice", intInput, {i, 0, 0}, qSliceType3);
-    auto *ba = F_->createBatchedAdd("add", ex, intSlice);
+    auto *ex = F->createSlice("slice", intInput, {i, 0, 0}, qSliceType3);
+    auto *ba = F->createBatchedAdd("add", ex, intSlice);
     adds.push_back(ba);
   }
 
-  Node *cc = F_->createConcat("concat", adds, 0, qInType);
-  cc = F_->createDequantize("dq", cc);
-  auto *result = F_->createSave("save", cc);
-  ctx_.allocate(result->getPlaceholder());
+  Node *cc = F->createConcat("concat", adds, 0, qInType);
+  cc = F->createDequantize("dq", cc);
+  auto *result = F->createSave("save", cc);
+  ctx.allocate(result->getPlaceholder());
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  EE_.compile(CompilationMode::Infer, F_, ctx_);
-  EE_.run(ctx_);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run(ctx);
 
-  auto RH = ctx_.get(result->getPlaceholder())->getHandle();
-  auto IH = ctx_.get(input)->getHandle();
-  auto SH = ctx_.get(slice)->getHandle();
+  auto RH = ctx.get(result->getPlaceholder())->getHandle();
+  auto IH = ctx.get(input)->getHandle();
+  auto SH = ctx.get(slice)->getHandle();
 
   // Check that batched add works as expected.
   for (size_t i = 0; i < numSlices; i++) {
@@ -3616,6 +3617,14 @@ TEST_P(Operator, testQuantizedBatchAdd) {
       }
     }
   }
+}
+
+/// Tests quantized batched-add arithmetic.
+TEST_P(Operator, testQuantizedBatchAdd) {
+  // Test Int8QTy Slice.
+  quantizedBatchAdd(EE_, F_, ctx_, ElemKind::Int8QTy);
+  // Test Int32QTy Slice.
+  quantizedBatchAdd(EE_, F_, ctx_, ElemKind::Int32QTy);
 }
 
 TEST_P(InterpAndCPU, LengthsSum) {
