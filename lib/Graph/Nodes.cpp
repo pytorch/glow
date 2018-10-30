@@ -187,6 +187,10 @@ static void verifyFullyConnected(NodeValue src, NodeValue weights,
   assert(bias.dims()[0] == weights.dims()[1] &&
          weights.dims()[1] == dest.dims()[1] &&
          "Inconsistent bias/weights/dest sizes.");
+
+  if (src.getElementType() == ElemKind::Int8QTy) {
+    assert(bias.getElementType() == ElemKind::Int32QTy && "Invalid Type");
+  }
 }
 
 static void verifyPool(NodeValue src, NodeValue dest,
@@ -569,9 +573,15 @@ void BatchedAddNode::verify() const {
   assert(getBatch().dims() == getResult().dims() && "Invalid dest type");
   (void)batchShape;
   (void)rhsShape;
-  assert(getBatch().getType()->getElementType() ==
-             getSlice().getType()->getElementType() &&
-         "Mismatched element types");
+  if (getBatch().getType()->getElementType() == ElemKind::Int8QTy) {
+    assert((getSlice().getType()->getElementType() == ElemKind::Int8QTy ||
+            getSlice().getType()->getElementType() == ElemKind::Int32QTy) &&
+           "Mismatched element types");
+  } else {
+    assert(getBatch().getType()->getElementType() ==
+               getSlice().getType()->getElementType() &&
+           "Mismatched element types");
+  }
 }
 
 void BatchedReduceAddNode::verify() const {

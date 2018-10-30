@@ -358,7 +358,7 @@ TEST(Graph, simpleQuant) {
   auto *fcFilter =
       MD.createPlaceholder(ElemKind::Int8QTy, {s, 6}, 0.4, 2, "F", true);
   auto *fcBias =
-      MD.createPlaceholder(ElemKind::Int8QTy, {6}, 0.4, 2, "B", true);
+      MD.createPlaceholder(ElemKind::Int32QTy, {6}, 0.4, 2, "B", true);
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
   Context ctx;
   F->createSave("ret", O);

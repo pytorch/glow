@@ -79,6 +79,16 @@ protected:
           weights.getNode()->getNthResult(0).getType()->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
+    } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
+               idx == 2) {
+      auto fcN = llvm::dyn_cast<FullyConnectedNode>(&use);
+      NodeValue input = fcN->getInput();
+      NodeValue weights = fcN->getWeights();
+      float scaleInput = input.getNode()->getNthResult(0).getType()->getScale();
+      float scaleWeights =
+          weights.getNode()->getNthResult(0).getType()->getScale();
+      return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
+                             scaleInput * scaleWeights, TQP.offset);
     } else {
       return mod_.uniqueType(ElemKind::Int8QTy, val.dims(), TQP.scale,
                              TQP.offset);
