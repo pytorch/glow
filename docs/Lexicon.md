@@ -9,6 +9,18 @@
   A computational framework based on a synthetic construction of a the
   biological neural network in brains.
 
+* AOT  
+  Ahead Of Time (Compilation)  
+  A technique used with JIT where some code is compiled during the build and
+  is executed directly rather than compiled when needed.
+
+### B
+
+* BC  
+  Byte Code  
+  A representation of the instruction stream encoded to be efficiently
+  interpreted by an executor.
+
 #### C
 
 * CNN  
@@ -42,7 +54,24 @@
   A gating mechanism for neural networks.  They are similar to LSTM but exhibit
   better performance characteristics on smaller data sets.
 
+### I
+
+* IR  
+  Intermediate Representation  
+  A representation of source code while being converted from the source language
+  to the target language.
+
+### J
+
+* JIT  
+  Just In Time (Compilation)  
+
 ### L
+
+* LGTM  
+  Looks Good To Me  
+  Indiciates that the reviewer belives your code to be correct and a positive
+  change.  Used to indicate approval for merging the changes.
 
 * LSTM  
   Long Short Term Memory  
@@ -79,4 +108,12 @@
   A class of neural networks where the nodes form a DAG.  It is useful to model
   temporal dynamic behaviour, making it useful for speech and handwriting
   recognition.
+
+### W
+
+* WIP  
+  Work In Progress  
+  Used as a tag to commits that are not ready to be merged.  This is often used
+  to mark patches that are being uploaded to test with CI or to get some initial
+  feedback on the changes.
 
