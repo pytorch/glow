@@ -126,6 +126,10 @@ llvm::cl::opt<unsigned> labelOffset(
     llvm::cl::desc("Label offset for TF ONNX models with 1001 classes"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<bool> computeSoftmax(
+    "compute_softmax", llvm::cl::desc("Compute softmax of the network output"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(imageLoaderCat));
+
 llvm::cl::opt<unsigned> topKCount(
     "topk", llvm::cl::desc("Number of highest likelihood labels to print"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(imageLoaderCat));
@@ -349,6 +353,20 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
+/// Apply the softmax function to the given handle.
+static void applySoftmax(Handle<float> H) {
+  assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
+  float denominator = 0.0f;
+
+  for (size_t i = 0, e = H.size(); i < e; ++i) {
+    denominator += std::exp(H.raw(i));
+  }
+
+  for (size_t j = 0, e = H.size(); j < e; ++j) {
+    H.raw(j) = std::exp(H.raw(j)) / denominator;
+  }
+}
+
 /// Given the output Softmax Tensor \p SMTarT and \p functionName, print the
 /// results of inference.
 static void processAndPrintResults(Tensor *SMVarT,
@@ -367,6 +385,12 @@ static void processAndPrintResults(Tensor *SMVarT,
     Tensor slice = H.extractSlice(i);
     auto SH = slice.getHandle<>();
     llvm::outs() << " File: " << inputImageFilenames[i];
+
+    if (computeSoftmax) {
+      Tensor reshapedSlice = slice.getUnowned({slice.size()});
+      SH = reshapedSlice.getHandle<>();
+      applySoftmax(SH);
+    }
 
     auto topKPairs = getTopKPairs(SH);
     printTopKPairs(topKPairs);
