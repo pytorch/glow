@@ -1344,6 +1344,32 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::QuantizationProfileInstKind: {
+    auto *QP = cast<QuantizationProfileInst>(I);
+    auto *hist = QP->getHistogram();
+    auto *compInfo = QP->getComputationInfo();
+    auto *inputTensor = QP->getInputTensor();
+
+    auto *histPtr = emitValueAddress(builder, hist);
+    auto *compInfoPtr = emitValueAddress(builder, compInfo);
+    auto *inputTensorInfoPtr = emitValueAddress(builder, inputTensor);
+
+    auto *histDims = emitValueDims(builder, hist);
+    auto *inputTensorDims = emitValueDims(builder, inputTensor);
+
+    assert(inputTensor->getElementType() == ElemKind::FloatTy &&
+           "None float Tensor type for Quantization Profile Instruction.");
+    auto *srcDimsSize =
+        emitConstSizeT(builder, inputTensor->getType()->dims().size());
+
+    auto *F = getFunction("quantization_profile");
+    auto callDebugDump =
+        createCall(builder, F,
+                   {inputTensorInfoPtr, inputTensorDims, srcDimsSize,
+                    compInfoPtr, histPtr, histDims});
+    break;
+  }
+
   case Kinded::Kind::RowwiseQuantizedFullyConnectedInstKind: {
     auto *RWQFC = cast<RowwiseQuantizedFullyConnectedInst>(I);
     // Since we can't get the variable from a glow::Value directly,

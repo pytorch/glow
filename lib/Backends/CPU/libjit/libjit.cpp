@@ -1411,4 +1411,124 @@ libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
     break;
   }
 }
+
+static void find_min_max_f(float *tensor, size_t size, float &min, float &max) {
+  min = tensor[0];
+  max = tensor[0];
+
+  for (size_t i = 1; i < size; ++i) {
+    float tensorVal = tensor[i];
+    if (tensorVal < min)
+      min = tensorVal;
+
+    if (tensorVal > max)
+      max = tensorVal;
+  }
+}
+
+static int check_all_zeros(float *arrayToCheck, size_t size) {
+  for (int i = 0; i < size; ++i) {
+    if (arrayToCheck[i] != 0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/// Gen a bin number to insert \p value into the histogram which has \p nBins
+/// with \p minValue and binWidth in histogram.
+static size_t get_bin(size_t nBins, float binWidth, float minValue,
+                      float value) {
+  size_t result =
+      binWidth == 0
+          ? 0
+          : MIN(static_cast<size_t>((value - minValue) / binWidth), nBins - 1);
+  return result;
+}
+
+// code ported from Profile.cpp: generateTensorHistogram
+__attribute__((noinline)) void
+libjit_quantization_profile(float *inputTensor, size_t *tensorDim,
+                            size_t numDimsTensor, float *compInfo,
+                            float *existingHistogram, size_t *histDim) {
+  float minInput = inputTensor[0];
+  float maxInput = inputTensor[0];
+
+  size_t tensorSize = 1;
+  // calculating total size of the Tensor.
+  for (size_t i = 0; i < numDimsTensor; ++i) {
+    tensorSize *= tensorDim[i];
+  }
+
+  size_t nBins = histDim[0];
+
+  // finding min/max value for entire tensor
+  find_min_max_f(inputTensor, tensorSize, minInput, maxInput);
+
+  float min = compInfo[0];
+  float max = compInfo[1];
+  if (check_all_zeros(existingHistogram, nBins) == 1) {
+    compInfo[0] = minInput;
+    compInfo[1] = maxInput;
+
+    min = minInput;
+    max = maxInput;
+  }
+
+  // Check if we need to rescale histogram.
+  if (minInput < min || maxInput > max) {
+    float newMin = MIN(minInput, min);
+    float newMax = MAX(maxInput, max);
+
+    float destBinWidth = (newMax - newMin) / nBins;
+    float srcBinWidth = (max - min) / nBins;
+    float scaledHistogram[nBins];
+
+    for (size_t i = 0; i < nBins; ++i) {
+      if (existingHistogram[i] == 0)
+        continue;
+
+      float srcBinBegin = min + srcBinWidth * i;
+      size_t destBin = (srcBinBegin - newMin) / destBinWidth;
+      float destBinEnd = newMin + destBinWidth * (destBin + 1);
+
+      float srcBinEnd = srcBinBegin + srcBinWidth;
+      size_t destBinToVerify = (srcBinEnd - newMin) / destBinWidth;
+      // Make sure that destination bin is mapped at most to 2 final bins, based
+      // on that redistribute percentage is calculated.
+      assert(destBinToVerify <= destBin + 2);
+      (void)destBinToVerify;
+
+      // Calculate how much we need to redistribute.
+      uint64_t dstBinCnt = static_cast<uint64_t>(
+          MIN(static_cast<float>(round((destBinEnd - srcBinBegin) /
+                                       srcBinWidth * existingHistogram[i])),
+              existingHistogram[i]));
+
+      size_t newBin = get_bin(nBins, destBinWidth, newMin, srcBinBegin);
+      scaledHistogram[newBin] += dstBinCnt;
+
+      if (dstBinCnt < existingHistogram[i]) {
+        size_t newBin =
+            get_bin(nBins, destBinWidth, newMin, srcBinBegin + destBinWidth);
+        scaledHistogram[newBin] += existingHistogram[i] - dstBinCnt;
+      }
+    }
+
+    // Copy scaled histogram back to the existing histogram.
+    for (size_t i = 0, e = nBins; i < e; ++i) {
+      existingHistogram[i] = scaledHistogram[i];
+    }
+
+    // Update global min and max.
+    min = newMin;
+    max = newMax;
+  }
+
+  float binWidth = (max - min) / nBins;
+  for (size_t i = 0, e = tensorSize; i < e; ++i) {
+    size_t newBin = get_bin(nBins, binWidth, min, inputTensor[i]);
+    existingHistogram[newBin]++;
+  }
+}
 } // extern "C"
