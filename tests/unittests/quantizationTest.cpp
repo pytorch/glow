@@ -37,10 +37,19 @@ protected:
   ExecutionEngine backendSpecificEE{GetParam()};
 };
 
-class Operator : public ::testing::TestWithParam<BackendKind> {
+class Operator
+    : public ::testing::TestWithParam<::std::tuple<BackendKind, BackendKind>> {
 protected:
-  ExecutionEngine interpreterEE{BackendKind::Interpreter};
-  ExecutionEngine backendSpecificEE{GetParam()};
+  ExecutionEngine profileEE{BackendKind::Interpreter};
+  ExecutionEngine backendSpecificEE{BackendKind::Interpreter};
+
+  virtual void SetUp() {
+    BackendKind backend1;
+    BackendKind backend2;
+    std::tie(backend1, backend2) = GetParam();
+    profileEE.setBackend(backend1);
+    backendSpecificEE.setBackend(backend2);
+  }
 };
 
 bool operator==(const NodeQuantizationInfo &lhs,
@@ -279,7 +288,7 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
 }
 
 TEST_P(Operator, end2end) {
-  auto *mod = &interpreterEE.getModule();
+  auto *mod = &profileEE.getModule();
   Context ctx;
 
   auto *A =
@@ -291,10 +300,10 @@ TEST_P(Operator, end2end) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
   F1 = glow::profileQuantization(ctx, F1);
-  interpreterEE.compile(CompilationMode::Infer, F1, ctx);
+  profileEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
-  interpreterEE.run(ctx);
+  profileEE.run(ctx);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -419,17 +428,17 @@ static Function *createGRUForQuantization(Module *M, Context &ctx,
 
 TEST_P(Operator, end2endGRU) {
   // STEP1 - Generate the first network to record the quantization parameters.
-  auto *mod = &interpreterEE.getModule();
+  auto *mod = &profileEE.getModule();
   Context ctx;
   Function *F1 = createGRUForQuantization(mod, ctx, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   F1 = glow::profileQuantization(ctx, F1);
-  interpreterEE.compile(CompilationMode::Infer, F1, ctx);
+  profileEE.compile(CompilationMode::Infer, F1, ctx);
 
   // Run graph to capture profile.
-  interpreterEE.run(ctx);
+  profileEE.run(ctx);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
@@ -1104,12 +1113,27 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
-INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
-                        ::testing::Values(BackendKind::Interpreter));
+
+#ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(
+    Interpreter, Operator,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
+                                         BackendKind::CPU),
+                       ::testing::Values(BackendKind::Interpreter)));
+#else
+INSTANTIATE_TEST_CASE_P(
+    Interpreter, Operator,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
+                       ::testing::Values(BackendKind::Interpreter)));
+#endif
 
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, Quantization, ::testing::Values(BackendKind::CPU));
-INSTANTIATE_TEST_CASE_P(JIT, Operator, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(
+    JIT, Operator,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
+                                         BackendKind::CPU),
+                       ::testing::Values(BackendKind::CPU)));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
