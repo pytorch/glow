@@ -78,9 +78,10 @@ void ExecutionEngine::run(Context &ctx) {
   assert(function_ && "No function has been compiled");
   // TODO call runtime functions from EE instead of in the compiled function.
   // copyFunctionToDevice()
+  // copyConstantsToDevice()
   // allocateMutableBuffersOnDevice()
-  // copyMutablesToDevice(ctx)
-  // copyMutablesFromDevice(ctx)
+  // copyInputsToDevice(ctx)
+  // copyOutputsFromDevice(ctx)
   // freeAllocations()
   // We are working toward moving memory allocation and initialization to
   // runtime. As an intermediate the runtime functions are being called within
