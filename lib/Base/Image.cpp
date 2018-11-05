@@ -216,14 +216,14 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   png_read_image(png_ptr, row_pointers);
   png_read_end(png_ptr, info_ptr);
 
-  T->reset(ElemKind::FloatTy, {width, height, numChannels});
+  T->reset(ElemKind::FloatTy, {height, width, numChannels});
   auto H = T->getHandle<>();
 
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
   assert(!(useImagenetNormalization && numChannels != 3) &&
-         "Imagenet normalization can only be used with RBG images.");
+         "Imagenet normalization can only be used with RGB images.");
 
   for (size_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
