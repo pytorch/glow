@@ -130,7 +130,8 @@ public:
   void visit(const Node *parent, NodeWalker *visitor) const;
 
   /// Verify node.
-  void verify() const;
+  /// \returns True if the node is valid. False otherwise.
+  bool verify() const;
 
   /// Replace all uses of this node with null. This method is used by the
   /// destruction sequence. When the node is deleted we need to unregister all

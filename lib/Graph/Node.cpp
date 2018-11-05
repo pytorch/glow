@@ -17,6 +17,7 @@
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/VerifierHelper.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;
@@ -272,34 +273,43 @@ void Node::destroyNode(Node *N) {
 //                       Nodes verification
 //===----------------------------------------------------------------------===//
 
-void Node::verify() const {
+bool Node::verify() const {
   // Verify the shared members of the node.
+  bool isValid = true;
 
   // Verify the predicate field.
   if (hasPredicate()) {
     auto pred = getPredicate();
-    assert(pred.getNode() && "Invalid predicate");
+    if (!expectCompareTrue("Invalid predicate", bool(pred.getNode()), true,
+                           this)) {
+      // The following code assumes pred is valid.
+      return false;
+    }
     auto Ty = pred.getType();
-    (void)Ty;
-    assert(Ty->dims().size() == 1 && "Predicate must be a vector");
+    isValid &= expectCompareTrue("Predicate must be a vector",
+                                 Ty->dims().size(), size_t(1), this);
   }
 
   if (getParent()) {
-    assert(std::find(getParent()->getNodes().begin(),
-                     getParent()->getNodes().end(),
-                     *this) != getParent()->getNodes().end() &&
-           "Node not present in its parent");
+    isValid &=
+        expectCompareTrue("Node not present in its parent",
+                          std::find(getParent()->getNodes().begin(),
+                                    getParent()->getNodes().end(),
+                                    *this) != getParent()->getNodes().end(),
+                          true, this);
   }
 
   // Verify node-specific properties:
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
-    return static_cast<const CLASS *>(this)->verify();
+    isValid &= static_cast<const CLASS *>(this)->verify();                     \
+    break;
 #include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");
   }
+  return isValid;
 }
 
 //===----------------------------------------------------------------------===//

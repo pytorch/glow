@@ -47,7 +47,8 @@ add_library(Graph
             Nodes.cpp
             NodeValue.cpp
             Graph.cpp
-            Grad.cpp)
+            Grad.cpp
+            VerifierHelper.cpp)
 
 target_link_libraries(Graph
                       PUBLIC

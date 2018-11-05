@@ -17,6 +17,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/VerifierHelper.h"
 #include "glow/Support/Support.h"
 
 using namespace glow;
@@ -102,253 +103,259 @@ std::string Placeholder::getDebugDesc() const {
 //                       Nodes verification
 //===----------------------------------------------------------------------===//
 
-/// Check that the type of the first operand \p A matches the type of the second
-/// operand \p B.
-static void checkSameType(NodeValue A, NodeValue B) {
-  assert(A.getType() == B.getType() && "Invalid type");
-}
-
-/// Check that the shape of the first operand \p A matches the shape of the
-/// second operand \p B.
-static void checkSameShape(NodeValue A, NodeValue B) {
-  assert(A.dims() == B.dims() && "Invalid shape");
-}
-
-/// Check that the element type of the operand \p A matches expected type \p
-/// expected Type.
-static void checkType(NodeValue A, ElemKind expectedType) {
-  assert(A.getElementType() == expectedType && "Invalid type");
-}
-
-/// Check that the type of the first operand \p A matches the type of the second
-/// operand \p B but ignore the actual shape. Use only element type and
-/// quantization parameters in comparison.
-static void checkTypeIgnoreShape(NodeValue A, NodeValue B) {
-  assert(A.getElementType() == B.getElementType() && "Invalid element type");
-  assert(A.getType()->isQuantizedType() == B.getType()->isQuantizedType() &&
-         "Invalid mix of quantized and non quantized types");
-
-  if (A.getType()->isQuantizedType()) {
-    assert(A.getType()->getScale() == B.getType()->getScale() &&
-           "Invalid scale");
-    assert(A.getType()->getOffset() == B.getType()->getOffset() &&
-           "Invalid offset");
-  }
-}
-
-static void verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
+static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group) {
-  assert(src.getElementType() == dest.getElementType() && "Invalid Type");
-  assert(src.getElementType() == filter.getElementType() && "Invalid Type");
+  const Node *parent = dest.getNode();
+  bool isValid = checkType(src, dest.getElementType(), parent);
+  isValid &= checkType(src, filter.getElementType(), parent);
   // Non quantization type check.
   if (src.getElementType() == ElemKind::FloatTy) {
-    assert(bias.getElementType() == ElemKind::FloatTy && "Invalid Type");
+    isValid &= checkType(bias, ElemKind::FloatTy, parent);
   }
   // Quantization type check.
   if (src.getElementType() == ElemKind::Int8QTy) {
-    assert(bias.getElementType() == ElemKind::Int32QTy && "Invalid Type");
+    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
   }
   ShapeNHWC idim(src.getType()->dims());
   ShapeNHWC odim(dest.getType()->dims());
   PaddingTLBR pdim(pads);
-  (void)pdim;
   ShapeHW kdim(kernels);
-  assert((idim.w + pdim.left + pdim.right) >= kdim.height &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.width &&
-         "buffer too small for selected stride");
-
-  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  isValid &= expectCompareTrue("buffer height too small for selected stride",
+                               idim.w + pdim.left + pdim.right, kdim.height,
+                               parent, CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("buffer width too small for selected stride",
+                               idim.h + pdim.top + pdim.bottom, kdim.width,
+                               parent, CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, size_t(0), parent);
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-  (void)outSz;
-  assert(odim.n == idim.n && odim.h == outSz.first && odim.w == outSz.second &&
-         odim.c % group == 0 && "Invalid output dimensions");
+  isValid &=
+      expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+  isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
+                               outSz.first, parent);
+  isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
+                               outSz.second, parent);
+  isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
+                               size_t(0), parent);
 
-  auto filterDims = {odim.c, kdim.height, kdim.width, idim.c / (size_t)group};
-  assert(filter.getType()->dims().equals(filterDims) && "Invalid filter dims");
-  (void)filterDims;
-
-  auto biasDims = {odim.c};
-  assert(bias.getType()->dims().equals(biasDims) && "Invalid bias dims");
-  (void)biasDims;
+  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                               idim.c / (size_t)group};
+  isValid &=
+      expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
+                        llvm::makeArrayRef(filterDims), parent);
+  const size_t biasDims[] = {odim.c};
+  isValid &=
+      expectCompareTrue("Invalid bias dimensions", bias.getType()->dims(),
+                        llvm::makeArrayRef(biasDims), parent);
+  return isValid;
 }
 
-static void verifyFullyConnected(NodeValue src, NodeValue weights,
+static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                  NodeValue bias, NodeValue dest) {
-  assert(src.dims()[0] == dest.dims()[0] &&
-         flattenCdr(src.dims()).second == weights.dims()[0] &&
-         "Mismatch on expected source dimensions");
+  const Node *parent = dest.getNode();
+  bool isValid = expectCompareTrue("Mismatch on expected source dimensions",
+                                   src.dims()[0], dest.dims()[0], parent);
+  isValid &= expectCompareTrue("Mismatch on expected source dimensions",
+                               flattenCdr(src.dims()).second, weights.dims()[0],
+                               parent);
 
-  assert(bias.dims()[0] == weights.dims()[1] &&
-         weights.dims()[1] == dest.dims()[1] &&
-         "Inconsistent bias/weights/dest sizes.");
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               weights.dims()[1], parent);
+  isValid &= expectCompareTrue("Inconsistent weights/dest sizes",
+                               weights.dims()[1], dest.dims()[1], parent);
 
   if (src.getElementType() == ElemKind::Int8QTy) {
-    assert(bias.getElementType() == ElemKind::Int32QTy && "Invalid Type");
+    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
   }
+  return isValid;
 }
 
-static void verifyPool(NodeValue src, NodeValue dest,
+static bool verifyPool(NodeValue src, NodeValue dest,
                        llvm::ArrayRef<unsigned_t> kernels,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads) {
+  const Node *parent = dest.getNode();
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
-  (void)odim;
   PaddingTLBR pdim(pads);
-  (void)pdim;
   ShapeHW kdim(kernels);
-  assert((idim.w + pdim.left + pdim.right) >= kdim.height &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.width &&
-         "buffer too small for selected stride");
+
+  bool isValid =
+      expectCompareTrue("buffer height too small for selected stride",
+                        idim.w + pdim.left + pdim.right, kdim.height, parent,
+                        CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("buffer width too small for selected stride",
+                               idim.h + pdim.top + pdim.bottom, kdim.width,
+                               parent, CompareOperatorGreaterEqual<size_t>());
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
-  (void)exp;
-  assert(exp == odim && "Unexpected output dimensions");
-  checkTypeIgnoreShape(src, dest);
+  isValid &=
+      expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
+  isValid &= checkTypeIgnoreShape(src, dest, dest.getNode());
+  return isValid;
 }
 
-static void verifyBatchNormalization(NodeValue src, NodeValue dest,
+static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue bias, NodeValue scale,
                                      NodeValue mean, NodeValue var,
                                      unsigned_t channel) {
-  checkSameType(dest, src);
+  const Node *parent = dest.getNode();
+  bool isValid = checkSameType(dest, src, parent);
 
   // Figure out how many channels are in the tensor.
   size_t channels = src.dims()[channel];
 
-  auto exp = {channels};
-  (void)exp;
-  assert(bias.getType()->dims().equals(exp) && "Invalid bias dim");
-  assert(scale.getType()->dims().equals(exp) && "Invalid scale dim");
-  assert(mean.getType()->dims().equals(exp) && "Invalid mean dim");
-  assert(var.getType()->dims().equals(exp) && "Invalid var dim");
+  const size_t expArray[] = {channels};
+  auto exp = llvm::makeArrayRef(expArray);
+  isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
+                               exp, parent);
+  isValid &= expectCompareTrue("Invalid scale dimension",
+                               scale.getType()->dims(), exp, parent);
+  isValid &= expectCompareTrue("Invalid mean dimension", mean.getType()->dims(),
+                               exp, parent);
+  isValid &= expectCompareTrue("Invalid var dimension", var.getType()->dims(),
+                               exp, parent);
+  return isValid;
 }
 
-static void verifySigmoid(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
+static bool verifySigmoid(NodeValue src, NodeValue dest) {
+  return checkSameType(src, dest, dest.getNode());
 }
 
-static void verifyTanh(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
+static bool verifyTanh(NodeValue src, NodeValue dest) {
+  return checkSameType(src, dest, dest.getNode());
 }
 
-static void verifySoftMax(NodeValue src, NodeValue dest) {
+static bool verifySoftMax(NodeValue src, NodeValue dest) {
+  const Node *parent = dest.getNode();
   if (src.getType()->isQuantizedType()) {
-    assert(src.getElementType() == dest.getElementType());
-    checkSameShape(src, dest);
-  } else {
-    checkSameType(src, dest);
+    return checkType(src, dest.getElementType(), parent) &&
+           checkSameShape(src, dest, parent);
   }
+  return checkSameType(src, dest, parent);
 }
 
-static void verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
+static bool verifyCrossEntropyLoss(NodeValue P, NodeValue CE,
                                    NodeValue labels) {
-  assert(P.getElementType() == CE.getElementType());
-  assert(P.dims()[0] == labels.dims()[0] && "Invalid shape");
+  const Node *parent = CE.getNode();
+  bool isValid = checkType(P, CE.getElementType(), parent);
+  isValid &= expectCompareTrue("Mismatching shape", P.dims()[0],
+                               labels.dims()[0], parent);
+  return isValid;
 }
 
-static void verifyLocalResponseNormalization(NodeValue src, NodeValue dest) {
-  checkSameType(src, dest);
+static bool verifyLocalResponseNormalization(NodeValue src, NodeValue dest) {
+  return checkSameType(src, dest, dest.getNode());
 }
 
-static void verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
-  checkSameShape(res, LHS);
-  checkSameShape(LHS, RHS);
+static bool verifyArithmetic(NodeValue LHS, NodeValue RHS, NodeValue res) {
+  return checkSameShape(res, LHS, res.getNode()) &&
+         checkSameShape(LHS, RHS, res.getNode());
 }
 
-static void verifyRelu(NodeValue result, NodeValue input) {
+static bool verifyRelu(NodeValue result, NodeValue input) {
+  const Node *parent = result.getNode();
   if (input.getType()->isQuantizedType()) {
-    assert(result.getType()->isQuantizedType());
-    checkSameShape(result, input);
-  } else {
-    checkSameType(result, input);
+    return checkSameIsQuantized(input.getType(), result.getType(), parent) &&
+           checkSameShape(result, input, parent);
   }
+  return checkSameType(result, input, parent);
 }
 
-static void verifyRegression(NodeValue src, NodeValue dest,
+static bool verifyRegression(NodeValue src, NodeValue dest,
                              NodeValue expected) {
-  checkSameType(src, dest);
-  checkSameType(dest, expected);
+  return checkSameType(src, dest, dest.getNode()) &&
+         checkSameType(dest, expected, dest.getNode());
 }
 
-void ConvolutionNode::verify() const {
-  verifyConvolution(getInput(), getResult(), getFilter(), getBias(), Kernels_,
-                    Strides_, Pads_, Group_);
+bool ConvolutionNode::verify() const {
+  return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
+                           Kernels_, Strides_, Pads_, Group_);
 }
 
 /// Verify that types of an input and its gradient are the same.
-static void verifyInputAndGradInputTypes(NodeValue input, NodeValue gradInput) {
-  assert(input.getType() == gradInput.getType() &&
-         "Types of input and its gradient should be the same");
+static bool verifyInputAndGradInputTypes(NodeValue input, NodeValue gradInput,
+                                         const Node *parent) {
+  return checkSameType(input, gradInput, parent);
 }
 
 /// Verify that types of an output and its gradient are the same.
-static void verifyOutputAndGradOutputTypes(NodeValue output,
-                                           NodeValue gradOutput) {
-  assert(output.getType() == gradOutput.getType() &&
-         "Types of output and its gradient should be the same");
+static bool verifyOutputAndGradOutputTypes(NodeValue output,
+                                           NodeValue gradOutput,
+                                           const Node *parent) {
+  return checkSameType(output, gradOutput, parent);
 }
 
-void Constant::verify() const {
-  assert(*getType() == getPayload().getType() &&
-         "Underlying tensor type doesn't match constant type");
+bool Constant::verify() const {
+  return expectCompareTrue("Underlying tensor type doesn't match constant type",
+                           *getType(), getPayload().getType(), this);
 }
 
-void ConvolutionGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyInputAndGradInputTypes(getFilter(), getGradOfInputNamedFilter());
-  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyConvolution(getGradOfInputNamedInput(),
-                    getGradOfOriginalOutputNamedResult(),
-                    getGradOfInputNamedFilter(), getGradOfInputNamedBias(),
-                    Kernels_, Strides_, Pads_, Group_);
+bool ConvolutionGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyInputAndGradInputTypes(getFilter(),
+                                          getGradOfInputNamedFilter(), this);
+  isValid &=
+      verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyConvolution(
+      getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+      getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
+      Strides_, Pads_, Group_);
+  return isValid;
 }
 
-void ConvertToNode::verify() const {
-  assert(getInput().dims() == getResult().dims() && "Shape must be the same");
+bool ConvertToNode::verify() const {
+  bool isValid = checkSameShape(getInput(), getResult(), this);
   TypeRef srcTy = getInput().getType();
-  (void)srcTy;
   TypeRef dstTy = getResult().getType();
-  (void)dstTy;
-  assert(!srcTy->isQuantizedType() && !dstTy->isQuantizedType() &&
-         "Quantized conversion should use Dequantize, Quantize and Rescale");
+  isValid &= expectCompareTrue(
+      "Quantized conversion should use Dequantize, Quantize and Rescale",
+      srcTy->isQuantizedType() || dstTy->isQuantizedType(), false, this);
+  return isValid;
 }
 
-void MaxPoolNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
+bool MaxPoolNode::verify() const {
+  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }
 
-void AvgPoolNode::verify() const {
-  verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
+bool AvgPoolNode::verify() const {
+  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }
 
-void MaxPoolGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernels_, Strides_, Pads_);
+bool MaxPoolGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyPool(getGradOfInputNamedInput(),
+                        getGradOfOriginalOutputNamedResult(), Kernels_,
+                        Strides_, Pads_);
+  return isValid;
 }
 
-void AvgPoolGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyPool(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-             Kernels_, Strides_, Pads_);
+bool AvgPoolGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyPool(getGradOfInputNamedInput(),
+                        getGradOfOriginalOutputNamedResult(), Kernels_,
+                        Strides_, Pads_);
+  return true;
 }
 
-void MatMulNode::verify() const {
+bool MatMulNode::verify() const {
   auto lhs = getLHS();
   auto rhs = getRHS();
   auto dest = getResult();
@@ -356,72 +363,87 @@ void MatMulNode::verify() const {
   auto LDims = lhs.dims();
   auto RDims = rhs.dims();
   auto DDims = dest.dims();
-  (void)LDims;
-  (void)RDims;
-  (void)DDims;
-  assert(DDims.size() == 2);
+  bool isValid = expectCompareTrue("Invalid MatMul dimensions", size_t(2),
+                                   DDims.size(), this);
+
   auto elem = dest.getType()->getElementType();
-  (void)elem;
-  assert(lhs.getType()->getElementType() == elem);
-  assert(rhs.getType()->getElementType() == elem);
+  isValid &= checkType(lhs, elem, this);
+  isValid &= checkType(rhs, elem, this);
 
-  assert(LDims[0] == DDims[0] && "Invalid matrix dims");
-  assert(RDims[1] == DDims[1] && "Invalid matrix dims");
+  isValid &=
+      expectCompareTrue("Invalid row dimensions", LDims[0], DDims[0], this);
+  isValid &=
+      expectCompareTrue("Invalid column dimensions", RDims[1], DDims[1], this);
+  return isValid;
 }
 
-void SigmoidNode::verify() const { verifySigmoid(getInput(), getResult()); }
-
-void SigmoidGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifySigmoid(getGradOfInputNamedInput(),
-                getGradOfOriginalOutputNamedResult());
+bool SigmoidNode::verify() const {
+  return verifySigmoid(getInput(), getResult());
 }
 
-void TanhNode::verify() const { verifyTanh(getInput(), getResult()); }
-
-void TanhGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyTanh(getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult());
+bool SigmoidGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifySigmoid(getGradOfInputNamedInput(),
+                           getGradOfOriginalOutputNamedResult());
+  return isValid;
 }
 
-void SoftMaxNode::verify() const { verifySoftMax(getInput(), getResult()); }
+bool TanhNode::verify() const { return verifyTanh(getInput(), getResult()); }
 
-void SoftMaxGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyInputAndGradInputTypes(getSelected(), getGradOfInputNamedSelected());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifySoftMax(getGradOfInputNamedInput(),
-                getGradOfOriginalOutputNamedResult());
+bool TanhGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyTanh(getGradOfInputNamedInput(),
+                        getGradOfOriginalOutputNamedResult());
+  return isValid;
 }
 
-void CrossEntropyLossNode::verify() const {
-  verifyCrossEntropyLoss(getP(), getCE(), getLabels());
+bool SoftMaxNode::verify() const {
+  return verifySoftMax(getInput(), getResult());
 }
 
-void CrossEntropyLossGradNode::verify() const {
-  verifyInputAndGradInputTypes(getLabels(), getGradOfInputNamedLabels());
-  verifyInputAndGradInputTypes(getP(), getGradOfInputNamedP());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForCE(),
-                                 getGradOfOriginalOutputNamedCE());
-  verifyCrossEntropyLoss(getGradOfInputNamedP(),
-                         getGradOfOriginalOutputNamedCE(),
-                         getGradOfInputNamedLabels());
+bool SoftMaxGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyInputAndGradInputTypes(getSelected(),
+                                          getGradOfInputNamedSelected(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifySoftMax(getGradOfInputNamedInput(),
+                           getGradOfOriginalOutputNamedResult());
+  return isValid;
 }
 
-void ReshapeNode::verify() const {
-  assert(getResult().getType()->size() == getInput().getType()->size() &&
-         "Reshape into a different size");
+bool CrossEntropyLossNode::verify() const {
+  return verifyCrossEntropyLoss(getP(), getCE(), getLabels());
 }
 
-void TransposeNode::verify() const {
+bool CrossEntropyLossGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(
+      getLabels(), getGradOfInputNamedLabels(), this);
+  isValid &= verifyInputAndGradInputTypes(getP(), getGradOfInputNamedP(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForCE(), getGradOfOriginalOutputNamedCE(), this);
+  isValid &= verifyCrossEntropyLoss(getGradOfInputNamedP(),
+                                    getGradOfOriginalOutputNamedCE(),
+                                    getGradOfInputNamedLabels());
+  return isValid;
+}
+
+bool ReshapeNode::verify() const {
+  return expectCompareTrue("Reshape into a different size",
+                           getResult().getType()->size(),
+                           getInput().getType()->size(), this);
+}
+
+bool TransposeNode::verify() const {
   auto dest = getResult();
   auto src = getInput();
-  (void)dest;
   ShapeVector shape;
 
   auto dims = src.dims();
@@ -429,108 +451,148 @@ void TransposeNode::verify() const {
     shape.push_back(dims[Shuffle_[i]]);
   }
 
-  assert(dest.dims().equals(shape) && "Invalid transpose dims");
+  return expectCompareTrue("Invalid transpose dims", dest.dims(),
+                           llvm::makeArrayRef(shape), this);
 }
 
-void SplatNode::verify() const {}
+bool SplatNode::verify() const { return true; }
 
-void InsertTensorNode::verify() const {
+bool InsertTensorNode::verify() const {
   auto dest = getBig();
   auto src = getSmall();
   auto offsets = getStart();
-  unsigned numDims = dest.dims().size();
-  unsigned axis = getAxis();
-  unsigned count = getCount();
-  (void)numDims;
-  (void)dest;
-  (void)src;
-  (void)offsets;
-  assert(numDims == src.dims().size() && numDims == offsets.size() &&
-         "Invalid number of dimensions");
+  size_t numDims = dest.dims().size();
+  size_t axis = getAxis();
+  size_t count = getCount();
+
+  bool isValid = expectCompareTrue("Invalid number of dimensions", numDims,
+                                   src.dims().size(), this);
+  isValid &= expectCompareTrue("Invalid number of dimensions for offsets",
+                               numDims, offsets.size(), this);
+
+  if (!isValid) {
+    // The following loop may be out-of-bound if the previous
+    // comparisons failed.
+    return false;
+  }
 
   for (unsigned i = 0; i < numDims; i++) {
-    assert(src.dims()[i] + offsets[i] <= dest.dims()[i] && "out of bounds");
+    // TODO: We could come up with a mechanism to lazy compute that
+    // string since it is going to be used only in case of an error.
+    // However, this function is not performance critical so leave it
+    // this way for now.
+    std::string msg = std::to_string(i);
+    msg = "out of bounds for index " + msg;
+    isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] + offsets[i],
+                                 dest.dims()[i], this,
+                                 CompareOperatorLessEqual<size_t>());
   }
 
-  assert(axis <= src.dims().size() && "Invalid axis.");
+  isValid &= expectCompareTrue("Invalid axis", axis, src.dims().size(), this,
+                               CompareOperatorLessEqual<size_t>());
   for (size_t i = 0; i < src.dims().size(); i++) {
     size_t mul = (i == axis) ? count : 1;
-    (void)mul;
-    assert(src.dims()[i] * mul <= dest.dims()[i] &&
-           "Small does not fit inside Big.");
+    std::string msg = std::to_string(i);
+    msg = "Small does not fit inside Big for index " + msg;
+    isValid &=
+        expectCompareTrue(msg.c_str(), src.dims()[i] * mul, dest.dims()[i],
+                          this, CompareOperatorLessEqual<size_t>());
   }
+  return isValid;
 }
 
-void SliceNode::verify() const {
+bool SliceNode::verify() const {
   auto dest = getResult();
   auto src = getInput();
   auto offsets = getStart();
-  unsigned numDims = dest.dims().size();
-  (void)numDims;
-  (void)dest;
-  (void)src;
-  (void)offsets;
-  assert(numDims == src.dims().size() && numDims == offsets.size() &&
-         "Invalid number of dimensions");
+  size_t numDims = dest.dims().size();
+  bool isValid = expectCompareTrue("Invalid number of dimensions", numDims,
+                                   src.dims().size(), this);
+  isValid &= expectCompareTrue("Invalid number of dimensions", numDims,
+                               offsets.size(), this);
+
+  if (!isValid) {
+    // The following loop may be out-of-bound if the previous
+    // comparisons failed.
+    return false;
+  }
 
   for (unsigned i = 0; i < numDims; i++) {
-    assert(dest.dims()[i] + offsets[i] <= src.dims()[i] && "out of bounds");
+    std::string msg = std::to_string(i);
+    msg = "out of bounds for index " + msg;
+    isValid &= expectCompareTrue(msg.c_str(), dest.dims()[i] + offsets[i],
+                                 src.dims()[i], this,
+                                 CompareOperatorLessEqual<size_t>());
   }
+  return isValid;
 }
 
-void TileNode::verify() const {
+bool TileNode::verify() const {
   auto dest = getResult();
   auto src = getInput();
-  unsigned axis = getAxis();
+  size_t axis = getAxis();
   unsigned count = getCount();
-  (void)dest;
-  assert(axis <= src.dims().size() && "Invalid axis.");
+
+  bool isValid = expectCompareTrue("Invalid axis", axis, src.dims().size(),
+                                   this, CompareOperatorLessEqual<size_t>());
+
   for (size_t i = 0; i < src.dims().size(); i++) {
     size_t mul = (i == axis) ? count : 1;
-    (void)mul;
-    assert(src.dims()[i] * mul == dest.dims()[i] && "Incorrect output shape.");
+    std::string msg = std::to_string(i);
+    msg = "Incorrect output shape for dim " + msg;
+    isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] * mul,
+                                 dest.dims()[i], this);
   }
+  return isValid;
 }
 
-void BatchNormalizationNode::verify() const {
-  verifyBatchNormalization(getInput(), getResult(), getBias(), getScale(),
-                           getMean(), getVar(), ChannelIdx_);
+bool BatchNormalizationNode::verify() const {
+  return verifyBatchNormalization(getInput(), getResult(), getBias(),
+                                  getScale(), getMean(), getVar(), ChannelIdx_);
 }
 
-void BatchNormalizationGradNode::verify() const {
-  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyInputAndGradInputTypes(getMean(), getGradOfInputNamedMean());
-  verifyInputAndGradInputTypes(getScale(), getGradOfInputNamedScale());
-  verifyInputAndGradInputTypes(getVar(), getGradOfInputNamedVar());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyBatchNormalization(
+bool BatchNormalizationGradNode::verify() const {
+  bool isValid =
+      verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
+  isValid &= verifyInputAndGradInputTypes(getInput(),
+                                          getGradOfInputNamedInput(), this);
+  isValid &=
+      verifyInputAndGradInputTypes(getMean(), getGradOfInputNamedMean(), this);
+  isValid &= verifyInputAndGradInputTypes(getScale(),
+                                          getGradOfInputNamedScale(), this);
+  isValid &=
+      verifyInputAndGradInputTypes(getVar(), getGradOfInputNamedVar(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyBatchNormalization(
       getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
       getGradOfInputNamedBias(), getGradOfInputNamedScale(),
       getGradOfInputNamedMean(), getGradOfInputNamedVar(), ChannelIdx_);
+  return isValid;
 }
 
-void MeanVarNormalizationNode::verify() const {
-  checkType(getMean(), ElemKind::FloatTy);
-  checkSameType(getMean(), getVar());
+bool MeanVarNormalizationNode::verify() const {
+  return checkType(getMean(), ElemKind::FloatTy, this) &&
+         checkSameType(getMean(), getVar(), this);
 }
 
-void LocalResponseNormalizationNode::verify() const {
-  verifyLocalResponseNormalization(getInput(), getResult());
+bool LocalResponseNormalizationNode::verify() const {
+  return verifyLocalResponseNormalization(getInput(), getResult());
 }
 
-void LocalResponseNormalizationGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyLocalResponseNormalization(getGradOfInputNamedInput(),
-                                   getGradOfOriginalOutputNamedResult());
+bool LocalResponseNormalizationGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyLocalResponseNormalization(
+      getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult());
+  return isValid;
 }
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
-  void NODE_NAME_##Node::verify() const {                                      \
-    verifyArithmetic(getLHS(), getRHS(), getResult());                         \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    return verifyArithmetic(getLHS(), getRHS(), getResult());                  \
   }
 VERIFY_ARITHMETIC(Add);
 VERIFY_ARITHMETIC(Mul);
@@ -542,23 +604,26 @@ VERIFY_ARITHMETIC(CmpEQ);
 VERIFY_ARITHMETIC(Pow);
 #undef VERIFY_ARITHMETIC
 
-void CmpLTENode::verify() const {
-  verifyArithmetic(getLHS(), getRHS(), getResult());
-  if (getResult().getType()->isQuantizedType()) {
-    // Quantization scale params for result must be (1.0, 0).
-    assert(getResult().getType()->getScale() == 1.0);
-    assert(getResult().getType()->getOffset() == 0);
-  }
+bool CmpLTENode::verify() const {
+  bool isValid = verifyArithmetic(getLHS(), getRHS(), getResult());
+  // Quantization scale params for result must be (1.0, 0).
+  isValid &= checkNotQuantizedOrSameParams(getResult().getType(), 1.0, 0, this);
+  return isValid;
 }
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
-  void NODE_NAME_##Node::verify() const {                                      \
-    verifyInputAndGradInputTypes(getLHS(), getGradOfInputNamedLHS());          \
-    verifyInputAndGradInputTypes(getRHS(), getGradOfInputNamedRHS());          \
-    verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),               \
-                                   getGradOfOriginalOutputNamedResult());      \
-    verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),       \
-                     getGradOfOriginalOutputNamedResult());                    \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = verifyInputAndGradInputTypes(                               \
+        getLHS(), getGradOfInputNamedLHS(), this);                             \
+    isValid &= verifyInputAndGradInputTypes(getRHS(),                          \
+                                            getGradOfInputNamedRHS(), this);   \
+    isValid &= verifyOutputAndGradOutputTypes(                                 \
+        getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(),    \
+        this);                                                                 \
+    isValid &=                                                                 \
+        verifyArithmetic(getGradOfInputNamedLHS(), getGradOfInputNamedRHS(),   \
+                         getGradOfOriginalOutputNamedResult());                \
+    return isValid;                                                            \
   }
 VERIFY_ARITHMETIC(AddGrad);
 VERIFY_ARITHMETIC(MulGrad);
@@ -566,139 +631,149 @@ VERIFY_ARITHMETIC(SubGrad);
 VERIFY_ARITHMETIC(DivGrad);
 #undef VERIFY_ARITHMETIC
 
-void BatchedAddNode::verify() const {
+bool BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();
   auto rhsShape = getSlice().dims();
-  assert(batchShape.drop_front() == rhsShape && "Invalid shape");
-  assert(getBatch().dims() == getResult().dims() && "Invalid dest type");
-  (void)batchShape;
-  (void)rhsShape;
+  bool isValid = expectCompareTrue("Invalid shape", batchShape.drop_front(),
+                                   rhsShape, this);
+  isValid &= checkSameShape(getBatch(), getResult(), this);
+
   if (getBatch().getType()->getElementType() == ElemKind::Int8QTy) {
-    assert((getSlice().getType()->getElementType() == ElemKind::Int8QTy ||
-            getSlice().getType()->getElementType() == ElemKind::Int32QTy) &&
-           "Mismatched element types");
+    ElemKind sliceEltTy = getSlice().getType()->getElementType();
+    expectCompareTrue("Mismatched slice element types",
+                      sliceEltTy == ElemKind::Int8QTy ||
+                          sliceEltTy == ElemKind::Int32QTy,
+                      true, this);
   } else {
-    assert(getBatch().getType()->getElementType() ==
-               getSlice().getType()->getElementType() &&
-           "Mismatched element types");
+    isValid &=
+        checkType(getBatch(), getSlice().getType()->getElementType(), this);
   }
+  return isValid;
 }
 
-void BatchedReduceAddNode::verify() const {
-  assert(getResult().getElementType() == getBatch().getElementType() &&
-         "Mismatched element types");
-  assert(getBatch().dims().size() > 0 && "Invalid shape");
+bool BatchedReduceAddNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
 }
 
-void LengthsSumNode::verify() const {
-  assert(getLengths().dims().size() == 1 && "Lengths must be a 1D vector");
+bool LengthsSumNode::verify() const {
+  return expectCompareTrue("Lengths must be a 1D vector",
+                           getLengths().dims().size(), size_t(1), this);
 }
 
-void SparseLengthsWeightedSumNode::verify() const {
-  assert(getResult().getElementType() == getData().getElementType() &&
-         "Mismatched element types");
-  assert(getWeights().getElementType() == getData().getElementType() &&
-         "Mismatched element types");
-  assert(getIndices().getElementType() == ElemKind::Int64ITy &&
-         "Indices must have index type");
-  assert(getLengths().getElementType() == ElemKind::Int32ITy &&
-         "Lengths must have index type");
-  assert(getData().dims().size() > 0 && "Data must have at least 1 dimension");
-  assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
-  assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
-  assert(getWeights().dims().size() == 1 && "Weights must be 1D vector");
-  assert(getWeights().dims()[0] == getIndices().dims()[0] &&
-         "Weights and Indices must have the same size");
+bool SparseLengthsWeightedSumNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(getWeights(), getData().getElementType(), this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Weights must be a 1D vector",
+                               getWeights().dims().size(), size_t(1), this);
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        getWeights().dims()[0], getIndices().dims()[0], this);
+  return isValid;
 }
 
-void LengthsToRangesNode::verify() const {
-  assert(getResult().getElementType() == getLengths().getElementType() &&
-         "Mismatched element types");
-  assert(getLengths().getElementType() == ElemKind::Int32ITy &&
-         "Lengths must have index type");
-  assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
-  assert(getResult().dims().size() == 2 && "Ranges must be 2D vector");
-  assert(getResult().dims()[0] == getLengths().dims()[0] &&
-         "Lengths and Ranges must have the same outer dimensions");
-  assert(getResult().dims()[1] == 2 && "Inner dimension of Ranges must be 2");
+bool LengthsToRangesNode::verify() const {
+  bool isValid = checkType(getResult(), getLengths().getElementType(), this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Ranges must be a 2D vector",
+                               getResult().dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Lengths and Ranges must have the same outer dimensions",
+      getResult().dims()[0], getLengths().dims()[0], this);
+  isValid &= expectCompareTrue("Inner dimension of Ranges must be 2",
+                               getResult().dims()[1], size_t(2), this);
+  return isValid;
 }
 
-void SparseToDenseNode::verify() const {
-  assert(getResult().getElementType() == getValues().getElementType() &&
-         "Mismatched element types");
-  assert(getIndices().getElementType() == ElemKind::Int64ITy &&
-         "Indices must have integer type");
-  assert(getIndices().dims().size() == 1 && "Indices must be a 1D vector");
-  assert(getIndices().dims()[0] == getValues().dims()[0] &&
-         "Indices and Values must have the same first dimension");
+bool SparseToDenseNode::verify() const {
+  bool isValid = checkType(getResult(), getValues().getElementType(), this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Indices and Values must have the same first dimension",
+                        getIndices().dims()[0], getValues().dims()[0], this);
+  return isValid;
 }
 
-void SGDNode::verify() const {
-  assert(getGradient().getType() == getWeight().getType() &&
-         "Invalid weight or gradient type");
+bool SGDNode::verify() const {
+  return checkSameType(getGradient(), getWeight(), this);
 }
 
-void QuantizationProfileNode::verify() const {
+bool QuantizationProfileNode::verify() const {
   // Make sure that input tensor is a floating point type.
-  assert(getInput().getElementType() == ElemKind::FloatTy &&
-         "Floating point type is expected");
+  bool isValid = checkType(getInput(), ElemKind::FloatTy, this);
 
   // Check computation info has proper size.
-  assert(getComputationInfo().dims().size() == 1 &&
-         "Computation info should be 1 dimensional");
-  assert(getComputationInfo().dims()[0] == 2 &&
-         "Computation info should contain Min and Max value only");
+  isValid &=
+      expectCompareTrue("Computation info should be 1 dimensional",
+                        getComputationInfo().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue(
+      "Computation info should contain Min and Max value only",
+      getComputationInfo().dims()[0], size_t(2), this);
+  return isValid;
 }
 
-void IntLookupTableNode::verify() const {
-  assert(getInput().getElementType() == ElemKind::Int8QTy &&
-         "Quantized input is expected");
-  assert(getResult().getElementType() == ElemKind::Int8QTy &&
-         "Quantized output is expected");
-
-  assert(getMapping().dims().size() == 1 && "Mapping should be 1 dimensional");
-  assert(getMapping().dims()[0] == 256 &&
-         "Mapping should cover whole int8 range");
+bool IntLookupTableNode::verify() const {
+  bool isValid = checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &= checkType(getResult(), ElemKind::Int8QTy, this);
+  isValid &= expectCompareTrue("Mapping should be 1 dimensional",
+                               getMapping().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Mapping should cover whole int8 range",
+                               getMapping().dims()[0], size_t(256), this);
+  return isValid;
 }
 
-void QuantizeNode::verify() const {
-  // Dest must be quantized.
-  assert((getResult().getElementType() == ElemKind::Int8QTy ||
-          getResult().getElementType() == ElemKind::Int32QTy) &&
-         "Invalid type");
-  // Src must be an FP type.
-  assert(getInput().getType()->isFPType() && "Invalid type");
-  checkSameShape(getResult(), getInput());
+bool QuantizeNode::verify() const {
+  bool isValid =
+      expectCompareTrue("Dest must be quantized",
+                        getResult().getType()->isQuantizedType(), true, this);
+  isValid &= expectCompareTrue("Src must be an FP type",
+                               getInput().getType()->isFPType(), true, this);
+  isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
 }
 
-void DequantizeNode::verify() const {
+bool DequantizeNode::verify() const {
   // Dest must be an FP type.
-  assert(getResult().getType()->isFPType() && "Invalid type");
+  bool isValid = expectCompareTrue(
+      "Dest must be an FP type", getResult().getType()->isFPType(), true, this);
   // Src must be quantized.
-  checkType(getInput(), ElemKind::Int8QTy);
-  checkSameShape(getResult(), getInput());
+  isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
 }
 
-void RescaleQuantizedNode::verify() const {
+bool RescaleQuantizedNode::verify() const {
   // Dest must be quantized.
-  checkType(getResult(), ElemKind::Int8QTy);
+  bool isValid = checkType(getResult(), ElemKind::Int8QTy, this);
   // Src must be quantized.
-  checkType(getInput(), ElemKind::Int8QTy);
-  checkSameShape(getResult(), getInput());
+  isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
 }
 
-void TopKNode::verify() const {
-  assert(getValues().dims() == getIndices().dims());
-  if (getInput().getType()->isQuantizedType()) {
-    // Quantization scales must be identical; no rescaling is allowed.
-    assert(getValues().getType()->getScale() ==
-           getInput().getType()->getScale());
-    assert(getValues().getType()->getOffset() ==
-           getInput().getType()->getOffset());
-  }
+bool TopKNode::verify() const {
+  bool isValid = checkSameShape(getValues(), getIndices(), this);
+  isValid &= checkNotQuantizedOrSameParams(getInput().getType(),
+                                           getValues().getType(), this);
+  return isValid;
 }
 
-void RowwiseQuantizedFullyConnectedNode::verify() const {
+bool RowwiseQuantizedFullyConnectedNode::verify() const {
   auto src = getInput();
   auto weights = getWeights();
   auto scales = getScales();
@@ -706,179 +781,214 @@ void RowwiseQuantizedFullyConnectedNode::verify() const {
   auto bias = getBias();
   auto dest = getResult();
 
-  (void)src;
-  (void)weights;
-  (void)scales;
-  (void)offsets;
-  (void)bias;
-  (void)dest;
+  bool isValid = expectCompareTrue("Inputs should be 2D tensor",
+                                   src.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Weights should be 2D tensor",
+                               weights.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Result should be 2D tensor", dest.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Offsets should be 1D tensor",
+                               offsets.dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Scales should be 1D tensor",
+                               scales.dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Bias should be 1D tensor", bias.dims().size(),
+                               size_t(1), this);
 
-  assert(src.dims().size() == 2 && weights.dims().size() == 2 &&
-         dest.dims().size() == 2 &&
-         "Input, weights and result should be 2D tensor");
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 0",
+                               src.dims()[0], dest.dims()[0], this);
+  isValid &= expectCompareTrue("Mismatch on expected source dimension 1",
+                               src.dims()[1], weights.dims()[1], this);
 
-  assert(offsets.dims().size() == 1 && scales.dims().size() == 1 &&
-         bias.dims().size() == 1 &&
-         "Offsets, scales and bias should be 1D tensor");
+  isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
+                               weights.dims()[0], this);
+  isValid &= expectCompareTrue("Inconsistent weights/dest sizes",
+                               weights.dims()[0], dest.dims()[1], this);
 
-  assert(src.dims()[0] == dest.dims()[0] &&
-         src.dims()[1] == weights.dims()[1] &&
-         "Mismatch on expected source dimensions");
-
-  assert(bias.dims()[0] == weights.dims()[0] &&
-         weights.dims()[0] == dest.dims()[1] &&
-         "Inconsistent bias/weights/dest sizes.");
-
-  assert(scales.dims()[0] == offsets.dims()[0] &&
-         scales.dims()[0] == weights.dims()[0] &&
-         "Inconsistent weights/offsets/scales sizes");
+  isValid &= expectCompareTrue("Inconsistent scales/offsets sizes",
+                               scales.dims()[0], offsets.dims()[0], this);
+  isValid &= expectCompareTrue("Inconsistent scales/weights sizes",
+                               scales.dims()[0], weights.dims()[0], this);
+  return isValid;
 }
 
-void GatherNode::verify() const {
-  assert(getResult().getElementType() == getData().getElementType());
-  assert(getIndices().getElementType() == ElemKind::Int64ITy);
-  assert(getResult().dims().size() ==
-         getData().dims().size() + getIndices().dims().size() - 1);
-  if (getResult().getType()->isQuantizedType()) {
-    // Quantization scales must be identical; no rescaling is allowed.
-    assert(getResult().getType()->getScale() ==
-           getData().getType()->getScale());
-    assert(getResult().getType()->getOffset() ==
-           getData().getType()->getOffset());
-  }
+bool GatherNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= expectCompareTrue(
+      "Mismatching number of dimensions", getResult().dims().size(),
+      getData().dims().size() + getIndices().dims().size() - 1, this);
+  isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
+                                           getData().getType(), this);
+  return isValid;
 }
 
-void ScatterAssignNode::verify() const {
+bool ScatterAssignNode::verify() const {
   const auto &slicesDims = getSlices().dims();
   const auto &dataDims = getData().dims();
   const auto &indicesDims = getIndices().dims();
-  (void)slicesDims;
-  (void)dataDims;
-  (void)indicesDims;
 
-  assert(indicesDims.size() == 1 &&
-         "Indices should be a single dimensional vector.");
-  assert(indicesDims[0] == slicesDims[0] &&
-         "There should be an index for each slice.");
-  assert(slicesDims.size() == dataDims.size() &&
-         "Slices and data should have same number of dimensions.");
+  bool isValid =
+      expectCompareTrue("Indices should be a single dimensional vector",
+                        indicesDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("There should be an index for each slice",
+                               indicesDims[0], slicesDims[0], this);
+  isValid &=
+      expectCompareTrue("Slices and data should have same number of dimensions",
+                        slicesDims.size(), dataDims.size(), this);
 
   if (dataDims.size() > 1) {
+    if (!isValid) {
+      // The following loop may be out-of-bound if the previous
+      // comparisons failed.
+      return false;
+    }
+
     for (size_t i = 1; i < dataDims.size(); i++) {
-      assert(dataDims[i] == slicesDims[i] &&
-             "Slice shape should equal data shape without first dimension.");
+      std::string msg = std::to_string(i);
+      msg = "Slice shape should equal data shape for dim " + msg;
+      isValid &=
+          expectCompareTrue(msg.c_str(), dataDims[i], slicesDims[i], this);
     }
   }
+  return isValid;
 }
 
-void BatchOneHotNode::verify() const {
+bool BatchOneHotNode::verify() const {
   const auto &dataDims = getData().dims();
   const auto &lengthsDims = getLengths().dims();
   const auto &valuesDims = getValues().dims();
-  (void)dataDims;
-  (void)lengthsDims;
-  (void)valuesDims;
 
-  assert(dataDims.size() == 2 && "Data should be a two dimensional matrix.");
-  assert(lengthsDims.size() == 1 && valuesDims.size() == 1 &&
-         "Lengths and Values should be a single dimensional vectors.");
-  assert(lengthsDims[0] == dataDims[1] &&
-         "Size of Lengths should be equal to width of Data.");
+  bool isValid = expectCompareTrue("Data should be a two dimensional matrix",
+                                   dataDims.size(), size_t(2), this);
+
+  isValid &= expectCompareTrue("Lengths should be a single dimensional vectors",
+                               lengthsDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Values should be a single dimensional vectors",
+                               valuesDims.size(), size_t(1), this);
+
+  isValid &=
+      expectCompareTrue("Size of Lengths should be equal to width of Data",
+                        lengthsDims[0], dataDims[1], this);
+  return isValid;
 }
 
-void SaveNode::verify() const { checkSameType(getInput(), getOutput()); }
+bool SaveNode::verify() const {
+  return checkSameType(getInput(), getOutput(), this);
+}
 
-void LogNode::verify() const {
+bool LogNode::verify() const {
   if (getResult().getType()->isQuantizedType()) {
-    checkSameShape(getInput(), getResult());
-  } else {
-    checkSameType(getInput(), getResult());
+    return checkSameShape(getInput(), getResult(), this);
   }
+  return checkSameType(getInput(), getResult(), this);
 }
 
-void IsNaNNode::verify() const { checkSameShape(getInput(), getResult()); }
-
-void SelectNode::verify() const {
-  assert(getResult().getElementType() == getCond().getElementType());
-  assert(getResult().getElementType() == getLHS().getElementType());
-  assert(getResult().getElementType() == getRHS().getElementType());
-  checkSameShape(getResult(), getCond());
-  checkSameShape(getResult(), getLHS());
-  checkSameShape(getResult(), getRHS());
+bool IsNaNNode::verify() const {
+  return checkSameShape(getInput(), getResult(), this);
 }
 
-void ReluNode::verify() const { verifyRelu(getResult(), getInput()); }
-
-void ReluGradNode::verify() const {
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
+bool SelectNode::verify() const {
+  bool isValid = checkType(getResult(), getCond().getElementType(), this);
+  isValid &= checkType(getResult(), getLHS().getElementType(), this);
+  isValid &= checkType(getResult(), getRHS().getElementType(), this);
+  isValid &= checkSameShape(getResult(), getCond(), this);
+  isValid &= checkSameShape(getResult(), getLHS(), this);
+  isValid &= checkSameShape(getResult(), getRHS(), this);
+  return isValid;
 }
 
-void RegressionNode::verify() const {
-  verifyRegression(getInput(), getResult(), getExpected());
+bool ReluNode::verify() const { return verifyRelu(getResult(), getInput()); }
+
+bool ReluGradNode::verify() const {
+  return verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput(),
+                                      this) &&
+         verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                        getGradOfOriginalOutputNamedResult(),
+                                        this) &&
+         verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
 }
 
-void RegressionGradNode::verify() const {
-  verifyInputAndGradInputTypes(getExpected(), getGradOfInputNamedExpected());
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyRegression(getGradOfInputNamedInput(),
-                   getGradOfOriginalOutputNamedResult(),
-                   getGradOfInputNamedExpected());
+bool RegressionNode::verify() const {
+  return verifyRegression(getInput(), getResult(), getExpected());
 }
 
-void SigmoidCrossEntropyWithLogitsNode::verify() const {
-  assert(getResult().getElementType() == getLogits().getElementType());
-  checkSameType(getLogits(), getTargets());
+bool RegressionGradNode::verify() const {
+  return verifyInputAndGradInputTypes(getExpected(),
+                                      getGradOfInputNamedExpected(), this) &&
+         verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput(),
+                                      this) &&
+         verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                        getGradOfOriginalOutputNamedResult(),
+                                        this) &&
+         verifyRegression(getGradOfInputNamedInput(),
+                          getGradOfOriginalOutputNamedResult(),
+                          getGradOfInputNamedExpected());
 }
 
-void FullyConnectedNode::verify() const {
-  verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
+bool SigmoidCrossEntropyWithLogitsNode::verify() const {
+  bool isValid = checkType(getResult(), getLogits().getElementType(), this);
+  isValid &= checkSameType(getLogits(), getTargets(), this);
+  return isValid;
 }
 
-void FullyConnectedGradNode::verify() const {
-  verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias());
-  verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput());
-  verifyInputAndGradInputTypes(getWeights(), getGradOfInputNamedWeights());
-  verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
-                                 getGradOfOriginalOutputNamedResult());
-  verifyFullyConnected(getGradOfInputNamedInput(), getGradOfInputNamedWeights(),
-                       getGradOfInputNamedBias(),
-                       getGradOfOriginalOutputNamedResult());
+bool FullyConnectedNode::verify() const {
+  return verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }
 
-void ConcatNode::verify() const {
+bool FullyConnectedGradNode::verify() const {
+  return verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(),
+                                      this) &&
+         verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput(),
+                                      this) &&
+         verifyInputAndGradInputTypes(getWeights(),
+                                      getGradOfInputNamedWeights(), this) &&
+         verifyOutputAndGradOutputTypes(getOriginalOutputForResult(),
+                                        getGradOfOriginalOutputNamedResult(),
+                                        this) &&
+         verifyFullyConnected(
+             getGradOfInputNamedInput(), getGradOfInputNamedWeights(),
+             getGradOfInputNamedBias(), getGradOfOriginalOutputNamedResult());
+}
+
+bool ConcatNode::verify() const {
   auto inputs = getInputs();
   auto dimension = getDim();
-  (void)inputs;
-  (void)dimension;
-  assert(!inputs.empty() && "Empty concat?!");
-  assert(inputs[0].dims().size() > dimension && "concat on invalid dimension");
+  if (!expectCompareTrue("Empty concat?!", inputs.empty(), false, this)) {
+    return false;
+  }
+  bool isValid = expectCompareTrue("concat on invalid dimension",
+                                   inputs[0].dims().size(), size_t(dimension),
+                                   this, CompareOperatorGreaterThan<size_t>());
 
   size_t nbDims = inputs[0].dims().size();
   for (size_t i = 1; i < inputs.size(); i++) {
-    assert(nbDims == inputs[i].dims().size() &&
-           "input #dims are incompatible between elements");
+    std::string istr = std::to_string(i);
+    std::string msg =
+        "input " + istr + "#dims are incompatible between elements";
+    if (!expectCompareTrue(msg.c_str(), nbDims, inputs[i].dims().size(),
+                           this)) {
+      isValid = false;
+      // The following loop depends on this condition being true.
+      continue;
+    }
     for (size_t j = 0; j < nbDims; j++) {
       if (j == dimension) {
         continue;
       }
-      assert(inputs[0].dims()[j] == inputs[i].dims()[j]);
+      std::string innerMsg = std::to_string(j);
+      innerMsg =
+          "Mismatching dimension " + innerMsg + " for input 0 and " + istr;
+      isValid &= expectCompareTrue(innerMsg.c_str(), inputs[0].dims()[j],
+                                   inputs[i].dims()[j], this);
     }
-  }
 
-  for (size_t i = 0; i < inputs.size(); i++) {
-    checkType(inputs[i], getResult().getElementType());
-    if (getResult().getType()->isQuantizedType()) {
-      assert(inputs[i].getType()->getScale() ==
-             getResult().getType()->getScale());
-      assert(inputs[i].getType()->getOffset() ==
-             getResult().getType()->getOffset());
+    for (size_t i = 0; i < inputs.size(); i++) {
+      isValid &= checkType(inputs[i], getResult().getElementType(), this);
+      isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
+                                               inputs[i].getType(), this);
     }
   }
+  return isValid;
 }
 
 //===----------------------------------------------------------------------===//
