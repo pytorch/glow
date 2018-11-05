@@ -22,6 +22,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Node.h"
+#include "glow/IR/IR.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <unordered_map>
@@ -34,7 +35,6 @@
 
 namespace glow {
 
-class IRFunction;
 class OCLConvolutionInst;
 class Value;
 
@@ -70,11 +70,6 @@ class OpenCLFunction final : public CompiledFunction {
   };
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
-  /// Maps values to on-device buffers. This list includes both weights and
-  /// activations.
-  std::unordered_map<const Value *, uint64_t> tensors_;
-  /// Maps values to Tensors, that are *not* owned by this class.
-  std::unordered_map<const Value *, Tensor *> externalTensors_;
   /// CL compute device id.
   cl_device_id deviceId_;
   /// CL compute context.
@@ -90,10 +85,13 @@ class OpenCLFunction final : public CompiledFunction {
   cl_mem deviceBuffer_{0};
   /// Information about kernel launches.
   std::vector<KernelLaunch> kernelLaunches_;
+  /// Runtime bundle that contains symbol offsets and constants.
+  runtime::RuntimeBundle bundle_;
 
 public:
   /// Ctor.
-  explicit OpenCLFunction(std::unique_ptr<IRFunction> F, const Context &ctx);
+  explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
+                          const runtime::RuntimeBundle &bundle);
 
   /// @name CompiledFunction interface
   ///@{
@@ -101,28 +99,28 @@ public:
 
   void execute(Context &ctx) override;
   ///@}
+  /// Allocates on device buffer and copies Constant weights to device.
+  void copyConstantsToDevice();
+  /// Copies Inputs from \p ctx to on device memory.
+  void copyInputsToDevice(const Context &ctx);
+  /// Copies outputs from device to tensors in \p ctx.
+  void copyOutputsFromDevice(const Context &ctx);
+  /// Copy Function to device, an empty function for OpenCL.
+  void copyFunctionToDevice(){};
+  /// Allocate Mutable buffers on device, this is an empty function on OpenCL
+  /// because the OCL backend uses a single buffer which is allocated when
+  /// constants are copied to the device.
+  void allocateMutableBuffersOnDevice(){};
+  /// Frees runtime allocations. This is an empty function for OCL.
+  void freeAllocations(){};
 
 private:
-  /// Allocate memory for the tensors.
-  void allocateMemory(const Context &ctx);
   /// Copy the value from a device to a provided buffer.
-  /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
   uint64_t copyValueFromDevice(const Value *v, void *buf = nullptr);
   /// Copy value from the provided buffer to the device.
-  /// If \p buf is nullptr, the payload of the underlying tensor is used.
   /// \returns number of copied bytes.
   uint64_t copyValueToDevice(const Value *v, void *buf = nullptr);
-  /// Copy mutable weights to the device.
-  /// \returns number of copied bytes.
-  uint64_t copyMutableWeightsToDevice();
-  /// Copy constant weights to the device.
-  /// \returns number of copied bytes.
-  uint64_t copyConstantWeightsToDevice();
-  /// Copy mutable weights from the device.
-  /// \returns number of copied bytes.
-  uint64_t copyMutableWeightsFromDevice();
-
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
@@ -155,9 +153,6 @@ private:
                      cl_device_id device, llvm::ArrayRef<size_t> global,
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
-
-  /// \returns a pointer to the tensor that is saved under \p v.
-  Tensor *getTensor(const Value *v) const;
 };
 
 /// This is the OpenCL backend.
