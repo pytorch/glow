@@ -21,7 +21,7 @@
   A representation of the instruction stream encoded to be efficiently
   interpreted by an executor.
 
-#### C
+### C
 
 * CNN  
   Convolutional Neural Network  
@@ -35,6 +35,10 @@
 
 * DAG  
   Directed Acylic Graph  
+
+* DMA  
+  Direct Memory Access  
+  Copy data to/from memory without occupying CPU time
 
 * DNM  
   Do Not Merge  
@@ -116,4 +120,3 @@
   Used as a tag to commits that are not ready to be merged.  This is often used
   to mark patches that are being uploaded to test with CI or to get some initial
   feedback on the changes.
-
