@@ -75,4 +75,6 @@ std::string escapeDottyString(const std::string &str) {
   }
   return out;
 }
+
+void report(const char *msg) { errs() << msg; }
 } // namespace glow

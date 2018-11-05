@@ -429,7 +429,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  llvm::hash_code getHash() const;\n"
      << "  void visit(Node *parent, NodeWalker *visitor);\n"
      << "  Node* clone() const;\n"
-     << "  void verify() const;\n";
+     << "  bool verify() const;\n";
 
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"

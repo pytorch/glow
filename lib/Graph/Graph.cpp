@@ -2395,7 +2395,9 @@ void Function::verify() const {
   for (const auto &N : nodes_) {
     assert(N.getParent() == this &&
            "Node is not linked to the function it belongs");
-    N.verify();
+    bool isValid = N.verify();
+    (void)isValid;
+    assert(isValid && "Found an invalid node");
     // Make sure all the placeholders are at most written once, and that
     // constants are never written to.
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {

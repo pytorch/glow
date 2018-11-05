@@ -15,19 +15,19 @@
  */
 #ifdef GLOW_WITH_CPU
 
-void CPUMaxSplatNode::verify() const {
-  assert(getInput().getType() == getResult().getType() && "Invalid type");
-  assert(getInput().dims() == getResult().dims() && "Invalid shape");
+#include "glow/Graph/VerifierHelper.h"
+
+bool CPUMaxSplatNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
 }
 
-void CPUConvDKKC8Node::verify() const {
+bool CPUConvDKKC8Node::verify() const {
   ShapeNHWC idim(getInput().getType()->dims());
   ShapeNHWC odim(getResult().getType()->dims());
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, getKernels(),
                                            getStrides(), getPads());
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, getBias().dims()[0]);
-  (void)exp;
-  assert(exp == odim && "Invalid output dimensions");
+  return expectCompareTrue("Invalid output dimensions", exp, odim, this);
 }
 
 #endif // GLOW_WITH_CPU

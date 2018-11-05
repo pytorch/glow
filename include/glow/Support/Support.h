@@ -106,6 +106,10 @@ public:
   operator std::string() { return repr_.str(); }
 };
 
+/// Print \p msg on the error stream.
+void report(const char *msg);
+inline void report(const std::string &str) { report(str.c_str()); }
+inline void report(llvm::StringRef str) { report(str.data()); }
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

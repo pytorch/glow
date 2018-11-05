@@ -101,7 +101,7 @@ public:
 
   llvm::hash_code getHash() const;
 
-  void verify() const;
+  bool verify() const;
 };
 
 /// Placeholder nodes are unbound-storage. The content tensors are attached to
