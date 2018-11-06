@@ -102,6 +102,11 @@
 
 ### R
 
+* RAUW  
+  Replace All Uses With  
+  A term commonly used in LLVM referring to a method that replaces all the uses
+  of one value with another.  In Glow, see `NodeValue::replaceAllUsesOfWith`.
+
 * ReLU  
   Rectified Linear Unit  
   A unit with a linear activation function in the context of a DNN.  These are
