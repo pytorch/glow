@@ -112,6 +112,12 @@ void Graph::run(
   updateInputPlaceholders(ctx_, phs, tensors);
   EE.run(ctx_);
 
+  // Tensors do not own underlying memory for input buffer,
+  // just delete memory allocated for the tensor object itself.
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    delete tensors[i];
+  }
+
   // Copy outputs to the addresses specified in the outputPlaceholderToBuffer.
   for (auto outputVar : outputPlaceholderToBuffer) {
     void *outputAddress = reinterpret_cast<void *>(outputVar.second);
