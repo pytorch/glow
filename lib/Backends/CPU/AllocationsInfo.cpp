@@ -82,9 +82,13 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
 }
 
 void AllocationsInfo::collectConstants(const IRFunction *F) {
-
   // At compile time condense constants to a single block of memory.
-  // This allows the graph to go away after compile time.
+  // This allows the graph to go away after compile time. If we don't have
+  // constant weights, do nothing.
+  if (constantWeightVarsMemSize_ == 0) {
+    return;
+  }
+
   baseConstantWeightVarsStore_ =
       (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
   for (auto &v : F->getGraph()->getParent()->getConstants()) {
