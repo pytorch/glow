@@ -398,6 +398,24 @@ protected:
     addNodeAsOutput(op, node);
   }
 
+  void loadSparseLengthsSum(const OpType &op) {
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
+    auto in2 = getNodeValueOrCreateConstantByName(op.input(2));
+    auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2);
+    addNodeAsOutput(op, node);
+  }
+
+  void loadSparseLengthsWeightedSum(const OpType &op) {
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
+    auto in2 = getNodeValueOrCreateConstantByName(op.input(2));
+    auto in3 = getNodeValueOrCreateConstantByName(op.input(3));
+    auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
+                                                   in1, in2, in3);
+    addNodeAsOutput(op, node);
+  }
+
   void loadLengthsToRanges(const OpType &op) {
     auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto *node = G_.createLengthsToRanges(loadOperatorName(op), in);
@@ -527,6 +545,14 @@ protected:
     }
     if (typeName == "BatchOneHot") {
       loadBatchOneHot(op);
+      return true;
+    }
+    if (typeName == "SparseLengthsSum") {
+      loadSparseLengthsSum(op);
+      return true;
+    }
+    if (typeName == "SparseLengthsWeightedSum") {
+      loadSparseLengthsWeightedSum(op);
       return true;
     }
     if (typeName == "LengthsToRanges") {
