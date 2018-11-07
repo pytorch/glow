@@ -1904,9 +1904,6 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst_FloatImpl(
 
   size_t lineSize = data->size() / data->dims()[0];
 
-  assert(!data->getType().isQuantizedType() &&
-         "Quantization is not yet supported for SparseLengthsWeightedSum.");
-
   auto DH = data->getHandle<ElemTy>();
   auto WH = weights->getHandle<ElemTy>();
   auto OH = out->getHandle<ElemTy>();
@@ -1923,11 +1920,67 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst_FloatImpl(
   }
 }
 
+void InterpreterFunction::fwdSparseLengthsWeightedSumInst_I8Impl(
+    const SparseLengthsWeightedSumInst *I) {
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto weights = getTensor(I->getWeights());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int64_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength == indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<int8_t>();
+  auto WH = weights->getHandle<int8_t>();
+  auto OH = out->getHandle<int8_t>();
+
+  auto TQP = [](Tensor *T) {
+    return TensorQuantizationParams{T->getType().getScale(),
+                                    T->getType().getOffset()};
+  };
+  using namespace quantization;
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    std::vector<float> accum(lineSize);
+    for (size_t j = 0; j < LH.raw(i); j++) {
+      float weight = dequantize(WH.raw(curIdx), TQP(weights));
+      size_t offsetIn = IH.raw(curIdx) * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        accum[k] += weight * dequantize(DH.raw(offsetIn++), TQP(data));
+      }
+      curIdx++;
+    }
+    size_t offsetOut = i * lineSize;
+    for (size_t k = 0; k < lineSize; k++) {
+      OH.raw(offsetOut++) = quantize(accum[k], TQP(out));
+    }
+  }
+}
+
 void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
+  if (I->getDest()->getType()->isQuantizedType()) {
+    return fwdSparseLengthsWeightedSumInst_I8Impl(I);
+  }
   dispatchFloatingPointImpl(fwdSparseLengthsWeightedSumInst_FloatImpl,
                             I->getData()->getElementType(), I);
 }
+
 void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int64_t>();
   auto lengths = getTensor(I->getLengths())->getHandle<int64_t>();
