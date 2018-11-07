@@ -25,8 +25,10 @@
 
 using llvm::cast;
 
-namespace glow {
-namespace quantization {
+namespace {
+
+using namespace glow;
+using namespace glow::quantization;
 
 /// This class produces a quantized function based on a provided profile.
 class FunctionQuantizer : public FunctionConverter {
@@ -328,6 +330,11 @@ public:
     }
   }
 };
+
+} // namespace
+
+namespace glow {
+namespace quantization {
 
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(Context &ctx, const Function *F, Schema schema) {
