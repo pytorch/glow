@@ -28,11 +28,15 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
 CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.constants); }
 
 void CPUFunction::allocateMutableBuffersOnDevice() {
-  baseActivationsAddress_ = (uint8_t *)alignedAlloc(
-      runtimeBundle_.activationsMemSize, TensorAlignment);
+  if (runtimeBundle_.activationsMemSize != 0) {
+    baseActivationsAddress_ = (uint8_t *)alignedAlloc(
+        runtimeBundle_.activationsMemSize, TensorAlignment);
+  }
 
-  baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
-      runtimeBundle_.mutableWeightVarsMemSize, TensorAlignment);
+  if (runtimeBundle_.mutableWeightVarsMemSize != 0) {
+    baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
+        runtimeBundle_.mutableWeightVarsMemSize, TensorAlignment);
+  }
 }
 
 void CPUFunction::copyInputsToDevice(Context &ctx) {
@@ -64,8 +68,13 @@ void CPUFunction::copyOutputsFromDevice(Context &ctx) {
 }
 
 void CPUFunction::freeAllocations() {
-  alignedFree(baseMutableWeightVarsAddress_);
-  alignedFree(baseActivationsAddress_);
+  if (baseMutableWeightVarsAddress_) {
+    alignedFree(baseMutableWeightVarsAddress_);
+  }
+
+  if (baseActivationsAddress_) {
+    alignedFree(baseActivationsAddress_);
+  }
 }
 
 void CPUFunction::execute(Context &ctx) {
