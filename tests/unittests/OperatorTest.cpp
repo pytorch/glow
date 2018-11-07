@@ -3685,7 +3685,7 @@ TEST_P(InterpAndCPU, LengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseLengthsSum) {
+TEST_P(InterpAndCPU, SparseLengthsSum) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -3734,7 +3734,7 @@ TEST_P(InterpOnly, SparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseLengthsWeightedSum) {
+TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]

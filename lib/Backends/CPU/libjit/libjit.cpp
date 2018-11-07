@@ -920,6 +920,24 @@ void libjit_lengths_to_ranges_u(size_t *ranges, const size_t *lengths,
   }
 }
 
+void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
+                                          float *weights, size_t *indices,
+                                          size_t *lengths, size_t segments,
+                                          size_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0; j < lengths[i]; j++) {
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += weight * data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_sparse_to_dense_f(float *dest, const size_t *indices,
                               const float *values, size_t numIndices,
                               size_t destSize, size_t valueSize) {
