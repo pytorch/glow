@@ -119,6 +119,11 @@ protected:
       auto *SMN = cast<SoftMaxNode>(&node);
       return SMN->getInput().getElementType() == ElemKind::FloatTy;
     }
+    case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
+      auto *SLS = cast<SparseLengthsWeightedSumNode>(&node);
+      return (SLS->getData().getElementType() == ElemKind::FloatTy) &&
+             (SLS->getWeights().getElementType() == ElemKind::FloatTy);
+    }
     default:
       // Let the general procedure handle this node kind.
       break;
