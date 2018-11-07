@@ -190,6 +190,9 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
     } else if (operation == "Concat") {
       ADD_OP_MAPPING(ConcatNodeKind, FloatTy);
+    } else if (operation == "SparseLengthsSum" ||
+               operation == "SparseLengthsWeightedSum") {
+      ADD_OP_MAPPING(SparseLengthsWeightedSumNodeKind, FloatTy);
     } else if (operation == "Clip") {
       ADD_OP_MAPPING(MinNodeKind, FloatTy);
       ADD_OP_MAPPING(MaxNodeKind, FloatTy);

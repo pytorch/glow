@@ -438,25 +438,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "SparseLengthsSum") {
-    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
-    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
-    auto in2 = getNodeValueOrCreateConstantByName(op.input(2));
-    auto *node = G_.createSparseLengthsSum(opName, in0, in1, in2);
-    addNodeAsOutput(op, node);
-    return;
-  }
-
-  if (typeName == "SparseLengthsWeightedSum") {
-    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
-    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
-    auto in2 = getNodeValueOrCreateConstantByName(op.input(2));
-    auto in3 = getNodeValueOrCreateConstantByName(op.input(3));
-    auto *node = G_.createSparseLengthsWeightedSum(opName, in0, in1, in2, in3);
-    addNodeAsOutput(op, node);
-    return;
-  }
-
   if (typeName == "ExpandDims") {
     auto in = getNodeValueOrCreateConstantByName(op.input(0));
     auto dims = getShape(dict["dims"]);
