@@ -427,8 +427,8 @@ private:
 void dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os);
 void dumpAsciiImpl(Tensor *T);
 
-void dumpImpl(Tensor *T, llvm::raw_ostream &os);
-void dumpImpl(Tensor *T);
+void dumpImpl(const Tensor *T, llvm::raw_ostream &os);
+void dumpImpl(const Tensor *T);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class

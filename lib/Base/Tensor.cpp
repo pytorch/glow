@@ -287,7 +287,7 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
 
 void glow::dumpAsciiImpl(Tensor *T) { dumpAsciiImpl(T, llvm::outs()); }
 
-void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
+void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
     return dumpGenericImpl(T->getHandle<float>(), os);
@@ -306,7 +306,7 @@ void glow::dumpImpl(Tensor *T, llvm::raw_ostream &os) {
   }
 }
 
-void glow::dumpImpl(Tensor *T) { dumpImpl(T, llvm::outs()); }
+void glow::dumpImpl(const Tensor *T) { dumpImpl(T, llvm::outs()); }
 
 void glow::genericTranspose(Tensor *src, Tensor *dest,
                             llvm::ArrayRef<unsigned_t> shuffle) {
