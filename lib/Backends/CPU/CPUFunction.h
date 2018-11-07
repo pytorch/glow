@@ -30,9 +30,9 @@ class CPUFunction final : public CompiledFunction {
   /// runtimeBundle contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;
   /// Base address for Activations memory block.
-  uint8_t *baseActivationsAddress_;
+  uint8_t *baseActivationsAddress_{};
   /// Base address for Mutable weights memory block, Inputs and Outputs.
-  uint8_t *baseMutableWeightVarsAddress_;
+  uint8_t *baseMutableWeightVarsAddress_{};
 
 public:
   /// Ctor.
