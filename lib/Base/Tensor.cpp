@@ -194,7 +194,7 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 /// over a single dimension, or if we've reached the last dimension perform a
 /// single copy of a single element.
 template <class ElemTy>
-static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+static void transposeGenericImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  size_t *srcCoor, size_t *destCoor,
                                  llvm::ArrayRef<unsigned_t> shuffle,
                                  unsigned depth = 0) {
@@ -220,7 +220,7 @@ static void transposeGenericImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 /// other transpose function (e.g. transposeGenericImpl) must be called. \p
 /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
 template <class ElemTy>
-static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+static bool tryTransposeFastImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                  llvm::ArrayRef<unsigned_t> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[max_tensor_dimensions];
@@ -255,7 +255,7 @@ static bool tryTransposeFastImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 }
 
 template <class ElemTy>
-static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
+static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                 llvm::ArrayRef<unsigned_t> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
@@ -266,7 +266,7 @@ static void transposeSelectImpl(Handle<ElemTy> &src, Handle<ElemTy> &dest,
 }
 } // namespace
 
-void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
+void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
@@ -285,7 +285,7 @@ void glow::dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os) {
   }
 }
 
-void glow::dumpAsciiImpl(Tensor *T) { dumpAsciiImpl(T, llvm::outs()); }
+void glow::dumpAsciiImpl(const Tensor *T) { dumpAsciiImpl(T, llvm::outs()); }
 
 void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
   switch (T->getElementType()) {
@@ -308,7 +308,7 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
 
 void glow::dumpImpl(const Tensor *T) { dumpImpl(T, llvm::outs()); }
 
-void glow::genericTranspose(Tensor *src, Tensor *dest,
+void glow::genericTranspose(const Tensor *src, Tensor *dest,
                             llvm::ArrayRef<unsigned_t> shuffle) {
   assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
 
