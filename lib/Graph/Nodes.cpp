@@ -603,6 +603,7 @@ void SparseLengthsWeightedSumNode::verify() const {
          "Indices must have index type");
   assert(getLengths().getElementType() == ElemKind::Int64ITy &&
          "Lengths must have index type");
+  assert(getData().dims().size() > 0 && "Data must have at least 1 dimension");
   assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
   assert(getWeights().dims().size() == 1 && "Weights must be 1D vector");
