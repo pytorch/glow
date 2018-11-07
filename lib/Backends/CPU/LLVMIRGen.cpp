@@ -2154,6 +2154,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SparseLengthsWeightedSumInstKind: {
+    auto *SI = cast<SparseLengthsWeightedSumInst>(I);
+    auto *dest = SI->getDest();
+    auto *data = SI->getData();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *lengths = SI->getLengths();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *F =
+        getFunction("sparse_lengths_weighted_sum", dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, lengthsPtr, segments,
+                lineSize});
+    break;
+  }
+
   case Kinded::Kind::SparseToDenseInstKind: {
     auto *STDI = llvm::cast<SparseToDenseInst>(I);
     auto *indices = STDI->getIndices();
