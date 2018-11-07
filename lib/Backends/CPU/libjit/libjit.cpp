@@ -746,8 +746,8 @@ int8_t libjit_elementselect_kernel_i8(size_t idx, const int8_t *cond,
 }
 
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
-  float e = expf(LHS[idx]);
-  return e / (e + 1);
+  float e = expf(-LHS[idx]);
+  return 1 / (e + 1);
 }
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_f,
                                              float, MAX(LHS[idx], val))
@@ -1287,8 +1287,8 @@ void libjit_softmax_grad_f(float *inG, float *outW, const size_t *selectedW,
 
 void libjit_sigmoid_f(const float *inW, float *outW, size_t numElem) {
   for (size_t i = 0; i < numElem; i++) {
-    float e = expf(inW[i]);
-    outW[i] = e / (e + 1);
+    float e = expf(-inW[i]);
+    outW[i] = 1 / (e + 1);
   }
 }
 

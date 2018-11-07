@@ -3381,6 +3381,24 @@ TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
+TEST_P(InterpAndCPU, SigmoidOverflow) {
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "input", false);
+  auto IH = ctx_.allocate(input)->getHandle();
+  IH.raw(0) = 1000;
+  IH.raw(1) = -1000;
+
+  auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
+  auto *S = F_->createSave("fpSave", fpSigmoid);
+  ctx_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run(ctx_);
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  static const float ref[] = {1, 0};
+  for (size_t i = 0; i < 2; i++) {
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+  }
+}
+
 TEST_P(InterpAndCPU, Int8Sigmoid) {
   constexpr size_t size = 10;
   auto *input =
