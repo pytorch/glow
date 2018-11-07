@@ -438,14 +438,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "ExpandDims") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    auto dims = getShape(dict["dims"]);
-    Node *node = G_.createExpandDims(opName, in, dims);
-    addNodeAsOutput(op, node);
-    return;
-  }
-
   if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
       typeName == "Copy" || typeName == "EnsureCPUOutput" ||
       typeName == "EnsureDense") {

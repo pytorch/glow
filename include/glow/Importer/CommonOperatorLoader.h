@@ -462,6 +462,19 @@ protected:
     return true;
   }
 
+  bool loadExpandDims(const OpType &op, const ArgumentDictionaryTy &dict) {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto dims = dict.find("dims");
+    if (dims == dict.end()) {
+      return false;
+    }
+    Node *node =
+        G_.createExpandDims(loadOperatorName(op), in, getShape(dims->second));
+    addNodeAsOutput(op, node);
+
+    return true;
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -573,6 +586,9 @@ protected:
     }
     if (typeName == "LengthsSum") {
       return loadLengthsSum(op);
+    }
+    if (typeName == "ExpandDims") {
+      return loadExpandDims(op, dict);
     }
     return false;
   }
