@@ -3734,6 +3734,55 @@ TEST_P(InterpAndCPU, SparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, SparseLengthsSumI8) {
+  /*
+    DATA  = [
+        [11, 13],
+        [24, 35],
+        [46, 58],
+    ]
+    INDICES = [2, 0, 1, 2, 0, 0, 0, 0]
+    LENGTHS = [2, 0, 2, 1, 3]
+    OUTPUT = [
+        [56, 70],
+        [ 1,  1],
+        [69, 92],
+        [11, 13],
+        [31, 37],
+    ]
+  */
+  auto *data =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 2}, 0.1f, 1, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {5}, "lengths", false);
+
+  ctx_.allocate(data)->getHandle<int8_t>() = {
+      11, 13, 24, 35, 46, 58,
+  };
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
+      2, 0, 1, 2, 0, 0, 0, 0,
+  };
+  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+      2, 0, 2, 1, 3,
+  };
+
+  auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::Int8QTy, {5, 2}, 0.1f, 1);
+  expected.getHandle<int8_t>() = {
+      56, 70, 1, 1, 69, 92, 11, 13, 31, 37,
+  };
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -3783,6 +3832,61 @@ TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
       0,
       0,
       25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
+  /*
+    DATA  =   [4, -1, 26]
+    WEIGHTS = [6, 2, 0, 0, 0, 0, 4, -1]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [1, 0, 0, 50]
+  */
+  auto *data =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3}, 0.5, 0, "data", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {8}, 0.5, 0, "weights", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+
+  ctx_.allocate(data)->getHandle<int8_t>() = {
+      4,
+      -1,
+      26,
+  };
+  ctx_.allocate(weights)->getHandle<int8_t>() = {
+      6, 2, 0, 0, 0, 0, 4, -1,
+  };
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                              lengths);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_, ctx_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::Int8QTy, {4}, 0.5, 0);
+  expected.getHandle<int8_t>() = {
+      1,
+      0,
+      0,
+      50,
   };
 
   EXPECT_TRUE(expected.isEqual(result));
