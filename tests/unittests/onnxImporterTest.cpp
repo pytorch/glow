@@ -481,3 +481,25 @@ TEST(onnx, FCTransposedWithFlatten) {
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
   ASSERT_TRUE(reshape);
 }
+
+/// Test loading ExpandDims from an ONNX model.
+TEST(onnx, expandDims) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/expandDims.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2});
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+
+  // Verify structure: PH -> Reshape -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
+  ASSERT_TRUE(reshape);
+  EXPECT_TRUE(reshape->getDims().equals({1, 2, 2, 1}));
+}

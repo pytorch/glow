@@ -1,0 +1,57 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "ExpandDims"
+    attribute {
+      name: "dims"
+      ints: 0
+      ints: 3
+      type: INTS
+    }
+  }
+  name: "test_expand_dims"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
