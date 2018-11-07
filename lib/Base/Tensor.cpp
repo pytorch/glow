@@ -194,10 +194,10 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 /// over a single dimension, or if we've reached the last dimension perform a
 /// single copy of a single element.
 template <class ElemTy>
-static void transposeGenericImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                                 size_t *srcCoor, size_t *destCoor,
-                                 llvm::ArrayRef<unsigned_t> shuffle,
-                                 unsigned depth = 0) {
+static void
+transposeGenericImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
+                     size_t *srcCoor, size_t *destCoor,
+                     llvm::ArrayRef<unsigned_t> shuffle, unsigned depth = 0) {
   if (depth == shuffle.size()) {
     auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
     auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
@@ -220,7 +220,8 @@ static void transposeGenericImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest
 /// other transpose function (e.g. transposeGenericImpl) must be called. \p
 /// dest is the tensor to transpose, and \p shuffle defines how to transpose.
 template <class ElemTy>
-static bool tryTransposeFastImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
+static bool tryTransposeFastImpl(const Handle<ElemTy> &src,
+                                 Handle<ElemTy> &dest,
                                  llvm::ArrayRef<unsigned_t> shuffle) {
   const size_t numDims = dest.dims().size();
   size_t srcCoorArr[max_tensor_dimensions];
