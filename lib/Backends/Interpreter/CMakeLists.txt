@@ -6,6 +6,8 @@ target_link_libraries(Interpreter
                       PRIVATE
                         Base
                         Graph
+                        CodeGen
+                        BackendUtils
                         IR
                         Optimizer
                         QuantizationBase)

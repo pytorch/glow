@@ -30,6 +30,8 @@ struct RuntimeSymbolInfo {
   size_t size;
   /// Offset in bytes from the base address.
   size_t offset;
+  /// Type of symbol.
+  Type type;
 };
 /// Runtime Bundle
 /// Contains the information needed to be passed forward from compile time to
