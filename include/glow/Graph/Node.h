@@ -42,7 +42,7 @@ using NodeValueConstIterator = NodeValueIteratorImpl<true>;
 /// Represents a node in the compute graph.
 class Node : public Named,
              public Kinded,
-             public UseDef<Node, NodeHandle, NodeUse>,
+             public UseDef<Node, NodeUse>,
              public llvm::ilist_node<Node> {
   friend llvm::ilist_traits<Node>;
 
