@@ -57,7 +57,7 @@ void testSerialization(const std::vector<NodeQuantizationInfo> &expected) {
   serializeToYaml(filePath, expected);
   std::vector<NodeQuantizationInfo> deserialized =
       deserializeFromYaml(filePath);
-
+  llvm::sys::fs::remove(filePath);
   EXPECT_EQ(expected, deserialized);
 }
 
