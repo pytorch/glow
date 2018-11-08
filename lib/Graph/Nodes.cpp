@@ -601,7 +601,7 @@ void SparseLengthsWeightedSumNode::verify() const {
          "Mismatched element types");
   assert(getIndices().getElementType() == ElemKind::Int64ITy &&
          "Indices must have index type");
-  assert(getLengths().getElementType() == ElemKind::Int64ITy &&
+  assert(getLengths().getElementType() == ElemKind::Int32ITy &&
          "Lengths must have index type");
   assert(getData().dims().size() > 0 && "Data must have at least 1 dimension");
   assert(getIndices().dims().size() == 1 && "Indices must be 1D vector");
@@ -614,8 +614,7 @@ void SparseLengthsWeightedSumNode::verify() const {
 void LengthsToRangesNode::verify() const {
   assert(getResult().getElementType() == getLengths().getElementType() &&
          "Mismatched element types");
-  // TODO: Lengths should be Int32ITy once that type is implemented.
-  assert(getLengths().getElementType() == ElemKind::Int64ITy &&
+  assert(getLengths().getElementType() == ElemKind::Int32ITy &&
          "Lengths must have index type");
   assert(getLengths().dims().size() == 1 && "Lengths must be 1D vector");
   assert(getResult().dims().size() == 2 && "Ranges must be 2D vector");

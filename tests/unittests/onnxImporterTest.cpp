@@ -339,7 +339,7 @@ TEST(onnx, importLengthsToRanges) {
   std::string netFilename("tests/models/onnxModels/lengths_to_ranges.onnxtxt");
   Placeholder *output;
   {
-    Tensor lengths(ElemKind::Int64ITy, {4});
+    Tensor lengths(ElemKind::Int32ITy, {4});
     ONNXModelLoader onnxLD(netFilename, {"lengths"}, {&lengths.getType()}, *F);
     output = onnxLD.getSingleOutput();
   }
@@ -430,6 +430,36 @@ TEST(onnx, importSparseToDense) {
   EXPECT_EQ(vals, mod.getPlaceholderByName("values"));
 }
 
+/// Test loading SparseLengthsSum from an ONNX model.
+TEST(onnx, importSparseLengthsSum) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/sparseLengthsSum.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor data(ElemKind::FloatTy, {2, 1});
+    Tensor indices(ElemKind::Int64ITy, {2});
+    Tensor lengths(ElemKind::Int32ITy, {2});
+    ONNXModelLoader onnxLD(
+        netFilename, {"data", "indices", "lengths"},
+        {&data.getType(), &indices.getType(), &lengths.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+  // Verify structure: PH, PH ->  SparseLengthsSum -> Save -> PH.
+  //                  PH -> Splat /
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  auto *LS =
+      llvm::dyn_cast<SparseLengthsWeightedSumNode>(save->getInput().getNode());
+  ASSERT_TRUE(LS);
+  ASSERT_TRUE(llvm::isa<Placeholder>(LS->getData()));
+  ASSERT_TRUE(llvm::isa<Placeholder>(LS->getIndices()));
+  ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
+  ASSERT_TRUE(llvm::isa<SplatNode>(LS->getWeights()));
+}
+
 /// Test loading LengthsSum from an ONNX model.
 TEST(onnx, importLengthsSum) {
   ExecutionEngine EE;
@@ -439,7 +469,7 @@ TEST(onnx, importLengthsSum) {
   Placeholder *output;
   {
     Tensor data(ElemKind::FloatTy, {10, 2, 3});
-    Tensor lengths(ElemKind::Int64ITy, {5});
+    Tensor lengths(ElemKind::Int32ITy, {5});
     ONNXModelLoader onnxLD(netFilename, {"data", "lengths"},
                            {&data.getType(), &lengths.getType()}, *F);
     output = onnxLD.getSingleOutput();

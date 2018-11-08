@@ -1849,7 +1849,7 @@ void InterpreterFunction::fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I) {
 
   out->zero();
 
-  auto LH = lengths->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
   size_t sliceSize = data->size() / data->dims()[0];
@@ -1860,7 +1860,7 @@ void InterpreterFunction::fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I) {
   size_t offsetIn = 0;
   size_t offsetOut = 0;
   for (size_t i = 0; i < segments; i++) {
-    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+    for (int32_t j = 0, e = LH.raw(i); j < e; j++) {
       for (size_t k = 0; k < sliceSize; k++) {
         OH.raw(offsetOut + k) += DH.raw(offsetIn + k);
       }
@@ -1892,7 +1892,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst_FloatImpl(
   out->zero();
 
   auto IH = indices->getHandle<int64_t>();
-  auto LH = lengths->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
   size_t totalLength = 0;
@@ -1932,7 +1932,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst_I8Impl(
   out->zero();
 
   auto IH = indices->getHandle<int64_t>();
-  auto LH = lengths->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
   size_t totalLength = 0;
@@ -1957,7 +1957,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst_I8Impl(
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
     std::vector<float> accum(lineSize, 0.0f);
-    for (size_t j = 0; j < LH.raw(i); j++) {
+    for (int32_t j = 0; j < LH.raw(i); j++) {
       float weight = dequantize(WH.raw(curIdx), TQP(weights));
       size_t offsetIn = IH.raw(curIdx) * lineSize;
       for (size_t k = 0; k < lineSize; k++) {
@@ -1982,9 +1982,9 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
 }
 
 void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
-  auto ranges = getTensor(I->getDest())->getHandle<int64_t>();
-  auto lengths = getTensor(I->getLengths())->getHandle<int64_t>();
-  int64_t offset = 0;
+  auto ranges = getTensor(I->getDest())->getHandle<int32_t>();
+  auto lengths = getTensor(I->getLengths())->getHandle<int32_t>();
+  int32_t offset = 0;
   for (size_t i = 0; i < lengths.dims()[0]; i++) {
     auto length = lengths.at({i});
     ranges.at({i, 0}) = offset;

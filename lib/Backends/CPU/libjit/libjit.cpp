@@ -677,6 +677,7 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_elementmin_kernel_f, float,
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_f, float, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_u, size_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_i8, int8_t, LHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_i32, int32_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_cmp_lte_kernel_f, float,
                             LHS[idx] <= RHS[idx] ? 1.0 : 0.0)
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_cmp_eq_kernel_u, size_t,
@@ -909,9 +910,9 @@ void libjit_scatterassign_i8(int8_t *data, const size_t *indices,
   libjit_scatterassign(data, indices, slices, numIndices, sliceSize);
 }
 
-void libjit_lengths_to_ranges_u(size_t *ranges, const size_t *lengths,
-                                size_t size) {
-  size_t offset = 0;
+void libjit_lengths_to_ranges_i32(int32_t *ranges, const int32_t *lengths,
+                                  size_t size) {
+  int32_t offset = 0;
   for (size_t i = 0; i < size; i++) {
     auto length = lengths[i];
     ranges[i * 2] = offset;
@@ -922,12 +923,12 @@ void libjit_lengths_to_ranges_u(size_t *ranges, const size_t *lengths,
 
 void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
                                           float *weights, size_t *indices,
-                                          size_t *lengths, size_t segments,
+                                          int32_t *lengths, size_t segments,
                                           size_t lineSize) {
   memset(dest, 0, segments * lineSize * sizeof(float));
   size_t curIndex = 0;
   for (size_t i = 0; i < segments; i++) {
-    for (size_t j = 0; j < lengths[i]; j++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
       float weight = weights[curIndex];
       size_t line = indices[curIndex];
       for (size_t k = 0; k < lineSize; k++) {
@@ -954,16 +955,16 @@ void libjit_sparse_to_dense_f(float *dest, const size_t *indices,
   }
 }
 
-void libjit_lengths_sum_f(float *dest, const float *data, const size_t *lengths,
-                          size_t destSize, size_t lengthsSize,
-                          size_t sliceSize) {
+void libjit_lengths_sum_f(float *dest, const float *data,
+                          const int32_t *lengths, size_t destSize,
+                          size_t lengthsSize, size_t sliceSize) {
   memset(dest, 0, destSize * sizeof(float));
 
   size_t offsetOut = 0;
   size_t offsetIn = 0;
 
   for (size_t i = 0; i < lengthsSize; ++i) {
-    for (size_t j = 0; j < lengths[i]; ++j) {
+    for (int32_t j = 0; j < lengths[i]; ++j) {
       for (size_t k = 0; k < sliceSize; ++k) {
         dest[offsetOut + k] += data[offsetIn + k];
       }

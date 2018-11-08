@@ -213,7 +213,7 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int64ITy"});
+                  {"Lengths", "ElemKind::Int32ITy"});
 
   BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
@@ -226,16 +226,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int64ITy"})
+                  {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int64ITy"});
+                  {"Lengths", "ElemKind::Int32ITy"});
 
   /// Converts the given sparse representation into a dense one.
   BB.newInstr("SparseToDense")

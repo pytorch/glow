@@ -34,6 +34,9 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
+  } else if (in.tensor_type().elem_type() ==
+             ONNX_NAMESPACE::TensorProto::INT32) {
+    T->reset(ElemKind::Int32ITy, dim);
   } else {
     assert(false && "Only float and index tensors are supported");
   }
