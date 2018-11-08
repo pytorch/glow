@@ -161,12 +161,19 @@ static void encodeString(const llvm::StringRef sentence,
 }
 
 /// Load a sentence from std::cin for processing, placing the encoded inputs in
-/// \p encoderInputs.
-static void loadNextInputTranslationText(Tensor *encoderInputs) {
+/// \p encoderInputs. \returns false if the passed in line was empty.
+static bool loadNextInputTranslationText(Tensor *encoderInputs) {
   llvm::outs() << "Enter a sentence in English to translate to German: ";
   std::string sentence;
   getline(std::cin, sentence);
+
+  if (sentence.empty()) {
+    return false;
+  }
+
   encodeString(sentence, encoderInputs);
+
+  return true;
 }
 
 /// Find and return a vector of the best translation given the outputs from the
@@ -338,11 +345,8 @@ int main(int argc, char **argv) {
   Placeholder *outputPrevIndexBeamList =
       LD.getOutputByName("output_prev_index_beam_list");
 
-  while (true) {
-    // Load the next string into encoderInputs.
-    loadNextInputTranslationText(&encoderInputs);
-
-    // update the inputs.
+  while (loadNextInputTranslationText(&encoderInputs)) {
+    // Update the inputs.
     updateInputPlaceholders(ctx, {encoderInputsVar}, {&encoderInputs});
 
     // Run actual translation.
@@ -355,9 +359,11 @@ int main(int argc, char **argv) {
                                       ctx.get(outputPrevIndexBeamList));
   }
 
-  // If profiling the model, serialize the quantization infos now that we have
-  // run inference. If not profiling, this call does nothing.
-  loader.serializeQuantizationInfos(ctx);
+  // If profiling, generate and serialize the quantization infos now that we
+  // have run inference to gather the profile.
+  if (profilingGraph()) {
+    loader.generateAndSerializeQuantizationInfos(ctx);
+  }
 
   return 0;
 }

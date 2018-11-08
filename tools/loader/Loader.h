@@ -25,6 +25,9 @@ class Tensor;
 /// \return true if emit bundle mode is enabled.
 bool emittingBundle();
 
+/// \return true if profiling the graph.
+bool profilingGraph();
+
 /// Driver class for loading, compiling, and running inference for ONNX and
 /// Caffe2 models.
 class Loader {
@@ -67,11 +70,11 @@ public:
   /// tensors include quantization profile guided information.
   void runInference(Context &ctx);
 
-  /// Serializes the quantization infos generated after generating a profile by
-  /// running inference one or more times. \p ctx is the context that binds
+  /// Generates and serializes the quantization infos after gathering a profile
+  /// by running inference one or more times. \p ctx is the context that binds
   /// specific placeholders to concrete tensors. The concrete tensors include
   /// quantization profile guided information.
-  void serializeQuantizationInfos(Context &ctx);
+  void generateAndSerializeQuantizationInfos(Context &ctx);
 
   /// Create the Loader driver object, and parse/verify the command line
   /// parameters.

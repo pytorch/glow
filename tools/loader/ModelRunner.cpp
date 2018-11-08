@@ -58,9 +58,11 @@ int main(int argc, char **argv) {
     // Print out the result of output operator.
     outputT->getHandle().dump();
 
-    // If profiling the model, serialize the quantization infos now that we have
-    // run inference. If not profiling, this call does nothing.
-    loader.serializeQuantizationInfos(ctx);
+    // If profiling, generate and serialize the quantization infos now that we
+    // have run inference to gather the profile.
+    if (profilingGraph()) {
+      loader.generateAndSerializeQuantizationInfos(ctx);
+    }
   }
 
   return 0;
