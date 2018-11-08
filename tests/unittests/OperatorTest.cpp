@@ -3756,7 +3756,7 @@ TEST_P(InterpOnly, SparseLengthsSumI8) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {5}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   ctx_.allocate(data)->getHandle<int8_t>() = {
       11, 13, 24, 35, 46, 58,
@@ -3764,7 +3764,7 @@ TEST_P(InterpOnly, SparseLengthsSumI8) {
   ctx_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -3852,7 +3852,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
   ctx_.allocate(data)->getHandle<int8_t>() = {
       4,
@@ -3865,7 +3865,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
   ctx_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
