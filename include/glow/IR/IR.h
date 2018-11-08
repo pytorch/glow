@@ -79,7 +79,7 @@ struct Use {
 };
 
 class Value : public Named,
-              public UseDef<Instruction, Value, Use>,
+              public UseDef<Instruction, Use>,
               public Typed,
               public Kinded {
 public:
