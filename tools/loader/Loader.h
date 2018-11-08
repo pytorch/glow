@@ -67,6 +67,12 @@ public:
   /// tensors include quantization profile guided information.
   void runInference(Context &ctx);
 
+  /// Serializes the quantization infos generated after generating a profile by
+  /// running inference one or more times. \p ctx is the context that binds
+  /// specific placeholders to concrete tensors. The concrete tensors include
+  /// quantization profile guided information.
+  void serializeQuantizationInfos(Context &ctx);
+
   /// Create the Loader driver object, and parse/verify the command line
   /// parameters.
   Loader(int argc, char **argv);

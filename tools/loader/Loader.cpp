@@ -301,7 +301,9 @@ void Loader::runInference(Context &ctx) {
                                   timer.getTotalTime().getWallTime() /
                                       iterationsOpt);
   }
+}
 
+void Loader::serializeQuantizationInfos(Context &ctx) {
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
         quantization::generateNodeQuantizationInfos(ctx, F_,
