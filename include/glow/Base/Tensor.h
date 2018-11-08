@@ -36,7 +36,7 @@ template <class ElemTy> class Handle;
 
 class Tensor;
 
-void genericTranspose(Tensor *src, Tensor *dest,
+void genericTranspose(const Tensor *src, Tensor *dest,
                       llvm::ArrayRef<unsigned_t> shuffle);
 
 /// Helper function that \returns a ShapeVector of those dimensions in \p
@@ -424,11 +424,11 @@ private:
 //                    Tensor Handle
 //===----------------------------------------------------------------------===//
 
-void dumpAsciiImpl(Tensor *T, llvm::raw_ostream &os);
-void dumpAsciiImpl(Tensor *T);
+void dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os);
+void dumpAsciiImpl(const Tensor *T);
 
-void dumpImpl(Tensor *T, llvm::raw_ostream &os);
-void dumpImpl(Tensor *T);
+void dumpImpl(const Tensor *T, llvm::raw_ostream &os);
+void dumpImpl(const Tensor *T);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
