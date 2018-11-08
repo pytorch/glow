@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+#include "glow/Base/IO.h"
 #include "glow/Support/Random.h"
+
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "gtest/gtest.h"
 
@@ -48,4 +52,17 @@ TEST(Utils, deterministicPRNG) {
   for (unsigned i = 0; i != 100; i++) {
     EXPECT_EQ(dist(genA), dist(genB));
   }
+}
+
+TEST(Utils, readWriteTensor) {
+  llvm::SmallString<64> path;
+  llvm::sys::fs::createTemporaryFile("tensor", "bin", path);
+  ShapeVector dims({2, 2, 2});
+  Tensor output(ElemKind::FloatTy, dims);
+  output.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
+  writeToFile(output, path);
+  Tensor input(ElemKind::FloatTy, dims);
+  readFromFile(input, path);
+  llvm::sys::fs::remove(path);
+  EXPECT_TRUE(output.isEqual(input));
 }

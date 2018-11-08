@@ -181,6 +181,7 @@ add_executable(UtilsTest
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE
+                        Base
                         Support
                         gtest
                         testMain)
