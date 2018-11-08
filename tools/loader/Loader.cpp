@@ -155,6 +155,8 @@ llvm::StringRef Loader::getModelOptPath() {
 
 bool glow::emittingBundle() { return !emitBundle.empty(); }
 
+bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
+
 static bool commandLineIsInvalid() {
   if (!dumpProfileFileOpt.empty() && !loadProfileFileOpt.empty()) {
     llvm::errs() << "Loader: the -" << dumpProfileFileOpt.ArgStr << " and -"
@@ -303,13 +305,12 @@ void Loader::runInference(Context &ctx) {
   }
 }
 
-void Loader::serializeQuantizationInfos(Context &ctx) {
-  if (!dumpProfileFileOpt.empty()) {
-    std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(ctx, F_,
-                                                    quantizationSchema);
-    serializeToYaml(dumpProfileFileOpt, QI);
-  }
+void Loader::generateAndSerializeQuantizationInfos(Context &ctx) {
+  assert(!dumpProfileFileOpt.empty() &&
+         "Filename to dump serialized profile to must not be empty.");
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(ctx, F_, quantizationSchema);
+  serializeToYaml(dumpProfileFileOpt, QI);
 }
 
 Loader::Loader(int argc, char **argv) {
