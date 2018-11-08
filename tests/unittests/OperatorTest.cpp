@@ -3665,11 +3665,11 @@ TEST_P(InterpAndCPU, LengthsSum) {
   */
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {6, 2}, "data", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
   ctx_.allocate(data)->getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 3.7f,
                                       3.0f, 2.9f, 1.1f, 1.4f, 2.8f, 8.4f};
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {2, 0, 3, 1};
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {2, 0, 3, 1};
 
   auto R = F_->createLengthsSum("LS", data, lengths);
   auto *S = F_->createSave("save", R);
@@ -3706,7 +3706,7 @@ TEST_P(InterpAndCPU, SparseLengthsSum) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {5}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   ctx_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
@@ -3714,7 +3714,7 @@ TEST_P(InterpAndCPU, SparseLengthsSum) {
   ctx_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -3797,7 +3797,7 @@ TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
   ctx_.allocate(data)->getHandle() = {
       2.0,
@@ -3810,7 +3810,7 @@ TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
   ctx_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -4494,9 +4494,9 @@ TEST_P(InterpAndCPU, LengthsToRanges) {
     OUTPUT =  [[0, 1], [1, 3], [4, 0], [4, 2]]
   */
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {1, 3, 0, 2};
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 0, 2};
 
   auto R = F_->createLengthsToRanges("LTR", lengths);
   auto *S = F_->createSave("save", R);
@@ -4506,8 +4506,8 @@ TEST_P(InterpAndCPU, LengthsToRanges) {
   EE_.run(ctx_);
 
   Tensor &result = *ctx_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::Int64ITy, {4, 2});
-  expected.getHandle<int64_t>() = {
+  Tensor expected(ElemKind::Int32ITy, {4, 2});
+  expected.getHandle<int32_t>() = {
       0, 1, 1, 3, 4, 0, 4, 2,
   };
 

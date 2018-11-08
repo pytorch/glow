@@ -318,6 +318,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int64ITy:
     T = llvm::Type::getInt64PtrTy(ctx_);
     break;
+  case ElemKind::Int32ITy:
+    T = llvm::Type::getInt32PtrTy(ctx_);
+    break;
   default:
     llvm_unreachable("Unimplemented");
     break;
