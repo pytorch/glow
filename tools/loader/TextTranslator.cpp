@@ -355,5 +355,9 @@ int main(int argc, char **argv) {
                                       ctx.get(outputPrevIndexBeamList));
   }
 
+  // If profiling the model, serialize the quantization infos now that we have
+  // run inference. If not profiling, this call does nothing.
+  loader.serializeQuantizationInfos(ctx);
+
   return 0;
 }
