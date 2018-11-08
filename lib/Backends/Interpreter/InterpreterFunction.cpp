@@ -25,36 +25,58 @@
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
-                                         const Context &ctx)
-    : F_(std::move(F)) {
+                                         const Context &ctx,
+                                         const runtime::RuntimeBundle &bundle)
+    : F_(std::move(F)), bundle_(bundle) {}
 
+InterpreterFunction::~InterpreterFunction() {
+  // Delete the tensors that are owned by this backend.
+  for (const auto &p : tensors_) {
+    delete p.second;
+  }
+  tensors_.clear();
+  externalTensors_.clear();
+  alignedFree(bundle_.constants);
+}
+void InterpreterFunction::setupRuns() {
+  for (const auto &s : bundle_.symbolTable) {
+    auto addr = bundle_.constants + s.second.offset;
+    auto tensor = new Tensor(addr, &s.second.type);
+    constants_.emplace(s.first, tensor);
+  }
+}
+void InterpreterFunction::beforeRun(const Context &ctx) {
   // Register the concrete tensors that back the placeholder tensors.
   for (auto &ph : ctx.pairs()) {
     auto *w = F_->getWeightForNode(ph.first);
     assert(!externalTensors_.count(w) && "The tensor is already registered");
     externalTensors_[w] = ph.second;
   }
+}
 
-  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
-    auto *w = F_->getWeightForNode(v);
-    assert(!externalTensors_.count(w) && "The tensor is already registered");
-    externalTensors_[w] = &v->getPayload();
+void InterpreterFunction::afterRun(const Context &ctx) {
+  // Remove the concrete tensors that back the placeholder tensors.
+  for (auto &ph : ctx.pairs()) {
+    auto *w = F_->getWeightForNode(ph.first);
+    externalTensors_.erase(w);
   }
 }
 
-InterpreterFunction::~InterpreterFunction() {
-  // Delete the tensors that are owned by this backend.
-  for (auto p : tensors_) {
+void InterpreterFunction::tearDownRuns() {
+  for (const auto &p : constants_) {
     delete p.second;
   }
-  tensors_.clear();
-  externalTensors_.clear();
+  constants_.clear();
 }
 
 Tensor *InterpreterFunction::getTensor(const Value *v) const {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
     return it->second;
+  }
+  auto ic = constants_.find(std::string(v->getName()));
+  if (ic != constants_.end()) {
+    return ic->second;
   }
 
   auto ie = externalTensors_.find(v);
@@ -66,6 +88,10 @@ Tensor *InterpreterFunction::getOrCreateTensor(const Value *v) {
   auto ie = externalTensors_.find(v);
   if (ie != externalTensors_.end()) {
     return ie->second;
+  }
+  auto ic = constants_.find(std::string(v->getName()));
+  if (ic != constants_.end()) {
+    return ic->second;
   }
 
   // Pick the tensor.
@@ -108,6 +134,8 @@ void InterpreterFunction::deleteTensor(const Value *v) {
 }
 
 void InterpreterFunction::execute(Context &ctx) {
+  setupRuns();
+  beforeRun(ctx);
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
@@ -125,4 +153,6 @@ void InterpreterFunction::execute(Context &ctx) {
       llvm_unreachable("Invalid instruction.");
     }
   }
+  afterRun(ctx);
+  tearDownRuns();
 }

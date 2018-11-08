@@ -47,13 +47,29 @@ class InterpreterFunction final : public CompiledFunction {
   std::unordered_map<const Value *, Tensor *> tensors_;
   /// Maps values to Tensors, that are *not* owned by this class.
   std::unordered_map<const Value *, Tensor *> externalTensors_;
+  /// Maps Value.name to tensors for constants.
+  std::unordered_map<std::string, Tensor *> constants_;
+  /// Runtime bundle that contains symbol offsets and constants.
+  runtime::RuntimeBundle bundle_;
 
 public:
-  InterpreterFunction(std::unique_ptr<IRFunction> F, const Context &ctx);
+  InterpreterFunction(std::unique_ptr<IRFunction> F, const Context &ctx,
+                      const runtime::RuntimeBundle &bundle);
 
   /// \name CompiledFunction interface
   ///@{
   ~InterpreterFunction() override;
+  /// Does any needed initialization work for the Backend, creates tensors from
+  /// constants.
+  void setupRuns();
+  /// Per run setup, adds references for tensors from \p ctx to
+  /// externalTensors_.
+  void beforeRun(const Context &ctx);
+  /// Per run cleanup, removes references for tensors from \p ctx from
+  /// externalTensors_.
+  void afterRun(const Context &ctx);
+  /// Final cleanup, remove created constant Tensors.
+  void tearDownRuns();
 
   void execute(Context &ctx) override;
   ///@}

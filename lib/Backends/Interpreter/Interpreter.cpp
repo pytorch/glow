@@ -17,11 +17,34 @@
 #include "Interpreter.h"
 #include "InterpreterFunction.h"
 
+#include "glow/Backends/BackendUtils.h"
+#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
 
 using namespace glow;
+
+runtime::RuntimeBundle generateInterpreterRuntimeBundle(const IRFunction *F) {
+  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  MemoryAllocator constantWeightsAllocator("ConstantWeights", 0);
+  for (auto &v : F->getGraph()->getParent()->getConstants()) {
+    auto *w = F->getWeightForNode(v);
+    auto numBytes = w->getSizeInBytes();
+    size_t addr = constantWeightsAllocator.allocate(numBytes, w);
+    runtime::RuntimeSymbolInfo symbol{};
+    symbol.offset = addr;
+    symbol.size = numBytes;
+    symbol.type = *w->getType();
+    symbolTable.emplace(std::string(w->getName()), symbol);
+  }
+  auto constantWeightsMaxSize = constantWeightsAllocator.getMaxMemoryUsage();
+  runtime::RuntimeBundle bundle(constantWeightsMaxSize, 0, 0);
+  bundle.symbolTable = std::move(symbolTable);
+  bundle.constants =
+      collectConstants(F, constantWeightsMaxSize, bundle.symbolTable);
+  return bundle;
+}
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compile(Function *F, const Context &ctx) const {
@@ -32,7 +55,8 @@ Interpreter::compile(Function *F, const Context &ctx) const {
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR,
                        const Context &ctx) const {
-  return llvm::make_unique<InterpreterFunction>(std::move(IR), ctx);
+  runtime::RuntimeBundle bundle = generateInterpreterRuntimeBundle(IR.get());
+  return llvm::make_unique<InterpreterFunction>(std::move(IR), ctx, bundle);
 }
 
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
