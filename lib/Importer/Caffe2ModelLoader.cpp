@@ -476,7 +476,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "MatMul" || typeName == "BatchMatMul") {
+  if (typeName == "MatMul") {
     auto LHS = getNodeValueOrCreateConstantByName(op.input(0));
     auto RHS = getNodeValueOrCreateConstantByName(op.input(1));
 
@@ -499,23 +499,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       RHS = G_.createTranspose("RHS.transpose", RHS, shuffle);
     }
 
-    Node *node = nullptr;
-
-    // BatchMatMul sometimes is actually just a matmul, depending on dimensions
-    // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
-    if (typeName == "BatchMatMul" && LHS.dims().size() == 3) {
-      // BatchMatMul can be either multiplication of K matrices and another
-      // K matrices, or broadcasted multiplication of K matrices and one other
-      // matrix.
-      if (RHS.dims().size() == 3) {
-        node = G_.createParallelBatchMatMul(opName, LHS, RHS);
-      } else {
-        node = G_.createBroadcastedBatchMatMul(opName, LHS, RHS);
-      }
-    } else {
-      node = G_.createMatMul(opName, LHS, RHS);
-    }
-
+    Node *node = G_.createMatMul(opName, LHS, RHS);
     addNodeAsOutput(op, node);
     return;
   }

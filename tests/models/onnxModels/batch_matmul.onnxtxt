@@ -1,0 +1,77 @@
+ir_version: 3
+producer_name: "caffe2"
+graph {
+  node {
+    input: "inputs_0"
+    input: "inputs_1"
+    output: "output"
+    name: ""
+    op_type: "BatchMatMul"
+    attribute {
+      name: "trans_b"
+      i: 1
+      type: INT
+    }
+  }
+  input {
+    name: "inputs_0"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 40
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "inputs_1"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 40
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 7
+}
