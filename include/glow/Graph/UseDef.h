@@ -50,7 +50,7 @@ public:
   /// Returns true if the user \p I is in the list.
   bool hasUser(const UserTy *I) const {
     for (const auto &U : users_) {
-      if (U.get() == I) {
+      if (U.getUser() == I) {
         return true;
       }
     }
