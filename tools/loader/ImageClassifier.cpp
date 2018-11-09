@@ -288,10 +288,10 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
 
   // Get the Tensor from the Placeholder that the final expected Softmax writes
   // into at the end of image inference.
-  Placeholder *SMVarPH = LD->getSingleOutput();
-  Tensor *SMVarT = ctx.get(SMVarPH);
+  Placeholder *SMPH = LD->getSingleOutput();
+  Tensor *SMT = ctx.get(SMPH);
 
-  return std::make_pair(inputImagePH, SMVarT);
+  return std::make_pair(inputImagePH, SMT);
 }
 
 /// A pair representing a float and the index where the float was found.
@@ -363,10 +363,10 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   }
 }
 
-/// Given the output Softmax Tensor \p SMVarT and \p functionName, print the
+/// Given the output Softmax Tensor \p SMT and \p functionName, print the
 /// results of inference.
 template <typename ElemTy>
-static void processAndPrintResultsImpl(Tensor *SMVarT,
+static void processAndPrintResultsImpl(Tensor *SMT,
                                        llvm::StringRef functionName) {
   // Print out the inferred image classification.
   auto H = SMVarT->getHandle<ElemTy>();
@@ -387,17 +387,16 @@ static void processAndPrintResultsImpl(Tensor *SMVarT,
   }
 }
 
-/// Given the output Softmax Tensor \p SMVarT and \p functionName, switch
-/// between the correct element type to print the results of inference as
-/// contained in \p SMVarT.
-static void processAndPrintResults(Tensor *SMVarT,
-                                   llvm::StringRef functionName) {
-  switch (SMVarT->getElementType()) {
+/// Given the output Softmax Tensor \p SMT and \p functionName, switch between
+/// the correct element type to print the results of inference as contained in
+/// \p SMT.
+static void processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
+  switch (SMT->getElementType()) {
   case ElemKind::FloatTy:
-    processAndPrintResultsImpl<float>(SMVarT, functionName);
+    processAndPrintResultsImpl<float>(SMT, functionName);
     break;
   case ElemKind::Float16Ty:
-    processAndPrintResultsImpl<float16_t>(SMVarT, functionName);
+    processAndPrintResultsImpl<float16_t>(SMT, functionName);
     break;
   default:
     llvm_unreachable("Type not supported");
@@ -421,7 +420,7 @@ int main(int argc, char **argv) {
 
   // These will be set during the first run.
   Placeholder *inputImagePH = nullptr;
-  Tensor *SMVarT = nullptr;
+  Tensor *SMT = nullptr;
 
   Tensor inputImageData;
   while ((streamInputFilenamesMode &&
@@ -447,9 +446,9 @@ int main(int argc, char **argv) {
       }
 
       inputImagePH = inputOutputPair.first;
-      SMVarT = inputOutputPair.second;
+      SMT = inputOutputPair.second;
     }
-    assert(inputImagePH && SMVarT && "Input and output must be valid.");
+    assert(inputImagePH && SMT && "Input and output must be valid.");
     GLOW_ASSERT(inputImagePH->dims() == inputImageData.dims() &&
                 "New input shape does not match the compiled function.");
 
@@ -463,11 +462,11 @@ int main(int argc, char **argv) {
     // Tensor with inputImageData.
     updateInputPlaceholders(ctx, {inputImagePH}, {&inputImageData});
 
-    // Perform the inference execution, updating SMVarT.
+    // Perform the inference execution, updating SMT.
     loader.runInference(ctx);
 
     // Print the top-k results from the output Softmax tensor.
-    processAndPrintResults(SMVarT, loader.getFunction()->getName());
+    processAndPrintResults(SMT, loader.getFunction()->getName());
   }
 
   // If profiling, generate and serialize the quantization infos now that we
