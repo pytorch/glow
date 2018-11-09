@@ -1363,10 +1363,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         emitConstSizeT(builder, inputTensor->getType()->dims().size());
 
     auto *F = getFunction("quantization_profile");
-    auto callDebugDump =
-        createCall(builder, F,
-                   {inputTensorInfoPtr, inputTensorDims, srcDimsSize,
-                    compInfoPtr, histPtr, histDims});
+    createCall(builder, F,
+               {inputTensorInfoPtr, inputTensorDims, srcDimsSize, compInfoPtr,
+                histPtr, histDims});
     break;
   }
 

@@ -55,7 +55,7 @@ void generateTensorHistogram(const Handle<float> inputTensor,
     float destBinWidth = (newMax - newMin) / nBins;
     float srcBinWidth = (max - min) / nBins;
 
-    std::vector<float> scaledHistogram(nBins);
+    std::vector<float> scaledHistogram(nBins, 0);
 
     for (size_t i = 0; i < nBins; ++i) {
       if (existingHistogram.raw(i) == 0)
