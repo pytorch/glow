@@ -369,16 +369,30 @@ template <typename ElemTy>
 static void processAndPrintResultsImpl(Tensor *SMT,
                                        llvm::StringRef functionName) {
   // Print out the inferred image classification.
-  auto H = SMVarT->getHandle<ElemTy>();
   llvm::outs() << "Model: " << functionName << "\n";
+
+  // Softmax should have at least two dims: batchSize, numLabels, and then
+  // optionally trailing 1s.
+  assert(SMT->dims().size() >= 2 && "Softmax should have at least 2 dims.");
+  const size_t batchSize = SMT->dims()[0];
+  (void)batchSize;
+  assert(batchSize == inputImageFilenames.size() &&
+         "Softmax batch size must equal the input number of images.");
+  for (size_t i = 2; i < SMT->dims().size(); i++) {
+    assert(SMT->dims()[i] == 1 && "Trailing dims must be 1 for Softmax.");
+  }
+  const size_t numLabels = SMT->dims()[1];
+  std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
+
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
-    Tensor slice = H.extractSlice(i);
-    auto SH = slice.getHandle<ElemTy>();
     llvm::outs() << " File: " << inputImageFilenames[i];
 
+    // batchSize is the first dimension, so update it to get the next slice.
+    sliceOffset[0] = i;
+    Tensor slice = SMT->getUnowned({numLabels}, sliceOffset);
+    auto SH = slice.getHandle<ElemTy>();
+
     if (computeSoftmax) {
-      Tensor reshapedSlice = slice.getUnowned({slice.size()});
-      SH = reshapedSlice.getHandle<ElemTy>();
       applySoftmax(SH);
     }
 
