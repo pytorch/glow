@@ -30,7 +30,6 @@ static llvm::cl::opt<bool> dumpJITSymbolInfo(
     llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
     llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
 
-#if LLVM_VERSION_MAJOR <= 6
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.
 class NotifyLoadedFunctor {
@@ -72,6 +71,8 @@ public:
   NotifyLoadedFunctor(GlowJIT *jit)
       : dbgRegistrationListener_(
             llvm::JITEventListener::createGDBRegistrationListener()) {}
+
+#if LLVM_VERSION_MAJOR <= 6
   void operator()(llvm::orc::RTDyldObjectLinkingLayerBase::ObjHandleT,
                   const llvm::orc::RTDyldObjectLinkingLayerBase::ObjectPtr &obj,
                   const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
@@ -83,8 +84,20 @@ public:
     // Dump symbol information for the JITed symbols.
     dumpSymbolInfo(*loadedObj, objInfo);
   }
-};
+#else
+  void operator()(llvm::orc::VModuleKey key,
+                  const llvm::object::ObjectFile &obj,
+                  const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
+    auto &loadedObj = obj;
+    // Inform the debugger about the loaded object file. This should allow for
+    // more complete stack traces under debugger. And even it should even enable
+    // the stepping functionality on platforms supporting it.
+    dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
+    // Dump symbol information for the JITed symbols.
+    dumpSymbolInfo(loadedObj, objInfo);
+  }
 #endif
+};
 
 } // namespace
 
@@ -136,7 +149,8 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                    [this](llvm::orc::VModuleKey) {
                      return RTDyldObjectLinkingLayer::Resources{
                          std::make_shared<SectionMemoryManager>(), resolver_};
-                   }),
+                   },
+                   NotifyLoadedFunctor(this)),
 #else
       objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); },
                    NotifyLoadedFunctor(this)),
