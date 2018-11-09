@@ -1137,8 +1137,11 @@ INSTANTIATE_TEST_CASE_P(
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, Operator,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(
+    OpenCL, Operator,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
+                                         BackendKind::Interpreter),
+                       ::testing::Values(BackendKind::OpenCL)));
 #endif // GLOW_WITH_CPU
 
 } // namespace glow
