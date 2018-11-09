@@ -69,6 +69,9 @@ struct Use {
 
   /// \returns the instruction that the use refers to.
   Instruction *get() const { return use_; }
+  /// \returns the instruction that the use refers to
+  /// (for compatibility with UseDef::hasUser)
+  Instruction *getUser() const { return use_; }
   /// \returns true if this Use is for the instruction \p other.
   bool isSame(Instruction *other) const { return use_ == other; }
   /// Sets the operand to a new value.
