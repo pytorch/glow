@@ -145,15 +145,11 @@ TEST(onnx, importBatchMatMul) {
   {
     Tensor inputs_0(ElemKind::FloatTy, {20, 7, 40});
     Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
-    inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
-    inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
     ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
     output = onnxLD.getSingleOutput();
 
     ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs_0", "inputs_1"},
-                                  {&inputs_0, &inputs_1});
   }
   auto *res = ctx.get(output);
   EE.compile(CompilationMode::Infer, F, ctx);
@@ -164,7 +160,7 @@ TEST(onnx, importBatchMatMul) {
   EXPECT_EQ(result.dims().vec(), expectedDims);
 
   // High level check on the content of the graph.
-  // We have 1 transpose, 20 * (matmul + 2 slices, 2 reshapes), 1 concat, 1
+  // We have 1 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
   // reshape, 1 save.
   EXPECT_EQ(F->getNodes().size(), 1 + 20 * 5 + 3);
   // With have 2 inputs and one outputs.

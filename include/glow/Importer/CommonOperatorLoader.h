@@ -188,7 +188,8 @@ protected:
     addNodeAsOutput(op, node);
   }
 
-  void loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict) {
+  void loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict,
+                       bool isBatched) {
     const std::string &opName = loadOperatorName(op);
     auto LHS = getNodeValueOrCreateConstantByName(op.input(0));
     auto RHS = getNodeValueOrCreateConstantByName(op.input(1));
@@ -216,7 +217,7 @@ protected:
 
     // BatchMatMul sometimes is actually just a matmul, depending on dimensions
     // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
-    if (LHS.dims().size() == 3) {
+    if (isBatched && LHS.dims().size() == 3) {
       // BatchMatMul can be either multiplication of K matrices and another
       // K matrices, or broadcasted multiplication of K matrices and one other
       // matrix.
@@ -601,7 +602,7 @@ protected:
       return true;
     }
     if (typeName == "BatchMatMul") {
-      loadBatchMatMul(op, dict);
+      loadBatchMatMul(op, dict, true);
       return true;
     }
     if (typeName == "BatchOneHot") {
