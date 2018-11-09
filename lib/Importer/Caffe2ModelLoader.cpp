@@ -476,47 +476,8 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "MatMul" || typeName == "BatchMatMul") {
-    auto LHS = getNodeValueOrCreateConstantByName(op.input(0));
-    auto RHS = getNodeValueOrCreateConstantByName(op.input(1));
-
-    bool transLHS = dict.count("trans_a") && (loadInt(dict["trans_a"]) == 1);
-    (void)transLHS;
-    assert(!transLHS && "Don't support transpose lhs for now.");
-    bool transRHS = dict.count("trans_b") && (loadInt(dict["trans_b"]) == 1);
-    if (transRHS) {
-      // The semantic of the transpose in that context is:
-      // swap the last two dimensions.
-      unsigned_t nbDims = RHS.dims().size();
-      GLOW_ASSERT(nbDims >= 2 && "C2 specs say rank of RHS must be >= 2");
-      std::vector<unsigned_t> shuffle;
-      unsigned_t i;
-      for (i = 0; i < nbDims - 2; ++i) {
-        shuffle.push_back(i);
-      }
-      shuffle.push_back(i + 1);
-      shuffle.push_back(i);
-      RHS = G_.createTranspose("RHS.transpose", RHS, shuffle);
-    }
-
-    Node *node = nullptr;
-
-    // BatchMatMul sometimes is actually just a matmul, depending on dimensions
-    // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
-    if (typeName == "BatchMatMul" && LHS.dims().size() == 3) {
-      // BatchMatMul can be either multiplication of K matrices and another
-      // K matrices, or broadcasted multiplication of K matrices and one other
-      // matrix.
-      if (RHS.dims().size() == 3) {
-        node = G_.createParallelBatchMatMul(opName, LHS, RHS);
-      } else {
-        node = G_.createBroadcastedBatchMatMul(opName, LHS, RHS);
-      }
-    } else {
-      node = G_.createMatMul(opName, LHS, RHS);
-    }
-
-    addNodeAsOutput(op, node);
+  if (typeName == "MatMul") {
+    loadBatchMatMul(op, dict, false);
     return;
   }
 

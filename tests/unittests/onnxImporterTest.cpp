@@ -133,6 +133,64 @@ TEST(onnx, importClip) {
   }
 }
 
+/// Test loading BatchMatMul op from an ONNX model.
+TEST(onnx, importBatchMatMul) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/batch_matmul.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor inputs_0(ElemKind::FloatTy, {20, 7, 40});
+    Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
+    ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
+                           {&inputs_0.getType(), &inputs_1.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+
+    ctx.allocate(mod.getPlaceholders());
+  }
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.run(ctx);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {20, 7, 7};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  // High level check on the content of the graph.
+  // We have 1 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
+  // reshape, 1 save.
+  EXPECT_EQ(F->getNodes().size(), 1 + 20 * 5 + 3);
+  // With have 2 inputs and one outputs.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+  // Check that the graph has the expected shape,
+  // starting from the output.
+  // Batched matmul with broadcasted RHS are lowered
+  // to a regular matmul, where LHS is reshaped from
+  // a 3D tensor to a flattened matrix.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *reshapeResult =
+      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(reshapeResult);
+  auto *concat =
+      llvm::dyn_cast<ConcatNode>(reshapeResult->getInput().getNode());
+  ASSERT_TRUE(concat);
+  for (size_t i = 0; i < 20; ++i) {
+    auto *matmulI =
+        llvm::dyn_cast<MatMulNode>(concat->getNthInput(i).getNode());
+    ASSERT_TRUE(matmulI);
+    for (size_t j = 0; j < 2; ++j) {
+      auto *reshape0 =
+          llvm::dyn_cast<ReshapeNode>(matmulI->getNthInput(j).getNode());
+      ASSERT_TRUE(reshape0);
+      auto *slice0 = llvm::dyn_cast<SliceNode>(reshape0->getInput().getNode());
+      ASSERT_TRUE(slice0);
+    }
+  }
+}
+
 /// Test loading BatchBoxCox op from an ONNX model.
 TEST(onnx, importBatchBoxCox) {
   ExecutionEngine EE{BackendKind::Interpreter};

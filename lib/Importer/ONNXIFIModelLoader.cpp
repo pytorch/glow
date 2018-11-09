@@ -200,6 +200,12 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(MinNodeKind, FloatTy);
       ADD_OP_MAPPING(MaxNodeKind, FloatTy);
       ADD_OP_MAPPING(SplatNodeKind, FloatTy);
+    } else if (operation == "BatchMatMul") {
+      ADD_OP_MAPPING(TransposeNodeKind, FloatTy);
+      ADD_OP_MAPPING(SliceNodeKind, FloatTy);
+      ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+      ADD_OP_MAPPING(ConcatNodeKind, FloatTy);
+      ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
     } else if (operation == "BatchBoxCox") {
       ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
       ADD_OP_MAPPING(TileNodeKind, FloatTy);
@@ -219,7 +225,7 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(BatchedReduceAddNodeKind, FloatTy);
       ADD_OP_MAPPING(MulNodeKind, FloatTy);
     } else if (operation == "LengthsToRanges") {
-      ADD_OP_MAPPING(LengthsToRangesNodeKind, Int64ITy);
+      ADD_OP_MAPPING(LengthsToRangesNodeKind, Int32ITy);
     } else if (operation == "SparseToDense") {
       ADD_OP_MAPPING(SparseToDenseNodeKind, FloatTy);
     } else if (operation == "LengthsSum") {
