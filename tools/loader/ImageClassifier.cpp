@@ -209,11 +209,6 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
     *inputImageData = std::move(dataNHWC);
     break;
   }
-
-  // Convert the raw input to fp16.
-  if (convertInAndOutToFp16) {
-    inputImageData->convertToType(ElemKind::Float16Ty);
-  }
 }
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
@@ -304,7 +299,8 @@ using FloatIndexPair = std::pair<float, size_t>;
 
 /// Given a Handle \p H of a 1D tensor with float elements, \returns the top K
 /// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
-static std::vector<FloatIndexPair> getTopKPairs(Handle<float> H) {
+template <typename ElemTy>
+static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H) {
   assert(topKCount <= H.size() && "Function requires k < number of labels.");
   assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
 
@@ -354,46 +350,57 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
 }
 
 /// Apply the softmax function to the given handle.
-static void applySoftmax(Handle<float> H) {
+template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
   float denominator = 0.0f;
 
   for (size_t i = 0, e = H.size(); i < e; ++i) {
-    denominator += std::exp(H.raw(i));
+    denominator += std::exp(static_cast<float>(H.raw(i)));
   }
 
   for (size_t j = 0, e = H.size(); j < e; ++j) {
-    H.raw(j) = std::exp(H.raw(j)) / denominator;
+    H.raw(j) = std::exp(static_cast<float>(H.raw(j))) / denominator;
   }
 }
 
-/// Given the output Softmax Tensor \p SMTarT and \p functionName, print the
+/// Given the output Softmax Tensor \p SMVarT and \p functionName, print the
 /// results of inference.
-static void processAndPrintResults(Tensor *SMVarT,
-                                   llvm::StringRef functionName) {
-  if (convertInAndOutToFp16) {
-    // SMVarT contains the output of the network in FP16. Convert it back to
-    // FP32 so that we don't have to special case the printing of the result
-    // for FP16.
-    SMVarT->convertToType(ElemKind::FloatTy);
-  }
-
+template <typename ElemTy>
+static void processAndPrintResultsImpl(Tensor *SMVarT,
+                                       llvm::StringRef functionName) {
   // Print out the inferred image classification.
-  auto H = SMVarT->getHandle<>();
+  auto H = SMVarT->getHandle<ElemTy>();
   llvm::outs() << "Model: " << functionName << "\n";
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     Tensor slice = H.extractSlice(i);
-    auto SH = slice.getHandle<>();
+    auto SH = slice.getHandle<ElemTy>();
     llvm::outs() << " File: " << inputImageFilenames[i];
 
     if (computeSoftmax) {
       Tensor reshapedSlice = slice.getUnowned({slice.size()});
-      SH = reshapedSlice.getHandle<>();
+      SH = reshapedSlice.getHandle<ElemTy>();
       applySoftmax(SH);
     }
 
     auto topKPairs = getTopKPairs(SH);
     printTopKPairs(topKPairs);
+  }
+}
+
+/// Given the output Softmax Tensor \p SMVarT and \p functionName, switch
+/// between the correct element type to print the results of inference as
+/// contained in \p SMVarT.
+static void processAndPrintResults(Tensor *SMVarT,
+                                   llvm::StringRef functionName) {
+  switch (SMVarT->getElementType()) {
+  case ElemKind::FloatTy:
+    processAndPrintResultsImpl<float>(SMVarT, functionName);
+    break;
+  case ElemKind::Float16Ty:
+    processAndPrintResultsImpl<float16_t>(SMVarT, functionName);
+    break;
+  default:
+    llvm_unreachable("Type not supported");
   }
 }
 
@@ -445,6 +452,12 @@ int main(int argc, char **argv) {
     assert(inputImagePH && SMVarT && "Input and output must be valid.");
     GLOW_ASSERT(inputImagePH->dims() == inputImageData.dims() &&
                 "New input shape does not match the compiled function.");
+
+    // Convert the raw input to fp16. This must be done every time we get new
+    // image data.
+    if (convertInAndOutToFp16) {
+      inputImageData.convertToType(ElemKind::Float16Ty);
+    }
 
     // About to run inference, so update the input image Placeholder's backing
     // Tensor with inputImageData.
