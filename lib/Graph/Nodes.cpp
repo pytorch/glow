@@ -436,9 +436,11 @@ bool CrossEntropyLossGradNode::verify() const {
 }
 
 bool ReshapeNode::verify() const {
-  return expectCompareTrue("Reshape into a different size",
-                           getResult().getType()->size(),
-                           getInput().getType()->size(), this);
+  bool isValid = expectCompareTrue("Reshape into a different size",
+                                   getResult().getType()->size(),
+                                   getInput().getType()->size(), this);
+  isValid &= checkTypeIgnoreShape(getResult(), getInput(), this);
+  return isValid;
 }
 
 bool TransposeNode::verify() const {
@@ -451,8 +453,10 @@ bool TransposeNode::verify() const {
     shape.push_back(dims[Shuffle_[i]]);
   }
 
-  return expectCompareTrue("Invalid transpose dims", dest.dims(),
-                           llvm::makeArrayRef(shape), this);
+  bool isValid = expectCompareTrue("Invalid transpose dims", dest.dims(),
+                                   llvm::makeArrayRef(shape), this);
+  isValid &= checkTypeIgnoreShape(dest, src, this);
+  return isValid;
 }
 
 bool SplatNode::verify() const { return true; }
@@ -524,6 +528,7 @@ bool SliceNode::verify() const {
                                  src.dims()[i], this,
                                  CompareOperatorLessEqual<size_t>());
   }
+  isValid &= checkNotQuantizedOrSameParams(dest.getType(), src.getType(), this);
   return isValid;
 }
 
