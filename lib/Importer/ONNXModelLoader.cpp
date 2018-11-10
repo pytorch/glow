@@ -181,6 +181,8 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       llvm_unreachable("Unsupported Tensor format.");
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
+    // There are few cases when we will have int32 tensors. For example, the
+    // second output of Concat from Caffe2 concat op is int32
     T->reset(ElemKind::Int32ITy, dim);
 
     if (in.int32_data_size() > 0) {
