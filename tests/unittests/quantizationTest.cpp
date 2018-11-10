@@ -1111,6 +1111,148 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   EE.run(ctx);
 }
 
+/// Check that the slice node doesn't change the quantization parameters between
+/// its input and output.
+TEST(Quantization, quantizeSlice) {
+  ExecutionEngine EE;
+  Context ctx;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
+  ctx.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+
+  auto *slice = F->createSlice("slice", input, {2}, {3});
+  auto *save = F->createSave("ret", slice);
+  auto *result = save->getPlaceholder();
+  ctx.allocate(result);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(slice->getName()),
+       {0.2f, -128}},
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.4f, 0}},
+  };
+
+  auto *QF = quantization::quantizeFunction(EE, QI, F, "_quantized");
+  QF->getParent()->eraseFunction(F);
+  F = QF;
+
+  optimize(F, CompilationMode::Infer);
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the input to save is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
+    ASSERT_TRUE(DN);
+
+    // Verify that the slice is rescaled after being quantized.
+    // The reason we need a rescale is because slicing doesn't perform rescaling
+    // by itself.
+    auto *RN = llvm::dyn_cast<RescaleQuantizedNode>(DN->getInput());
+    ASSERT_TRUE(RN);
+    EXPECT_EQ(RN->getResult().getType()->getOffset(), -128);
+    EXPECT_EQ(RN->getResult().getType()->getScale(), 0.2f);
+    auto *qslice = llvm::dyn_cast<SliceNode>(RN->getInput());
+    ASSERT_TRUE(qslice);
+    ASSERT_TRUE(qslice->getResult().getType()->isQuantizedType());
+    EXPECT_EQ(qslice->getResult().getType()->getOffset(), 0);
+    EXPECT_EQ(qslice->getResult().getType()->getScale(), 0.4f);
+
+    // Verify that the variable inputs to the matmul are quantized.
+    auto *qinput = llvm::dyn_cast<QuantizeNode>(qslice->getInput());
+    ASSERT_TRUE(qinput);
+    EXPECT_EQ(qinput->getResult().getType()->getOffset(),
+              qslice->getResult().getType()->getOffset());
+    EXPECT_EQ(qinput->getResult().getType()->getScale(),
+              qslice->getResult().getType()->getScale());
+    EXPECT_EQ(qinput->getInput().getNode(), input);
+  }
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run(ctx);
+}
+
+/// Check that the reshape node doesn't change the quantization parameters
+/// between its input and output.
+TEST(Quantization, quantizeReshape) {
+  ExecutionEngine EE;
+  Context ctx;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "input", true);
+  ctx.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+
+  auto *reshape = F->createReshape("reshape", input, {9});
+  auto *save = F->createSave("ret", reshape);
+  auto *result = save->getPlaceholder();
+  ctx.allocate(result);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(reshape->getName()),
+       {0.2f, -128}},
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.4f, 0}},
+  };
+
+  auto *QF = quantization::quantizeFunction(EE, QI, F, "_quantized");
+  QF->getParent()->eraseFunction(F);
+  F = QF;
+
+  optimize(F, CompilationMode::Infer);
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the input to save is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
+    ASSERT_TRUE(DN);
+
+    // Verify that the slice is rescaled after being quantized.
+    // The reason we need a rescale is because reshaping doesn't perform
+    // rescaling by itself.
+    auto *RN = llvm::dyn_cast<RescaleQuantizedNode>(DN->getInput());
+    ASSERT_TRUE(RN);
+    EXPECT_EQ(RN->getResult().getType()->getOffset(), -128);
+    EXPECT_EQ(RN->getResult().getType()->getScale(), 0.2f);
+    auto *qreshape = llvm::dyn_cast<ReshapeNode>(RN->getInput());
+    ASSERT_TRUE(qreshape);
+    ASSERT_TRUE(qreshape->getResult().getType()->isQuantizedType());
+    EXPECT_EQ(qreshape->getResult().getType()->getOffset(), 0);
+    EXPECT_EQ(qreshape->getResult().getType()->getScale(), 0.4f);
+
+    // Verify that the variable inputs to the matmul are quantized.
+    auto *qinput = llvm::dyn_cast<QuantizeNode>(qreshape->getInput());
+    ASSERT_TRUE(qinput);
+    EXPECT_EQ(qinput->getResult().getType()->getOffset(),
+              qreshape->getResult().getType()->getOffset());
+    EXPECT_EQ(qinput->getResult().getType()->getScale(),
+              qreshape->getResult().getType()->getScale());
+    EXPECT_EQ(qinput->getInput().getNode(), input);
+  }
+
+  // Make sure that graph can be compiled and run.
+  EE.compile(CompilationMode::Infer, F, ctx);
+
+  EE.run(ctx);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
 

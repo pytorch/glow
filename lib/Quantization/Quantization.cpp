@@ -33,13 +33,15 @@ using namespace glow::quantization;
 /// This class produces a quantized function based on a provided profile.
 class FunctionQuantizer : public FunctionConverter {
 protected:
-  /// \see FunctionConverter::getTargetTypeForOutput.
-  /// Get the quantized type for \p out if any.
-  TypeRef getTargetTypeForOutput(const NodeValue &out) const override {
-    if (out.getElementType() != ElemKind::FloatTy) {
-      return nullptr;
-    }
-
+  /// Get the type that \p out should have at the end of the conversion
+  /// process regardless of what is its current type.
+  /// This is similar to ::getTargetTypeForOutput except that \p out
+  /// doesn't need to be a floating point type for this method to
+  /// return the target type.
+  /// The reason we need this method is because we may morph the type
+  /// of \p out to match some IR constraints, but the final type still
+  /// needs to be known to insert rescale nodes.
+  TypeRef getTargetTypeForOutputImpl(const NodeValue &out) const {
     const std::string nodeOutputName =
         NodeQuantizationInfo::generateNodeOutputName(out.getNode()->getName(),
                                                      out.getResNo());
@@ -50,6 +52,15 @@ protected:
     const TensorQuantizationParams &TQP = outTQPIt->second;
     return mod_.uniqueType(ElemKind::Int8QTy, out.dims(), TQP.scale,
                            TQP.offset);
+  }
+
+  /// \see FunctionConverter::getTargetTypeForOutput.
+  /// Get the quantized type for \p out if any.
+  TypeRef getTargetTypeForOutput(const NodeValue &out) const override {
+    if (out.getElementType() != ElemKind::FloatTy) {
+      return nullptr;
+    }
+    return getTargetTypeForOutputImpl(out);
   }
 
   /// \see FunctionConverter::getTargetTypeForInput.
@@ -162,6 +173,21 @@ protected:
     return function.createDequantize("quantize", val);
   }
 
+  /// Macro to be put in a switch for all the nodes that have a constraint
+  /// where the input and output type must be equals.
+  /// Note: The last case of the macro doesn't have ':' so we can put it
+  /// where the macro is inserted to keep the nice code formatting.
+#define casesForNodesWithIRConstraint                                          \
+  case Kinded::Kind::LocalResponseNormalizationNodeKind:                       \
+  case Kinded::Kind::SigmoidNodeKind:                                          \
+  case Kinded::Kind::SliceNodeKind:                                            \
+  case Kinded::Kind::ReshapeNodeKind:                                          \
+  case Kinded::Kind::TanhNodeKind:                                             \
+  case Kinded::Kind::TopKNodeKind:                                             \
+  case Kinded::Kind::GatherNodeKind:                                           \
+  case Kinded::Kind::MaxPoolNodeKind:                                          \
+  case Kinded::Kind::AvgPoolNodeKind
+
   /// \see FunctionConverter::morphNode.
   /// This method does the final adjustment to the output types
   /// when the profile and the IR constraints do not agree.
@@ -203,13 +229,9 @@ protected:
     // E.g., the constraints for `outTy = op inTy` are `outTy == inTy`, but the
     // quantization profiling gave different types to outTy and inTy.
     switch (node.getKind()) {
-    case Kinded::Kind::LocalResponseNormalizationNodeKind:
-    case Kinded::Kind::SigmoidNodeKind:
-    case Kinded::Kind::TanhNodeKind:
-    case Kinded::Kind::TopKNodeKind:
-    case Kinded::Kind::GatherNodeKind:
-    case Kinded::Kind::MaxPoolNodeKind:
-    case Kinded::Kind::AvgPoolNodeKind: {
+      // Those cases need to be in sync with postProcessing, so we generate them
+      // using macros.
+    casesForNodesWithIRConstraint : {
       // The constraints on the IR says that the input type must
       // be the same as the output type.
       TypeRef inTy = node.getNthInput(0).getType();
@@ -218,6 +240,9 @@ protected:
                           inTy->getScale(), inTy->getOffset());
 
       node.setType(0, fixedTy);
+      assert(!lastMorphedNodeWithTypeChanges &&
+             "Missed one node to rescale in postprocessing");
+      lastMorphedNodeWithTypeChanges = &node;
       return node;
     }
     default:
@@ -251,13 +276,18 @@ protected:
 
       break;
     }
-    case Kinded::Kind::MaxPoolNodeKind:
-    case Kinded::Kind::AvgPoolNodeKind:
-    case Kinded::Kind::GatherNodeKind: {
+    casesForNodesWithIRConstraint : {
+      // Check that the main loop hands us the node in the order we expect:
+      // morph then postprocessing.
+      // If the assert breaks, that means that morphNode and postprocessing
+      // are out of sync (we probably miss a case in the switch).
+      assert(lastMorphedNodeWithTypeChanges == &node &&
+             "Mismatching last node changed");
+      lastMorphedNodeWithTypeChanges = nullptr;
       // These nodes do not change {S,O} of the output, they use the same
       // {S,O} as the input. Make sure that rescale is applied to comply with
       // the taken profile from the node.
-      TypeRef outputTy = node.getType(0);
+      TypeRef outputTy = getTargetTypeForOutputImpl(NodeValue(&node, 0));
       assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
       auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
@@ -278,6 +308,7 @@ protected:
     }
     }
 
+    assert(!lastMorphedNodeWithTypeChanges && "Type not fixed");
     // Make sure that nodeToTQP_ is not lost after the addition of intermediate
     // dequantized nodes.
     for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum != e;
@@ -317,6 +348,9 @@ private:
   const KindSet &doNotQuantizeKinds_;
   /// Map the (name of a node, idx) to its quantization parameters.
   std::unordered_map<std::string, TensorQuantizationParams> nodeToTQP_;
+  /// For debug, keep track of the last node that we changed because of IR
+  /// constraints.
+  Node *lastMorphedNodeWithTypeChanges;
 
 public:
   /// Creates a function quantizer for \p F using the quantization
@@ -333,6 +367,8 @@ public:
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
                          quantizationInfo.tensorQuantizationParams_);
     }
+    // Use for debug purposes.
+    lastMorphedNodeWithTypeChanges = nullptr;
   }
 };
 
