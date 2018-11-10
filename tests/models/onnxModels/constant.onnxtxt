@@ -1,0 +1,34 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    output: "output"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 3
+        data_type: INT32
+        name: "split_info"
+        raw_data: "\001\000\000\000\001\000\000\000\001\000\000\000"
+      }
+      type: TENSOR
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: INT32
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
