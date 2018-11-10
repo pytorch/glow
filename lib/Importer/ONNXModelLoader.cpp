@@ -180,6 +180,21 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     } else {
       llvm_unreachable("Unsupported Tensor format.");
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
+    T->reset(ElemKind::Int32ITy, dim);
+
+    if (in.int32_data_size() > 0) {
+      auto TH = T->getHandle<>();
+      size_t i = 0;
+      for (auto f : in.int32_data()) {
+        TH.raw(i++) = f;
+      }
+    } else if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
+    } else {
+      llvm_unreachable("Unsupported Tensor format.");
+    }
   } else {
     llvm_unreachable("Only float and index tensors are supported");
   }
@@ -556,7 +571,7 @@ bool ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
 
   for (int i = 0; i < net.output_size(); i++) {
     const auto &outputName = net.output(i).name();
-    auto r = getNodeValueByName(outputName);
+    auto r = getNodeValueOrCreateConstantByName(outputName);
     SaveNode *SN = G_.createSave("save_" + outputName, r);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
