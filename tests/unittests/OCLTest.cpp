@@ -34,8 +34,8 @@ TEST(OpenCLCorrectnessTest, convOps) {
   Tensor out1;
   Tensor out2;
 
-  inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL, 64);
-  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, 64);
+  inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL, 8);
+  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, 8);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
