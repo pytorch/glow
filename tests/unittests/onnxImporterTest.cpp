@@ -570,6 +570,22 @@ TEST(onnx, FCTransposedWithFlatten) {
   ASSERT_TRUE(reshape);
 }
 
+/// Test loading Constant from an ONNX model.
+TEST(onnx, constant) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/constant.onnxtxt");
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+  // Constant -> Save -> PH
+  ASSERT_EQ(mod.getPlaceholders().size(), 1);
+  ASSERT_EQ(F->getNodes().size(), 1);
+}
+
 /// Test loading ExpandDims from an ONNX model.
 TEST(onnx, expandDims) {
   ExecutionEngine EE;
