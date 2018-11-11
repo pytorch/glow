@@ -485,8 +485,8 @@ TEST_P(BackendCorrectnessTest, softmaxGradTest) {
 TEST_P(BackendCorrectnessTest, convOps) {
   PseudoRNG PRNG;
   // Construct networks with a different convolution depth.
-  for (auto depth : {4, 12, 128}) {
-    Tensor inputs(ElemKind::FloatTy, {2, 3, 16, 16});
+  for (auto depth : {4, 64, 128}) {
+    Tensor inputs(ElemKind::FloatTy, {2, 32, 16, 16});
     inputs.getHandle().initXavier(1, PRNG);
     Tensor out1;
     Tensor out2;
@@ -539,14 +539,14 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
   using Dims = llvm::ArrayRef<size_t>;
   weights.emplace_back(ElemKind::FloatTy, Dims{256, 1, 1, 64});
   weights.emplace_back(ElemKind::FloatTy, Dims{256});
-  weights.emplace_back(ElemKind::FloatTy, Dims{64, 1, 1, 64});
+  weights.emplace_back(ElemKind::FloatTy, Dims{64, 1, 1, 256});
   weights.emplace_back(ElemKind::FloatTy, Dims{64});
   weights.emplace_back(ElemKind::FloatTy, Dims{64, 3, 3, 64});
   weights.emplace_back(ElemKind::FloatTy, Dims{64});
   weights.emplace_back(ElemKind::FloatTy, Dims{256, 1, 1, 64});
   weights.emplace_back(ElemKind::FloatTy, Dims{256});
   for (auto &T : weights) {
-    T.getHandle().initXavier(1.0, PRNG);
+    T.getHandle().initXavier(10.0, PRNG);
   }
 
   Tensor out1;

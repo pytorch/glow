@@ -304,6 +304,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind) {
   ctx.get(cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
   auto *result = F->createSave("ret", C);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
+  convertPlaceholdersToConstants(F, ctx, {in, result->getPlaceholder()});
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -583,11 +584,12 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *conv = F->createConv(ctx, "conv", tr, convDepth, {5, 5}, {2, 2},
                              {1, 1, 1, 1}, 1);
-  ctx.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(2);
-  ctx.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(2);
+  ctx.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(0.1);
+  ctx.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(0.2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);
   auto *result = F->createSave("ret", pool);
   auto *resultTensor = ctx.allocate(result->getPlaceholder());
+  convertPlaceholdersToConstants(F, ctx, {var, result->getPlaceholder()});
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -712,7 +714,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
 
   auto *in = createPlaceholder(mod, ctx, input, "in");
   auto *conv1 = F->createConv(ctx, "conv1", in, 256, 1, 1, 0, 1);
-  auto *conv2a = F->createConv(ctx, "conv2a", in, 64, 1, 1, 0, 1);
+  auto *conv2a = F->createConv(ctx, "conv2a", conv1, 64, 1, 1, 0, 1);
   auto *relu2a = F->createRELU("relu2a", conv2a);
   auto *conv2b = F->createConv(ctx, "conv2b", relu2a, 64, 3, 1, 1, 1);
   auto *relu2b = F->createRELU("relu2b", conv2b);
@@ -726,6 +728,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   initConv(ctx, conv2a, weights[2], weights[3]);
   initConv(ctx, conv2b, weights[4], weights[5]);
   initConv(ctx, conv2c, weights[6], weights[7]);
+  convertPlaceholdersToConstants(F, ctx, {in, result->getPlaceholder()});
 
   EE.compile(CompilationMode::Infer, F);
 
