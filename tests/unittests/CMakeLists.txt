@@ -202,6 +202,22 @@ add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
 LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
+add_executable(convCorrectnessTest
+               convTest.cpp)
+target_link_libraries(convCorrectnessTest
+                      PRIVATE
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Support
+                        gtest
+                        testMain)
+
+add_glow_test(convCorrectnessTest
+              ${GLOW_BINARY_DIR}/tests/convCorrectnessTest)
+
+LIST(APPEND UNOPT_TESTS ./tests/convCorrectnessTest -optimize-ir=false &&)
+
 add_executable(BackendCorrectnessTest
                BackendTestUtils.cpp
                BackendCorrectnessTest.cpp)
