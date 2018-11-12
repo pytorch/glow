@@ -47,3 +47,31 @@ TEST(Image, writePngImage) {
   // Delete the temporary file.
   std::remove(outfilename.c_str());
 }
+
+/// Test writing a png image along with using the standard Imagenet
+/// normalization when reading the image.
+TEST(Image, writePngImageWithImagenetNormalization) {
+  auto range = std::make_pair(0.f, 1.f);
+  Tensor localCopy;
+  bool loadSuccess =
+      !readPngImage(&localCopy, "tests/images/imagenet/cat_285.png", range,
+                    /* useImagenetNormalization */ true);
+  ASSERT_TRUE(loadSuccess);
+
+  llvm::SmallVector<char, 10> resultPath;
+  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
+  std::string outfilename(resultPath.begin(), resultPath.end());
+
+  bool storeSuccess = !writePngImage(&localCopy, outfilename.c_str(), range,
+                                     /* useImagenetNormalization */ true);
+  ASSERT_TRUE(storeSuccess);
+
+  Tensor secondLocalCopy;
+  loadSuccess = !readPngImage(&secondLocalCopy, outfilename.c_str(), range,
+                              /* useImagenetNormalization */ true);
+  ASSERT_TRUE(loadSuccess);
+  EXPECT_TRUE(secondLocalCopy.isEqual(localCopy, 0.02));
+
+  // Delete the temporary file.
+  std::remove(outfilename.c_str());
+}

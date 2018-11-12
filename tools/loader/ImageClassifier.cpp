@@ -145,6 +145,12 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
     llvm::cl::desc(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<bool> useImagenetNormalization(
+    "use-imagenet-normalization",
+    llvm::cl::desc("Use Imagenet Normalization. This works is in combination "
+                   "with the Image Mode normalization."),
+    llvm::cl::cat(imageLoaderCat), llvm::cl::init(false));
 } // namespace
 
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
@@ -172,7 +178,8 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
   for (unsigned n = 0; n < filenames.size(); n++) {
     Tensor localCopy;
     // PNG images are loaded as NHWC & RGB
-    bool loadSuccess = !readPngImage(&localCopy, filenames[n].c_str(), range);
+    bool loadSuccess = !readPngImage(&localCopy, filenames[n].c_str(), range,
+                                     useImagenetNormalization);
     GLOW_ASSERT(loadSuccess && "Error reading input image.");
     auto imageH = localCopy.getHandle<>();
 
