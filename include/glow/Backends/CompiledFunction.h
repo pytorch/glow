@@ -61,6 +61,17 @@ public:
   /// Execute the network and allocate Placeholder memory with given
   /// \p ctx providing mapping between Placeholder and populated tensor.
   virtual void execute(Context &ctx) = 0;
+
+  /// Does any needed initialization work for the Backend.
+  /// This includes device init constant memory allocation and copying to
+  /// device.
+  virtual void setupRuns() = 0;
+  /// Per run setup. Copy inputs to device.
+  virtual void beforeRun(const Context &ctx) = 0;
+  /// Per run cleanup. Copy outputs from device.
+  virtual void afterRun(const Context &ctx) = 0;
+  /// Final cleanup. Release memory, reset device.
+  virtual void tearDownRuns() = 0;
 };
 } // end namespace glow
 

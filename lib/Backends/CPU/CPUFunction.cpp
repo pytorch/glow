@@ -27,7 +27,7 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
 
 CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.constants); }
 
-void CPUFunction::allocateMutableBuffersOnDevice() {
+void CPUFunction::setupRuns() {
   if (runtimeBundle_.activationsMemSize != 0) {
     baseActivationsAddress_ = (uint8_t *)alignedAlloc(
         runtimeBundle_.activationsMemSize, TensorAlignment);
@@ -39,7 +39,7 @@ void CPUFunction::allocateMutableBuffersOnDevice() {
   }
 }
 
-void CPUFunction::copyInputsToDevice(Context &ctx) {
+void CPUFunction::beforeRun(const Context &ctx) {
   // Copy Placeholders into allocated memory.
   for (auto PH : ctx.pairs()) {
     auto payload = PH.second->getUnsafePtr();
@@ -54,7 +54,7 @@ void CPUFunction::copyInputsToDevice(Context &ctx) {
   }
 }
 
-void CPUFunction::copyOutputsFromDevice(Context &ctx) {
+void CPUFunction::afterRun(const Context &ctx) {
   // Copy placeholders from device back into context.
   for (auto PH : ctx.pairs()) {
     auto symbolInfo =
@@ -67,7 +67,7 @@ void CPUFunction::copyOutputsFromDevice(Context &ctx) {
   }
 }
 
-void CPUFunction::freeAllocations() {
+void CPUFunction::tearDownRuns() {
   if (baseMutableWeightVarsAddress_) {
     alignedFree(baseMutableWeightVarsAddress_);
   }
@@ -78,10 +78,8 @@ void CPUFunction::freeAllocations() {
 }
 
 void CPUFunction::execute(Context &ctx) {
-  copyFunctionToDevice();
-  copyConstantsToDevice();
-  allocateMutableBuffersOnDevice();
-  copyInputsToDevice(ctx);
+  setupRuns();
+  beforeRun(ctx);
 
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
@@ -93,9 +91,9 @@ void CPUFunction::execute(Context &ctx) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     funcPtr(runtimeBundle_.constants, baseMutableWeightVarsAddress_,
             baseActivationsAddress_);
-    copyOutputsFromDevice(ctx);
+    afterRun(ctx);
   } else {
     GLOW_ASSERT(false && "Error getting address.");
   }
-  freeAllocations();
+  tearDownRuns();
 }
