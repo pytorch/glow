@@ -27,6 +27,10 @@ uint8_t *glow::collectConstants(
 
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
+  // If there are no constants return nullptr.
+  if (constantMaxSize == 0) {
+    return nullptr;
+  }
   uint8_t *baseConstantWeightVarsStore =
       (uint8_t *)alignedAlloc(constantMaxSize, TensorAlignment);
   for (auto &v : F->getGraph()->getParent()->getConstants()) {

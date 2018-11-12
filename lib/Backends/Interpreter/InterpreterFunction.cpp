@@ -39,10 +39,12 @@ InterpreterFunction::~InterpreterFunction() {
   alignedFree(bundle_.constants);
 }
 void InterpreterFunction::setupRuns() {
-  for (const auto &s : bundle_.symbolTable) {
-    auto addr = bundle_.constants + s.second.offset;
-    auto tensor = new Tensor(addr, &s.second.type);
-    constants_.emplace(s.first, tensor);
+  if (bundle_.constantWeightVarsMemSize) {
+    for (const auto &s : bundle_.symbolTable) {
+      auto addr = bundle_.constants + s.second.offset;
+      auto tensor = new Tensor(addr, &s.second.type);
+      constants_.emplace(s.first, tensor);
+    }
   }
 }
 void InterpreterFunction::beforeRun(const Context &ctx) {
