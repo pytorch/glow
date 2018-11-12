@@ -89,6 +89,11 @@ public:
                              llvm::StringRef name = "",
                              MutabilityKind m = MutabilityKind::Mutable);
 
+  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+                             float scale, int32_t offset,
+                             llvm::StringRef name = "",
+                             MutabilityKind m = MutabilityKind::Mutable);
+
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,
                                                  llvm::ArrayRef<size_t> dims);
