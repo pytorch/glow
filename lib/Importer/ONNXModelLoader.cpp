@@ -169,7 +169,7 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     T->reset(ElemKind::Int64ITy, dim);
 
     if (in.int64_data_size() > 0) {
-      auto TH = T->getHandle<>();
+      auto TH = T->getHandle<int64_t>();
       size_t i = 0;
       for (auto f : in.int64_data()) {
         TH.raw(i++) = f;
@@ -186,7 +186,7 @@ static void loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     T->reset(ElemKind::Int32ITy, dim);
 
     if (in.int32_data_size() > 0) {
-      auto TH = T->getHandle<>();
+      auto TH = T->getHandle<int32_t>();
       size_t i = 0;
       for (auto f : in.int32_data()) {
         TH.raw(i++) = f;
