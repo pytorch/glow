@@ -24,6 +24,10 @@ namespace glow {
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
     void execute(Context &ctx) override{};
+    void setupRuns() override{};
+    void beforeRun(const Context &ctx) override{};
+    void afterRun(const Context &ctx) override{};
+    void tearDownRuns() override{};
   };
   std::unique_ptr<CompiledFunction> compile(Function *F,
                                             const Context &ctx) const override {

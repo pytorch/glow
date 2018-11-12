@@ -100,19 +100,13 @@ public:
   void execute(Context &ctx) override;
   ///@}
   /// Allocates on device buffer and copies Constant weights to device.
-  void copyConstantsToDevice();
-  /// Copies Inputs from \p ctx to on device memory.
-  void copyInputsToDevice(const Context &ctx);
+  void setupRuns() override;
+  /// Per run setup, copies Inputs from \p ctx to on device memory.
+  void beforeRun(const Context &ctx) override;
   /// Copies outputs from device to tensors in \p ctx.
-  void copyOutputsFromDevice(const Context &ctx);
-  /// Copy Function to device, an empty function for OpenCL.
-  void copyFunctionToDevice(){};
-  /// Allocate Mutable buffers on device, this is an empty function on OpenCL
-  /// because the OCL backend uses a single buffer which is allocated when
-  /// constants are copied to the device.
-  void allocateMutableBuffersOnDevice(){};
-  /// Frees runtime allocations. This is an empty function for OCL.
-  void freeAllocations(){};
+  void afterRun(const Context &ctx) override;
+  /// Final cleanup, currently an empty function in OpenCL.
+  void tearDownRuns() override{};
 
 private:
   /// Copy the value from a device to a provided buffer.

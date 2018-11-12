@@ -61,15 +61,15 @@ public:
   ~InterpreterFunction() override;
   /// Does any needed initialization work for the Backend, creates tensors from
   /// constants.
-  void setupRuns();
+  void setupRuns() override;
   /// Per run setup, adds references for tensors from \p ctx to
   /// externalTensors_.
-  void beforeRun(const Context &ctx);
+  void beforeRun(const Context &ctx) override;
   /// Per run cleanup, removes references for tensors from \p ctx from
   /// externalTensors_.
-  void afterRun(const Context &ctx);
+  void afterRun(const Context &ctx) override;
   /// Final cleanup, remove created constant Tensors.
-  void tearDownRuns();
+  void tearDownRuns() override;
 
   void execute(Context &ctx) override;
   ///@}

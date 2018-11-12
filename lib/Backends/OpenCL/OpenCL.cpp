@@ -619,8 +619,8 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 void OpenCLFunction::execute(Context &ctx) {
-  copyConstantsToDevice();
-  copyInputsToDevice(ctx);
+  setupRuns();
+  beforeRun(ctx);
   for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
@@ -1386,7 +1386,7 @@ void OpenCLFunction::execute(Context &ctx) {
     clReleaseKernel(kl.kernel_);
   }
   kernelLaunches_.clear();
-  copyOutputsFromDevice(ctx);
+  afterRun(ctx);
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
@@ -1435,7 +1435,7 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-void OpenCLFunction::copyConstantsToDevice() {
+void OpenCLFunction::setupRuns() {
   deviceBuffer_ = allocDeviceBuffer(bundle_.constantWeightVarsMemSize +
                                     bundle_.mutableWeightVarsMemSize +
                                     bundle_.activationsMemSize);
@@ -1458,7 +1458,7 @@ void OpenCLFunction::copyConstantsToDevice() {
   }
 }
 
-void OpenCLFunction::copyInputsToDevice(const Context &ctx) {
+void OpenCLFunction::beforeRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
     auto symbolInfo =
         bundle_.symbolTable.find(std::string(PH.first->getName()));
@@ -1481,7 +1481,7 @@ void OpenCLFunction::copyInputsToDevice(const Context &ctx) {
   clFinish(commands_);
 }
 
-void OpenCLFunction::copyOutputsFromDevice(const Context &ctx) {
+void OpenCLFunction::afterRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
     auto symbolInfo =
         bundle_.symbolTable.find(std::string(PH.first->getName()));

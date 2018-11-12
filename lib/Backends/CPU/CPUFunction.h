@@ -38,19 +38,15 @@ public:
   /// Ctor.
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
               const runtime::RuntimeBundle &runtimeBundle);
-  /// Copy Function to device, an empty function for CPU.
-  void copyFunctionToDevice(){};
-  /// Copy Constants to device, an empty function for CPU.
-  void copyConstantsToDevice(){};
   /// Allocate Mutable buffers on device this includes Activations and
   /// Placeholders.
-  void allocateMutableBuffersOnDevice();
-  /// Copy Input Placeholder data to device.
-  void copyInputsToDevice(Context &ctx);
-  /// Copy Outputs from Device to Placeholders in \p ctx.
-  void copyOutputsFromDevice(Context &ctx);
-  /// Free all allocations.
-  void freeAllocations();
+  void setupRuns() override;
+  /// Copy Input Placeholder data to position.
+  void beforeRun(const Context &ctx) override;
+  /// Copy Outputs to Placeholders in \p ctx.
+  void afterRun(const Context &ctx) override;
+  /// Final cleanup, free all allocations.
+  void tearDownRuns() override;
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;
