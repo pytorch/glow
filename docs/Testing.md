@@ -38,6 +38,31 @@ The Glow build scripts copy a few sample images and a run script that tests the
   build$./tests/images/run.sh
   ```
 
+#### Calculating Top-1 and Top-5 Accuracy
+
+The script `imagenet_topk_accuracy_driver.py` located in the `utils/` directory
+can be used to calculate Top-1 and Top-5 accuracy. It can be run via a command
+like the following:
+
+```
+python utils/imagenet_topk_accuracy_driver.py --batch-size=10 --validation-images-dir=${PATH_TO_IMAGES} --image-classifier-cmd="${PATH_TO_IMAGE_CLASSIFIER_BINARY} -image_mode=0to1 -m=${PATH_TO_RESNET50_PROTOS_DIR} -model_input_name=gpu_0/data -cpu -topk=5 -"
+```
+
+Note that the `--image-classifier-cmd` must include `-topk=5` for printing the
+Top-5 labels, and `-` to run in streaming mode.
+
+The script expects the directory passed in via `--validation-images-dir` to
+contain subdirectories alphabetically ordered in order of increasing label. For
+example, for Imagenet with 1000 labels, subdirectories could be listed as
+`label000/, label001/, ... , label999/`, where `label000/` contains all images
+that should be classified with label 0.
+
+The script can be used to resize and center crop images to 224x224 via
+`--resize-input-images`. This resize and center cropping can be done by itself
+via `--only-resize-and-save`, improving execution time of calculating Top-k
+accuracy more than once (this saves the processed images to
+`validation_images_dir/processed/`).
+
 ### Text Translation
 
 The program `text-translator` loads a text translation model, reads a line from
