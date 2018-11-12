@@ -1440,20 +1440,22 @@ void OpenCLFunction::copyConstantsToDevice() {
                                     bundle_.mutableWeightVarsMemSize +
                                     bundle_.activationsMemSize);
   size_t sizeInBytes = bundle_.constantWeightVarsMemSize;
-  // Issue a non-blocking command to copy the buffer to the device.
-  auto buf = bundle_.constants;
-  size_t valueOffset = 0;
-  cl_event event{nullptr};
-  cl_int err = clEnqueueWriteBuffer(
-      commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
-      sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-      /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-  if (doProfile) {
-    kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+  if (bundle_.constants) {
+    // Issue a non-blocking command to copy the buffer to the device.
+    auto buf = bundle_.constants;
+    size_t valueOffset = 0;
+    cl_event event{nullptr};
+    cl_int err = clEnqueueWriteBuffer(
+        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
+        sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (doProfile) {
+      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+    }
+    // Do it!
+    clFinish(commands_);
   }
-  // Do it!
-  clFinish(commands_);
 }
 
 void OpenCLFunction::copyInputsToDevice(const Context &ctx) {
