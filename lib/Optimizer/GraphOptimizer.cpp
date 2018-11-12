@@ -205,6 +205,39 @@ static Node *simplifyNode(Node *node, Function *F) {
   return node;
 }
 
+// 2D vector of dimentions mapping a dimention that is reshaped into either 1
+// or 2 dimentions by the first reshape node in a ChannelShuffle operation
+using ChannelShuffleDimGroups =
+    llvm::SmallVector<llvm::SmallVector<unsigned_t, 2>, max_tensor_dimensions>;
+
+/// \returns the dims of \p node grouped by which input dimention they came from
+static bool groupDimentionsFromChannelShuffleReshape(
+    const ReshapeNode &node, ChannelShuffleDimGroups &dimGroups) {
+  const auto dims = node.getDims();
+  const auto inputDims = node.getInput().dims();
+  if (dims.size() != inputDims.size() + 1) {
+    return false;
+  }
+  dimGroups.resize(inputDims.size());
+  bool foundReshapedDim = false;
+  int dimIdx, groupIdx;
+  for (dimIdx = 0, groupIdx = 0; dimIdx < dims.size(); ++dimIdx, ++groupIdx) {
+    auto &group = dimGroups[groupIdx];
+    group.push_back(dimIdx);
+    if (std::find(inputDims.begin(), inputDims.end(), dims[dimIdx]) ==
+        inputDims.end()) {
+      // make sure only one input dimention is changed and there's atleast one
+      // more dim
+      if (foundReshapedDim || dimIdx >= dims.size() - 1) {
+        return false;
+      }
+      group.push_back(++dimIdx);
+      foundReshapedDim = true;
+    }
+  }
+  return true;
+}
+
 /// Code Sinking.
 /// \returns true if code sinking was successful.
 static bool sinkCode(Function *F) {
@@ -324,6 +357,84 @@ static bool sinkCode(Function *F) {
         changed = true;
         continue;
       }
+    }
+
+    // Sink Transpose below ChannelShuffle (Reshape->Transpose->Reshape)
+    if (auto *RN1 = dyn_cast<ReshapeNode>(node)) {
+      auto *TR1 = dyn_cast<TransposeNode>(RN1->getInput());
+      if (!TR1) {
+        continue;
+      }
+      auto *RN2 = dyn_cast<ReshapeNode>(TR1->getInput());
+      if (!RN2) {
+        continue;
+      }
+      auto *TR2 = dyn_cast<TransposeNode>(RN2->getInput());
+      if (!TR2) {
+        continue;
+      }
+
+      ChannelShuffleDimGroups rn2DimGroups;
+      if (!groupDimentionsFromChannelShuffleReshape(*RN2, rn2DimGroups)) {
+        continue;
+      }
+
+      // create newRN2
+      auto tr2Shuffle = TR2->getShuffle();
+      llvm::SmallVector<unsigned_t, max_tensor_dimensions> inverseTR2Shuffle(
+          tr2Shuffle.size());
+      for (auto i = 0; i < tr2Shuffle.size(); i++) {
+        inverseTR2Shuffle[tr2Shuffle[i]] = i;
+      }
+
+      ChannelShuffleDimGroups shuffledRN2DimGroups;
+      for (const auto d : inverseTR2Shuffle) {
+        shuffledRN2DimGroups.push_back(rn2DimGroups[d]);
+      }
+
+      llvm::SmallVector<size_t, max_tensor_dimensions> ungroupedShuffledRN2Dims;
+      auto rn2Dims = RN2->getDims();
+      for (const auto &dimGroup : shuffledRN2DimGroups) {
+        for (const auto &dim : dimGroup) {
+          ungroupedShuffledRN2Dims.push_back(rn2Dims[dim]);
+        }
+      }
+
+      auto *newRN2 = F->createReshape(RN2->getName(), TR2->getInput(),
+                                      ungroupedShuffledRN2Dims);
+
+      // create newTR1
+      ChannelShuffleDimGroups newRN2DimGroups;
+      bool regroupedDims =
+          groupDimentionsFromChannelShuffleReshape(*newRN2, newRN2DimGroups);
+      assert(regroupedDims && "Created an invalid reshape for ChannelShuffle");
+
+      llvm::SmallVector<unsigned_t, max_tensor_dimensions> newTR1Dims;
+      for (auto &group : newRN2DimGroups) {
+        for (auto i = 0; i < group.size(); i++) {
+          newTR1Dims.push_back(group[group.size() - i - 1]);
+        }
+      }
+
+      auto *newTR1 = F->createTranspose(TR1->getName(), newRN2, newTR1Dims);
+
+      // create newRN1
+      llvm::SmallVector<size_t, max_tensor_dimensions> shuffledDims;
+      auto originalDims = RN1->getDims();
+      for (const auto d : inverseTR2Shuffle) {
+        shuffledDims.push_back(originalDims[d]);
+      }
+
+      auto *newRN1 = F->createReshape(RN1->getName(), newTR1, shuffledDims);
+
+      // create newTR2
+      auto *newTR2 =
+          F->createTranspose(TR2->getName(), newRN1, TR2->getShuffle());
+
+      RN1->getResult().replaceAllUsesOfWith(newTR2);
+
+      changed = true;
+      continue;
     }
 
     // Sink Transpose below Arithmetic nodes. Note: For simplicity, we
