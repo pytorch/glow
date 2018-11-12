@@ -60,8 +60,16 @@ std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
   return std::make_tuple(height, width, isGray);
 }
 
+/// These are standard normalization factors for imagenet, adjusted for
+/// normalizing values in the 0to255 range instead of 0to1, as seen at:
+/// https://github.com/pytorch/examples/blob/master/imagenet/main.py
+static constexpr float imagenetNormMean[] = {0.485 * 255.0, 0.456 * 255.0,
+                                             0.406 * 255.0};
+static constexpr float imagenetNormStd[] = {0.229, 0.224, 0.225};
+
 bool glow::readPngImage(Tensor *T, const char *filename,
-                        std::pair<float, float> range) {
+                        std::pair<float, float> range,
+                        bool useImagenetNormalization) {
   unsigned char header[8];
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -139,17 +147,20 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
+  assert(!(useImagenetNormalization && numChannels != 3) &&
+         "Imagenet normalization can only be used with RBG images.");
+
   for (size_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
     for (size_t col_n = 0; col_n < width; col_n++) {
       png_byte *ptr =
           &(row[col_n * (hasAlpha ? (numChannels + 1) : numChannels)]);
-      if (isGray) {
-        H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
-      } else {
-        H.at({row_n, col_n, 0}) = float(ptr[0]) * scale + bias;
-        H.at({row_n, col_n, 1}) = float(ptr[1]) * scale + bias;
-        H.at({row_n, col_n, 2}) = float(ptr[2]) * scale + bias;
+      for (size_t i = 0; i < numChannels; i++) {
+        float val = float(ptr[i]);
+        if (useImagenetNormalization) {
+          val = (val - imagenetNormMean[i]) / imagenetNormStd[i];
+        }
+        H.at({row_n, col_n, i}) = val * scale + bias;
       }
     }
   }
@@ -165,7 +176,8 @@ bool glow::readPngImage(Tensor *T, const char *filename,
 }
 
 bool glow::writePngImage(Tensor *T, const char *filename,
-                         std::pair<float, float> range) {
+                         std::pair<float, float> range,
+                         bool useImagenetNormalization) {
   /* create file */
   FILE *fp = fopen(filename, "wb");
   if (!fp) {
@@ -198,7 +210,9 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   auto H = T->getHandle<>();
 
   auto odim = H.dims();
-  assert(odim[2] < 4 && "Invalid buffer to save");
+  constexpr size_t numChannels = 3;
+  assert(odim[2] == numChannels &&
+         "Currently only supports saving RGB images without alpha.");
 
   size_t width = odim[0];
   size_t height = odim[1];
@@ -227,9 +241,13 @@ bool glow::writePngImage(Tensor *T, const char *filename,
     png_byte *row = row_pointers[y];
     for (size_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      ptr[0] = (H.at({y, x, 0}) - bias) / scale;
-      ptr[1] = (H.at({y, x, 1}) - bias) / scale;
-      ptr[2] = (H.at({y, x, 2}) - bias) / scale;
+      for (size_t i = 0; i < numChannels; i++) {
+        float val = (H.at({y, x, i}) - bias) / scale;
+        if (useImagenetNormalization) {
+          val = (val * imagenetNormStd[i]) + imagenetNormMean[i];
+        }
+        ptr[i] = val;
+      }
       ptr[3] = 0xff;
     }
   }

@@ -26,14 +26,19 @@ namespace glow {
 std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
 
 /// Reads a png image. \returns True if an error occurred. The values of the
-/// image are in the range \p range.
+/// image are in the range \p range. If \p useImagenetNormalization then
+/// specialized normalization for Imagenet images is applied to the image.
+/// \pre !(useImagenetNormalization && numChannels != 3)
 bool readPngImage(Tensor *T, const char *filename,
-                  std::pair<float, float> range);
+                  std::pair<float, float> range,
+                  bool useImagenetNormalization = false);
 
 /// Writes a png image. \returns True if an error occurred. The values of the
-/// image are in the range \p range.
+/// image are in the range \p range. If \p useImagenetNormalization then
+/// specialized normalization for Imagenet images is unapplied to the image.
 bool writePngImage(Tensor *T, const char *filename,
-                   std::pair<float, float> range);
+                   std::pair<float, float> range,
+                   bool useImagenetNormalization = false);
 
 } // namespace glow
 

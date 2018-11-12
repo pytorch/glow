@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -use-imagenet-normalization -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data "$@"
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=neg128to127 -m=vgg19 -model_input_name=data "$@"
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=neg128to127 -m=squeezenet -model_input_name=data "$@"
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to255 -m=zfnet512 -model_input_name=gpu_0/data "$@"
@@ -10,7 +10,7 @@
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to255 -m=inception_v1 -model_input_name=data "$@"
 ./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to255 -m=bvlc_alexnet -model_input_name=data "$@"
 for png_filename in tests/images/imagenet/*.png; do
-  ./bin/image-classifier "$png_filename" -image_mode=0to1 -m=resnet50/model.onnx -model_input_name=gpu_0/data_0 "$@"
+  ./bin/image-classifier "$png_filename" -use-imagenet-normalization -image_mode=0to1 -m=resnet50/model.onnx -model_input_name=gpu_0/data_0 "$@"
 done
 for png_filename in tests/images/imagenet/*.png; do
   ./bin/image-classifier "$png_filename" -image_mode=neg128to127 -m=vgg19/model.onnx -model_input_name=data_0 "$@"
