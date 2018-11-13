@@ -47,3 +47,7 @@ target_link_libraries(fr2en
                         IR
                         Quantization
                         Support)
+
+if(GLOW_WITH_CPU)
+  add_subdirectory(bundles)
+endif()
