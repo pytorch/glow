@@ -76,19 +76,13 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
 
 void ExecutionEngine::run(Context &ctx) {
   assert(function_ && "No function has been compiled");
-  // TODO call runtime functions from EE instead of in the compiled function.
-  // copyFunctionToDevice()
-  // copyConstantsToDevice()
-  // allocateMutableBuffersOnDevice()
-  // copyInputsToDevice(ctx)
-  // copyOutputsFromDevice(ctx)
-  // freeAllocations()
-  // We are working toward moving memory allocation and initialization to
-  // runtime. As an intermediate the runtime functions are being called within
-  // execute to maintain the current API. Once all backends are ported the API
-  // will expose the runtime functions from the ExecutionEngine interface. This
-  // is related to Issue #1904.
-  function_->execute(ctx);
+  // Make sure that the context has backing tensors for all placeholders.
+  ctx.allocate(M_.getPlaceholders());
+  function_->setupRuns();
+  function_->beforeRun(ctx);
+  function_->execute();
+  function_->afterRun(ctx);
+  function_->tearDownRuns();
 }
 
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
@@ -157,8 +151,8 @@ void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
 void ExecutionEngine::compile(CompilationMode mode, Function *F, Context &ctx) {
   optimizeFunction(mode, F);
   // Make sure that the context has backing tensors for all placeholders.
-  ctx.allocate(M_.getPlaceholders());
-  function_ = backend_->compile(F, ctx);
+  // ctx.allocate(M_.getPlaceholders());
+  function_ = backend_->compile(F);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,

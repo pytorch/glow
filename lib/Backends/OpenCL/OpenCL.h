@@ -97,7 +97,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute(Context &ctx) override;
+  void execute() override;
   ///@}
   /// Allocates on device buffer and copies Constant weights to device.
   void setupRuns() override;
@@ -161,10 +161,9 @@ public:
   ~OCLBackend() override = default;
 
   std::unique_ptr<CompiledFunction>
-  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override;
+  compileIR(std::unique_ptr<IRFunction> IR) const override;
 
-  std::unique_ptr<CompiledFunction> compile(Function *F,
-                                            const Context &ctx) const override;
+  std::unique_ptr<CompiledFunction> compile(Function *F) const override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) const override;
 

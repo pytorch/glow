@@ -53,7 +53,7 @@ class InterpreterFunction final : public CompiledFunction {
   runtime::RuntimeBundle bundle_;
 
 public:
-  InterpreterFunction(std::unique_ptr<IRFunction> F, const Context &ctx,
+  InterpreterFunction(std::unique_ptr<IRFunction> F,
                       const runtime::RuntimeBundle &bundle);
 
   /// \name CompiledFunction interface
@@ -71,7 +71,7 @@ public:
   /// Final cleanup, remove created constant Tensors.
   void tearDownRuns() override;
 
-  void execute(Context &ctx) override;
+  void execute() override;
   ///@}
 
 private:

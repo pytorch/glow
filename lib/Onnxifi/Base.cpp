@@ -109,6 +109,8 @@ void Graph::run(
 
   // Run inference.
   auto &EE = backendPtr_->getEE();
+  auto &mod = EE.getModule();
+  ctx_.allocate(mod.getPlaceholders());
   updateInputPlaceholders(ctx_, phs, tensors);
   EE.run(ctx_);
 

@@ -236,13 +236,12 @@ public:
     backend_.reset(
         static_cast<BackendUsingGlowIR *>(createBackend(BackendKind::CPU)));
   }
-  std::unique_ptr<CompiledFunction> compile(Function *F,
-                                            const Context &ctx) const override {
-    return backend_->compile(F, ctx);
+  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
+    return backend_->compile(F);
   }
   std::unique_ptr<CompiledFunction>
-  compileIR(std::unique_ptr<IRFunction> IR, const Context &ctx) const override {
-    return backend_->compileIR(std::move(IR), ctx);
+  compileIR(std::unique_ptr<IRFunction> IR) const override {
+    return backend_->compileIR(std::move(IR));
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return true;
@@ -309,7 +308,12 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   }
 
   MockCPUBackend backend;
-  backend.compileIR(std::move(M), ctx)->execute(ctx);
+  auto function = backend.compileIR(std::move(M));
+  function->setupRuns();
+  function->beforeRun(ctx);
+  function->execute();
+  function->afterRun(ctx);
+  function->tearDownRuns();
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

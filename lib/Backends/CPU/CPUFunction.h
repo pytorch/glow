@@ -50,7 +50,7 @@ public:
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;
-  void execute(Context &ctx) override;
+  void execute() override;
   ///@}
 };
 } // end namespace glow

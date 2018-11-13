@@ -618,9 +618,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
     }
   }
 }
-void OpenCLFunction::execute(Context &ctx) {
-  setupRuns();
-  beforeRun(ctx);
+void OpenCLFunction::execute() {
   for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
@@ -1386,7 +1384,6 @@ void OpenCLFunction::execute(Context &ctx) {
     clReleaseKernel(kl.kernel_);
   }
   kernelLaunches_.clear();
-  afterRun(ctx);
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
@@ -1608,13 +1605,12 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compileIR(std::unique_ptr<IRFunction> IR, const Context &) const {
+OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle = generateRuntimeBundle(IR.get());
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
 
-std::unique_ptr<CompiledFunction>
-OCLBackend::compile(Function *F, const Context &ctx) const {
+std::unique_ptr<CompiledFunction> OCLBackend::compile(Function *F) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
-  return compileIR(std::move(IR), ctx);
+  return compileIR(std::move(IR));
 }
