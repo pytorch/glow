@@ -23,6 +23,22 @@ using namespace glow;
 #if WITH_PNG
 #include <png.h>
 
+/// Convert the normalization to numeric floating poing ranges.
+std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
+  switch (mode) {
+  case ImageNormalizationMode::kneg1to1:
+    return {-1., 1.};
+  case ImageNormalizationMode::k0to1:
+    return {0., 1.0};
+  case ImageNormalizationMode::k0to255:
+    return {0., 255.0};
+  case ImageNormalizationMode::kneg128to127:
+    return {-128., 127.};
+  default:
+    GLOW_ASSERT(false && "Image format not defined.");
+  }
+}
+
 std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -270,6 +286,48 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   return false;
 }
 
+Tensor glow::readPngImageAndPreprocess(const std::string &filename,
+                                       ImageNormalizationMode imageNormMode,
+                                       ImageChannelOrder imageChannelOrder,
+                                       ImageLayout imageLayout,
+                                       bool useImagenetNormalization) {
+  // Get image dimensions and check if grayscale or color.
+  size_t imgHeight;
+  size_t imgWidth;
+  bool isGray;
+  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filename.c_str());
+
+  const size_t numChannels = isGray ? 1 : 3;
+
+  Tensor imageData;
+  auto range = normModeToRange(imageNormMode);
+  bool loadSuccess = !readPngImage(&imageData, filename.c_str(), range,
+                                   useImagenetNormalization);
+  GLOW_ASSERT(loadSuccess && "Error reading input image.");
+
+  // PNG images are NHWC and RGB.  Convert if needed.
+  // Convert to requested channel ordering.
+  if (imageChannelOrder == ImageChannelOrder::BGR) {
+    Tensor swizzled(imageData.getType());
+    auto IH = imageData.getHandle();
+    auto SH = swizzled.getHandle();
+    for (unsigned z = 0; z < numChannels; z++) {
+      for (unsigned y = 0; y < imgHeight; y++) {
+        for (unsigned x = 0; x < imgWidth; x++) {
+          SH.at({x, y, numChannels - 1 - z}) = IH.at({x, y, z});
+        }
+      }
+    }
+    imageData = std::move(swizzled);
+  }
+  // Convert to requested layout.
+  if (imageLayout == ImageLayout::NCHW) {
+    Tensor transposed;
+    imageData.transpose(&transposed, {2u, 0u, 1u});
+    imageData = std::move(transposed);
+  }
+  return imageData;
+}
 #else
 bool glow::readPngImage(Tensor *T, const char *filename,
                         std::pair<float, float> range) {
@@ -278,6 +336,14 @@ bool glow::readPngImage(Tensor *T, const char *filename,
 
 bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range) {
+  GLOW_ASSERT(false && "Not configured with libpng");
+}
+
+Tensor glow::readPngImageAndPreprocess(const std::string &filename,
+                                       ImageNormalizationMode imageNormMode,
+                                       ImageChannelOrder imageChannelOrder,
+                                       ImageLayout imageLayout,
+                                       bool useImagenetNormalization) {
   GLOW_ASSERT(false && "Not configured with libpng");
 }
 #endif

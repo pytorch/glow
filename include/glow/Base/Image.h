@@ -21,6 +21,26 @@
 #include <tuple>
 
 namespace glow {
+
+enum class ImageNormalizationMode {
+  kneg1to1,     // Values are in the range: -1 and 1.
+  k0to1,        // Values are in the range: 0 and 1.
+  k0to255,      // Values are in the range: 0 and 255.
+  kneg128to127, // Values are in the range: -128 .. 127
+};
+
+enum class ImageLayout {
+  NCHW,
+  NHWC,
+};
+
+enum class ImageChannelOrder {
+  BGR,
+  RGB,
+};
+
+std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
+
 /// Reads a png image header from png file \p filename and \returns a tuple
 /// containing height, width, and a bool if it is grayscale or not.
 std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
@@ -40,6 +60,11 @@ bool writePngImage(Tensor *T, const char *filename,
                    std::pair<float, float> range,
                    bool useImagenetNormalization = false);
 
+Tensor readPngImageAndPreprocess(const std::string &filename,
+                                 ImageNormalizationMode imageNormMode,
+                                 ImageChannelOrder imageChannelOrder,
+                                 ImageLayout imageLayer,
+                                 bool useImagenetNormalization);
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H
