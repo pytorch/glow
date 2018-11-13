@@ -42,9 +42,9 @@ build/resnet50.o: download_weights
 	${LOADER} ${IMAGES}/dog_207.png -image_mode=0to1 -m resnet50 -model_input_name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
 endif
 
-build/main.o: resnet50.cpp
+build/main.o: main.cpp
 	mkdir -p build
-	${CXX} -std=c++11 -c -g resnet50.cpp -o build/main.o
+	${CXX} -std=c++11 -c -g main.cpp -o build/main.o
 
 download_weights:
 	for file in predict_net.pbtxt predict_net.pb init_net.pb; do \
