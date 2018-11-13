@@ -37,9 +37,9 @@ Below you can see the list of currently supported graph optimizations:
   * Sinking of transpose operations below other operations
 
     This optimization sinks transposes below such operations like a batch
-    normalization, RELU, sigmoid, etc. By doing this, many transpose operations
-    are brought closer to each other and it creates more opportunities for
-    elimination of transpose operations.
+    normalization, RELU, sigmoid, ChannelShuffle, etc. By doing this, many
+    transpose operations are brought closer to each other and it creates more
+    opportunities for elimination of transpose operations.
 
   * Pool operations optimization
 

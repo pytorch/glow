@@ -205,14 +205,18 @@ static Node *simplifyNode(Node *node, Function *F) {
   return node;
 }
 
-// 2D vector of dimentions mapping a dimention that is reshaped into either 1
-// or 2 dimentions by the first reshape node in a ChannelShuffle operation
+// 2D vector of dimensions mapping a dimension that is reshaped into either 1
+// or 2 dimensions by the first reshape node in a ChannelShuffle operation
 using ChannelShuffleDimGroups =
     llvm::SmallVector<llvm::SmallVector<unsigned_t, 2>, max_tensor_dimensions>;
 
-/// \returns the dims of \p node grouped by which input dimention they came from
-static bool groupDimentionsFromChannelShuffleReshape(
-    const ReshapeNode &node, ChannelShuffleDimGroups &dimGroups) {
+/// fills \p dimGroups with the groups of dimensions of the result of \p node
+/// that get separated. This grouping is only possible if \p node is the first
+/// Reshape node in a ChannelShuffle operation (Reshape->Tranpose->Reshape)
+/// \returns true if successfully grouped output dimensions and false otherwise
+static bool
+groupDimensionsFromChannelShuffleReshape(const ReshapeNode &node,
+                                         ChannelShuffleDimGroups &dimGroups) {
   const auto dims = node.getDims();
   const auto inputDims = node.getInput().dims();
   if (dims.size() != inputDims.size() + 1) {
@@ -220,13 +224,13 @@ static bool groupDimentionsFromChannelShuffleReshape(
   }
   dimGroups.resize(inputDims.size());
   bool foundReshapedDim = false;
-  int dimIdx, groupIdx;
-  for (dimIdx = 0, groupIdx = 0; dimIdx < dims.size(); ++dimIdx, ++groupIdx) {
+  for (size_t dimIdx = 0, groupIdx = 0; dimIdx < dims.size();
+       ++dimIdx, ++groupIdx) {
     auto &group = dimGroups[groupIdx];
     group.push_back(dimIdx);
     if (std::find(inputDims.begin(), inputDims.end(), dims[dimIdx]) ==
         inputDims.end()) {
-      // make sure only one input dimention is changed and there's atleast one
+      // make sure only one input dimension is changed and there's at least one
       // more dim
       if (foundReshapedDim || dimIdx >= dims.size() - 1) {
         return false;
@@ -235,6 +239,118 @@ static bool groupDimentionsFromChannelShuffleReshape(
       foundReshapedDim = true;
     }
   }
+  return true;
+}
+
+// Sink Transpose below ChannelShuffle node sequence. For example
+// (Transpose_1->Reshape_1->Transpose_2->Reshape_2) becomes
+// (Reshape_1->Transpose_2->Reshape_2->Transpose_1) and Reshape_1,
+// Transpose_2, Reshape_2 are reconstructed so that the end result is the
+// ChannelShuffle operation on the same dimention as before Transpose_1 was
+// sunk.
+static bool sinkTranposeBelowChannelShuffle(Function *F, Node *node) {
+  auto *postShuffleRN = dyn_cast<ReshapeNode>(node);
+  if (!postShuffleRN) {
+    return false;
+  }
+
+  auto *shuffleTR = dyn_cast<TransposeNode>(postShuffleRN->getInput());
+  if (!shuffleTR) {
+    return false;
+  }
+
+  auto *preShuffleRN = dyn_cast<ReshapeNode>(shuffleTR->getInput());
+  if (!preShuffleRN) {
+    return false;
+  }
+
+  auto *sinkingTR = dyn_cast<TransposeNode>(preShuffleRN->getInput());
+  if (!sinkingTR) {
+    return false;
+  }
+
+  // Try to group the dimensions of preShuffleRN by which input dimension they
+  // came from. This should always succeed for the first ReshapeNode in a
+  // ChannelShuffle.
+  ChannelShuffleDimGroups preShuffleRNDimGroups;
+  if (!groupDimensionsFromChannelShuffleReshape(*preShuffleRN,
+                                                preShuffleRNDimGroups)) {
+    return false;
+  }
+
+  // Get the inverse of the shuffle applied by the TranposeNode that is being
+  // sunk in order to apply this to the dimensions of preShuffleRN.
+  auto sinkingTRShuffle = sinkingTR->getShuffle();
+  llvm::SmallVector<unsigned_t, max_tensor_dimensions> inverseSinkingTRShuffle(
+      sinkingTRShuffle.size());
+  for (auto i = 0; i < sinkingTRShuffle.size(); i++) {
+    inverseSinkingTRShuffle[sinkingTRShuffle[i]] = i;
+  }
+
+  // Shuffle the dimension groups of preShuffleRN using the inverse of the
+  // tranpose that is being sunk. This will basically undo the effect of the
+  // transpose that is being sunk on preShuffleRN.
+  ChannelShuffleDimGroups untranposedPreShuffleRNDimGroups;
+  for (const auto d : inverseSinkingTRShuffle) {
+    untranposedPreShuffleRNDimGroups.push_back(preShuffleRNDimGroups[d]);
+  }
+
+  // Take the untranposedPreShuffleRNDimGroups and map them back to the original
+  // dimensions of preShuffleRN in order to get the dimensions of
+  // newPreShuffleRN which are the dimensions of preShuffleRN but with the
+  // inverse of sinkingTR applied to them.
+  llvm::SmallVector<size_t, max_tensor_dimensions>
+      ungroupedUnTranposedPreShuffleRNDims;
+  auto preShuffleRNDims = preShuffleRN->getDims();
+  for (const auto &dimGroup : untranposedPreShuffleRNDimGroups) {
+    for (const auto &dim : dimGroup) {
+      ungroupedUnTranposedPreShuffleRNDims.push_back(preShuffleRNDims[dim]);
+    }
+  }
+
+  auto *newPreShuffleRN =
+      F->createReshape(preShuffleRN->getName(), sinkingTR->getInput(),
+                       ungroupedUnTranposedPreShuffleRNDims);
+
+  // Create dimension groups for newPreShuffleRN.
+  ChannelShuffleDimGroups newPreShuffleRNDimGroups;
+  bool regroupedDims = groupDimensionsFromChannelShuffleReshape(
+      *newPreShuffleRN, newPreShuffleRNDimGroups);
+  assert(regroupedDims && "Created an invalid reshape for ChannelShuffle");
+
+  // Reverse the members of each dimension group (since now a new dimension is
+  // being shuffled and we need to create that new shuffle and negate the
+  // original shuffle) and flatten these groups to create the dimensions for
+  // newShuffleTR.
+  llvm::SmallVector<unsigned_t, max_tensor_dimensions> newShuffleTRDims;
+  for (auto &group : newPreShuffleRNDimGroups) {
+    for (auto i = 0; i < group.size(); i++) {
+      newShuffleTRDims.push_back(group[group.size() - i - 1]);
+    }
+  }
+
+  auto *newShuffleTR = F->createTranspose(shuffleTR->getName(), newPreShuffleRN,
+                                          newShuffleTRDims);
+
+  // Apply the inverse shuffle of the sinkingTR to the postShuffleRN dimensions
+  // as well.
+  llvm::SmallVector<size_t, max_tensor_dimensions>
+      untransposedPostShuffleRNDims;
+  auto originalPostShuffleRNDims = postShuffleRN->getDims();
+  for (const auto d : inverseSinkingTRShuffle) {
+    untransposedPostShuffleRNDims.push_back(originalPostShuffleRNDims[d]);
+  }
+
+  auto *newPostShuffleRN = F->createReshape(
+      postShuffleRN->getName(), newShuffleTR, untransposedPostShuffleRNDims);
+
+  // Create a copy of sinkingTR that will be inserted after the end of the
+  // the ChannelShuffle.
+  auto *newSinkingTR = F->createTranspose(
+      sinkingTR->getName(), newPostShuffleRN, sinkingTR->getShuffle());
+
+  postShuffleRN->getResult().replaceAllUsesOfWith(newSinkingTR);
+
   return true;
 }
 
@@ -359,80 +475,8 @@ static bool sinkCode(Function *F) {
       }
     }
 
-    // Sink Transpose below ChannelShuffle (Reshape->Transpose->Reshape)
-    if (auto *RN1 = dyn_cast<ReshapeNode>(node)) {
-      auto *TR1 = dyn_cast<TransposeNode>(RN1->getInput());
-      if (!TR1) {
-        continue;
-      }
-      auto *RN2 = dyn_cast<ReshapeNode>(TR1->getInput());
-      if (!RN2) {
-        continue;
-      }
-      auto *TR2 = dyn_cast<TransposeNode>(RN2->getInput());
-      if (!TR2) {
-        continue;
-      }
-
-      ChannelShuffleDimGroups rn2DimGroups;
-      if (!groupDimentionsFromChannelShuffleReshape(*RN2, rn2DimGroups)) {
-        continue;
-      }
-
-      // create newRN2
-      auto tr2Shuffle = TR2->getShuffle();
-      llvm::SmallVector<unsigned_t, max_tensor_dimensions> inverseTR2Shuffle(
-          tr2Shuffle.size());
-      for (auto i = 0; i < tr2Shuffle.size(); i++) {
-        inverseTR2Shuffle[tr2Shuffle[i]] = i;
-      }
-
-      ChannelShuffleDimGroups shuffledRN2DimGroups;
-      for (const auto d : inverseTR2Shuffle) {
-        shuffledRN2DimGroups.push_back(rn2DimGroups[d]);
-      }
-
-      llvm::SmallVector<size_t, max_tensor_dimensions> ungroupedShuffledRN2Dims;
-      auto rn2Dims = RN2->getDims();
-      for (const auto &dimGroup : shuffledRN2DimGroups) {
-        for (const auto &dim : dimGroup) {
-          ungroupedShuffledRN2Dims.push_back(rn2Dims[dim]);
-        }
-      }
-
-      auto *newRN2 = F->createReshape(RN2->getName(), TR2->getInput(),
-                                      ungroupedShuffledRN2Dims);
-
-      // create newTR1
-      ChannelShuffleDimGroups newRN2DimGroups;
-      bool regroupedDims =
-          groupDimentionsFromChannelShuffleReshape(*newRN2, newRN2DimGroups);
-      assert(regroupedDims && "Created an invalid reshape for ChannelShuffle");
-
-      llvm::SmallVector<unsigned_t, max_tensor_dimensions> newTR1Dims;
-      for (auto &group : newRN2DimGroups) {
-        for (auto i = 0; i < group.size(); i++) {
-          newTR1Dims.push_back(group[group.size() - i - 1]);
-        }
-      }
-
-      auto *newTR1 = F->createTranspose(TR1->getName(), newRN2, newTR1Dims);
-
-      // create newRN1
-      llvm::SmallVector<size_t, max_tensor_dimensions> shuffledDims;
-      auto originalDims = RN1->getDims();
-      for (const auto d : inverseTR2Shuffle) {
-        shuffledDims.push_back(originalDims[d]);
-      }
-
-      auto *newRN1 = F->createReshape(RN1->getName(), newTR1, shuffledDims);
-
-      // create newTR2
-      auto *newTR2 =
-          F->createTranspose(TR2->getName(), newRN1, TR2->getShuffle());
-
-      RN1->getResult().replaceAllUsesOfWith(newTR2);
-
+    // Sink Transpose below ChannelShuffle.
+    if (sinkTranposeBelowChannelShuffle(F, node)) {
       changed = true;
       continue;
     }

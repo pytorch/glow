@@ -2185,11 +2185,11 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
   EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
 }
 
+/// Test that Transpose is sunk below ChannelShuffle.
 TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
   const size_t inputDims[] = {3, 28, 28, 136};
-  Node *K;
 
-  K = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  Node *K = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   K = F_->createTranspose("unnecessary_transpose_1", K, {0, 3, 1, 2});
   K = F_->createChannelShuffle("channel_shuffle", K, 4, 1);
   K = F_->createTranspose("unnecessary_transpose_2", K, {0, 2, 3, 1});
@@ -2197,27 +2197,27 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
 
   EXPECT_EQ(F_->getNodes().size(), 6);
 
-  // Optimize away the unnecessary transposes
+  // Optimize away the unnecessary transposes.
   optimize(F_, CompilationMode::Infer);
 
-  // ensure the two unnecessary transposes a gone
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  // Ensure the two unnecessary transposes a gone.
+  ASSERT_EQ(F_->getNodes().size(), 4);
 
-  // check that the channel shuffle nodes are still there
+  // Check that the channel shuffle nodes are still there.
   auto *RN1 = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
-  EXPECT_NE(nullptr, RN1);
+  ASSERT_NE(nullptr, RN1);
   auto *TR1 =  llvm::dyn_cast<TransposeNode>(RN1->getInput().getNode());
-  EXPECT_NE(nullptr, TR1);
+  ASSERT_NE(nullptr, TR1);
   auto *RN2 = llvm::dyn_cast<ReshapeNode>(TR1->getInput().getNode());
-  EXPECT_NE(nullptr, RN2);
+  ASSERT_NE(nullptr, RN2);
 
-  // ensure last reshape has the same dimentions as the input
+  // Ensure last reshape has the same dimensions as the input.
   EXPECT_EQ(RN1->getDims(), llvm::makeArrayRef(inputDims));
 
-  // ensure the transpose in the middle of the reshapes shuffles the last
-  // dimention of the input
+  // Ensure the transpose in the middle of the reshapes shuffles the last
+  // dimension of the input.
   EXPECT_EQ(TR1->getShuffle(), llvm::makeArrayRef<unsigned_t>({0, 1, 2, 4, 3}));
 
-  // ensure the first reshape expands the last dimention of the input
+  // Ensure the first reshape expands the last dimension of the input.
   EXPECT_EQ(RN2->getDims(), llvm::makeArrayRef<size_t>({3, 28, 28, 4, 34}));
 }
