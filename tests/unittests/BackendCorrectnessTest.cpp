@@ -577,6 +577,8 @@ INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values(BackendKind::CPU));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
+#ifdef GLOW_RUN_OPENCL_TESTS
 INSTANTIATE_TEST_CASE_P(OpenCL, BackendCorrectnessTest,
                         ::testing::Values(BackendKind::OpenCL));
+#endif
 #endif // GLOW_WITH_OPENCL

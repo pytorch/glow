@@ -1372,14 +1372,17 @@ INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
                         ::testing::Values(BackendKind::Interpreter));
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values(BackendKind::CPU));
-#endif
+#endif // GLOW_WITH_CPU
+
 #ifdef GLOW_WITH_OPENCL
+#ifdef GLOW_RUN_OPENCL_TESTS
 INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values(BackendKind::OpenCL));
-#endif
+#endif // GLOW_RUN_OPENCL_TESTS
+#endif // GLOW_WITH_OPENCL
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterAndCPU,
                         ::testing::Values(BackendKind::Interpreter));
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, InterpreterAndCPU,
                         ::testing::Values(BackendKind::CPU));
-#endif
+#endif // GLOW_WITH_CPU
