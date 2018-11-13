@@ -237,7 +237,7 @@ void testPTB() {
 
   Function *TF = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Train, TF);
 
   if (!dumpTrainingGraphDAGFileOpt.empty()) {
     llvm::outs() << "Dumping training graph\n";

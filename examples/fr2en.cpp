@@ -179,7 +179,7 @@ struct Model {
       ::glow::convertPlaceholdersToConstants(F_, ctx,
                                              {input_, seqLength_, output_});
     }
-    EE_.compile(CompilationMode::Infer, F_, ctx);
+    EE_.compile(CompilationMode::Infer, F_);
   }
 
 private:

@@ -275,7 +275,7 @@ void Loader::compile(Context &ctx) {
     EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(CompilationMode::Infer, F_, ctx);
+    EE_.compile(CompilationMode::Infer, F_);
   }
 
   if (dumpGraphOpt) {

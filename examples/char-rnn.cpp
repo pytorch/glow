@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
   // Run this number of iterations over the input. On each iteration: train the
   // network on the whole input and then generate some sample text.
   for (unsigned i = 0; i < numEpochs; i++) {
-    EE.compile(CompilationMode::Train, TF, ctx);
+    EE.compile(CompilationMode::Train, TF);
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
     // placeholders to constants.
     auto *OF = F->clone("clone");
     ::glow::convertPlaceholdersToConstants(OF, ctx, {X, res});
-    EE.compile(CompilationMode::Infer, OF, ctx);
+    EE.compile(CompilationMode::Infer, OF);
 
     // Load a few characters to start the text that we generate.
     Tensor currCharInfer(ElemKind::FloatTy, {minibatchSize, numSteps, 128});

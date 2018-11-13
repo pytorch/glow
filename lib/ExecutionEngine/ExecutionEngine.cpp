@@ -148,10 +148,8 @@ void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
   }
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Function *F, Context &ctx) {
+void ExecutionEngine::compile(CompilationMode mode, Function *F) {
   optimizeFunction(mode, F);
-  // Make sure that the context has backing tensors for all placeholders.
-  // ctx.allocate(M_.getPlaceholders());
   function_ = backend_->compile(F);
 }
 

@@ -49,7 +49,7 @@ TEST(caffe2, importConv) {
   }
 
   auto res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   auto result = res->getHandle();
@@ -311,7 +311,7 @@ TEST(caffe2, concatAddAxis) {
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   auto res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   // High level check on the content of the graph.
@@ -388,7 +388,7 @@ TEST(caffe2, concat) {
 
   ctx.allocate(mod.getPlaceholders());
   auto res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   // High level check on the content of the graph.
@@ -592,7 +592,7 @@ TEST(caffe2, FC) {
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = ctx.get(output)->getHandle();
@@ -641,7 +641,7 @@ TEST(caffe2, FCWithFlatten) {
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
   ASSERT_TRUE(reshape);
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
@@ -690,7 +690,7 @@ TEST(caffe2, FCTransposed) {
       llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(fcNode);
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = ctx.get(output)->getHandle();
@@ -740,7 +740,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode1->getInput());
   ASSERT_TRUE(reshape);
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
   auto result = ctx.get(output)->getHandle();
   std::vector<size_t> expectedDims = {2, 4};
@@ -781,7 +781,7 @@ TEST(caffe2, importClip) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -828,7 +828,7 @@ TEST(caffe2, importClipDefault) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -879,7 +879,7 @@ TEST(caffe2, replaceNaN) {
 
   // Compile and run the model.
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -964,7 +964,7 @@ TEST(caffe2, dotProduct1D) {
   // Compile and run the model.
   ctx.allocate(mod.getPlaceholders());
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -1047,7 +1047,7 @@ TEST(caffe2, dotProduct2D) {
 
   // Compile and run the model.
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -1206,7 +1206,7 @@ TEST(caffe2, batchBoxCox) {
 
   // Compile and run the model.
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();

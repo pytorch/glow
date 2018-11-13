@@ -133,7 +133,7 @@ void testCIFAR10() {
   auto *result = ctx.allocate(save->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.
   int reportRate = 256;

@@ -134,7 +134,7 @@ void testMNIST() {
 
   Function *TF = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Train, TF);
 
   const int numIterations = 30;
 
@@ -160,7 +160,7 @@ void testMNIST() {
   llvm::outs() << "Validating.\n";
 
   ::glow::convertPlaceholdersToConstants(F, ctx, {A, result->getPlaceholder()});
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   auto LIH = labelInputs.getHandle<int64_t>();
 

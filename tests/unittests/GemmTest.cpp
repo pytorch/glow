@@ -55,7 +55,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   auto save = F->createSave("ret", matmul);
   auto *res = ctx.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   updateInputPlaceholders(ctx, {lhsVar, rhsVar}, {lhs, rhs});
   EE.run(ctx);

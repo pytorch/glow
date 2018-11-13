@@ -63,8 +63,8 @@ TEST(GraphAutoGrad, autoGrad) {
   (void)result;
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
@@ -93,8 +93,8 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *result = F->createSave("return", SM);
   (void)result;
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(GraphAutoGrad, cloneAndDiff) {
@@ -174,8 +174,8 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   EXPECT_EQ(A->getNumUsers(), 1);
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
 
   // Check that the Placeholder has multiple users, because at least one write
   /// node will be added.
@@ -205,6 +205,6 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   ctx.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
 }

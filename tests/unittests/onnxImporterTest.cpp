@@ -71,7 +71,7 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
   auto result = ctx.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
@@ -120,7 +120,7 @@ TEST(onnx, importClip) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -152,7 +152,7 @@ TEST(onnx, importBatchMatMul) {
     ctx.allocate(mod.getPlaceholders());
   }
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -234,7 +234,7 @@ TEST(onnx, importBatchBoxCox) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -321,7 +321,7 @@ TEST(onnx, importSumN) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();
@@ -370,7 +370,7 @@ TEST(onnx, importSum1) {
   }
 
   auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   auto result = res->getHandle();

@@ -64,7 +64,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   ctx.allocate(A);
   ctx.allocate(Ex);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
@@ -135,7 +135,7 @@ TEST_P(BackendTest, simpleInference) {
   ctx.allocate(input);
   ctx.allocate(ex);
   ctx.allocate(S->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F, ctx);
+  EE_.compile(CompilationMode::Infer, F);
 
   updateInputPlaceholders(ctx, {input}, {&inputs});
   EE_.run(ctx);
@@ -182,7 +182,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
   auto *saveTensor = ctx.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F, ctx);
+  EE_.compile(CompilationMode::Infer, F);
 
   // Erase all of the functions to ensure that the compiled code does not
   // depend on the graph.
@@ -209,7 +209,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   SaveNode *S = F->createSave("ret", input);
   auto *STensor = ctx.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F, ctx);
+  EE_.compile(CompilationMode::Infer, F);
   EE_.run(ctx);
   EXPECT_TRUE(STensor->isEqual(data));
 }
