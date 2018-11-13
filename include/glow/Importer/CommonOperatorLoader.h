@@ -520,6 +520,33 @@ protected:
     return true;
   }
 
+  bool loadClip(const OpType &op, const ArgumentDictionaryTy &dict) {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    float cmin = dict.count("min") ? loadFloat(dict.find("min")->second)
+                                   : std::numeric_limits<float>::lowest();
+    float cmax = dict.count("max") ? loadFloat(dict.find("max")->second)
+                                   : std::numeric_limits<float>::max();
+
+    auto *node = G_.createClip(loadOperatorName(op), in, cmin, cmax);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
+  bool loadSparseToDense(const OpType &op, const ArgumentDictionaryTy &dict) {
+    if (op.input_size() != 3) {
+      return false;
+    }
+
+    auto indices = getNodeValueOrCreateConstantByName(op.input(0));
+    auto values = getNodeValueOrCreateConstantByName(op.input(1));
+    auto dataToInferDim = getNodeValueOrCreateConstantByName(op.input(2));
+
+    auto *node = G_.createSparseToDense(loadOperatorName(op), indices, values,
+                                        dataToInferDim);
+    addNodeAsOutput(op, node);
+    return true;
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -639,6 +666,15 @@ protected:
     if (typeName == "ExpandDims") {
       return loadExpandDims(op, dict);
     }
+
+    if (typeName == "Clip") {
+      return loadClip(op, dict);
+    }
+
+    if (typeName == "SparseToDense") {
+      return loadSparseToDense(op, dict);
+    }
+
     return false;
   }
 };
