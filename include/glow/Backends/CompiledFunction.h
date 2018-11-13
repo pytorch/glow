@@ -60,7 +60,7 @@ public:
   virtual ~CompiledFunction() = default;
   /// Execute the network and allocate Placeholder memory with given
   /// \p ctx providing mapping between Placeholder and populated tensor.
-  virtual void execute(Context &ctx) = 0;
+  virtual void execute() = 0;
 
   /// Does any needed initialization work for the Backend.
   /// This includes device init constant memory allocation and copying to

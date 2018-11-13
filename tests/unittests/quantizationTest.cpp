@@ -731,9 +731,8 @@ public:
   MockQuantBackend() {
     backend_.reset(createBackend(BackendKind::Interpreter));
   }
-  std::unique_ptr<CompiledFunction> compile(Function *F,
-                                            const Context &ctx) const override {
-    return backend_->compile(F, ctx);
+  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
+    return backend_->compile(F);
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||

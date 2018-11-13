@@ -77,10 +77,7 @@ void CPUFunction::tearDownRuns() {
   }
 }
 
-void CPUFunction::execute(Context &ctx) {
-  setupRuns();
-  beforeRun(ctx);
-
+void CPUFunction::execute() {
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType =
@@ -91,9 +88,7 @@ void CPUFunction::execute(Context &ctx) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     funcPtr(runtimeBundle_.constants, baseMutableWeightVarsAddress_,
             baseActivationsAddress_);
-    afterRun(ctx);
   } else {
     GLOW_ASSERT(false && "Error getting address.");
   }
-  tearDownRuns();
 }

@@ -25,7 +25,6 @@
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
-                                         const Context &ctx,
                                          const runtime::RuntimeBundle &bundle)
     : F_(std::move(F)), bundle_(bundle) {}
 
@@ -135,9 +134,7 @@ void InterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-void InterpreterFunction::execute(Context &ctx) {
-  setupRuns();
-  beforeRun(ctx);
+void InterpreterFunction::execute() {
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
@@ -155,6 +152,4 @@ void InterpreterFunction::execute(Context &ctx) {
       llvm_unreachable("Invalid instruction.");
     }
   }
-  afterRun(ctx);
-  tearDownRuns();
 }

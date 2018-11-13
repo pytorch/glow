@@ -160,8 +160,12 @@ TEST_P(BackendTest, debugPrint) {
 
   std::unique_ptr<BackendUsingGlowIR> backend(
       static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
-  auto function = backend->compileIR(std::move(IR), ctx);
-  function->execute(ctx);
+  auto function = backend->compileIR(std::move(IR));
+  function->setupRuns();
+  function->beforeRun(ctx);
+  function->execute();
+  function->afterRun(ctx);
+  function->tearDownRuns();
 }
 
 /// This test checks that we can compile a function without depending on the

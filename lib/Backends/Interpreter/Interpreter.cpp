@@ -46,17 +46,15 @@ runtime::RuntimeBundle generateInterpreterRuntimeBundle(const IRFunction *F) {
   return bundle;
 }
 
-std::unique_ptr<CompiledFunction>
-Interpreter::compile(Function *F, const Context &ctx) const {
+std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
-  return compileIR(std::move(IR), ctx);
+  return compileIR(std::move(IR));
 }
 
 std::unique_ptr<CompiledFunction>
-Interpreter::compileIR(std::unique_ptr<IRFunction> IR,
-                       const Context &ctx) const {
+Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle = generateInterpreterRuntimeBundle(IR.get());
-  return llvm::make_unique<InterpreterFunction>(std::move(IR), ctx, bundle);
+  return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
 }
 
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
