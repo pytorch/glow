@@ -26,6 +26,7 @@ vgg19
 zfnet512
 bvlc_alexnet
 en2gr
+quant_resnet50
 EOF
 )
 

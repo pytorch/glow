@@ -254,6 +254,11 @@ public:
                              llvm::ArrayRef<unsigned_t> pads);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
+                             TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+                             llvm::ArrayRef<unsigned_t> strides,
+                             llvm::ArrayRef<unsigned_t> pads);
+
+  AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad);
 

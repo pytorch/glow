@@ -41,3 +41,5 @@ done
 for png_filename in tests/images/imagenet_299/*.png; do
   ./bin/image-classifier "$png_filename" -image-mode=0to1 -m=googlenet_v4_slim/googlenet_v4_slim.onnx -model-input-name=input:0 -image-layout=NHWC -label-offset=1 "$@"
 done
+#Quantized Resnet50 Caffe2 model test
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"

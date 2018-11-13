@@ -39,6 +39,15 @@ using llvm::cast;
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const caffe2::Argument *>;
 
+/// For the quantized Caffe2 ops, the activations are quantized to uint_8.
+/// In Glow, the activations are quantized to int_8. Therefore, for the offset
+/// read from quantized caffe2 model, we need to subtract 128(i.e. INT8_MIN) to
+/// make the activations becomes int8_t.
+/// For Glow: -127 <= orig_fp32/scale_1 + offset_1 < 128
+/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 < 255
+/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
+const int32_t OFFSETSHIFT = 128;
+
 /// Translates the protocol buffer node \p op into a random access map.
 static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict;
@@ -147,7 +156,8 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   const std::string &opName = loadOperatorName(op);
 
-  if (typeName == "Conv") {
+  if (typeName == "Conv" || typeName == "Int8Conv" ||
+      typeName == "Int8ConvRelu") {
     // Load the inputs:
     std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
     std::vector<unsigned_t> pads = getPads(dict);
@@ -159,33 +169,21 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor *w = getTensorByName(op.input(1));
 
     // Transpose the weights to the right format. Glow expects to read the
-    // weights in the format CRSK. Caffe2 stores the operators as KCRS.
+    // weights in the format CRSK.
     // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+    // Caffe2 "Conv" op always stores the weight as CKRS, while for "Int8Conv",
+    // and "Int8ConvRelu", the weights always follows the "order" arg.
     Tensor wtag;
-    w->transpose(&wtag, NCHW2NHWC);
+    if (typeName != "Conv" && order == "NHWC") {
+      wtag.assign(w);
+    } else {
+      w->transpose(&wtag, NCHW2NHWC);
+    }
 
     // The structure of the conv weigts is: NHWC. We take the C, which is the
     // number of filters. We use this value to calculate the size of the bias
     // if it is not specified.
     size_t depth = wtag.dims()[0];
-
-    // Construct the Filter field.
-    auto *filter = G_.getParent()->createConstant("conv.filter", wtag);
-
-    // Construct the Bias field.
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
-    biasTensor.zero();
-
-    // Check if we have a serialized bias vector.
-    if (op.input_size() > 2) {
-      auto &biasTensorName = op.input(2);
-      if (tensors_.count(biasTensorName)) {
-        // Load the serialized bias vector.
-        Tensor *b = getTensorByName(biasTensorName);
-        biasTensor.assign(b);
-      }
-    }
-    auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
 
     // We expect the input to be NHWC.
     Node *tr;
@@ -201,7 +199,60 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
-    auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+    TypeRef outTy;
+    Constant *filter;
+    Constant *bias;
+    if (typeName == "Conv") {
+      // Construct the Bias field.
+      Tensor biasTensor(ElemKind::FloatTy, {depth});
+      biasTensor.zero();
+
+      // Check if we have a serialized bias vector.
+      if (op.input_size() > 2) {
+        const auto &biasTensorName = op.input(2);
+        if (tensors_.count(biasTensorName)) {
+          // Load the serialized bias vector.
+          Tensor *b = getTensorByName(biasTensorName);
+          biasTensor.assign(b);
+        }
+      }
+      outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+      filter = G_.getParent()->createConstant("conv.filter", wtag);
+      bias = G_.getParent()->createConstant("conv.bias", biasTensor);
+    } else {
+      assert(dict.count("Y_zero_point") &&
+             "missing zero point for quantized output type");
+      assert(dict.count("Y_scale") &&
+             "missing Y_scale for quantized output type");
+      // Construct the Bias field.
+      Tensor biasTensor(ElemKind::Int32QTy, {depth}, 1.0, 0);
+      biasTensor.zero();
+      // Check if we have a serialized bias vector.
+      if (op.input_size() > 2) {
+        const auto &biasTensorName = op.input(2);
+        if (tensors_.count(biasTensorName)) {
+          // Load the serialized bias vector.
+          Tensor *b = getTensorByName(biasTensorName);
+          biasTensor.assign(b);
+        }
+      }
+      float scale = loadFloat(dict["Y_scale"]);
+      int32_t offset = loadInt(dict["Y_zero_point"]);
+      outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, scale,
+                                         offset - OFFSETSHIFT);
+
+      // Construct the quantized Filter and bias field.
+      filter = G_.getParent()->createConstant(
+          ElemKind::Int8QTy, wtag.dims(), wtag.getType().getScale(),
+          wtag.getType().getOffset(), "conv.filter");
+      filter->assign(&wtag);
+      bias = G_.getParent()->createConstant(
+          ElemKind::Int32QTy, biasTensor.dims(),
+          biasTensor.getType().getScale(), biasTensor.getType().getOffset(),
+          "conv.bias");
+      bias->assign(&biasTensor);
+    }
 
     Node *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
                                strides, pads, group);
@@ -214,7 +265,47 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "MaxPool" || typeName == "AveragePool") {
+  if (typeName == "Int8SumRelu") {
+    assert(op.input_size() == 2 && "Only Sum of 2 inputs is supported.");
+    assert(dict.count("Y_zero_point") &&
+           "missing zero point for quantized outout type");
+    assert(dict.count("Y_scale") &&
+           "missing Y_scale for quantized output type");
+    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
+    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
+    auto outDims = in0.getType()->dims();
+    auto outTy = G_.getParent()->uniqueType(
+        ElemKind::Int8QTy, outDims, loadFloat(dict["Y_scale"]),
+        loadInt(dict["Y_zero_point"]) - OFFSETSHIFT);
+    auto *node = G_.createAdd(opName, outTy, in0, in1);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
+  if (typeName == "Int8Quantize") {
+    assert(dict.count("Y_zero_point") &&
+           "missing zero point for quantized output type");
+    assert(dict.count("Y_scale") &&
+           "missing Y_scale for quantized output type");
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto outDims = in.getType()->dims();
+    auto outTy = G_.getParent()->uniqueType(
+        ElemKind::Int8QTy, outDims, loadFloat(dict["Y_scale"]),
+        loadInt(dict["Y_zero_point"]) - OFFSETSHIFT);
+    Node *N = G_.createQuantize(opName, in, outTy);
+    addNodeAsOutput(op, N);
+    return;
+  }
+
+  if (typeName == "Int8Dequantize") {
+    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    auto *node = G_.createDequantize(opName, in);
+    addNodeAsOutput(op, node);
+    return;
+  }
+
+  if (typeName == "MaxPool" || typeName == "AveragePool" ||
+      typeName == "Int8MaxPool" || typeName == "Int8AveragePool") {
     // Load the inputs:
     auto in = getNodeValueOrCreateConstantByName(op.input(0));
     std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
@@ -238,7 +329,29 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     Node *node = nullptr;
-    if (typeName == "MaxPool") {
+
+    if (typeName == "Int8MaxPool" || typeName == "Int8AveragePool") {
+      // Create the node with quantized type.
+      assert(dict.count("Y_zero_point") &&
+             "missing zero point for quantized output type");
+      assert(dict.count("Y_scale") &&
+             "missing Y_scale for quantized output type");
+      ShapeNHWC idim = ShapeNHWC(tr->getType(0)->dims());
+      auto outSz =
+          calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+      std::array<size_t, 4> outDims = {
+          {idim.n, outSz.first, outSz.second, idim.c}};
+      if (typeName == "Int8MaxPool") {
+        // Int8Maxpool output quantization should be same as the input, so just
+        // ignore the given params.
+        node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      } else {
+        auto outTy = G_.getParent()->uniqueType(
+            ElemKind::Int8QTy, outDims, loadFloat(dict["Y_scale"]),
+            loadInt(dict["Y_zero_point"]) - OFFSETSHIFT);
+        node = G_.createAvgPool(opName, tr, outTy, kernels, strides, pads);
+      }
+    } else if (typeName == "MaxPool") {
       node = G_.createMaxPool(opName, tr, kernels, strides, pads);
     } else {
       node = G_.createAvgPool(opName, tr, kernels, strides, pads);
@@ -309,7 +422,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "FC" || typeName == "FCTransposed") {
+  if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC") {
     // Load the inputs:
     auto in = getNodeValueOrCreateConstantByName(op.input(0));
     if (in.getType()->dims().size() > 2) {
@@ -327,12 +440,18 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Tensor tmp;
     if (w->dims().size() > 2) {
       auto wDims = flattenCdr(w->dims(), axis_w);
-      tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
+      if (typeName == "FC" || typeName == "FCTransposed") {
+        tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
+      } else {
+        tmp.reset(ElemKind::Int8QTy, {wDims.first, wDims.second},
+                  w->getType().getScale(), w->getType().getOffset());
+      }
       tmp.copyRawFrom(w);
       w = &tmp;
     }
+
     Tensor wtag;
-    if (typeName == "FC") {
+    if (typeName == "FC" || typeName == "Int8FC") {
       w->transpose(&wtag, {1, 0});
     } else {
       wtag.assign(w);
@@ -341,7 +460,22 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto W =
         G_.getParent()->addConstant(new Constant("weights", std::move(wtag)));
     auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
-    auto *node = G_.createFullyConnected(opName, in, W, B);
+
+    Node *node = nullptr;
+    if (typeName == "Int8FC") {
+      // Create the node with quantized type.
+      assert(dict.count("Y_zero_point") &&
+             "missing zero point for quantized output type");
+      assert(dict.count("Y_scale") &&
+             "missing Y_scale for quantized output type");
+      auto outTy = G_.getParent()->uniqueType(
+          ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
+          loadFloat(dict["Y_scale"]),
+          loadInt(dict["Y_zero_point"]) - OFFSETSHIFT);
+      node = G_.createFullyConnected(opName, in, W, B, outTy);
+    } else {
+      node = G_.createFullyConnected(opName, in, W, B);
+    }
 
     // Save the outputs:
     addNodeAsOutput(op, node);
@@ -597,6 +731,73 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
     }
 
+    assert(i == T->size() && "The number of serialized values does not "
+                             "match the size of the tensor.");
+    return;
+  }
+
+  // Load quantized tensors:
+  if (typeName == "Int8GivenTensorFill" ||
+      typeName == "Int8GivenIntTensorFill") {
+    /*
+     output: "conv1_w"
+     name: ""
+     type: "Int8GivenTensorFill"
+     arg {
+     name: "shape"
+     ints: 96
+     ints: 3
+     ints: 11
+     ints: 11
+     }
+     arg {
+     name: "values"
+     s: "\x7f\x80\x80\x7"
+     }
+     arg {
+     name: "Y_scale"
+     f: 0.00044428
+     }
+     arg {
+     name: "Y_zero_point"
+     i: 127
+     }
+     */
+    auto *T = new Tensor();
+    for (auto &o : op.output()) {
+      if (tensors_.count(o))
+        continue;
+      tensors_[o] = T;
+    }
+
+    auto dim = getShape(dict["shape"]);
+
+    assert(dict.count("Y_zero_point") &&
+           "missing zero point for quantized output type");
+    assert(dict.count("Y_scale") &&
+           "missing Y_scale for quantized output type");
+
+    float scale = loadFloat(dict["Y_scale"]);
+    int32_t offset = loadInt(dict["Y_zero_point"]);
+    size_t i = 0;
+    if (typeName == "Int8GivenTensorFill") {
+      // Although in Caffe2 quantized model, the weights is int8 quantized,
+      // the weights is stored in uint8_t format due to that Caffe2 requires the
+      // type of input and weights must be the same. Therefore, we need to
+      // convert it to int8 by subtracting 128.
+      T->reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
+      auto TH = T->getHandle<int8_t>();
+      std::string str = dict["values"]->s();
+      for (; i < str.size(); i++) {
+        TH.raw(i) = ((uint8_t)(str.c_str()[i]) - OFFSETSHIFT);
+      }
+    } else {
+      T->reset(ElemKind::Int32QTy, dim, scale, offset);
+      auto TH = T->getHandle<int32_t>();
+      for (auto num : dict["values"]->ints()) {
+        TH.raw(i++) = num;
+      }
+    }
     assert(i == T->size() && "The number of serialized values does not "
                              "match the size of the tensor.");
     return;
