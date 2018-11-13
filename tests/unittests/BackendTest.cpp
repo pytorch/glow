@@ -275,9 +275,11 @@ INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
 
 #ifdef GLOW_WITH_CPU
 INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values(BackendKind::CPU));
-#endif
+#endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
+#ifdef GLOW_RUN_OPENCL_TESTS
 INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest,
                         ::testing::Values(BackendKind::OpenCL));
-#endif
+#endif // GLOW_WITH_OPENCL
+#endif // GLOW_RUN_OPENCL_TESTS
