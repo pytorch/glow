@@ -70,10 +70,8 @@ public:
   }
 
   /// Optimize the graph and pass it to the backend to compile it for a specific
-  /// target. This method should be invoked before the run method. The context
-  /// \p ctx contains the mapping between symbolic values to concrete backing
-  /// tensors.
-  void compile(CompilationMode mode, Function *F, Context &ctx);
+  /// target. This method should be invoked before the run method.
+  void compile(CompilationMode mode, Function *F);
 
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to

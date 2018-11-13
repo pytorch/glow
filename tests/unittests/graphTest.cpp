@@ -362,7 +362,7 @@ TEST(Graph, simpleQuant) {
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
   Context ctx;
   F->createSave("ret", O);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, quantizeDequantizeNodes) {
@@ -382,7 +382,7 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto *D = F->createDequantize("dequantize", A);
   Context ctx;
   F->createSave("ret", D);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, quantizeGather) {
@@ -395,7 +395,7 @@ TEST(Graph, quantizeGather) {
   auto *gather = F->createGather("gather", input, indices);
   Context ctx;
   F->createSave("ret", gather);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, cloneTest) {
@@ -493,7 +493,7 @@ TEST(Graph, NodeValue) {
   auto *S = F->createSave("Save", a);
   auto *res = ctx.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 
@@ -551,7 +551,7 @@ TEST(Graph, nodesWithPredicates) {
   auto *save = F->createSave("ret", SM);
   ctx.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   updateInputPlaceholders(ctx, {input}, {&inputs});
   EE.run(ctx);
@@ -628,7 +628,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   // Copy the value of A.
   Tensor AOrig = ctx.get(A)->clone();
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   auto *ret = ctx.get(saveNode->getPlaceholder());
@@ -673,7 +673,7 @@ TEST(Graph, schedulingOfSaves) {
   // Copy the value of A.
   Tensor AOrig = ctx.get(A)->clone();
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   auto *ret = saveNode->getPlaceholder();

@@ -192,7 +192,7 @@ TEST(Quantization, quantizeGraph) {
   F = quantization::quantizeFunction(EE, QI, F);
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 }
@@ -216,7 +216,7 @@ TEST(Quantization, quantizeReLU) {
       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
        {0.2f, -128}}};
   F = quantization::quantizeFunction(EE, QI, F);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
   ASSERT_TRUE(llvm::isa<DequantizeNode>(save->getInput().getNode()));
@@ -300,7 +300,7 @@ TEST_P(Operator, end2end) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
   F1 = glow::profileQuantization(ctx, F1);
-  profileEE.compile(CompilationMode::Infer, F1, ctx);
+  profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
   profileEE.run(ctx);
@@ -313,7 +313,7 @@ TEST_P(Operator, end2end) {
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
-  backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
+  backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -435,7 +435,7 @@ TEST_P(Operator, end2endGRU) {
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   F1 = glow::profileQuantization(ctx, F1);
-  profileEE.compile(CompilationMode::Infer, F1, ctx);
+  profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
   profileEE.run(ctx);
@@ -448,7 +448,7 @@ TEST_P(Operator, end2endGRU) {
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
-  backendSpecificEE.compile(CompilationMode::Infer, F2, ctx);
+  backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -482,7 +482,7 @@ TEST(Quantization, rescaleSameType) {
   auto *result = ctx.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 3);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   EXPECT_EQ(F->getNodes().size(), 2);
@@ -508,7 +508,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
   auto *result = ctx.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 4);
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
   EXPECT_EQ(F->getNodes().size(), 1);
@@ -657,7 +657,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
   SaveNode *SN = F->createSave("save", DN);
   auto *res = ctx.allocate(SN->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
 
   // Verify all negative values were correctly set to zero.
@@ -823,7 +823,7 @@ TEST(Quantization, quantizeGraphPartially) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 
@@ -904,7 +904,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 
@@ -995,7 +995,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, ctx, {result});
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 
@@ -1105,7 +1105,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   }
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 }
@@ -1176,7 +1176,7 @@ TEST(Quantization, quantizeSlice) {
   }
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 }
@@ -1247,7 +1247,7 @@ TEST(Quantization, quantizeReshape) {
   }
 
   // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F, ctx);
+  EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
 }

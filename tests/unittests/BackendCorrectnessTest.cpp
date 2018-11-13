@@ -47,7 +47,7 @@ static std::vector<NodeQuantizationInfo>
 profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
                                   Function *origF) {
   Function *profileF = glow::profileQuantization(ctx, origF);
-  EE.compile(CompilationMode::Infer, profileF, ctx);
+  EE.compile(CompilationMode::Infer, profileF);
 
   EE.run(ctx);
 
@@ -89,8 +89,8 @@ compareAgainstInterpreter(BackendKind backendKind,
     BF = quantization::quantizeFunction(BEE, QI, BF);
   }
 
-  IEE.compile(CompilationMode::Infer, IF, ICtx);
-  BEE.compile(CompilationMode::Infer, BF, BCtx);
+  IEE.compile(CompilationMode::Infer, IF);
+  BEE.compile(CompilationMode::Infer, BF);
 
   IEE.run(ICtx);
   BEE.run(BCtx);

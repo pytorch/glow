@@ -103,7 +103,7 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
 
   // Create a function that trains the network.
   Function *TF = glow::differentiate(&F, TC);
-  EE.compile(CompilationMode::Train, TF, ctx);
+  EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
@@ -114,7 +114,7 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
   VariableGradientsList varGrads;
   Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
   allocateGrads(ctx, varGrads);
-  EE.compile(CompilationMode::Train, recordNet, ctx);
+  EE.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(varGrads, inputVar);
@@ -125,7 +125,7 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
   runBatch(EE, ctx, 1, sampleCounter, {inputVar, expVar}, {inputs, outputs});
 
   // Compile the original network in inference mode.
-  EE.compile(CompilationMode::Infer, &F, ctx);
+  EE.compile(CompilationMode::Infer, &F);
 
   auto analyticalGradsH = gradVarTensor->getHandle();
   auto inputsH = inputs->getHandle<>();
@@ -547,7 +547,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   VariableGradientsList varGrads;
   Function *TF = glow::differentiate(F, TC, "record", &varGrads);
   allocateGrads(ctx, varGrads);
-  EE_.compile(CompilationMode::Train, TF, ctx);
+  EE_.compile(CompilationMode::Train, TF);
 
   auto *gradPlaceholder = getGrad(varGrads, P);
   auto gradTensorHandle = ctx.get(gradPlaceholder)->getHandle();
