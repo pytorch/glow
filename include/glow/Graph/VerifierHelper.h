@@ -58,6 +58,7 @@ void reportContext(ElemKind Ty);
 void reportContext(const ShapeNHWC &shapeNHWC);
 void reportContext(const ShapeNCHW &shapeNCHW);
 void reportContext(const Node *node);
+void reportContext(const Function *function);
 
 //===----------------------------------------------------------------------===//
 //                       Checks
@@ -113,15 +114,16 @@ struct CompareOperatorLessEqual : public CompareWithName<Ty> {
 /// and \p parent (if not nullptr), \p a, and \p b are printed out
 /// using glow::reportContext.
 /// \returns \p comp(\p a, \p b).
-template <typename InputTy>
+template <typename InputTy, typename ParentTy>
 bool expectCompareTrue(
-    const char *msg, const InputTy &a, const InputTy &b, const Node *parent,
+    const char *msg, const InputTy &a, const InputTy &b, const ParentTy *parent,
     const CompareWithName<InputTy> &comp = CompareOperatorEqual<InputTy>()) {
   if (comp(a, b)) {
     return true;
   }
   if (parent) {
     reportContext(parent);
+    report("\n");
   }
   report(msg);
   report("\nFor comparison `LHS ");

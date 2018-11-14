@@ -408,7 +408,7 @@ public:
 } // namespace
 
 void IRFunction::generateIR() {
-  G_->verify();
+  assert(G_->verify() && "Invalid function");
   // Schedule the nodes.
   NodesPtrList ScheduledNodes;
   scheduleGraph(ScheduledNodes);

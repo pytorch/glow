@@ -40,12 +40,16 @@ void glow::reportContext(const Node *node) {
   report("In '");
   report(node->getName());
   report("'");
-  if (node->getParent()) {
-    report(" from '");
-    report(node->getParent()->getName());
-    report("'");
+  if (const Function *function = node->getParent()) {
+    report(" ");
+    reportContext(function);
   }
-  report("\n");
+}
+
+void glow::reportContext(const Function *function) {
+  report("From '");
+  report(function->getName());
+  report("'");
 }
 
 //===----------------------------------------------------------------------===//

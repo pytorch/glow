@@ -122,7 +122,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
 
 void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
   // Verify the function pre-optimization/lowering.
-  F->verify();
+  assert(F->verify() && "Function must be valid");
 
   // Optimize the graph.
   ::glow::optimize(F, mode);
