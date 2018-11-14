@@ -18,6 +18,7 @@
 #include "BundleSaver.h"
 #include "CPUFunction.h"
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
@@ -85,7 +86,6 @@ void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
   allocationsInfo.allocateActivations(F);
   allocationsInfo.allocateWeightVars(F);
   allocationsInfo.allocateTensorViews(F);
-  allocationsInfo.collectConstants(F);
 }
 
 } // end namespace
@@ -115,8 +115,12 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
   JIT->addModule(irgen->borrowModule());
   // Build runtimeBundle object containing offsets and allocation sizes.
+  MemoryAllocator constantAllocator("ConstantWeights", 0);
+  MemoryAllocator placeholderAllocator("Placeholders", 0);
+  MemoryAllocator activationsAllocator("Activations", 0);
   runtime::RuntimeBundle runtimeInfo =
-      allocationsInfo.generateRuntimeBundle(IR.get());
+      generateRuntimeBundle(IR.get(), &constantAllocator, &placeholderAllocator,
+                            &activationsAllocator);
   return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeInfo);
 }
 

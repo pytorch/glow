@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_BACKENDUTILS_H
 
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 
 namespace glow {
@@ -34,6 +35,12 @@ size_t
 getValueOffset(Value *v,
                const std::unordered_map<std::string, runtime::RuntimeSymbolInfo>
                    &symbolTable);
+/// Computes offsets and total allocation for Constants, Placeholders, and
+/// Activations to build runtime symbol table. Returns RuntimeBundle.
+runtime::RuntimeBundle
+generateRuntimeBundle(const IRFunction *F, MemoryAllocator *constantAllocator,
+                      MemoryAllocator *placeholderAllocator,
+                      MemoryAllocator *activationsAllocator);
 } // end namespace glow
 
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

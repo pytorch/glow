@@ -1500,98 +1500,6 @@ void OpenCLFunction::afterRun(const Context &ctx) {
   // Do it!
   clFinish(commands_);
 }
-
-/// Computes offsets and total allocation for Constants, Placeholders, and
-/// Activations to build runtime symbol table. Returns
-/// RuntimeBundle.
-runtime::RuntimeBundle generateRuntimeBundle(const IRFunction *F) {
-  // Use a single allocator. The OpenCL backend uses a single buffer on the card
-  // for Constants, Placeholders, and Activations, in that order.
-  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
-
-  /// Symbol table mapping symbol name to offset for runtime.
-  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
-
-  // Compute the offsets for Constants.
-  for (auto &v : F->getGraph()->getParent()->getConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = allocator.allocate(numBytes, v);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.size = numBytes;
-    symbol.offset = addr;
-    symbolTable.emplace(std::string(v->getName()), symbol);
-  }
-  uint64_t constantMaxSize = allocator.getMaxMemoryUsage();
-
-  // Compute the offsets for Placeholders.
-  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
-    // Get the WeightVar for each Placeholder to calculate offsets.
-    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto numBytes = w->getSizeInBytes();
-    size_t addr = allocator.allocate(numBytes, w);
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.offset = addr;
-    symbol.size = numBytes;
-    symbolTable.emplace(std::string(v->getName()), symbol);
-  }
-
-  uint64_t placeholderMaxSize = allocator.getMaxMemoryUsage() - constantMaxSize;
-
-  for (const auto &I : F->getInstrs()) {
-    if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
-      auto numBytes = I.getSizeInBytes();
-      size_t addr = allocator.allocate(numBytes, A);
-      assert(!symbolTable.count(std::string(A->getName())) &&
-             "Allocation already made!");
-      runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = addr;
-      symbol.size = numBytes;
-      symbolTable.emplace(std::string(A->getName()), symbol);
-      continue;
-    }
-
-    if (auto *TV = llvm::dyn_cast<TensorViewInst>(&I)) {
-      // Calculate and store the length of the offset into the base, using the
-      // source of the tensorview.
-      assert(!symbolTable.count(std::string(TV->getName())) &&
-             "Allocation already made!");
-      size_t offsetLength = TV->getOffsets().empty() ? 0 : TV->getOffsets()[0];
-      auto *tvSource = TV->getSrc();
-      if (tvSource->dims().size() > 1) {
-        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
-          offsetLength *= tvSource->dims()[i];
-        }
-      }
-      assert(symbolTable.count(std::string(tvSource->getName())) &&
-             "Source allocation not found!");
-      runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = getValueOffset(tvSource, symbolTable) +
-                      (offsetLength * TV->getType()->getElementSize());
-      symbol.size = TV->getSizeInBytes();
-      symbolTable.emplace(std::string(TV->getName()), symbol);
-      continue;
-    }
-
-    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(&I)) {
-      auto *A = D->getAlloc();
-      assert(symbolTable.count(std::string(A->getName())) &&
-             "Invalid deallocation!");
-      allocator.deallocate(A);
-      continue;
-    }
-  }
-  uint64_t activationsMaxSize =
-      allocator.getMaxMemoryUsage() - placeholderMaxSize - constantMaxSize;
-  runtime::RuntimeBundle info(constantMaxSize, placeholderMaxSize,
-                              activationsMaxSize);
-  info.symbolTable = std::move(symbolTable);
-  info.constants = collectConstants(F, constantMaxSize, info.symbolTable);
-  return info;
-}
-
 cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
@@ -1606,7 +1514,9 @@ void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
-  runtime::RuntimeBundle bundle = generateRuntimeBundle(IR.get());
+  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
+  runtime::RuntimeBundle bundle =
+      generateRuntimeBundle(IR.get(), &allocator, &allocator, &allocator);
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
 

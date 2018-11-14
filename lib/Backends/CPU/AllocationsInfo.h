@@ -70,12 +70,6 @@ struct AllocationsInfo {
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   void numberValues(const IRFunction *F);
-
-  /// Collect Constants into a single block of memory.
-  void collectConstants(const IRFunction *F);
-  /// Returns runtimeBundle object containing offsets and allocation sizes
-  /// needed for runtime.
-  runtime::RuntimeBundle generateRuntimeBundle(const IRFunction *F);
 };
 
 } // namespace glow
