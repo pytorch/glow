@@ -618,6 +618,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
     }
   }
 }
+
 void OpenCLFunction::execute() {
   for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
@@ -1376,14 +1377,6 @@ void OpenCLFunction::execute() {
   }
 
   clFinish(commands_);
-
-  // Output profiling information.
-  dumpProfileInfo(kernelLaunches_);
-
-  for (auto &kl : kernelLaunches_) {
-    clReleaseKernel(kl.kernel_);
-  }
-  kernelLaunches_.clear();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
@@ -1396,12 +1389,12 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
     size_t valueOffset = it->second.offset;
     cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
-        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
+        commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
     if (doProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+      kernelLaunches_.emplace_back(KernelLaunch("copyValueToDevice", event));
     }
     copiedBytes += sizeInBytes;
   }
@@ -1425,7 +1418,7 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
     DEBUG_GLOW(llvm::dbgs()
                << "Copied the value from device: " << v->getName() << "\n");
     if (doProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyFromDevice", event));
+      kernelLaunches_.emplace_back(KernelLaunch("copyValueFromDevice", event));
     }
     copiedBytes += sizeInBytes;
   }
@@ -1443,12 +1436,13 @@ void OpenCLFunction::setupRuns() {
     size_t valueOffset = 0;
     cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
-        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
+        commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
     if (doProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyConstantsToDevice", event));
     }
     // Do it!
     clFinish(commands_);
@@ -1465,13 +1459,14 @@ void OpenCLFunction::beforeRun(const Context &ctx) {
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};
+
     cl_int err = clEnqueueWriteBuffer(
-        commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, addr, numBytes,
+        commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
     if (doProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+      kernelLaunches_.emplace_back(KernelLaunch("copyInputsToDevice", event));
     }
   }
   // Do it!
@@ -1488,17 +1483,27 @@ void OpenCLFunction::afterRun(const Context &ctx) {
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};
+
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data from the device");
     if (doProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyToDevice", event));
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyOutputsFromDevice", event));
     }
   }
   // Do it!
   clFinish(commands_);
+
+  // Output profiling information.
+  dumpProfileInfo(kernelLaunches_);
+
+  for (auto &kl : kernelLaunches_) {
+    clReleaseKernel(kl.kernel_);
+  }
+  kernelLaunches_.clear();
 }
 
 /// Computes offsets and total allocation for Constants, Placeholders, and
