@@ -154,6 +154,8 @@ void FunctionConverter::convertInputs(Node &node) {
 }
 
 void FunctionConverter::convert() {
+  assert(function_.verify() && "Input function must be valid");
+
   // Traverse all nodes.
   // Check what the conversion should look like, if any.
   // Convert the node appropriately.
@@ -196,7 +198,7 @@ void FunctionConverter::convert() {
   // function.
   cleanUp();
 
-  function_.verify();
+  assert(function_.verify() && "Conversion led to invalid function");
 }
 
 void FunctionConverter::convertPlaceholder(Placeholder &placeholder,

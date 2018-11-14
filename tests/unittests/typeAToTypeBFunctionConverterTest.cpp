@@ -852,7 +852,7 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
   EXPECT_EQ(addedConversion->getInput().getNode(), placeholder);
   EXPECT_EQ(placeholder->getElementType(), ElemKind::FloatTy);
 
-  F->verify();
+  EXPECT_TRUE(F->verify());
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,

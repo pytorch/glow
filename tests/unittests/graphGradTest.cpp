@@ -130,7 +130,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   auto *diffF = differentiate(F, TC);
 
-  diffF->verify();
+  EXPECT_TRUE(diffF->verify());
 
   EXPECT_EQ(M.getFunctions().size(), 3);
   EXPECT_EQ(M.getPlaceholders().size(), 5);

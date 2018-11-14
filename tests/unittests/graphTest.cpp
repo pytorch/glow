@@ -100,7 +100,7 @@ TEST(Graph, float16Conv) {
   Node *K = MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
 
   auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
-  conv->verify();
+  EXPECT_TRUE(conv->verify());
   EXPECT_EQ(conv->getType(0)->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(conv->getFilter().getType()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(conv->getBias().getType()->getElementType(), ElemKind::Float16Ty);
@@ -135,7 +135,7 @@ TEST(Graph, float16BatchNorm) {
   BatchNormalizationNode *BN =
       F->createBatchNormalization(ctx, "batch", input, 3, 0.0001, 0.9);
 
-  BN->verify();
+  EXPECT_TRUE(BN->verify());
   EXPECT_EQ(BN->getType(0)->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(BN->getScale().getType()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(BN->getBias().getType()->getElementType(), ElemKind::Float16Ty);
@@ -471,7 +471,7 @@ TEST(Graph, cloneTest2) {
   F->createSave("Save", SM);
 
   auto *newF = F->clone("new_main");
-  newF->verify();
+  EXPECT_TRUE(newF->verify());
   F->dump();
   newF->dump();
 
@@ -1115,13 +1115,6 @@ TEST(Graph, nodeEqualityWithDifferentPredicates) {
   EXPECT_FALSE(RN1->isEqual(*RN2));
 }
 
-/// Tests that expect death from the verifier cannot currently run in Release
-/// mode as they would not die, since the verifier uses assertions for
-/// verification. Once the verifier moves to returning false instead of aborting
-/// (GH issue #1517), this can be removed and EXPECT_DEATH can be replaced by
-/// EXPECT_FALSE.
-#ifndef NDEBUG
-
 /// Check that verify doesn't allow for multiple writers to the same node.
 TEST(Graph, verifyOneWriter) {
   Module M;
@@ -1132,7 +1125,7 @@ TEST(Graph, verifyOneWriter) {
   F->createSave("Save1", input, output);
   F->createSave("Save2", input, output);
 
-  EXPECT_DEATH(M.verify(), "");
+  EXPECT_FALSE(M.verify());
 }
 
 /// Check that verify doesn't allow for Constants to be written to. Note that
@@ -1152,9 +1145,8 @@ TEST(Graph, verifyConstantNoWriters) {
   auto *outputC = M.createConstant(ElemKind::FloatTy, {5}, "outC");
   NodeValue(outputPH).replaceAllUsesOfWith(outputC);
 
-  EXPECT_DEATH(M.verify(), "");
+  EXPECT_FALSE(M.verify());
 }
-#endif /* NDEBUG */
 
 /// Check that the verifier will complain if a constant and its
 /// underlying tensor have mismatching types.

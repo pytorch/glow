@@ -16,6 +16,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/VerifierHelper.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
 
@@ -69,10 +70,12 @@ void Module::clear() {
 }
 
 Module::~Module() { clear(); }
-void Module::verify() const {
+bool Module::verify() const {
+  bool isValid = true;
   for (auto *F : functions_) {
-    F->verify();
+    isValid &= F->verify();
   }
+  return isValid;
 }
 
 void Module::dump() const {
@@ -2297,18 +2300,20 @@ Function *Function::clone(llvm::StringRef newName,
 
 /// Verify the input \p idx of a node \p N. Check that the node \p N is in the
 /// use-list of the corresponding input node.
-static void verifyNodeInput(const Node &N, size_t idx) {
+static bool verifyNodeInput(const Node &N, size_t idx) {
   auto input = N.getNthInput(idx);
   auto *refN = input.getNode();
   // Check that N is in the use-list of the input node and there is a proper
   // entry for it.
   for (auto &U : refN->getUsers()) {
     if (U.getUser() == &N && *U.get() == input) {
-      return;
+      return true;
     }
   }
-  llvm_unreachable(
-      "Any node referencing another node N be in the use-list of the node N");
+
+  report("Any node referencing another node N must be in the use-list of the "
+         "node N");
+  return false;
 }
 
 /// \returns True if \p n is a storage node (constant or placeholder) of the
@@ -2329,70 +2334,75 @@ static bool isGraphStorageNode(Node *n, const Function *F) {
   return false;
 }
 
-void Function::verify() const {
-  std::unordered_map<std::string, const Node *> NameToNode;
+/// Insert \p node in \p nameToNode and report an error if the insertion fails.
+/// \returns True if \p node was inserted into \p nameToNode. False otherwise.
+/// When true is returned that means that \p nameToNode had no other nodes
+/// registered under \p node.getName().
+static bool
+insertAndReport(std::unordered_map<std::string, const Node *> &nameToNode,
+                const Node &node, const Function &function) {
+  bool inserted = expectCompareTrue(
+      "Node is not unique", nameToNode.insert({node.getName(), &node}).second,
+      true, &function);
+  if (!inserted) {
+    std::string storage;
+    llvm::raw_string_ostream msg(storage);
+    /// Output extra information helping to find the error.
+    msg << "The node with name '" << node.getName()
+        << "' conflicts with a previous definition:\n";
+    msg << "Current definition: " << node.getDebugDesc() << "\n";
+    msg << "Previous definition: "
+        << nameToNode[node.getName()]->getDebugDesc();
+    report(msg.str().c_str());
+    return false;
+  }
+  return true;
+}
+
+bool Function::verify() const {
+  bool isValid = true;
+  std::unordered_map<std::string, const Node *> nameToNode;
 
   for (auto *V : getParent()->getConstants()) {
-    if (NameToNode.insert({V->getName(), V}).second)
-      continue;
-    /// Output extra information helping to find the error.
-    llvm::errs() << "The var with name '" << V->getName()
-                 << "' conflicts with a previous definition:\n";
-    llvm::errs() << "Current definition: " << V->getDebugDesc() << "\n";
-    llvm::errs() << "Previous definition: "
-                 << NameToNode[V->getName()]->getDebugDesc() << "\n";
-    dump();
-    llvm_unreachable("Multiple nodes with the same name");
+    isValid &= insertAndReport(nameToNode, *V, *this);
   }
 
-  NameToNode.clear();
-
-  for (auto &N : nodes_) {
-    if (NameToNode.insert({N.getName(), &N}).second)
-      continue;
-    /// Output extra information helping to find the error.
-    llvm::outs() << "The node with name '" << N.getName()
-                 << "' conflicts with a previous definition:\n";
-    llvm::errs() << "Current definition: " << N.getDebugDesc() << "\n";
-    llvm::errs() << "Previous definition: "
-                 << NameToNode[N.getName()]->getDebugDesc() << "\n";
-    dump();
-    llvm_unreachable("Multiple nodes with the same name");
+  nameToNode.clear();
+  for (const auto &N : nodes_) {
+    isValid &= insertAndReport(nameToNode, N, *this);
   }
 
   // Any node referenced by one of the graph nodes should be part of the Graph.
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
       auto &input = N.getNthInput(idx);
-      (void)input;
       // Verify each input of N.
-      verifyNodeInput(N, idx);
+      isValid &= verifyNodeInput(N, idx);
       bool foundNode =
           std::find(nodes_.begin(), nodes_.end(), *input) != nodes_.end();
-      (void)foundNode;
-      (void)isGraphStorageNode;
-      assert((foundNode || isGraphStorageNode(input, this)) &&
-             "Every node referenced by one of the graph nodes should be part of"
-             "the graph");
+      isValid &= expectCompareTrue(
+          "Every node referenced by one of the graph nodes should be part of "
+          "the graph",
+          foundNode || isGraphStorageNode(input, this), true, &N);
     }
   }
 
   // Check that all uses of each node refer to this node.
   for (const auto &N : nodes_) {
     for (const auto &U : N.getUsers()) {
-      (void)U;
-      assert(U.get()->getNode() == &N &&
-             "All uses of a node should refer to this node");
+      isValid &= expectCompareTrue<const Node *>(
+          "All uses of a node should refer to this node", U.get()->getNode(),
+          &N, &N);
+      ;
     }
   }
 
   std::unordered_map<const Placeholder *, const Node *> placeholderWrittenTo;
   for (const auto &N : nodes_) {
-    assert(N.getParent() == this &&
-           "Node is not linked to the function it belongs");
-    bool isValid = N.verify();
-    (void)isValid;
-    assert(isValid && "Found an invalid node");
+    isValid &=
+        expectCompareTrue("Node is not linked to the function it belongs",
+                          N.getParent(), this, &N);
+    isValid &= N.verify();
     // Make sure all the placeholders are at most written once, and that
     // constants are never written to.
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
@@ -2403,8 +2413,9 @@ void Function::verify() const {
       }
 
       const Node *nthInputNode = N.getNthInput(idx).getNode();
-      assert(!isa<Constant>(nthInputNode) &&
-             "Constants can never be used as an overwritten input.");
+      isValid &= expectCompareTrue(
+          "Constants can never be used as an overwritten input",
+          isa<Constant>(nthInputNode), false, nthInputNode);
 
       // Unlike Constants, Placeholders can be used at most once as overwritten
       // inputs. Keep a map of Placeholders to Nodes that used them as
@@ -2415,14 +2426,22 @@ void Function::verify() const {
         continue;
       }
       auto varToFirstDef = placeholderWrittenTo.find(ph);
-      if (varToFirstDef != placeholderWrittenTo.end()) {
-        llvm::errs() << "Placeholder " << ph->getDebugDesc() << '\n';
-        llvm::errs() << "has more than one write:\n";
-        llvm::errs() << N.getDebugDesc() << '\n';
-        llvm::errs() << varToFirstDef->second->getDebugDesc() << '\n';
+      bool writtenOnce = expectCompareTrue(
+          "Placeholder has more than one write",
+          varToFirstDef == placeholderWrittenTo.end(), true, ph);
+      if (!writtenOnce) {
+        isValid = false;
+        std::string storage;
+        llvm::raw_string_ostream msg(storage);
+
+        msg << "Placeholder " << ph->getDebugDesc() << '\n';
+        msg << "has more than one write; second writer found:\n";
+        msg << N.getDebugDesc() << '\n';
+        msg << varToFirstDef->second->getDebugDesc() << '\n';
+
+        report(msg.str().c_str());
       }
-      assert(varToFirstDef == placeholderWrittenTo.end() &&
-             "Placeholder has more than one write");
+
       placeholderWrittenTo[ph] = &N;
     }
   }
@@ -2445,8 +2464,10 @@ void Function::verify() const {
       if (user->getParent() != this) {
         continue;
       }
-      assert(user == varToWrite.second &&
-             "Implicit read after write memory dependency may not be honored");
+      isValid &= expectCompareTrue(
+          "Implicit read after write memory dependency may not be honored",
+          user, varToWrite.second, user);
     }
   }
+  return isValid;
 }

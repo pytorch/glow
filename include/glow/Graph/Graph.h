@@ -154,7 +154,8 @@ public:
   ///@}
 
   /// Verify the correctness of the Module.
-  void verify() const;
+  /// \returns true when the function is valid. False otherwise.
+  bool verify() const;
 
   /// Get the pseudo-random number generator used by this module.
   PseudoRNG &getPRNG() { return PRNG_; }
@@ -739,7 +740,8 @@ public:
                   llvm::DenseMap<Node *, Node *> *map = nullptr);
 
   /// Verify the correctness of the Function.
-  void verify() const;
+  /// \returns true when the function is valid. False otherwise.
+  bool verify() const;
 
   /// Dumps the textual representation of the network.
   void dump() const;
