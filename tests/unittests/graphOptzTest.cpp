@@ -1665,6 +1665,38 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+/// This test ensures that fusing of rescale into MatMul is done.
+TEST_F(GraphOptz, FuseRescaleIntoMatMul) {
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+
+  Placeholder *LHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
+  Placeholder *RHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
+
+  RescaleQuantizedNode *LHSR =
+      F_->createRescaleQuantized("rs1", LHS, rescaleOutTy);
+  RescaleQuantizedNode *RHSR =
+      F_->createRescaleQuantized("rs2", RHS, rescaleOutTy);
+  MatMulNode *MN = F_->createMatMul("qMatMul", opOutTy, LHSR, RHSR);
+  SaveNode *SN = F_->createSave("save", MN);
+
+  // All rescales must be fused into arithmetic operations above.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Only the MatMul and Save should be left.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::RescaleQuantizedNodeKind), 0);
+
+  MatMulNode *newMN = llvm::dyn_cast<MatMulNode>(SN->getInput());
+  ASSERT_TRUE(newMN);
+  Placeholder *LPH = llvm::dyn_cast<Placeholder>(newMN->getLHS());
+  EXPECT_EQ(LPH, LHS);
+  Placeholder *RPH = llvm::dyn_cast<Placeholder>(newMN->getRHS());
+  EXPECT_EQ(RPH, RHS);
+}
+
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   // Check that we eliminate rescale nodes by sinking them into other operators.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
