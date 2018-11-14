@@ -16,10 +16,10 @@ run_unit_tests() {
 # Pass one of {YES, NO} for QUANTIZE.
 run_and_check_bundle() {
     echo "Checking lenet_mnist bundle with QUANTIZE=${1}"
-    cd "${GLOW_DIR}"/examples/bundles/lenet_mnist/
+    cd "${GLOW_DIR}/examples/bundles/lenet_mnist/"
     ( QUANTIZE=${1} make &> raw_results.txt ) || ( cat raw_results.txt && exit 1 )
     ( tail -n72 raw_results.txt | grep -F "Result: " > results.txt ) || ( cat raw_results.txt && exit 1 )
-    diff results.txt "${GLOW_DIR}"/.ci/lenet_mnist_expected_output.txt
+    diff results.txt "${GLOW_DIR}/.ci/lenet_mnist_expected_output.txt"
     rm results.txt raw_results.txt
     echo "Successfully completed checking lenet_mnist bundle with QUANTIZE=${1}"
 }
@@ -58,7 +58,7 @@ if [[ "$CIRCLE_JOB" != ASAN ]]; then
     EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
 
     # Setup glow onnxifi backend so test driver can load it
-    cp "${GLOW_BUILD_DIR}"/lib/Onnxifi/libonnxifi-glow.so "${GLOW_DIR}"/libonnxifi.so
+    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_DIR}/libonnxifi.so"
     export LD_LIBRARY_PATH=${GLOW_DIR}
 
     # Run Onnxifi gtest
