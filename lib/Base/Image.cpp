@@ -299,7 +299,7 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
   size_t imgHeight = imageData.dims()[0];
   size_t imgWidth = imageData.dims()[1];
   size_t numChannels = imageData.dims()[2];
- 
+
   // PNG images are NHWC and RGB.  Convert if needed.
   // Convert to requested channel ordering.
   if (imageChannelOrder == ImageChannelOrder::BGR) {
