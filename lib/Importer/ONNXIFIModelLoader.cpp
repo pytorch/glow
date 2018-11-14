@@ -236,6 +236,8 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
       ADD_OP_MAPPING(MatMulNodeKind, FloatTy);
     } else if (operation == "ExpandDims") {
       ADD_OP_MAPPING(ReshapeNodeKind, FloatTy);
+    } else if (operation == "Gather" || operation == "BatchGather") {
+      ADD_OP_MAPPING(GatherNodeKind, FloatTy);
     }
   }
 #undef ADD_OP_MAPPING

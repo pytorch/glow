@@ -607,3 +607,28 @@ TEST(onnx, expandDims) {
   ASSERT_TRUE(reshape);
   EXPECT_TRUE(reshape->getDims().equals({1, 2, 2, 1}));
 }
+
+/// Test loading Gather from an ONNX model.
+TEST(onnx, gather) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename("tests/models/onnxModels/gather.onnxtxt");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {3, 2});
+  Tensor indices(ElemKind::FloatTy, {2, 4});
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"data", "indices"},
+                           {&data.getType(), &indices.getType()}, *F);
+    output = onnxLD.getSingleOutput();
+  }
+
+  // Verify structure: PH/PH -> Gather -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *gather = llvm::dyn_cast<GatherNode>(save->getInput().getNode());
+  ASSERT_TRUE(gather);
+  EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
+}
