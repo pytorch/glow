@@ -53,8 +53,8 @@ TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
 # TODO: Enable asan test. Rui Zhu.
 if [[ "$CIRCLE_JOB" != ASAN ]]; then
     # Banned known buggy test cases from gtest
-    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/crashed.txt)"
-    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/failed.txt)"
+    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/crashed.txt)"
+    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/failed.txt)"
     EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
 
     # Setup glow onnxifi backend so test driver can load it
