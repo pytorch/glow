@@ -291,20 +291,15 @@ Tensor glow::readPngImageAndPreprocess(const std::string &filename,
                                        ImageChannelOrder imageChannelOrder,
                                        ImageLayout imageLayout,
                                        bool useImagenetNormalization) {
-  // Get image dimensions and check if grayscale or color.
-  size_t imgHeight;
-  size_t imgWidth;
-  bool isGray;
-  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filename.c_str());
-
-  const size_t numChannels = isGray ? 1 : 3;
-
   Tensor imageData;
   auto range = normModeToRange(imageNormMode);
   bool loadSuccess = !readPngImage(&imageData, filename.c_str(), range,
                                    useImagenetNormalization);
   GLOW_ASSERT(loadSuccess && "Error reading input image.");
-
+  size_t imgHeight = imageData.dims()[0];
+  size_t imgWidth = imageData.dims()[1];
+  size_t numChannels = imageData.dims()[2];
+ 
   // PNG images are NHWC and RGB.  Convert if needed.
   // Convert to requested channel ordering.
   if (imageChannelOrder == ImageChannelOrder::BGR) {
@@ -339,7 +334,7 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   GLOW_ASSERT(false && "Not configured with libpng");
 }
 
-Tensor glow::readPngImageAndPreprocess(const std::string &filename,
+Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
                                        ImageNormalizationMode imageNormMode,
                                        ImageChannelOrder imageChannelOrder,
                                        ImageLayout imageLayout,
