@@ -2066,6 +2066,27 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       }
       continue;
     }
+
+    // Combine Rescale down with MatMul node.
+    //   MatMulNode(Rescale(LHS), RHS) -> MatMulNode(LHS', RHS).
+    //   MatMulNode(LHS, Rescale(RHS)) -> MatMulNode(LHS, RHS').
+    //   MatMulNode(Rescale(LHS), Rescale(RHS)) -> MatMulNode(LHS', RHS').
+    if (auto *MN = dyn_cast<MatMulNode>(&node)) {
+      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(MN->getLHS())) {
+        auto *newMN = F->createMatMul(MN->getName(), MN->getResult().getType(),
+                                      rescale->getInput(), MN->getRHS());
+        MN->getResult().replaceAllUsesOfWith(newMN);
+        MN = newMN;
+        changed = true;
+      }
+      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(MN->getRHS())) {
+        auto *newMN = F->createMatMul(MN->getName(), MN->getResult().getType(),
+                                      MN->getLHS(), rescale->getInput());
+        MN->getResult().replaceAllUsesOfWith(newMN);
+        changed = true;
+      }
+      continue;
+    }
   }
 
   return changed;
