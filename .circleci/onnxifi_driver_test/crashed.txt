@@ -1,0 +1,7 @@
+*test_softmax_axis_0*
+*test_batchnorm_epsilon*
+*test_batchnorm_example*
+*test_sum_example*
+*test_flatten_axis0*
+*test_transpose_default*
+*test_sum_one_input*
