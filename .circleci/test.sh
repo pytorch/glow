@@ -4,8 +4,8 @@
 
 set -euxo pipefail
 
-export GLOW_DIR=$PWD
-export GLOW_BUILD_DIR=${GLOW_DIR}/build
+export GLOW_SRC=$PWD
+export GLOW_BUILD_DIR=${GLOW_SRC}/build
 export LOADER=${GLOW_BUILD_DIR}/bin/image-classifier
 
 # Pass in which tests to run (one of {test, test_unopt}).
@@ -16,10 +16,10 @@ run_unit_tests() {
 # Pass one of {YES, NO} for QUANTIZE.
 run_and_check_bundle() {
     echo "Checking lenet_mnist bundle with QUANTIZE=${1}"
-    cd "${GLOW_DIR}/examples/bundles/lenet_mnist/"
+    cd "${GLOW_SRC}/examples/bundles/lenet_mnist/"
     ( QUANTIZE=${1} make &> raw_results.txt ) || ( cat raw_results.txt && exit 1 )
     ( tail -n72 raw_results.txt | grep -F "Result: " > results.txt ) || ( cat raw_results.txt && exit 1 )
-    diff results.txt "${GLOW_DIR}/.ci/lenet_mnist_expected_output.txt"
+    diff results.txt "${GLOW_SRC}/.ci/lenet_mnist_expected_output.txt"
     rm results.txt raw_results.txt
     echo "Successfully completed checking lenet_mnist bundle with QUANTIZE=${1}"
 }
@@ -45,7 +45,7 @@ case ${CIRCLE_JOB} in
 esac
 
 # Run ONNX test
-ONNX_DIR="${GLOW_DIR}/thirdparty/onnx"
+ONNX_DIR="${GLOW_SRC}/thirdparty/onnx"
 # ONNX test data dir
 TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
 
@@ -53,13 +53,13 @@ TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
 # TODO: Enable asan test. Rui Zhu.
 if [[ "$CIRCLE_JOB" != ASAN ]]; then
     # Banned known buggy test cases from gtest
-    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_DIR}"/.circleci/crashed.txt)"
-    FAILED_TEST_CASES="$(paste -sd: "${GLOW_DIR}"/.circleci/failed.txt)"
+    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/crashed.txt)"
+    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/failed.txt)"
     EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
 
     # Setup glow onnxifi backend so test driver can load it
-    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_DIR}/libonnxifi.so"
-    export LD_LIBRARY_PATH=${GLOW_DIR}
+    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_SRC}/libonnxifi.so"
+    export LD_LIBRARY_PATH=${GLOW_SRC}
 
     # Run Onnxifi gtest
     GTEST_FILTER="*-${EXCLUDED_TEST_CASES}" "${GLOW_BUILD_DIR}/onnxifi_test_driver_gtests" "${TESTDATA_DIR}"
