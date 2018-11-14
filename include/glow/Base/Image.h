@@ -21,6 +21,30 @@
 #include <tuple>
 
 namespace glow {
+
+/// Pixel value ranges.
+enum class ImageNormalizationMode {
+  kneg1to1,     // Values are in the range: -1 and 1.
+  k0to1,        // Values are in the range: 0 and 1.
+  k0to255,      // Values are in the range: 0 and 255.
+  kneg128to127, // Values are in the range: -128 .. 127
+};
+
+/// Layout of image dimensions (batch, channels, height, width).
+enum class ImageLayout {
+  NCHW,
+  NHWC,
+};
+
+/// Order of color channels (red, green, blue).
+enum class ImageChannelOrder {
+  BGR,
+  RGB,
+};
+
+/// \returns the floating-point range corresponding to enum value \p mode.
+std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
+
 /// Reads a png image header from png file \p filename and \returns a tuple
 /// containing height, width, and a bool if it is grayscale or not.
 std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
@@ -40,6 +64,17 @@ bool writePngImage(Tensor *T, const char *filename,
                    std::pair<float, float> range,
                    bool useImagenetNormalization = false);
 
+/// Read a png image and preprocess it according to several parameters.
+/// \param filename the png file to read.
+/// \param imageNormMode normalize values to this range.
+/// \param imageChannelOrder the order of color channels.
+/// \param imageLayout the order of dimensions (channel, height, and width).
+/// \param useImagenetNormalization use special normalization for Imagenet.
+Tensor readPngImageAndPreprocess(llvm::StringRef filename,
+                                 ImageNormalizationMode imageNormMode,
+                                 ImageChannelOrder imageChannelOrder,
+                                 ImageLayout imageLayout,
+                                 bool useImagenetNormalization);
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H

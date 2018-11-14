@@ -34,23 +34,6 @@
 
 using namespace glow;
 
-enum class ImageNormalizationMode {
-  kneg1to1,     // Values are in the range: -1 and 1.
-  k0to1,        // Values are in the range: 0 and 1.
-  k0to255,      // Values are in the range: 0 and 255.
-  kneg128to127, // Values are in the range: -128 .. 127
-};
-
-enum class ImageLayout {
-  NCHW,
-  NHWC,
-};
-
-enum class ImageChannelOrder {
-  BGR,
-  RGB,
-};
-
 ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
   return llvm::StringSwitch<ImageNormalizationMode>(str)
       .Case("neg1to1", ImageNormalizationMode::kneg1to1)
@@ -58,22 +41,6 @@ ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
       .Case("0to255", ImageNormalizationMode::k0to255)
       .Case("neg128to127", ImageNormalizationMode::kneg128to127);
   GLOW_ASSERT(false && "Unknown image format");
-}
-
-/// Convert the normalization to numeric floating poing ranges.
-std::pair<float, float> normModeToRange(ImageNormalizationMode mode) {
-  switch (mode) {
-  case ImageNormalizationMode::kneg1to1:
-    return {-1., 1.};
-  case ImageNormalizationMode::k0to1:
-    return {0., 1.0};
-  case ImageNormalizationMode::k0to255:
-    return {0., 255.0};
-  case ImageNormalizationMode::kneg128to127:
-    return {-128., 127.};
-  default:
-    GLOW_ASSERT(false && "Image format not defined.");
-  }
 }
 
 namespace {
@@ -153,68 +120,57 @@ llvm::cl::opt<bool> useImagenetNormalization(
     llvm::cl::cat(imageLoaderCat), llvm::cl::init(false));
 } // namespace
 
+/// Insert \p image into \p batch at \p index.
+template <typename Ty>
+void insertImage(Handle<Ty> &batch, const Handle<Ty> &image, size_t index) {
+  auto dims = image.dims();
+  for (size_t i = 0; i < dims[0]; i++) {
+    for (size_t j = 0; j < dims[1]; j++) {
+      for (size_t k = 0; k < dims[2]; k++) {
+        batch.at({index, i, j, k}) = image.at({i, j, k});
+      }
+    }
+  }
+}
+
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
 void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
                              Tensor *inputImageData) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
-  auto range = normModeToRange(imageNormMode);
   unsigned numImages = filenames.size();
 
-  // Get first image's dimensions and check if grayscale or color.
-  size_t imgHeight, imgWidth;
+  // Get image dimensions and check if grayscale or color.
+  size_t imgHeight;
+  size_t imgWidth;
   bool isGray;
   std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
   const size_t numChannels = isGray ? 1 : 3;
 
-  // N x C x H x W
-  inputImageData->reset(ElemKind::FloatTy,
-                        {numImages, numChannels, imgHeight, imgWidth});
-  auto IIDH = inputImageData->getHandle<>();
-
-  // We iterate over all the png files, reading them all into our inputImageData
-  // tensor for processing
-  for (unsigned n = 0; n < filenames.size(); n++) {
-    Tensor localCopy;
-    // PNG images are loaded as NHWC & RGB
-    bool loadSuccess = !readPngImage(&localCopy, filenames[n].c_str(), range,
-                                     useImagenetNormalization);
-    GLOW_ASSERT(loadSuccess && "Error reading input image.");
-    auto imageH = localCopy.getHandle<>();
-
-    auto dims = localCopy.dims();
-    assert((dims[0] == imgHeight && dims[1] == imgWidth) &&
-           "All images must have the same Height and Width");
-    assert(dims[2] == numChannels &&
-           "All images must have the same number of channels");
-    assert((imageChannelOrder == ImageChannelOrder::BGR ||
-            imageChannelOrder == ImageChannelOrder::RGB) &&
-           "Invalid image format");
-
-    // Convert to NCHW with the requested channel ordering.
-    for (unsigned z = 0; z < numChannels; z++) {
-      for (unsigned y = 0; y < dims[1]; y++) {
-        for (unsigned x = 0; x < dims[0]; x++) {
-          if (imageChannelOrder == ImageChannelOrder::BGR) {
-            IIDH.at({n, numChannels - 1 - z, x, y}) = (imageH.at({x, y, z}));
-          } else { // RGB
-            IIDH.at({n, z, x, y}) = (imageH.at({x, y, z}));
-          }
-        }
-      }
-    }
-  }
-
-  // For ONNX graphs with input in NHWC layout, we transpose the image data.
+  // Allocate a tensor for the batch.
+  ShapeVector batchDims;
   switch (imageLayout) {
   case ImageLayout::NCHW:
+    batchDims = {numImages, numChannels, imgHeight, imgWidth};
     break;
   case ImageLayout::NHWC:
-    Tensor dataNHWC;
-    inputImageData->transpose(&dataNHWC, NCHW2NHWC);
-    *inputImageData = std::move(dataNHWC);
+    batchDims = {numImages, imgHeight, imgWidth, numChannels};
     break;
+  }
+  inputImageData->reset(ElemKind::FloatTy, batchDims);
+  auto IIDH = inputImageData->getHandle<>();
+
+  // Read images into local tensors and add to batch.
+  for (size_t n = 0; n < filenames.size(); n++) {
+    Tensor localCopy = readPngImageAndPreprocess(filenames[n], imageNormMode,
+                                                 imageChannelOrder, imageLayout,
+                                                 useImagenetNormalization);
+    assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
+                      inputImageData->dims().begin() + 1) &&
+           "All images must have the same dimensions");
+    auto LH = localCopy.getHandle();
+    insertImage(IIDH, LH, n);
   }
 }
 
