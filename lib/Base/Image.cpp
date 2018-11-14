@@ -286,14 +286,14 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   return false;
 }
 
-Tensor glow::readPngImageAndPreprocess(const std::string &filename,
+Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
                                        ImageNormalizationMode imageNormMode,
                                        ImageChannelOrder imageChannelOrder,
                                        ImageLayout imageLayout,
                                        bool useImagenetNormalization) {
   Tensor imageData;
   auto range = normModeToRange(imageNormMode);
-  bool loadSuccess = !readPngImage(&imageData, filename.c_str(), range,
+  bool loadSuccess = !readPngImage(&imageData, filename.data(), range,
                                    useImagenetNormalization);
   GLOW_ASSERT(loadSuccess && "Error reading input image.");
   size_t imgHeight = imageData.dims()[0];
