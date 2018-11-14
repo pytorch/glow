@@ -80,46 +80,6 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
                  << "]\n";
   });
 }
-
-void AllocationsInfo::collectConstants(const IRFunction *F) {
-  // At compile time condense constants to a single block of memory.
-  // This allows the graph to go away after compile time. If we don't have
-  // constant weights, do nothing.
-  if (constantWeightVarsMemSize_ == 0) {
-    return;
-  }
-
-  baseConstantWeightVarsStore_ =
-      (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
-  for (auto &v : F->getGraph()->getParent()->getConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto payload = v->getPayload().getUnsafePtr();
-    auto numBytes = w->getSizeInBytes();
-    auto addr = allocatedAddress_[w];
-    // Copy weight to offset.
-    memcpy(baseConstantWeightVarsStore_ + addr, payload, numBytes);
-  }
-}
-
-runtime::RuntimeBundle
-AllocationsInfo::generateRuntimeBundle(const IRFunction *F) {
-  runtime::RuntimeBundle info(constantWeightVarsMemSize_,
-                              mutableWeightVarsMemSize_, activationsMemSize_);
-  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
-  info.constants = baseConstantWeightVarsStore_;
-  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    runtime::RuntimeSymbolInfo symbol;
-    symbol.offset = allocatedAddress_[w];
-    symbol.size = w->getSizeInBytes();
-    symbolTable.emplace(std::string(v->getName()), symbol);
-  }
-  info.symbolTable = std::move(symbolTable);
-  return info;
-}
-
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Use a memory allocator with no upper bound on how much memory we can
   // allocate.

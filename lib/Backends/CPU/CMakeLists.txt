@@ -74,6 +74,7 @@ target_link_libraries(CPUBackend
                       PRIVATE
                         Base
                         CodeGen
+                        BackendUtils
                         Graph
                         IR
                         Optimizer
