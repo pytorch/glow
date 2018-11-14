@@ -367,16 +367,6 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return;
   }
 
-  if (typeName == "Gather" || typeName == "BatchGather") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
-    auto indices = getNodeValueOrCreateConstantByName(op.input(1));
-    size_t batchDims = typeName == "Gather" ? 0 : 1;
-
-    Node *GN = G_.createGather(opName, data, indices, batchDims);
-    addNodeAsOutput(op, GN);
-    return;
-  }
-
   if (typeName == "Log") {
     // Load the inputs:
     auto in = getNodeValueOrCreateConstantByName(op.input(0));

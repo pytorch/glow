@@ -547,6 +547,30 @@ protected:
     return true;
   }
 
+  bool loadGatherOps(const std::string &typeName, const OpType &op,
+                     const ArgumentDictionaryTy &dict) {
+    if (typeName != "Gather" && typeName != "BatchGather") {
+      return false;
+    }
+
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto indices = getNodeValueOrCreateConstantByName(op.input(1));
+    size_t batchDims = typeName == "Gather" ? 0 : 1;
+
+    if (dict.count("axis")) {
+      int axis = loadInt(dict.find("axis")->second);
+      if (axis != 0 && axis != 1) {
+        return false;
+      }
+
+      batchDims = axis;
+    }
+
+    Node *GN = G_.createGather(loadOperatorName(op), data, indices, batchDims);
+    addNodeAsOutput(op, GN);
+    return true;
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns true and creates new operator.
@@ -673,6 +697,10 @@ protected:
 
     if (typeName == "SparseToDense") {
       return loadSparseToDense(op, dict);
+    }
+
+    if (typeName == "Gather" || typeName == "BatchGather") {
+      return loadGatherOps(typeName, op, dict);
     }
 
     return false;
