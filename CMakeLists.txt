@@ -9,6 +9,7 @@ option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
+option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
