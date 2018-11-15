@@ -146,6 +146,9 @@ inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
   return {outsx, outsy};
 }
 
+/// Modes of the padding operation.
+enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
+
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
 class Node;

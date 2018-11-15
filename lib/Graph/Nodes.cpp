@@ -284,6 +284,8 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
          checkSameType(dest, expected, dest.getNode());
 }
 
+bool PadNode::verify() const { return true; }
+
 bool ConvolutionNode::verify() const {
   return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
                            Kernels_, Strides_, Pads_, Group_);

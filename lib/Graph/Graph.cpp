@@ -424,6 +424,20 @@ Placeholder *Module::addPlaceholder(Placeholder *ph) {
   return ph;
 }
 
+/// Check if the 'pads' array has the right size.
+static void assertPadsSize(NodeValue input, llvm::ArrayRef<int> pads) {
+  assert((pads.size() == 2 * input.dims().size()) &&
+         "the pads array must contain 2 values per dimensions");
+}
+
+PadNode *Function::createPad(llvm::StringRef name, NodeValue input,
+                             TypeRef outTy, unsigned_t mode,
+                             llvm::ArrayRef<int> pads, float value) {
+  assertPadsSize(input, pads);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new PadNode(name, OT, input, mode, pads, value));
+}
+
 /// Check the kernel size for Conv/Pooling ops.
 static void checkKernelSize(ShapeNHWC idim, llvm::ArrayRef<unsigned_t> kernels,
                             llvm::ArrayRef<unsigned_t> pads) {
@@ -709,14 +723,14 @@ Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
     }
   }
 
-  // Reshape the input node to same number of dimensions as new shape, but with
-  // 1s in place of to-be-brodacasted dimensions.
+  // Reshape the input node to same number of dimensions as new shape, but
+  // with 1s in place of to-be-broadcasted dimensions.
   Node *currNode =
       createReshape(name.str() + ".reshape", input,
                     llvm::ArrayRef<size_t>(reshapeDims, newShape.size()));
 
-  // Create a Tile (which is really a Concat) in each direction that needs to be
-  // broadcasted.
+  // Create a Tile (which is really a Concat) in each direction that needs to
+  // be broadcasted.
   for (size_t i = 0; i < newShape.size(); i++) {
     if (reshapeDims[i] == 1 && newShape[i] != 1) {
       currNode = createTile(name.str() + ".tile" + std::to_string(i), currNode,
@@ -768,8 +782,8 @@ ConcatNode *Function::createConcat(llvm::StringRef name,
 
   ShapeVector shape(inDim.begin(), inDim.end());
 
-  // We are stacking the tensors along a specific dimension. This means that we
-  // increase the size of the tensor along this dimension.
+  // We are stacking the tensors along a specific dimension. This means that
+  // we increase the size of the tensor along this dimension.
   shape[dimension] = 0;
   for (auto I : inputs) {
     shape[dimension] += I.getType()->dims()[dimension];
@@ -922,9 +936,9 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
                                         llvm::ArrayRef<size_t> axes) {
   assert(!axes.empty() && "Parameter `axes` must be provided.");
 
-  // Dimensions provided in axes are for the output tensor, so we sort them and
-  // unique them to make sure they are processed correctly and in the right
-  // order.
+  // Dimensions provided in axes are for the output tensor, so we sort them
+  // and unique them to make sure they are processed correctly and in the
+  // right order.
   ShapeVector shapeAxes(axes.begin(), axes.end());
   std::sort(shapeAxes.begin(), shapeAxes.end());
   shapeAxes.erase(std::unique(shapeAxes.begin(), shapeAxes.end()),
@@ -952,7 +966,8 @@ ReshapeNode *Function::createExpandDims(llvm::StringRef name, NodeValue input,
     }
   }
 
-  // Create a reshape of the original data with the newly determined dimensions.
+  // Create a reshape of the original data with the newly determined
+  // dimensions.
   return createReshape(name.str() + ".expanddims", input, newDims);
 }
 
@@ -1030,11 +1045,11 @@ ARITHMETIC_FUN_DEF(Pow);
 #undef ARITHMETIC_FUN_DEF
 
 /// This helper function is used only by the functions creating boolean
-/// operations like createCmpEQ and createCmpLTE to compute their output types.
-/// The output type is computed based on the type \p T of the operand of the
-/// logical operation. In case of a quantized type we provide concrete scale and
-/// offset for the type as we know that the output of a boolean operation could
-/// be only 0 or 1.
+/// operations like createCmpEQ and createCmpLTE to compute their output
+/// types. The output type is computed based on the type \p T of the operand
+/// of the logical operation. In case of a quantized type we provide concrete
+/// scale and offset for the type as we know that the output of a boolean
+/// operation could be only 0 or 1.
 ///
 /// \returns the output type for a boolean operation.
 static TypeRef getResultTypeOfBooleanOp(Module &M, TypeRef T) {
@@ -1189,8 +1204,8 @@ Node *Function::createBroadcastedBatchMatMul(llvm::StringRef name,
   assert(MMN->getResult().dims()[1] == P &&
          "Incorrect resulting dimension for batch matmul");
 
-  // Reshape the result back to the expected batch output shape, with the first
-  // dimension the number of batches.
+  // Reshape the result back to the expected batch output shape, with the
+  // first dimension the number of batches.
   return createReshape(name.str() + ".reshapeResult", MMN, {numBatches, N, P});
 }
 
@@ -1235,8 +1250,9 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
                                                        TypeRef outTy,
                                                        NodeValue batch,
                                                        unsigned_t axis) {
-  // Calculate the expected total number of elements in the output tensor based
-  // on the number of elements in the batch divided by the axis dimension.
+  // Calculate the expected total number of elements in the output tensor
+  // based on the number of elements in the batch divided by the axis
+  // dimension.
   const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
   (void)outNumElements;
   assert(outTy->size() == outNumElements &&
@@ -1577,9 +1593,9 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   auto *BL2 = createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
                               /*axis=*/1);
 
-  // Add a small epsilon to lambda1 so that we can avoid dividing by zero later.
-  // It doesn't matter that this is technically incorrect because the final
-  // Select will discard the results of this computation.
+  // Add a small epsilon to lambda1 so that we can avoid dividing by zero
+  // later. It doesn't matter that this is technically incorrect because the
+  // final Select will discard the results of this computation.
   auto *eps = createSplat(name.str() + ".eps", BL1->getNthResult(0).getType(),
                           std::numeric_limits<float>::min());
   auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
@@ -1945,7 +1961,8 @@ void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
                           getPRNG());
   ctx.allocate(Bhy)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
-  // Un-roll backpropogation through time as a loop with the shared parameters.
+  // Un-roll backpropogation through time as a loop with the shared
+  // parameters.
   for (unsigned t = 0; t < timeSteps; t++) {
     auto fc1Name = nameBase + ".fc1." + std::to_string(t);
     auto *FC1 = createFullyConnected(fc1Name, Ht, Whh, Bhh);
@@ -2293,9 +2310,9 @@ Function *Function::clone(llvm::StringRef newName,
     newF->addNode(copy);
   }
 
-  // At this point we have a new invalid function that points into nodes in the
-  // original function. Here we update the links between the nodes in the new
-  // function.
+  // At this point we have a new invalid function that points into nodes in
+  // the original function. Here we update the links between the nodes in the
+  // new function.
   for (auto &N : newF->getNodes()) {
     // Fix each one of the inputs of this node.
     for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
@@ -2399,7 +2416,8 @@ bool Function::verify() const {
     isValid &= insertAndReport(nameToNode, N, *this);
   }
 
-  // Any node referenced by one of the graph nodes should be part of the Graph.
+  // Any node referenced by one of the graph nodes should be part of the
+  // Graph.
   for (const auto &N : nodes_) {
     for (size_t idx = 0, e = N.getNumInputs(); idx < e; ++idx) {
       auto &input = N.getNthInput(idx);
@@ -2444,9 +2462,9 @@ bool Function::verify() const {
           "Constants can never be used as an overwritten input",
           isa<Constant>(nthInputNode), false, nthInputNode);
 
-      // Unlike Constants, Placeholders can be used at most once as overwritten
-      // inputs. Keep a map of Placeholders to Nodes that used them as
-      // overwritten inputs, which is also used later to check for
+      // Unlike Constants, Placeholders can be used at most once as
+      // overwritten inputs. Keep a map of Placeholders to Nodes that used
+      // them as overwritten inputs, which is also used later to check for
       // read-after-write dependence violations.
       const auto *ph = dyn_cast<Placeholder>(nthInputNode);
       if (!ph) {

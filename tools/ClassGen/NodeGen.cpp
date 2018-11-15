@@ -58,6 +58,21 @@ int main(int argc, char **argv) {
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
 
+  BB.newNode("Pad")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Mode")
+      .addMember(MemberType::VectorSigned, "Pads")
+      .addMember(MemberType::Float, "Value")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Performs padding of a given input tensor. The Padding information "
+          "must be specified for each dimension of the tensor in Pads (start "
+          "and end padding). In case the padding is negative, it means that "
+          "the tensor must be cropped. Mode defines how extra padding elements "
+          "are created. Supported modes are defined in the PaddingMode enum: "
+          "CONSTANT, REFLECT, EDGE. Value is only used with the CONSTANT "
+          "mode.");
+
   BB.newNode("Convolution")
       .addInput("Input")
       .addInput("Filter")

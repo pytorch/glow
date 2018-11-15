@@ -760,6 +760,59 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadMatMul(op, dict);
   }
 
+  if (typeName == "Pad") {
+    // Input
+    NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    auto inputDims = input.dims();
+    auto numDims = inputDims.size();
+
+    // Padding properties.
+    unsigned_t mode = PaddingMode::CONSTANT; // default is constant.
+    if (dict.count("mode")) {
+      std::string modeStr;
+      ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict["mode"]));
+      if (modeStr == "constant") {
+        mode = PaddingMode::CONSTANT;
+      } else if (modeStr == "reflect") {
+        mode = PaddingMode::REFLECT;
+      } else if (modeStr == "edge") {
+        mode = PaddingMode::EDGE;
+      } else {
+        RETURN_ERR("Pad: Invalid mode");
+      }
+    }
+    float value = 0.f; // Default
+    if (dict.count("value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(dict["value"]));
+    }
+
+    // Pads are mandatory.
+    RETURN_ERR_IF_NOT(dict.count("pads"),
+                      "Pad: The 'pads' property is mandatory");
+    auto pads = getShape<int>(dict.at("pads"));
+    RETURN_ERR_IF_NOT(
+        (pads.size() == 2 * numDims),
+        "Pad: the 'pads' array must contain 2 values per dimensions");
+
+    // Compute the output type.
+    std::vector<size_t> outDims(numDims);
+    for (unsigned_t i = 0; i < numDims; i++) {
+      auto new_dim = inputDims[i] + pads[i] + pads[i + numDims];
+      RETURN_ERR_IF_NOT(new_dim > 0,
+                        "The padding can't remove all elements of a dimension");
+      outDims[i] = new_dim;
+    }
+    auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+    // Create the IR node.
+    Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
+    addNodeAsOutput(op, N);
+
+    return llvm::Error::success();
+  }
+
   RETURN_ERR("Failed to load operator.");
 }
 
