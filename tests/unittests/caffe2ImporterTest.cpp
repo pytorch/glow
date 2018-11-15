@@ -1039,7 +1039,7 @@ TEST(caffe2, dotProduct2D) {
   ASSERT_TRUE(BRA);
   ASSERT_EQ(BRA->getNumInputs(), 1);
 
-  auto *MN = llvm::dyn_cast<MulNode>(BRA->getNthInput(0));
+  auto *MN = llvm::dyn_cast<MulNode>(BRA->getBatch());
   ASSERT_TRUE(MN);
 
   // With have two inputs and one output.
@@ -1167,38 +1167,38 @@ TEST(caffe2, batchBoxCox) {
   ASSERT_TRUE(selectNode);
 
   // CmpEQ, Log, Div.
-  auto *CEQ = llvm::dyn_cast<CmpEQNode>(selectNode->getNthInput(0));
+  auto *CEQ = llvm::dyn_cast<CmpEQNode>(selectNode->getCond());
   ASSERT_TRUE(CEQ);
-  auto *LN = llvm::dyn_cast<LogNode>(selectNode->getNthInput(1));
+  auto *LN = llvm::dyn_cast<LogNode>(selectNode->getLHS());
   ASSERT_TRUE(LN);
-  auto *DN = llvm::dyn_cast<DivNode>(selectNode->getNthInput(2));
+  auto *DN = llvm::dyn_cast<DivNode>(selectNode->getRHS());
   ASSERT_TRUE(DN);
 
   // Splat, Broadcast, Max, Sub, Add.
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(CEQ->getNthInput(1)));
-  auto *BN1 = llvm::dyn_cast<TileNode>(CEQ->getNthInput(0));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(CEQ->getRHS()));
+  auto *BN1 = llvm::dyn_cast<TileNode>(CEQ->getLHS());
   ASSERT_TRUE(BN1);
   auto *MN = llvm::dyn_cast<MaxNode>(LN->getInput());
   ASSERT_TRUE(MN);
-  auto *subNode = llvm::dyn_cast<SubNode>(DN->getNthInput(0));
+  auto *subNode = llvm::dyn_cast<SubNode>(DN->getLHS());
   ASSERT_TRUE(subNode);
-  auto *AN1 = llvm::dyn_cast<AddNode>(DN->getNthInput(1));
+  auto *AN1 = llvm::dyn_cast<AddNode>(DN->getRHS());
   ASSERT_TRUE(AN1);
 
   // Splat, Splat, Splat. Add, Pow, Broadcast.
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(MN->getNthInput(1)));
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(subNode->getNthInput(1)));
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(AN1->getNthInput(1)));
-  auto *AN2 = llvm::dyn_cast<AddNode>(MN->getNthInput(0));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(MN->getRHS()));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(subNode->getRHS()));
+  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(AN1->getRHS()));
+  auto *AN2 = llvm::dyn_cast<AddNode>(MN->getLHS());
   ASSERT_TRUE(AN2);
-  auto *PN = llvm::dyn_cast<PowNode>(subNode->getNthInput(0));
+  auto *PN = llvm::dyn_cast<PowNode>(subNode->getLHS());
   ASSERT_TRUE(PN);
-  EXPECT_EQ(MN, llvm::dyn_cast<MaxNode>(PN->getNthInput(0)));
-  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(AN1->getNthInput(0)));
+  EXPECT_EQ(MN, llvm::dyn_cast<MaxNode>(PN->getLHS()));
+  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(AN1->getLHS()));
 
   // Broadcast, Broadcast.
-  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(PN->getNthInput(1)));
-  auto *BN2 = llvm::dyn_cast<TileNode>(AN2->getNthInput(1));
+  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(PN->getRHS()));
+  auto *BN2 = llvm::dyn_cast<TileNode>(AN2->getRHS());
   EXPECT_TRUE(BN2);
 
   // There are three inputs and one output.

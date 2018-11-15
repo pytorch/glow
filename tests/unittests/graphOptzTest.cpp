@@ -754,21 +754,22 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
-  Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
-  Node *K = F_->createRELU("relu", T);
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  TransposeNode *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
+  ReluNode *K = F_->createRELU("relu", T);
   F_->createSave("ret", K);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
-  EXPECT_EQ(K->getNthInput(0).getNode(), T);
+  EXPECT_EQ(K->getInput().getNode(), T);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
   EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_EQ(K->getNthInput(0).getNode(), A);
+  EXPECT_EQ(K->getInput().getNode(), A);
   // Make sure we didn't mess up with the dimensions of the
   // variable while eliminating the transpose.
-  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(A->dims(), llvm::makeArrayRef(origDims));
 }
 
 /// Check that the predicates don't get in the way of
@@ -776,29 +777,33 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
 /// preserved.
 TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  Node *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Placeholder *pred1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Placeholder *pred2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Placeholder *pred3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  TransposeNode *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
   T->setPredicate(pred1);
-  Node *K = F_->createRELU("relu", T);
+  ReluNode *K = F_->createRELU("relu", T);
   K->setPredicate(pred2);
   SaveNode *save = F_->createSave("ret", K);
   save->setPredicate(pred3);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
-  EXPECT_EQ(K->getNthInput(0).getNode(), T);
+  EXPECT_EQ(K->getInput().getNode(), T);
 
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
   EXPECT_EQ(save->getPredicate().getNode(), pred3);
   EXPECT_EQ(save->getInput().getNode(), K);
-  EXPECT_EQ(K->getNthInput(0).getNode(), A);
+  EXPECT_EQ(K->getInput().getNode(), A);
   EXPECT_EQ(K->getPredicate().getNode(), pred2);
   // Make sure we didn't mess up with the dimensions of the
   // variable while eliminating the transpose.
-  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(A->dims(), llvm::makeArrayRef(origDims));
 }
 
 TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
@@ -1435,8 +1440,9 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   EXPECT_EQ(F_->getNodes().size(), 8);
 
   // The second input of A3 shoule be a splat node with a shape of R3.
-  auto *SN = llvm::dyn_cast<SplatNode>(
-      llvm::dyn_cast<SaveNode>(O)->getInput().getNode()->getNthInput(1));
+  auto *newA3 = llvm::dyn_cast<AddNode>(O->getInput());
+  ASSERT_TRUE(newA3);
+  auto *SN = llvm::dyn_cast<SplatNode>(newA3->getRHS());
   EXPECT_TRUE(SN);
   EXPECT_TRUE(SN->getResult().getType()->dims().equals(reshape));
 
@@ -1539,8 +1545,9 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
   // Quantization node was merged into input var.
   EXPECT_EQ(1, clonedF->getNodes().size());
-  auto quantizedInput =
-      llvm::cast<Constant>(clonedF->getNodes().front().getNthInput(0));
+  auto *save = llvm::dyn_cast<SaveNode>(&clonedF->getNodes().front());
+  ASSERT_TRUE(save);
+  auto quantizedInput = llvm::cast<Constant>(save->getInput());
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
   for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
@@ -1592,46 +1599,52 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
   auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
 
-  Node *LHS =
+  Placeholder *LHS =
       mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
-  Node *RHS =
+  Placeholder *RHS =
       mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
 
-  Node *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
-  add = F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
-  add = F_->createSave("saveAdd", add);
+  AddNode *add = F_->createAdd("qAdd", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleAdd =
+      F_->createRescaleQuantized("rsAdd", add, rescaleOutTy);
+  SaveNode *addSave = F_->createSave("saveAdd", rescaleAdd);
 
-  Node *sub = F_->createSub("qSub", opOutTy, LHS, RHS);
-  sub = F_->createRescaleQuantized("rsSub", sub, rescaleOutTy);
-  sub = F_->createSave("saveSub", sub);
+  SubNode *sub = F_->createSub("qSub", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleSub =
+      F_->createRescaleQuantized("rsSub", sub, rescaleOutTy);
+  SaveNode *subSave = F_->createSave("saveSub", rescaleSub);
 
-  Node *div = F_->createDiv("qDiv", opOutTy, LHS, RHS);
-  div = F_->createRescaleQuantized("rsDiv", div, rescaleOutTy);
-  div = F_->createSave("saveDiv", div);
+  DivNode *div = F_->createDiv("qDiv", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleDiv =
+      F_->createRescaleQuantized("rsDiv", div, rescaleOutTy);
+  SaveNode *divSave = F_->createSave("saveDiv", rescaleDiv);
 
-  Node *mul = F_->createMul("qMul", opOutTy, LHS, RHS);
-  mul = F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
-  mul = F_->createSave("saveMul", mul);
+  MulNode *mul = F_->createMul("qMul", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleMul =
+      F_->createRescaleQuantized("rsMul", mul, rescaleOutTy);
+  SaveNode *mulSave = F_->createSave("saveMul", rescaleMul);
 
-  Node *min = F_->createMin("qMin", opOutTy, LHS, RHS);
-  min = F_->createRescaleQuantized("rsMin", min, rescaleOutTy);
-  min = F_->createSave("saveMin", min);
+  MinNode *min = F_->createMin("qMin", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleMin =
+      F_->createRescaleQuantized("rsMin", min, rescaleOutTy);
+  SaveNode *minSave = F_->createSave("saveMin", rescaleMin);
 
-  Node *max = F_->createMax("qMax", opOutTy, LHS, RHS);
-  max = F_->createRescaleQuantized("rsMax", max, rescaleOutTy);
-  max = F_->createSave("saveMax", max);
+  MaxNode *max = F_->createMax("qMax", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleMax =
+      F_->createRescaleQuantized("rsMax", max, rescaleOutTy);
+  SaveNode *maxSave = F_->createSave("saveMax", rescaleMax);
 
   // All rescales must be fused into arithmetic operations above.
   ::glow::optimize(F_, CompilationMode::Infer);
 
   EXPECT_EQ(F_->getNodes().size(), 12);
 
-  EXPECT_EQ(add->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(sub->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(mul->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(div->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(min->getNthInput(0).getType(), rescaleOutTy);
-  EXPECT_EQ(max->getNthInput(0).getType(), rescaleOutTy);
+  EXPECT_EQ(addSave->getInput().getType(), rescaleOutTy);
+  EXPECT_EQ(subSave->getInput().getType(), rescaleOutTy);
+  EXPECT_EQ(mulSave->getInput().getType(), rescaleOutTy);
+  EXPECT_EQ(divSave->getInput().getType(), rescaleOutTy);
+  EXPECT_EQ(minSave->getInput().getType(), rescaleOutTy);
+  EXPECT_EQ(maxSave->getInput().getType(), rescaleOutTy);
 }
 
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
@@ -1902,14 +1915,14 @@ TEST_F(GraphOptz, concatReshapes) {
 
   // The first input of addNode should be a Reshape node now, with the same
   // result shape of concatNode1.
-  auto *newRN =
-      llvm::dyn_cast<ReshapeNode>(O->getInput().getNode()->getNthInput(0));
+  auto *newAddNode = llvm::dyn_cast<AddNode>(O->getInput());
+  ASSERT_TRUE(newAddNode);
+  auto *newRN = llvm::dyn_cast<ReshapeNode>(newAddNode->getLHS());
   ASSERT_TRUE(newRN);
   EXPECT_TRUE(newRN->getResult().getType()->dims().equals(outputShape));
 
   // The input of newRN should be a ConcatNode now.
-  auto *newCN = llvm::dyn_cast<ConcatNode>(
-      O->getInput().getNode()->getNthInput(0).getNode()->getNthInput(0));
+  auto *newCN = llvm::dyn_cast<ConcatNode>(newRN->getInput());
   ASSERT_TRUE(newCN);
 }
 
