@@ -2189,7 +2189,8 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
 TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
   const size_t inputDims[] = {3, 28, 28, 136};
 
-  Node *K = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  Node *K =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   K = F_->createTranspose("unnecessary_transpose_1", K, {0, 3, 1, 2});
   K = F_->createChannelShuffle("channel_shuffle", K, 4, 1);
   K = F_->createTranspose("unnecessary_transpose_2", K, {0, 2, 3, 1});
@@ -2206,7 +2207,7 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
   // Check that the channel shuffle nodes are still there.
   auto *RN1 = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
   ASSERT_NE(nullptr, RN1);
-  auto *TR1 =  llvm::dyn_cast<TransposeNode>(RN1->getInput().getNode());
+  auto *TR1 = llvm::dyn_cast<TransposeNode>(RN1->getInput().getNode());
   ASSERT_NE(nullptr, TR1);
   auto *RN2 = llvm::dyn_cast<ReshapeNode>(TR1->getInput().getNode());
   ASSERT_NE(nullptr, RN2);

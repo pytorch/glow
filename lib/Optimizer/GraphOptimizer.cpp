@@ -206,15 +206,16 @@ static Node *simplifyNode(Node *node, Function *F) {
   return node;
 }
 
-// Parameters that are used to define ChannelShuffle operators
+/// Parameters that are used to define ChannelShuffle operators.
 struct ChannelShuffleParams {
   size_t group;
   size_t kernel;
 };
 
-/// Compute the original parameters to the ChannelShuffle operator for which
-/// \p node is the leading ReshapeNode. \returns The original ChannelShuffle
-/// parameters if possible and empty Optional otherwise.
+/// Compute the original parameters to the ChannelShuffle operator (represented
+/// as ReshapeNode->TransposeNode->ReshapeNode) for which \p node is the leading
+/// ReshapeNode. \returns The original ChannelShuffle parameters if possible and
+/// empty Optional otherwise.
 static llvm::Optional<ChannelShuffleParams>
 getChannelShuffleParams(const ReshapeNode &node) {
   auto resM = llvm::Optional<ChannelShuffleParams>();
@@ -230,10 +231,12 @@ getChannelShuffleParams(const ReshapeNode &node) {
   // Find the first output dimension that doesn't match its corresponding input
   // dimension.
   ChannelShuffleParams params;
-  for (unsigned i = 0, e = resultDims.size(); i < e - 1; ++i) {
+  bool found = false;
+  for (size_t i = 0, e = resultDims.size(); i < e - 1; ++i) {
     if (inputDims[i] != resultDims[i]) {
       params.kernel = i;
       params.group = resultDims[i];
+      found = true;
       break;
     }
   }
@@ -241,8 +244,8 @@ getChannelShuffleParams(const ReshapeNode &node) {
   // Double check the property that the mismatched output found dimension and
   // its successor together evenly multiply to the input dimension they
   // mismatched on.
-  if (resultDims[params.kernel] * resultDims[params.kernel + 1] ==
-      inputDims[params.kernel]) {
+  if (found && resultDims[params.kernel] * resultDims[params.kernel + 1] ==
+                   inputDims[params.kernel]) {
     resM = params;
   }
 
