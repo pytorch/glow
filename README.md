@@ -7,7 +7,10 @@ Glow is a machine learning compiler and execution engine for various hardware
 targets.  It is designed to be used as a backend for high-level machine learning
 frameworks.  The compiler is designed to allow state of the art compiler
 optimizations and code generation of neural network graphs. This library is in
-active development.
+active development. The project plan is described in the Github issues
+section and in the [Roadmap](https://github.com/pytorch/glow/wiki/Glow-Roadmap)
+wiki page.
+
 
 ## How does it work?
 
