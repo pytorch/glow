@@ -224,6 +224,9 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
+  PadNode *createPad(llvm::StringRef name, NodeValue input, TypeRef outTy,
+                     unsigned_t mode, llvm::ArrayRef<int> pads, float value);
+
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<unsigned_t> kernels,
