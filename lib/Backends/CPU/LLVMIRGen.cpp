@@ -2153,6 +2153,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSamplesVal = emitConstSizeT(builder, numSamples);
     auto *sampleSizeVal = emitConstSizeT(builder, sampleSize);
 
+    // Dispatching function depeending on the input type of Indices.
     llvm::Function *F = nullptr;
     if (indices->getElementType() == ElemKind::Int64ITy) {
       F = getFunction("gather64", dest->getElementType());

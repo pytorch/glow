@@ -370,7 +370,7 @@ void libjit_gather(T *dest, const T *data, const IDX *indices,
     size_t sampleStart = sample * sampleSize;
 
     // For each slice that we fetch:
-    for (IDX i = 0; i < numIndices; i++) {
+    for (size_t i = 0; i < numIndices; i++) {
       size_t slice = indices[i];
 
       // Copy the slice.

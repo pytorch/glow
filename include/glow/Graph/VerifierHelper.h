@@ -135,6 +135,41 @@ bool expectCompareTrue(
   return false;
 }
 
+/// Check whether $V_{0,n}{comp(\p a, \p b_i)}$ is true.
+/// If that check fails, \p msg is printed out using glow::report
+/// and \p parent (if not nullptr), \p a, and \p b are printed out
+/// using glow::reportContext.
+/// \returns \p comp(\p a, \p b_0) v ... v comp(\p a, \p b_i).
+template <typename InputTy>
+bool expectCompareTrue(
+    const char *msg, const InputTy &a, llvm::ArrayRef<InputTy> b,
+    const Node *parent,
+    const CompareWithName<InputTy> &comp = CompareOperatorEqual<InputTy>()) {
+  bool result = false;
+  for (const auto &bi : b) {
+    result |= comp(a, bi);
+  }
+  if (result) {
+    return true;
+  }
+  if (parent) {
+    reportContext(parent);
+  }
+  report(msg);
+  report("\nFor comparison `LHS ");
+  report(comp.getCompareName());
+  report(" RHS` with:");
+  report("\nLHS: ");
+  reportContext(a);
+  report("\nRHS: ");
+  for (const auto &bi : b) {
+    reportContext(bi);
+    report(", ");
+  }
+  report("\n");
+  return false;
+}
+
 /// Check that the type of the first operand \p A matches the type of the second
 /// operand \p B. \p parent is used to print the context of that check
 /// in case the it fails.
@@ -148,10 +183,16 @@ bool checkSameType(NodeValue A, NodeValue B, const Node *parent);
 bool checkSameShape(NodeValue A, NodeValue B, const Node *parent);
 
 /// Check that the element type of the operand \p A matches expected type \p
-/// expected Type. \p parent is used to print the context of that check
+/// expectedType. \p parent is used to print the context of that check
 /// in case the it fails.
 /// \see expectCompareTrue for more details.
 bool checkType(NodeValue A, ElemKind expectedType, const Node *parent);
+
+/// Check that the element type of the operand \p A matches any of the expected
+/// types \p expectedTypes. \p parent is used to print the context of that
+/// check in case the it fails. \see expectCompareTrue for more details.
+bool checkType(NodeValue A, llvm::ArrayRef<ElemKind> expectedTypes,
+               const Node *parent);
 
 /// Check if \p A and \p B have the same value for isQuantized. \p parent is
 /// used to print the context of that check in case the it fails.

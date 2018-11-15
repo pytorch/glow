@@ -67,6 +67,12 @@ bool glow::checkType(NodeValue A, ElemKind expectedType, const Node *parent) {
                            expectedType, parent);
 }
 
+bool glow::checkType(NodeValue A, llvm::ArrayRef<ElemKind> expectedTypes,
+                     const Node *parent) {
+  return expectCompareTrue("Mismatching element type", A.getElementType(),
+                           expectedTypes, parent);
+}
+
 bool glow::checkSameIsQuantized(const TypeRef A, const TypeRef B,
                                 const Node *parent) {
   return expectCompareTrue("Mismatching isQuantized", A->isQuantizedType(),
