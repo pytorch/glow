@@ -64,6 +64,16 @@ ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   return broadcast == 1;
 }
 
+bool ONNXModelLoader::hasMultidirectionalBroadcast(
+    const llvm::StringRef typeName) {
+  if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
+      (typeName == "Div")) {
+    return true;
+  }
+  // TODO: others operators may also support broadcast
+  return false;
+}
+
 llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   irVersion_ = MP.ir_version();
   opsetVersion_ = 0;

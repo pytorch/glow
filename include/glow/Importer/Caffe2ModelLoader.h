@@ -21,6 +21,7 @@
 #include "glow/Importer/CommonOperatorLoader.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <string>
 
@@ -38,8 +39,12 @@ class Value;
 /// Loads caffe2 models.
 class Caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
-  /// Get the broadcast attribute.
+  /// \returns True if the operator has broadcasting activated.
   llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
+
+  /// \returns True if the operator with the name \p typeName has support for
+  /// multidirectional broadcasting.
+  bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) override;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.

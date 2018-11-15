@@ -21,6 +21,7 @@
 #include "glow/Importer/CommonOperatorLoader.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <string>
 
@@ -37,8 +38,12 @@ namespace glow {
 class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
                                   ONNX_NAMESPACE::AttributeProto> {
-  /// Get the broadcast attribute based on different ONNX op versions.
+  /// \returns True if the operator has broadcasting activated.
   llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
+
+  /// \returns True if the operator with the name \p typeName has support for
+  /// multidirectional broadcasting.
+  bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) override;
 
   /// Load the network initializers from the GraphProto.
   llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);

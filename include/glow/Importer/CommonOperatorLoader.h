@@ -23,10 +23,12 @@
 #include "glow/Graph/Graph.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace glow {
 
@@ -39,9 +41,13 @@ protected:
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
 
-  virtual llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) {
-    return true;
-  }
+  /// \returns True if the operator has broadcasting activated.
+  virtual llvm::Expected<bool>
+  getBroadcast(const ArgumentDictionaryTy &dict) = 0;
+
+  /// \returns True if the operator with the name \p typeName has support
+  /// for multidirectional broadcasting.
+  virtual bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) = 0;
 
   void addNodeAsOutput(const OpType &op, Node *R) {
     for (int i = 0, e = op.output_size(); i < e; i++) {
@@ -316,6 +322,7 @@ protected:
     bool broadcast;
     ASSIGN_VALUE_OR_RETURN_ERR(broadcast, getBroadcast(dict));
 
+    Node *finalIn0 = nullptr;
     Node *finalIn1 = nullptr;
     if (broadcast) {
       int axis = -1;
@@ -325,23 +332,38 @@ protected:
 
       // In ONNX, if axis == -1 then it sets the axis so that the
       // trailing-most dimensions are aligned like this.
-      if (axis == -1) {
-        axis = in0.dims().size() - in1.dims().size();
+
+      // Broadcasting can be multi-directional (ONNX) or uni-directional
+      // (Caffe2: in0 <- in1)
+      std::vector<size_t> targetDim;
+      if (hasMultidirectionalBroadcast(typeName)) {
+        ASSIGN_VALUE_OR_RETURN_ERR(targetDim, computeMultidirectionalBroadcast(
+                                                  in0.dims(), in1.dims()));
+      } else {
+        targetDim = in0.dims();
       }
-      finalIn1 = G_.createBroadcast(opName, in1, in0.dims(), axis);
+
+      int axis0 = axis, axis1 = axis;
+      if (axis == -1) {
+        axis0 = targetDim.size() - in0.dims().size();
+        axis1 = targetDim.size() - in1.dims().size();
+      }
+      finalIn0 = G_.createBroadcast(opName, in0, targetDim, axis0);
+      finalIn1 = G_.createBroadcast(opName, in1, targetDim, axis1);
     } else {
+      finalIn0 = in0;
       finalIn1 = in1;
     }
 
     Node *node = nullptr;
     if (typeName == "Mul") {
-      node = G_.createMul(opName, in0, finalIn1);
+      node = G_.createMul(opName, finalIn0, finalIn1);
     } else if (typeName == "Add") {
-      node = G_.createAdd(opName, in0, finalIn1);
+      node = G_.createAdd(opName, finalIn0, finalIn1);
     } else if (typeName == "Sub") {
-      node = G_.createSub(opName, in0, finalIn1);
+      node = G_.createSub(opName, finalIn0, finalIn1);
     } else if (typeName == "Div") {
-      node = G_.createDiv(opName, in0, finalIn1);
+      node = G_.createDiv(opName, finalIn0, finalIn1);
     } else {
       RETURN_ERR("Unsupported arithmetic typeName");
     }
@@ -897,6 +919,43 @@ protected:
     }
 
     return false;
+  }
+
+  /// Utility function which computes the resulting shape in case of
+  /// multidirectional broadcasting.
+  llvm::Expected<std::vector<size_t>>
+  computeMultidirectionalBroadcast(llvm::ArrayRef<size_t> shape0,
+                                   llvm::ArrayRef<size_t> shape1) {
+    size_t numDims0 = shape0.size();
+    size_t numDims1 = shape1.size();
+    size_t newNumDims = numDims0 > numDims1 ? numDims0 : numDims1;
+    std::vector<size_t> reshapeDims(newNumDims);
+
+    for (size_t i = 0; i < newNumDims; i++) {
+      reshapeDims[i] = 1;
+    }
+    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape0));
+    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape1));
+
+    return reshapeDims;
+  }
+
+private:
+  /// Merge shape \p shape into \p mergeShape, following multidirectional
+  /// broadcasting rules.
+  llvm::Error mergeMultidirectionalBroadcast(std::vector<size_t> &mergeShape,
+                                             llvm::ArrayRef<size_t> shape) {
+    size_t shift = mergeShape.size() - shape.size();
+    for (size_t i = 0; i < shape.size(); i++) {
+      if (shape[i] != 1) {
+        RETURN_ERR_IF_NOT((shape[i] == mergeShape[shift + i]) ||
+                              (mergeShape[shift + i] == 1),
+                          "Incompatible dimension for the broadcast");
+        mergeShape[shift + i] = shape[i];
+      }
+      // Otherwise, just leave mergeShape[i] as it is.
+    }
+    return llvm::Error::success();
   }
 };
 
