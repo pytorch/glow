@@ -1072,8 +1072,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EXPECT_EQ(VH.at({2, 0, 2}), 3);
   EXPECT_EQ(IH.at({2, 0, 2}), 4);
 }
-
-TEST_P(Operator, Gather) {
+TEST_P(InterpAndCPU, Gather64) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1107,6 +1106,72 @@ TEST_P(Operator, Gather) {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
   ctx_.allocate(indices)->getHandle<int64_t>() = {
+      0, 1, 0, 1, 1, 2, 2, 0,
+  };
+
+  auto R = F_->createGather("gather", data, indices);
+
+  auto *result = F_->createSave("save", R);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+
+  EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({0, 1, 1}), 3.4);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 1.2);
+  EXPECT_FLOAT_EQ(H.at({0, 3, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({0, 3, 1}), 3.4);
+
+  EXPECT_FLOAT_EQ(H.at({1, 0, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({1, 0, 1}), 3.4);
+  EXPECT_FLOAT_EQ(H.at({1, 1, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({1, 1, 1}), 5.7);
+  EXPECT_FLOAT_EQ(H.at({1, 2, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({1, 2, 1}), 5.7);
+  EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
+}
+
+TEST_P(InterpAndCPU, Gather32) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [
+        [0, 1, 0, 1],
+        [1, 2, 2, 0],
+    ]
+    OUTPUT = [
+        [
+            [1.0, 1.2],
+            [2.3, 3.4],
+            [1.0, 1.2],
+            [2.3, 3.4],
+        ],
+        [
+            [2.3, 3.4],
+            [4.5, 5.7],
+            [4.5, 5.7],
+            [1.0, 1.2],
+        ],
+    ]
+  */
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 4}, "indices", false);
+
+  ctx_.allocate(data)->getHandle() = {
+      1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
+  };
+  ctx_.allocate(indices)->getHandle<int32_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 

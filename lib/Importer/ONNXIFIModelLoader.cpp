@@ -89,6 +89,14 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
              "Disallow overflow of loaded UINT64 data into Int64ITy.");
       TH.raw(i) = data[i];
     }
+  } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+    T->reset(ElemKind::Int32ITy, dims);
+
+    auto TH = T->getHandle<int32_t>();
+    int32_t *data = (int32_t *)in.buffer;
+    for (size_t i = 0; i < TH.size(); ++i) {
+      TH.raw(i) = data[i];
+    }
   } else {
     llvm_unreachable("Only float and index tensors are supported");
   }

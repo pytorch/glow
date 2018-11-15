@@ -358,8 +358,8 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
   }
 }
 
-template <typename T>
-void libjit_gather(T *dest, const T *data, const size_t *indices,
+template <typename T, typename IDX>
+void libjit_gather(T *dest, const T *data, const IDX *indices,
                    size_t numIndices, size_t sliceSize, size_t numSamples,
                    size_t sampleSize) {
   // The index of the slice that is being written.
@@ -878,23 +878,45 @@ void libjit_cross_entropy_loss_f(float *CE, float *P, size_t *labels,
   }
 }
 
-void libjit_gather_f(float *dest, const float *data, const size_t *indices,
-                     size_t numIndices, size_t sliceSize, size_t numSamples,
-                     size_t sampleSize) {
+void libjit_gather64_f(float *dest, const float *data, const size_t *indices,
+                       size_t numIndices, size_t sliceSize, size_t numSamples,
+                       size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
 }
 
-void libjit_gather_i8(int8_t *dest, const int8_t *data, const size_t *indices,
-                      size_t numIndices, size_t sliceSize, size_t numSamples,
-                      size_t sampleSize) {
+void libjit_gather64_i8(int8_t *dest, const int8_t *data, const size_t *indices,
+                        size_t numIndices, size_t sliceSize, size_t numSamples,
+                        size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
 }
 
-void libjit_gather_u(size_t *dest, const size_t *data, const size_t *indices,
-                     size_t numIndices, size_t sliceSize, size_t numSamples,
-                     size_t sampleSize) {
+void libjit_gather64_u(size_t *dest, const size_t *data, const size_t *indices,
+                       size_t numIndices, size_t sliceSize, size_t numSamples,
+                       size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
+}
+
+void libjit_gather32_f(float *dest, const float *data, const int32_t *indices,
+                       size_t numIndices, size_t sliceSize, size_t numSamples,
+                       size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
+}
+
+void libjit_gather32_i8(int8_t *dest, const int8_t *data,
+                        const int32_t *indices, size_t numIndices,
+                        size_t sliceSize, size_t numSamples,
+                        size_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
+}
+
+void libjit_gather32_u(size_t *dest, const size_t *data, const int32_t *indices,
+                       size_t numIndices, size_t sliceSize, size_t numSamples,
+                       size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
 }

@@ -612,17 +612,18 @@ TEST(onnx, expandDims) {
 TEST(onnx, gather) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  auto *F = mod.createFunction("main");
   std::string netFilename("tests/models/onnxModels/gather.onnxtxt");
+  auto *F = mod.createFunction("main");
   Placeholder *output;
   Tensor data(ElemKind::FloatTy, {3, 2});
-  Tensor indices(ElemKind::FloatTy, {2, 4});
+  Tensor indices(ElemKind::Int32ITy, {2, 4});
 
   {
     ONNXModelLoader onnxLD(netFilename, {"data", "indices"},
                            {&data.getType(), &indices.getType()}, *F);
     output = onnxLD.getSingleOutput();
   }
+  EE.compile(CompilationMode::Infer, F);
 
   // Verify structure: PH/PH -> Gather -> Save -> PH.
   ASSERT_EQ(mod.getPlaceholders().size(), 3);

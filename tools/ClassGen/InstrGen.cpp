@@ -430,8 +430,6 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addMember(MemberType::Unsigned, "BatchDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Indices", "ElemKind::Int64ITy"})
       .autoIRGen();
 
   BB.newInstr("ScatterAssign")
