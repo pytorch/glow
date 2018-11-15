@@ -57,12 +57,12 @@ size_t glow::getValueOffset(
 }
 
 runtime::RuntimeBundle
-glow::generateRuntimeBundle(const IRFunction *F,
+glow::generateRuntimeBundle(const IRFunction &F,
                             MemoryAllocator *constantAllocator,
                             MemoryAllocator *placeholderAllocator,
                             MemoryAllocator *activationsAllocator) {
   // Handle Constants, Placeholders, and Activations, in that order.
-  /// Symbol table mapping symbol name to offset for runtime.
+  // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
   uint64_t constantMaxSize = 0;
   uint64_t placeholderMaxSize = 0;
@@ -70,9 +70,9 @@ glow::generateRuntimeBundle(const IRFunction *F,
 
   // Compute the offsets for Constants.
   if (constantAllocator) {
-    for (auto &v : F->getGraph()->getParent()->getConstants()) {
-      assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-      auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    for (auto &v : F.getGraph()->getParent()->getConstants()) {
+      assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
+      auto *w = cast<WeightVar>(F.getWeightForNode(v));
       auto numBytes = w->getSizeInBytes();
       size_t addr = constantAllocator->allocate(numBytes, v);
       runtime::RuntimeSymbolInfo symbol;
@@ -86,10 +86,10 @@ glow::generateRuntimeBundle(const IRFunction *F,
 
   // Compute the offsets for Placeholders.
   if (placeholderAllocator) {
-    for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+    for (auto &v : F.getGraph()->getParent()->getPlaceholders()) {
       // Get the WeightVar for each Placeholder to calculate offsets.
-      assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
-      auto *w = cast<WeightVar>(F->getWeightForNode(v));
+      assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
+      auto *w = cast<WeightVar>(F.getWeightForNode(v));
       auto numBytes = w->getSizeInBytes();
       size_t addr = placeholderAllocator->allocate(numBytes, w);
       runtime::RuntimeSymbolInfo symbol;
@@ -102,7 +102,7 @@ glow::generateRuntimeBundle(const IRFunction *F,
   }
   // Compute the offsets for Activations.
   if (activationsAllocator) {
-    for (const auto &I : F->getInstrs()) {
+    for (const auto &I : F.getInstrs()) {
       if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
         auto numBytes = I.getSizeInBytes();
         size_t addr = activationsAllocator->allocate(numBytes, A);
@@ -154,6 +154,6 @@ glow::generateRuntimeBundle(const IRFunction *F,
   runtime::RuntimeBundle info(constantMaxSize, placeholderMaxSize,
                               activationsMaxSize);
   info.symbolTable = std::move(symbolTable);
-  info.constants = collectConstants(F, constantMaxSize, info.symbolTable);
+  info.constants = collectConstants(&F, constantMaxSize, info.symbolTable);
   return info;
 }
