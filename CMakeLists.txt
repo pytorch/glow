@@ -7,7 +7,6 @@ enable_testing()
 
 option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
-option(GLOW_RUN_OPENCL_TESTS "Run OpenCL tests if Glow is build with OpenCL" ON)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
@@ -56,9 +55,6 @@ endif ()
 
 if (GLOW_WITH_OPENCL)
   add_definitions(-DGLOW_WITH_OPENCL=1)
-  if (GLOW_RUN_OPENCL_TESTS)
-    add_definitions(-DGLOW_RUN_OPENCL_TESTS=1)
-  endif ()
   find_package(OpenCL REQUIRED)
 endif ()
 
