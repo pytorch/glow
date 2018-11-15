@@ -33,8 +33,14 @@
 namespace glow {
 namespace onnxifi {
 
+/// Magic numbers for classes passed across onnxifi interface.
+constexpr uint32_t BackendIdMagic = 0xb45900c1;
+constexpr uint32_t BackendMagic = 0xa017731;
+constexpr uint32_t EventMagic = 0x3a949100;
+constexpr uint32_t GraphMagic = 0x6ad67825;
+
 /// BackendId associated with the Glow backend.
-class BackendId {
+class BackendId : public HasMagic<BackendId, BackendIdMagic> {
 public:
   /// Create Glow ONNXIFI backend identifier with the
   /// given Glow backend \p kind, \p id and \p concurrency.
@@ -61,7 +67,7 @@ private:
 
 typedef BackendId *BackendIdPtr;
 
-class Backend {
+class Backend : public HasMagic<Backend, BackendMagic> {
 public:
   explicit Backend(BackendIdPtr backendId)
       : backendIdPtr_(backendId), threadPool_(backendIdPtr_->getConcurrency()) {
@@ -81,7 +87,7 @@ private:
 
 typedef Backend *BackendPtr;
 
-class Event {
+class Event : public HasMagic<Event, EventMagic> {
 public:
   Event() : fired_{false} {}
   /// Signal the event.
@@ -101,7 +107,7 @@ private:
 
 typedef Event *EventPtr;
 
-class Graph {
+class Graph : public HasMagic<Graph, GraphMagic> {
 public:
   explicit Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 

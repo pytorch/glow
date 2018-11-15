@@ -102,6 +102,27 @@ public:
 
 using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
 
+/// Subclasses of this class begin with a uint32_t magic number that can be used
+/// to check if arbitrary chunks of memory are likely to be instances of that
+/// subclass. Note that this enforces that magic_ field has no offset from the
+/// beginning of the subclass in memory. This will only be true if subclasses
+/// inherit from this class first and do not contain a vtable pointer.
+template <typename CH, uint32_t MAGIC> class HasMagic {
+private:
+  /// Magic number initialized from template parameter.
+  const uint32_t magic_ = MAGIC;
+
+public:
+  /// Check that the stored magic_ number matches the correct MAGIC number for
+  /// this class.
+  bool verifyMagic() const {
+    static_assert(offsetof(CH, magic_) == 0,
+                  "magic number should have 0 offset. Maybe it isn't the first "
+                  "inherited class or child class contains a vtable ptr.");
+    return magic_ == MAGIC;
+  }
+};
+
 } // namespace glow
 
 #endif // GLOW_BASE_TRAITS_H
