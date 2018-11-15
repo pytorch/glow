@@ -38,7 +38,7 @@ getValueOffset(Value *v,
 /// Computes offsets and total allocation for Constants, Placeholders, and
 /// Activations to build runtime symbol table. Returns RuntimeBundle.
 runtime::RuntimeBundle
-generateRuntimeBundle(const IRFunction *F, MemoryAllocator *constantAllocator,
+generateRuntimeBundle(const IRFunction &F, MemoryAllocator *constantAllocator,
                       MemoryAllocator *placeholderAllocator,
                       MemoryAllocator *activationsAllocator);
 } // end namespace glow

@@ -32,8 +32,8 @@ std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
 std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator constantWeightsAllocator("ConstantWeights", 0);
-  runtime::RuntimeBundle bundle = generateRuntimeBundle(
-      IR.get(), &constantWeightsAllocator, nullptr, nullptr);
+  runtime::RuntimeBundle bundle =
+      generateRuntimeBundle(*IR, &constantWeightsAllocator, nullptr, nullptr);
   return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
 }
 
