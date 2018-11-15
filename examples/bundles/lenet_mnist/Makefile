@@ -42,9 +42,9 @@ build/lenet_mnist.o: download_weights
 	${LOADER} ${IMAGES}/3_1020.png -image_mode=0to1 -m lenet_mnist -model_input_name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
 endif
 
-build/main.o: lenet_mnist.cpp
+build/main.o: main.cpp
 	mkdir -p build
-	${CXX} -std=c++11 -c -g lenet_mnist.cpp -o build/main.o
+	${CXX} -std=c++11 -c -g main.cpp -o build/main.o
 
 download_weights:
 	for file in predict_net.pbtxt predict_net.pb init_net.pb; do \
