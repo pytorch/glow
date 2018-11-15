@@ -83,8 +83,6 @@ INSTANTIATE_TEST_CASE_P(CPU, ConvCorrectnessTest,
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-#ifdef GLOW_RUN_OPENCL_TESTS
 INSTANTIATE_TEST_CASE_P(OpenCL, ConvCorrectnessTest,
                         ::testing::Values(BackendKind::OpenCL));
-#endif // GLOW_RUN_OPENCL_TESTS
 #endif // GLOW_WITH_OPENCL

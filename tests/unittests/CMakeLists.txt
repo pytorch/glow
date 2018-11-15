@@ -187,7 +187,7 @@ target_link_libraries(UtilsTest
                         testMain)
 add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest)
 
-if(GLOW_WITH_OPENCL AND GLOW_RUN_OPENCL_TESTS)
+if(GLOW_WITH_OPENCL)
 add_executable(OCLTest
                BackendTestUtils.cpp
                OCLTest.cpp)
