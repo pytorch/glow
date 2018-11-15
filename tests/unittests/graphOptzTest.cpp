@@ -1665,6 +1665,36 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+/// This test ensures that if there is a RescaleNode whose input has multiple
+/// users that the input is not cloned, as this duplicates the node.
+TEST_F(GraphOptz, MultipleUsersRescaleCombineNoOpt) {
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+
+  Node *LHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
+  Node *RHS =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
+
+  AddNode *AN = F_->createAdd("qAdd", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *RQN =
+      F_->createRescaleQuantized("rsAdd", AN, rescaleOutTy);
+  SaveNode *saveRQN = F_->createSave("saveRQN", RQN);
+  SaveNode *saveAN = F_->createSave("saveAN", AN);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // The graph should be unchanged.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(saveRQN->getInput().getNode(), RQN);
+  EXPECT_EQ(RQN->getInput().getNode(), AN);
+  EXPECT_EQ(saveAN->getInput().getNode(), AN);
+  EXPECT_EQ(AN->getLHS().getNode(), LHS);
+  EXPECT_EQ(AN->getRHS().getNode(), RHS);
+}
+
 /// This test ensures that fusing of rescale into MatMul is done.
 TEST_F(GraphOptz, FuseRescaleIntoMatMul) {
   auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);

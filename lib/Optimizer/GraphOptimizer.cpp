@@ -1812,6 +1812,26 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
+      // Merge splat and rescale nodes.
+      // Rescale(Splat()) -> Splat()
+      if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
+        auto *newRS = F->createSplat(SP->getName(), RS->getResult().getType(),
+                                     SP->getValue());
+
+        worklist.push_back(newRS);
+        RS->getResult().replaceAllUsesOfWith(newRS);
+        continue;
+      }
+
+      // All other optimizations in this scope below combine a Rescale up into
+      // the Rescale's input X. If X has multiple users then this merging will
+      // duplicate X, just with a different output scale/offset. If X is a
+      // computational node (e.g. Add, and not Splat) then this is likely not
+      // desired.
+      if (!RS->getInput().hasOneUse()) {
+        continue;
+      }
+
       if (auto *MN = dyn_cast<MaxNode>(RS->getInput())) {
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
         // It's okay to rescale the operands because even if the output range is
@@ -1861,17 +1881,6 @@ static void optimizeQuantization(Function *F) {
             RS->getResult().getType(), CN->getKernels(), CN->getStrides(),
             CN->getPads(), CN->getGroup());
         RS->getResult().replaceAllUsesOfWith(newCN);
-        continue;
-      }
-
-      // Merge splat and rescale nodes.
-      // Rescale(Splat()) -> Splat()
-      if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
-        auto *newRS = F->createSplat(SP->getName(), RS->getResult().getType(),
-                                     SP->getValue());
-
-        worklist.push_back(newRS);
-        RS->getResult().replaceAllUsesOfWith(newRS);
         continue;
       }
 
