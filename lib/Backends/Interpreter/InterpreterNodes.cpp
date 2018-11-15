@@ -824,7 +824,8 @@ void InterpreterFunction::fwdExtractTensorInst(
   llvm_unreachable("Unsupported tensor type");
 }
 
-void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
+template <typename ElemTy>
+void InterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
@@ -851,7 +852,7 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
 
     // For each slice (small fragment) that we copy from the source memory:
     for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-      size_t slice = indicesT->getHandle<int64_t>().raw(i);
+      size_t slice = indicesT->getHandle<ElemTy>().raw(i);
       assert(slice < batchSize && "Invalid index seen during Gather operation");
       std::copy(
           &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
@@ -859,6 +860,19 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
           &outT->getUnsafePtr()[out_p]);
       out_p += dataSliceSize;
     }
+  }
+}
+
+void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("Unsupported type for indices input of Gather.");
   }
 }
 

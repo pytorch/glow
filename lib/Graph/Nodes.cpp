@@ -818,7 +818,8 @@ bool RowwiseQuantizedFullyConnectedNode::verify() const {
 
 bool GatherNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= (checkType(getIndices(), ElemKind::Int64ITy, this) ||
+              checkType(getIndices(), ElemKind::Int32ITy, this));
   isValid &= expectCompareTrue(
       "Mismatching number of dimensions", getResult().dims().size(),
       getData().dims().size() + getIndices().dims().size() - 1, this);

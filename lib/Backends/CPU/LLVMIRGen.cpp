@@ -2153,7 +2153,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *numSamplesVal = emitConstSizeT(builder, numSamples);
     auto *sampleSizeVal = emitConstSizeT(builder, sampleSize);
 
-    auto *F = getFunction("gather", dest->getElementType());
+    llvm::Function *F = nullptr;
+    if (indices->getElementType() == ElemKind::Int64ITy) {
+      F = getFunction("gather64", dest->getElementType());
+    } else if (indices->getElementType() == ElemKind::Int32ITy) {
+      F = getFunction("gather32", dest->getElementType());
+    }
+    if (!F) {
+      llvm_unreachable("Cannot get function for Gather. "
+                       "Indices input of Gather has to be int32 or int64");
+    }
     createCall(builder, F,
                {destPtr, dataPtr, indicesPtr, indicesSize, sliceSizeVal,
                 numSamplesVal, sampleSizeVal});

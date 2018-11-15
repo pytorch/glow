@@ -1073,7 +1073,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EXPECT_EQ(IH.at({2, 0, 2}), 4);
 }
 
-TEST_P(Operator, Gather) {
+TEST_P(InterpAndCPU, Gather) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1101,12 +1101,12 @@ TEST_P(Operator, Gather) {
   */
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 4}, "indices", false);
 
   ctx_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  ctx_.allocate(indices)->getHandle<int32_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
