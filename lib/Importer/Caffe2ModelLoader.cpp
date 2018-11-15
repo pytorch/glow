@@ -155,6 +155,12 @@ Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   return broadcast == 1;
 }
 
+bool Caffe2ModelLoader::hasMultidirectionalBroadcast(
+    const llvm::StringRef typeName) {
+  (void)typeName;
+  return false;
+}
+
 llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
