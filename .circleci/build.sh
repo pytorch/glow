@@ -8,12 +8,12 @@ export MAX_JOBS=8
 
 install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev
-   
-   wget https://github.com/pocl/pocl/archive/v1.2.tar.gz
-   tar xf v1.2.tar.gz
+  
+   git clone https://github.com/pocl/pocl.git
+   cd pocl && git checkout 94fba9f510e678cd7f8fc988c01618e1ae93dfdf && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_ICD=ON ../pocl-1.2
+   cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -64,7 +64,6 @@ if [[ "$CIRCLE_JOB" == DEBUG ]]; then
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
-    CMAKE_ARGS+=("-DGLOW_RUN_OPENCL_TESTS=OFF")
 else
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
