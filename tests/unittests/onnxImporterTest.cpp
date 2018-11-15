@@ -341,7 +341,7 @@ TEST(onnx, importSumN) {
       llvm::dyn_cast<BatchedReduceAddNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(batchedReduceAdd);
   auto *concat =
-      llvm::dyn_cast<ConcatNode>(batchedReduceAdd->getNthInput(0).getNode());
+      llvm::dyn_cast<ConcatNode>(batchedReduceAdd->getBatch().getNode());
   ASSERT_TRUE(concat);
   for (size_t i = 0; i < 3; ++i) {
     auto *reshape =
@@ -436,11 +436,11 @@ TEST(onnx, importReplaceNaN) {
   auto *save = getSaveNodeFromDest(output);
   auto *select = llvm::dyn_cast<SelectNode>(save->getInput().getNode());
   ASSERT_TRUE(select);
-  auto *isNaN = llvm::dyn_cast<IsNaNNode>(select->getNthInput(0).getNode());
+  auto *isNaN = llvm::dyn_cast<IsNaNNode>(select->getCond().getNode());
   ASSERT_TRUE(isNaN);
-  auto *splat = llvm::dyn_cast<SplatNode>(select->getNthInput(1).getNode());
+  auto *splat = llvm::dyn_cast<SplatNode>(select->getLHS().getNode());
   ASSERT_TRUE(splat);
-  auto *input = llvm::dyn_cast<Placeholder>(select->getNthInput(2).getNode());
+  auto *input = llvm::dyn_cast<Placeholder>(select->getRHS().getNode());
   ASSERT_EQ(input, mod.getPlaceholderByName("x"));
 }
 
