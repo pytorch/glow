@@ -421,6 +421,18 @@ Placeholder *Module::addPlaceholder(Placeholder *ph) {
   return ph;
 }
 
+/// Check the kernel size for Conv/Pooling ops.
+static void checkKernelSize(ShapeNHWC idim, llvm::ArrayRef<unsigned_t> kernels,
+                            llvm::ArrayRef<unsigned_t> pads) {
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
+         "Kernel size is too large");
+}
+
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
@@ -428,15 +440,10 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
                            llvm::ArrayRef<unsigned_t> strides,
                            llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  PaddingTLBR pdim(pads);
-  (void)pdim;
   ShapeHW kdim(kernels);
   (void)kdim;
-  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
-         "buffer too small for selected stride");
+  checkKernelSize(idim, kernels, pads);
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
-  (void)idim;
 
   auto filterDims = filter.dims();
   assert(filterDims[0] % group == 0 && filterDims[1] == kdim.height &&
@@ -477,13 +484,7 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  PaddingTLBR pdim(pads);
-  (void)pdim;
-  ShapeHW kdim(kernels);
-  (void)kdim;
-  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
-         "buffer too small for selected stride");
+  checkKernelSize(idim, kernels, pads);
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
@@ -507,13 +508,7 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
-  PaddingTLBR pdim(pads);
-  (void)pdim;
-  ShapeHW kdim(kernels);
-  (void)kdim;
-  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
-         "buffer too small for selected stride");
+  checkKernelSize(idim, kernels, pads);
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
