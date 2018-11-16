@@ -195,17 +195,15 @@ def get_curr_img_paths(img_paths, img_index, batch_size, tmp_dir_name,
 # assertions.
 def verify_spawn_cmd(image_classifier_cmd):
     split_cmd = image_classifier_cmd.split()
-
-    assert "image-classifier" in split_cmd[0], (
-        "image-classifier binary must be provided first.")
-    assert "-" in split_cmd, "Streaming mode must be used."
-    assert "-topk=5" in split_cmd, "-topk=5 must be used."
-    assert any("-model_input_name=" in s for s in split_cmd), (
-        "image-classifier requires -model_input_name to be specified.")
-    assert any("-m=" in s for s in split_cmd), (
-        "image-classifier requires -m to be specified")
-    assert any("-image_mode=" in s for s in split_cmd), (
-        "image-classifier requires -image_mode to be specified")
+    if "image-classifier" in split_cmd[0]:
+        assert "-" in split_cmd, "Streaming mode must be used."
+        assert "-topk=5" in split_cmd, "-topk=5 must be used."
+        assert any("-model_input_name=" in s for s in split_cmd), (
+            "image-classifier requires -model_input_name to be specified.")
+        assert any("-m=" in s for s in split_cmd), (
+            "image-classifier requires -m to be specified")
+        assert any("-image_mode=" in s for s in split_cmd), (
+            "image-classifier requires -image_mode to be specified")
 
 ## Prints the Top-1 and Top-5 accuracy given @param total_image_count, @param
 # top1_count, and @param top5_count.
