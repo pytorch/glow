@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
@@ -367,6 +368,47 @@ static bool sinkCode(Function *F) {
       continue;
     }
 
+    // Sink Transpose below Pad nodes.
+    if (auto *padNode = dyn_cast<PadNode>(node)) {
+      auto *transposeNode = dyn_cast<TransposeNode>(padNode->getInput());
+
+      if (!transposeNode) {
+        continue;
+      }
+
+      // The transpose shuffle specifies the source dimension.
+      // When sinking Transpose below Pad, shuffle describes the target
+      // dimension.
+      auto shuffle = transposeNode->getShuffle();
+
+      // Shuffle the Pad output type and the padding attribute.
+      auto outPadType = padNode->getResult().getType();
+      auto outPadShape = outPadType->dims();
+      auto pads = padNode->getPads();
+      size_t numDims = outPadShape.size();
+      std::vector<size_t> newOutPadShape(numDims);
+      std::vector<int> newPads(2 * numDims);
+      for (size_t i = 0; i < outPadShape.size(); i++) {
+        newOutPadShape[shuffle[i]] = outPadShape[i];
+        newPads[shuffle[i]] = pads[i];
+        newPads[shuffle[i] + numDims] = pads[i + numDims];
+      }
+
+      // New pad
+      auto newOutPadType =
+          F->getParent()->uniqueTypeWithNewShape(outPadType, newOutPadShape);
+      auto *NewPadNode = F->createPad(
+          padNode->getName(), transposeNode->getInput(), newOutPadType,
+          padNode->getMode(), newPads, padNode->getValue());
+      NewPadNode->setPredicate(node->getPredicate());
+      auto *newTransposeNode =
+          F->createTranspose(transposeNode->getName(), NewPadNode, shuffle);
+      newTransposeNode->setPredicate(node->getPredicate());
+      padNode->getResult().replaceAllUsesOfWith(newTransposeNode);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Tanh nodes.
     if (auto *TN = dyn_cast<TanhNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(TN->getInput());
@@ -684,6 +726,80 @@ static void mergeMatMul(Function *F) {
   }
 }
 
+static bool mergePadIntoConvolution(Function *F) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *CN = dyn_cast<ConvolutionNode>(&node);
+    if (!CN) {
+      continue;
+    }
+
+    auto *PN = dyn_cast<PadNode>(CN->getInput());
+    if (!PN) {
+      continue;
+    }
+
+    // Convolution only supports padding with 0 constant
+    if ((PN->getMode() != PaddingMode::CONSTANT) || (PN->getValue() != 0.f)) {
+      continue;
+    }
+
+    // The convolution needs to be the unique user
+    if (!PN->hasOneUse()) {
+      continue;
+    }
+
+    // Compute the new padding.
+    // Note: - convolution only supports positive padding
+    //       - the convolution takes NHWC input tensors.
+    bool canMerge = true;
+    auto padPads = PN->getPads();
+    auto convPads = CN->getPads();
+
+    // For now, there is a different interpretation of the ONNX spec for
+    // Pad and Convolution. The 'pads' array won't have the same size because
+    // only spatial dimensions are specified for the convolution while all
+    // dimensions are specified for Pad.
+
+    // The merge can apply only if no padding is requested for non spatial
+    // dimensions.
+    if ((padPads[0] != 0) || (padPads[3] != 0) || (padPads[4] != 0) ||
+        (padPads[7] != 0)) {
+      continue;
+    }
+
+    // Compute new spatial padding.
+    const int H_INDEX = 1;
+    std::vector<unsigned_t> newConvPads(4);
+    auto numDims = PN->getResult().dims().size();
+    for (size_t i = 0; i < 2; i++) {
+      // Two pad integers per dimension (begin and end padding).
+      for (size_t j = 0; j < 2; j++) {
+        int newConvPadSigned =
+            padPads[(i + H_INDEX) + j * numDims] + int(convPads[i + j * 2]);
+        if (newConvPadSigned < 0) {
+          canMerge = false;
+          break;
+        }
+        newConvPads[i + j * 2] = unsigned_t(newConvPadSigned);
+      }
+    }
+    if (!canMerge) {
+      continue;
+    }
+
+    // New Convolution
+    auto *newCN = F->createConv(CN->getName(), PN->getInput(), CN->getFilter(),
+                                CN->getBias(), CN->getResult().getType(),
+                                CN->getKernels(), CN->getStrides(), newConvPads,
+                                CN->getGroup());
+    CN->getResult().replaceAllUsesOfWith(newCN);
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Merge Transpose into MatMul.
 /// MatMul(Reshape(Transpose(X)), Weights) ->
 /// -> MatMul(Reshape(X), reordered Weights)
@@ -766,8 +882,8 @@ static bool mergeTransposeIntoMatMul(Function *F) {
 }
 
 /// \returns True if the two slices \p A and \p B access consecutive spacial
-/// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50) are
-/// consecutive but Slice(0..10) Slice(20..30) are not.
+/// regions on the \p dim dimension. For example Slice(0..10) Slice(10..50)
+/// are consecutive but Slice(0..10) Slice(20..30) are not.
 static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   // The slices must extract from the same input.
   if (A->getInput().getNode() != B->getInput().getNode()) {
@@ -810,8 +926,8 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
 }
 
 /// Find a sequence of slices in \p input that span the whole input.
-/// \returns True if a group of slices that span the whole input was found. The
-/// order of the slices is recorded in \p order.
+/// \returns True if a group of slices that span the whole input was found.
+/// The order of the slices is recorded in \p order.
 static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
                                     unsigned_t dimension,
                                     std::vector<SliceNode *> &order) {
@@ -841,8 +957,8 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
     return false;
   }
 
-  // Now that we've found the first slice in the sequence, try to order the rest
-  // of the slices after the first one.
+  // Now that we've found the first slice in the sequence, try to order the
+  // rest of the slices after the first one.
   bool addedSlice = true;
   while (addedSlice) {
     addedSlice = false;
@@ -877,7 +993,8 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
       return false;
   }
 
-  // Report success if we found at least two slices that extract from the input.
+  // Report success if we found at least two slices that extract from the
+  // input.
   return order.size() > 1;
 }
 
@@ -888,7 +1005,8 @@ static void mergeBatchedAdd(Function *F) {
   // We index the batched add nodes by the slice operand.
   llvm::DenseMap<Node *, std::vector<BatchedAddNode *>> rightBAUsers;
 
-  // Collect all of the batched add nodes and index them by the 'slice' operand.
+  // Collect all of the batched add nodes and index them by the 'slice'
+  // operand.
   for (auto &node : nodes) {
     if (auto *BA = dyn_cast<BatchedAddNode>(&node)) {
       rightBAUsers[BA->getSlice().getNode()].push_back(BA);
@@ -917,8 +1035,8 @@ static void mergeBatchedAdd(Function *F) {
       continue;
     }
 
-    // We found a sequence of batched-add-slice that cover the input tensor. We
-    // can transform the graph and create one big batched-add.
+    // We found a sequence of batched-add-slice that cover the input tensor.
+    // We can transform the graph and create one big batched-add.
     std::vector<Node *> newSlices;
     SliceNode *S = llvm::cast<SliceNode>(order[0]);
     auto *BA = F->createBatchedAdd("mergedBA", S->getInput(), it.first);
@@ -954,8 +1072,8 @@ static void optimizePool(Function *F) {
     // Swap the order of Relu->MaxPool, to perform the RELU operation on a
     // smaller tensor. This optimization is not a major performance win. The
     // RELU operation takes a small fraction of the time, and reordering the
-    // nodes does not give us much. However, reordering the buffers allows us to
-    // reuse the memory buffer of the pool operation and potentially save
+    // nodes does not give us much. However, reordering the buffers allows us
+    // to reuse the memory buffer of the pool operation and potentially save
     // memory.
     if (auto *PL = dyn_cast<MaxPoolNode>(&node)) {
       auto *RL = dyn_cast<ReluNode>(PL->getInput());
@@ -965,8 +1083,8 @@ static void optimizePool(Function *F) {
       }
 
       // We don't want to increase the number of operations in the program, so
-      // perform this transformation if the relu has a single user, which is the
-      // pooling operation.
+      // perform this transformation if the relu has a single user, which is
+      // the pooling operation.
       if (!RL->hasOneUse()) {
         continue;
       }
@@ -1153,8 +1271,8 @@ static void optimizeBatchNorm(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// \returns true if all dimensions of the \p input tensors are the same except
-/// for the provided \p dimension, otherwise return false.
+/// \returns true if all dimensions of the \p input tensors are the same
+/// except for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
                                        unsigned_t dimension) {
   for (size_t i = 1; i < inputs.size(); i++) {
@@ -1174,10 +1292,11 @@ static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
 /// sizes \p leadingDimsProdOriginalConcatNode, \p
 /// trailingDimsProdOriginalConcatNode. \returns the dimension, at which the
 /// trailing/leading dimensions match the desired sizes, otherwise returns -1.
-/// Example: Given a tensor <1,2,3,4,5>, and a desired trailing dimensions size
-/// of 20, and a desired leading dimensions size of 2, this function will return
-/// dimension 1 as the trailing dimensions after it are <4,5>, which matches the
-/// size 20, and the leading dimensions are <1,2>, which matches the size 2.
+/// Example: Given a tensor <1,2,3,4,5>, and a desired trailing dimensions
+/// size of 20, and a desired leading dimensions size of 2, this function will
+/// return dimension 1 as the trailing dimensions after it are <4,5>, which
+/// matches the size 20, and the leading dimensions are <1,2>, which matches
+/// the size 2.
 static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
     llvm::ArrayRef<size_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
     size_t trailingDimsProdOriginalConcatNode) {
@@ -1197,16 +1316,16 @@ static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
   return -1;
 }
 
-/// Given input tensors \p inputs and a original ConcatNode \p origConcatN, try
-/// to find out if there is a dimension in the input tensors, with which we can
-/// meet two requirements:
+/// Given input tensors \p inputs and a original ConcatNode \p origConcatN,
+/// try to find out if there is a dimension in the input tensors, with which
+/// we can meet two requirements:
 ///   1) Input tensors are concatenate-able along this dimension.
 ///   2) The trailing/leading dimensions sizes after/before this dimension in
 ///      the input tensors, are of the same size as the trailing/leading
 ///      dimensions of the input of the original Concat node after/before the
 ///      concatenation dimension. It is required, because they ensure that the
-///      payload of the new concat node should be the same as the payload of the
-///      original concat node, and also won't affect the data order of the
+///      payload of the new concat node should be the same as the payload of
+///      the original concat node, and also won't affect the data order of the
 ///      entire tensor.
 /// \returns this dimension if found, otherwise -1.
 static int
@@ -1214,8 +1333,8 @@ findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
                                            ConcatNode *originalConcatNode) {
   // For the purpose of the optimiztion
   // Concat(Reshape(X)*N)->Reshape(Concat(N*X)), we want to make sure the new
-  // ConcatNode can concatenate on the trailing/leading dimensions which are of
-  // the same size of those of the original Concate node.
+  // ConcatNode can concatenate on the trailing/leading dimensions which are
+  // of the same size of those of the original Concate node.
 
   auto firstDims = inputs.front().dims();
   auto origConcatNInputDims = originalConcatNode->getInputs().front().dims();
@@ -1232,10 +1351,10 @@ findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
     }
   }
 
-  // Try to find the dimension in the first input such that the trailing/leading
-  // dimensions sizes are the same as the sizes of the trailing/leading
-  // dimensions based on the concatenation dimension used by the original
-  // ConcatNode.
+  // Try to find the dimension in the first input such that the
+  // trailing/leading dimensions sizes are the same as the sizes of the
+  // trailing/leading dimensions based on the concatenation dimension used by
+  // the original ConcatNode.
   ssize_t dim = findMatchingConcatDimForSameTrailingAndLeadingDims(
       firstDims, leadingDimsProdOriginalConcatNode,
       trailingDimsProdOriginalConcatNode);
@@ -1251,9 +1370,9 @@ findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
   return dim;
 }
 
-/// Given the inputs \p originalConcatInputs of one Concat Nodes, \returns true
-/// if they are all ReshapeNode, and the input tensors of these input nodes have
-/// same number of dimensions, otherwise returns false.
+/// Given the inputs \p originalConcatInputs of one Concat Nodes, \returns
+/// true if they are all ReshapeNode, and the input tensors of these input
+/// nodes have same number of dimensions, otherwise returns false.
 static bool
 tryToGetNewConcatInputs(NodeValueArrayRef originalConcatInputs,
                         llvm::SmallVectorImpl<NodeValue> &newConcatInputs) {
@@ -1324,9 +1443,9 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     }
   }
 
-  // If all of the inputs to the concat are extracted from the same input in the
-  // right order then we can just use the extract-input instead of the concat.
-  // Concat(Slice(X, 0..10), Slice(X, 10..20)) -> X.
+  // If all of the inputs to the concat are extracted from the same input in
+  // the right order then we can just use the extract-input instead of the
+  // concat. Concat(Slice(X, 0..10), Slice(X, 10..20)) -> X.
   {
     std::vector<SliceNode *> order;
     std::vector<SliceNode *> slices;
@@ -1382,8 +1501,8 @@ static void optimizeArithmeticNodes(Function *F) {
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
-  // Add all of the arithmetic nodes to the worklist, with a node's dependencies
-  // added after itself so they are processed before the node.
+  // Add all of the arithmetic nodes to the worklist, with a node's
+  // dependencies added after itself so they are processed before the node.
   GraphPreOrderVisitor visitor(*F);
   worklist.reserve(visitor.getPreOrder().size());
   for (auto *N : visitor.getPreOrder()) {
@@ -1531,8 +1650,9 @@ struct ConstsHasherDedup {
   }
 };
 
-/// A helper type implementing the Constants equality predicate that can be used
-/// when Constant pointers are used as keys in hash maps for deduplication.
+/// A helper type implementing the Constants equality predicate that can be
+/// used when Constant pointers are used as keys in hash maps for
+/// deduplication.
 struct ConstsEqDedup {
   bool operator()(const Constant *lhs, const Constant *rhs) const {
     // Only consider Constants for deduplication if they have the same type.
@@ -1541,7 +1661,8 @@ struct ConstsEqDedup {
     }
     // Only dedup Constants if their data matches exactly, so allowed error is
     // 0.0.
-    return lhs->getPayload().isEqual(rhs->getPayload(), /* allowedError */ 0.0);
+    return lhs->getPayload().isEqual(rhs->getPayload(),
+                                     /* allowedError */ 0.0);
   }
 };
 
@@ -1556,9 +1677,9 @@ static void deduplicateConstants(Module *M) {
       duplicateConstants;
 
   for (auto &C : M->getConstants()) {
-    // Only perform deduplication on consts of small enough size. Otherwise just
-    // skip them. constDedupSizeOpt defaults to 256 as a heuristic, to keep
-    // compile time reasonable.
+    // Only perform deduplication on consts of small enough size. Otherwise
+    // just skip them. constDedupSizeOpt defaults to 256 as a heuristic, to
+    // keep compile time reasonable.
     size_t maxNumEls = constDedupSizeOpt;
     size_t numEls = C->getType()->size();
     if (numEls > maxNumEls) {
@@ -1568,8 +1689,9 @@ static void deduplicateConstants(Module *M) {
     // Try to find a Constant that has the same data as the current one.
     auto foundI = duplicateConstants.find(C);
     if (foundI == duplicateConstants.end()) {
-      // No node equivalent to the current one has been seen yet. Remember this
-      // Constant, so that the next occurrence can be replaced by this one.
+      // No node equivalent to the current one has been seen yet. Remember
+      // this Constant, so that the next occurrence can be replaced by this
+      // one.
       duplicateConstants.emplace(C, C);
       assert(duplicateConstants.find(C) != duplicateConstants.end());
       continue;
@@ -1577,7 +1699,8 @@ static void deduplicateConstants(Module *M) {
     Constant *foundC = foundI->second;
     assert(C != foundC && "Constants should not be visited multiple times.");
 
-    // Replace current Constant by a found Constant, which is equivalent to it.
+    // Replace current Constant by a found Constant, which is equivalent to
+    // it.
     C->getOutput().replaceAllUsesOfWith(foundC);
   }
 }
@@ -1863,8 +1986,9 @@ static void optimizeQuantization(Function *F) {
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       if (auto *DQ = dyn_cast<DequantizeNode>(Q->getInput())) {
         // Quantize(Dequantize(X)) -> RescaleQuantized(X)
-        // If the quantization-dequantization sequence does not change the type
-        // then we can simply drop them without adding a requantization node.
+        // If the quantization-dequantization sequence does not change the
+        // type then we can simply drop them without adding a requantization
+        // node.
         if (DQ->getInput().getType() == Q->getResult().getType()) {
           Q->getResult().replaceAllUsesOfWith(DQ->getInput());
           continue;
@@ -1874,8 +1998,8 @@ static void optimizeQuantization(Function *F) {
                                              Q->getResult().getType());
         Q->getResult().replaceAllUsesOfWith(RS);
 
-        // We may be able to optimize this rescale node. Remember to visit this
-        // new node and try to optimize it later.
+        // We may be able to optimize this rescale node. Remember to visit
+        // this new node and try to optimize it later.
         worklist.push_back(RS);
         continue;
       }
@@ -1907,8 +2031,8 @@ static void optimizeQuantization(Function *F) {
         auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
         DQ->getResult().replaceAllUsesOfWith(newRS);
 
-        // We may be able to optimize this rescale node. Remember to visit this
-        // new node and try to optimize it later.
+        // We may be able to optimize this rescale node. Remember to visit
+        // this new node and try to optimize it later.
         worklist.push_back(newRS);
         continue;
       }
@@ -1943,10 +2067,10 @@ static void optimizeQuantization(Function *F) {
 
       if (auto *MN = dyn_cast<MaxNode>(RS->getInput())) {
         // Rescale(MAX(X, Y)) -> MAX(Rescale(X), Rescale(Y)).
-        // It's okay to rescale the operands because even if the output range is
-        // smaller then truncation would have happened during the rescale. On
-        // values that are outside of the range we just moved the truncation to
-        // a different location.
+        // It's okay to rescale the operands because even if the output range
+        // is smaller then truncation would have happened during the rescale.
+        // On values that are outside of the range we just moved the
+        // truncation to a different location.
         auto name = RS->getName();
         auto *L = F->createRescaleQuantized(name, MN->getLHS(),
                                             RS->getResult().getType());
@@ -2242,8 +2366,8 @@ void glow::optimize(Function *F, CompilationMode mode) {
     DCE(F);
   }
 
-  // Reshapes and transposes can prevent other optimizations from triggering, so
-  // try to optimize them out first.
+  // Reshapes and transposes can prevent other optimizations from triggering,
+  // so try to optimize them out first.
   optimizeReshape(F);
   if (mode == CompilationMode::Infer) {
     transposeConstants(F);
@@ -2254,6 +2378,12 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Perform Common Subexpression Elimination.
   CSE(F);
+
+  // Optimize Pad nodes
+  mergePadIntoConvolution(F);
+
+  // Perform Dead Code Elimination.
+  DCE(F);
 
   // Merge multiple matmul nodes into a single large matmul.
   mergeMatMul(F);
