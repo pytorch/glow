@@ -1521,7 +1521,7 @@ std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   runtime::RuntimeBundle bundle =
-      generateRuntimeBundle(*IR, &allocator, &allocator, &allocator);
+      generateRuntimeBundle(*IR, allocator, allocator, allocator);
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
 

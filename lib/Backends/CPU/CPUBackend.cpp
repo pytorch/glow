@@ -119,7 +119,7 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator placeholderAllocator("Placeholders", 0);
   MemoryAllocator activationsAllocator("Activations", 0);
   runtime::RuntimeBundle runtimeInfo = generateRuntimeBundle(
-      *IR, &constantAllocator, &placeholderAllocator, &activationsAllocator);
+      *IR, constantAllocator, placeholderAllocator, activationsAllocator);
   return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeInfo);
 }
 
