@@ -820,7 +820,7 @@ bool GatherNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(
       getIndices(),
-      llvm::makeArrayRef({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
   isValid &= expectCompareTrue(
       "Mismatching number of dimensions", getResult().dims().size(),
       getData().dims().size() + getIndices().dims().size() - 1, this);
