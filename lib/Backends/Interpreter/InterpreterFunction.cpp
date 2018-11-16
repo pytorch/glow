@@ -39,10 +39,13 @@ InterpreterFunction::~InterpreterFunction() {
 }
 void InterpreterFunction::setupRuns() {
   if (bundle_.constantWeightVarsMemSize) {
-    for (const auto &s : bundle_.symbolTable) {
-      auto addr = bundle_.constants + s.second.offset;
-      auto tensor = new Tensor(addr, &s.second.type);
-      constants_.emplace(s.first, tensor);
+    for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
+      auto it = bundle_.symbolTable.find(std::string(v->getName()));
+      if (it != bundle_.symbolTable.end()) {
+        auto addr = bundle_.constants + it->second.offset;
+        auto tensor = new Tensor(addr, &it->second.type);
+        constants_.emplace(it->first, tensor);
+      }
     }
   }
 }
