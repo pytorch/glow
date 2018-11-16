@@ -26,14 +26,14 @@ void glow::reportContext(ElemKind Ty) { report(Type::getElementName(Ty)); }
 
 void glow::reportContext(const ShapeNHWC &shapeNHWC) {
   report("NHWC: ");
-  reportContext(
-      llvm::makeArrayRef({shapeNHWC.n, shapeNHWC.h, shapeNHWC.w, shapeNHWC.c}));
+  reportContext(llvm::ArrayRef<size_t>(
+      {shapeNHWC.n, shapeNHWC.h, shapeNHWC.w, shapeNHWC.c}));
 }
 
 void glow::reportContext(const ShapeNCHW &shapeNCHW) {
   report("NCHW: ");
-  reportContext(
-      llvm::makeArrayRef({shapeNCHW.n, shapeNCHW.c, shapeNCHW.h, shapeNCHW.w}));
+  reportContext(llvm::ArrayRef<size_t>(
+      {shapeNCHW.n, shapeNCHW.c, shapeNCHW.h, shapeNCHW.w}));
 }
 
 void glow::reportContext(const Node *node) {
