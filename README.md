@@ -64,26 +64,36 @@ Install the required dependencies using [Homebrew](https://brew.sh/):
   brew install --with-toolchain llvm@6
   ```
 
-Note that LLVM is installed to a non-default location (`/usr/local/opt/llvm`) to
+Note that LLVM is installed in a non-default location (`/usr/local/opt/llvm`) to
 avoid conflicts with the system's LLVM.
 
 #### Ubuntu
 
-On Ubuntu you would need to install a few dependencies. The following command
-should install the required dependencies.
+On Ubuntu it is necessary to install a few dependencies. The following command
+should install the required dependencies: (Tested on Ubuntu 16.04)
 
   ```bash
-  sudo apt-get install graphviz clang cmake wget ninja-build llvm-5.0 \
-      libprotobuf-dev protobuf-compiler libpng-dev
+  sudo apt-get install clang clang-6.0 cmake graphviz libpng-dev \
+      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget
+  ```
+
+It may be desirable to use `update-alternatives` to manage the version of
+clang/clang++:
+
+  ```bash
+  sudo update-alternatives --install /usr/bin/clang clang \
+      /usr/lib/llvm-6.0/bin/clang 99
+  sudo update-alternatives --install /usr/bin/clang++ clang++ \
+      /usr/lib/llvm-6.0/bin/clang++ 99
   ```
 
 In order to support ONNX net serialization format, Glow requires
 `protobuf >= 2.6.1`, but the above command may install older
 version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
-at `utils/install_protobuf.sh` to install newer version from source.
+at `utils/install_protobuf.sh` to install a newer version from source.
 
-Note, that OpenCL support is not trivial on Linux. We suggest to build without
-OpenCL for the first time.
+Note that OpenCL support is not trivial on Linux. We suggest building without
+OpenCL the first time.
 
 ### Configure and build
 
@@ -105,9 +115,10 @@ like GNU Makefiles, Ninja and Xcode build.
 ### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
-5.0 or later.  If you have LLVM installed in a non-default location (for
+5.0 or later. If you have LLVM installed in a non-default location (for
 example, if you installed it using Homebrew on macOS), you need to tell CMake
-where to find llvm using `-DCMAKE_PREFIX_PATH`.  For example:
+where to find llvm using `-DCMAKE_PREFIX_PATH`. For example, if LLVM were
+installed in `/usr/local/opt`:
 
   ```bash
   cmake -G Ninja ../glow \
