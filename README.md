@@ -69,8 +69,10 @@ avoid conflicts with the system's LLVM.
 
 #### Ubuntu
 
-On Ubuntu it is necessary to install a few dependencies. The following command
-should install the required dependencies: (Tested on Ubuntu 16.04)
+[The following instructions have been tested on Ubuntu 16.04]
+
+In order to build Glow on Ubuntu it is necessary to install a few packages. The
+following command should install the required dependencies:
 
   ```bash
   sudo apt-get install clang clang-6.0 cmake graphviz libpng-dev \
@@ -82,12 +84,25 @@ clang/clang++:
 
   ```bash
   sudo update-alternatives --install /usr/bin/clang clang \
-      /usr/lib/llvm-6.0/bin/clang 99
+      /usr/lib/llvm-6.0/bin/clang 50
   sudo update-alternatives --install /usr/bin/clang++ clang++ \
-      /usr/lib/llvm-6.0/bin/clang++ 99
+      /usr/lib/llvm-6.0/bin/clang++ 50
   ```
 
-In order to support ONNX net serialization format, Glow requires
+Glow uses the system default C/C++ compiler (/usr/bin/c++), and so you may also
+want to switch your default C/C++ compiler to clang:
+
+  ```bash
+  sudo update-alternatives --config cc
+      # Select the option corresponding to /usr/bin/clang ...
+  sudo update-alternatives --config c++
+      # Select the option corresponding to /usr/bin/clang++ ...
+  ```
+
+Glow *should* build just fine with gcc (e.g. gcc 5.4), but we mostly use clang
+and are more attentive to compatibility with clang.
+
+Finally, in order to support the ONNX net serialization format, Glow requires
 `protobuf >= 2.6.1`, but the above command may install older
 version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
 at `utils/install_protobuf.sh` to install a newer version from source.
