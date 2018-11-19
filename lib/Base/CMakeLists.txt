@@ -1,13 +1,13 @@
 add_library(Base
               Tensor.cpp
               Type.cpp
-              Image.cpp
               IO.cpp)
 
 target_link_libraries(Base
                       PUBLIC
                         Support)
 if(PNG_FOUND)
+  target_sources(Base PRIVATE Image.cpp)
   target_compile_definitions(Base
                              PRIVATE
                                WITH_PNG=1)

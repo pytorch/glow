@@ -23,6 +23,7 @@ target_link_libraries(tensorsTest
                         testMain)
 add_glow_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest)
 
+if(PNG_FOUND)
 add_executable(imageTest
                imageTest.cpp)
 target_link_libraries(imageTest
@@ -32,6 +33,7 @@ target_link_libraries(imageTest
                         testMain)
 add_glow_test(imageTest ${GLOW_BINARY_DIR}/tests/imageTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()
 
 add_executable(gradCheckTest
                gradCheckTest.cpp)
