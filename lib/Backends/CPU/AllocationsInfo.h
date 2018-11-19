@@ -29,7 +29,7 @@ class Constant;
 class Context;
 
 namespace runtime {
-struct RuntimeBundle;
+class RuntimeBundle;
 }
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.

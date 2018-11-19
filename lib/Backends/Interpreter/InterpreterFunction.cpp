@@ -35,17 +35,15 @@ InterpreterFunction::~InterpreterFunction() {
   }
   tensors_.clear();
   externalTensors_.clear();
-  alignedFree(bundle_.constants);
+  alignedFree(bundle_.getConstants());
 }
 void InterpreterFunction::setupRuns() {
-  if (bundle_.constantWeightVarsMemSize) {
+  if (bundle_.getConstantWeightSize()) {
     for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
-      auto it = bundle_.symbolTable.find(std::string(v->getName()));
-      if (it != bundle_.symbolTable.end()) {
-        auto addr = bundle_.constants + it->second.offset;
-        auto tensor = new Tensor(addr, &it->second.type);
-        constants_.emplace(it->first, tensor);
-      }
+      auto symbolInfo = bundle_.getSymbolInfo(v);
+      auto addr = bundle_.getConstants() + symbolInfo.offset;
+      auto tensor = new Tensor(addr, &symbolInfo.type);
+      constants_.emplace(std::string(v->getName()), tensor);
     }
   }
 }

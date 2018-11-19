@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Context.h"

@@ -20,40 +20,39 @@ using namespace glow;
 using llvm::cast;
 using llvm::isa;
 
-uint8_t *glow::collectConstants(
-    const IRFunction *F, uint64_t constantMaxSize,
-    const std::unordered_map<std::string, runtime::RuntimeSymbolInfo>
-        &symbolTable) {
+void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
 
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
   // If there are no constants return nullptr.
-  if (constantMaxSize == 0) {
-    return nullptr;
+  if (constantWeightVarsMemSize_ == 0) {
+    constants_ = nullptr;
+    return;
   }
-  uint8_t *baseConstantWeightVarsStore =
-      (uint8_t *)alignedAlloc(constantMaxSize, TensorAlignment);
+  constants_ =
+      (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
   for (auto &v : F->getGraph()->getParent()->getConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     auto payload = v->getPayload().getUnsafePtr();
     auto numBytes = w->getSizeInBytes();
-    auto it = symbolTable.find(std::string(w->getName()));
-    assert(it != symbolTable.end() && "Symbol not found.");
-    auto addr = it->second.offset;
+    auto addr = getValueOffset(v);
     // Copy weight to offset.
-    memcpy(baseConstantWeightVarsStore + addr, payload, numBytes);
+    memcpy(constants_ + addr, payload, numBytes);
   }
-  return baseConstantWeightVarsStore;
 }
 
-/// Helper function, gets offset of \p v from \p symbolTable.
-size_t glow::getValueOffset(
-    Value *v, const std::unordered_map<std::string, runtime::RuntimeSymbolInfo>
-                  &symbolTable) {
-  auto it = symbolTable.find(std::string(v->getName()));
-  assert(it != symbolTable.end() && "Symbol not found.");
+size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
+  auto it = symbolTable_.find(std::string(v->getName()));
+  assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second.offset;
+}
+
+runtime::RuntimeSymbolInfo
+runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
+  auto it = symbolTable_.find(std::string(v->getName()));
+  assert(it != symbolTable_.end() && "Symbol not found.");
+  return it->second;
 }
 runtime::RuntimeBundle
 glow::generateRuntimeBundle(const IRFunction &F,
@@ -64,7 +63,6 @@ glow::generateRuntimeBundle(const IRFunction &F,
   // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
   // Compute the offsets for Constants.
-
   for (auto &v : F.getGraph()->getParent()->getConstants()) {
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F.getWeightForNode(v));
@@ -79,7 +77,6 @@ glow::generateRuntimeBundle(const IRFunction &F,
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
 
   // Compute the offsets for Placeholders.
-
   for (auto &v : F.getGraph()->getParent()->getPlaceholders()) {
     // Get the WeightVar for each Placeholder to calculate offsets.
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
@@ -125,7 +122,7 @@ glow::generateRuntimeBundle(const IRFunction &F,
       assert(symbolTable.count(std::string(tvSource->getName())) &&
              "Source allocation not found!");
       runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = getValueOffset(tvSource, symbolTable) +
+      symbol.offset = symbolTable[std::string(tvSource->getName())].offset +
                       (offsetLength * TV->getType()->getElementSize());
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
@@ -143,9 +140,8 @@ glow::generateRuntimeBundle(const IRFunction &F,
   }
   auto activationsMaxSize = activationsAllocator.getMaxMemoryUsage();
 
-  runtime::RuntimeBundle info(constantMaxSize, placeholderMaxSize,
+  runtime::RuntimeBundle info(symbolTable, constantMaxSize, placeholderMaxSize,
                               activationsMaxSize);
-  info.symbolTable = std::move(symbolTable);
-  info.constants = collectConstants(&F, constantMaxSize, info.symbolTable);
+  info.collectConstants(&F);
   return info;
 }
