@@ -25,17 +25,17 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          const runtime::RuntimeBundle &runtimeBundle)
     : JIT_(std::move(JIT)), runtimeBundle_(runtimeBundle) {}
 
-CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.constants); }
+CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.getConstants()); }
 
 void CPUFunction::setupRuns() {
-  if (runtimeBundle_.activationsMemSize != 0) {
+  if (runtimeBundle_.getActivationsSize() != 0) {
     baseActivationsAddress_ = (uint8_t *)alignedAlloc(
-        runtimeBundle_.activationsMemSize, TensorAlignment);
+        runtimeBundle_.getActivationsSize(), TensorAlignment);
   }
 
-  if (runtimeBundle_.mutableWeightVarsMemSize != 0) {
+  if (runtimeBundle_.getMutableWeightSize() != 0) {
     baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
-        runtimeBundle_.mutableWeightVarsMemSize, TensorAlignment);
+        runtimeBundle_.getMutableWeightSize(), TensorAlignment);
   }
 }
 
@@ -43,12 +43,9 @@ void CPUFunction::beforeRun(const Context &ctx) {
   // Copy Placeholders into allocated memory.
   for (auto PH : ctx.pairs()) {
     auto payload = PH.second->getUnsafePtr();
-    auto symbolInfo =
-        runtimeBundle_.symbolTable.find(std::string(PH.first->getName()));
-    assert(symbolInfo != runtimeBundle_.symbolTable.end() &&
-           "Symbol not found");
-    auto addr = symbolInfo->second.offset;
-    auto numBytes = symbolInfo->second.size;
+    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
+    auto addr = symbolInfo.offset;
+    auto numBytes = symbolInfo.size;
     // copy PH to allocated memory.
     memcpy(baseMutableWeightVarsAddress_ + addr, payload, numBytes);
   }
@@ -57,10 +54,9 @@ void CPUFunction::beforeRun(const Context &ctx) {
 void CPUFunction::afterRun(const Context &ctx) {
   // Copy placeholders from device back into context.
   for (auto PH : ctx.pairs()) {
-    auto symbolInfo =
-        runtimeBundle_.symbolTable.find(std::string(PH.first->getName()));
-    auto payload = baseMutableWeightVarsAddress_ + symbolInfo->second.offset;
-    auto numBytes = symbolInfo->second.size;
+    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
+    auto payload = baseMutableWeightVarsAddress_ + symbolInfo.offset;
+    auto numBytes = symbolInfo.size;
     auto addr = PH.second->getUnsafePtr();
     // copy PH from allocated memory.
     memcpy(addr, payload, numBytes);
@@ -86,7 +82,7 @@ void CPUFunction::execute() {
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    funcPtr(runtimeBundle_.constants, baseMutableWeightVarsAddress_,
+    funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress_,
             baseActivationsAddress_);
   } else {
     GLOW_ASSERT(false && "Error getting address.");

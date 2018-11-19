@@ -282,8 +282,7 @@ static size_t setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
     if (value == predicate)
       continue;
     // The value is a buffer that should be passed as a kernel argument.
-    setKernelArg<cl_uint>(kernel, kernelArgIdx,
-                          getValueOffset(value, bundle.symbolTable));
+    setKernelArg<cl_uint>(kernel, kernelArgIdx, bundle.getValueOffset(value));
     kernelArgIdx++;
   }
   return kernelArgIdx - 1;
@@ -539,11 +538,10 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);
-  setKernelArg<cl_uint>(kernel, 1, getValueOffset(input, bundle_.symbolTable));
-  setKernelArg<cl_uint>(kernel, 2,
-                        getValueOffset(weights, bundle_.symbolTable));
-  setKernelArg<cl_uint>(kernel, 3, getValueOffset(bias, bundle_.symbolTable));
-  setKernelArg<cl_uint>(kernel, 4, getValueOffset(output, bundle_.symbolTable));
+  setKernelArg<cl_uint>(kernel, 1, bundle_.getValueOffset(input));
+  setKernelArg<cl_uint>(kernel, 2, bundle_.getValueOffset(weights));
+  setKernelArg<cl_uint>(kernel, 3, bundle_.getValueOffset(bias));
+  setKernelArg<cl_uint>(kernel, 4, bundle_.getValueOffset(output));
 
   // Extra options for quantized kernel
   if (isQuantized) {
@@ -1051,11 +1049,11 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 6, destGradDim);
       setKernelArg(kernel, numArgs + 7, filterGradDim);
       // Zero memory for the output buffers.
-      fillBuffer(deviceBuffer_, getValueOffset(srcGrad, bundle_.symbolTable),
+      fillBuffer(deviceBuffer_, bundle_.getValueOffset(srcGrad),
                  srcGrad->size(), 0, srcGrad->getElementType());
-      fillBuffer(deviceBuffer_, getValueOffset(filterGrad, bundle_.symbolTable),
+      fillBuffer(deviceBuffer_, bundle_.getValueOffset(filterGrad),
                  filterGrad->size(), 0, filterGrad->getElementType());
-      fillBuffer(deviceBuffer_, getValueOffset(biasGrad, bundle_.symbolTable),
+      fillBuffer(deviceBuffer_, bundle_.getValueOffset(biasGrad),
                  biasGrad->size(), 0, biasGrad->getElementType());
 
       (void)filter;
@@ -1211,8 +1209,8 @@ void OpenCLFunction::execute() {
       if (src == dest) {
         continue;
       }
-      size_t destOff = getValueOffset(dest, bundle_.symbolTable);
-      size_t srcOff = getValueOffset(src, bundle_.symbolTable);
+      size_t destOff = bundle_.getValueOffset(dest);
+      size_t srcOff = bundle_.getValueOffset(src);
       size_t sizeInBytes = dest->getSizeInBytes();
       cl_event event{nullptr};
       cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
@@ -1381,12 +1379,11 @@ void OpenCLFunction::execute() {
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
   uint64_t copiedBytes = 0;
-  auto it = bundle_.symbolTable.find(std::string(v->getName()));
-  assert(it != bundle_.symbolTable.end() && "Unknown value");
+  auto symbolInfo = bundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer to the device.
   if (sizeInBytes) {
-    size_t valueOffset = it->second.offset;
+    size_t valueOffset = symbolInfo.offset;
     cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
@@ -1403,12 +1400,11 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
 
 uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   uint64_t copiedBytes = 0;
-  auto it = bundle_.symbolTable.find(std::string(v->getName()));
-  assert(it != bundle_.symbolTable.end() && "Unknown value");
+  auto symbolInfo = bundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer from the device.
   if (sizeInBytes) {
-    size_t valueOffset = it->second.offset;
+    size_t valueOffset = symbolInfo.offset;
     cl_event event{nullptr};
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
@@ -1426,13 +1422,13 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
 }
 
 void OpenCLFunction::setupRuns() {
-  deviceBuffer_ = allocDeviceBuffer(bundle_.constantWeightVarsMemSize +
-                                    bundle_.mutableWeightVarsMemSize +
-                                    bundle_.activationsMemSize);
-  size_t sizeInBytes = bundle_.constantWeightVarsMemSize;
-  if (bundle_.constants) {
+  deviceBuffer_ = allocDeviceBuffer(bundle_.getConstantWeightSize() +
+                                    bundle_.getMutableWeightSize() +
+                                    bundle_.getActivationsSize());
+  size_t sizeInBytes = bundle_.getConstantWeightSize();
+  if (bundle_.getConstants()) {
     // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = bundle_.constants;
+    auto buf = bundle_.getConstants();
     size_t valueOffset = 0;
     cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
@@ -1451,11 +1447,9 @@ void OpenCLFunction::setupRuns() {
 
 void OpenCLFunction::beforeRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
-    auto symbolInfo =
-        bundle_.symbolTable.find(std::string(PH.first->getName()));
-    assert(symbolInfo != bundle_.symbolTable.end() && "Symbol not found");
-    auto addr = symbolInfo->second.offset;
-    auto numBytes = symbolInfo->second.size;
+    auto symbolInfo = bundle_.getSymbolInfo(PH.first);
+    auto addr = symbolInfo.offset;
+    auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};
@@ -1475,11 +1469,9 @@ void OpenCLFunction::beforeRun(const Context &ctx) {
 
 void OpenCLFunction::afterRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
-    auto symbolInfo =
-        bundle_.symbolTable.find(std::string(PH.first->getName()));
-    assert(symbolInfo != bundle_.symbolTable.end() && "Symbol not found");
-    auto addr = symbolInfo->second.offset;
-    auto numBytes = symbolInfo->second.size;
+    auto symbolInfo = bundle_.getSymbolInfo(PH.first);
+    auto addr = symbolInfo.offset;
+    auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};

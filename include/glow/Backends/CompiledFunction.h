@@ -22,37 +22,6 @@
 namespace glow {
 
 class Context;
-namespace runtime {
-/// RuntimeSymbolInfo
-/// Contains information for initialization and handling of symbol at runtime.
-struct RuntimeSymbolInfo {
-  /// The size in bytes.
-  size_t size;
-  /// Offset in bytes from the base address.
-  size_t offset;
-  /// Type of symbol.
-  Type type;
-};
-/// Runtime Bundle
-/// Contains the information needed to be passed forward from compile time to
-/// runtime. In order to allocate and initialize memory.
-struct RuntimeBundle {
-  /// Map from symbol name to a RuntimeSymbolInfo.
-  std::unordered_map<std::string, RuntimeSymbolInfo> symbolTable;
-  /// Pointer to memory containing the weights for execution.
-  uint8_t *constants;
-  /// Amount of memory needed for weights.
-  const size_t constantWeightVarsMemSize;
-  /// Amount of memory needed for mutable vars.
-  const size_t mutableWeightVarsMemSize;
-  /// Amount of memory needed for activations.
-  const size_t activationsMemSize;
-  RuntimeBundle(size_t constWeight, size_t mutableWeight, size_t activations)
-      : constantWeightVarsMemSize(constWeight),
-        mutableWeightVarsMemSize(mutableWeight),
-        activationsMemSize(activations) {}
-};
-} // end namespace runtime
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:

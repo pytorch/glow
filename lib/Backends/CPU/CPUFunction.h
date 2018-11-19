@@ -18,10 +18,10 @@
 
 #include "GlowJIT.h"
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 
 namespace glow {
-
 /// A Glow IR function compiled for the CPU using LLVM.
 class CPUFunction final : public CompiledFunction {
   /// The LLVM JIT engine. The jit must be initialized after the ctor

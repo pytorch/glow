@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_OPENCL_OPENCL_H
 
 #include "glow/Backends/Backend.h"
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
