@@ -74,3 +74,16 @@ people's changes! Anybody is allowed to review code and comment on patches.
 
 All changes, by all developers, must be reviewed before they are committed to
 the repository.
+
+### Nits checklist
+
+There are some common issues that we flag in PRs that can be solved
+mechanically.  Going through this checklist before submitting a PR will speed up
+the review process by eliminating round-trips for feedback.
+
+* Remember copyright headers on new source files.
+* Prefer `llvm::StringRef` to `std::string`.
+* Comments are complete sentences: begin with a capital, end with a period.
+* Add Doxygen comments to every new class, method, function, global, etc.
+* Boolean arguments should be tagged with a /* name_of_param */ comment.
+* Always clang-format!  (The linter will catch this, but it never hurts.)
