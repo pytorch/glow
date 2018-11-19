@@ -19,20 +19,37 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Quantization/Base/Base.h"
 
+#include <cmath>
+
 using namespace glow;
 
+llvm::cl::opt<std::string> InputFilename(llvm::cl::Positional,
+                                         llvm::cl::desc("<input file>"),
+                                         llvm::cl::Required);
+llvm::cl::opt<std::string> OutputFilename(llvm::cl::Positional,
+                                          llvm::cl::desc("<output file>"),
+                                          llvm::cl::Required);
+llvm::cl::OptionCategory QuantizationCat("Quantization Options");
+llvm::cl::opt<float> QuantizationScale("scale",
+                                       llvm::cl::desc("Quantization scale"),
+                                       llvm::cl::init(NAN),
+                                       llvm::cl::cat(QuantizationCat));
+llvm::cl::opt<int> QuantizationOffset("offset",
+                                      llvm::cl::desc("Quantization offset"),
+                                      llvm::cl::init(0),
+                                      llvm::cl::cat(QuantizationCat));
+
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    fprintf(stderr, "Usage: png2bits INFILE OUTFILE\n");
-    exit(1);
-  }
+  llvm::cl::ParseCommandLineOptions(argc, argv);
   const char *filename = argv[1];
   const char *outfile = argv[2];
-  Tensor png = readPngImageAndPreprocess(
-      filename, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
-      ImageLayout::NCHW, false);
-  TensorQuantizationParams TQP{1.0f / 127.0f, 0};
-  Tensor qpng = quantization::quantizeTensor(png, TQP);
-  writeToFile(qpng, outfile);
+  Tensor png =
+      readPngImageAndPreprocess(filename, imageNormMode, imageChannelOrder,
+                                imageLayout, useImagenetNormalization);
+  if (!std::isnan(static_cast<float>(QuantizationScale))) {
+    TensorQuantizationParams TQP{QuantizationScale, QuantizationOffset};
+    png = quantization::quantizeTensor(png, TQP);
+  }
+  writeToFile(png, outfile);
   return 0;
 }
