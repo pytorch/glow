@@ -39,8 +39,7 @@ llvm::cl::opt<ImageNormalizationMode> imageNormMode(
                      clEnumValN(ImageNormalizationMode::kneg128to127,
                                 "neg128to127",
                                 "Values are in the range: -128 .. 127")),
-    llvm::cl::init(ImageNormalizationMode::k0to1));
-
+    llvm::cl::init(ImageNormalizationMode::k0to255));
 llvm::cl::alias imageNormModeA("i", llvm::cl::desc("Alias for -image_mode"),
                                llvm::cl::aliasopt(imageNormMode),
                                llvm::cl::cat(imageCat));
@@ -67,7 +66,7 @@ llvm::cl::alias imageLayoutA("l", llvm::cl::desc("Alias for -image_layout"),
 
 llvm::cl::opt<bool> useImagenetNormalization(
     "use-imagenet-normalization",
-    llvm::cl::desc("Use Imagenet Normalization. This works is in combination "
+    llvm::cl::desc("Use Imagenet Normalization. This works in combination "
                    "with the Image Mode normalization."),
     llvm::cl::cat(imageCat), llvm::cl::init(false));
 
