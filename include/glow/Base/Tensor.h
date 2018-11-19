@@ -547,6 +547,40 @@ public:
     return data[index];
   }
 
+  /// An unsafe version of \ref getElementPtr.  Only use this in extremely hot
+  /// interpreter functions (convolution, etc.) that would otherwise be unusably
+  /// slow in Debug mode.
+  size_t unsafe_getElementPtr(llvm::ArrayRef<size_t> indices) const {
+    // The loop below can be rewritten using std::inner_product. Unfortunately
+    // std::inner_product does not optimize very well and loops that use this
+    // method don't get vectorized. Don't change this loop without benchmarking
+    // the program on a few compilers.
+    size_t index = 0;
+    for (size_t i = 0, e = indices.size(); i < e; i++) {
+      index += size_t(sizeIntegral_[i]) * size_t(indices[i]);
+    }
+
+    return index;
+  }
+
+  /// An unsafe version of \ref at.  Only use this in extremely hot interpreter
+  /// functions (convolution, etc.) that would otherwise be unusably slow in
+  /// Debug mode.
+  ElemTy &unsafe_at(llvm::ArrayRef<size_t> indices) {
+    size_t index = unsafe_getElementPtr(indices);
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
+    return data[index];
+  }
+
+  /// An unsafe version of \ref at.  Only use this in extremely hot interpreter
+  /// functions (convolution, etc.) that would otherwise be unusably slow in
+  /// Debug mode.
+  const ElemTy &unsafe_at(llvm::ArrayRef<size_t> indices) const {
+    size_t index = unsafe_getElementPtr(indices);
+    auto *data = tensor_->getRawDataPointer<ElemTy>();
+    return data[index];
+  }
+
   /// \returns the element at offset \p idx without any size calculations.
   ElemTy &raw(size_t index) {
     assert(index < size() && "Out of bounds");

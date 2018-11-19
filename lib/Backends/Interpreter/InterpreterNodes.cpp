@@ -102,15 +102,15 @@ void InterpreterFunction::fwdConvolutionInst_FloatImpl(
                   continue;
                 }
                 for (size_t fd = 0; fd < inCperG; fd++) {
-                  sum += float(
-                      filterW.at({d, fx, fy, fd}) *
-                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd}));
+                  sum += float(filterW.unsafe_at({d, fx, fy, fd}) *
+                               inW.unsafe_at({n, (size_t)ox, (size_t)oy,
+                                              g * inCperG + fd}));
                 }
               }
             }
 
-            sum += float(biasW.at({d}));
-            outW.at({n, ax, ay, d}) = ElemTy(sum);
+            sum += float(biasW.unsafe_at({d}));
+            outW.unsafe_at({n, ax, ay, d}) = ElemTy(sum);
           } // W
         }   // H
       }     // C
@@ -187,9 +187,9 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
                 }
                 for (size_t fd = 0; fd < inCperG; fd++) {
 
-                  int32_t F = filterW.at({d, fx, fy, fd});
-                  int32_t I =
-                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                  int32_t F = filterW.unsafe_at({d, fx, fy, fd});
+                  int32_t I = inW.unsafe_at(
+                      {n, (size_t)ox, (size_t)oy, g * inCperG + fd});
                   // We represent the element multiplication with offset as
                   // (value - offset).
                   sum += (F - filterOffset) * (I - inOffset);
@@ -198,15 +198,16 @@ void InterpreterFunction::fwdConvolutionInst_I8Impl(
             }
 
             // Scale the bias to match the scale of the matrix multiplication.
-            int32_t B = std::round(float(biasW.at({d}) - biasOffset) *
+            int32_t B = std::round(float(biasW.unsafe_at({d}) - biasOffset) *
                                    (biasScale / matMulScale));
 
             // Add the bias:
             sum += B;
 
             // Scale the result back to the expected destination scale.
-            outW.at({n, ax, ay, d}) = quantization::clip<int32_t, int8_t>(
-                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+            outW.unsafe_at({n, ax, ay, d}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (matMulScale / outScale) + outOffset));
           } // W
         }   // H
       }     // C
