@@ -34,15 +34,6 @@
 
 using namespace glow;
 
-ImageNormalizationMode strToImageNormalizationMode(const std::string &str) {
-  return llvm::StringSwitch<ImageNormalizationMode>(str)
-      .Case("neg1to1", ImageNormalizationMode::kneg1to1)
-      .Case("0to1", ImageNormalizationMode::k0to1)
-      .Case("0to255", ImageNormalizationMode::k0to255)
-      .Case("neg128to127", ImageNormalizationMode::kneg128to127);
-  GLOW_ASSERT(false && "Unknown image format");
-}
-
 namespace {
 
 /// Image loader options.
