@@ -2205,20 +2205,26 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
   ASSERT_EQ(F_->getNodes().size(), 4);
 
   // Check that the channel shuffle nodes are still there.
-  auto *RN1 = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
-  ASSERT_NE(nullptr, RN1);
-  auto *TR1 = llvm::dyn_cast<TransposeNode>(RN1->getInput().getNode());
-  ASSERT_NE(nullptr, TR1);
-  auto *RN2 = llvm::dyn_cast<ReshapeNode>(TR1->getInput().getNode());
-  ASSERT_NE(nullptr, RN2);
+  auto *postShuffleRN = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, postShuffleRN);
+  auto *shuffleTR =
+      llvm::dyn_cast<TransposeNode>(postShuffleRN->getInput().getNode());
+  ASSERT_NE(nullptr, shuffleTR);
+  auto *preShuffleRN =
+      llvm::dyn_cast<ReshapeNode>(shuffleTR->getInput().getNode());
+  ASSERT_NE(nullptr, preShuffleRN);
 
   // Ensure last reshape has the same dimensions as the input.
-  EXPECT_EQ(RN1->getDims(), llvm::makeArrayRef(inputDims));
+  EXPECT_EQ(postShuffleRN->getDims(), llvm::makeArrayRef(inputDims));
 
   // Ensure the transpose in the middle of the reshapes shuffles the last
   // dimension of the input.
-  EXPECT_EQ(TR1->getShuffle(), llvm::makeArrayRef<unsigned_t>({0, 1, 2, 4, 3}));
+  const unsigned_t expectedShuffleTRShuffle[] = {0, 1, 2, 4, 3};
+  EXPECT_EQ(shuffleTR->getShuffle(),
+            llvm::makeArrayRef(expectedShuffleTRShuffle));
 
   // Ensure the first reshape expands the last dimension of the input.
-  EXPECT_EQ(RN2->getDims(), llvm::makeArrayRef<size_t>({3, 28, 28, 4, 34}));
+  const size_t expectedPreShuffleRNDims[] = {3, 28, 28, 4, 34};
+  EXPECT_EQ(preShuffleRN->getDims(),
+            llvm::makeArrayRef(expectedPreShuffleRNDims));
 }

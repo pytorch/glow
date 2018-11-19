@@ -255,12 +255,8 @@ getChannelShuffleParams(const ReshapeNode &node) {
 // Sink Transpose below ChannelShuffle node sequence. For example
 // (Transpose_1->Reshape_1->Transpose_2->Reshape_2) becomes
 // (Reshape_1->Transpose_2->Reshape_2->Transpose_1).
-static bool sinkTranposeBelowChannelShuffle(Function *F, Node *node) {
-  auto *postShuffleRN = dyn_cast<ReshapeNode>(node);
-  if (!postShuffleRN) {
-    return false;
-  }
-
+static bool sinkTranposeBelowChannelShuffle(Function *F,
+                                            ReshapeNode *postShuffleRN) {
   auto *shuffleTR = dyn_cast<TransposeNode>(postShuffleRN->getInput());
   if (!shuffleTR) {
     return false;
@@ -420,10 +416,12 @@ static bool sinkCode(Function *F) {
       }
     }
 
-    // Sink Transpose below ChannelShuffle.
-    if (sinkTranposeBelowChannelShuffle(F, node)) {
-      changed = true;
-      continue;
+    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
+      // Sink Transpose below ChannelShuffle.
+      if (sinkTranposeBelowChannelShuffle(F, RN)) {
+        changed = true;
+        continue;
+      }
     }
 
     // Sink Transpose below Arithmetic nodes. Note: For simplicity, we
