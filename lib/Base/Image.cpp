@@ -23,6 +23,56 @@ using namespace glow;
 #if WITH_PNG
 #include <png.h>
 
+namespace glow {
+
+llvm::cl::OptionCategory imageCat("Image Processing Options");
+
+llvm::cl::opt<ImageNormalizationMode> imageNormMode(
+    "image_mode", llvm::cl::desc("Specify the image mode:"),
+    llvm::cl::cat(imageCat),
+    llvm::cl::values(clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
+                                "Values are in the range: -1 and 1"),
+                     clEnumValN(ImageNormalizationMode::k0to1, "0to1",
+                                "Values are in the range: 0 and 1"),
+                     clEnumValN(ImageNormalizationMode::k0to255, "0to255",
+                                "Values are in the range: 0 and 255"),
+                     clEnumValN(ImageNormalizationMode::kneg128to127,
+                                "neg128to127",
+                                "Values are in the range: -128 .. 127")),
+    llvm::cl::init(ImageNormalizationMode::k0to1));
+
+llvm::cl::alias imageNormModeA("i", llvm::cl::desc("Alias for -image_mode"),
+                               llvm::cl::aliasopt(imageNormMode),
+                               llvm::cl::cat(imageCat));
+
+llvm::cl::opt<ImageChannelOrder> imageChannelOrder(
+    "image_channel_order", llvm::cl::desc("Specify the image channel order"),
+    llvm::cl::Optional, llvm::cl::cat(imageCat),
+    llvm::cl::values(clEnumValN(ImageChannelOrder::BGR, "BGR", "Use BGR"),
+                     clEnumValN(ImageChannelOrder::RGB, "RGB", "Use RGB")),
+    llvm::cl::init(ImageChannelOrder::BGR));
+
+llvm::cl::opt<ImageLayout>
+    imageLayout("image_layout",
+                llvm::cl::desc("Specify which image layout to use"),
+                llvm::cl::Optional, llvm::cl::cat(imageCat),
+                llvm::cl::values(clEnumValN(ImageLayout::NCHW, "NCHW",
+                                            "Use NCHW image layout"),
+                                 clEnumValN(ImageLayout::NHWC, "NHWC",
+                                            "Use NHWC image layout")),
+                llvm::cl::init(ImageLayout::NCHW));
+llvm::cl::alias imageLayoutA("l", llvm::cl::desc("Alias for -image_layout"),
+                             llvm::cl::aliasopt(imageLayout),
+                             llvm::cl::cat(imageCat));
+
+llvm::cl::opt<bool> useImagenetNormalization(
+    "use-imagenet-normalization",
+    llvm::cl::desc("Use Imagenet Normalization. This works is in combination "
+                   "with the Image Mode normalization."),
+    llvm::cl::cat(imageCat), llvm::cl::init(false));
+
+} // namespace glow
+
 /// Convert the normalization to numeric floating poing ranges.
 std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
   switch (mode) {
