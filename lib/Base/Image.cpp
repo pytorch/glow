@@ -28,7 +28,7 @@ namespace glow {
 llvm::cl::OptionCategory imageCat("Image Processing Options");
 
 llvm::cl::opt<ImageNormalizationMode> imageNormMode(
-    "image_mode", llvm::cl::desc("Specify the image mode:"), llvm::cl::Required,
+    "image_mode", llvm::cl::desc("Specify the image mode:"),
     llvm::cl::cat(imageCat),
     llvm::cl::values(clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
                                 "Values are in the range: -1 and 1"),
@@ -38,7 +38,9 @@ llvm::cl::opt<ImageNormalizationMode> imageNormMode(
                                 "Values are in the range: 0 and 255"),
                      clEnumValN(ImageNormalizationMode::kneg128to127,
                                 "neg128to127",
-                                "Values are in the range: -128 .. 127")));
+                                "Values are in the range: -128 .. 127")),
+    llvm::cl::init(ImageNormalizationMode::k0to1));
+
 llvm::cl::alias imageNormModeA("i", llvm::cl::desc("Alias for -image_mode"),
                                llvm::cl::aliasopt(imageNormMode),
                                llvm::cl::cat(imageCat));
