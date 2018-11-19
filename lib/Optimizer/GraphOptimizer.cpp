@@ -252,9 +252,10 @@ getChannelShuffleParams(const ReshapeNode &node) {
   return resM;
 }
 
-// Sink Transpose below ChannelShuffle node sequence. For example
-// (Transpose_1->Reshape_1->Transpose_2->Reshape_2) becomes
-// (Reshape_1->Transpose_2->Reshape_2->Transpose_1).
+/// Sink Transpose below ChannelShuffle node sequence ending with \p
+/// postShuffleRN. For example (Transpose_1->Reshape_1->Transpose_2->Reshape_2)
+/// becomes (Reshape_1->Transpose_2->Reshape_2->Transpose_1). \returns true if
+/// tranpose was sunk below ChannelShuffle node sequence and false otherwise.
 static bool sinkTranposeBelowChannelShuffle(Function *F,
                                             ReshapeNode *postShuffleRN) {
   auto *shuffleTR = dyn_cast<TransposeNode>(postShuffleRN->getInput());
