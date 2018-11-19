@@ -8,9 +8,6 @@ target_link_libraries(Base
                         Support)
 if(PNG_FOUND)
   target_sources(Base PRIVATE Image.cpp)
-  target_compile_definitions(Base
-                             PRIVATE
-                               WITH_PNG=1)
   target_include_directories(Base
                              PRIVATE
                                ${PNG_INCLUDE_DIR})
