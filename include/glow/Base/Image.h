@@ -18,6 +18,8 @@
 
 #include "glow/Base/Tensor.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <tuple>
 
 namespace glow {
@@ -41,6 +43,18 @@ enum class ImageChannelOrder {
   BGR,
   RGB,
 };
+
+/// -image_mode flag.
+extern llvm::cl::opt<ImageNormalizationMode> imageNormMode;
+
+/// -image_channel_order flag.
+extern llvm::cl::opt<ImageChannelOrder> imageChannelOrder;
+
+/// -image_layout flag.
+extern llvm::cl::opt<ImageLayout> imageLayout;
+
+/// -use-imagenet-normalization flag.
+extern llvm::cl::opt<bool> useImagenetNormalization;
 
 /// \returns the floating-point range corresponding to enum value \p mode.
 std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
