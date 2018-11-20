@@ -100,6 +100,10 @@ if (GLOW_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
+if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)
+  message(FATAL_ERROR "Cannot create bundles without CPU backend. Configure with -DGLOW_WITH_BUNDLES and -DGLOW_WITH_CPU to build bundles.")
+endif()
+
 if (GLOW_BUILD_TESTS)
   add_subdirectory(tests/googletest)
   add_subdirectory(tests)

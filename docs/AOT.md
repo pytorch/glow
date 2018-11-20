@@ -9,20 +9,18 @@ time.
 
 A bundle is a self-contained compiled network model that can be used to execute
 the model in a standalone mode. After following the instructions in this
-document and the [Makefile](../examples/bundles/resnet50) in the example
+document and the [CMakeLists.txt](../examples/bundles/resnet50/CMakeLists.txt) in the example
 directory you will be able to compile convolutional neural networks into small
 executables. Example:
 
 ```
-  $make
+  $cmake -G ninja <other cmake flags> -DGLOW_WITH_BUNDLES=ON -DGLOW_WITH_CPU=ON
   ...
 
-  $cd build
+  $ninja ResNet50Bundle
+  ...
 
-  $ls
-  cat.png          main.o           resnet50         resnet50.glow    resnet50.o       resnet50.weights
-
-  $./resnet50 cat.png
+  $./bin/resnet50 cat.png
   Result: 285
 ```
 
@@ -148,25 +146,21 @@ variables area.
 
 ## A step-by-step example of the Resnet50 network model
 
-There are concrete examples of integrating a network model with a project. You
-can find them in the `examples/bundles/` directory in the Glow repository.
-Makefiles with appropriate targets are provided for your convenience.
+There are concrete examples of integrating a network model with a project located in the `examples/bundles/` directory in the Glow repository. You can enable the compilation of these bundles by invoking `cmake` with `-DGLOW_WITH_BUNDLES=ON -DGLOW_WITH_CPU=ON`.
 
 ### Floating point network
 To build and run the example, you just need to execute:
-* `QUANTIZE=NO make run`
+* `cmake -G ninja <other cmake flags> -DGLOW_WITH_BUNDLES=ON -DGLOW_WITH_CPU=ON`
+* `ninja RunResNet50Bundle`
 
-You may need to adjust the environment variables at the top to match
-your setup, primarily LOADER and GLOW_SRC vars.
-
-The makefile provides the following targets:
-* `download_weights`: it downloads the Resnet50 network model in the Caffe2 format.
-* `build/resnet50.o`: it generates the bundle files using the Glow image-classifier as described above.
+The CMakeLists.txt provides the following targets:
+* `ResNet50BundleNetFiles`: it downloads the Resnet50 network model in the Caffe2 format.
+* `ResNet50BundleNet`: it generates the bundle files using the Glow image-classifier as described above.
   The concrete command line looks like this:
-  `image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle build`
+  `image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle <build_dir>`
   It reads the network model from `resnet50` and generates the `resnet50.o`
-  and `resnet50.weights` files into the `build` directory.
-* `build/main.o`:  it compiles the `resnet50_standalone.cpp` file, which is the main file of the project.
+  and `resnet50.weights` files into the `build_dir` directory.
+* `ResNet50BundleMain`:  it compiles the `main.cpp` file, which is the main file of the project.
   This source file gives a good idea about how to interface with an auto-generated bundle.
   It contains the code for interfacing with the auto-generated bundle.
   *  It allocated the memory areas based on their memory sizes provided in `resnet50_config`.
@@ -175,14 +169,14 @@ The makefile provides the following targets:
      memory area.
   *  Once everything is setup, it invokes the compiled network model by calling the
      `resnet50` function from the `resnet50.o` object file.
- * `resnet50`: it links the user-defined `resnet50_standalone.o` and auto-generated `resnet50.o`
-  into a standalone executable file called `resnet50_standalone`
-  * `run`: it runs this standalone executable with imagenet images as inputs and outputs the
-results of the network model execution.
+* `ResNet50Bundle`: it links the user-defined `main.o` and auto-generated `resnet50.o` into a standalone executable file called `resnet50`
+* `RunResNet50Bundle`: it runs this standalone executable with imagenet images as inputs and outputs the results of the network model execution.
 
 ### Quantized network
-To build and run the example, you just need to execute:
-* `make run`. By default, quantized Resnet50 example is going to be executed.
+All of the aforementioned targets have quantized versions in CMakeLists.txt named
+`QuantizedResNet50BundleNet`, `QuantizedResNet50Bundle`, `RunQuantizedResNet50Bundle`.
+For example, to run the quantized bundle, you just need to execute:
+* `ninja RunQuantizedResNet50Bundle`
 
 This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
@@ -190,4 +184,5 @@ except it emits bundle based on the quantization profile:
 
 The `profile.yml` itself is captured at a prior step by executing image-classifier with the `dump_profile` option:
 `image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -dump_profile=profile.yml`.
-See the makefile for details.
+
+See the [CMakeLists.txt](../examples/bundles/resnet50/CMakeLists.txt) for details.
