@@ -82,7 +82,7 @@ mechanically.  Going through this checklist before submitting a PR will speed up
 the review process by eliminating round-trips for feedback.
 
 * Remember copyright headers on new source files.
-* Prefer `llvm::StringRef` to `std::string`.
+* Prefer `llvm::StringRef`/`ArrayRef` to `std::string`/`vector`.
 * Comments are complete sentences: begin with a capital, end with a period.
 * Add Doxygen comments to every new class, method, function, global, etc.
 * Boolean arguments should be tagged with a /* name_of_param */ comment.
