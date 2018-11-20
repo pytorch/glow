@@ -73,6 +73,7 @@ llvm::Value *getConstantValue(llvm::Value *v) {
 /// specialized.
 static void addArgToBeSpecialized(uint64_t &argsToBeSpecialized,
                                   unsigned argIdx) {
+  assert(argIdx < 64 && "argIdx exceeds 64");
   argsToBeSpecialized |= (((uint64_t)1) << argIdx);
 }
 
@@ -80,6 +81,7 @@ static void addArgToBeSpecialized(uint64_t &argsToBeSpecialized,
 /// the \p argsToBeSpecialized mask.
 static bool isArgToBeSpecialized(uint64_t argsToBeSpecialized,
                                  unsigned argIdx) {
+  assert(argIdx < 64 && "argIdx exceeds 64");
   return argsToBeSpecialized & (((uint64_t)1) << argIdx);
 }
 
@@ -267,7 +269,7 @@ public:
     for (auto &arg : call->arg_operands()) {
       auto curArgIdx = argIdx++;
 
-      if (!shouldSpecializeParameter(arg)) {
+      if (curArgIdx > 63 || !shouldSpecializeParameter(arg)) {
         argsForSpecialized.push_back(arg);
         continue;
       }
