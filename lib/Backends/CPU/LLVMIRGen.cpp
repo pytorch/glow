@@ -62,7 +62,7 @@ llvm::cl::opt<llvm::Reloc::Model> relocModel(
         clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
     llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getCPUBackendCat()));
 
-/// Limitation of number of arguments for `emitDataParallelKernel`. 
+/// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
 /// Generate the LLVM MAttr list of attributes.
