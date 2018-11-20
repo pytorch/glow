@@ -48,6 +48,6 @@ target_link_libraries(fr2en
                         Quantization
                         Support)
 
-if(GLOW_WITH_CPU)
+if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()
