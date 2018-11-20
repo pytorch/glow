@@ -62,6 +62,8 @@ llvm::cl::opt<llvm::Reloc::Model> relocModel(
         clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
     llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getCPUBackendCat()));
 
+constexpr size_t kArgLimit = 64;
+
 /// Generate the LLVM MAttr list of attributes.
 static llvm::SmallVector<std::string, 0> getMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -600,39 +602,18 @@ emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
   return kernel->args().begin() + bufferToArgNum[val];
 }
 
-/// Emit the function that implements a data-parallel kernel and calls it.
-///
-/// The generated kernel functions get buffers as their parameters. The buffers
-/// are uniqued, so that any buffer is passed as argument to the kernel function
-/// only once. This allows us to mark all parameters of the generated kernel as
-/// noalias. As a result, the LLVM optimizer makes use of the noalias attributes
-/// and produces nicely vectorized code for the generated data-parallel kernels.
-void LLVMIRGen::emitDataParallelKernel(
-    llvm::IRBuilder<> &builder, llvm::ArrayRef<const Instruction *> bundle) {
-  if (bundle.empty())
+/// Implementation of emitDataParallelKernel where we guarantee that the number
+/// of arguments will be bound by 64.
+void LLVMIRGen::emitDataParallelKernelImpl(
+    llvm::IRBuilder<> &builder, llvm::ArrayRef<const Instruction *> bundle,
+    llvm::ArrayRef<llvm::Type *> argTypes,
+    llvm::DenseMap<Value *, int> &bufferToArgNum,
+    llvm::ArrayRef<llvm::Value *> buffers) {
+  if (bundle.empty()) {
     return;
-  llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
-  // Types of arguments for the kernel function being generated.
-  llvm::SmallVector<llvm::Type *, 32> argTypes;
-  // Map each buffer used by the kernel to the argument number of the kernel
-  // function. This ensures that same buffer is always mapped to the same
-  // argument.
-  llvm::DenseMap<Value *, int> bufferToArgNum;
-  // Buffers to be passed to the kernel function as arguments.
-  llvm::SmallVector<llvm::Value *, 32> buffers;
-  // Collect unique buffers used by the instructions of the kernel.
-  for (const auto I : bundle) {
-    for (const auto &Op : I->getOperands()) {
-      auto *buf = Op.first;
-      if (!bufferToArgNum.count(buf)) {
-        bufferToArgNum[buf] = argTypes.size();
-        buffers.push_back(emitValueAddress(builder, buf));
-        argTypes.push_back(getElementType(builder, buf)->getPointerTo());
-      }
-    }
   }
-
   // Create stacked kernel function type.
+  llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
   llvm::FunctionType *kernelFuncTy =
       llvm::FunctionType::get(voidTy, argTypes, false);
   auto *kernelFunc =
@@ -674,6 +655,63 @@ void LLVMIRGen::emitDataParallelKernel(
 
   // Emit a call of the kernel.
   createCall(builder, kernelFunc, buffers);
+}
+
+/// Emit the function that implements a data-parallel kernel and calls it.
+///
+/// The generated kernel functions get buffers as their parameters. The buffers
+/// are uniqued, so that any buffer is passed as argument to the kernel function
+/// only once. This allows us to mark all parameters of the generated kernel as
+/// noalias. As a result, the LLVM optimizer makes use of the noalias attributes
+/// and produces nicely vectorized code for the generated data-parallel kernels.
+/// Note that we will emit a kernel whenever the number of arguments (aka unique
+/// buffers) exceeds `kArgLimit`.
+void LLVMIRGen::emitDataParallelKernel(
+    llvm::IRBuilder<> &builder, llvm::ArrayRef<const Instruction *> bundle) {
+  if (bundle.empty())
+    return;
+  // Types of arguments for the kernel function being generated.
+  llvm::SmallVector<llvm::Type *, 32> argTypes;
+  // Map each buffer used by the kernel to the argument number of the kernel
+  // function. This ensures that same buffer is always mapped to the same
+  // argument.
+  llvm::DenseMap<Value *, int> bufferToArgNum;
+  // Buffers to be passed to the kernel function as arguments.
+  llvm::SmallVector<llvm::Value *, 32> buffers;
+  // Hold a group of instructions whose unique buffer size is no more than
+  // `kArgLimit` and ship it for processing
+  llvm::SmallVector<const Instruction *, 32> batchedBundle;
+  // Collect unique buffers up to `kArgLimit` used by the instructions of the
+  // kernel.
+  for (const auto I : bundle) {
+    // If adding the buffers of current instruction might make the total number
+    // of unique buffer exceed `kArgLimit`, we need to emit the kernel and start
+    // over. Note the "might" as this method is pessimistic, because number of
+    // buffers from current instructure might not be unique. Trade-off here is
+    // that the algorithm is cleaner and in practice, if we over-estimate the
+    // argument size by several, it does not matter too much.
+    if (argTypes.size() + I->getOperands().size() > kArgLimit) {
+      emitDataParallelKernelImpl(builder, batchedBundle, argTypes,
+                                 bufferToArgNum, buffers);
+      batchedBundle.clear();
+      argTypes.clear();
+      bufferToArgNum.clear();
+      buffers.clear();
+    }
+
+    // Add the instruction to the current bundle and process its operands
+    batchedBundle.push_back(I);
+    for (const auto &Op : I->getOperands()) {
+      auto *buf = Op.first;
+      if (!bufferToArgNum.count(buf)) {
+        bufferToArgNum[buf] = argTypes.size();
+        buffers.push_back(emitValueAddress(builder, buf));
+        argTypes.push_back(getElementType(builder, buf)->getPointerTo());
+      }
+    }
+  }
+  emitDataParallelKernelImpl(builder, batchedBundle, argTypes, bufferToArgNum,
+                             buffers);
 }
 
 /// Check if the provided operand overlaps with an operand of an instruction
