@@ -256,6 +256,96 @@ bool ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return true;
   }
 
+  if (typeName == "Slice") {
+    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    auto dims = data.dims();
+    auto numDims = dims.size();
+
+    // Attributes 'starts' and 'ends' are mandatory and must be consistent.
+    assert(dict.count("starts") && "Slice: attribute 'starts' is mandatory.");
+    assert(dict.count("ends") && "Slice: attribute 'ends' is mandatory.");
+    auto starts = getShape<ssize_t>(dict["starts"]);
+    auto ends = getShape<ssize_t>(dict["ends"]);
+    assert((starts.size() == ends.size()) &&
+           "Slice: 'starts' and 'ends' arrays must have the same size.");
+
+    // Attribute 'axes' is optional.
+    std::vector<ssize_t> axes;
+    if (dict.count("axes")) {
+      // The ONNX spec is unclear so we consider that the 'axes' array may have
+      // any size. The constraints are:
+      // - the element value must be in range [0, numDims),
+      // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
+      // In case an axis is specified multiple times in 'axes', the later
+      // parameters will simply overwrite the previous ones.
+      axes = getShape<ssize_t>(dict["axes"]);
+      assert((axes.size() == starts.size()) &&
+             "Slice: The 'axes' array must have the same size as 'starts' and "
+             "'ends' arrays.");
+    } else {
+      for (size_t i = 0; i < numDims; i++) {
+        axes.push_back(ssize_t(i));
+      }
+    }
+
+    // The ONNX description is unclear and doesn't describe what to do when a
+    // an axis index is not given in the axes array. An interpretation is that
+    // for such an axis, the entire range is taken. Then, we initialize
+    // newStarts and newEnds with the full range for all axes.
+    std::vector<size_t> newStarts(numDims);
+    std::vector<size_t> newEnds(numDims);
+    for (size_t i = 0; i < numDims; i++) {
+      newStarts[i] = 0;
+      newEnds[i] = dims[i];
+    }
+
+    // Determine the coordinates of the sub-tensor to extract.
+    assert(starts.size() == ends.size());
+    for (size_t i = 0; i < axes.size(); i++) {
+      ssize_t newStart = starts[i];
+      ssize_t newEnd = ends[i];
+      ssize_t axisId = axes[i];
+      assert((axisId >= 0) && (axisId < ssize_t(numDims)) &&
+             "Axes indexes must be within the input tensor range.");
+
+      // ONNX: "If the value passed to start or end is larger than the n (the
+      // number of elements in this dimension), it represents n".
+      if (newStart > ssize_t(dims[axisId])) {
+        newStart = ssize_t(dims[axisId]);
+      }
+      if (newEnd > ssize_t(dims[axisId])) {
+        newEnd = ssize_t(dims[axisId]);
+      }
+
+      // The ONNX description is unclear and the numpy definition is more
+      // accurate.
+      // - ONNX: "Similar to numpy. [...]. If a negative value is passed for any
+      // of the start or end indices, it represent number of elements before the
+      // end of that dimension."
+      // - Numpy: "Negative indices are interpreted as counting from the end of
+      // the array (i.e., if n_i < 0, it means n_i + d_i)."
+      if (newStart < 0) {
+        newStart = ssize_t(dims[axisId]) + newStart;
+        assert(newStart >= 0 &&
+               "Slice: final start index should never be negative.");
+      }
+      if (newEnd < 0) {
+        newEnd = ssize_t(dims[axisId]) + newEnd;
+        assert(newEnd >= 0 &&
+               "Slice: final end index should never be negative.");
+      }
+
+      newStarts[axisId] = size_t(newStart);
+      newEnds[axisId] = size_t(newEnd);
+    }
+
+    // Create the IR node.
+    Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+    addNodeAsOutput(op, SN);
+
+    return true;
+  }
+
   if (typeName == "Conv") {
     // Load the attributes
     std::vector<unsigned_t> strides(2, 1);
