@@ -30,10 +30,10 @@ llvm::cl::opt<std::string> OutputFilename(llvm::cl::Positional,
                                           llvm::cl::desc("<output file>"),
                                           llvm::cl::Required);
 llvm::cl::OptionCategory QuantizationCat("Quantization Options");
-llvm::cl::opt<float> QuantizationScale("scale",
-                                       llvm::cl::desc("Quantization scale"),
-                                       llvm::cl::init(NAN),
-                                       llvm::cl::cat(QuantizationCat));
+llvm::cl::opt<float> QuantizationScale(
+    "scale",
+    llvm::cl::desc("Quantization scale. If NaN, no quantization is performed."),
+    llvm::cl::init(NAN), llvm::cl::cat(QuantizationCat));
 llvm::cl::opt<int> QuantizationOffset("offset",
                                       llvm::cl::desc("Quantization offset"),
                                       llvm::cl::init(0),
