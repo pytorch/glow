@@ -18,6 +18,9 @@
 // Silence Apple's warning about the deprecation of OpenCL.
 #define CL_SILENCE_DEPRECATION
 
+// Silence warnings about using deprecated OpenCL 1.2 functions.
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+
 #include "OpenCL.h"
 
 #include "glow/Backends/BackendUtils.h"
