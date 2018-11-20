@@ -149,8 +149,8 @@ protected:
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
                          glow::ElemKind kind);
-  /// Generates LLVM IR that materializes the constant array \p vals. Note
-  /// that it will cast non-size_t types T into size_t.
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// it will cast non-size_t types T into size_t.
   template <typename T>
   llvm::Value *emitConstSizeTArray(llvm::IRBuilder<> &builder,
                                    llvm::ArrayRef<T> vals);
@@ -160,23 +160,23 @@ protected:
   llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
                               llvm::ArrayRef<llvm::Constant *> vals,
                               llvm::Type *elemTy);
-  /// Generates LLVM IR that computes the dimensions of \p val using \p
-  /// builder. The result type is "size_t*".
+  /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
+  /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,
                              const glow::Value *val);
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
   void loadBaseAddresses(llvm::IRBuilder<> &builder);
-  /// Create a function representing a stacked kernel for instructions
-  /// provided in \p stackedInstrs.
+  /// Create a function representing a stacked kernel for instructions provided
+  /// in \p stackedInstrs.
   void
   emitDataParallelKernel(llvm::IRBuilder<> &builder,
                          llvm::ArrayRef<const Instruction *> stackedInstrs);
-  /// Emit IR for the data parallel instruction \p I which is invoked inside
-  /// the stacked \p kernel. The current loop count is described by \p
-  /// loopCount. The \p bufferToArgNum map can be used to find the required
-  /// buffers, which are provided as arguments to the stacked \p kernel.
+  /// Emit IR for the data parallel instruction \p I which is invoked inside the
+  /// stacked \p kernel. The current loop count is described by \p loopCount.
+  /// The \p bufferToArgNum map can be used to find the required buffers, which
+  /// are provided as arguments to the stacked \p kernel.
   void generateLLVMIRForDataParallelInstr(
       llvm::IRBuilder<> &builder, const glow::Instruction *I,
       llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
@@ -198,14 +198,14 @@ protected:
                                                    llvm::DIScope *scope,
                                                    llvm::DIFile *file,
                                                    unsigned lineNo);
-  /// Emit a debug info for the logical global variable representing a weight
-  /// or an activation described by \p val. This allows for inspecting the
-  /// values of weights and activations when using a debugger. Logical global
-  /// variables are not materialized and do not require any additional memory
-  /// to be reserved or allocated. Instead, they reside at offsets described
-  /// by AllocationsInfo inside the memory blocks dynamically allocated by
-  /// clients for weights and activations, but behave like regular global
-  /// variables from the debugger's perspective.
+  /// Emit a debug info for the logical global variable representing a weight or
+  /// an activation described by \p val. This allows for inspecting the values
+  /// of weights and activations when using a debugger. Logical global variables
+  /// are not materialized and do not require any additional memory to be
+  /// reserved or allocated. Instead, they reside at offsets described by
+  /// AllocationsInfo inside the memory blocks dynamically allocated by clients
+  /// for weights and activations, but behave like regular global variables from
+  /// the debugger's perspective.
   void emitDebugGlobalVariableForValue(const Value *val);
 
 public:
@@ -227,8 +227,8 @@ public:
   llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
   llvm::Function *getFunction(const std::string &name, glow::ElemKind elemTy);
-  /// Creates global variables for the base addresses of different memory
-  /// areas and invokes a library function to set their values.
+  /// Creates global variables for the base addresses of different memory areas
+  /// and invokes a library function to set their values.
   void
   createGlobalVariables(llvm::IRBuilder<> &builder,
                         llvm::ArrayRef<llvm::Value *> initFunctionCallArgs);
