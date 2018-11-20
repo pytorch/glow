@@ -580,6 +580,7 @@ TEST(onnx, constant) {
   {
     ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
     output = onnxLD.getSingleOutput();
+    EXPECT_NE(output, nullptr);
   }
   // Constant -> Save -> PH
   ASSERT_EQ(mod.getPlaceholders().size(), 1);
