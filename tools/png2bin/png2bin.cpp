@@ -19,6 +19,8 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Quantization/Base/Base.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <cmath>
 
 using namespace glow;
