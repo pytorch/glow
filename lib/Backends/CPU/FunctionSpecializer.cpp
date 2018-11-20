@@ -73,6 +73,7 @@ llvm::Value *getConstantValue(llvm::Value *v) {
 /// specialized.
 static void addArgToBeSpecialized(uint64_t &argsToBeSpecialized,
                                   unsigned argIdx) {
+  assert(argIdx < 64 && "argIdx exceeds 64");
   argsToBeSpecialized |= (((uint64_t)1) << argIdx);
 }
 
@@ -80,6 +81,7 @@ static void addArgToBeSpecialized(uint64_t &argsToBeSpecialized,
 /// the \p argsToBeSpecialized mask.
 static bool isArgToBeSpecialized(uint64_t argsToBeSpecialized,
                                  unsigned argIdx) {
+  assert(argIdx < 64 && "argIdx exceeds 64");
   return argsToBeSpecialized & (((uint64_t)1) << argIdx);
 }
 
@@ -98,11 +100,20 @@ class FunctionSpecializer {
 
   /// \returns True if the argument \p arg needs to be specialized in the
   /// function.
-  /// NOTE: Currently, the decision is based solely on the type of the argument
-  /// \p arg. In the future, we may need to improve this logic by taking into
-  /// account the semantics of the argument or even the specifics of the
-  /// function call being specialized.
-  bool shouldSpecializeParameter(llvm::Value *arg) {
+  /// NOTE: Currently, the decision is based on the type of the argument
+  /// \p arg and position of the arg \p argIdx. \p callee is not used. In the
+  /// future, we may need to improve this logic by taking into account the
+  /// semantics of the argument or even the specifics of the function call being
+  /// specialized.
+  bool shouldSpecializeParameter(llvm::Value *arg, unsigned argIdx,
+                                 llvm::Function *callee) {
+    //  Don't specialize argument index exceeding 63 because we only have 64
+    //  bitmap to index the arguments (check `isArgToBeSpecialized` and
+    //  `addArgToBeSpecialized`)
+    if (argIdx > 63) {
+      return false;
+    }
+
     // This flag force-specializes all arguments.
     if (jitSpecializeAllArguments_) {
       return true;
@@ -267,7 +278,7 @@ public:
     for (auto &arg : call->arg_operands()) {
       auto curArgIdx = argIdx++;
 
-      if (!shouldSpecializeParameter(arg)) {
+      if (!shouldSpecializeParameter(arg, curArgIdx, callee)) {
         argsForSpecialized.push_back(arg);
         continue;
       }
