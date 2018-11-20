@@ -22,7 +22,6 @@
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
-#include "llvm/ADT/APInt.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 

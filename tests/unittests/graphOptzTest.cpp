@@ -2185,8 +2185,10 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
   EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
 }
 
-/// Test that Transpose is sunk below ChannelShuffle.
-TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
+/// Test that Transpose is sunk below ChannelShuffle and cancels with an inverse
+/// transpose below the ChannelShuffle. This test is models a pattern that has
+/// has been observed in shufflenet during graph optimization.
+TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   const size_t inputDims[] = {3, 28, 28, 136};
 
   Node *K =
@@ -2201,7 +2203,7 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodes) {
   // Optimize away the unnecessary transposes.
   optimize(F_, CompilationMode::Infer);
 
-  // Ensure the two unnecessary transposes a gone.
+  // Ensure the two unnecessary transposes are gone.
   ASSERT_EQ(F_->getNodes().size(), 4);
 
   // Check that the channel shuffle nodes are still there.
