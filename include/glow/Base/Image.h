@@ -16,6 +16,10 @@
 #ifndef GLOW_BASE_IMAGE_H
 #define GLOW_BASE_IMAGE_H
 
+#ifndef WITH_PNG
+#error "Using Glow's PNG library requires installing libpng"
+#endif
+
 #include "glow/Base/Tensor.h"
 
 #include <tuple>
