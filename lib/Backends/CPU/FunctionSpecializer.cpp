@@ -104,7 +104,15 @@ class FunctionSpecializer {
   /// \p arg. In the future, we may need to improve this logic by taking into
   /// account the semantics of the argument or even the specifics of the
   /// function call being specialized.
-  bool shouldSpecializeParameter(llvm::Value *arg) {
+  bool shouldSpecializeParameter(llvm::Value *arg, unsigned argIdx,
+                                 llvm::Function * /* unused */) {
+    //  Don't specialize argument index exceeding 63 because we only have 64
+    //  bitmap to index the arguments (check `isArgToBeSpecialized` and
+    //  `addArgToBeSpecialized`)
+    if (argIdx > 63) {
+      return false;
+    }
+
     // This flag force-specializes all arguments.
     if (jitSpecializeAllArguments_) {
       return true;
@@ -269,7 +277,7 @@ public:
     for (auto &arg : call->arg_operands()) {
       auto curArgIdx = argIdx++;
 
-      if (curArgIdx > 63 || !shouldSpecializeParameter(arg)) {
+      if (!shouldSpecializeParameter(arg, curArgIdx, callee)) {
         argsForSpecialized.push_back(arg);
         continue;
       }
