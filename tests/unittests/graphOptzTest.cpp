@@ -2227,3 +2227,49 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
   // transpose should be eliminated and replaced by the transposed constant.
   EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
 }
+
+/// Test that Transpose is sunk below ChannelShuffle and cancels with an inverse
+/// transpose below the ChannelShuffle. This test is models a pattern that has
+/// has been observed in shufflenet during graph optimization.
+TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
+  const size_t inputDims[] = {3, 28, 28, 136};
+
+  Node *K =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  K = F_->createTranspose("unnecessary_transpose_1", K, {0, 3, 1, 2});
+  K = F_->createChannelShuffle("channel_shuffle", K, 4, 1);
+  K = F_->createTranspose("unnecessary_transpose_2", K, {0, 2, 3, 1});
+  auto *save = F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  // Optimize away the unnecessary transposes.
+  optimize(F_, CompilationMode::Infer);
+
+  // Ensure the two unnecessary transposes are gone.
+  ASSERT_EQ(F_->getNodes().size(), 4);
+
+  // Check that the channel shuffle nodes are still there.
+  auto *postShuffleRN = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, postShuffleRN);
+  auto *shuffleTR =
+      llvm::dyn_cast<TransposeNode>(postShuffleRN->getInput().getNode());
+  ASSERT_NE(nullptr, shuffleTR);
+  auto *preShuffleRN =
+      llvm::dyn_cast<ReshapeNode>(shuffleTR->getInput().getNode());
+  ASSERT_NE(nullptr, preShuffleRN);
+
+  // Ensure last reshape has the same dimensions as the input.
+  EXPECT_EQ(postShuffleRN->getDims(), llvm::makeArrayRef(inputDims));
+
+  // Ensure the transpose in the middle of the reshapes shuffles the last
+  // dimension of the input.
+  const unsigned_t expectedShuffleTRShuffle[] = {0, 1, 2, 4, 3};
+  EXPECT_EQ(shuffleTR->getShuffle(),
+            llvm::makeArrayRef(expectedShuffleTRShuffle));
+
+  // Ensure the first reshape expands the last dimension of the input.
+  const size_t expectedPreShuffleRNDims[] = {3, 28, 28, 4, 34};
+  EXPECT_EQ(preShuffleRN->getDims(),
+            llvm::makeArrayRef(expectedPreShuffleRNDims));
+}

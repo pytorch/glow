@@ -205,6 +205,96 @@ static Node *simplifyNode(Node *node, Function *F) {
   return node;
 }
 
+/// Parameters that are used to define ChannelShuffle operators.
+struct ChannelShuffleParams {
+  size_t group;
+  size_t kernel;
+};
+
+/// Compute the original parameters to the ChannelShuffle operator (represented
+/// as ReshapeNode->TransposeNode->ReshapeNode) for which \p node is the leading
+/// ReshapeNode. \returns The original ChannelShuffle parameters if possible and
+/// empty Optional otherwise.
+static llvm::Optional<ChannelShuffleParams>
+getChannelShuffleParams(const ReshapeNode &node) {
+  auto resM = llvm::Optional<ChannelShuffleParams>();
+
+  llvm::ArrayRef<size_t> inputDims = node.getInput().dims();
+  llvm::ArrayRef<size_t> resultDims = node.getDims();
+
+  // Check that there is one more output dimension than input dimension.
+  if (resultDims.size() != inputDims.size() + 1) {
+    return resM;
+  }
+
+  // Find the first output dimension that doesn't match its corresponding input
+  // dimension.
+  ChannelShuffleParams params;
+  bool found = false;
+  for (size_t i = 0, e = resultDims.size(); i < e - 1; ++i) {
+    if (inputDims[i] != resultDims[i]) {
+      params.kernel = i;
+      params.group = resultDims[i];
+      found = true;
+      break;
+    }
+  }
+
+  // Double check the property that the mismatched output found dimension and
+  // its successor together evenly multiply to the input dimension they
+  // mismatched on.
+  if (found && resultDims[params.kernel] * resultDims[params.kernel + 1] ==
+                   inputDims[params.kernel]) {
+    resM = params;
+  }
+
+  return resM;
+}
+
+/// Sink Transpose below ChannelShuffle node sequence ending with \p
+/// postShuffleRN. For example (Transpose_1->Reshape_1->Transpose_2->Reshape_2)
+/// becomes (Reshape_1->Transpose_2->Reshape_2->Transpose_1). \returns true if
+/// tranpose was sunk below ChannelShuffle node sequence and false otherwise.
+static bool sinkTranposeBelowChannelShuffle(Function *F,
+                                            ReshapeNode *postShuffleRN) {
+  auto *shuffleTR = dyn_cast<TransposeNode>(postShuffleRN->getInput());
+  if (!shuffleTR) {
+    return false;
+  }
+
+  auto *preShuffleRN = dyn_cast<ReshapeNode>(shuffleTR->getInput());
+  if (!preShuffleRN) {
+    return false;
+  }
+
+  auto *sinkingTR = dyn_cast<TransposeNode>(preShuffleRN->getInput());
+  if (!sinkingTR) {
+    return false;
+  }
+
+  // Compute the original parameters to ChannelShuffle.
+  auto paramsM = getChannelShuffleParams(*preShuffleRN);
+
+  if (!paramsM.hasValue()) {
+    return false;
+  }
+
+  // Create a new ChannelShuffle with kernel parameter tranposed by the
+  // sinkingTR's shuffle because that Transpose will now be moved below this
+  // ChannelShuffle operator.
+  auto *newChannelShuffle = F->createChannelShuffle(
+      "channel_shuffle", sinkingTR->getInput(), paramsM->group,
+      sinkingTR->getShuffle()[paramsM->kernel]);
+
+  // Create a copy of sinkingTR and insert after newChannelShuffle.
+  auto *newSinkingTR = F->createTranspose(
+      sinkingTR->getName(), newChannelShuffle, sinkingTR->getShuffle());
+
+  postShuffleRN->getResult().replaceAllUsesOfWith(newSinkingTR);
+
+  return true;
+}
+
 /// Code Sinking.
 /// \returns true if code sinking was successful.
 static bool sinkCode(Function *F) {
@@ -321,6 +411,14 @@ static bool sinkCode(Function *F) {
       // them alltogether.
       if (isIdentityShuffle(mask1, mask2)) {
         TR1->getResult().replaceAllUsesOfWith(TR2->getInput());
+        changed = true;
+        continue;
+      }
+    }
+
+    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
+      // Sink Transpose below ChannelShuffle.
+      if (sinkTranposeBelowChannelShuffle(F, RN)) {
         changed = true;
         continue;
       }
