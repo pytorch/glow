@@ -49,19 +49,16 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  // In case backendIDs are not set, just return total number of supported
-  // backends.
-  if (!backendIDs) {
-#ifdef GLOW_WITH_CPU
-    *numBackends = 2;
-#else
-    *numBackends = 1;
-#endif
-    return ONNXIFI_STATUS_FALLBACK;
-  }
+  const size_t numBackendsCapacity = *numBackends;
 
 #ifdef GLOW_WITH_CPU
   *numBackends = 2;
+
+  // In case backendIDs is nullptr or does not have enough capacity just return
+  // the total number of supported backends.
+  if (numBackendsCapacity < *numBackends || !backendIDs) {
+    return ONNXIFI_STATUS_FALLBACK;
+  }
 
   // TODO: change concurrency level to std::thread::hardware_concurrency()
   // when Glow CPU backend can handle concurrent execution.
@@ -72,6 +69,13 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
                                                /*id*/ 2, /*concurrency*/ 1);
 #else
   *numBackends = 1;
+
+  // In case backendIDs is nullptr or does not have enough capacity just return
+  // the total number of supported backends.
+  if (numBackendsCapacity < *numBackends || !backendIDs) {
+    return ONNXIFI_STATUS_FALLBACK;
+  }
+
   backendIDs[0] = new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
                                                /*id*/ 1, /*concurrency*/ 1);
 #endif
