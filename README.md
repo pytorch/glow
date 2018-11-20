@@ -107,8 +107,38 @@ Finally, in order to support the ONNX net serialization format, Glow requires
 version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
 at `utils/install_protobuf.sh` to install a newer version from source.
 
-Note that OpenCL support is not trivial on Linux. We suggest building without
-OpenCL the first time.
+#### OpenCL on Ubuntu
+
+Installing OpenCL can be nontrivial on Linux. We suggest building without OpenCL
+the first time. If you want to use OpenCL on Ubuntu, the following steps may be
+helpful:
+
+1. Install necessary packages:
+
+  ```bash
+  sudo apt-get install ocl-icd-opencl-dev ocl-icd-libopencl1 opencl-headers \
+      clinfo
+  ```
+
+2. Install the appropriate runtime for your CPU/GPU. This will depend on your
+hardware. If you have an Intel CPU with onboard graphics, you can navigate to
+Intel's compute-runtime releases page on Github at
+https://github.com/intel/compute-runtime/releases/ and follow their
+instructions. You will probably want to choose the latest release and then
+download and install about ~4 prebuilt packages. At the time of this writing,
+the prebuilt packages of compute-runtime Release 18.45.11804 ran successfully
+with Glow on an Intel Core i7-7600U running Ubuntu 16.04.1.
+
+3. To determine if installation was successful, you can run the following
+command:
+
+  ```bash
+  clinfo
+  ```
+
+This will display information about your OpenCL platforms and devices (if
+found). Lastly, build Glow with the cmake flag `-DGLOW_WITH_OPENCL=ON` and run
+the test `OCLTest`.
 
 ### Configure and build
 
