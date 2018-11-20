@@ -22,6 +22,16 @@
 #define __has_builtin(builtin) 0
 #endif
 
+#if defined(EXTRA_DEBUG)
+#define DEBUG_ASSERT(e)                                                        \
+  ((void)((e) ? ((void)0) : DEBUG_ASSERT_IMPL(#e, __FILE__, __LINE__)))
+#define DEBUG_ASSERT_IMPL(e, file, line)                                       \
+  ((void)fprintf(stderr, "%s:%u: failed assertion `%s'\n", file, line, e),     \
+   abort())
+#else
+#define DEBUG_ASSERT(e)
+#endif
+
 #define GLOW_ASSERT(e)                                                         \
   ((void)((e) ? ((void)0) : GLOW_ASSERT_IMPL(#e, __FILE__, __LINE__)))
 #define GLOW_ASSERT_IMPL(e, file, line)                                        \

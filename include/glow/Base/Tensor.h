@@ -551,6 +551,7 @@ public:
   /// interpreter functions (convolution, etc.) that would otherwise be unusably
   /// slow in Debug mode.
   size_t unsafe_getElementPtr(llvm::ArrayRef<size_t> indices) const {
+    DEBUG_ASSERT(indices.size() <= numDims_ && "Invalid number of indices");
     // The loop below can be rewritten using std::inner_product. Unfortunately
     // std::inner_product does not optimize very well and loops that use this
     // method don't get vectorized. Don't change this loop without benchmarking
@@ -567,7 +568,9 @@ public:
   /// functions (convolution, etc.) that would otherwise be unusably slow in
   /// Debug mode.
   ElemTy &unsafe_at(llvm::ArrayRef<size_t> indices) {
+    DEBUG_ASSERT(tensor_->isInBounds(indices));
     size_t index = unsafe_getElementPtr(indices);
+    DEBUG_ASSERT(index < size() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -576,7 +579,9 @@ public:
   /// functions (convolution, etc.) that would otherwise be unusably slow in
   /// Debug mode.
   const ElemTy &unsafe_at(llvm::ArrayRef<size_t> indices) const {
+    DEBUG_ASSERT(tensor_->isInBounds(indices));
     size_t index = unsafe_getElementPtr(indices);
+    DEBUG_ASSERT(index < size() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
