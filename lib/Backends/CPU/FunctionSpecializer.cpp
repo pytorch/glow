@@ -100,12 +100,13 @@ class FunctionSpecializer {
 
   /// \returns True if the argument \p arg needs to be specialized in the
   /// function.
-  /// NOTE: Currently, the decision is based solely on the type of the argument
-  /// \p arg. In the future, we may need to improve this logic by taking into
-  /// account the semantics of the argument or even the specifics of the
-  /// function call being specialized.
+  /// NOTE: Currently, the decision is based on the type of the argument
+  /// \p arg and position of the arg \p argIdx. \p callee is not used. In the
+  /// future, we may need to improve this logic by taking into account the
+  /// semantics of the argument or even the specifics of the function call being
+  /// specialized.
   bool shouldSpecializeParameter(llvm::Value *arg, unsigned argIdx,
-                                 llvm::Function * /* unused */) {
+                                 llvm::Function *callee) {
     //  Don't specialize argument index exceeding 63 because we only have 64
     //  bitmap to index the arguments (check `isArgToBeSpecialized` and
     //  `addArgToBeSpecialized`)
