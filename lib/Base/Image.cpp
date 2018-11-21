@@ -22,7 +22,6 @@
 
 using namespace glow;
 
-#if WITH_PNG
 #include <png.h>
 
 namespace glow {
@@ -383,22 +382,3 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
   }
   return imageData;
 }
-#else
-bool glow::readPngImage(Tensor *T, const char *filename,
-                        std::pair<float, float> range) {
-  GLOW_ASSERT(false && "Not configured with libpng");
-}
-
-bool glow::writePngImage(Tensor *T, const char *filename,
-                         std::pair<float, float> range) {
-  GLOW_ASSERT(false && "Not configured with libpng");
-}
-
-Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
-                                       ImageNormalizationMode imageNormMode,
-                                       ImageChannelOrder imageChannelOrder,
-                                       ImageLayout imageLayout,
-                                       bool useImagenetNormalization) {
-  GLOW_ASSERT(false && "Not configured with libpng");
-}
-#endif

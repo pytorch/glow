@@ -48,6 +48,9 @@ file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
+if(PNG_FOUND)
+  add_definitions(-DWITH_PNG)
+endif()
 
 if(GLOW_WITH_CPU)
   add_definitions(-DGLOW_WITH_CPU=1)
