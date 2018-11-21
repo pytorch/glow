@@ -80,6 +80,15 @@ struct DebugInfo {
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
+private:
+  /// Implementation of emitDataParallelKernel where we bound the number of
+  /// inputs to 64.
+  void emitDataParallelKernelImpl(llvm::IRBuilder<> &builder,
+                                  llvm::ArrayRef<const Instruction *> bundle,
+                                  llvm::ArrayRef<llvm::Type *> argTypes,
+                                  llvm::DenseMap<Value *, int> &bufferToArgNum,
+                                  llvm::ArrayRef<llvm::Value *> buffers);
+
 protected:
   /// The IR to generate code for.
   const IRFunction *F_;
