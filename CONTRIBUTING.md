@@ -39,10 +39,12 @@ clear and has sufficient instructions to be able to reproduce the issue.
 
 * Artem Rakhov ([artemrakhov](https://github.com/artemrakhov))
 * Bert Maher ([bertmaher](https://github.com/bertmaher))
+* Garret Catron ([gcatron](https://github.com/gcatron))
 * Jakob Stoklund Olesen ([stoklund](https://github.com/stoklund))
 * James Hegeman ([hegemanjwh2](https://github.com/hegemanjwh2))
 * Jordan Fix ([jfix71](https://github.com/jfix71))
 * Man Wang ([beicy](https://github.com/beicy))
+* Meghan Lele ([SplitInfinity](https://github.com/SplitInfinity))
 * Nadav Rotem ([nadavrot](https://github.com/nadavrot))
 * Quentin Colombet ([qcolombet](https://github.com/qcolombet))
 * Roman Dzhabarov ([rdzhabarov](https://github.com/rdzhabarov))
