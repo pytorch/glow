@@ -250,7 +250,7 @@ To get started, please refer to the following guides:
 
 ### Communication
 
-* forums: discuss implementations, research, etc. http://discuss.pytorch.org.
+* Forums: discuss implementations, research, etc: https://discuss.pytorch.org/c/glow.
   Make sure to label topic with the ["glow"](https://discuss.pytorch.org/c/glow) category.
 * GitHub issues: bug reports, feature requests, install issues, RFCs, thoughts, etc.
 
