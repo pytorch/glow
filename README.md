@@ -109,9 +109,13 @@ at `utils/install_protobuf.sh` to install a newer version from source.
 
 #### OpenCL on Ubuntu
 
-Installing OpenCL can be nontrivial on Linux. We suggest building without OpenCL
-the first time. If you want to use OpenCL on Ubuntu, the following steps may be
-helpful:
+If you decide to use OpenCL, the easiest way is to install
+portable open source implementation of the OpenCL standard,
+[pocl](https://github.com/pocl/pocl). Glow relies on pocl to run OpenCL tests
+on CI. All required steps are outlined in the [install_pocl]
+(https://github.com/pytorch/glow/blob/master/.circleci/build.sh#L9) method.
+
+Alternatively, you can follow these steps:
 
 1. Install necessary packages:
 
