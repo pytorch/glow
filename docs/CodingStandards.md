@@ -86,4 +86,6 @@ the review process by eliminating round-trips for feedback.
 * Comments are complete sentences: begin with a capital, end with a period.
 * Add Doxygen comments to every new class, method, function, global, etc.
 * Boolean arguments should be tagged with a /* name_of_param */ comment.
-* Always clang-format!  (The linter will catch this, but it never hurts.)
+* Always clang-format!
+  Use [format.sh tool](https://github.com/pytorch/glow/blob/master/utils/format.sh) with the
+  `fix` argument. (The linter will catch this, but it never hurts.)
