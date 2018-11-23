@@ -147,10 +147,11 @@ void pack_matrix_b(size_t n, size_t k, const float *b, size_t ldb,
 /// because packed matrices need to be more more sensitive to cache locality,
 /// and N strides over the B matrix, which is very large and will blow out the
 /// cache.
-void libjit_matmul_inner_packed(int m, int n, int k, const float *packedA,
-                                const float *packedB, float *c, int ldc) {
-  for (int j = 0; j < n - nr + 1; j += nr) {
-    for (int i = 0; i < m - mr + 1; i += mr) {
+void libjit_matmul_inner_packed(size_t m, size_t n, size_t k,
+                                const float *packedA, const float *packedB,
+                                float *c, int ldc) {
+  for (size_t j = 0; j < n - nr + 1; j += nr) {
+    for (size_t i = 0; i < m - mr + 1; i += mr) {
       libjit_matmul_zdot<regsA, regsB>(k, &packedA[i * k], mr, &packedB[j * k],
                                        k, &C(i, j), ldc);
     }
@@ -159,10 +160,11 @@ void libjit_matmul_inner_packed(int m, int n, int k, const float *packedA,
 
 /// Inner kernel for non-packed matrices.  In these cases N is small, so it
 /// tends to be beneficial to retain locality in the A matrix.
-void libjit_matmul_inner_unpacked(int m, int n, int k, const float *a, int lda,
-                                  const float *b, int ldb, float *c, int ldc) {
-  for (int i = 0; i < m - mr + 1; i += mr) {
-    for (int j = 0; j < n - nr + 1; j += nr) {
+void libjit_matmul_inner_unpacked(size_t m, size_t n, size_t k, const float *a,
+                                  int lda, const float *b, int ldb, float *c,
+                                  int ldc) {
+  for (size_t i = 0; i < m - mr + 1; i += mr) {
+    for (size_t j = 0; j < n - nr + 1; j += nr) {
       libjit_matmul_dot<regsA, regsB>(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j),
                                       ldc);
     }
@@ -172,7 +174,7 @@ void libjit_matmul_inner_unpacked(int m, int n, int k, const float *a, int lda,
 /// Compute a portion of C one block at a time.  Handle ragged edges with calls
 /// to a slow but general helper.
 template <bool pack>
-void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
+void libjit_matmul_inner(size_t m, size_t n, size_t k, const float *a, int lda,
                          const float *b, int ldb, float *c, int ldc,
                          float *packedB) {
   // The tiling scheme naturally divides the input matrices into 2 parts each;
@@ -271,9 +273,9 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
   //
   // The matrix multiplication routine is heavily inspired by:
   // https://github.com/flame/how-to-optimize-gemm
-  int m = cDims[1];
-  int n = cDims[0];
-  int k = aDims[1];
+  size_t m = cDims[1];
+  size_t n = cDims[0];
+  size_t k = aDims[1];
   bool pack = m >= pack_threshold;
   if (pack) {
     libjit_matmul_outer<true>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
