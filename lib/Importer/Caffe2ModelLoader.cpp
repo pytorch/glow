@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -25,7 +26,6 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -58,69 +58,74 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static std::vector<unsigned_t> getPads(const ArgumentDictionaryTy &dict) {
+static llvm::Expected<std::vector<unsigned_t>>
+getPads(const ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
-    int pad = loadInt(dict.at("pad"));
+    int pad;
+    ASSIGN_VALUE_OR_RETURN_ERR(pad, loadInt(dict.at("pad")));
     std::vector<unsigned_t> pads(4, pad);
     return pads;
   }
   if (dict.count("pad_t")) {
     std::vector<unsigned_t> pads(4);
-    pads[0] = loadInt(dict.at("pad_t"));
-    assert(dict.count("pad_l") && "missing pad_l");
-    pads[1] = loadInt(dict.at("pad_l"));
-    assert(dict.count("pad_b") && "missing pad_b");
-    pads[2] = loadInt(dict.at("pad_b"));
-    assert(dict.count("pad_r") && "missing pad_r");
-    pads[3] = loadInt(dict.at("pad_r"));
+    ASSIGN_VALUE_OR_RETURN_ERR(pads[0], loadInt(dict.at("pad_t")));
+    RETURN_ERR_IF_NOT(dict.count("pad_l"), "missing pad_l");
+    ASSIGN_VALUE_OR_RETURN_ERR(pads[1], loadInt(dict.at("pad_l")));
+    RETURN_ERR_IF_NOT(dict.count("pad_b"), "missing pad_b");
+    ASSIGN_VALUE_OR_RETURN_ERR(pads[2], loadInt(dict.at("pad_b")));
+    RETURN_ERR_IF_NOT(dict.count("pad_r"), "missing pad_r");
+    ASSIGN_VALUE_OR_RETURN_ERR(pads[3], loadInt(dict.at("pad_r")));
     return pads;
   }
   if (dict.count("pads")) {
     return getShape<unsigned_t>(dict.at("pads"));
   }
   // Return default value 0 for pads.
-  return {0, 0, 0, 0};
+  return std::vector<unsigned_t>{0, 0, 0, 0};
 }
 
 /// Translates the "order" field of dictionary \p dict into a channel number.
-static unsigned_t getChannel(const ArgumentDictionaryTy &dict) {
+static llvm::Expected<unsigned_t> getChannel(const ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
   auto orderIt = dict.find("order");
   if (orderIt != dict.end()) {
-    order = loadStr(orderIt->second);
+    ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(orderIt->second));
   }
   if (order == "NHWC") {
     return 3;
   } else if (order == "NCHW") {
     return 1;
   }
-  GLOW_ASSERT(false && "Invalid order field");
+  RETURN_ERR("Invalid order field");
 }
 
-static std::vector<unsigned_t> getSizeHW(ArgumentDictionaryTy &dict,
-                                         const std::string &name,
-                                         unsigned_t defaultValue) {
+static llvm::Expected<std::vector<unsigned_t>>
+getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
+          unsigned_t defaultValue) {
   if (dict.count(name)) {
-    int value = loadInt(dict[name]);
+    int value;
+    ASSIGN_VALUE_OR_RETURN_ERR(value, loadInt(dict[name]));
     std::vector<unsigned_t> result(2, value);
     return result;
   }
   if (dict.count(name + "_h") && dict.count(name + "_w")) {
     std::vector<unsigned_t> result(2);
-    result[0] = loadInt(dict[name + "_h"]);
-    result[1] = loadInt(dict[name + "_w"]);
+    ASSIGN_VALUE_OR_RETURN_ERR(result[0], loadInt(dict[name + "_h"]));
+    ASSIGN_VALUE_OR_RETURN_ERR(result[1], loadInt(dict[name + "_w"]));
     return result;
   }
   if (dict.count(name + "s")) {
     return getShape<unsigned_t>(dict.at(name + "s"));
   }
-  return {defaultValue, defaultValue};
+  return std::vector<unsigned_t>{defaultValue, defaultValue};
 }
 
-bool Caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
-                                      const std::string &filename) {
+llvm::Expected<caffe2::NetDef>
+Caffe2ModelLoader::loadProtoFile(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  GLOW_ASSERT(ff && "Can't find the model or network files.");
+  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.");
+
+  caffe2::NetDef net;
 
   bool parseNet = false;
   if (filename.find(".pbtxt") != std::string::npos) {
@@ -136,37 +141,56 @@ bool Caffe2ModelLoader::loadProtoFile(caffe2::NetDef &net,
     parseNet = net.ParseFromCodedStream(&codedstr);
   }
 
-  GLOW_ASSERT(parseNet && "Failed to parse the network descriptor.");
-  return true;
+  RETURN_ERR_IF_NOT(parseNet, "Failed to parse the network descriptor.");
+  return net;
 }
 
-bool Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
-  return dict.count("broadcast") && (loadInt(dict.at("broadcast")) == 1);
+llvm::Expected<bool>
+Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+  if (!dict.count("broadcast")) {
+    return false;
+  }
+  int broadcast;
+  ASSIGN_VALUE_OR_RETURN_ERR(broadcast, loadInt(dict.at("broadcast")));
+  return broadcast == 1;
 }
 
-void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
+llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
   // Check if operator is supported in parent class, CommonOperatorLoader.
-  if (tryLoadCommonOperator(typeName, op, dict)) {
-    // If operator is supported, CommonOperatorLoader loaded it to the Graph.
-    return;
+  bool loadCommonOperatorSuccess;
+  ASSIGN_VALUE_OR_RETURN_ERR(loadCommonOperatorSuccess,
+                             tryLoadCommonOperator(typeName, op, dict));
+  if (loadCommonOperatorSuccess) {
+    RETURN_SUCCESS();
   }
-
   const std::string &opName = loadOperatorName(op);
 
   if (typeName == "Conv" || typeName == "Int8Conv" ||
       typeName == "Int8ConvRelu") {
     // Load the inputs:
-    std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<unsigned_t> pads = getPads(dict);
-    std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
-    unsigned_t group = dict.count("group") ? loadInt(dict["group"]) : 1;
-    std::string order = dict.count("order") ? loadStr(dict["order"]) : "NCHW";
+    std::vector<unsigned_t> strides;
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getSizeHW(dict, "stride", 1));
+    std::vector<unsigned_t> pads;
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+    std::vector<unsigned_t> kernels;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernels, getSizeHW(dict, "kernel", 0));
+    unsigned_t group = 1;
+    if (dict.count("group")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
+    }
+    std::string order = "NCHW";
+    if (dict.count("order")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+    }
 
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    Tensor *w = getTensorByName(op.input(1));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    Tensor *w;
+    ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
 
     // Transpose the weights to the right format. Glow expects to read the
     // weights in the format CRSK.
@@ -262,7 +286,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       node = G_.createTranspose(opName, node, NHWC2NCHW);
     }
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Int8SumRelu") {
@@ -307,11 +331,19 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "MaxPool" || typeName == "AveragePool" ||
       typeName == "Int8MaxPool" || typeName == "Int8AveragePool") {
     // Load the inputs:
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    std::vector<unsigned_t> strides = getSizeHW(dict, "stride", 1);
-    std::vector<unsigned_t> kernels = getSizeHW(dict, "kernel", 0);
-    std::vector<unsigned_t> pads = getPads(dict);
-    std::string order = dict.count("order") ? loadStr(dict["order"]) : "NCHW";
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    std::vector<unsigned_t> strides;
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getSizeHW(dict, "stride", 1));
+    std::vector<unsigned_t> kernels;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernels, getSizeHW(dict, "kernel", 0));
+    std::vector<unsigned_t> pads;
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+    std::string order = "NCHW";
+    if (dict.count("order")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+    }
     // We expect the input to be NHWC.
     Node *tr;
     if (order == "NCHW") {
@@ -361,22 +393,29 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       node = G_.createTranspose(opName, node, NHWC2NCHW);
     }
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "SpatialBN") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    auto *scale = getTensorByName(op.input(1));
-    auto *bias = getTensorByName(op.input(2));
-    auto *mean = getTensorByName(op.input(3));
-    auto *var = getTensorByName(op.input(4));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    Tensor *scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorByName(op.input(1)));
+    Tensor *bias;
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getTensorByName(op.input(2)));
+    Tensor *mean;
+    ASSIGN_VALUE_OR_RETURN_ERR(mean, getTensorByName(op.input(3)));
+    Tensor *var;
+    ASSIGN_VALUE_OR_RETURN_ERR(var, getTensorByName(op.input(4)));
     float epsilon = 1e-5f; // default
     auto epsilonIt = dict.find("epsilon");
     if (epsilonIt != dict.end()) {
-      epsilon = loadFloat(epsilonIt->second);
+      ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
     }
 
-    auto channel = getChannel(dict);
+    unsigned_t channel;
+    ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
     auto *scaleV = G_.getParent()->createConstant("scale", *scale);
     auto *biasV = G_.getParent()->createConstant("bias", *bias);
     auto *meanV = G_.getParent()->createConstant("mean", *mean);
@@ -385,7 +424,7 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                              varV, channel, epsilon);
 
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Concat") {
@@ -393,24 +432,34 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     llvm::SmallVector<NodeValue, 4> inputs;
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
-      inputs.push_back(getNodeValueOrCreateConstantByName(op.input(i)));
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          in, getNodeValueOrCreateConstantByName(op.input(i)));
+      inputs.push_back(in);
     }
 
     // If axis exists it takes priority over channel.
-    unsigned_t channel =
-        dict.count("axis") ? loadInt(dict["axis"]) : getChannel(dict);
+    unsigned_t channel;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(channel, loadInt(dict["axis"]));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
+    }
 
     Node *node = G_.createConcat(opName, inputs, channel);
 
-    unsigned_t addAxis = dict.count("add_axis") ? loadInt(dict["add_axis"]) : 0;
+    unsigned_t addAxis = 0;
+    if (dict.count("add_axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(addAxis, loadInt(dict["add_axis"]));
+    }
 
     if (addAxis) {
       // When add axis is used, this means we have to add a new dimension before
       // the axis, instead of merging on the axis.
       std::vector<size_t> outputDims = inputs[0].dims();
       for (const auto &input : inputs) {
-        GLOW_ASSERT(
-            outputDims[channel] == input.dims()[channel] &&
+        RETURN_ERR_IF_NOT(
+            outputDims[channel] == input.dims()[channel],
             "inputs need all to have the same dims for concat with add_axis");
       }
       outputDims.insert(outputDims.begin() + channel, numInputs);
@@ -419,21 +468,32 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Concat has multiple outputs in Caffe2, but I believe the other output
     // (split_info) is not used for inference.
     nodeValueByName_[op.output(0)] = NodeValue(node, 0);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC") {
     // Load the inputs:
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     if (in.getType()->dims().size() > 2) {
-      size_t axis = dict.count("axis") ? loadInt(dict["axis"]) : 1;
+      size_t axis = 1;
+      if (dict.count("axis")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      }
+
       in = G_.createFlatten("fc.in", in, axis);
     }
 
     // Load weights.
-    Tensor *w = getTensorByName(op.input(1));
-    Tensor *b = getTensorByName(op.input(2));
-    unsigned_t axis_w = dict.count("axis_w") ? loadInt(dict["axis_w"]) : 1;
+    Tensor *w;
+    ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
+    Tensor *b;
+    ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(op.input(2)));
+    unsigned_t axis_w = 1;
+    if (dict.count("axis_w")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis_w, loadInt(dict["axis_w"]));
+    }
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
     // matrix size if necessay and then transpose it back.
@@ -479,146 +539,181 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Save the outputs:
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "ChannelShuffle") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
 
-    size_t group = loadInt(dict["group"]);
-    size_t kernel = loadInt(dict["kernel"]);
+    size_t group;
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
+    size_t kernel;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernel, loadInt(dict["kernel"]));
 
     Node *node = G_.createChannelShuffle(opName, in, group, kernel);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Squeeze") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Log") {
     // Load the inputs:
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     // Create the log:
     auto *R = G_.createLog(opName, in);
     addNodeAsOutput(op, R);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Logit") {
     // Load the input and (optional) epsilon clamping value:
-    auto input = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     auto epsIt = dict.find("eps");
     // default: 1e-6 (as in Caffe2)
-    auto eps = epsIt != dict.end() ? loadFloat(epsIt->second) : 1E-6f;
+    float eps = 1E-6f;
+    if (epsIt != dict.end()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(eps, loadFloat(epsIt->second));
+    }
+
     auto *node = G_.createLogit(opName, input, eps);
     // Save the outputs:
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "EQ") {
-    auto in0 = getNodeValueOrCreateConstantByName(op.input(0));
-    auto in1 = getNodeValueOrCreateConstantByName(op.input(1));
+    NodeValue in0;
+    ASSIGN_VALUE_OR_RETURN_ERR(in0,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue in1;
+    ASSIGN_VALUE_OR_RETURN_ERR(in1,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
     auto *node = G_.createCmpEQ(opName, in0, in1);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Tile") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    unsigned_t tiles = loadInt(dict["tiles"]);
-    unsigned_t axis = loadInt(dict["axis"]);
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    unsigned_t tiles;
+    ASSIGN_VALUE_OR_RETURN_ERR(tiles, loadInt(dict["tiles"]));
+    unsigned_t axis;
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
 
     auto *node = G_.createTile(opName, in, tiles, axis);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Free") {
     // Glow frees memory automatically.
-    return;
+    RETURN_SUCCESS();
   }
   if (typeName == "StopGradient") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     // Currently Caffe2 importer only supports inference.
     addNodeAsOutput(op, in);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Transpose") {
-    return loadTranspose(op, dict, "axes");
+    RETURN_IF_ERR(loadTranspose(op, dict, "axes"));
+    RETURN_SUCCESS();
   }
 
   if (typeName == "NCHW2NHWC") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createTranspose(opName, in, NCHW2NHWC);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "CopyCPUToMKL" || typeName == "CopyMKLToCPU" ||
       typeName == "Copy" || typeName == "EnsureCPUOutput" ||
       typeName == "EnsureDense") {
     // Glow does not support any of these ops now, so implement them as no-ops.
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     addNodeAsOutput(op, in);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Slice") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
 
     auto starts = getShape<ssize_t>(dict["starts"]);
     auto ends = getShape<ssize_t>(dict["ends"]);
 
     std::vector<size_t> newStarts, newEnds;
-    assert(starts.size() == ends.size());
+    RETURN_ERR_IF_NOT(starts.size() == ends.size(),
+                      "Slice starts and ends must be the same size.");
     for (size_t i = 0; i < starts.size(); i++) {
       ssize_t newStart = starts[i];
       if (newStart == -1) {
         newStart = data.dims()[i];
       }
-      assert(newStart >= 0 && "Indices should never be negative.");
+      RETURN_ERR_IF_NOT(newStart >= 0, "Indices should never be negative.");
       newStarts.push_back(newStart);
 
       ssize_t newEnd = ends[i];
       if (newEnd == -1) {
         newEnd = data.dims()[i];
       }
-      assert(newEnd >= 0 && "Indices should never be negative.");
+      RETURN_ERR_IF_NOT(newEnd >= 0, "Indices should never be negative.");
       newEnds.push_back(newEnd);
     }
 
     Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
     addNodeAsOutput(op, SN);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "MatMul") {
-    loadBatchMatMul(op, dict, false);
-    return;
+    RETURN_IF_ERR(loadBatchMatMul(op, dict, false));
+    RETURN_SUCCESS();
   }
 
   if (typeName == "Cast") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
-    int to = loadInt(dict["to"]);
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    int to;
+    ASSIGN_VALUE_OR_RETURN_ERR(to, loadInt(dict["to"]));
 
     switch (to) {
     case caffe2::TensorProto_DataType_FLOAT: {
-      assert(in.getElementType() == ElemKind::FloatTy &&
-             "Can only cast float to float.");
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::FloatTy,
+                        "Can only cast float to float.");
       break;
     }
     case caffe2::TensorProto_DataType_INT32:
     case caffe2::TensorProto_DataType_INT64: {
-      assert(in.getElementType() == ElemKind::Int64ITy &&
-             "Can only cast int to int.");
+      RETURN_ERR_IF_NOT(in.getElementType() == ElemKind::Int64ITy,
+                        "Can only cast int to int.");
       break;
     }
     default:
@@ -626,63 +721,77 @@ void Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     addNodeAsOutput(op, in);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "ScatterAssign") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
-    auto indices = getNodeValueOrCreateConstantByName(op.input(1));
-    auto slices = getNodeValueOrCreateConstantByName(op.input(2));
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
+    NodeValue slices;
+    ASSIGN_VALUE_OR_RETURN_ERR(slices,
+                               getNodeValueOrCreateConstantByName(op.input(2)));
 
     Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
     addNodeAsOutput(op, SAN);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "ConstantFill" || typeName == "GivenTensorIntFill" ||
       typeName == "GivenTensorInt64Fill") {
-    loadWeight(op);
-    return;
+    RETURN_IF_ERR(loadWeight(op));
+    RETURN_SUCCESS();
   }
 
   if (typeName == "SigmoidCrossEntropyWithLogits") {
-    auto logits = getNodeValueOrCreateConstantByName(op.input(0));
-    auto targets = getNodeValueOrCreateConstantByName(op.input(1));
+    NodeValue logits;
+    ASSIGN_VALUE_OR_RETURN_ERR(logits,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue targets;
+    ASSIGN_VALUE_OR_RETURN_ERR(targets,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
     Node *SCEL =
         G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
     addNodeAsOutput(op, SCEL);
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "AveragedLoss") {
-    auto in = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createBatchedReduceMean(opName, in, 0);
     addNodeAsOutput(op, node);
-    return;
+    RETURN_SUCCESS();
   }
 
-  unexpectedNodeError(op, "Unsupported operator.");
+  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
-void Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
+llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
-    loadOperator(op);
+    RETURN_IF_ERR(loadOperator(op));
   }
 
-  assert(net.external_output_size() &&
-         "Network needs external outputs defined.");
+  RETURN_ERR_IF_NOT(net.external_output_size(),
+                    "Network needs external outputs defined.");
 
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
-    auto r = getNodeValueByName(outputName);
+    NodeValue r;
+    ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
     auto *SN = G_.createSave("save_" + outputName, r);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
+  RETURN_SUCCESS();
 }
 
-void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
+llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -734,13 +843,14 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         unexpectedNodeError(op, "Unsupported data type for " + typeName);
       }
     } else {
-      unexpectedNodeError(op, "Unsupported data type for " + typeName);
+      RETURN_ERR(unexpectedNodeError(op, "Unsupported data type for " + typeName));
     }
 #undef LOAD_TENSOR_FILL
 
-    assert(i == T->size() && "The number of serialized values does not "
-                             "match the size of the tensor.");
-    return;
+    RETURN_ERR_IF_NOT(i == T->size(),
+                      "The number of serialized values does not "
+                      "match the size of the tensor.");
+    RETURN_SUCCESS();
   }
 
   // Load quantized tensors:
@@ -826,7 +936,7 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     // If the tensor is pre-populated by the user of this class then we don't
     // need to allocate a new tensor.
     if (tensors_.count(name)) {
-      return;
+      RETURN_SUCCESS();
     }
 
     auto *T = new Tensor();
@@ -838,24 +948,28 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     if (dict.count("shape")) {
       dims = getShape(dict["shape"]);
     } else {
-      assert(op.input_size() > 0 &&
-             "If no shape provided, must have input shape.");
+      RETURN_ERR_IF_NOT(op.input_size() > 0,
+                        "If no shape provided, must have input shape.");
       // It must be registered as a tensor because it must be statically set
       // already, as shapes must be statically known.
-      auto *in = getTensorByName(op.input(0));
+      Tensor *in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getTensorByName(op.input(0)));
       dims = in->dims();
     }
 
-    int to = dict.count("dtype") ? loadInt(dict["dtype"])
-                                 : caffe2::TensorProto_DataType_FLOAT;
+    int to = caffe2::TensorProto_DataType_FLOAT;
+    if (dict.count("dtype")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(to, loadInt(dict["dtype"]));
+    }
 
     switch (to) {
     case caffe2::TensorProto_DataType_FLOAT: {
       T->reset(ElemKind::FloatTy, dims);
       auto TH = T->getHandle<float>();
-      auto f = (dict.count("value") && dict["value"]->has_f())
-                   ? loadFloat(dict["value"])
-                   : 0.0f;
+      float f = 0.0f;
+      if ((dict.count("value") && dict["value"]->has_f())) {
+        ASSIGN_VALUE_OR_RETURN_ERR(f, loadFloat(dict["value"]));
+      }
       TH.clear(f);
       break;
     }
@@ -864,17 +978,18 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_BOOL: {
       T->reset(ElemKind::Int64ITy, dims);
       auto TH = T->getHandle<int64_t>();
-      auto i = (dict.count("value") && dict["value"]->has_i())
-                   ? loadInt(dict["value"])
-                   : 0;
+      int i = 0;
+      if ((dict.count("value") && dict["value"]->has_i())) {
+        ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
+      }
       TH.clear(i);
       break;
     }
     default:
-      llvm_unreachable("Unsupported datatype for ConstantFill.");
+      RETURN_ERR("Unsupported datatype for ConstantFill.");
     }
 
-    return;
+    RETURN_SUCCESS();
   }
 
   if (typeName == "UniformFill") {
@@ -902,8 +1017,10 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     auto dim = getShape(dict["shape"]);
     T->reset(ElemKind::FloatTy, dim);
     auto TH = T->getHandle<>();
-    float tensorMin = loadFloat(dict["min"]);
-    float tensorMax = loadFloat(dict["max"]);
+    float tensorMin;
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorMin, loadFloat(dict["min"]));
+    float tensorMax;
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorMax, loadFloat(dict["max"]));
 
 #ifndef NDEBUG
     llvm::outs() << "The model contains UniformFill operator, which generates"
@@ -913,16 +1030,17 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     for (size_t i = 0, e = T->size(); i != e; i++) {
       TH.raw(i) = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
-    return;
+    RETURN_SUCCESS();
   }
 
-  unexpectedNodeError(op, "Unsupported weight kind");
+  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
 }
 
-void Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+llvm::Error Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
-    loadWeight(op);
+    RETURN_IF_ERR(loadWeight(op));
   }
+  RETURN_SUCCESS();
 }
 
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
@@ -930,13 +1048,12 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<TypeRef> types, Function &F)
     : CommonOperatorLoader(names, types, F) {
-  // The caffe2 weights that we are deserializing.
-  caffe2::NetDef weightsDef;
   // The caffe2 network descriptor that we are deserializing.
-  caffe2::NetDef networkDef;
+  caffe2::NetDef networkDef = UNWRAP(loadProtoFile(netDescFilename));
 
-  loadProtoFile(networkDef, netDescFilename);
-  loadProtoFile(weightsDef, netWeightFilename);
-  loadWeights(weightsDef);
-  loadNetwork(networkDef);
+  // The caffe2 weights that we are deserializing.
+  caffe2::NetDef weightsDef = UNWRAP(loadProtoFile(netWeightFilename));
+
+  TEMP_UNWRAP(loadWeights(weightsDef));
+  TEMP_UNWRAP(loadNetwork(networkDef));
 }

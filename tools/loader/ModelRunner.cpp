@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
                                  *loader.getFunction()));
   }
-  Placeholder *output = LD->getSingleOutput();
+  Placeholder *output = UNWRAP(LD->getSingleOutput());
   auto *outputT = ctx.allocate(output);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info

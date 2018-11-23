@@ -28,18 +28,20 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   return true;
 }
 
-Tensor *ProtobufLoader::getTensorByName(llvm::StringRef name) {
-  assert(tensors_.count(name) &&
-         "There is no tensor registered with this name.");
+llvm::Expected<Tensor *> ProtobufLoader::getTensorByName(llvm::StringRef name) {
+  RETURN_ERR_IF_NOT(tensors_.count(name),
+                    "There is no tensor registered with this name.");
   return tensors_[name];
 }
 
-Placeholder *ProtobufLoader::getOutputByName(llvm::StringRef name) const {
-  assert(outputVarsByName_.count(name) &&
-         "There is no Variable registered with this name.");
+llvm::Expected<Placeholder *>
+ProtobufLoader::getOutputByName(llvm::StringRef name) const {
+  RETURN_ERR_IF_NOT(outputVarsByName_.count(name),
+                    "There is no Variable registered with this name.");
   auto it = outputVarsByName_.find(name);
-  assert(it != outputVarsByName_.end() &&
-         "No external output Variable was registered with this name.");
+  RETURN_ERR_IF_NOT(
+      it != outputVarsByName_.end(),
+      "No external output Variable was registered with this name.");
   return it->second;
 }
 
@@ -53,16 +55,18 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
   return NodeValue(nullptr);
 }
 
-NodeValue ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
-  assert(hasNodeByName(name) && "No node under that name");
+llvm::Expected<NodeValue>
+ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
+  RETURN_ERR_IF_NOT(hasNodeByName(name), "No node under that name");
   auto node = getNodeValueByNameOrNullNodeValue(name);
-  assert(node.getNode() && "Null is under that name??");
+  RETURN_ERR_IF_NOT(node.getNode(), "Null is under that name??");
   return node;
 }
 
-Constant *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
-                                                    const Tensor &tensor) {
-  assert(!hasNodeByName(name) && "Creating an already existing node");
+llvm::Expected<Constant *>
+ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+                                          const Tensor &tensor) {
+  RETURN_ERR_IF_NOT(!hasNodeByName(name), "Creating an already existing node");
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node = G_.getParent()->createConstant(name, tensor);
@@ -70,23 +74,26 @@ Constant *ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   return node;
 }
 
-Placeholder *ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name,
-                                                          TypeRef T) {
-  assert(!hasNodeByName(name) && "Creating an already existing node");
+llvm::Expected<Placeholder *>
+ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
+  RETURN_ERR_IF_NOT(!hasNodeByName(name), "Creating an already existing node");
   Placeholder *node = G_.getParent()->createPlaceholder(T, name, false);
   nodeValueByName_[name] = NodeValue(node, 0);
   return node;
 }
 
-NodeValue
+llvm::Expected<NodeValue>
 ProtobufLoader::getNodeValueOrCreateConstantByName(llvm::StringRef name) {
   auto node = getNodeValueByNameOrNullNodeValue(name);
   if (node.getNode()) {
     return node;
   }
 
-  Tensor *T = getTensorByName(name);
-  return NodeValue(createAndRegisterConstant(name, *T), 0);
+  Tensor *T;
+  ASSIGN_VALUE_OR_RETURN_ERR(T, getTensorByName(name));
+  Constant *c;
+  ASSIGN_VALUE_OR_RETURN_ERR(c, createAndRegisterConstant(name, *T));
+  return NodeValue(c, 0);
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
@@ -103,7 +110,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   assert(tensorNames.size() == types.size() && "Invalid initialization list");
   for (unsigned i = 0; i < tensorNames.size(); i++) {
     assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
-    createAndRegisterPlaceholder(tensorNames[i], types[i]);
+    TEMP_UNWRAP(createAndRegisterPlaceholder(tensorNames[i], types[i]));
   }
 }
 

@@ -38,15 +38,15 @@ class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
                                   ONNX_NAMESPACE::AttributeProto> {
   /// Get the broadcast attribute based on different ONNX op versions.
-  bool getBroadcast(const ArgumentDictionaryTy &dict) override;
+  llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
 
   /// Load the network initializers from the GraphProto.
-  void loadInitializers(ONNX_NAMESPACE::GraphProto &net);
+  llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
   /// \returns true if operator \p op can be loaded.
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  bool loadOperator(const ONNX_NAMESPACE::NodeProto &op);
+  llvm::Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// ONNX model ir_version;
   size_t irVersion_;
@@ -55,46 +55,46 @@ class ONNXModelLoader
   size_t opsetVersion_;
 
 protected:
-  /// Creates a ONNX model loader to build \p F.
-  ONNXModelLoader(Function &F);
-
   /// Load the network operators from the GraphProto.
   /// \returns true if network can be loaded.
-  bool loadNetwork(ONNX_NAMESPACE::GraphProto &net);
+  llvm::Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
   /// \returns true if output nodes were found.
-  bool setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
+  llvm::Error setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set ir verion and op version.
-  void setVersion(ONNX_NAMESPACE::ModelProto MP);
+  llvm::Error setVersion(ONNX_NAMESPACE::ModelProto MP);
 
   /// \returns true if ModelProto \p net can be loaded from the stream \p
   /// iStream.
-  static bool loadProto(ONNX_NAMESPACE::ModelProto &net,
-                        google::protobuf::io::ZeroCopyInputStream &iStream);
+  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
+  loadProto(google::protobuf::io::ZeroCopyInputStream &iStream);
 
 public:
+  /// Creates a ONNX model loader to build \p F.
+  ONNXModelLoader(Function &F);
+
   /// \returns true if ModelProto \p net can be constructed from the content
   /// of the file \p filename.
   /// Loads ModelProto \p net from the file containing serialized protobuf.
-  static bool loadProto(ONNX_NAMESPACE::ModelProto &net,
-                        const std::string &filename);
+  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
+  loadProto(const std::string &filename);
 
   /// \returns true if ModelProto \p net can be constructed from the in-memory
   /// serialized protobuf.
   /// Loads ModelProto \p net from the in-memory serialized protobuf \p
   /// onnxModel with the model size \p onnxModelSize.
-  static bool loadProto(ONNX_NAMESPACE::ModelProto &net, const void *onnxModel,
-                        size_t onnxModelSize);
+  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
+  loadProto(const void *onnxModel, size_t onnxModelSize);
 
   /// Checks that the inputs tensors are compatible with the inputs declared in
   /// the ONNX model. The input types in \p types match the list of names
   /// \p tensorNames.
-  void checkInputs(ONNX_NAMESPACE::GraphProto &net,
-                   llvm::ArrayRef<const char *> tensorNames,
-                   llvm::ArrayRef<TypeRef> types);
+  llvm::Error checkInputs(ONNX_NAMESPACE::GraphProto &net,
+                          llvm::ArrayRef<const char *> tensorNames,
+                          llvm::ArrayRef<TypeRef> types);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.

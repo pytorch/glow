@@ -53,15 +53,12 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   // TODO: support multiple functions here.
   function_ = backendPtr_->getEE().getModule().createFunction("inference");
 
-  std::unique_ptr<ONNXIFIModelLoader> loader = ONNXIFIModelLoader::parse(
-      onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_);
   // TODO: make better error reporting.
-  if (!loader) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
-  }
+  ONNXIFIModelLoader loader = TEMP_UNWRAP(ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_));
 
-  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
-  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
+  onnxInputToPlaceholder_ = loader.getInputVarsMapping();
+  onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
 
   // Emit IR for the graph and compile it.
   backendPtr_->getEE().compile(CompilationMode::Infer, function_);

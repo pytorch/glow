@@ -23,7 +23,8 @@ namespace glow {
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
-static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
+static llvm::Error setTensorType(const ONNX_NAMESPACE::TypeProto &in,
+                                 Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
@@ -31,18 +32,21 @@ static void setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
+    RETURN_SUCCESS();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
+    RETURN_SUCCESS();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT32) {
     T->reset(ElemKind::Int32ITy, dim);
+    RETURN_SUCCESS();
   } else {
-    assert(false && "Only float and index tensors are supported");
+    RETURN_ERR("Only float and index tensors are supported");
   }
 }
 
-void ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
+llvm::Error ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.input()) {
     // Skip static weights.
     if (tensors_.count(in.name())) {
@@ -50,17 +54,21 @@ void ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
     }
 
     Tensor T;
-    setTensorType(in.type(), &T);
-    Placeholder *var = createAndRegisterPlaceholder(in.name(), &T.getType());
-    onnxNameToInputVars_.try_emplace(in.name(), var);
+    RETURN_IF_ERR(setTensorType(in.type(), &T));
+    if (auto varOrErr = createAndRegisterPlaceholder(in.name(), &T.getType())) {
+      onnxNameToInputVars_.try_emplace(in.name(), UNWRAP(std::move(varOrErr)));
+    } else {
+      return varOrErr.takeError();
+    }
   }
+  RETURN_SUCCESS();
 }
 
 /// Loads tensor \p T from the input \p in.
-static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
+static llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
   // Only support CPU memory tensors.
   if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
-    return false;
+    RETURN_ERR("Only support CPU memory tensors.");
   }
 
   std::vector<size_t> dims;
@@ -85,8 +93,9 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     auto TH = T->getHandle<int64_t>();
     int64_t *data = (int64_t *)in.buffer;
     for (size_t i = 0; i < TH.size(); ++i) {
-      assert((inDataSigned || data[i] >= 0) &&
-             "Disallow overflow of loaded UINT64 data into Int64ITy.");
+      RETURN_ERR_IF_NOT(
+          (inDataSigned || data[i] >= 0),
+          "Disallow overflow of loaded UINT64 data into Int64ITy.");
       TH.raw(i) = data[i];
     }
   } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
@@ -98,51 +107,48 @@ static bool loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
       TH.raw(i) = data[i];
     }
   } else {
-    llvm_unreachable("Only float and index tensors are supported");
+    RETURN_ERR("Only float and index tensors are supported.");
   }
 
-  return true;
+  RETURN_SUCCESS();
 }
 
-bool ONNXIFIModelLoader::loadWeights(
+llvm::Error ONNXIFIModelLoader::loadWeights(
     uint32_t weightsCount, const onnxTensorDescriptorV1 *weightDescriptors) {
   for (uint32_t i = 0; i < weightsCount; ++i) {
     Tensor *T = new Tensor();
 
-    if (!loadWeight(weightDescriptors[i], T)) {
-      return false;
+    if (auto err = loadWeight(weightDescriptors[i], T)) {
+      delete T;
+      return err;
     }
 
     tensors_[weightDescriptors[i].name] = T;
   }
 
-  return true;
+  RETURN_SUCCESS();
 }
 
-std::unique_ptr<ONNXIFIModelLoader> ONNXIFIModelLoader::parse(
+llvm::Expected<ONNXIFIModelLoader> ONNXIFIModelLoader::parse(
     const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
-  std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader(F));
+  ONNXIFIModelLoader loader(F);
 
   ONNX_NAMESPACE::ModelProto modelDef;
-  if (!loader->loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return nullptr;
-  }
-  loader->setVersion(modelDef);
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef,
+                             loader.loadProto(onnxModel, onnxModelSize));
+
+  RETURN_IF_ERR(loader.setVersion(modelDef));
+
+  RETURN_IF_ERR(loader.loadWeights(weightsCount, weightDescriptors));
 
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-  if (!loader->loadWeights(weightsCount, weightDescriptors)) {
-    return nullptr;
-  }
-  loader->loadInputs(graphDef);
 
-  if (!loader->loadNetwork(graphDef)) {
-    return nullptr;
-  }
+  RETURN_IF_ERR(loader.loadInputs(graphDef));
 
-  if (!loader->setOutputNodes(graphDef)) {
-    return nullptr;
-  }
+  RETURN_IF_ERR(loader.loadNetwork(graphDef));
+
+  RETURN_IF_ERR(loader.setOutputNodes(graphDef));
 
   return loader;
 }
@@ -151,10 +157,8 @@ std::vector<std::pair<Kinded::Kind, ElemKind>>
 ONNXIFIModelLoader::parseOperators(const void *onnxModel,
                                    size_t onnxModelSize) {
   std::vector<std::pair<Kinded::Kind, ElemKind>> result;
-  ONNX_NAMESPACE::ModelProto modelDef;
-  if (!ONNXModelLoader::loadProto(modelDef, onnxModel, onnxModelSize)) {
-    return result;
-  }
+  ONNX_NAMESPACE::ModelProto modelDef =
+      TEMP_UNWRAP(ONNXModelLoader::loadProto(onnxModel, onnxModelSize));
 
   ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
 

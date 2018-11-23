@@ -40,7 +40,7 @@ TEST(onnx, importConv) {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
-    graphOutputVar = onnxLD.getSingleOutput();
+    graphOutputVar = UNWRAP(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
   }
@@ -113,7 +113,7 @@ TEST(onnx, importClip) {
     Tensor x(ElemKind::FloatTy, {3, 3});
     x.getHandle() = {1, 2, 3, 40, 5, 6, 7, 8, 90};
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
 
     updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
@@ -147,7 +147,7 @@ TEST(onnx, importBatchMatMul) {
     Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
     ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
   }
@@ -226,7 +226,7 @@ TEST(onnx, importBatchBoxCox) {
     ONNXModelLoader onnxLD(
         netFilename, {"data", "lambda1", "lambda2"},
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
 
     updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
@@ -280,7 +280,7 @@ TEST(onnx, importDotProduct) {
 
     ONNXModelLoader onnxLD(netFilename, {"x", "y"},
                            {&x.getType(), &y.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
 
   // Just verify the structure.
@@ -313,7 +313,7 @@ TEST(onnx, importSumN) {
 
     ONNXModelLoader onnxLD(netFilename, {"i0", "i1", "i2"},
                            {&i0.getType(), &i1.getType(), &i2.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"i0", "i1", "i2"},
@@ -363,7 +363,7 @@ TEST(onnx, importSum1) {
     Tensor x(ElemKind::FloatTy, {3});
     x.getHandle() = {1, 2, 3};
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
@@ -399,7 +399,7 @@ TEST(onnx, importLengthsToRanges) {
   {
     Tensor lengths(ElemKind::Int32ITy, {4});
     ONNXModelLoader onnxLD(netFilename, {"lengths"}, {&lengths.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
   // Verify structure: PH -> LengthsToRanges -> Save -> PH.
   ASSERT_EQ(mod.getPlaceholders().size(), 2);
@@ -425,7 +425,7 @@ TEST(onnx, importReplaceNaN) {
 
   {
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
   }
@@ -469,7 +469,7 @@ TEST(onnx, importSparseToDense) {
     ONNXModelLoader onnxLD(
         netFilename, {"indices", "values", "dataToInferDim"},
         {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
 
   // Verify structure: Inputs -> SparseToDense -> Save.
@@ -502,7 +502,7 @@ TEST(onnx, importSparseLengthsSum) {
     ONNXModelLoader onnxLD(
         netFilename, {"data", "indices", "lengths"},
         {&data.getType(), &indices.getType(), &lengths.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
   // Verify structure: PH, PH ->  SparseLengthsSum -> Save -> PH.
   //                  PH -> Splat /
@@ -530,7 +530,7 @@ TEST(onnx, importLengthsSum) {
     Tensor lengths(ElemKind::Int32ITy, {5});
     ONNXModelLoader onnxLD(netFilename, {"data", "lengths"},
                            {&data.getType(), &lengths.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
   // Verify structure: PH, PH -> LengthsSum -> Save -> PH.
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
@@ -556,7 +556,7 @@ TEST(onnx, FCTransposedWithFlatten) {
     Tensor data(ElemKind::FloatTy, {2, 1, 3});
     data.getHandle() = {1, 2, 3, 4, 5, 6};
     ONNXModelLoader onnxLD(netFilename, {"data"}, {&data.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 reshape, 1 FC,
@@ -579,7 +579,7 @@ TEST(onnx, constant) {
   Placeholder *output;
   {
     ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
     EXPECT_NE(output, nullptr);
   }
   // Constant -> Save -> PH
@@ -597,7 +597,7 @@ TEST(onnx, expandDims) {
   {
     Tensor x(ElemKind::FloatTy, {2, 2});
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
 
   // Verify structure: PH -> Reshape -> Save -> PH.
@@ -622,7 +622,7 @@ TEST(onnx, gather) {
   {
     ONNXModelLoader onnxLD(netFilename, {"data", "indices"},
                            {&data.getType(), &indices.getType()}, *F);
-    output = onnxLD.getSingleOutput();
+    output = UNWRAP(onnxLD.getSingleOutput());
   }
   EE.compile(CompilationMode::Infer, F);
 

@@ -20,9 +20,11 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 
+#include "glow/Support/Error.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <google/protobuf/text_format.h>
@@ -41,27 +43,28 @@ bool isArrayConstant(const llvm::ArrayRef<size_t> a);
 /// Prints a single serialized protocol buffer node. This method is useful for
 /// debugging the network and printing errors.
 template <typename T>
-void unexpectedNodeError(const T &node, llvm::StringRef message) {
+std::string unexpectedNodeErrorMessage(const T &node, llvm::StringRef message) {
   std::string str;
   google::protobuf::TextFormat::PrintToString(node, &str);
-  llvm::outs() << message << "\n" << str << "\n";
+  return llvm::formatv("{0}\n{1}", message, str);
 }
 
 /// Reads a single integer.
-template <typename T> static int loadInt(const T *arg) {
-  assert(arg->has_i() && "Node has no Int value");
+template <typename T> static llvm::Expected<int> loadInt(const T *arg) {
+  RETURN_ERR_IF_NOT(arg->has_i(), "Node has no Int value");
   return arg->i();
 }
 
 /// Reads a single float.
-template <typename T> static float loadFloat(const T *arg) {
-  assert(arg->has_f() && "Node has no float value");
+template <typename T> static llvm::Expected<float> loadFloat(const T *arg) {
+  RETURN_ERR_IF_NOT(arg->has_f(), "Node has no float value");
   return arg->f();
 }
 
 /// Reads a single string.
-template <typename T> static const std::string &loadStr(const T *arg) {
-  assert(arg->has_s() && "Node has no str value");
+template <typename T>
+static llvm::Expected<const std::string &> loadStr(const T *arg) {
+  RETURN_ERR_IF_NOT(arg->has_s(), "Node has no str value");
   return arg->s();
 }
 
@@ -76,10 +79,11 @@ std::vector<ElemTy> getShape(const AttrType *arg) {
 }
 
 /// Loads array and checks that all elements are the same. Returns array[0].
-template <typename T> size_t getConstantArrayHead(const T *arg) {
+template <typename T>
+llvm::Expected<size_t> getConstantArrayHead(const T *arg) {
   auto dim = getShape(arg);
-  assert(isArrayConstant(dim) &&
-         "Only equal values along each dimensions are supported");
+  RETURN_ERR_IF_NOT(isArrayConstant(dim),
+                    "Only equal values along each dimensions are supported");
   return dim[0];
 }
 
@@ -102,16 +106,17 @@ protected:
   llvm::StringMap<Placeholder *> outputVarsByName_;
 
   /// \returns the tensor that was registered under the name \p name.
-  Tensor *getTensorByName(llvm::StringRef name);
+  llvm::Expected<Tensor *> getTensorByName(llvm::StringRef name);
 
   /// Create a new constant that's initialized with \p tensor, and register it
   /// under the name \p name. \returns The newly created constant.
-  Constant *createAndRegisterConstant(llvm::StringRef name,
-                                      const Tensor &tensor);
+  llvm::Expected<Constant *> createAndRegisterConstant(llvm::StringRef name,
+                                                       const Tensor &tensor);
 
   /// Create a new Placeholder of type \p T, and register it
   /// under the name \p name. \returns The newly created placeholder.
-  Placeholder *createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T);
+  llvm::Expected<Placeholder *>
+  createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
@@ -121,12 +126,13 @@ protected:
 public:
   /// \returns the NodeValue that was registered with the name \p name.
   /// \pre hasNodeByName(name)
-  NodeValue getNodeValueByName(llvm::StringRef name) const;
+  llvm::Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
 
   /// \returns the NodeValue that was registered with the name \p name or create
   /// a new Constant for a tensor with this name. In case a new constant is
   /// created, this method registers it under \p name.
-  NodeValue getNodeValueOrCreateConstantByName(llvm::StringRef name);
+  llvm::Expected<NodeValue>
+  getNodeValueOrCreateConstantByName(llvm::StringRef name);
 
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
@@ -140,17 +146,18 @@ public:
   virtual ~ProtobufLoader();
 
   /// \returns the single final output of the network. The function assumes that
-  /// there is only one output, verified via assertion. For image
+  /// there is only one output, verified via Error. For image
   /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
-  Placeholder *getSingleOutput() {
-    assert(outputVarsByName_.size() == 1);
+  llvm::Expected<Placeholder *> getSingleOutput() {
+    RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
+                      "There must be only one output.");
     return outputVarsByName_.begin()->second;
   }
 
   /// \returns the Placeholder for the external output with \p name.
   /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
-  Placeholder *getOutputByName(llvm::StringRef name) const;
+  llvm::Expected<Placeholder *> getOutputByName(llvm::StringRef name) const;
 };
 
 } // namespace glow

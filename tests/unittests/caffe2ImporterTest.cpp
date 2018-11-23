@@ -42,7 +42,7 @@ TEST(caffe2, importConv) {
     getNCHWData(&data, 1, 1, 3, 3);
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
                                {&data.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
@@ -84,7 +84,7 @@ TEST(caffe2, convNHWC) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 conv and 1 save.
@@ -121,7 +121,7 @@ TEST(caffe2, maxPoolNHWC) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 maxpool and 1 save.
@@ -158,7 +158,7 @@ TEST(caffe2, maxPool) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 maxpool, 1 save
@@ -202,7 +202,7 @@ TEST(caffe2, avgPoolNHWC) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 maxpool and 1 save.
@@ -239,7 +239,7 @@ TEST(caffe2, avgPool) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level check on the content of the graph. We have 1 maxpool, 1 save
@@ -298,7 +298,7 @@ TEST(caffe2, concatAddAxis) {
         NetDescFilename, NetWeightFilename,
         {"inputs_0", "inputs_1", "inputs_2"},
         {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod,
@@ -374,7 +374,7 @@ TEST(caffe2, concat) {
         NetDescFilename, NetWeightFilename,
         {"inputs_0", "inputs_1", "inputs_2"},
         {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
 
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod,
@@ -447,7 +447,7 @@ TEST(caffe2, batchedMatmulRHS) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"},
                                {&inputs_0.getType(), &inputs_1.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -507,7 +507,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"},
                                {&inputs_0.getType(), &inputs_1.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -587,7 +587,7 @@ TEST(caffe2, FC) {
     // bias : {0.1f, 0.2f, 0.3f, 0.4f};
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
@@ -626,7 +626,7 @@ TEST(caffe2, FCWithFlatten) {
     // bias : {0.1f, 0.2f, 0.3f, 0.4f};
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
@@ -678,7 +678,7 @@ TEST(caffe2, FCTransposed) {
     // bias : {0.1f, 0.2f, 0.3f, 0.4f};
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
@@ -725,7 +725,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
     // bias : {0.1f, 0.2f, 0.3f, 0.4f};
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
@@ -775,7 +775,7 @@ TEST(caffe2, importClip) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
@@ -822,7 +822,7 @@ TEST(caffe2, importClipDefault) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
@@ -868,7 +868,7 @@ TEST(caffe2, replaceNaN) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
                                {&input.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"input"}, {&input});
   }
@@ -940,7 +940,7 @@ TEST(caffe2, dotProduct1D) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X.getType(), &Y.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
@@ -1020,7 +1020,7 @@ TEST(caffe2, dotProduct2D) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X.getType(), &Y.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"X", "Y"}, {&X, &Y});
   }
@@ -1119,7 +1119,7 @@ TEST(caffe2, batchBoxCox) {
     Caffe2ModelLoader caffe2LD(
         NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
                                   {&data, &lambda1, &lambda2});
@@ -1239,7 +1239,7 @@ TEST(caffe2, EQ1D) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {&X.getType(), &Y.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level checks on the content of the graph.
@@ -1272,7 +1272,7 @@ TEST(caffe2, LengthsToRanges) {
   // Destroy the loader after the graph is loaded
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {}, {}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // High level checks on the content of the graph.
@@ -1309,7 +1309,7 @@ TEST(caffe2, Logit) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&X.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -1355,7 +1355,7 @@ TEST(caffe2, sparseToDense) {
         NetDescFilename, NetWeightFilename,
         {"indices", "values", "dataToInferDim"},
         {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"indices", "values"},
                                   {&indices, &values});
@@ -1399,7 +1399,7 @@ TEST(caffe2, testNCHW2NHWC) {
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
   }
 
@@ -1445,7 +1445,7 @@ TEST(caffe2, lengthsSum) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"data", "lengths"},
                                {&data.getType(), &lengths.getType()}, *F);
-    output = caffe2LD.getSingleOutput();
+    output = UNWRAP(caffe2LD.getSingleOutput());
   }
 
   // Check that the shape of the output matches that of the expected output.
