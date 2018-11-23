@@ -14,6 +14,4 @@ if(PNG_FOUND)
   target_link_libraries(Base
                         PRIVATE
                           ${PNG_LIBRARY})
-message(${PNG_LIBRARY})
-message(${PNG_INCLUDE_DIR})
 endif()
