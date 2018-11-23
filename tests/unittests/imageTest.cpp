@@ -25,6 +25,24 @@
 
 using namespace glow;
 
+TEST(Image, readNonSquarePngImage) {
+  auto range = std::make_pair(0.f, 1.f);
+  Tensor vgaTensor;
+  bool loadSuccess =
+      !readPngImage(&vgaTensor, "tests/images/other/vga_image.png", range);
+  ASSERT_TRUE(loadSuccess);
+
+  auto &type = vgaTensor.getType();
+  auto shape = vgaTensor.dims();
+
+  // The loaded image is a 3D HWC tensor
+  ASSERT_EQ(ElemKind::FloatTy, type.getElementType());
+  ASSERT_EQ(3, shape.size());
+  ASSERT_EQ(480, shape[0]);
+  ASSERT_EQ(640, shape[1]);
+  ASSERT_EQ(3, shape[2]);
+}
+
 TEST(Image, writePngImage) {
   auto range = std::make_pair(0.f, 1.f);
   Tensor localCopy;
