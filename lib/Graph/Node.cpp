@@ -129,6 +129,7 @@ unsigned Node::getNumInputs() const {
     llvm_unreachable("Unhandled node");
   }
 }
+
 std::string Node::getInputName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
@@ -139,6 +140,7 @@ std::string Node::getInputName(unsigned idx) const {
     llvm_unreachable("Unhandled node");
   }
 }
+
 NodeValue Node::getNthInput(unsigned idx) {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \

@@ -80,6 +80,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
                  << "]\n";
   });
 }
+
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
   // Use a memory allocator with no upper bound on how much memory we can
   // allocate.

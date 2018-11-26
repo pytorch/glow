@@ -31,6 +31,7 @@ class Context;
 namespace runtime {
 class RuntimeBundle;
 }
+
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
 struct AllocationsInfo {

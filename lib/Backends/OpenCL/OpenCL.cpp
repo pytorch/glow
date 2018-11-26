@@ -1500,6 +1500,7 @@ void OpenCLFunction::afterRun(const Context &ctx) {
   }
   kernelLaunches_.clear();
 }
+
 cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.

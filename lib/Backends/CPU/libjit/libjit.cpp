@@ -926,6 +926,7 @@ void libjit_scatterassign_f(float *data, const size_t *indices,
                             size_t sliceSize) {
   libjit_scatterassign(data, indices, slices, numIndices, sliceSize);
 }
+
 void libjit_scatterassign_i8(int8_t *data, const size_t *indices,
                              const int8_t *slices, size_t numIndices,
                              size_t sliceSize) {
@@ -1081,6 +1082,7 @@ void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const size_t *inWdims,
   libjit_max_pool_generic(inW, outW, inWdims, outWdims, kernelSizes, strides,
                           pads);
 }
+
 void libjit_max_pool_f(const float *inW, float *outW, const size_t *inWdims,
                        const size_t *outWdims, size_t *kernelSizes,
                        size_t *strides, size_t *pads) {

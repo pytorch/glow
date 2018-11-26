@@ -34,6 +34,7 @@ llvm::hash_code Constant::getHash() const {
 llvm::hash_code Placeholder::getHash() const {
   return llvm::hash_combine(getName());
 }
+
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//

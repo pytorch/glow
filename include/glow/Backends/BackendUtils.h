@@ -73,6 +73,7 @@ public:
         activationsMemSize_(activations) {}
 };
 } // namespace runtime
+
 /// Computes offsets and total allocation for Constants, Placeholders, and
 /// Activations to build runtime symbol table. Returns RuntimeBundle.
 runtime::RuntimeBundle

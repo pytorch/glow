@@ -271,6 +271,7 @@ template <> struct simplify_type<glow::NodeValue> {
     return val.getNode();
   }
 };
+
 /// Allow casting NodeValue into Node*.
 template <> struct simplify_type<const glow::NodeValue> {
   typedef glow::Node *SimpleType;
@@ -278,6 +279,7 @@ template <> struct simplify_type<const glow::NodeValue> {
     return val.getNode();
   }
 };
+
 /// Allow casting NodeHandle into Node*.
 template <> struct simplify_type<glow::NodeHandle> {
   typedef glow::Node *SimpleType;

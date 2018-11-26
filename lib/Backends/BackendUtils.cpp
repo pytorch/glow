@@ -54,6 +54,7 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second;
 }
+
 runtime::RuntimeBundle
 glow::generateRuntimeBundle(const IRFunction &F,
                             MemoryAllocator &constantAllocator,

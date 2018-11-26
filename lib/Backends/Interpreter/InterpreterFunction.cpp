@@ -37,6 +37,7 @@ InterpreterFunction::~InterpreterFunction() {
   externalTensors_.clear();
   alignedFree(bundle_.getConstants());
 }
+
 void InterpreterFunction::setupRuns() {
   if (bundle_.getConstantWeightSize()) {
     for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
@@ -47,6 +48,7 @@ void InterpreterFunction::setupRuns() {
     }
   }
 }
+
 void InterpreterFunction::beforeRun(const Context &ctx) {
   // Register the concrete tensors that back the placeholder tensors.
   for (auto &ph : ctx.pairs()) {
