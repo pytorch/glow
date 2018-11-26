@@ -784,6 +784,44 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   ASSERT_NE(qSMIt, F->getNodes().end());
 }
 
+/// Check that AvgPool is quantized, and its input and output have different
+/// scale and offset.
+TEST(Quantization, quantizeAvgPool) {
+  ExecutionEngine EE;
+  Context ctx;
+  EE.setBackend(new MockQuantBackend());
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", true);
+  auto *pool = F->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *s = F->createSave("save", pool);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(pool->getName()),
+       {0.3f, 1}},
+      {NodeQuantizationInfo::generateNodeOutputName(s->getName()), {0.4f, 0}},
+  };
+
+  F = quantization::quantizeFunction(EE, QI, F);
+
+  auto qPool = std::find_if(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        return llvm::isa<AvgPoolNode>(&node) &&
+               node.getNthResult(0).getType()->isQuantizedType();
+      });
+  ASSERT_NE(qPool, F->getNodes().end());
+  auto *avgPool = llvm::cast<AvgPoolNode>(qPool);
+  ASSERT_NE(avgPool->getInput().getType()->getScale(),
+            avgPool->getResult().getType()->getScale());
+  ASSERT_NE(avgPool->getInput().getType()->getOffset(),
+            avgPool->getResult().getType()->getOffset());
+}
+
 /// Test option to disable quantization of specific node kinds in the graph.
 TEST(Quantization, quantizeGraphPartially) {
   ExecutionEngine EE;

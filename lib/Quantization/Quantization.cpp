@@ -185,8 +185,7 @@ protected:
   case Kinded::Kind::TanhNodeKind:                                             \
   case Kinded::Kind::TopKNodeKind:                                             \
   case Kinded::Kind::GatherNodeKind:                                           \
-  case Kinded::Kind::MaxPoolNodeKind:                                          \
-  case Kinded::Kind::AvgPoolNodeKind
+  case Kinded::Kind::MaxPoolNodeKind
 
   /// \see FunctionConverter::morphNode.
   /// This method does the final adjustment to the output types
