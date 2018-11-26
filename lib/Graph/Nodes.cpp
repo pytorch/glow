@@ -180,7 +180,7 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
 static bool verifyPool(NodeValue src, NodeValue dest,
                        llvm::ArrayRef<unsigned_t> kernels,
                        llvm::ArrayRef<unsigned_t> strides,
-                       llvm::ArrayRef<unsigned_t> pads) {
+                       llvm::ArrayRef<unsigned_t> pads, bool isAvgPool = true) {
   const Node *parent = dest.getNode();
   ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
   ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
@@ -200,7 +200,14 @@ static bool verifyPool(NodeValue src, NodeValue dest,
   ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
   isValid &=
       expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
-  isValid &= checkTypeIgnoreShape(src, dest, dest.getNode());
+
+  // For quantized AvgPool, the scale and offset of its input and output could
+  // be different. But for quantized MaxPool, the scale and ofset of its input
+  // and output should be the same.
+  isValid &= checkSameIsQuantized(src.getType(), dest.getType(), parent);
+  if (!isAvgPool) {
+    isValid &= checkTypeIgnoreShape(src, dest, parent);
+  }
   return isValid;
 }
 
@@ -327,7 +334,8 @@ bool ConvertToNode::verify() const {
 }
 
 bool MaxPoolNode::verify() const {
-  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
+  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_,
+                    /* isAvgPool */ false);
 }
 
 bool AvgPoolNode::verify() const {
@@ -341,7 +349,7 @@ bool MaxPoolGradNode::verify() const {
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
   isValid &= verifyPool(getGradOfInputNamedInput(),
                         getGradOfOriginalOutputNamedResult(), Kernels_,
-                        Strides_, Pads_);
+                        Strides_, Pads_, /* isAvgPool */ false);
   return isValid;
 }
 
