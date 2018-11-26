@@ -2108,6 +2108,7 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
     outputs.push_back(O);
   }
 };
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

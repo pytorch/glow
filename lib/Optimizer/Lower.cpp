@@ -34,6 +34,7 @@ static void lowerAddGradNode(Function *F, const AddGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(outG);
 }
+
 static void lowerMulGradNode(Function *F, const MulGradNode &node) {
   /// The chain rule for multiplication:
   /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
@@ -47,6 +48,7 @@ static void lowerMulGradNode(Function *F, const MulGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
 }
+
 static void lowerSubGradNode(Function *F, const SubGradNode &node) {
   /// The chain rule for subtraction:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
@@ -57,6 +59,7 @@ static void lowerSubGradNode(Function *F, const SubGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
 }
+
 static void lowerDivGradNode(Function *F, const DivGradNode &node) {
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)

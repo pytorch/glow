@@ -76,6 +76,7 @@ MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
   return createMaxPoolWithXYInst("pool", dest, input, srcXY, kernels, strides,
                                  pads);
 }
+
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
                                         llvm::ArrayRef<unsigned_t> kernels,
                                         llvm::ArrayRef<unsigned_t> strides,

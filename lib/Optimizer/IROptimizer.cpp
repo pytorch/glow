@@ -490,6 +490,7 @@ void makeWeightsConst(IRFunction &M) {
     }
   }
 }
+
 #ifndef NDEBUG
 /// Dump a live intervals map.
 static void LLVM_ATTRIBUTE_UNUSED dump(IRFunction &M,
