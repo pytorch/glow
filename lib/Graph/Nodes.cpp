@@ -762,20 +762,21 @@ bool QuantizeNode::verify() const {
 }
 
 bool DequantizeNode::verify() const {
-  // Dest must be an FP type.
   bool isValid = expectCompareTrue(
       "Dest must be an FP type", getResult().getType()->isFPType(), true, this);
-  // Src must be quantized.
-  isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &=
+      expectCompareTrue("Src must be quantized",
+                        getInput().getType()->isQuantizedType(), true, this);
   isValid &= checkSameShape(getResult(), getInput(), this);
   return isValid;
 }
 
 bool RescaleQuantizedNode::verify() const {
-  // Dest must be quantized.
-  bool isValid = checkType(getResult(), ElemKind::Int8QTy, this);
-  // Src must be quantized.
-  isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  bool isValid =
+      expectCompareTrue("Dest must be quantized",
+                        getResult().getType()->isQuantizedType(), true, this);
+  isValid &=
+      checkType(getResult(), getInput().getType()->getElementType(), this);
   isValid &= checkSameShape(getResult(), getInput(), this);
   return isValid;
 }

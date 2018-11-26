@@ -1468,9 +1468,7 @@ BatchOneHotNode *Function::createBatchOneHot(llvm::StringRef name,
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");
-  assert((outTy->getElementType() == ElemKind::Int8QTy ||
-          outTy->getElementType() == ElemKind::Int32QTy) &&
-         "Output must be a quantized type");
+  assert(outTy->isQuantizedType() && "Output must be a quantized type");
   assert(input.dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
@@ -1480,6 +1478,8 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
                                            NodeValue input) {
+  assert(input.getType()->isQuantizedType() &&
+         "Input must be a quantized type");
   TypeRef outTy =
       getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
   return createDequantize(name, input, outTy);
@@ -1487,7 +1487,7 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
                                            NodeValue input, TypeRef outTy) {
-  assert(input.getElementType() == ElemKind::Int8QTy &&
+  assert(input.getType()->isQuantizedType() &&
          "Input must be a quantized type");
   assert(outTy->isFPType() && "Output should be an FP type");
   return addNode(new DequantizeNode(name, outTy, input));
@@ -1496,10 +1496,9 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
 RescaleQuantizedNode *Function::createRescaleQuantized(llvm::StringRef name,
                                                        NodeValue input,
                                                        TypeRef outTy) {
-  assert(input.getElementType() == ElemKind::Int8QTy &&
+  assert(input.getType()->isQuantizedType() &&
          "Input must be a quantized type");
-  assert(outTy->getElementType() == ElemKind::Int8QTy &&
-         "Output must be a quantized type");
+  assert(outTy->isQuantizedType() && "Output must be a quantized type");
   assert(input.dims().equals(outTy->dims()) &&
          "Different dimensions for input and output");
 
