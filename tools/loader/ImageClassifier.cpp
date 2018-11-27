@@ -152,7 +152,7 @@ static bool getNextImageFilenames(std::vector<std::string> *filenames) {
 /// \p inputImageType. Note that this must come after loading images for
 /// inference so that \p inputImageType is known.
 static std::unique_ptr<ProtobufLoader>
-createProtofbufLoader(Loader &loader, TypeRef inputImageType) {
+createProtobufLoader(Loader &loader, TypeRef inputImageType) {
   // The image name that the model expects must be passed on the command line.
   const char *inputName = modelInputName.c_str();
 
@@ -177,7 +177,7 @@ createProtofbufLoader(Loader &loader, TypeRef inputImageType) {
 static std::pair<Placeholder *, Tensor *>
 buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
                                   TypeRef inputImageType) {
-  auto LD = createProtofbufLoader(loader, inputImageType);
+  auto LD = createProtobufLoader(loader, inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   ctx.allocate(loader.getModule()->getPlaceholders());
