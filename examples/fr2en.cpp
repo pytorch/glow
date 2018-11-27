@@ -35,7 +35,7 @@ namespace {
 llvm::cl::OptionCategory debugCat("Glow Debugging Options");
 
 llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
-    "dumpGraphDAG",
+    "dump-graph-DAG",
     llvm::cl::desc("Dump the graph to the given file in DOT format."),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(debugCat));
 
@@ -69,14 +69,14 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
 llvm::cl::OptionCategory quantizationCat("Quantization Options");
 
 llvm::cl::opt<std::string> dumpProfileFileOpt(
-    "dump_profile",
+    "dump-profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
                    "and dump result to the file."),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(quantizationCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
-    "load_profile",
+    "load-profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(quantizationCat));

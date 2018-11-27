@@ -58,8 +58,8 @@ python export_onnx_model.py --model_name alexnet --model_path alexnet.onnx --mod
 After we get the ONNX model, we can load it and run it in Glow.
 
 ```bash
-# Please keep the model_input_name same with export_onnx_model util function
-${GLOW_PATH}/build/bin/image-classifier ${GLOW_PATH}/tests/images/imagenet/cat_285.png -image_mode=0to1 -m resnet18.onnx -model_input_name=data -cpu
+# Please keep the model-input-name same with export_onnx_model util function
+${GLOW_PATH}/build/bin/image-classifier ${GLOW_PATH}/tests/images/imagenet/cat_285.png -image-mode=0to1 -m resnet18.onnx -model-input-name=data -cpu
 ```
 
 The running results can be:

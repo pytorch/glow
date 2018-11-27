@@ -46,12 +46,12 @@ llvm::cl::list<std::string> inputImageFilenames(
     llvm::cl::OneOrMore);
 
 llvm::cl::opt<unsigned> labelOffset(
-    "label_offset",
+    "label-offset",
     llvm::cl::desc("Label offset for TF ONNX models with 1001 classes"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<bool> computeSoftmax(
-    "compute_softmax", llvm::cl::desc("Compute softmax of the network output"),
+    "compute-softmax", llvm::cl::desc("Compute softmax of the network output"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<unsigned> topKCount(
@@ -59,7 +59,7 @@ llvm::cl::opt<unsigned> topKCount(
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<std::string> modelInputName(
-    "model_input_name",
+    "model-input-name",
     llvm::cl::desc("The name of the variable for the model's input image."),
     llvm::cl::value_desc("string_name"), llvm::cl::Required,
     llvm::cl::cat(imageLoaderCat));

@@ -30,7 +30,7 @@ llvm::cl::OptionCategory imageCat("Image Processing Options");
 
 ImageNormalizationMode imageNormMode;
 static llvm::cl::opt<ImageNormalizationMode, true> imageNormModeF(
-    "image_mode", llvm::cl::desc("Specify the image mode:"),
+    "image-mode", llvm::cl::desc("Specify the image mode:"),
     llvm::cl::cat(imageCat), llvm::cl::location(imageNormMode),
     llvm::cl::values(clEnumValN(ImageNormalizationMode::kneg1to1, "neg1to1",
                                 "Values are in the range: -1 and 1"),
@@ -43,13 +43,13 @@ static llvm::cl::opt<ImageNormalizationMode, true> imageNormModeF(
                                 "Values are in the range: -128 .. 127")),
     llvm::cl::init(ImageNormalizationMode::k0to255));
 static llvm::cl::alias imageNormModeA("i",
-                                      llvm::cl::desc("Alias for -image_mode"),
+                                      llvm::cl::desc("Alias for -image-mode"),
                                       llvm::cl::aliasopt(imageNormModeF),
                                       llvm::cl::cat(imageCat));
 
 ImageChannelOrder imageChannelOrder;
 static llvm::cl::opt<ImageChannelOrder, true> imageChannelOrderF(
-    "image_channel_order", llvm::cl::desc("Specify the image channel order"),
+    "image-channel-order", llvm::cl::desc("Specify the image channel order"),
     llvm::cl::Optional, llvm::cl::cat(imageCat),
     llvm::cl::location(imageChannelOrder),
     llvm::cl::values(clEnumValN(ImageChannelOrder::BGR, "BGR", "Use BGR"),
@@ -58,7 +58,7 @@ static llvm::cl::opt<ImageChannelOrder, true> imageChannelOrderF(
 
 ImageLayout imageLayout;
 static llvm::cl::opt<ImageLayout, true>
-    imageLayoutF("image_layout",
+    imageLayoutF("image-layout",
                  llvm::cl::desc("Specify which image layout to use"),
                  llvm::cl::Optional, llvm::cl::cat(imageCat),
                  llvm::cl::location(imageLayout),
@@ -68,7 +68,7 @@ static llvm::cl::opt<ImageLayout, true>
                                              "Use NHWC image layout")),
                  llvm::cl::init(ImageLayout::NCHW));
 static llvm::cl::alias imageLayoutA("l",
-                                    llvm::cl::desc("Alias for -image_layout"),
+                                    llvm::cl::desc("Alias for -image-layout"),
                                     llvm::cl::aliasopt(imageLayoutF),
                                     llvm::cl::cat(imageCat));
 

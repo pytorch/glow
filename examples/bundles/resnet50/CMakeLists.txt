@@ -50,8 +50,8 @@ add_custom_command(
   OUTPUT
     ${RESNET50_BUNDLE_DIR}/resnet50.o
   COMMAND
-    image-classifier ${IMAGES}/dog_207.png -g -image_mode=0to1
-    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1
+    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
     -cpu -emit-bundle ${RESNET50_BUNDLE_DIR} 
   DEPENDS 
     image-classifier
@@ -63,9 +63,9 @@ add_custom_command(
   OUTPUT
     ${RESNET50_BUNDLE_DIR}/profile.yml
   COMMAND
-    image-classifier ${IMAGES}/*.png -image_mode=0to1
-    -dump_profile=${RESNET50_BUNDLE_DIR}/profile.yml
-    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/*.png -image-mode=0to1
+    -dump-profile=${RESNET50_BUNDLE_DIR}/profile.yml
+    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
   DEPENDS
     image-classifier
 )
@@ -76,8 +76,8 @@ add_custom_command(
   OUTPUT
     ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o
   COMMAND
-    image-classifier ${IMAGES}/dog_207.png -g -image_mode=0to1 -load_profile=profile.yml
-    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1 -load-profile=profile.yml
+    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
     -cpu -emit-bundle ${RESNET50_BUNDLE_DIR} && mv ${RESNET50_BUNDLE_DIR}/resnet50.o ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o
   DEPENDS
     image-classifier

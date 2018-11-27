@@ -46,13 +46,13 @@ enum class ImageChannelOrder {
   RGB,
 };
 
-/// -image_mode flag.
+/// -image-mode flag.
 extern ImageNormalizationMode imageNormMode;
 
-/// -image_channel_order flag.
+/// -image-channel-order flag.
 extern ImageChannelOrder imageChannelOrder;
 
-/// -image_layout flag.
+/// -image-layout flag.
 extern ImageLayout imageLayout;
 
 /// -use-imagenet-normalization flag.

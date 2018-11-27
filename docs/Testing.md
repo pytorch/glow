@@ -45,7 +45,7 @@ can be used to calculate Top-1 and Top-5 accuracy. It can be run via a command
 like the following:
 
 ```
-python utils/imagenet_topk_accuracy_driver.py --batch-size=10 --validation-images-dir=${PATH_TO_IMAGES} --image-classifier-cmd="${PATH_TO_IMAGE_CLASSIFIER_BINARY} -image_mode=0to1 -m=${PATH_TO_RESNET50_PROTOS_DIR} -model_input_name=gpu_0/data -cpu -topk=5 -"
+python utils/imagenet_topk_accuracy_driver.py --batch-size=10 --validation-images-dir=${PATH_TO_IMAGES} --image-classifier-cmd="${PATH_TO_IMAGE_CLASSIFIER_BINARY} -image-mode=0to1 -m=${PATH_TO_RESNET50_PROTOS_DIR} -model-input-name=gpu_0/data -cpu -topk=5 -"
 ```
 
 Note that the `--image-classifier-cmd` must include `-topk=5` for printing the
@@ -85,11 +85,11 @@ currently does not support models that contain control flow (e.g. the
 [RecurrentNetwork operator from
 Caffe2](https://caffe2.ai/docs/operators-catalogue.html#recurrentnetwork)), the
 input model must be unrolled to some maximum input and output length. These can
-be specified on the command line via `-min_output_len` and
-`-max_output_len`. Additionally, the beam search size can be specified via
-`-beam_size`. The default options for the `text-translator` match those for the
+be specified on the command line via `-max-input-len` and
+`-max-output-len`. Additionally, the beam search size can be specified via
+`-beam-size`. The default options for the `text-translator` match those for the
 en2gr model currently downloaded via `utils/download_caffe2_models.sh`
-(`-max_input_len=10`, `-max_output_len=14`, `-beam_size=6`).
+(`-max-input-len=10`, `-max-output-len=14`, `-beam-size=6`).
 
 ## Caffe2 and ONNX Models
 
