@@ -480,6 +480,9 @@ int main(int argc, char **argv) {
   BB.newInstr("Quantize")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isFPType()"})
+      .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .dataParallel()
       .autoIRGen();
 
@@ -487,7 +490,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isFPType()"})
-      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::TypeCheck, {"Src", "isQuantizedType()"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .dataParallel()
       .autoIRGen();
