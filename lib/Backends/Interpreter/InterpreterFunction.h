@@ -20,6 +20,7 @@
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Context.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -205,8 +206,10 @@ private:
   template <typename ElemTy>
   void fwdSparseToDenseInst_FloatImpl(const SparseToDenseInst *I);
 
-  template <typename ElemTy>
-  void fwdDequantizeInst_Impl(const DequantizeInst *I);
+  template <class eTy>
+  void fwdRescaleQuantizedInst_impl(Value *src, Value *dest,
+                                    TensorQuantizationParams &srcQ,
+                                    TensorQuantizationParams &destQ);
   ///@}
 };
 

@@ -55,14 +55,59 @@ Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
   assert(tensor.getType().isFPType() && "Type not supported yet");
   if (Ty == ElemKind::Int8QTy) {
     quantizeTensorUtil<int8_t>(&tmp, tensor);
-  } else {
+  } else if (Ty == ElemKind::Int16QTy) {
+    quantizeTensorUtil<int16_t>(&tmp, tensor);
+  } else if (Ty == ElemKind::Int32QTy) {
     quantizeTensorUtil<int32_t>(&tmp, tensor);
+  } else {
+    llvm_unreachable("Quantized type not supported");
   }
   return tmp;
 }
 
-float dequantize(int8_t input, const TensorQuantizationParams &TQP) {
-  return TQP.scale * (input - TQP.offset);
+template <class eTy = int8_t>
+static void dequantizeTensorUtil(Tensor *dest, const Tensor &src) {
+  TensorQuantizationParams TQP{src.getType().getScale(),
+                               src.getType().getOffset()};
+  auto srcHandle = src.getHandle<eTy>();
+  switch (dest->getElementType()) {
+  case ElemKind::FloatTy: {
+    auto destH = dest->getHandle<float>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::dequantize<eTy>(
+          static_cast<eTy>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::Float16Ty: {
+    auto destH = dest->getHandle<float16>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::dequantize<eTy>(
+          static_cast<eTy>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  default:
+    llvm_unreachable("Cannot dequantize to the given type");
+  }
+}
+
+Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
+  assert(((floatKind == ElemKind::FloatTy) ||
+          (floatKind == ElemKind::Float16Ty)) &&
+         "Non supported output floating point type");
+  Tensor tmp(floatKind, tensor.dims());
+  auto Ty = tensor.getType().getElementType();
+  if (Ty == ElemKind::Int8QTy) {
+    dequantizeTensorUtil<int8_t>(&tmp, tensor);
+  } else if (Ty == ElemKind::Int16QTy) {
+    dequantizeTensorUtil<int16_t>(&tmp, tensor);
+  } else if (Ty == ElemKind::Int32QTy) {
+    dequantizeTensorUtil<int32_t>(&tmp, tensor);
+  } else {
+    llvm_unreachable("Input quantized type not supported");
+  }
+  return tmp;
 }
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,

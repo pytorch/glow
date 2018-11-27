@@ -2172,26 +2172,29 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
   destTensor->assign(&qTensor);
 }
 
-template <typename ElemTy>
-void InterpreterFunction::fwdDequantizeInst_Impl(
-    const glow::DequantizeInst *I) {
-  staticAssertFloatingPointType(ElemTy);
-  auto *srcTensor = getTensor(I->getSrc());
-  TensorQuantizationParams params{srcTensor->getType().getScale(),
-                                  srcTensor->getType().getOffset()};
-
-  auto destHandle = getWeightHandle<ElemTy>(I->getDest());
-  auto srcHandle = srcTensor->getHandle<int8_t>();
-  for (size_t i = 0, e = destHandle.size(); i < e; ++i) {
-    destHandle.raw(i) = quantization::dequantize(srcHandle.raw(i), params);
-  }
-}
-
 /// Dequantize integer tensor. Scale and Offset are based
 /// on the source tensor type.
 void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
-  dispatchFloatingPointImpl(fwdDequantizeInst_Impl,
-                            I->getDest()->getElementType(), I);
+  auto *srcTensor = getTensor(I->getSrc());
+  auto *destTensor = getTensor(I->getDest());
+  auto destTy = destTensor->getType();
+  Tensor fTensor =
+      quantization::dequantizeTensor(*srcTensor, destTy.getElementType());
+  destTensor->assign(&fTensor);
+}
+
+template <class eTy>
+void InterpreterFunction::fwdRescaleQuantizedInst_impl(
+    Value *src, Value *dest, TensorQuantizationParams &srcQ,
+    TensorQuantizationParams &destQ) {
+
+  auto srcH = getWeightHandle<eTy>(src);
+  auto destH = getWeightHandle<eTy>(dest);
+
+  for (size_t i = 0, e = destH.size(); i < e; ++i) {
+    float val = quantization::dequantize(srcH.raw(i), srcQ);
+    destH.raw(i) = quantization::quantize(val, destQ);
+  }
 }
 
 void InterpreterFunction::fwdRescaleQuantizedInst(
@@ -2204,12 +2207,18 @@ void InterpreterFunction::fwdRescaleQuantizedInst(
   TensorQuantizationParams srcQ{srcTy->getScale(), srcTy->getOffset()};
   TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
 
-  auto srcH = getWeightHandle<int8_t>(src);
-  auto destH = getWeightHandle<int8_t>(dest);
-
-  for (size_t i = 0, e = destH.size(); i < e; ++i) {
-    float val = quantization::dequantize(srcH.raw(i), srcQ);
-    destH.raw(i) = quantization::quantize(val, destQ);
+  switch (destTy->getElementType()) {
+  case ElemKind::Int8QTy:
+    fwdRescaleQuantizedInst_impl<int8_t>(src, dest, srcQ, destQ);
+    break;
+  case ElemKind::Int16QTy:
+    fwdRescaleQuantizedInst_impl<int16_t>(src, dest, srcQ, destQ);
+    break;
+  case ElemKind::Int32QTy:
+    fwdRescaleQuantizedInst_impl<int32_t>(src, dest, srcQ, destQ);
+    break;
+  default:
+    llvm_unreachable("Quantized type not supported");
   }
 }
 
