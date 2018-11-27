@@ -1155,11 +1155,9 @@ TEST(Quantization, quantizeSlice) {
     // Verify that the slice is rescaled after being quantized.
     // The reason we need a rescale is because slicing doesn't perform rescaling
     // by itself.
-    auto *RN = llvm::dyn_cast<RescaleQuantizedNode>(DN->getInput());
-    ASSERT_TRUE(RN);
-    EXPECT_EQ(RN->getResult().getType()->getOffset(), -128);
-    EXPECT_EQ(RN->getResult().getType()->getScale(), 0.2f);
-    auto *qslice = llvm::dyn_cast<SliceNode>(RN->getInput());
+    // Note: after optimization, the RescaleQuantized node created for the Slice
+    // gets merged with the dequantize node.
+    auto *qslice = llvm::dyn_cast<SliceNode>(DN->getInput());
     ASSERT_TRUE(qslice);
     ASSERT_TRUE(qslice->getResult().getType()->isQuantizedType());
     EXPECT_EQ(qslice->getResult().getType()->getOffset(), 0);
@@ -1223,14 +1221,12 @@ TEST(Quantization, quantizeReshape) {
     auto *DN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
     ASSERT_TRUE(DN);
 
-    // Verify that the slice is rescaled after being quantized.
+    // Verify that the reshape is rescaled after being quantized.
     // The reason we need a rescale is because reshaping doesn't perform
     // rescaling by itself.
-    auto *RN = llvm::dyn_cast<RescaleQuantizedNode>(DN->getInput());
-    ASSERT_TRUE(RN);
-    EXPECT_EQ(RN->getResult().getType()->getOffset(), -128);
-    EXPECT_EQ(RN->getResult().getType()->getScale(), 0.2f);
-    auto *qreshape = llvm::dyn_cast<ReshapeNode>(RN->getInput());
+    // Note: after optimization, the RescaleQuantized node created for the
+    // Reshape gets merged with the dequantize node.
+    auto *qreshape = llvm::dyn_cast<ReshapeNode>(DN->getInput());
     ASSERT_TRUE(qreshape);
     ASSERT_TRUE(qreshape->getResult().getType()->isQuantizedType());
     EXPECT_EQ(qreshape->getResult().getType()->getOffset(), 0);

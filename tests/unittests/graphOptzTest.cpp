@@ -1554,6 +1554,31 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   }
 }
 
+/// Check that rescale gets correctly merged into a following dequantize node
+TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
+  // Check that we are combining quantization-dequantization pairs.
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
+                                       "input", true);
+  auto *qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03f, 5);
+  auto *R = F_->createRescaleQuantized("rescale", input, qType);
+  auto *D = F_->createDequantize("dequantize", R);
+  F_->createSave("ret", D);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Only 2 nodes should remain (Dequantize -> Save)
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  // Check the graph structure
+  auto *SN = F_->getNodeByName("ret");
+  EXPECT_NE(nullptr, SN);
+  auto *S = llvm::dyn_cast<SaveNode>(SN);
+  EXPECT_NE(nullptr, S);
+  auto *newDN = S->getInput().getNode();
+  EXPECT_NE(nullptr, newDN);
+  EXPECT_NE(nullptr, llvm::dyn_cast<DequantizeNode>(newDN));
+}
+
 TEST_F(GraphOptz, quantizeToRescale) {
   // Check that we are combining quantization-dequantization pairs.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,

@@ -1901,6 +1901,17 @@ static void optimizeQuantization(Function *F) {
         DQ->getResult().replaceAllUsesOfWith(Q->getInput());
         continue;
       }
+      // Fold the rescale into the following Dequantize.
+      // Dequantize(rescale) -> Dequantize()
+      if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
+        auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
+        DQ->getResult().replaceAllUsesOfWith(newRS);
+
+        // We may be able to optimize this rescale node. Remember to visit this
+        // new node and try to optimize it later.
+        worklist.push_back(newRS);
+        continue;
+      }
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
