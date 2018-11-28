@@ -48,6 +48,13 @@ target_link_libraries(fr2en
                         Quantization
                         Support)
 
+add_executable(lenet-loader
+                 lenet-loader.cpp)
+target_link_libraries(lenet-loader
+                      PRIVATE
+                        ExecutionEngine
+                        Importer)
+
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()
