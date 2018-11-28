@@ -713,23 +713,30 @@ void Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     auto dim = getShape(dict["shape"]);
 
     size_t i = 0;
+#define LOAD_TENSOR_FILL(TYPE_NAME, NATIVE_TYPE, PROTO_TYPE_NAME)              \
+  T->reset(ElemKind::TYPE_NAME, dim);                                          \
+  auto TH = T->getHandle<NATIVE_TYPE>();                                       \
+  for (auto num : dict["values"]->PROTO_TYPE_NAME()) {                         \
+    TH.raw(i++) = num;                                                         \
+  }
+
     if (dict["values"]->floats_size()) {
       assert(typeName != "GivenTensorIntFill" &&
              typeName != "GivenTensorInt64Fill");
-      T->reset(ElemKind::FloatTy, dim);
-      auto TH = T->getHandle<>();
-      for (auto num : dict["values"]->floats()) {
-        TH.raw(i++) = num;
-      }
+      LOAD_TENSOR_FILL(FloatTy, float, floats);
     } else if (dict["values"]->ints_size()) {
-      T->reset(ElemKind::Int64ITy, dim);
-      auto TH = T->getHandle<int64_t>();
-      for (auto num : dict["values"]->ints()) {
-        TH.raw(i++) = num;
+      if (typeName == "GivenTensorIntFill") {
+        LOAD_TENSOR_FILL(Int32ITy, int32_t, ints);
+      } else if (typeName == "GivenTensorInt64Fill" ||
+                 typeName == "GivenTensorFill") {
+        LOAD_TENSOR_FILL(Int64ITy, int64_t, ints);
+      } else {
+        unexpectedNodeError(op, "Unsupported data type for " + typeName);
       }
     } else {
-      unexpectedNodeError(op, "Unsupported data type for GivenTensorFill.");
+      unexpectedNodeError(op, "Unsupported data type for " + typeName);
     }
+#undef LOAD_TENSOR_FILL
 
     assert(i == T->size() && "The number of serialized values does not "
                              "match the size of the tensor.");
