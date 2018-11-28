@@ -16,6 +16,7 @@ add_library(Graph
             ${NODES_SRC}
             ${NODES_DEF}
             Context.cpp
+            Hook.cpp
             Node.cpp
             Nodes.cpp
             NodeValue.cpp
