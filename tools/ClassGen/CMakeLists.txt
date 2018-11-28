@@ -8,11 +8,16 @@ add_executable(InstrGen
 
 target_link_libraries(NodeGen
                       PUBLIC
+                        MemberType
                         Support)
 
 target_link_libraries(InstrGen
                       PUBLIC
+                        MemberType
                         Support)
+
+add_library(MemberType
+              MemberType.cpp)
 
 if(GLOW_WITH_CPU)
   add_subdirectory(Backends/CPU)

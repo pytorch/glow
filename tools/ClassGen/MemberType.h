@@ -30,8 +30,43 @@ enum class MemberType : unsigned {
   VectorUnsigned,
   VectorSizeT,
   VectorNodeValue,
+  Enum,
 };
 
+/// This struct encapsulates all of the information NodeBuilder needs about the
+/// type of a member in order to generate a cloner, hasher, equator, etc.
+struct MemberTypeInfo {
+  MemberType type;
+  std::string returnTypename;
+  std::string storageTypename;
+  std::string ctorArgTypename;
+  std::string forwardDecl;
+};
+
+/// These are instances of MemberTypeInfo for commonly used types.
+extern MemberTypeInfo kTypeRefTypeInfo;
+extern MemberTypeInfo kFloatTypeInfo;
+extern MemberTypeInfo kUnsignedTypeInfo;
+extern MemberTypeInfo kBooleanTypeInfo;
+extern MemberTypeInfo kStringTypeInfo;
+extern MemberTypeInfo kVectorFloatTypeInfo;
+extern MemberTypeInfo kVectorUnsignedTypeInfo;
+extern MemberTypeInfo kVectorSizeTTypeInfo;
+extern MemberTypeInfo kVectorNodeValueTypeInfo;
+
+inline const char *getReturnTypename(const MemberTypeInfo *typeInfo) {
+  return typeInfo->returnTypename.c_str();
+}
+
+inline const char *getStorageTypename(const MemberTypeInfo *typeInfo) {
+  return typeInfo->storageTypename.c_str();
+}
+
+inline const char *getCtorArgTypename(const MemberTypeInfo *typeInfo) {
+  return typeInfo->ctorArgTypename.c_str();
+}
+
+/// TODO: Remove after modifying InstrGen to use MemberTypeInfo as well?
 inline const char *getReturnTypename(MemberType type) {
   const char *returnTypes[] = {"TypeRef",
                                "float",
