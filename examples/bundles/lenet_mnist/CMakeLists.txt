@@ -50,8 +50,8 @@ add_custom_command(
   OUTPUT
     ${LENET_MNIST_BUNDLE_DIR}/lenet_mnist.o
   COMMAND
-    image-classifier ${IMAGES}/3_1020.png -g -image_mode=0to1
-    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/3_1020.png -g -image-mode=0to1
+    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
     -cpu -emit-bundle ${LENET_MNIST_BUNDLE_DIR}
   DEPENDS
     image-classifier
@@ -63,9 +63,9 @@ add_custom_command(
   OUTPUT
     ${LENET_MNIST_BUNDLE_DIR}/profile.yml
   COMMAND
-    image-classifier ${IMAGES}/*.png -image_mode=0to1
-    -dump_profile=${LENET_MNIST_BUNDLE_DIR}/profile.yml
-    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/*.png -image-mode=0to1
+    -dump-profile=${LENET_MNIST_BUNDLE_DIR}/profile.yml
+    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
   DEPENDS
     image-classifier
 )
@@ -76,8 +76,8 @@ add_custom_command(
   OUTPUT
     ${LENET_MNIST_BUNDLE_DIR}/quantized_lenet_mnist.o
   COMMAND
-    image-classifier ${IMAGES}/3_1020.png -g -image_mode=0to1 -load_profile=profile.yml
-    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model_input_name=${MODEL_INPUT_NAME}
+    image-classifier ${IMAGES}/3_1020.png -g -image-mode=0to1 -load-profile=profile.yml
+    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
     -cpu -emit-bundle ${LENET_MNIST_BUNDLE_DIR} && mv ${LENET_MNIST_BUNDLE_DIR}/lenet_mnist.o ${LENET_MNIST_BUNDLE_DIR}/quantized_lenet_mnist.o
   DEPENDS
     image-classifier

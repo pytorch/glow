@@ -64,7 +64,7 @@ llvm::cl::opt<unsigned> iterationsOpt(
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> dumpProfileFileOpt(
-    "dump_profile",
+    "dump-profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
                    "and dump result to the file."),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
@@ -85,7 +85,7 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
-    "load_profile",
+    "load-profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
     llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
     llvm::cl::cat(loaderCat));
@@ -117,11 +117,11 @@ llvm::cl::OptionCategory
                    "given files/stdout");
 
 llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
-    "dumpGraphDAG",
+    "dump-graph-DAG",
     llvm::cl::desc("Specify the file to export the Graph in DOT format"),
     llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
 
-llvm::cl::opt<bool> dumpGraphOpt("dumpGraph",
+llvm::cl::opt<bool> dumpGraphOpt("dump-graph",
                                  llvm::cl::desc("Prints Graph to stdout"),
                                  llvm::cl::cat(modelExportCat));
 

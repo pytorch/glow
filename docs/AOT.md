@@ -36,7 +36,7 @@ This document demonstrates how to produce a bundle for the host CPU using the
 directory.
 
 ```
-$image-classifier image.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle build/
+$image-classifier image.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -cpu -emit-bundle build/
 ```
 
 The command above would compile the neural network model described by the files
@@ -157,7 +157,7 @@ The CMakeLists.txt provides the following targets:
 * `ResNet50BundleNetFiles`: it downloads the Resnet50 network model in the Caffe2 format.
 * `ResNet50BundleNet`: it generates the bundle files using the Glow image-classifier as described above.
   The concrete command line looks like this:
-  `image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -cpu -emit-bundle <build_dir>`
+  `image-classifier tests/images/imagenet/cat_285.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -cpu -emit-bundle <build_dir>`
   It reads the network model from `resnet50` and generates the `resnet50.o`
   and `resnet50.weights` files into the `build_dir` directory.
 * `ResNet50BundleMain`:  it compiles the `main.cpp` file, which is the main file of the project.
@@ -180,9 +180,9 @@ For example, to run the quantized bundle, you just need to execute:
 
 This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
-`image-classifier tests/images/imagenet/cat_285.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -load_profile=profile.yml -cpu -emit-bundle build`
+`image-classifier tests/images/imagenet/cat_285.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -load-profile=profile.yml -cpu -emit-bundle build`
 
-The `profile.yml` itself is captured at a prior step by executing image-classifier with the `dump_profile` option:
-`image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -dump_profile=profile.yml`.
+The `profile.yml` itself is captured at a prior step by executing image-classifier with the `dump-profile` option:
+`image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -dump-profile=profile.yml`.
 
 See the [CMakeLists.txt](../examples/bundles/resnet50/CMakeLists.txt) for details.

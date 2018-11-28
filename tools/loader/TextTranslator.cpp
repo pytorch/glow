@@ -31,25 +31,25 @@ namespace {
 llvm::cl::OptionCategory textTranslatorCat("Text Translator Options");
 
 llvm::cl::opt<unsigned>
-    maxInputLenOpt("max_input_len",
+    maxInputLenOpt("max-input-len",
                    llvm::cl::desc("Maximum allowed length of the input "
                                   "sentence. Specified by the input model."),
                    llvm::cl::Optional, llvm::cl::init(10),
                    llvm::cl::cat(textTranslatorCat));
 
 llvm::cl::opt<unsigned>
-    maxOutputLenOpt("max_output_len",
+    maxOutputLenOpt("max-output-len",
                     llvm::cl::desc("Maximum allowed length of the output "
                                    "sentence. Specified by the input model."),
                     llvm::cl::Optional, llvm::cl::init(14),
                     llvm::cl::cat(textTranslatorCat));
 
 llvm::cl::opt<unsigned> beamSizeOpt(
-    "beam_size", llvm::cl::desc("Beam size used by the input model."),
+    "beam-size", llvm::cl::desc("Beam size used by the input model."),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(textTranslatorCat));
 
 llvm::cl::opt<double>
-    lengthPenaltyOpt("length_penalty",
+    lengthPenaltyOpt("length-penalty",
                      llvm::cl::desc("Length penalty to use when determining "
                                     "highest likelihood output sentence."),
                      llvm::cl::Optional, llvm::cl::init(0.0f),

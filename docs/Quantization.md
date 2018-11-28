@@ -66,12 +66,12 @@ from Resnet50.
 
 The Glow loader tool provides options to execute both profiling and conversion of a NN graph.
 
-```dump_profile=profile.yaml``` option is used to dump per node's output profile data
+```dump-profile=profile.yaml``` option is used to dump per node's output profile data
 into the ```profile.yaml``` file.
 This information can be used in the process of quantized conversion.
 For example, you can run the following command to capture profile for Resnet50.
 ```
-./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -dump_profile="profile.yaml"
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -dump-profile="profile.yaml"
 ```
 By default, the loader will produce quantized results using asymmetric ranges.
 That is ranges not necessarily centered on 0. The loader supports three modes
@@ -92,14 +92,14 @@ the quantization process, where schema is ```asymmetric```,
 ```symmetric```, or ```symmetric_with_uint8```.
 
 
-```load_profile=profile.yaml``` option is used to quantize graph based on the
+```load-profile=profile.yaml``` option is used to quantize graph based on the
 captured profile in ```profile.yaml``` file. Important note, graph structure
 should not be changed between a step of capturing profile and a step of quantizing
 the graph.
 For example, you can run the following command to load the profile and quantize
 the graph.
 ```
-./bin/image-classifier tests/images/imagenet/*.png -image_mode=0to1 -m=resnet50 -model_input_name=gpu_0/data -load_profile="profile.yaml"
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -load-profile="profile.yaml"
 ```
 
 By default, all nodes that can be quantized will be quantized. However, we may
@@ -109,11 +109,11 @@ disabling quantization of all nodes of a specific kind which are found in the
 graph. For example, if the loaded model sees high accuracy loss when
 element-wise Add is quantized, it can be left in floating point. This can be
 done by passing on the command line the node name via the option
-`-do_not_quantize_nodes`. Multiple node kinds can be specified to not be
-quantized. For example, to not quantize any Add or Div nodes when running the
-quantized text translator:
+`-keep-original-precision-for-nodes`. Multiple node kinds can be specified to
+not be quantized. For example, to not quantize any Add or Div nodes when running
+the quantized text translator:
 
-```./bin/text-translator -m en2gr -load_profile=en2gr.yaml -do_not_quantize_nodes=Add,Div```
+```./bin/text-translator -m en2gr -load-profile=en2gr.yaml -keep-original-precision-for-nodes=Add,Div```
 
 ## Compiler Optimizations
 
