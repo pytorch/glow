@@ -93,8 +93,26 @@ public:
 
   /// Set the content of the tensor to zero.
   void zero() {
-    std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
-              0);
+    // Quantized tensors should go to their offset.
+    switch (type_.getElementType()) {
+    case ElemKind::Int8QTy: {
+      auto *data = reinterpret_cast<int8_t *>(getData());
+      std::fill(&data[0], &data[0] + size(), (int8_t)type_.getOffset());
+    } break;
+    case ElemKind::Int16QTy: {
+      auto *data = reinterpret_cast<int16_t *>(getData());
+      std::fill(&data[0], &data[0] + size(), (int16_t)type_.getOffset());
+    } break;
+    case ElemKind::Int32QTy: {
+      auto *data = reinterpret_cast<int32_t *>(getData());
+      std::fill(&data[0], &data[0] + size(), (int32_t)type_.getOffset());
+    } break;
+    default:
+      // Non-quantized tensors are set to 0.
+      std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
+                0);
+      break;
+    }
   }
 
   /// \returns the shape of the tensor.
@@ -626,8 +644,9 @@ public:
 
   /// \returns true if tensor contains only elements equal to zero.
   bool isZero() const {
+    int32_t trueZero = getType().isQuantizedType() ? getType().getOffset() : 0;
     for (size_t i = 0, e = size(); i < e; i++) {
-      if (raw(i) != 0)
+      if (raw(i) != trueZero)
         return false;
     }
 

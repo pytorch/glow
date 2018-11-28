@@ -385,7 +385,7 @@ TEST(Tensor, reset) {
     EXPECT_EQ(H.raw(i), 0.0);
   }
   for (size_t i = 0; i < 4 * 7 * 3 * 8; i++) {
-    EXPECT_EQ(QH.raw(i), 0);
+    EXPECT_EQ(QH.raw(i), QA.getType().getOffset());
   }
 }
 
@@ -650,6 +650,72 @@ TEST(Tensor, insertWithCountAndAxis) {
       EXPECT_EQ(xH.at({i, j % 2}), yH.at({i, j}));
     }
   }
+}
+
+/// Verify that tensors that are quantized begin zero'd to their type's offset
+/// and are reset back to that offset.
+TEST(Tensor, zeroQuantizedTensor) {
+  const int32_t offsetQ8 = 0;
+  Tensor Q8T(ElemKind::Int8QTy, {3, 4, 5, 6}, 127, offsetQ8);
+
+  const int32_t offsetQ16 = 223;
+  Tensor Q16T(ElemKind::Int16QTy, {3, 4, 5}, 1234.7, offsetQ16);
+
+  const int32_t offsetQ32 = 53452;
+  Tensor Q32T(ElemKind::Int32QTy, {3, 4}, 500.4, offsetQ32);
+
+  auto Q8H = Q8T.getHandle<int8_t>();
+  EXPECT_TRUE(Q8H.isZero());
+  for (size_t i = 0, e = Q8H.size(); i < e; i++) {
+    EXPECT_EQ(Q8H.raw(i), offsetQ8);
+  }
+
+  auto Q16H = Q16T.getHandle<int16_t>();
+  EXPECT_TRUE(Q16H.isZero());
+  for (size_t i = 0, e = Q16H.size(); i < e; i++) {
+    EXPECT_EQ(Q16H.raw(i), offsetQ16);
+  }
+
+  auto Q32H = Q32T.getHandle<int32_t>();
+  EXPECT_TRUE(Q32H.isZero());
+  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
+    EXPECT_EQ(Q32H.raw(i), offsetQ32);
+  }
+
+  Q32H = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  EXPECT_FALSE(Q32H.isZero());
+
+  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
+    EXPECT_NE(Q32H.raw(i), offsetQ32);
+  }
+
+  Q32T.zero();
+  EXPECT_TRUE(Q32H.isZero());
+  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
+    EXPECT_EQ(Q32H.raw(i), offsetQ32);
+  }
+}
+
+// Verify that if the tensor is set to the offset manually then isZero() is
+// true
+TEST(Tensor, manuallySetToOffset) {
+  const int32_t offsetQ8 = 6;
+  Tensor Q8T(ElemKind::Int8QTy, {3, 2}, 10.1, offsetQ8);
+
+  auto Q8H = Q8T.getHandle<int8_t>();
+  EXPECT_TRUE(Q8H.isZero());
+
+  Q8H = {1, 2, 3, 4, 5, 6};
+  EXPECT_FALSE(Q8H.isZero());
+
+  Q8H = {offsetQ8, offsetQ8, offsetQ8, offsetQ8, offsetQ8, offsetQ8};
+  EXPECT_TRUE(Q8H.isZero());
+
+  Q8H.raw(1) = offsetQ8 - 2;
+  EXPECT_FALSE(Q8H.isZero());
+
+  Q8H.raw(1) = offsetQ8;
+  EXPECT_TRUE(Q8H.isZero());
 }
 
 TEST(ZeroDimensionalTensor, handleAt) {
