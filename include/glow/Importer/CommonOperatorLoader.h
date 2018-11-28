@@ -762,9 +762,9 @@ protected:
 
   using ProtobufLoader::ProtobufLoader;
 
-  /// If operator type is supported, returns Expected<true> and creates new operator.
-  /// Returns Operator<false> if operator type is not supported. Returns Error
-  /// if an error occurred
+  /// If operator type is supported, returns Expected<true> and creates new
+  /// operator. Returns Operator<false> if operator type is not supported.
+  /// Returns Error if an error occurred
   llvm::Expected<bool> tryLoadCommonOperator(llvm::StringRef typeName,
                                              const OpType &op,
                                              ArgumentDictionaryTy &dict) {

@@ -427,8 +427,8 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
-    auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape,
-                                             strides, pads);
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);

@@ -26,7 +26,7 @@ namespace detail {
 /// Callable that takes an llvm::Error or llvm::Expected<T> and exits the
 /// program if the Error is not equivalent llvm::Error::success() or the
 /// Expected<T> contains an error that is not equivalent llvm::Error::success()
-/// TODO(jackmontgomery) replace this with a function that will print file and
+/// TODO: replace this with a function that will print file and
 /// line numbers also.
 extern llvm::ExitOnError exitOnErr;
 
@@ -89,7 +89,7 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
   } while (0)
 
 /// Takes an llvm::Error and returns it if it's not success.
-// TODO(jackmontgomery) extend this to work with llvm::Expected as well.
+// TODO: extend this to work with llvm::Expected as well.
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
     if (auto errV = std::forward<llvm::Error>(err)) {                          \
