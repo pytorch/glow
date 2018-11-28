@@ -16,6 +16,175 @@
 
 #include "NodeBuilder.h"
 
+EnumBuilder::EnumBuilder(std::ofstream &C, const std::string &name,
+                         bool isBackendSpecific)
+    : fullyQualifiedName_(name), cStream(C),
+      isBackendSpecific_(isBackendSpecific) {
+  // Parse out and store namespaces if any have been provided by repeatedly
+  // searching for tokens delimited by the scope resolution operator "::"".
+  const std::string kScopeOperator("::");
+
+  size_t namespaceStart = 0;
+  size_t namespaceEnd = name.find(kScopeOperator, namespaceStart);
+
+  while (namespaceEnd != std::string::npos) {
+    // Extract and store the current outermost namespace.
+    const size_t namespaceLength = namespaceEnd - namespaceStart;
+    namespaces_.emplace_back(name.substr(namespaceStart, namespaceLength));
+
+    // Look for the next namespace.
+    namespaceStart = namespaceEnd + kScopeOperator.size();
+    namespaceEnd = name.find(kScopeOperator, namespaceStart);
+  }
+
+  // Once the scope resolution operator is no longer found, that which was
+  // thought to be the beginning of the next namespace must be the beginning
+  // of the enum class name instead.
+  const size_t enumNameStart = namespaceStart;
+  name_ = name.substr(enumNameStart);
+
+  // Sanity check that there are no scope resolution operators in the parsed
+  // enum name.
+  assert(name_.find(kScopeOperator) == std::string::npos);
+}
+
+EnumBuilder &EnumBuilder::addEnumCase(const std::string &name,
+                                      const std::string &doc) {
+  enumCases_.emplace_back(EnumCase{name, unusedValue_++, doc, false});
+  return *this;
+}
+
+EnumBuilder &EnumBuilder::addEnumCaseWithValue(const std::string &name,
+                                               const int value,
+                                               const std::string &doc) {
+  // First, check if the value is already in use. If it is, replace the old
+  // use of it with unusedValue_.
+  for (auto &enumCase : enumCases_) {
+    if (!enumCase.definedWithValue && (enumCase.value == value)) {
+      enumCase.value = unusedValue_++;
+      break;
+    }
+  }
+
+  enumCases_.emplace_back(EnumCase{name, value, doc, true});
+
+  // Maintain the invariant that unusedValue_ is always a value that is NOT
+  // used by the enum.
+  unusedValue_ = std::max(unusedValue_, value + 1);
+  return *this;
+}
+
+MemberTypeInfo EnumBuilder::getMemberTypeInfo() const {
+  // Emit the forward declaration into a string so that it can be packed into
+  // a MemberTypeInfo.
+  std::stringstream ss;
+  emitForwardDecl(ss);
+  std::string forwardDecl = ss.str();
+
+  return MemberTypeInfo{MemberType::Enum, fullyQualifiedName_,
+                        fullyQualifiedName_, fullyQualifiedName_, forwardDecl};
+}
+
+EnumBuilder::~EnumBuilder() {
+  // If the enum is backend specific, do not print out a definition. It must
+  // be defined elsewhere in the same namespace it was declared with
+  // Builder::newEnum.
+  if (!isBackendSpecific_) {
+    emitEnumDefinition(cStream);
+  }
+}
+
+void EnumBuilder::emitNamespaceOpen(std::ostream &os) const {
+  for (const auto &ns : namespaces_) {
+    os << "namespace " << ns << " {\n";
+  }
+}
+
+void EnumBuilder::emitNamespaceClose(std::ostream &os) const {
+  for (size_t i = 0, e = namespaces_.size(); i < e; ++i) {
+    os << "}\n";
+  }
+}
+
+void EnumBuilder::emitDocstring(std::ostream &os) const {
+  std::istringstream stream(docstring_);
+  std::string line;
+  while (std::getline(stream, line)) {
+    os << "  /// " << line << "\n";
+  }
+}
+
+void EnumBuilder::emitForwardDecl(std::ostream &os) const {
+  emitNamespaceOpen(os);
+  os << "  enum class " << name_ << ";\n";
+  emitNamespaceClose(os);
+
+  os << "\n";
+}
+
+void EnumBuilder::emitEnumCases(std::ostream &os) const {
+  os << "  enum class " << name_ << " {\n";
+
+  for (const auto &enumCase : enumCases_) {
+    if (!enumCase.doc.empty()) {
+      os << "    // " << enumCase.doc << "\n";
+    }
+    os << "    " << enumCase.name << " = " << enumCase.value << ",\n";
+  }
+
+  os << "  };\n";
+
+  os << "\n";
+}
+
+void EnumBuilder::emitEnumDefinition(std::ostream &os) const {
+  emitNamespaceOpen(os);
+  emitDocstring(os);
+  emitEnumCases(os);
+  emitNamespaceClose(os);
+
+  os << "\n";
+}
+
+NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
+  MemberTypeInfo *typeInfo = nullptr;
+
+  if (type == MemberType::TypeRef) {
+    typeInfo = &kTypeRefTypeInfo;
+  } else if (type == MemberType::Float) {
+    typeInfo = &kFloatTypeInfo;
+  } else if (type == MemberType::Unsigned) {
+    typeInfo = &kUnsignedTypeInfo;
+  } else if (type == MemberType::Boolean) {
+    typeInfo = &kBooleanTypeInfo;
+  } else if (type == MemberType::String) {
+    typeInfo = &kStringTypeInfo;
+  } else if (type == MemberType::VectorFloat) {
+    typeInfo = &kVectorFloatTypeInfo;
+  } else if (type == MemberType::VectorUnsigned) {
+    typeInfo = &kVectorUnsignedTypeInfo;
+  } else if (type == MemberType::VectorSizeT) {
+    typeInfo = &kVectorSizeTTypeInfo;
+  } else if (type == MemberType::VectorNodeValue) {
+    typeInfo = &kVectorNodeValueTypeInfo;
+  } else {
+    llvm_unreachable("Type not recognized");
+  }
+
+  return addMember(typeInfo, name);
+}
+
+void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
+  for (const auto &mem : members_) {
+    const std::string &forwardDecl = (mem.first)->forwardDecl;
+    if (!forwardDecl.empty()) {
+      os << forwardDecl << "\n";
+    }
+  }
+
+  os << "\n";
+}
+
 void NodeBuilder::emitEnumModePrinters(std::ostream &os) const {
   os << "\nconst char *" << name_ << "Node::getModeStr(" << name_
      << "Node::Mode m) {\n";
@@ -67,7 +236,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Initialize the members:
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       os << ", " << op.second << "_(" << op.second << ")";
       continue;
     }
@@ -84,7 +253,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "    " << op.second << "_.resize(" << op.second << ".size());\n";
@@ -120,10 +289,11 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   }
 }
 
-void NodeBuilder::emitMemberGetter(std::ostream &os, MemberType type,
+void NodeBuilder::emitMemberGetter(std::ostream &os,
+                                   const MemberTypeInfo *typeInfo,
                                    const std::string &name) const {
   // Synthesize the general getter.
-  auto returnTypeStr = getReturnTypename(type);
+  auto returnTypeStr = getReturnTypename(typeInfo);
   os << "  " << returnTypeStr << " get" << name << "() const { return " << name
      << "_; }\n";
 }
@@ -169,7 +339,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   os << "\nunsigned " << name_ << "Node::getNumInputs() const {\n"
      << "  return " << nodeInputs_.size();
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
     os << " + " << op.second << "_.size()";
@@ -184,7 +354,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { return \"" << op.second
@@ -199,7 +369,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { return " << op.second
@@ -215,7 +385,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if (op.first != MemberType::VectorNodeValue) {
+    if ((op.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { " << op.second
@@ -251,17 +421,23 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   for (const auto &mem : members_) {
     // Don't try to print the node operands directly.
-    if (mem.first == MemberType::VectorNodeValue) {
+    MemberType ty = (mem.first)->type;
+    if (ty == MemberType::VectorNodeValue) {
       continue;
     }
 
-    os << "    .addParam(\"" << mem.second << "\", get" << mem.second
-       << "())\n";
+    if (ty == MemberType::Enum) {
+      os << "    .addParam(\"" << mem.second << "\", static_cast<int>(get"
+         << mem.second << "()))\n";
+    } else {
+      os << "    .addParam(\"" << mem.second << "\", get" << mem.second
+         << "())\n";
+    }
   }
   os << "    .addParam(\"users\", getNumUsers());\n";
 
   for (const auto &mem : members_) {
-    if (mem.first != MemberType::VectorNodeValue) {
+    if ((mem.first)->type != MemberType::VectorNodeValue) {
       continue;
     }
 
@@ -275,7 +451,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   // Generate description for outputs.
   for (const auto &op : nodeOutputs_) {
-    os << "db.addParam(\"" << op.second << "\", *(get" << op.second
+    os << "  db.addParam(\"" << op.second << "\", *(get" << op.second
        << "().getType()));\n";
   }
 
@@ -355,12 +531,14 @@ void NodeBuilder::emitHasher(std::ostream &os) const {
   }
 
   for (const auto &mem : members_) {
-    auto ty = mem.first;
+    auto ty = (mem.first)->type;
     if (ty == MemberType::Float) {
       os << delim << "\n      toBinary(" << mem.second << "_)";
     } else if (isVectorType(ty)) {
       os << delim << "\n      llvm::hash_combine_range(" << mem.second
          << "_.begin(), " << mem.second << "_.end())";
+    } else if (ty == MemberType::Enum) {
+      os << delim << "\n      static_cast<int>(" << mem.second << "_)";
     } else {
       os << delim << "\n      " << mem.second << "_";
     }
@@ -387,7 +565,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    if (op.first == MemberType::VectorNodeValue) {
+    if ((op.first)->type == MemberType::VectorNodeValue) {
       os << "  for (auto &I : " << op.second
          << "_) { I.getNode()->visit(this, visitor); }\n";
     }
@@ -405,6 +583,8 @@ void NodeBuilder::emitDocstring(std::ostream &os) const {
 }
 
 void NodeBuilder::emitNodeClass(std::ostream &os) const {
+  emitMemberForwardDecls(os);
+
   os << "\nnamespace glow {\n";
 
   emitDocstring(os);
