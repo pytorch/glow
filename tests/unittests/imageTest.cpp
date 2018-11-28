@@ -43,6 +43,18 @@ TEST(Image, readNonSquarePngImage) {
   ASSERT_EQ(3, shape[2]);
 }
 
+TEST(Image, readBadImages) {
+  auto range = std::make_pair(0.f, 1.f);
+  Tensor tensor;
+  bool loadSuccess =
+      !readPngImage(&tensor, "tests/images/other/dog_corrupt.png", range);
+  ASSERT_FALSE(loadSuccess);
+
+  loadSuccess =
+      !readPngImage(&tensor, "tests/images/other/ghost_missing.png", range);
+  ASSERT_FALSE(loadSuccess);
+}
+
 TEST(Image, writePngImage) {
   auto range = std::make_pair(0.f, 1.f);
   Tensor localCopy;
