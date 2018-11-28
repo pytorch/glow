@@ -129,26 +129,26 @@ llvm::Error ONNXIFIModelLoader::loadWeights(
   RETURN_SUCCESS();
 }
 
-llvm::Expected<ONNXIFIModelLoader> ONNXIFIModelLoader::parse(
+llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
-  ONNXIFIModelLoader loader(F);
+  std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader(F));
 
   ONNX_NAMESPACE::ModelProto modelDef;
   ASSIGN_VALUE_OR_RETURN_ERR(modelDef,
-                             loader.loadProto(onnxModel, onnxModelSize));
+                             loader->loadProto(onnxModel, onnxModelSize));
 
-  RETURN_IF_ERR(loader.setVersion(modelDef));
+  RETURN_IF_ERR(loader->setVersion(modelDef));
 
-  RETURN_IF_ERR(loader.loadWeights(weightsCount, weightDescriptors));
+  RETURN_IF_ERR(loader->loadWeights(weightsCount, weightDescriptors));
 
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
 
-  RETURN_IF_ERR(loader.loadInputs(graphDef));
+  RETURN_IF_ERR(loader->loadInputs(graphDef));
 
-  RETURN_IF_ERR(loader.loadNetwork(graphDef));
+  RETURN_IF_ERR(loader->loadNetwork(graphDef));
 
-  RETURN_IF_ERR(loader.setOutputNodes(graphDef));
+  RETURN_IF_ERR(loader->setOutputNodes(graphDef));
 
   return loader;
 }
