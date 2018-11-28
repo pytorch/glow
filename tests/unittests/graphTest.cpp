@@ -17,6 +17,7 @@
 #include "glow/Graph/Graph.h"
 #include "BackendTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Graph/Hook.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
@@ -1175,4 +1176,29 @@ TEST(Graph, verifyConstantTensorTypeMatchesTensorTypeChanged) {
   input->getPayload().convertToType(ElemKind::Float16Ty);
 
   EXPECT_FALSE(input->verify());
+}
+
+/// Check that hooking an intermediate node works.
+TEST(Graph, hookTest) {
+  Module mod;
+  auto *F = mod.createFunction("main");
+  auto *in = mod.createPlaceholder(ElemKind::FloatTy, {1}, "in", false);
+  auto *relu1 = F->createRELU("relu1", in);
+  auto *relu2 = F->createRELU("relu2", relu1);
+  F->createSave("save", relu2);
+  EXPECT_EQ(F->getNodes().size(), 3);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+
+  // Hook the first relu and verify that the hooked graph looks right.
+  auto hooked = glow::hookOutput(F, relu1);
+  auto const &nodes = hooked.function->getNodes();
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(nodes.size(), 2);
+  auto const *hookSave = hooked.save;
+  ASSERT_TRUE(hookSave);
+  auto *inp = llvm::dyn_cast<ReluNode>(hookSave->getInput());
+  ASSERT_TRUE(inp);
+  auto *ph = llvm::dyn_cast<Placeholder>(inp->getInput());
+  ASSERT_TRUE(ph);
+  ASSERT_EQ(ph, in);
 }
