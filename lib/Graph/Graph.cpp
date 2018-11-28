@@ -572,7 +572,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   Constant *weights = llvm::cast<Constant>(W);
   size_t numRows = W->getType()->dims()[0];
 
-  // So far, if we want to create a storage with Int8QTy/Int16QTy/Int32QTy,
+  // So far, if we want to create a storage with Int8QTy/Int16QTy,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
@@ -580,8 +580,8 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                0.0, 0, "weights.rwqfc");
   auto *scales =
       getParent()->createConstant(ElemKind::FloatTy, {numRows}, "scales.rwqfc");
-  auto *offsets = getParent()->createConstant(ElemKind::Int32QTy, {numRows},
-                                              0.0, 0, "offsets.rwqfc");
+  auto *offsets = getParent()->createConstant(ElemKind::Int32ITy, {numRows},
+                                              "offsets.rwqfc");
 
   quantization::tensorRowwiseQuantization(
       weights->getPayload(), qWeights->getPayload(), scales->getPayload(),
