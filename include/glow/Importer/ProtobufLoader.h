@@ -78,15 +78,6 @@ std::vector<ElemTy> getShape(const AttrType *arg) {
   return dim;
 }
 
-/// Loads array and checks that all elements are the same. Returns array[0].
-template <typename T>
-llvm::Expected<size_t> getConstantArrayHead(const T *arg) {
-  auto dim = getShape(arg);
-  RETURN_ERR_IF_NOT(isArrayConstant(dim),
-                    "Only equal values along each dimensions are supported");
-  return dim[0];
-}
-
 /// Returns canonical name for a given operator: either \p name() from proto,
 /// or its first output's name.
 template <typename T> std::string loadOperatorName(const T &op) {
@@ -146,7 +137,7 @@ public:
   virtual ~ProtobufLoader();
 
   /// \returns the single final output of the network. The function assumes that
-  /// there is only one output, verified via Error. For image
+  /// there is only one output, returns Error otherwise. For image
   /// classification, this single final output is usually the result of the last
   /// softmax or regression layer.
   llvm::Expected<Placeholder *> getSingleOutput() {

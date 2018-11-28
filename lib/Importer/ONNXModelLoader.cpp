@@ -365,10 +365,8 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
 
     // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-    auto padsOrErr = getPads(dict);
-    if (!padsOrErr) {
-      return padsOrErr.takeError();
-    }
+    Pads pads;
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
 
     // Load the inputs
     NodeValue in;
@@ -430,13 +428,13 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
     auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape,
-                                             strides, *padsOrErr);
+                                             strides, pads);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
-                               kernelShape, strides, *padsOrErr, group);
+                               kernelShape, strides, pads, group);
 
     // Transpose the output back.
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -461,10 +459,8 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     std::vector<unsigned_t> kernels =
         getShape<unsigned_t>(dict.at("kernel_shape"));
 
-    auto padsOrErr = getPads(dict);
-    if (!padsOrErr) {
-      return padsOrErr.takeError();
-    }
+    Pads pads;
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
 
     if (in.dims().size() != 4 || kernels.size() != 2) {
       // Glow only handles 2D pooling currently.
@@ -483,9 +479,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     Node *node = nullptr;
     if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernels, strides, *padsOrErr);
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
     } else {
-      node = G_.createAvgPool(opName, tr, kernels, strides, *padsOrErr);
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
@@ -505,12 +501,12 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     std::vector<unsigned_t> kernels(2);
     kernels[0] = in.dims()[2];
     kernels[1] = in.dims()[3];
-    auto padsOrErr = getPads(dict);
-    if (!padsOrErr) {
-      return padsOrErr.takeError();
-    }
+
+    Pads pads;
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+
     auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createAvgPool(opName, tr, kernels, strides, *padsOrErr);
+    Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
     RETURN_SUCCESS();

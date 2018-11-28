@@ -51,9 +51,9 @@ public:
     return outputVarsByName_;
   }
 
-  /// \returns unique pointer to ONNXIFIModelLoader if \p onnxModel can be
+  /// \returns a ONNXIFIModelLoader if \p onnxModel can be
   /// parsed and static weights can be loaded from the \p wightDescriptors.
-  /// \returns nullptr otherwise.
+  /// \returns Error otherwise.
   static llvm::Expected<ONNXIFIModelLoader>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);

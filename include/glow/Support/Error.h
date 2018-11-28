@@ -21,7 +21,6 @@
 #include "llvm/Support/Error.h"
 
 namespace glow {
-
 namespace detail {
 /// NOTE This should not be used directly, instead use UNWRAP or TEMP_UNWRAP.
 /// Callable that takes an llvm::Error or llvm::Expected<T> and exits the

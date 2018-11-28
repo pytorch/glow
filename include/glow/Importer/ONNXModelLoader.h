@@ -43,9 +43,8 @@ class ONNXModelLoader
   /// Load the network initializers from the GraphProto.
   llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
-  /// \returns true if operator \p op can be loaded.
   /// Load the operator \p op into the network. This creates one or more nodes
-  /// in the network.
+  /// in the network. \returns Error if operator \p op cannot be loaded.
   llvm::Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// ONNX model ir_version;
@@ -56,19 +55,19 @@ class ONNXModelLoader
 
 protected:
   /// Load the network operators from the GraphProto.
-  /// \returns true if network can be loaded.
+  /// \returns Error if network cannot be loaded.
   llvm::Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
-  /// \returns true if output nodes were found.
+  /// \returns Error if network cannot be loaded.
   llvm::Error setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set ir verion and op version.
   llvm::Error setVersion(ONNX_NAMESPACE::ModelProto MP);
 
-  /// \returns true if ModelProto \p net can be loaded from the stream \p
-  /// iStream.
+  /// \returns Expected<ModelProto> if a ModelProto can be loaded from the
+  /// stream \p iStream.
   static llvm::Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(google::protobuf::io::ZeroCopyInputStream &iStream);
 
@@ -76,15 +75,15 @@ public:
   /// Creates a ONNX model loader to build \p F.
   ONNXModelLoader(Function &F);
 
-  /// \returns true if ModelProto \p net can be constructed from the content
-  /// of the file \p filename.
-  /// Loads ModelProto \p net from the file containing serialized protobuf.
+  /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
+  /// contents of the file \p filename and Error otherwise.
+  /// Loads ModelProto from the file containing serialized protobuf.
   static llvm::Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(const std::string &filename);
 
-  /// \returns true if ModelProto \p net can be constructed from the in-memory
-  /// serialized protobuf.
-  /// Loads ModelProto \p net from the in-memory serialized protobuf \p
+  /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
+  /// in-memory serialized protobuf.
+  /// Loads ModelProto from the in-memory serialized protobuf \p
   /// onnxModel with the model size \p onnxModelSize.
   static llvm::Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(const void *onnxModel, size_t onnxModelSize);
