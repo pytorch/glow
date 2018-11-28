@@ -4392,7 +4392,7 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   TypeRef resTy =
       mod_.uniqueType(ElemKind::Int8QTy, fc->getResult().dims(), 0.05, 49);
   TypeRef biasTy =
-      mod_.uniqueType(ElemKind::Int8QTy, bias->dims(), 0.00036, -128);
+      mod_.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.00036, -128);
 
   auto *inputq = F_->createQuantize("input.q", input, inputTy);
   auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
