@@ -1,0 +1,58 @@
+ir_version: 3
+producer_name: "test4glow"
+opset_import { 
+  version: 7
+}
+
+graph {
+  name: "test-model"
+  node {
+    input: "data"
+    output: "out"
+    name: "slice"
+    op_type: "Slice"
+    attribute {
+      name: "axes"
+      ints: 1
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "starts"
+      ints: 1
+      ints: -2
+      type: INTS
+    }
+    attribute {
+      name: "ends"
+      ints: 2
+      ints: 2000
+      type: INTS
+    }
+  }
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "out"
+  }
+}
