@@ -1612,7 +1612,7 @@ void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
   auto weightsW = getWeightHandle<int8_t>(I->getWeights());
-  auto biasW = getWeightHandle<int8_t>(I->getBias());
+  auto biasW = getWeightHandle<int32_t>(I->getBias());
   auto scalesW = getWeightHandle<float>(I->getScales());
   auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
   ShapeHW idim(inW.dims());

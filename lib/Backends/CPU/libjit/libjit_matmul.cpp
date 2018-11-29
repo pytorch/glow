@@ -303,7 +303,7 @@ void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
 
 void libjit_rowwise_quantized_fc_i8(
     int8_t *outW, const int8_t *inW, const int8_t *weightsW,
-    const int8_t *biasW, const int32_t *weightsOffsets, const int32_t *biasPre,
+    const int32_t *biasW, const int32_t *weightsOffsets, const int32_t *biasPre,
     const int32_t *biasPost, const int32_t *biasScale, const int32_t *outPre,
     const int32_t *outPost, const int32_t *outScale, const size_t *outWdims,
     const size_t *inWdims, const size_t *weightsWdims, const size_t *biasWdims,
@@ -323,7 +323,7 @@ void libjit_rowwise_quantized_fc_i8(
         int32_t I = inW[libjit_getXY(inWdims, i, k)];
         sum += (W - weightsOffsets[j]) * (I - inOffset);
       }
-      int32_t B = libjit_scale_i32i8((int32_t)biasW[j] - biasOffset, biasPre[j],
+      int32_t B = libjit_scale_i32i8(biasW[j] - biasOffset, biasPre[j],
                                      biasPost[j], biasScale[j], 0);
       sum += B;
       int32_t scaledSum = libjit_scale_i32i8(sum, outPre[j], outPost[j],
