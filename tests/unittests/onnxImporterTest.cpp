@@ -634,3 +634,89 @@ TEST(onnx, gather) {
   ASSERT_TRUE(gather);
   EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
 }
+
+static void importSliceTest(std::string fileName, const char *inputName,
+                            const llvm::ArrayRef<size_t> inputShape,
+                            const llvm::ArrayRef<size_t> starts,
+                            const llvm::ArrayRef<size_t> outputShape) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename = std::string("tests/models/onnxModels/") + fileName;
+  Context ctx;
+  Placeholder *graphOutputVar;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
+                inputShape[3]);
+    ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
+    graphOutputVar = onnxLD.getSingleOutput();
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {inputName}, {&data});
+  }
+
+  // ONNX importer loads an Slice operator and adds to the IR:
+  // - a Slice node
+
+  // Check the graph structure.
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
+  auto *node = saveNode->getInput().getNode();
+  auto *sliceNode = llvm::dyn_cast<SliceNode>(node);
+  EXPECT_NE(nullptr, sliceNode);
+
+  // Compile&run the graph, and check the output.
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+  auto result = ctx.get(graphOutputVar)->getHandle();
+  EXPECT_TRUE(result.dims().vec() == outputShape.vec());
+  size_t wSliceSize = inputShape[3];
+  size_t hSliceSize = inputShape[2] * wSliceSize;
+  size_t cSliceSize = inputShape[1] * hSliceSize;
+  size_t indexOutput = 0;
+  for (size_t n = 0; n < outputShape[0]; n++) {
+    for (size_t c = 0; c < outputShape[1]; c++) {
+      for (size_t h = 0; h < outputShape[2]; h++) {
+        for (size_t w = 0; w < outputShape[3]; w++) {
+          size_t indexInput = (starts[0] + n) * cSliceSize +
+                              (starts[1] + c) * hSliceSize +
+                              (starts[2] + h) * wSliceSize + (starts[3] + w);
+          EXPECT_FLOAT_EQ(result.raw(indexOutput++), indexInput);
+        }
+      }
+    }
+  }
+}
+
+TEST(onnx, importSliceAxesFull) {
+  importSliceTest("sliceAxesFull.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 2} /* starts */, /* ends: {1, 2, 3, 3} */
+                  {1, 1, 2, 1} /* output */);
+}
+
+TEST(onnx, importSliceAxesAnyOrder) {
+  importSliceTest("sliceAxesAnyOrder.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {1, 2, 0, 2} /* starts */, /* ends: {2, 3, 1, 3} */
+                  {1, 1, 1, 1} /* output */);
+}
+
+TEST(onnx, importSliceAxesOverwrite) {
+  importSliceTest("sliceAxesOverwrite.onnxtxt", "data",
+                  {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 2} /* starts */, /* ends: {1, 2, 3, 3} */
+                  {1, 1, 2, 1} /* output */);
+}
+
+TEST(onnx, importSliceAxesPartial) {
+  importSliceTest("sliceAxesPartial.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 0} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 3} /* output */);
+}
+
+TEST(onnx, importSliceNoAxes) {
+  importSliceTest("sliceNoAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */);
+}
