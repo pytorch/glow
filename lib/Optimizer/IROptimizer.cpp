@@ -1355,7 +1355,7 @@ void optimizeInserts(IRFunction &M) {
     assert(origWriter &&
            "Did not find the original writer to the source alloc.");
 
-    // Create a new TensorView of the the original dest of the InsertTensor,
+    // Create a new TensorView of the original dest of the InsertTensor,
     // with the same offset as the InsertTensor.
     auto *TVI =
         B.createTensorViewInst((ITI->getName() + ".tv.dest").str(), insertDest,
@@ -1425,7 +1425,7 @@ void optimizeExtracts(IRFunction &M) {
       continue;
     }
 
-    // Create a new TensorView of the the original source of the ExtractTensor,
+    // Create a new TensorView of the original source of the ExtractTensor,
     // and with the same offset as the ExtractTensor.
     auto *TVI =
         B.createTensorViewInst((ETI->getName() + ".tv.dest").str(), extractSrc,

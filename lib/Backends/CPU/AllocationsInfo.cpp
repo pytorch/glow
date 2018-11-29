@@ -131,7 +131,7 @@ static size_t calculateTensorViewOffset(const TensorViewInst *TVI) {
   size_t totalOffsetLength = 0;
   do {
     // Calculate and store the length of the current tensorview's offset
-    // into the the source of the tensorview. Note that this source may be
+    // into the source of the tensorview. Note that this source may be
     // another tensorview.
     size_t currOffsetLength =
         currTVI->getOffsets().empty() ? 0 : currTVI->getOffsets()[0];

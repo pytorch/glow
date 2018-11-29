@@ -115,7 +115,7 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
     const size_t *outWdims, const size_t *inWdims, const size_t *filterWdims,
     const size_t *biasWdims, const size_t *kernelSizes, const size_t *strides,
     const size_t *pads, size_t group, size_t endChannelIndex) {
-  // The loops below look scary but the the idea is simple. We iterate over
+  // The loops below look scary but the idea is simple. We iterate over
   // the pixels in the output tensor and calculate the coordinate of the source
   // tensor. When we process the Y row we try to process [sizeGroupY] elements
   // at once. After we finish the row we handle the odd cases by handling one y
