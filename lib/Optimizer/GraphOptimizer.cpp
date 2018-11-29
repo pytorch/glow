@@ -923,7 +923,7 @@ static void mergeBatchedAdd(Function *F) {
     SliceNode *S = llvm::cast<SliceNode>(order[0]);
     auto *BA = F->createBatchedAdd("mergedBA", S->getInput(), it.first);
 
-    // Create the new slices. These slices will replace the the original scalar
+    // Create the new slices. These slices will replace the original scalar
     // batched-add nodes.
     for (int i = 0, e = order.size(); i < e; i++) {
       auto *orig = order[i];
@@ -1460,8 +1460,8 @@ struct NodeEq {
   }
 };
 
-/// This visitor is used to walk the the graph and
-/// perform a common subexpression evaluation.
+/// This visitor is used to walk the graph and perform a common subexpression
+/// evaluation.
 struct CSEVisitor : NodeWalker {
   // Mapping from the original node to its canonical representation under CSE.
   std::unordered_map<Node *, Node *, NodeHasher, NodeEq> cseNodes_;
