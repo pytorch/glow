@@ -64,6 +64,15 @@ target_link_libraries(lenet-loader
                         Importer
                         Support)
 
+if(GLOW_WITH_CPU)
+  add_executable(resnet-verify
+                   resnet-verify.cpp)
+  target_link_libraries(resnet-verify
+                        PRIVATE
+                          ExecutionEngine
+                          Importer)
+endif()
+
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()
