@@ -16,7 +16,6 @@
 
 #include "glow/Importer/ProtobufLoader.h"
 
-#include <cassert>
 #include <string>
 
 namespace glow {
@@ -101,16 +100,34 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                               llvm::ArrayRef<TypeRef> types, Function &F)
+                               llvm::ArrayRef<TypeRef> types, Function &F,
+                               llvm::Error *errPtr)
     : G_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
-  assert(tensorNames.size() == types.size() && "Invalid initialization list");
-  for (unsigned i = 0; i < tensorNames.size(); i++) {
-    assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
-    TEMP_EXIT_ON_ERR(createAndRegisterPlaceholder(tensorNames[i], types[i]));
+  // lambda to setup the ProtobufLoader and return any llvm::Errors that were
+  // raised
+  auto setup = [&]() -> llvm::Error {
+    RETURN_ERR_IF_NOT(tensorNames.size() == types.size(),
+                      "Invalid initialization list");
+    for (unsigned i = 0; i < tensorNames.size(); i++) {
+      RETURN_ERR_IF_NOT(!hasNodeByName(tensorNames[i]),
+                        "Input names have duplicate");
+      auto placeholderOrErr =
+          createAndRegisterPlaceholder(tensorNames[i], types[i]);
+      if (!placeholderOrErr) {
+        return placeholderOrErr.takeError();
+      }
+    }
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
   }
 }
 

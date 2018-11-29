@@ -803,8 +803,8 @@ llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   return llvm::Error::success();
 }
 
-ONNXModelLoader::ONNXModelLoader(Function &F)
-    : CommonOperatorLoader({}, {}, F) {}
+ONNXModelLoader::ONNXModelLoader(Function &F, llvm::Error *errPtr)
+    : CommonOperatorLoader({}, {}, F, errPtr) {}
 
 llvm::Error
 ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
@@ -840,19 +840,32 @@ ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
-                                 llvm::ArrayRef<TypeRef> types, Function &F)
-    : CommonOperatorLoader(tensorNames, types, F) {
-  // The ONNX model that we are deserializing.
-  ONNX_NAMESPACE::ModelProto modelDef =
-      TEMP_EXIT_ON_ERR(loadProto(modelDescFilename));
+                                 llvm::ArrayRef<TypeRef> types, Function &F,
+                                 llvm::Error *errPtr)
+    : CommonOperatorLoader(tensorNames, types, F, errPtr) {
+  // lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // raised
+  auto setup = [&]() -> llvm::Error {
+    // The ONNX model that we are deserializing.
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
 
-  TEMP_EXIT_ON_ERR(setVersion(modelDef));
+    RETURN_IF_ERR(setVersion(modelDef));
 
-  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-  TEMP_EXIT_ON_ERR(checkInputs(graphDef, tensorNames, types));
+    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+    RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
 
-  TEMP_EXIT_ON_ERR(loadInitializers(graphDef));
-  TEMP_EXIT_ON_ERR(loadNetwork(graphDef));
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef));
 
-  TEMP_EXIT_ON_ERR(setOutputNodes(graphDef));
+    RETURN_IF_ERR(setOutputNodes(graphDef));
+
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
 }

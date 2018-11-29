@@ -55,12 +55,11 @@ llvm::Error ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
 
     Tensor T;
     RETURN_IF_ERR(setTensorType(in.type(), &T));
-    if (auto varOrErr = createAndRegisterPlaceholder(in.name(), &T.getType())) {
-      onnxNameToInputVars_.try_emplace(in.name(),
-                                       EXIT_ON_ERR(std::move(varOrErr)));
-    } else {
-      return varOrErr.takeError();
-    }
+
+    Placeholder *placeholder;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
+    onnxNameToInputVars_.try_emplace(in.name(), placeholder);
   }
   return llvm::Error::success();
 }
@@ -133,7 +132,12 @@ llvm::Error ONNXIFIModelLoader::loadWeights(
 llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F) {
-  std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader(F));
+  llvm::Error loaderConstructionErr = llvm::Error::success();
+  std::unique_ptr<ONNXIFIModelLoader> loader(
+      new ONNXIFIModelLoader(F, &loaderConstructionErr));
+  if (loaderConstructionErr) {
+    return std::move(loaderConstructionErr);
+  }
 
   ONNX_NAMESPACE::ModelProto modelDef;
   ASSIGN_VALUE_OR_RETURN_ERR(modelDef,
@@ -154,12 +158,13 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
   return llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
 }
 
-std::vector<std::pair<Kinded::Kind, ElemKind>>
+llvm::Expected<std::vector<std::pair<Kinded::Kind, ElemKind>>>
 ONNXIFIModelLoader::parseOperators(const void *onnxModel,
                                    size_t onnxModelSize) {
   std::vector<std::pair<Kinded::Kind, ElemKind>> result;
-  ONNX_NAMESPACE::ModelProto modelDef =
-      TEMP_EXIT_ON_ERR(ONNXModelLoader::loadProto(onnxModel, onnxModelSize));
+  ONNX_NAMESPACE::ModelProto modelDef;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      modelDef, ONNXModelLoader::loadProto(onnxModel, onnxModelSize));
 
   ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
 
