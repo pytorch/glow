@@ -43,7 +43,8 @@ int main() {
       "tests/images/mnist/5_1087.png", glow::ImageNormalizationMode::k0to1,
       glow::ImageChannelOrder::BGR, glow::ImageLayout::NCHW,
       /* useImagenetNormalization */ false);
-  auto batch = image.getUnowned(inputType->dims());
+  glow::Tensor batch(inputType);
+  batch.getHandle<>().insertSlice(image, 0);
 
   // Allocate memory for input and bind it to the placeholders.
   ctx.allocate(mod.getPlaceholders());
