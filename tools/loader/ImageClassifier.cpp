@@ -72,19 +72,6 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
 
 } // namespace
 
-/// Insert \p image into \p batch at \p index.
-template <typename Ty>
-void insertImage(Handle<Ty> &batch, const Handle<Ty> &image, size_t index) {
-  auto dims = image.dims();
-  for (size_t i = 0; i < dims[0]; i++) {
-    for (size_t j = 0; j < dims[1]; j++) {
-      for (size_t k = 0; k < dims[2]; k++) {
-        batch.at({index, i, j, k}) = image.at({i, j, k});
-      }
-    }
-  }
-}
-
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
 void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
@@ -121,8 +108,7 @@ void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
     assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
                       inputImageData->dims().begin() + 1) &&
            "All images must have the same dimensions");
-    auto LH = localCopy.getHandle();
-    insertImage(IIDH, LH, n);
+    IIDH.insertSlice(localCopy, n);
   }
 }
 

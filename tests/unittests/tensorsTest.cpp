@@ -780,3 +780,14 @@ TEST(Type, compare) {
   EXPECT_FALSE(T1.isEqual(T3));
   EXPECT_FALSE(T1.isEqual(T4));
 }
+
+TEST(Tensor, insertSlice) {
+  Tensor big(ElemKind::FloatTy, {3, 4});
+  Tensor small({1.0f, 2.0f, 3.0f, 4.0f});
+  big.zero();
+  big.getHandle<>().insertSlice(small, 1);
+  Tensor expected(ElemKind::FloatTy, {3, 4});
+  expected.getHandle<>() = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f,
+                            3.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  EXPECT_TRUE(big.isEqual(expected));
+}
