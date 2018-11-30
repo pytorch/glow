@@ -1743,6 +1743,86 @@ TEST_F(GraphOptz, fuseRescaleIntoConv) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
 
+/// This test ensures that if there is a Pad node as input of a Convolution
+/// node, Pad gets merges into Convolution.
+/// Note that Pads is merged into convolution only when it is compatible with
+/// the convolution padding:
+/// - Resulting padding after merge is positive
+/// - Padding only concerns spatial dimensions
+/// - Padding has mode 'constant' with value 0.f
+void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
+                         llvm::ArrayRef<size_t> inputDims,
+                         llvm::ArrayRef<int> pads, unsigned_t convKernelSize,
+                         llvm::ArrayRef<unsigned_t> convPads,
+                         unsigned_t convStride, unsigned_t convNumKernels) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
+
+  // Pad
+  size_t outPadDims[4];
+  for (int i = 0; i < 4; i++) {
+    outPadDims[i] = size_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+  }
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outPadDims);
+  Node *P =
+      F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
+
+  // Convolution
+  size_t filterDims[] = {convNumKernels, convKernelSize, convKernelSize,
+                         inputDims[3]};
+  auto *F =
+      mod_.createPlaceholder(ElemKind::FloatTy, filterDims, "filter", true);
+  auto *B =
+      mod_.createPlaceholder(ElemKind::FloatTy, {convNumKernels}, "bias", true);
+  auto *CV = F_->createConv(
+      "conv", P, F, B,
+      mod_.uniqueType(ElemKind::FloatTy, {outPadDims[0], outPadDims[1],
+                                          outPadDims[2], convNumKernels}),
+      {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
+
+  SaveNode *O = F_->createSave("save", CV);
+
+  // The pad node must be merged into convolution.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Check the graph structure and additional properties after optimization.
+  auto *conv = llvm::dyn_cast<ConvolutionNode>(O->getInput());
+  ASSERT_NE(conv, nullptr);
+  EXPECT_EQ(conv->dims(0), llvm::makeArrayRef({outPadDims[0], outPadDims[1],
+                                               outPadDims[2], filterDims[0]}));
+  unsigned_t expectedPads[4];
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      expectedPads[2 * i + j] =
+          unsigned_t(int(convPads[2 * i + j]) + pads[4 * i + (1 + j)]);
+    }
+  }
+  EXPECT_EQ(conv->getPads(), llvm::makeArrayRef(expectedPads));
+}
+
+TEST_F(GraphOptz, fusePadIntoConv) {
+  fusePadIntoConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, 1, 2, 0, 0, 3, 4, 0} /* pads */,
+                      5 /* convKernelSize */, {0, 0, 0, 0} /* convPads */,
+                      1 /* convStride */, 16 /* convNumKernels */);
+}
+
+TEST_F(GraphOptz, fusePadIntoConvNeg1) {
+  fusePadIntoConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, -1, 2, 0, 0, 3, -2, 0} /* pads */,
+                      5 /* convKernelSize */, {3, 0, 2, 5} /* convPads */,
+                      1 /* convStride */, 16 /* convNumKernels */);
+}
+
+TEST_F(GraphOptz, fusePadIntoConvNeg2) {
+  fusePadIntoConvTest(mod_, F_, {1, 6, 14, 3} /* inputDims */,
+                      {0, 1, -2, 0, 0, -3, 4, 0} /* pads */,
+                      5 /* convKernelSize */, {0, 2, 5, 7} /* convPads */,
+                      1 /* convStride */, 16 /* convNumKernels */);
+}
+
 /// This test ensures that if there is a RescaleNode whose input has multiple
 /// users that the input is not cloned, as this duplicates the node.
 TEST_F(GraphOptz, MultipleUsersRescaleCombineNoOpt) {
@@ -1806,7 +1886,8 @@ TEST_F(GraphOptz, FuseRescaleIntoMatMul) {
 }
 
 TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
-  // Check that we eliminate rescale nodes by sinking them into other operators.
+  // Check that we eliminate rescale nodes by sinking them into other
+  // operators.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                        "input", true);
 
@@ -1994,9 +2075,10 @@ TEST_F(GraphOptz, concatReshapes) {
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  // After optimization, we expect to see only 15 nodes. All 10 of the reshapes
-  // that were the inputs to the first original concat node (concatNode1) are
-  // removed, and a single new reshape is added after the new concat.
+  // After optimization, we expect to see only 15 nodes. All 10 of the
+  // reshapes that were the inputs to the first original concat node
+  // (concatNode1) are removed, and a single new reshape is added after the
+  // new concat.
   EXPECT_EQ(F_->getNodes().size(), 15);
 
   // concatNode1 should not exist any more.
@@ -2021,8 +2103,8 @@ TEST_F(GraphOptz, concatReshapes) {
   ASSERT_TRUE(newCN);
 }
 
-/// Check that Variable CSE works correctly, combining small Variables that have
-/// the same data.
+/// Check that Variable CSE works correctly, combining small Variables that
+/// have the same data.
 TEST_F(GraphOptz, VarsCSE) {
   // Create three variables that are Private, are not trainable, and have no
   // writers. The first two variables have the same data, and so should be
@@ -2093,8 +2175,8 @@ TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
   Type t(ElemKind::FloatTy, {10, 10, 10});
   Node *SN = F_->createSplat("one", &t, 1.0);
 
-  // The splat is a constant input to add1 and add2, and is their LHS input. We
-  // expect canonicalization to occur during optimization, moving the splat
+  // The splat is a constant input to add1 and add2, and is their LHS input.
+  // We expect canonicalization to occur during optimization, moving the splat
   // to the RHS for both. Note that add1 has multiple users: add2 and save1.
   Node *AN1 = F_->createAdd("add1", SN, I1);
   Node *AN2 = F_->createAdd("add2", SN, AN1);
@@ -2185,7 +2267,8 @@ TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
   // Save should have the new Variable as input.
   auto *V = llvm::dyn_cast<Constant>(O->getInput());
   ASSERT_TRUE(V);
-  // The new Variable should have the same shape as the original second Reshape.
+  // The new Variable should have the same shape as the original second
+  // Reshape.
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
 
@@ -2234,7 +2317,8 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_EQ(mod_.getConstants().size(), 0);
   EXPECT_EQ(mod_.getPlaceholders().size(), 6);
 
-  // Allocate two of the three inputs, but mark input2 of them as non-constant.
+  // Allocate two of the three inputs, but mark input2 of them as
+  // non-constant.
   ctx_.allocate(input1);
   ctx_.allocate(input2);
   // Don't allocate input3; keep it as a placeholder instead.
@@ -2293,9 +2377,9 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
   EXPECT_TRUE(llvm::isa<Constant>(save1->getInput()));
 }
 
-/// Test that Transpose is sunk below ChannelShuffle and cancels with an inverse
-/// transpose below the ChannelShuffle. This test is models a pattern that has
-/// has been observed in shufflenet during graph optimization.
+/// Test that Transpose is sunk below ChannelShuffle and cancels with an
+/// inverse transpose below the ChannelShuffle. This test is models a pattern
+/// that has has been observed in shufflenet during graph optimization.
 TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   const size_t inputDims[] = {3, 28, 28, 136};
 
