@@ -185,11 +185,11 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
   // The image name that the model expects must be passed on the command line.
   const char *inputName = modelInputName.c_str();
   Placeholder *inputImagePH =
-      llvm::cast<Placeholder>(UNWRAP(LD->getNodeValueByName(inputName)));
+      llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
 
   // Get the Tensor from the Placeholder that the final expected Softmax writes
   // into at the end of image inference.
-  Placeholder *SMPH = UNWRAP(LD->getSingleOutput());
+  Placeholder *SMPH = EXIT_ON_ERR(LD->getSingleOutput());
   Tensor *SMT = ctx.get(SMPH);
 
   return std::make_pair(inputImagePH, SMT);

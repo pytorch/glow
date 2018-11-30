@@ -1081,11 +1081,11 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<TypeRef> types, Function &F)
     : CommonOperatorLoader(names, types, F) {
   // The caffe2 network descriptor that we are deserializing.
-  caffe2::NetDef networkDef = UNWRAP(loadProtoFile(netDescFilename));
+  caffe2::NetDef networkDef = EXIT_ON_ERR(loadProtoFile(netDescFilename));
 
   // The caffe2 weights that we are deserializing.
-  caffe2::NetDef weightsDef = UNWRAP(loadProtoFile(netWeightFilename));
+  caffe2::NetDef weightsDef = EXIT_ON_ERR(loadProtoFile(netWeightFilename));
 
-  TEMP_UNWRAP(loadWeights(weightsDef));
-  TEMP_UNWRAP(loadNetwork(networkDef));
+  TEMP_EXIT_ON_ERR(loadWeights(weightsDef));
+  TEMP_EXIT_ON_ERR(loadNetwork(networkDef));
 }

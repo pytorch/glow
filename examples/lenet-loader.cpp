@@ -38,8 +38,8 @@ int main() {
 
   // Get input and output placeholders.
   auto *input = llvm::cast<glow::Placeholder>(
-      UNWRAP(loader.getNodeValueByName(inputName)));
-  auto *output = UNWRAP(loader.getSingleOutput());
+      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
+  auto *output = EXIT_ON_ERR(loader.getSingleOutput());
 
   // Read an example PNG and add it to an input batch.
   auto image = glow::readPngImageAndPreprocess(

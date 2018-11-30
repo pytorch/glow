@@ -56,7 +56,8 @@ llvm::Error ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
     Tensor T;
     RETURN_IF_ERR(setTensorType(in.type(), &T));
     if (auto varOrErr = createAndRegisterPlaceholder(in.name(), &T.getType())) {
-      onnxNameToInputVars_.try_emplace(in.name(), UNWRAP(std::move(varOrErr)));
+      onnxNameToInputVars_.try_emplace(in.name(),
+                                       EXIT_ON_ERR(std::move(varOrErr)));
     } else {
       return varOrErr.takeError();
     }
@@ -158,7 +159,7 @@ ONNXIFIModelLoader::parseOperators(const void *onnxModel,
                                    size_t onnxModelSize) {
   std::vector<std::pair<Kinded::Kind, ElemKind>> result;
   ONNX_NAMESPACE::ModelProto modelDef =
-      TEMP_UNWRAP(ONNXModelLoader::loadProto(onnxModel, onnxModelSize));
+      TEMP_EXIT_ON_ERR(ONNXModelLoader::loadProto(onnxModel, onnxModelSize));
 
   ONNX_NAMESPACE::GraphProto graph = modelDef.graph();
 

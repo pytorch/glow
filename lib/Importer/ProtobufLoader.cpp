@@ -110,7 +110,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   assert(tensorNames.size() == types.size() && "Invalid initialization list");
   for (unsigned i = 0; i < tensorNames.size(); i++) {
     assert(!hasNodeByName(tensorNames[i]) && "Input names have duplicate");
-    TEMP_UNWRAP(createAndRegisterPlaceholder(tensorNames[i], types[i]));
+    TEMP_EXIT_ON_ERR(createAndRegisterPlaceholder(tensorNames[i], types[i]));
   }
 }
 

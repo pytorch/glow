@@ -21,10 +21,11 @@
 #include "llvm/Support/Error.h"
 
 namespace glow {
-/// NOTE This should not be used directly, instead use UNWRAP or TEMP_UNWRAP.
-/// Callable that takes an llvm::Error or llvm::Expected<T> and exits the
-/// program if the Error is not equivalent llvm::Error::success() or the
-/// Expected<T> contains an error that is not equivalent llvm::Error::success()
+/// NOTE This should not be used directly, instead use EXIT_ON_ERR or
+/// TEMP_EXIT_ON_ERR. Callable that takes an llvm::Error or llvm::Expected<T>
+/// and exits the program if the Error is not equivalent llvm::Error::success()
+/// or the Expected<T> contains an error that is not equivalent
+/// llvm::Error::success()
 /// TODO: replace this with a function that will print file and
 /// line numbers also.
 extern llvm::ExitOnError exitOnErr;
@@ -44,15 +45,15 @@ template <typename> struct IsLLVMExpected : public std::false_type {};
 template <typename T>
 struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 
-/// Unwrap the T from within an llvm::Expected<T>. If the Expected<T> contains
-/// an error, the program will abort.
-#define UNWRAP(...) (exitOnErr(__VA_ARGS__))
+/// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
+/// an error, the program will exit.
+#define EXIT_ON_ERR(...) (exitOnErr(__VA_ARGS__))
 
-/// A temporary placeholder for UNWRAP. This should be used only during
-/// refactoring to temporarily place an UNWRAP and should eventually be
-/// replaced with either an actual UNWRAP or code that will propogate potential
-/// errors up the stack.
-#define TEMP_UNWRAP(...) (UNWRAP(__VA_ARGS__))
+/// A temporary placeholder for EXIT_ON_ERR. This should be used only during
+/// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
+/// replaced with either an actual EXIT_ON_ERR or code that will propogate
+/// potential errors up the stack.
+#define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
 
 /// Make a new llvm::StringError.
 #define MAKE_ERR(str)                                                          \

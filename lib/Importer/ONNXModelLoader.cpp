@@ -764,15 +764,15 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     : CommonOperatorLoader(tensorNames, types, F) {
   // The ONNX model that we are deserializing.
   ONNX_NAMESPACE::ModelProto modelDef =
-      TEMP_UNWRAP(loadProto(modelDescFilename));
+      TEMP_EXIT_ON_ERR(loadProto(modelDescFilename));
 
-  TEMP_UNWRAP(setVersion(modelDef));
+  TEMP_EXIT_ON_ERR(setVersion(modelDef));
 
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-  TEMP_UNWRAP(checkInputs(graphDef, tensorNames, types));
+  TEMP_EXIT_ON_ERR(checkInputs(graphDef, tensorNames, types));
 
-  TEMP_UNWRAP(loadInitializers(graphDef));
-  TEMP_UNWRAP(loadNetwork(graphDef));
+  TEMP_EXIT_ON_ERR(loadInitializers(graphDef));
+  TEMP_EXIT_ON_ERR(loadNetwork(graphDef));
 
-  TEMP_UNWRAP(setOutputNodes(graphDef));
+  TEMP_EXIT_ON_ERR(setOutputNodes(graphDef));
 }

@@ -329,8 +329,8 @@ int main(int argc, char **argv) {
   // Allocate tensors to back all inputs and outputs.
   ctx.allocate(loader.getModule()->getPlaceholders());
 
-  Placeholder *encoderInputsVar =
-      llvm::cast<Placeholder>(UNWRAP(LD.getNodeValueByName("encoder_inputs")));
+  Placeholder *encoderInputsVar = llvm::cast<Placeholder>(
+      EXIT_ON_ERR(LD.getNodeValueByName("encoder_inputs")));
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
@@ -339,11 +339,11 @@ int main(int argc, char **argv) {
   assert(!emittingBundle() && "Bundle mode has not been tested.");
 
   Placeholder *outputTokenBeamList =
-      UNWRAP(LD.getOutputByName("output_token_beam_list"));
+      EXIT_ON_ERR(LD.getOutputByName("output_token_beam_list"));
   Placeholder *outputScoreBeamList =
-      UNWRAP(LD.getOutputByName("output_score_beam_list"));
+      EXIT_ON_ERR(LD.getOutputByName("output_score_beam_list"));
   Placeholder *outputPrevIndexBeamList =
-      UNWRAP(LD.getOutputByName("output_prev_index_beam_list"));
+      EXIT_ON_ERR(LD.getOutputByName("output_prev_index_beam_list"));
 
   while (loadNextInputTranslationText(&encoderInputs)) {
     // Update the inputs.
