@@ -1061,6 +1061,46 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+TEST_F(GraphOptz, sinkTransposeBelowPad) {
+  // The shape of the graph before the optimization.
+  const size_t inputDims[] = {1, 5, 10, 15};
+  const size_t outTransposeDims[] = {1, 10, 15, 5};
+  const size_t outPadDims[] = {5, 18, 25, 11};
+  // Padding before the optimization.
+  int pads[] = {0, 2, 3, 1, 4, 6, 7, 5};
+
+  // The shape of the graph after the optimization.
+  const size_t outPadDimsAfterOptim[] = {5, 11, 18, 25};
+  const size_t outTransposeDimsAfterOptims[] = {5, 18, 25, 11};
+  // Padding after the optimization.
+  int padsAfterOptim[] = {0, 1, 2, 3, 4, 5, 6, 7};
+
+  // Create the initial graph.
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outPadDims);
+  Node *T = F_->createTranspose("transpose", A, NCHW2NHWC);
+  Node *P = F_->createPad("pad", T, outTy, PaddingMode::CONSTANT, pads, 23.f);
+  EXPECT_EQ(T->dims(0), llvm::makeArrayRef(outTransposeDims));
+  SaveNode *O = F_->createSave("ret", P);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Check the graph structure and additional properties after optimization.
+  auto *trans = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(trans, nullptr);
+  EXPECT_EQ(trans->dims(0), llvm::makeArrayRef(outTransposeDimsAfterOptims));
+  auto *pad = llvm::dyn_cast<PadNode>(trans->getInput().getNode());
+  ASSERT_NE(pad, nullptr);
+
+  EXPECT_EQ(pad->getPads(), llvm::makeArrayRef(padsAfterOptim));
+  EXPECT_EQ(pad->dims(0), llvm::makeArrayRef(outPadDimsAfterOptim));
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
 TEST_F(GraphOptz, poolBelowReluSwapped) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
