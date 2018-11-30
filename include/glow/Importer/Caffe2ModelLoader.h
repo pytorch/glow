@@ -39,25 +39,25 @@ class Value;
 class Caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
   /// Get the broadcast attribute.
-  bool getBroadcast(const ArgumentDictionaryTy &dict) override;
+  llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
-  void loadWeights(caffe2::NetDef &net);
+  llvm::Error loadWeights(caffe2::NetDef &net);
 
   /// Loads an individual weight \p op.
-  void loadWeight(const caffe2::OperatorDef &op);
+  llvm::Error loadWeight(const caffe2::OperatorDef &op);
 
   /// Load the structure of the network from the 'net' file.
-  void loadNetwork(caffe2::NetDef &net);
+  llvm::Error loadNetwork(caffe2::NetDef &net);
 
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  void loadOperator(const caffe2::OperatorDef &op);
+  llvm::Error loadOperator(const caffe2::OperatorDef &op);
 
   /// Reads a network (weights or structure) from the serialized protocol buffer
   /// file.
-  bool loadProtoFile(caffe2::NetDef &net, const std::string &filename);
+  llvm::Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);
 
 public:
   /// Loads the caffe2 model that's represented by a network description file,

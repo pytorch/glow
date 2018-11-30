@@ -31,11 +31,11 @@ private:
 
   /// Load the inputs from the GraphProto. This is useful when the
   /// initializers are not available.
-  void loadInputs(ONNX_NAMESPACE::GraphProto &net);
+  llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net);
 
   /// Load pre-trained weights from \p weightDescriptors.
-  bool loadWeights(uint32_t weightsCount,
-                   const onnxTensorDescriptorV1 *weightDescriptors);
+  llvm::Error loadWeights(uint32_t weightsCount,
+                          const onnxTensorDescriptorV1 *weightDescriptors);
 
   /// Mapping between ONNX names for inputs and actual Glow input vars.
   llvm::StringMap<Placeholder *> onnxNameToInputVars_;
@@ -51,10 +51,10 @@ public:
     return outputVarsByName_;
   }
 
-  /// \returns unique pointer to ONNXIFIModelLoader if \p onnxModel can be
+  /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
   /// parsed and static weights can be loaded from the \p wightDescriptors.
-  /// \returns nullptr otherwise.
-  static std::unique_ptr<ONNXIFIModelLoader>
+  /// \returns Error otherwise.
+  static llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
 

@@ -16,6 +16,9 @@
 #include "glow/Base/Image.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Support/Error.h"
+
+using namespace glow;
 
 /// A stripped-down example of how to load a Caffe2 protobuf and perform
 /// inference.
@@ -34,9 +37,9 @@ int main() {
   EE.compile(glow::CompilationMode::Infer, F);
 
   // Get input and output placeholders.
-  auto *input =
-      llvm::cast<glow::Placeholder>(loader.getNodeValueByName(inputName));
-  auto *output = loader.getSingleOutput();
+  auto *input = llvm::cast<glow::Placeholder>(
+      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
+  auto *output = EXIT_ON_ERR(loader.getSingleOutput());
 
   // Read an example PNG and add it to an input batch.
   auto image = glow::readPngImageAndPreprocess(
