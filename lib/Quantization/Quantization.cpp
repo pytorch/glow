@@ -369,6 +369,63 @@ public:
     // Use for debug purposes.
     lastMorphedNodeWithTypeChanges = nullptr;
   }
+
+  /// Traverse all nodes to find quantized FullyConnected nodes, and convert it
+  /// to RowwiseQuantizedFullyConnected if the weights is constant.
+  void enableRowwise() {
+    auto nodeIt = function_.getNodes().end();
+    auto stopIt = function_.getNodes().begin();
+    do {
+      --nodeIt;
+      Node &node = *nodeIt;
+      // After function "convert()" is called, one FullyConnectedNode is
+      // converted into:
+      // [fp32 input] [fp32 weights] [fp32 bias]
+      //      |              |           |
+      // [QuantizeNode] [QuantizeNode] [QuantizeNode]
+      //      \              |           /
+      // [            FullyConnectedNode            ]
+      //                     |
+      //              [DequantizeNode]
+      // We need to find the above patern and convert it to:
+      // [fp32 input]              [fp32 weights]            [fp32 bias]
+      //      |                    /      |       \              |
+      //      |         [int8 weights] [scales] [offsets]        |
+      // [QuantizeNode]      |            |        |         [QuantizeNode]
+      //      \              |            |        |             /
+      // [         RowwiseQuantizedFullyConnectedNode            ]
+      //                              |
+      //                       [DequantizeNode]
+      if (auto *Q = llvm::dyn_cast<DequantizeNode>(&node)) {
+        if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
+          NodeValue input = fcN->getInput();
+          NodeValue weights = fcN->getWeights();
+          NodeValue bias = fcN->getBias();
+          NodeValue result = fcN->getResult();
+          // Only convert quantized FullyConnected Node.
+          if (input.getType()->isQuantizedType() &&
+              llvm::isa<QuantizeNode>(weights.getNode()) &&
+              bias.getType()->isQuantizedType() &&
+              result.getType()->isQuantizedType()) {
+            auto *wq = llvm::dyn_cast<QuantizeNode>(weights.getNode());
+            // For RowwiseQuantizedFullyConnected, the weights need to be
+            // constant.
+            if (Constant *wc = llvm::dyn_cast<Constant>(wq->getInput())) {
+              auto *fcq = function_.createRowwiseQuantizedFullyConnected(
+                  "rowwiseqfc", input, wc, bias, result.getType(),
+                  /* transposeWeight */ true);
+              // Replace the usages of quantized FC node to
+              // RowwiseQuantizedFullyConnected Node.
+              result.replaceAllUsesOfWith(fcq->getResult());
+            }
+          }
+        }
+      }
+    } while (nodeIt != stopIt);
+
+    cleanUp();
+    assert(function_.verify() && "Conversion led to invalid function");
+  }
 };
 
 } // namespace
@@ -410,7 +467,7 @@ Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  Function *F, llvm::StringRef newFuncName,
-                 const KindSet &doNotQuantizeKinds) {
+                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
   std::string tmpName;
   if (newFuncName.empty()) {
     tmpName = std::string(F->getName()) + "_quantized";
@@ -421,6 +478,9 @@ quantizeFunction(const ExecutionEngine &EE,
 
   FunctionQuantizer quantizer(*G, EE, quantizationInfos, doNotQuantizeKinds);
   quantizer.convert();
+  if (enableRowwise) {
+    quantizer.enableRowwise();
+  }
 
   return G;
 }

@@ -66,13 +66,16 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F,
 /// This method clones original function \p F and caller is responsible for
 /// cleaning up/erasing original function \p F if needed. Any nodes of kinds
 /// contained in \p doNotQuantizeKinds will not be quantized, even if a profile
-/// was gathered for them and the backend supports the quantized operation.
-/// \returns a new quantized function.
+/// was gathered for them and the backend supports the quantized operation. If
+/// \p enableRowwise is true, during quantization, all quantized FullyConnected
+/// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
+/// quantized function.
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  Function *F, llvm::StringRef newFuncName = "",
-                 const KindSet &doNotQuantizeKinds = {});
+                 const KindSet &doNotQuantizeKinds = {},
+                 bool enableRowwise = false);
 
 } // namespace quantization
 } // namespace glow

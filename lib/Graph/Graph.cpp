@@ -565,27 +565,42 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Constant *W,
-                                               Node *B, TypeRef outTy) {
+                                               Node *B, TypeRef outTy,
+                                               bool transposeWeight) {
   // Since W is constant, quantize it in compilation time.
   // The quantized data is in qWeights, the scale of each row is in scales,
   // and the offset of each row is in offsets.
   Constant *weights = llvm::cast<Constant>(W);
-  size_t numRows = W->getType()->dims()[0];
+  size_t numRows =
+      transposeWeight ? W->getType()->dims()[1] : W->getType()->dims()[0];
+  size_t numCols =
+      transposeWeight ? W->getType()->dims()[0] : W->getType()->dims()[1];
 
   // So far, if we want to create a storage with Int8QTy/Int16QTy,
   // it is assumed to be quantized data and the scale and offset should be
   // provided. But for rowwise quantization, the scales and offsets are stored
   // in vectors separately, we add the dummy scale and offset here.
-  auto *qWeights = getParent()->createConstant(ElemKind::Int8QTy, W->dims(),
-                                               0.0, 0, "weights.rwqfc");
+  auto *qWeights = getParent()->createConstant(
+      ElemKind::Int8QTy, {numRows, numCols}, 0.0, 0, "weights.rwqfc");
   auto *scales =
       getParent()->createConstant(ElemKind::FloatTy, {numRows}, "scales.rwqfc");
   auto *offsets = getParent()->createConstant(ElemKind::Int32ITy, {numRows},
                                               "offsets.rwqfc");
 
+  Tensor wt;
+  if (transposeWeight) {
+    // This happens when the RowwiseQuantizedFullyConnected node is converted
+    // from a quantized FullyConnected node in Glow's quantization procedure.
+    // Since in FC, the weights is stored as transposed (i.e. I * W + B), but in
+    // RowwiseQuantizedFullyConnected, the weights is stored as it is (i.e. I *
+    // W(T) + B).
+    weights->getPayload().transpose(&wt, {1, 0});
+  } else {
+    wt.assign(&(weights->getPayload()));
+  }
+
   quantization::tensorRowwiseQuantization(
-      weights->getPayload(), qWeights->getPayload(), scales->getPayload(),
-      offsets->getPayload());
+      wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload());
 
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));

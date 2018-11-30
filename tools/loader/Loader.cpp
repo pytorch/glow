@@ -31,6 +31,14 @@
 
 using namespace glow;
 
+/// -enable-rowwise : Command line option to enable rowwise quantized
+/// fullyconnected in quantization producure.
+bool enableRowwiseOpt;
+static llvm::cl::opt<bool, true>
+    enableRowwiseF("enable-rowwise",
+                   llvm::cl::desc("Enable rowwise quantized fully connected."),
+                   llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
+
 namespace {
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
@@ -254,7 +262,8 @@ void Loader::compile(Context &ctx) {
 
     // Quantize the graph based on the captured profile.
     auto *Q = quantization::quantizeFunction(
-        EE_, quantizationInfos, F_, oldName, keepOriginalPrecisionForNodes);
+        EE_, quantizationInfos, F_, oldName, keepOriginalPrecisionForNodes,
+        enableRowwiseOpt);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.

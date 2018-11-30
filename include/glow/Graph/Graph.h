@@ -276,10 +276,12 @@ public:
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
   /// is the constant weights and will be row-wise quantized during node
   /// creation time. The output is quantized in the regular way, and its type
-  /// \p outTy is a quantized type.
+  /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
+  /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *
   createRowwiseQuantizedFullyConnected(llvm::StringRef name, NodeValue input,
-                                       Constant *W, Node *B, TypeRef outTy);
+                                       Constant *W, Node *B, TypeRef outTy,
+                                       bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
   /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This

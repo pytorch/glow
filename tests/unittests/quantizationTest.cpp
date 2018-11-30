@@ -197,6 +197,67 @@ TEST(Quantization, quantizeGraph) {
   EE.run(ctx);
 }
 
+/// Test enabling RowwiseQuantizedFullyConnected in Glow quantization
+/// procuedure. A FC can be quantized and converted to a
+/// RowwiseQuantizedFullyConnected if:
+/// 1. The weights of FC is constant;
+/// 2. Use -enable-rowwise option or set enableRowwise param in
+/// quantization::quantizeFunction to true. In unittest, the later one is used.
+TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
+  auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "weights", true);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2}, "bias", true);
+  Context ctx;
+  ctx.allocate(input);
+  ctx.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+
+  auto *WC = mod.createConstant(ElemKind::FloatTy, W->dims(), "wc");
+  auto *FC = F->createFullyConnected("FC", input, WC, B);
+  auto *S = F->createSave("ret", FC);
+  ctx.allocate(S->getPlaceholder());
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
+  };
+
+  F = quantization::quantizeFunction(EE, QI, F, "", {}, true);
+
+  // Check the graph structure after quantization.
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
+  ASSERT_TRUE(saveNode);
+  auto *deqNode =
+      llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(deqNode);
+  auto *rwNode = llvm::dyn_cast<RowwiseQuantizedFullyConnectedNode>(
+      deqNode->getInput().getNode());
+  ASSERT_TRUE(rwNode);
+  auto *inNode = llvm::dyn_cast<QuantizeNode>(rwNode->getInput().getNode());
+  ASSERT_TRUE(inNode);
+  auto *biasNode = llvm::dyn_cast<QuantizeNode>(rwNode->getBias().getNode());
+  ASSERT_TRUE(biasNode);
+  auto *weightsNode = llvm::dyn_cast<Constant>(rwNode->getWeights().getNode());
+  ASSERT_TRUE(weightsNode);
+  auto *scalesNode = llvm::dyn_cast<Constant>(rwNode->getScales().getNode());
+  ASSERT_TRUE(scalesNode);
+  auto *offsetsNode = llvm::dyn_cast<Constant>(rwNode->getOffsets().getNode());
+  ASSERT_TRUE(offsetsNode);
+
+  // Make sure that graph can be compiled and run. We check the correctness of
+  // RowwiseQuantizedFullyConnected in operatorTests.cpp.
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run(ctx);
+}
+
 /// Quantize ReLU node and make sure that quantized version
 /// has quantization parameters mapping to non-negative floating
 /// point range.
