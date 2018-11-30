@@ -151,7 +151,7 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
   RETURN_IF_ERR(loader->setOutputNodes(graphDef));
 
-  return loader;
+  return llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
 }
 
 std::vector<std::pair<Kinded::Kind, ElemKind>>
