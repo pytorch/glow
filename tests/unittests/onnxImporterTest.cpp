@@ -17,6 +17,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "gtest/gtest.h"
 
@@ -804,4 +805,74 @@ TEST(onnx, importSliceNoAxes) {
   importSliceTest("sliceNoAxes.onnxtxt", "data", {2, 3, 3, 3} /* input */,
                   {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
                   {2, 1, 2, 2} /* output */);
+}
+
+static void importPad(std::string fileName, const char *inputName,
+                      const llvm::ArrayRef<size_t> inputShape,
+                      const llvm::ArrayRef<ssize_t> starts,
+                      const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
+                      float value) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename = std::string("tests/models/onnxModels/") + fileName;
+  Context ctx;
+  Placeholder *graphOutputVar;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
+                inputShape[3]);
+    ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(ctx, &mod, {inputName}, {&data});
+  }
+
+  // ONNX importer loads a Pad operator and adds to the IR:
+  // - a Pad node
+
+  // Check the graph structure.
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
+  auto *node = saveNode->getInput().getNode();
+  auto *padNode = llvm::dyn_cast<PadNode>(node);
+  EXPECT_NE(nullptr, padNode);
+
+  // Check Pad node properties.
+  assert(padNode->getMode() == mode);
+  if (mode == PaddingMode::CONSTANT) {
+    EXPECT_EQ(value, padNode->getValue());
+  }
+  // Check the Pad node output shape.
+  std::vector<size_t> expectedOutputShape(inputShape.size());
+  for (unsigned int i = 0; i < inputShape.size(); i++) {
+    expectedOutputShape[i] =
+        size_t(ssize_t(inputShape[i]) + starts[i] + ends[i]);
+  }
+  EXPECT_TRUE(padNode->getResult().dims().vec() == expectedOutputShape);
+}
+
+TEST(onnx, importPadDefault) {
+  importPad("padDefault.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 0.f);
+}
+
+TEST(onnx, importPadConstant) {
+  importPad("padConstant.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 2.55f);
+}
+
+TEST(onnx, importPadReflect) {
+  importPad("padReflect.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::REFLECT, 0.f /* any */);
+}
+TEST(onnx, importPadEdge) {
+  importPad("padEdge.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
+            PaddingMode::EDGE, 0.f /* any */);
 }
