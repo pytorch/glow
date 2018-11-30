@@ -32,15 +32,15 @@ static llvm::Error setTensorType(const ONNX_NAMESPACE::TypeProto &in,
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT32) {
     T->reset(ElemKind::Int32ITy, dim);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   } else {
     RETURN_ERR("Only float and index tensors are supported");
   }
@@ -61,7 +61,7 @@ llvm::Error ONNXIFIModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net) {
       return varOrErr.takeError();
     }
   }
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 /// Loads tensor \p T from the input \p in.
@@ -110,7 +110,7 @@ static llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     RETURN_ERR("Only float and index tensors are supported.");
   }
 
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Error ONNXIFIModelLoader::loadWeights(
@@ -126,7 +126,7 @@ llvm::Error ONNXIFIModelLoader::loadWeights(
     tensors_[weightDescriptors[i].name] = T;
   }
 
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(

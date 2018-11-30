@@ -18,13 +18,11 @@
 #include "llvm/Support/FormatVariadic.h"
 
 namespace glow {
-namespace detail {
 llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");
 
 std::string addFileAndLineToError(llvm::StringRef str, llvm::StringRef file,
                                   uint32_t line) {
   return llvm::formatv("Error at file {0} line {1} \"{2}\"", file, line, str);
 }
-} // namespace detail
 
 } // namespace glow

@@ -57,7 +57,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createRELU(opName, in);
     addNodeAsOutput(op, R);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSigmoid(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -67,7 +67,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *S = G_.createSigmoid(opName, in);
     addNodeAsOutput(op, S);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadTanh(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -77,7 +77,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *T = G_.createTanh(opName, in);
     addNodeAsOutput(op, T);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -94,11 +94,11 @@ protected:
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
     if (auto resultOrErr = createAndRegisterConstant(opName, *T)) {
-      RETURN_SUCCESS();
+      return llvm::Error::success();
     } else {
       return resultOrErr.takeError();
     }
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   /// Loads Sqrt operator, given its protobuf representation and parsed args.
@@ -109,7 +109,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createPow(opName, in, 0.5f);
     addNodeAsOutput(op, R);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   /// Loads Reciprocal operator, given its protobuf representation and parsed
@@ -121,7 +121,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createPow(opName, in, -1.0f);
     addNodeAsOutput(op, R);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSum(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -155,7 +155,7 @@ protected:
       Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ 0);
       addNodeAsOutput(op, node);
     }
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSoftmax(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -186,7 +186,7 @@ protected:
     auto origInDims = in.getType()->dims();
     auto *RN = G_.createReshape("reshapeOutput", SM, origInDims);
     addNodeAsOutput(op, RN);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadLRN(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -214,7 +214,7 @@ protected:
     // LRN in Caffe2 has a scale_ output, but I believe it's unused for
     // inference. So explicitly only set output 0.
     nodeValueByName_[op.output(0)] = NodeValue(N, 0);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadMinMax(llvm::StringRef typeName, const OpType &op,
@@ -237,7 +237,7 @@ protected:
     }
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict,
@@ -300,7 +300,7 @@ protected:
     }
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadArithmetic(llvm::StringRef typeName, const OpType &op,
@@ -347,7 +347,7 @@ protected:
     }
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSplit(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -372,7 +372,7 @@ protected:
       // so only use 0 here as the node value result.
       nodeValueByName_[op.output(i)] = NodeValue(outputs[i], 0);
     }
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Expected<bool> loadReshape(const OpType &op,
@@ -465,7 +465,7 @@ protected:
     auto *T = G_.createTranspose(opName, in, perm);
 
     addNodeAsOutput(op, T);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadFlatten(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -479,7 +479,7 @@ protected:
     }
     auto *node = G_.createFlatten(opName, in, axis);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadIdentity(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -487,7 +487,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     nodeValueByName_[op.output(0)] = NodeValue(in, 0);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadTopK(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -512,7 +512,7 @@ protected:
 
     auto *R = G_.createTopK(opName, in, k);
     addNodeAsOutput(op, R);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadReduceMeanOrSum(llvm::StringRef typeName, const OpType &op,
@@ -549,7 +549,7 @@ protected:
     }
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadBatchOneHot(const OpType &op) {
@@ -566,7 +566,7 @@ protected:
 
     auto *node = G_.createBatchOneHot(opName, data, lengths, values);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSparseLengthsSum(const OpType &op) {
@@ -581,7 +581,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(2)));
     auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadSparseLengthsWeightedSum(const OpType &op) {
@@ -600,7 +600,7 @@ protected:
     auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
                                                    in1, in2, in3);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadLengthsToRanges(const OpType &op) {
@@ -609,7 +609,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createLengthsToRanges(loadOperatorName(op), in);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadBatchBoxCox(const OpType &op) {
@@ -625,7 +625,7 @@ protected:
     auto *node =
         G_.createBatchBoxCox(loadOperatorName(op), data, lambda1, lambda2);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadDotProduct(const OpType &op) {
@@ -637,7 +637,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(1)));
     auto *node = G_.createDotProduct(loadOperatorName(op), X, Y);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadReplaceNaN(const OpType &op,
@@ -653,7 +653,7 @@ protected:
     }
     auto *node = G_.createReplaceNaN(loadOperatorName(op), input, value);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Error loadLengthsSum(const OpType &op) {
@@ -670,7 +670,7 @@ protected:
 
     auto *node = G_.createLengthsSum(opName, data, lengths);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Expected<bool> loadExpandDims(const OpType &op,
@@ -705,7 +705,7 @@ protected:
 
     auto *node = G_.createClip(loadOperatorName(op), in, cmin, cmax);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   llvm::Expected<bool> loadSparseToDense(const OpType &op,

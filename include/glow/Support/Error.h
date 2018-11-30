@@ -21,7 +21,6 @@
 #include "llvm/Support/Error.h"
 
 namespace glow {
-namespace detail {
 /// NOTE This should not be used directly, instead use UNWRAP or TEMP_UNWRAP.
 /// Callable that takes an llvm::Error or llvm::Expected<T> and exits the
 /// program if the Error is not equivalent llvm::Error::success() or the
@@ -35,7 +34,6 @@ extern llvm::ExitOnError exitOnErr;
 /// where they were generated.
 std::string addFileAndLineToError(llvm::StringRef str, llvm::StringRef file,
                                   uint32_t line);
-} // namespace detail
 
 /// Is true_type only if applied to llvm::Error or a descendant.
 template <typename T>
@@ -48,7 +46,7 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 
 /// Unwrap the T from within an llvm::Expected<T>. If the Expected<T> contains
 /// an error, the program will abort.
-#define UNWRAP(...) (detail::exitOnErr(__VA_ARGS__))
+#define UNWRAP(...) (exitOnErr(__VA_ARGS__))
 
 /// A temporary placeholder for UNWRAP. This should be used only during
 /// refactoring to temporarily place an UNWRAP and should eventually be
@@ -59,19 +57,13 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 /// Make a new llvm::StringError.
 #define MAKE_ERR(str)                                                          \
   llvm::make_error<llvm::StringError>(                                         \
-      (detail::addFileAndLineToError(str, __FILE__, __LINE__)),                \
+      (addFileAndLineToError(str, __FILE__, __LINE__)),                        \
       llvm::inconvertibleErrorCode())
 
 /// Makes a new llvm::StringError and returns it.
 #define RETURN_ERR(str)                                                        \
   do {                                                                         \
     return MAKE_ERR(str);                                                      \
-  } while (0)
-
-/// Returns llvm::Error::success().
-#define RETURN_SUCCESS()                                                       \
-  do {                                                                         \
-    return llvm::Error::success();                                             \
   } while (0)
 
 /// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns

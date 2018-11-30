@@ -78,7 +78,7 @@ llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   }
   RETURN_ERR_IF_NOT(opsetVersion_ > 0,
                     "The opset of this ONNX model is not supported.");
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Expected<ONNX_NAMESPACE::ModelProto>
@@ -203,7 +203,7 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
   } else {
     RETURN_ERR("Only float and index tensors are supported");
   }
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
@@ -215,7 +215,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ASSIGN_VALUE_OR_RETURN_ERR(tryLoadCommonOperatorResult,
                              tryLoadCommonOperator(typeName, op, dict));
   if (tryLoadCommonOperatorResult) {
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   const std::string &opName = loadOperatorName(op);
@@ -250,7 +250,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     // If the tensor is pre-populated by the user of this class then we don't
     // need to allocate a new tensor.
     if (tensors_.count(name)) {
-      RETURN_SUCCESS();
+      return llvm::Error::success();
     }
 
     RETURN_ERR_IF_NOT(dict["value"]->type() ==
@@ -260,21 +260,26 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto *T = new Tensor();
     RETURN_IF_ERR(loadTensor(dict["value"]->t(), T));
     tensors_[name] = T;
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Slice") {
-    auto data = getNodeValueOrCreateConstantByName(op.input(0));
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
     auto dims = data.dims();
     auto numDims = dims.size();
 
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
-    assert(dict.count("starts") && "Slice: attribute 'starts' is mandatory.");
-    assert(dict.count("ends") && "Slice: attribute 'ends' is mandatory.");
+    RETURN_ERR_IF_NOT(dict.count("starts"),
+                      "Slice: attribute 'starts' is mandatory.");
+    RETURN_ERR_IF_NOT(dict.count("ends"),
+                      "Slice: attribute 'ends' is mandatory.");
     auto starts = getShape<ssize_t>(dict["starts"]);
     auto ends = getShape<ssize_t>(dict["ends"]);
-    assert((starts.size() == ends.size()) &&
-           "Slice: 'starts' and 'ends' arrays must have the same size.");
+    RETURN_ERR_IF_NOT(
+        (starts.size() == ends.size()),
+        "Slice: 'starts' and 'ends' arrays must have the same size.");
 
     // Attribute 'axes' is optional.
     std::vector<ssize_t> axes;
@@ -286,9 +291,10 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
       axes = getShape<ssize_t>(dict["axes"]);
-      assert((axes.size() == starts.size()) &&
-             "Slice: The 'axes' array must have the same size as 'starts' and "
-             "'ends' arrays.");
+      RETURN_ERR_IF_NOT(
+          (axes.size() == starts.size()),
+          "Slice: The 'axes' array must have the same size as 'starts' and "
+          "'ends' arrays.");
     } else {
       for (size_t i = 0; i < numDims; i++) {
         axes.push_back(ssize_t(i));
@@ -307,13 +313,14 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
 
     // Determine the coordinates of the sub-tensor to extract.
-    assert(starts.size() == ends.size());
+    RETURN_ERR_IF_NOT(starts.size() == ends.size(),
+                      "'starts' and 'ends' must be the same size.");
     for (size_t i = 0; i < axes.size(); i++) {
       ssize_t newStart = starts[i];
       ssize_t newEnd = ends[i];
       ssize_t axisId = axes[i];
-      assert((axisId >= 0) && (axisId < ssize_t(numDims)) &&
-             "Axes indexes must be within the input tensor range.");
+      RETURN_ERR_IF_NOT((axisId >= 0) && (axisId < ssize_t(numDims)),
+                        "Axes indexes must be within the input tensor range.");
 
       // ONNX: "If the value passed to start or end is larger than the n (the
       // number of elements in this dimension), it represents n".
@@ -333,13 +340,13 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       // the array (i.e., if n_i < 0, it means n_i + d_i)."
       if (newStart < 0) {
         newStart = ssize_t(dims[axisId]) + newStart;
-        assert(newStart >= 0 &&
-               "Slice: final start index should never be negative.");
+        RETURN_ERR_IF_NOT(newStart >= 0,
+                          "Slice: final start index should never be negative.");
       }
       if (newEnd < 0) {
         newEnd = ssize_t(dims[axisId]) + newEnd;
-        assert(newEnd >= 0 &&
-               "Slice: final end index should never be negative.");
+        RETURN_ERR_IF_NOT(newEnd >= 0,
+                          "Slice: final end index should never be negative.");
       }
 
       newStarts[axisId] = size_t(newStart);
@@ -350,7 +357,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
     addNodeAsOutput(op, SN);
 
-    return true;
+    return llvm::Error::success();
   }
 
   if (typeName == "Conv") {
@@ -440,7 +447,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
 
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "MaxPool" || typeName == "AveragePool") {
@@ -485,7 +492,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "GlobalAveragePool") {
@@ -509,7 +516,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
     auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
     addNodeAsOutput(op, N);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Squeeze") {
@@ -519,7 +526,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createSqueeze(opName, in, axes);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Unsqueeze") {
@@ -529,7 +536,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto axes = getShape(dict["axes"]);
     Node *node = G_.createExpandDims(opName, in, axes);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "BatchNormalization") {
@@ -558,7 +565,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
                                              varV, 1, epsilon);
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Concat") {
@@ -577,7 +584,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     Node *node = G_.createConcat(opName, inputs, axis);
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "FCTransposed") {
@@ -616,7 +623,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto *node = G_.createFullyConnected(opName, in, W, B);
 
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Gemm") {
@@ -655,12 +662,12 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     Node *node = G_.createAdd(opName, mul, C);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "Transpose") {
     RETURN_IF_ERR(loadTranspose(op, dict, "perm"));
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   if (typeName == "MatMul") {
@@ -673,7 +680,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
     Node *node = G_.createMatMul(opName, LHS, RHS);
     addNodeAsOutput(op, node);
-    RETURN_SUCCESS();
+    return llvm::Error::success();
   }
 
   RETURN_ERR("Failed to load operator.");
@@ -686,7 +693,7 @@ llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
     RETURN_IF_ERR(loadTensor(in, T));
     tensors_[in.name()] = T;
   }
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
@@ -703,7 +710,7 @@ llvm::Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
@@ -713,7 +720,7 @@ llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
     RETURN_IF_ERR(loadOperator(op));
   }
 
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 ONNXModelLoader::ONNXModelLoader(Function &F)
@@ -748,7 +755,7 @@ ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       }
     }
   }
-  RETURN_SUCCESS();
+  return llvm::Error::success();
 }
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,

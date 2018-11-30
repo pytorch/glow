@@ -1488,14 +1488,14 @@ TEST(caffe2, tensorFillsTest) {
     Type unusedTy = Type(ElemKind::FloatTy, {1});
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"unused_output"}, {&unusedTy}, *F);
-    tensorFillFloat = llvm::dyn_cast<Constant>(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_float"));
+    tensorFillFloat = llvm::dyn_cast<Constant>(UNWRAP(
+        caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_float")));
     tensorFillInt = llvm::dyn_cast<Constant>(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_int"));
+        UNWRAP(caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_int")));
     tensorIntFill = llvm::dyn_cast<Constant>(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill"));
-    tensorInt64Fill = llvm::dyn_cast<Constant>(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_int64_fill"));
+        UNWRAP(caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill")));
+    tensorInt64Fill = llvm::dyn_cast<Constant>(UNWRAP(
+        caffe2LD.getNodeValueOrCreateConstantByName("tensor_int64_fill")));
   }
 
   ASSERT_TRUE(tensorFillFloat);

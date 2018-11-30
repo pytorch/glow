@@ -653,7 +653,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
     getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
                 inputShape[3]);
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
-    graphOutputVar = onnxLD.getSingleOutput();
+    graphOutputVar = UNWRAP(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {inputName}, {&data});
   }

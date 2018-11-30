@@ -53,7 +53,8 @@ add_executable(lenet-loader
 target_link_libraries(lenet-loader
                       PRIVATE
                         ExecutionEngine
-                        Importer)
+                        Importer
+                        Support)
 
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
