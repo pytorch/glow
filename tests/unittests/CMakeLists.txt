@@ -12,6 +12,7 @@ target_link_libraries(partitionTest
                         Backends
                         ExecutionEngine
                         Graph
+                        IR
                         Optimizer
                         gtest
                         testMain)
