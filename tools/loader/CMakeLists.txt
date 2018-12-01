@@ -6,9 +6,12 @@ target_link_libraries(image-classifier
                       PRIVATE
                         Base
                         Converter
-                        Importer
                         ExecutionEngine
-                        Quantization)
+                        Graph
+                        Importer
+                        Optimizer
+                        Quantization
+                        LLVMSupport)
 
 add_executable(text-translator
   Loader.cpp
@@ -17,9 +20,13 @@ add_executable(text-translator
 target_link_libraries(text-translator
                       PRIVATE
                         Base
+                        Converter
+                        Graph
                         Importer
                         ExecutionEngine
-                        Quantization)
+                        Optimizer
+                        Quantization
+                        LLVMSupport)
 
 add_executable(model-runner
   Loader.cpp
@@ -28,6 +35,10 @@ add_executable(model-runner
 target_link_libraries(model-runner
                       PRIVATE
                         Base
+                        Converter
+                        Graph
                         Importer
                         ExecutionEngine
-                        Quantization)
+                        Optimizer
+                        Quantization
+                        LLVMSupport)

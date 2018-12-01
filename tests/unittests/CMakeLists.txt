@@ -9,7 +9,10 @@ add_executable(partitionTest
                partitionTest.cpp)
 target_link_libraries(partitionTest
                       PRIVATE
+                        Backends
                         ExecutionEngine
+                        Graph
+                        Optimizer
                         gtest
                         testMain)
 add_glow_test(partitionTest ${GLOW_BINARY_DIR}/tests/partitionTest --gtest_output=xml:partitionTest.xml)
@@ -72,9 +75,11 @@ add_executable(backendTest
                BackendTest.cpp)
 target_link_libraries(backendTest
                       PRIVATE
+                        Backends
                         Graph
                         IR
                         ExecutionEngine
+                        Optimizer
                         gtest
                         testMain)
 add_glow_test(backendTest ${GLOW_BINARY_DIR}/tests/backendTest --gtest_output=xml:backendTest.xml)
@@ -86,6 +91,7 @@ target_link_libraries(MLTest
                         Graph
                         IR
                         ExecutionEngine
+                        Optimizer
                         Quantization
                         gtest
                         testMain)
@@ -107,9 +113,11 @@ add_executable(graphTest
                graphTest.cpp)
 target_link_libraries(graphTest
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         IR
+                        Optimizer
                         gtest
                         testMain)
 add_glow_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest --gtest_output=xml:graphTest.xml)
@@ -151,8 +159,10 @@ add_executable(quantizationTest
                quantizationTest.cpp)
 target_link_libraries(quantizationTest
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
+                        Optimizer
                         Quantization
                         gtest
                         testMain)
@@ -174,6 +184,7 @@ target_link_libraries(typeAToTypeBFunctionConverterTest
                         Converter
                         ExecutionEngine
                         Graph
+                        Optimizer
                         gtest
                         testMain)
 add_glow_test(typeAToTypeBFunctionConverterTest
@@ -211,6 +222,7 @@ target_link_libraries(convCorrectnessTest
                         Graph
                         IR
                         ExecutionEngine
+                        Optimizer
                         Support
                         gtest
                         testMain)
@@ -225,11 +237,13 @@ add_executable(BackendCorrectnessTest
                BackendCorrectnessTest.cpp)
 target_link_libraries(BackendCorrectnessTest
                       PRIVATE
+                        Backends
                         Graph
                         IR
                         ExecutionEngine
-                        Support
+                        Optimizer
                         Quantization
+                        Support
                         gtest
                         testMain)
 

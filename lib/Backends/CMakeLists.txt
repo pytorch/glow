@@ -4,6 +4,7 @@ add_library(BackendUtils BackendUtils.cpp)
 
 target_link_libraries(BackendUtils
                       PRIVATE
+                      CodeGen
                       IR)
 
 add_subdirectory(Interpreter)
