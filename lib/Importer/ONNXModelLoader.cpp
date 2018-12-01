@@ -291,10 +291,6 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
       axes = getShape<ssize_t>(dict["axes"]);
-      RETURN_ERR_IF_NOT(
-          (axes.size() == starts.size()),
-          "Slice: The 'axes' array must have the same size as 'starts' and "
-          "'ends' arrays.");
     } else {
       for (size_t i = 0; i < numDims; i++) {
         axes.push_back(ssize_t(i));
@@ -313,6 +309,8 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     }
 
     // Determine the coordinates of the sub-tensor to extract.
+    RETURN_ERR_IF_NOT(axes.size() == starts.size(),
+                      "'axes' and 'starts' must be the same size.");
     RETURN_ERR_IF_NOT(starts.size() == ends.size(),
                       "'starts' and 'ends' must be the same size.");
     for (size_t i = 0; i < axes.size(); i++) {

@@ -911,8 +911,9 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      */
     auto *T = new Tensor();
     for (auto &o : op.output()) {
-      if (tensors_.count(o))
+      if (tensors_.count(o)) {
         continue;
+      }
       tensors_[o] = T;
     }
 
