@@ -1,24 +1,3 @@
-# AutoGenInstr
-set(INSTR_HDR ${GLOW_BINARY_DIR}/glow/AutoGenInstr.h)
-set(INSTR_SRC ${GLOW_BINARY_DIR}/glow/AutoGenInstr.cpp)
-set(INSTR_DEF ${GLOW_BINARY_DIR}/glow/AutoGenInstr.def)
-set(INSTR_BLD_HDR ${GLOW_BINARY_DIR}/glow/AutoGenIRBuilder.h)
-set(INSTR_BLD_SRC ${GLOW_BINARY_DIR}/glow/AutoGenIRBuilder.cpp)
-set(INSTR_IR_GEN ${GLOW_BINARY_DIR}/glow/AutoGenIRGen.h)
-
-add_custom_command(OUTPUT
-                    "${INSTR_HDR}"
-                    "${INSTR_SRC}"
-                    "${INSTR_DEF}"
-                    "${INSTR_BLD_HDR}"
-                    "${INSTR_BLD_SRC}"
-                    "${INSTR_IR_GEN}"
-                    COMMAND InstrGen
-                      ${INSTR_HDR} ${INSTR_SRC} ${INSTR_DEF}
-                      ${INSTR_BLD_HDR} ${INSTR_BLD_SRC} ${INSTR_IR_GEN}
-                    DEPENDS InstrGen
-                    COMMENT "InstrGen: Generating instructions." VERBATIM)
-
 # AutoGenNodes
 set(NODES_HDR ${GLOW_BINARY_DIR}/glow/AutoGenNodes.h)
 set(NODES_SRC ${GLOW_BINARY_DIR}/glow/AutoGenNodes.cpp)
@@ -36,12 +15,6 @@ add_library(Graph
             ${NODES_HDR}
             ${NODES_SRC}
             ${NODES_DEF}
-            ${NODES_BLD}
-            ${INSTR_HDR}
-            ${INSTR_SRC}
-            ${INSTR_DEF}
-            ${INSTR_BLD_HDR}
-            ${INSTR_BLD_SRC}
             Context.cpp
             Node.cpp
             Nodes.cpp
@@ -55,3 +28,5 @@ target_link_libraries(Graph
                         Base
                         Support
                         QuantizationBase)
+
+add_dependencies(Graph IRGenHeaders)
