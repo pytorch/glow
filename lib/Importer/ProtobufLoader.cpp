@@ -107,8 +107,8 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
-  // lambda to setup the ProtobufLoader and return any llvm::Errors that were
-  // raised
+  // Lambda to setup the ProtobufLoader and return any llvm::Errors that were
+  // raised.
   auto setup = [&]() -> llvm::Error {
     RETURN_ERR_IF_NOT(tensorNames.size() == types.size(),
                       "Invalid initialization list");

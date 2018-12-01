@@ -843,8 +843,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
                                  llvm::Error *errPtr)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
-  // lambda to setup the ONNXModelLoader and return any llvm::Errors that were
-  // raised
+  // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // raised.
   auto setup = [&]() -> llvm::Error {
     // The ONNX model that we are deserializing.
     ONNX_NAMESPACE::ModelProto modelDef;
