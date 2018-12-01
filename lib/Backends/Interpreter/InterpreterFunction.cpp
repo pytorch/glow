@@ -36,16 +36,20 @@ InterpreterFunction::~InterpreterFunction() {
   tensors_.clear();
   externalTensors_.clear();
   alignedFree(bundle_.getConstants());
+  tearDownRuns();
 }
 
 void InterpreterFunction::setupRuns() {
-  if (bundle_.getConstantWeightSize()) {
-    for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
-      auto symbolInfo = bundle_.getSymbolInfo(v);
-      auto addr = bundle_.getConstants() + symbolInfo.offset;
-      auto tensor = new Tensor(addr, &symbolInfo.type);
-      constants_.emplace(std::string(v->getName()), tensor);
+  if (!runsSetup_) {
+    if (bundle_.getConstantWeightSize()) {
+      for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
+        auto symbolInfo = bundle_.getSymbolInfo(v);
+        auto addr = bundle_.getConstants() + symbolInfo.offset;
+        auto tensor = new Tensor(addr, &symbolInfo.type);
+        constants_.emplace(std::string(v->getName()), tensor);
+      }
     }
+    runsSetup_ = true;
   }
 }
 
@@ -71,6 +75,7 @@ void InterpreterFunction::tearDownRuns() {
     delete p.second;
   }
   constants_.clear();
+  runsSetup_ = false;
 }
 
 Tensor *InterpreterFunction::getTensor(const Value *v) const {

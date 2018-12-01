@@ -25,17 +25,23 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          const runtime::RuntimeBundle &runtimeBundle)
     : JIT_(std::move(JIT)), runtimeBundle_(runtimeBundle) {}
 
-CPUFunction::~CPUFunction() { alignedFree(runtimeBundle_.getConstants()); }
+CPUFunction::~CPUFunction() {
+  alignedFree(runtimeBundle_.getConstants());
+  tearDownRuns();
+}
 
 void CPUFunction::setupRuns() {
-  if (runtimeBundle_.getActivationsSize() != 0) {
-    baseActivationsAddress_ = (uint8_t *)alignedAlloc(
-        runtimeBundle_.getActivationsSize(), TensorAlignment);
-  }
+  if (!runsSetup_) {
+    if (runtimeBundle_.getActivationsSize() != 0) {
+      baseActivationsAddress_ = (uint8_t *)alignedAlloc(
+          runtimeBundle_.getActivationsSize(), TensorAlignment);
+    }
 
-  if (runtimeBundle_.getMutableWeightSize() != 0) {
-    baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
-        runtimeBundle_.getMutableWeightSize(), TensorAlignment);
+    if (runtimeBundle_.getMutableWeightSize() != 0) {
+      baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
+          runtimeBundle_.getMutableWeightSize(), TensorAlignment);
+    }
+    runsSetup_ = true;
   }
 }
 
@@ -66,11 +72,14 @@ void CPUFunction::afterRun(const Context &ctx) {
 void CPUFunction::tearDownRuns() {
   if (baseMutableWeightVarsAddress_) {
     alignedFree(baseMutableWeightVarsAddress_);
+    baseMutableWeightVarsAddress_ = nullptr;
   }
 
   if (baseActivationsAddress_) {
     alignedFree(baseActivationsAddress_);
+    baseActivationsAddress_ = nullptr;
   }
+  runsSetup_ = false;
 }
 
 void CPUFunction::execute() {
