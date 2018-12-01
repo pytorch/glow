@@ -291,10 +291,6 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
       axes = getShape<ssize_t>(dict["axes"]);
-      RETURN_ERR_IF_NOT(
-          (axes.size() == starts.size()),
-          "Slice: The 'axes' array must have the same size as 'starts' and "
-          "'ends' arrays.");
     } else {
       for (size_t i = 0; i < numDims; i++) {
         axes.push_back(ssize_t(i));
