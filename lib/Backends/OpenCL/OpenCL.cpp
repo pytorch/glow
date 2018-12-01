@@ -177,6 +177,7 @@ OpenCLFunction::~OpenCLFunction() {
     freeDeviceBuffer(deviceBuffer_);
     deviceBuffer_ = nullptr;
   }
+  tearDownRuns();
 }
 
 static std::string getKernelName(const char *baseName, ElemKind elemTy) {
@@ -1425,26 +1426,29 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
 }
 
 void OpenCLFunction::setupRuns() {
-  deviceBuffer_ = allocDeviceBuffer(bundle_.getConstantWeightSize() +
-                                    bundle_.getMutableWeightSize() +
-                                    bundle_.getActivationsSize());
-  size_t sizeInBytes = bundle_.getConstantWeightSize();
-  if (bundle_.getConstants()) {
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = bundle_.getConstants();
-    size_t valueOffset = 0;
-    cl_event event{nullptr};
-    cl_int err = clEnqueueWriteBuffer(
-        commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
-        sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (doProfile) {
-      kernelLaunches_.emplace_back(
-          KernelLaunch("copyConstantsToDevice", event));
+  if (!runsSetup_) {
+    deviceBuffer_ = allocDeviceBuffer(bundle_.getConstantWeightSize() +
+                                      bundle_.getMutableWeightSize() +
+                                      bundle_.getActivationsSize());
+    size_t sizeInBytes = bundle_.getConstantWeightSize();
+    if (bundle_.getConstants()) {
+      // Issue a non-blocking command to copy the buffer to the device.
+      auto buf = bundle_.getConstants();
+      size_t valueOffset = 0;
+      cl_event event{nullptr};
+      cl_int err = clEnqueueWriteBuffer(
+          commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
+          sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+          /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+      if (doProfile) {
+        kernelLaunches_.emplace_back(
+            KernelLaunch("copyConstantsToDevice", event));
+      }
+      // Do it!
+      clFinish(commands_);
     }
-    // Do it!
-    clFinish(commands_);
+    runsSetup_ = true;
   }
 }
 
@@ -1499,6 +1503,14 @@ void OpenCLFunction::afterRun(const Context &ctx) {
     clReleaseKernel(kl.kernel_);
   }
   kernelLaunches_.clear();
+}
+
+void OpenCLFunction::tearDownRuns() {
+  if (deviceBuffer_) {
+    freeDeviceBuffer(deviceBuffer_);
+    deviceBuffer_ = nullptr;
+  }
+  runsSetup_ = false;
 }
 
 cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {

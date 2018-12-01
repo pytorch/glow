@@ -107,7 +107,7 @@ public:
   /// Copies outputs from device to tensors in \p ctx.
   void afterRun(const Context &ctx) override;
   /// Final cleanup, currently an empty function in OpenCL.
-  void tearDownRuns() override{};
+  void tearDownRuns() override;
 
 private:
   /// Copy the value from a device to a provided buffer.

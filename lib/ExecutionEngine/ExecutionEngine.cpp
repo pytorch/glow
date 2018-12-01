@@ -82,7 +82,6 @@ void ExecutionEngine::run(Context &ctx) {
   function_->beforeRun(ctx);
   function_->execute();
   function_->afterRun(ctx);
-  function_->tearDownRuns();
 }
 
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,

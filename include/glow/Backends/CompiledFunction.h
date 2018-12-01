@@ -41,6 +41,10 @@ public:
   virtual void afterRun(const Context &ctx) = 0;
   /// Final cleanup. Release memory, reset device.
   virtual void tearDownRuns() = 0;
+
+protected:
+  /// Flag to ensure setupRuns is only called once.
+  bool runsSetup_{false};
 };
 } // end namespace glow
 
