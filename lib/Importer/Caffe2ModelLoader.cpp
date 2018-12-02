@@ -1088,6 +1088,11 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<TypeRef> types, Function &F,
                                      llvm::Error *errPtr)
     : CommonOperatorLoader(names, types, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
   // Lambda to setup the Caffe2ModelLoader and return any llvm::Errors that were
   // raised.
   auto setup = [&]() -> llvm::Error {

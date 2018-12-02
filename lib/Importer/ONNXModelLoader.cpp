@@ -843,6 +843,11 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
                                  llvm::Error *errPtr)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
   // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
   // raised.
   auto setup = [&]() -> llvm::Error {

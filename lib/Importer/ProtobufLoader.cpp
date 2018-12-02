@@ -107,6 +107,11 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
   // Lambda to setup the ProtobufLoader and return any llvm::Errors that were
   // raised.
   auto setup = [&]() -> llvm::Error {
