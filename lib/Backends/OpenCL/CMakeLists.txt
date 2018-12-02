@@ -30,6 +30,7 @@ add_library(OpenCL
 
 target_link_libraries(OpenCL
                       PRIVATE
+                      BackendUtils
                       Base
                       Graph
                       CodeGen

@@ -206,9 +206,10 @@ add_executable(OCLTest
                OCLTest.cpp)
 target_link_libraries(OCLTest
                       PRIVATE
+                        ExecutionEngine
                         Graph
                         IR
-                        ExecutionEngine
+                        Optimizer
                         gtest
                         testMain)
 add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest --gtest_output=xml:OCLTest.xml)
