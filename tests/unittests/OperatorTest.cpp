@@ -26,7 +26,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
-
 class Operator : public ::testing::TestWithParam<BackendKind> {
 public:
   Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
@@ -1475,38 +1474,17 @@ TEST_P(InterpAndCPU, ScatterAssignQuantized) {
   EXPECT_NEAR(H.at({4, 1}), 10.0, 0.05);
 }
 
-TEST_P(Operator, QuantizeAndDequantize) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
-  ctx_.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
-  ctx_.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 11.3f};
+// Note: Add only currently supports int8_t as quantized type.
+template <class floatType>
+void quantizeAndDequantizeTest(glow::Context &ctx_, glow::Module &mod_,
+                               glow::Function *F_, glow::ExecutionEngine &EE_,
+                               ElemKind FTy, ElemKind QTy) {
+  auto *A = mod_.createPlaceholder(FTy, {1, 4}, "A", false);
+  auto *B = mod_.createPlaceholder(FTy, {1, 4}, "B", false);
+  ctx_.allocate(A)->getHandle<floatType>() = {1, 1.2f, 0.5f, 1.3f};
+  ctx_.allocate(B)->getHandle<floatType>() = {1.8f, 5.2f, 3.5f, 11.3f};
 
-  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
-  auto *quantizeA = F_->createQuantize("quantize", A, qType);
-  auto *quantizeB = F_->createQuantize("quantize", B, qType);
-  auto *add = F_->createAdd("add", quantizeA, quantizeB);
-  auto *dequantize = F_->createDequantize("dequantize", add);
-  auto *result = F_->createSave("save", dequantize);
-  ctx_.allocate(result->getPlaceholder());
-
-  auto *fpAdd = F_->createAdd("fpAdd", A, B);
-  auto *fpResult = F_->createSave("fpSave", fpAdd);
-  ctx_.allocate(fpResult->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  EXPECT_TRUE(ctx_.get(result->getPlaceholder())
-                  ->isEqual(*ctx_.get(fpResult->getPlaceholder())));
-}
-
-TEST_P(InterpOnly, FP16QuantizeAndDequantize) {
-  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4}, "B", false);
-  ctx_.allocate(A)->getHandle<float16>() = {1, 1.2f, 0.5f, 1.3f};
-  ctx_.allocate(B)->getHandle<float16>() = {1.8f, 5.2f, 3.5f, 11.3f};
-
-  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {1, 4}, 0.05, -138);
+  auto qType = mod_.uniqueType(QTy, {1, 4}, 0.05f, -138);
   auto *quantizeA = F_->createQuantize("quantize", A, qType);
   auto *quantizeB = F_->createQuantize("quantize", B, qType);
   auto *add = F_->createAdd("add", quantizeA, quantizeB);
@@ -1521,8 +1499,20 @@ TEST_P(InterpOnly, FP16QuantizeAndDequantize) {
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
-  EXPECT_TRUE(ctx_.get(result->getPlaceholder())
-                  ->isEqual(*ctx_.get(fpResult->getPlaceholder()), 0.01));
+  float allowedError = (FTy == ElemKind::Float16Ty) ? 0.01f : 0.0001f;
+  EXPECT_TRUE(
+      ctx_.get(result->getPlaceholder())
+          ->isEqual(*ctx_.get(fpResult->getPlaceholder()), allowedError));
+}
+
+TEST_P(Operator, QuantizeAndDequantizeFPtoI8) {
+  quantizeAndDequantizeTest<float>(ctx_, mod_, F_, EE_, ElemKind::FloatTy,
+                                   ElemKind::Int8QTy);
+}
+
+TEST_P(InterpOnly, QuantizeAndDequantizeFPtoI16) {
+  quantizeAndDequantizeTest<float16>(ctx_, mod_, F_, EE_, ElemKind::Float16Ty,
+                                     ElemKind::Int8QTy);
 }
 
 TEST_P(Operator, IntMatMul) {
@@ -4468,15 +4458,17 @@ TEST_P(InterpOnly, FP16SoftMax) {
 }
 
 /// Verify that Quantize, Rescale, Dequantize work correctly together.
-TEST_P(Operator, QuantizeSimple) {
+static void quantizeSimpleTest(glow::Context &ctx_, glow::Module &mod_,
+                               glow::Function *F_, glow::ExecutionEngine &EE_,
+                               ElemKind QTy) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input", true);
   ctx_.allocate(input)->init(Tensor::InitKind::Broadcast, 21, mod_.getPRNG());
 
-  auto *Q = F_->createQuantize(
-      "quant", input, mod_.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
-  auto *RS = F_->createRescaleQuantized(
-      "rescale", Q, mod_.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
+  auto *Q =
+      F_->createQuantize("quant", input, mod_.uniqueType(QTy, {1, 1}, 0.25, 4));
+  auto *RS = F_->createRescaleQuantized("rescale", Q,
+                                        mod_.uniqueType(QTy, {1, 1}, 0.5, 11));
   auto *D = F_->createDequantize("dequantize", RS);
   auto *save = F_->createSave("ret", D);
   auto *result = ctx_.allocate(save->getPlaceholder());
@@ -4489,6 +4481,16 @@ TEST_P(Operator, QuantizeSimple) {
 
   auto RH = result->getHandle();
   EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
+}
+
+TEST_P(Operator, QuantizeSimpleInt8) {
+  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+TEST_P(InterpOnly, QuantizeSimpleInt16) {
+  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int16QTy);
+}
+TEST_P(InterpOnly, QuantizeSimpleInt32) {
+  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Check that convertTo node works properly from float16_t to float.
