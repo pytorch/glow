@@ -16,19 +16,16 @@
 #ifndef GLOW_ONNXIFI_GLOWONNXMANAGER_H
 #define GLOW_ONNXIFI_GLOWONNXMANAGER_H
 
+#include "Base.h"
+
 #include <unordered_set>
 
 namespace glow {
 namespace onnxifi {
-class BackendId;
-class Backend;
-class Event;
-class Graph;
-
-/// Singleton class for creating and destroying objects for the ONNX interface.
-/// GlowOnnxManager tracks objects it has created and can be used to check if
-/// if an ONNX interface object was created by glow or not.
-class GlowOnnxManager {
+/// Singleton class for creating and destroying objects for the ONNXIFI
+/// interface. GlowOnnxManager tracks objects it has created and can be used to
+/// check if an ONNXIFI interface object was created by glow or not.
+class GlowOnnxManager final {
 public:
   /// Get a reference to the GlowOnnxManager singleton. There should only ever
   /// be one GlowOnnxManager.
@@ -39,55 +36,55 @@ public:
   GlowOnnxManager &operator=(const GlowOnnxManager &) = delete;
 
   /// Add a new glow \p backendId to the set of valid backendIds.
-  void addBackendId(BackendId *backendId);
+  void addBackendId(BackendIdPtr backendId);
 
   /// Create a new glow Backend associated with \p backendId.
-  Backend *createBackend(BackendId *backendId);
+  BackendPtr createBackend(BackendIdPtr backendId);
 
   /// Create a new glow Event.
-  Event *createEvent();
+  EventPtr createEvent();
 
   /// Create a new glow Graph associated with \p backend.
-  Graph *createGraph(Backend *backend);
+  GraphPtr createGraph(BackendPtr backend);
 
   /// Check if \p backendId is a BackendId created and managed by glow.
-  bool isValid(BackendId *backendId);
+  bool isValid(BackendIdPtr backendId);
 
   /// Check if \p backend is a Backend created and managed by glow.
-  bool isValid(Backend *backend);
+  bool isValid(BackendPtr backend);
 
   /// Check if \p event is a Event created and managed by glow.
-  bool isValid(Event *event);
+  bool isValid(EventPtr event);
 
   /// Check if \p graph is a Graph created and managed by glow.
-  bool isValid(Graph *graph);
+  bool isValid(GraphPtr graph);
 
   /// Free \p backendId.
-  void release(BackendId *backendId);
+  void release(BackendIdPtr backendId);
 
   /// Free \p backend.
-  void release(Backend *backend);
+  void release(BackendPtr backend);
 
   /// Free \p event.
-  void release(Event *event);
+  void release(EventPtr event);
 
   /// Free \p graph.
-  void release(Graph *graph);
+  void release(GraphPtr graph);
 
 private:
   GlowOnnxManager() = default;
 
   /// The set of all valid glow BackendIds.
-  std::unordered_set<BackendId *> backendIds_;
+  std::unordered_set<BackendIdPtr> backendIds_;
 
   /// The set of all valid glow Backends.
-  std::unordered_set<Backend *> backends_;
+  std::unordered_set<BackendPtr> backends_;
 
   /// The set of all valid glow Events.
-  std::unordered_set<Event *> events_;
+  std::unordered_set<EventPtr> events_;
 
   /// The set of all valid glow Graphs.
-  std::unordered_set<Graph *> graphs_;
+  std::unordered_set<GraphPtr> graphs_;
 };
 
 } // namespace onnxifi

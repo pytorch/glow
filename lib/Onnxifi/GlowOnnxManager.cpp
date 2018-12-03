@@ -19,7 +19,6 @@
 
 namespace glow {
 namespace onnxifi {
-// static
 GlowOnnxManager &GlowOnnxManager::get() {
   static GlowOnnxManager manager;
   return manager;
