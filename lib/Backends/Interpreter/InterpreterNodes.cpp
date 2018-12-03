@@ -898,7 +898,7 @@ void InterpreterFunction::fwdScatterAssignInst(
 template <typename ElemTy>
 void InterpreterFunction::fwdBatchOneHotImpl(const glow::BatchOneHotInst *I) {
   auto dataH = getWeightHandle<ElemTy>(I->getData());
-  auto lengthsH = getWeightHandle<int64_t>(I->getLengths());
+  auto lengthsH = getWeightHandle<int32_t>(I->getLengths());
   auto valuesH = getWeightHandle<ElemTy>(I->getValues());
   auto destH = getWeightHandle<ElemTy>(I->getDest());
 

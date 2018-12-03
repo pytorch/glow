@@ -4588,12 +4588,12 @@ TEST_P(InterpOnly, BatchOneHot) {
   */
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "lengths", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
   auto *values =
       mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
 
   ctx_.allocate(data)->getHandle<float>() = {5, 0, 11, 3, 0, 5};
-  ctx_.allocate(lengths)->getHandle<int64_t>() = {4, 2};
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
   ctx_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
 
   auto R = F_->createBatchOneHot("BOH", data, lengths, values);
