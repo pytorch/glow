@@ -446,7 +446,7 @@ int main(int argc, char **argv) {
       .addOperand("Values", OperandKind::In)
       .autoVerify(VerifyKind::SameElementType, {"Values", "Data", "Dest"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int64ITy"})
+                  {"Lengths", "ElemKind::Int32ITy"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

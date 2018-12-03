@@ -879,6 +879,8 @@ bool BatchOneHotNode::verify() const {
 
   isValid &= expectCompareTrue("Lengths should be a single dimensional vectors",
                                lengthsDims.size(), size_t(1), this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+
   isValid &= expectCompareTrue("Values should be a single dimensional vectors",
                                valuesDims.size(), size_t(1), this);
 
