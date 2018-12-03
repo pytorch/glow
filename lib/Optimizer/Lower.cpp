@@ -59,7 +59,6 @@ static void lowerSubGradNode(Function *F, const SubGradNode &node) {
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
 }
-
 static void lowerDivGradNode(Function *F, const DivGradNode &node) {
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
@@ -190,6 +189,33 @@ static void lowerReluNode(Function *F, const ReluNode &R) {
   auto *relu =
       F->createMax("relu", R.getResult().getType(), zero, R.getInput());
   R.getResult().replaceAllUsesOfWith(relu);
+}
+
+static void lowerPadNode(Function *F, const PadNode &P) {
+  auto *outputType = P.getResult().getType();
+  auto dims = outputType->dims();
+  auto numDims = dims.size();
+  auto pads = P.getPads();
+
+  // Sanity checks: Pad needs to have the 'constant' mode and can't be lowered
+  // when pads are negative.
+  assert((P.getMode() == PaddingMode::CONSTANT) &&
+         "only 'constant' padding is supported at lowering.");
+  for (auto p : pads) {
+    (void)p; // Avoids a warning in release mode.
+    assert((p >= 0) && "negative pads not supported at lowering.");
+  }
+
+  SplatNode *constant = F->createSplat("pad.const", outputType, P.getValue());
+
+  std::vector<size_t> orig(numDims);
+  for (size_t i = 0; i < numDims; i++) {
+    orig[i] = size_t(pads[i]);
+  }
+
+  auto *insert =
+      F->createInsertTensor(P.getName(), constant, P.getInput(), orig);
+  P.getResult().replaceAllUsesOfWith(insert);
 }
 
 /// Lower a quantized Log by creating an IntLookupTable with a new mapping given
@@ -695,6 +721,8 @@ void glow::lower(Function *F, const Backend &B) {
       lowerReluGradNode(F, *RG);
     } else if (auto *R = dyn_cast<ReluNode>(node)) {
       lowerReluNode(F, *R);
+    } else if (auto *P = dyn_cast<PadNode>(node)) {
+      lowerPadNode(F, *P);
     } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
       lowerTanhGradNode(F, *THG);
     } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
