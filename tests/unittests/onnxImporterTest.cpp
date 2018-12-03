@@ -811,7 +811,7 @@ static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<size_t> inputShape,
                       const llvm::ArrayRef<ssize_t> starts,
                       const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
-                      float value) {
+                      float value, bool testOutput) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -852,27 +852,66 @@ static void importPad(std::string fileName, const char *inputName,
         size_t(ssize_t(inputShape[i]) + starts[i] + ends[i]);
   }
   EXPECT_TRUE(padNode->getResult().dims().vec() == expectedOutputShape);
+
+  // Currently, only constant with positive pads is supported at lowering.
+  // We just consider this test case.
+  if (testOutput && mode == PaddingMode::CONSTANT) {
+    // Compile&run the graph, and check the output.
+    EE.compile(CompilationMode::Infer, F);
+    EE.run(ctx);
+    auto result = ctx.get(graphOutputVar)->getHandle();
+    EXPECT_TRUE(result.dims().vec() == expectedOutputShape);
+    size_t indexOutput = 0;
+    size_t indexinput = 0;
+    for (size_t n = 0; n < expectedOutputShape[0]; n++) {
+      for (size_t c = 0; c < expectedOutputShape[1]; c++) {
+        for (size_t h = 0; h < expectedOutputShape[2]; h++) {
+          for (size_t w = 0; w < expectedOutputShape[3]; w++) {
+            float expectedValue = value;
+            if ((n >= size_t(starts[0])) &&
+                (n < (expectedOutputShape[0] - size_t(ends[0]))) &&
+                (c >= size_t(starts[1])) &&
+                (c < (expectedOutputShape[1] - size_t(ends[1]))) &&
+                (h >= size_t(starts[2])) &&
+                (h < (expectedOutputShape[2] - size_t(ends[2]))) &&
+                (w >= size_t(starts[3])) &&
+                (w < (expectedOutputShape[3] - size_t(ends[3])))) {
+              // This is the way 'getNCHWData' initializes data.
+              expectedValue = indexinput++;
+            }
+            EXPECT_FLOAT_EQ(result.raw(indexOutput++), expectedValue);
+          }
+        }
+      }
+    }
+  }
 }
 
 TEST(onnx, importPadDefault) {
   importPad("padDefault.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::CONSTANT, 0.f);
+            PaddingMode::CONSTANT, 0.f, false);
 }
 
 TEST(onnx, importPadConstant) {
   importPad("padConstant.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::CONSTANT, 2.55f);
+            PaddingMode::CONSTANT, 2.55f, false);
 }
 
 TEST(onnx, importPadReflect) {
   importPad("padReflect.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::REFLECT, 0.f /* any */);
+            PaddingMode::REFLECT, 0.f /* any */, false);
 }
 TEST(onnx, importPadEdge) {
   importPad("padEdge.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::EDGE, 0.f /* any */);
+            PaddingMode::EDGE, 0.f /* any */, false);
+}
+
+TEST(onnx, importPadConstantPositive) {
+  importPad("padConstantPositive.onnxtxt", "data", {4, 6, 5, 7} /* input */,
+            {1, 2, 3, 4} /* starts */, {0, 3, 1, 2} /* ends */,
+            PaddingMode::CONSTANT, 2.55f, true);
 }
