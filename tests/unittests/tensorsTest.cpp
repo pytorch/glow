@@ -699,7 +699,7 @@ TEST(Tensor, zeroQuantizedTensor) {
 // Verify that if the tensor is set to the offset manually then isZero() is
 // true
 TEST(Tensor, manuallySetToOffset) {
-  const int32_t offsetQ8 = 6;
+  const int8_t offsetQ8 = 6;
   Tensor Q8T(ElemKind::Int8QTy, {3, 2}, 10.1, offsetQ8);
 
   auto Q8H = Q8T.getHandle<int8_t>();
