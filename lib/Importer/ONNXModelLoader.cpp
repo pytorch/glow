@@ -206,6 +206,495 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
+                                          const ArgumentDictionaryTy &dict) {
+  /*
+    output: "Parameter6"
+    name: "Parameter6"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 8
+        data_type: FLOAT
+        float_data: -0.161539719
+        float_data: -0.433835655
+        float_data: 0.091641359
+        float_data: -0.0168522168
+        float_data: -0.0650264397
+        float_data: -0.131737873
+        float_data: 0.0204175506
+        float_data: -0.121110231
+      }
+      type: TENSOR
+    }
+    doc_string: ""
+    domain: ""
+  */
+
+  const auto &name = op.output(0);
+  // If the tensor is pre-populated by the user of this class then we don't
+  // need to allocate a new tensor.
+  if (tensors_.count(name)) {
+    return llvm::Error::success();
+  }
+
+  RETURN_ERR_IF_NOT(dict.at("value")->type() ==
+                        ONNX_NAMESPACE::AttributeProto::TENSOR,
+                    "Only Tensor type constants are supported.");
+
+  auto *T = new Tensor();
+  RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T));
+  tensors_[name] = T;
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  auto dims = data.dims();
+  auto numDims = dims.size();
+
+  // Attributes 'starts' and 'ends' are mandatory and must be consistent.
+  RETURN_ERR_IF_NOT(dict.count("starts"),
+                    "Slice: attribute 'starts' is mandatory.");
+  RETURN_ERR_IF_NOT(dict.count("ends"),
+                    "Slice: attribute 'ends' is mandatory.");
+  auto starts = getShape<ssize_t>(dict.at("starts"));
+  auto ends = getShape<ssize_t>(dict.at("ends"));
+  RETURN_ERR_IF_NOT(
+      (starts.size() == ends.size()),
+      "Slice: 'starts' and 'ends' arrays must have the same size.");
+
+  // Attribute 'axes' is optional.
+  std::vector<ssize_t> axes;
+  if (dict.count("axes")) {
+    // The ONNX spec is unclear so we consider that the 'axes' array may have
+    // any size. The constraints are:
+    // - the element value must be in range [0, numDims),
+    // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
+    // In case an axis is specified multiple times in 'axes', the later
+    // parameters will simply overwrite the previous ones.
+    axes = getShape<ssize_t>(dict.at("axes"));
+  } else {
+    for (size_t i = 0; i < numDims; i++) {
+      axes.push_back(ssize_t(i));
+    }
+  }
+
+  // The ONNX description is unclear and doesn't describe what to do when a
+  // an axis index is not given in the axes array. An interpretation is that
+  // for such an axis, the entire range is taken. Then, we initialize
+  // newStarts and newEnds with the full range for all axes.
+  std::vector<size_t> newStarts(numDims);
+  std::vector<size_t> newEnds(numDims);
+  for (size_t i = 0; i < numDims; i++) {
+    newStarts[i] = 0;
+    newEnds[i] = dims[i];
+  }
+
+  // Determine the coordinates of the sub-tensor to extract.
+  RETURN_ERR_IF_NOT(axes.size() == starts.size(),
+                    "'axes' and 'starts' must be the same size.");
+  RETURN_ERR_IF_NOT(starts.size() == ends.size(),
+                    "'starts' and 'ends' must be the same size.");
+  for (size_t i = 0; i < axes.size(); i++) {
+    ssize_t newStart = starts[i];
+    ssize_t newEnd = ends[i];
+    ssize_t axisId = axes[i];
+    RETURN_ERR_IF_NOT((axisId >= 0) && (axisId < ssize_t(numDims)),
+                      "Axes indexes must be within the input tensor range.");
+
+    // ONNX: "If the value passed to start or end is larger than the n (the
+    // number of elements in this dimension), it represents n".
+    if (newStart > ssize_t(dims[axisId])) {
+      newStart = ssize_t(dims[axisId]);
+    }
+    if (newEnd > ssize_t(dims[axisId])) {
+      newEnd = ssize_t(dims[axisId]);
+    }
+
+    // The ONNX description is unclear and the numpy definition is more
+    // accurate.
+    // - ONNX: "Similar to numpy. [...]. If a negative value is passed for any
+    // of the start or end indices, it represent number of elements before the
+    // end of that dimension."
+    // - Numpy: "Negative indices are interpreted as counting from the end of
+    // the array (i.e., if n_i < 0, it means n_i + d_i)."
+    if (newStart < 0) {
+      newStart = ssize_t(dims[axisId]) + newStart;
+      RETURN_ERR_IF_NOT(newStart >= 0,
+                        "Slice: final start index should never be negative.");
+    }
+    if (newEnd < 0) {
+      newEnd = ssize_t(dims[axisId]) + newEnd;
+      RETURN_ERR_IF_NOT(newEnd >= 0,
+                        "Slice: final end index should never be negative.");
+    }
+
+    newStarts[axisId] = size_t(newStart);
+    newEnds[axisId] = size_t(newEnd);
+  }
+
+  // Create the IR node.
+  Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+  addNodeAsOutput(op, SN);
+
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  // Load the attributes
+  std::vector<unsigned_t> strides(2, 1);
+  if (dict.count("strides")) {
+    strides = getShape<unsigned_t>(dict.at("strides"));
+  }
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+  }
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue,
+                             getNodeValueOrCreateConstantByName(op.input(1)));
+
+  // Transpose the filter to the right format. Glow expects to read the
+  // weights in the format CRSK. ONNX stores the operators as KCRS.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  TransposeNode *filterTransposeNode =
+      G_.createTranspose(opName, filterValue, NCHW2NHWC);
+
+  // The structure of the conv weigts is: NHWC. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+  size_t depth = filterTransposedValue.dims()[0];
+
+  // Get the kernel shape from the input.
+  std::vector<unsigned_t> kernelShape(2);
+  kernelShape[0] = filterTransposedValue.dims()[1];
+  kernelShape[1] = filterTransposedValue.dims()[2];
+
+  // Extra check when the 'kernel_shape' attribute exists.
+  // The 'kernel_shape' attribute is redundant not mandatory.
+  if (dict.count("kernel_shape")) {
+    std::vector<unsigned_t> kernelShapeAttribute =
+        getShape<unsigned_t>(dict.at("kernel_shape"));
+    RETURN_ERR_IF_NOT(
+        (kernelShape[0] == kernelShapeAttribute[0] &&
+         kernelShape[1] == kernelShapeAttribute[1]),
+        "The 'kernel_shape' attribute is not consistent with the actual "
+        "convolution kernel shape.");
+    (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
+  }
+
+  // Construct the Bias field.
+  Tensor biasTensor(ElemKind::FloatTy, {depth});
+  biasTensor.zero();
+
+  // Check if we have a serialized bias vector.
+  if (op.input_size() > 2) {
+    auto &biasTensorName = op.input(2);
+    if (tensors_.count(biasTensorName)) {
+      // Load the serialized bias vector.
+      Tensor *b;
+      ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(biasTensorName));
+      biasTensor.assign(b);
+    }
+  }
+  auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
+
+  // ONNX passes the input as NCHW, and we expect the input to be NHWC.
+  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
+  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
+                             kernelShape, strides, pads, group);
+
+  // Transpose the output back.
+  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  addNodeAsOutput(op, N);
+
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict,
+                                      llvm::StringRef typeName) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Glow doesn't support argmax output yet.
+  if (op.output_size() > 1) {
+    RETURN_ERR("Glow doesn't support argmax output yet.");
+  }
+  // Load the inputs:
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  std::vector<unsigned_t> strides(2, 1);
+  if (dict.count("strides")) {
+    strides = getShape<unsigned_t>(dict.at("strides"));
+  }
+  std::vector<unsigned_t> kernels =
+      getShape<unsigned_t>(dict.at("kernel_shape"));
+
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+
+  if (in.dims().size() != 4 || kernels.size() != 2) {
+    // Glow only handles 2D pooling currently.
+    RETURN_ERR("Glow only handles 2D pooling currently.");
+  }
+
+  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+
+  // If 'global_pooling' is set then the operation will pool over the size of
+  // the input by doing: kernel = height/width.
+  if (dict.count("global_pooling")) {
+    auto Ty = in.getType();
+    kernels[0] = Ty->dims()[2];
+    kernels[1] = Ty->dims()[3];
+  }
+
+  Node *node = nullptr;
+  if (typeName == "MaxPool") {
+    node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+  } else {
+    node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+  }
+  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  addNodeAsOutput(op, N);
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs:
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  std::vector<unsigned_t> strides(2, 1);
+  if (dict.count("strides")) {
+    strides = getShape<unsigned_t>(dict.at("strides"));
+  }
+
+  std::vector<unsigned_t> kernels(2);
+  kernels[0] = in.dims()[2];
+  kernels[1] = in.dims()[3];
+
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+
+  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+  Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  addNodeAsOutput(op, N);
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                                         const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  auto axes = getShape(dict.at("axes"));
+  Node *node = G_.createSqueeze(opName, in, axes);
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  auto axes = getShape(dict.at("axes"));
+  Node *node = G_.createExpandDims(opName, in, axes);
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  Tensor *scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorByName(op.input(1)));
+  Tensor *bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getTensorByName(op.input(2)));
+  Tensor *mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(mean, getTensorByName(op.input(3)));
+  Tensor *var;
+  ASSIGN_VALUE_OR_RETURN_ERR(var, getTensorByName(op.input(4)));
+  float epsilon = 1e-5f; // default
+  auto epsilonIt = dict.find("epsilon");
+  if (epsilonIt != dict.end()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
+  }
+
+  auto *scaleV = G_.getParent()->createConstant("scale", *scale);
+  auto *biasV = G_.getParent()->createConstant("bias", *bias);
+  auto *meanV = G_.getParent()->createConstant("mean", *mean);
+  auto *varV = G_.getParent()->createConstant("var", *var);
+  auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
+                                           varV, 1, epsilon);
+
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  const unsigned numInputs = op.input_size();
+  llvm::SmallVector<NodeValue, 4> inputs;
+  inputs.reserve(numInputs);
+  for (unsigned i = 0; i < numInputs; i++) {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in,
+                               getNodeValueOrCreateConstantByName(op.input(i)));
+    inputs.push_back(in);
+  }
+
+  int axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  Node *node = G_.createConcat(opName, inputs, axis);
+
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  if (in.getType()->dims().size() > 2) {
+    size_t axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    }
+    in = G_.createFlatten("fc.in", in, axis);
+  }
+
+  Tensor *w;
+  ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
+  Tensor *b;
+  ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(op.input(2)));
+  unsigned_t axis_w = 1;
+  if (dict.count("axis_w")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis_w, loadInt(dict.at("axis_w")));
+  }
+
+  // w is stored already transposed. No need to additionally transpose it.
+  Tensor tmp;
+  if (w->dims().size() > 2) {
+    auto wDims = flattenCdr(w->dims(), axis_w);
+    tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
+    tmp.copyRawFrom(w);
+    w = &tmp;
+  }
+
+  auto W = G_.getParent()->addConstant(new Constant("weights", std::move(*w)));
+  auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
+  auto *node = G_.createFullyConnected(opName, in, W, B);
+
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue A;
+  ASSIGN_VALUE_OR_RETURN_ERR(A,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  NodeValue B;
+  ASSIGN_VALUE_OR_RETURN_ERR(B,
+                             getNodeValueOrCreateConstantByName(op.input(1)));
+  NodeValue C;
+  ASSIGN_VALUE_OR_RETURN_ERR(C,
+                             getNodeValueOrCreateConstantByName(op.input(2)));
+
+  bool broadcastC;
+  ASSIGN_VALUE_OR_RETURN_ERR(broadcastC, getBroadcast(dict));
+  bool transA = false;
+  if (dict.count("transA")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(transA, loadInt(dict.at("transA")));
+  }
+  bool transB = false;
+  if (dict.count("transB")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(transB, loadInt(dict.at("transB")));
+  }
+  // TODO: support alpha * A * B + beta * C
+
+  if (transA)
+    A = G_.createTranspose(opName, A, {1, 0});
+  if (transB)
+    B = G_.createTranspose(opName, B, {1, 0});
+
+  MatMulNode *mul = G_.createMatMul(opName, A, B);
+  if (broadcastC) {
+    int axis = mul->getResult().dims().size() - C.dims().size();
+    C = G_.createBroadcast(opName, C, mul->getResult().dims(), axis);
+  }
+
+  Node *node = G_.createAdd(opName, mul, C);
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS,
+                             getNodeValueOrCreateConstantByName(op.input(1)));
+
+  Node *node = G_.createMatMul(opName, LHS, RHS);
+  addNodeAsOutput(op, node);
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -218,467 +707,44 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return llvm::Error::success();
   }
 
-  const std::string &opName = loadOperatorName(op);
-
-  // Load tensors with values:
   if (typeName == "Constant") {
-    /*
-      output: "Parameter6"
-      name: "Parameter6"
-      op_type: "Constant"
-      attribute {
-        name: "value"
-        t {
-          dims: 8
-          data_type: FLOAT
-          float_data: -0.161539719
-          float_data: -0.433835655
-          float_data: 0.091641359
-          float_data: -0.0168522168
-          float_data: -0.0650264397
-          float_data: -0.131737873
-          float_data: 0.0204175506
-          float_data: -0.121110231
-        }
-        type: TENSOR
-      }
-      doc_string: ""
-      domain: ""
-    */
-
-    const auto &name = op.output(0);
-    // If the tensor is pre-populated by the user of this class then we don't
-    // need to allocate a new tensor.
-    if (tensors_.count(name)) {
-      return llvm::Error::success();
-    }
-
-    RETURN_ERR_IF_NOT(dict["value"]->type() ==
-                          ONNX_NAMESPACE::AttributeProto::TENSOR,
-                      "Only Tensor type constants are supported.");
-
-    auto *T = new Tensor();
-    RETURN_IF_ERR(loadTensor(dict["value"]->t(), T));
-    tensors_[name] = T;
-    return llvm::Error::success();
+    return loadConstant(op, dict);
   }
-
   if (typeName == "Slice") {
-    NodeValue data;
-    ASSIGN_VALUE_OR_RETURN_ERR(data,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    auto dims = data.dims();
-    auto numDims = dims.size();
-
-    // Attributes 'starts' and 'ends' are mandatory and must be consistent.
-    RETURN_ERR_IF_NOT(dict.count("starts"),
-                      "Slice: attribute 'starts' is mandatory.");
-    RETURN_ERR_IF_NOT(dict.count("ends"),
-                      "Slice: attribute 'ends' is mandatory.");
-    auto starts = getShape<ssize_t>(dict["starts"]);
-    auto ends = getShape<ssize_t>(dict["ends"]);
-    RETURN_ERR_IF_NOT(
-        (starts.size() == ends.size()),
-        "Slice: 'starts' and 'ends' arrays must have the same size.");
-
-    // Attribute 'axes' is optional.
-    std::vector<ssize_t> axes;
-    if (dict.count("axes")) {
-      // The ONNX spec is unclear so we consider that the 'axes' array may have
-      // any size. The constraints are:
-      // - the element value must be in range [0, numDims),
-      // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
-      // In case an axis is specified multiple times in 'axes', the later
-      // parameters will simply overwrite the previous ones.
-      axes = getShape<ssize_t>(dict["axes"]);
-    } else {
-      for (size_t i = 0; i < numDims; i++) {
-        axes.push_back(ssize_t(i));
-      }
-    }
-
-    // The ONNX description is unclear and doesn't describe what to do when a
-    // an axis index is not given in the axes array. An interpretation is that
-    // for such an axis, the entire range is taken. Then, we initialize
-    // newStarts and newEnds with the full range for all axes.
-    std::vector<size_t> newStarts(numDims);
-    std::vector<size_t> newEnds(numDims);
-    for (size_t i = 0; i < numDims; i++) {
-      newStarts[i] = 0;
-      newEnds[i] = dims[i];
-    }
-
-    // Determine the coordinates of the sub-tensor to extract.
-    RETURN_ERR_IF_NOT(axes.size() == starts.size(),
-                      "'axes' and 'starts' must be the same size.");
-    RETURN_ERR_IF_NOT(starts.size() == ends.size(),
-                      "'starts' and 'ends' must be the same size.");
-    for (size_t i = 0; i < axes.size(); i++) {
-      ssize_t newStart = starts[i];
-      ssize_t newEnd = ends[i];
-      ssize_t axisId = axes[i];
-      RETURN_ERR_IF_NOT((axisId >= 0) && (axisId < ssize_t(numDims)),
-                        "Axes indexes must be within the input tensor range.");
-
-      // ONNX: "If the value passed to start or end is larger than the n (the
-      // number of elements in this dimension), it represents n".
-      if (newStart > ssize_t(dims[axisId])) {
-        newStart = ssize_t(dims[axisId]);
-      }
-      if (newEnd > ssize_t(dims[axisId])) {
-        newEnd = ssize_t(dims[axisId]);
-      }
-
-      // The ONNX description is unclear and the numpy definition is more
-      // accurate.
-      // - ONNX: "Similar to numpy. [...]. If a negative value is passed for any
-      // of the start or end indices, it represent number of elements before the
-      // end of that dimension."
-      // - Numpy: "Negative indices are interpreted as counting from the end of
-      // the array (i.e., if n_i < 0, it means n_i + d_i)."
-      if (newStart < 0) {
-        newStart = ssize_t(dims[axisId]) + newStart;
-        RETURN_ERR_IF_NOT(newStart >= 0,
-                          "Slice: final start index should never be negative.");
-      }
-      if (newEnd < 0) {
-        newEnd = ssize_t(dims[axisId]) + newEnd;
-        RETURN_ERR_IF_NOT(newEnd >= 0,
-                          "Slice: final end index should never be negative.");
-      }
-
-      newStarts[axisId] = size_t(newStart);
-      newEnds[axisId] = size_t(newEnd);
-    }
-
-    // Create the IR node.
-    Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
-    addNodeAsOutput(op, SN);
-
-    return llvm::Error::success();
+    return loadSlice(op, dict);
   }
-
   if (typeName == "Conv") {
-    // Load the attributes
-    std::vector<unsigned_t> strides(2, 1);
-    if (dict.count("strides")) {
-      strides = getShape<unsigned_t>(dict.at("strides"));
-    }
-    unsigned_t group = 1;
-    if (dict.count("group")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
-    }
-
-    // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-    Pads pads;
-    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
-
-    // Load the inputs
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    NodeValue filterValue;
-    ASSIGN_VALUE_OR_RETURN_ERR(filterValue,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
-
-    // Transpose the filter to the right format. Glow expects to read the
-    // weights in the format CRSK. ONNX stores the operators as KCRS.
-    // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
-    TransposeNode *filterTransposeNode =
-        G_.createTranspose(opName, filterValue, NCHW2NHWC);
-
-    // The structure of the conv weigts is: NHWC. We take the C, which is the
-    // number of filters. We use this value to calculate the size of the bias
-    // if it is not specified.
-    const NodeValue filterTransposedValue = filterTransposeNode->getResult();
-    size_t depth = filterTransposedValue.dims()[0];
-
-    // Get the kernel shape from the input.
-    std::vector<unsigned_t> kernelShape(2);
-    kernelShape[0] = filterTransposedValue.dims()[1];
-    kernelShape[1] = filterTransposedValue.dims()[2];
-
-    // Extra check when the 'kernel_shape' attribute exists.
-    // The 'kernel_shape' attribute is redundant not mandatory.
-    if (dict.count("kernel_shape")) {
-      std::vector<unsigned_t> kernelShapeAttribute =
-          getShape<unsigned_t>(dict.at("kernel_shape"));
-      RETURN_ERR_IF_NOT(
-          (kernelShape[0] == kernelShapeAttribute[0] &&
-           kernelShape[1] == kernelShapeAttribute[1]),
-          "The 'kernel_shape' attribute is not consistent with the actual "
-          "convolution kernel shape.");
-      (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
-    }
-
-    // Construct the Bias field.
-    Tensor biasTensor(ElemKind::FloatTy, {depth});
-    biasTensor.zero();
-
-    // Check if we have a serialized bias vector.
-    if (op.input_size() > 2) {
-      auto &biasTensorName = op.input(2);
-      if (tensors_.count(biasTensorName)) {
-        // Load the serialized bias vector.
-        Tensor *b;
-        ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(biasTensorName));
-        biasTensor.assign(b);
-      }
-    }
-    auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
-
-    // ONNX passes the input as NCHW, and we expect the input to be NHWC.
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-
-    // Calculate the size and allocate the output buffer.
-    ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
-    auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
-    std::array<size_t, 4> outDims = {
-        {idim.n, outSz.first, outSz.second, depth}};
-    auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
-
-    auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
-                               kernelShape, strides, pads, group);
-
-    // Transpose the output back.
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    addNodeAsOutput(op, N);
-
-    return llvm::Error::success();
+    return loadConv(op, dict);
   }
-
   if (typeName == "MaxPool" || typeName == "AveragePool") {
-    // Glow doesn't support argmax output yet.
-    if (op.output_size() > 1) {
-      RETURN_ERR("Glow doesn't support argmax output yet.");
-    }
-    // Load the inputs:
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    std::vector<unsigned_t> strides(2, 1);
-    if (dict.count("strides")) {
-      strides = getShape<unsigned_t>(dict.at("strides"));
-    }
-    std::vector<unsigned_t> kernels =
-        getShape<unsigned_t>(dict.at("kernel_shape"));
-
-    Pads pads;
-    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
-
-    if (in.dims().size() != 4 || kernels.size() != 2) {
-      // Glow only handles 2D pooling currently.
-      RETURN_ERR("Glow only handles 2D pooling currently.");
-    }
-
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-
-    // If 'global_pooling' is set then the operation will pool over the size of
-    // the input by doing: kernel = height/width.
-    if (dict.count("global_pooling")) {
-      auto Ty = in.getType();
-      kernels[0] = Ty->dims()[2];
-      kernels[1] = Ty->dims()[3];
-    }
-
-    Node *node = nullptr;
-    if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
-    } else {
-      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
-    }
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    addNodeAsOutput(op, N);
-    return llvm::Error::success();
+    return loadPool(op, dict, typeName);
   }
-
   if (typeName == "GlobalAveragePool") {
-    // Load the inputs:
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    std::vector<unsigned_t> strides(2, 1);
-    if (dict.count("strides")) {
-      strides = getShape<unsigned_t>(dict.at("strides"));
-    }
-
-    std::vector<unsigned_t> kernels(2);
-    kernels[0] = in.dims()[2];
-    kernels[1] = in.dims()[3];
-
-    Pads pads;
-    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
-
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-    Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-    addNodeAsOutput(op, N);
-    return llvm::Error::success();
+    return loadGlobalAveragePool(op, dict);
   }
-
   if (typeName == "Squeeze") {
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    auto axes = getShape(dict["axes"]);
-    Node *node = G_.createSqueeze(opName, in, axes);
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadSqueeze(op, dict);
   }
-
   if (typeName == "Unsqueeze") {
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    auto axes = getShape(dict["axes"]);
-    Node *node = G_.createExpandDims(opName, in, axes);
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadUnsqueeze(op, dict);
   }
-
   if (typeName == "BatchNormalization") {
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    Tensor *scale;
-    ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorByName(op.input(1)));
-    Tensor *bias;
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getTensorByName(op.input(2)));
-    Tensor *mean;
-    ASSIGN_VALUE_OR_RETURN_ERR(mean, getTensorByName(op.input(3)));
-    Tensor *var;
-    ASSIGN_VALUE_OR_RETURN_ERR(var, getTensorByName(op.input(4)));
-    float epsilon = 1e-5f; // default
-    auto epsilonIt = dict.find("epsilon");
-    if (epsilonIt != dict.end()) {
-      ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
-    }
-
-    auto *scaleV = G_.getParent()->createConstant("scale", *scale);
-    auto *biasV = G_.getParent()->createConstant("bias", *bias);
-    auto *meanV = G_.getParent()->createConstant("mean", *mean);
-    auto *varV = G_.getParent()->createConstant("var", *var);
-    auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
-                                             varV, 1, epsilon);
-
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadBatchNormalization(op, dict);
   }
-
   if (typeName == "Concat") {
-    const unsigned numInputs = op.input_size();
-    llvm::SmallVector<NodeValue, 4> inputs;
-    inputs.reserve(numInputs);
-    for (unsigned i = 0; i < numInputs; i++) {
-      NodeValue in;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          in, getNodeValueOrCreateConstantByName(op.input(i)));
-      inputs.push_back(in);
-    }
-
-    int axis;
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-    Node *node = G_.createConcat(opName, inputs, axis);
-
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadConcat(op, dict);
   }
-
   if (typeName == "FCTransposed") {
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    if (in.getType()->dims().size() > 2) {
-      size_t axis = 1;
-      if (dict.count("axis")) {
-        ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-      }
-      in = G_.createFlatten("fc.in", in, axis);
-    }
-
-    Tensor *w;
-    ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
-    Tensor *b;
-    ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(op.input(2)));
-    unsigned_t axis_w = 1;
-    if (dict.count("axis_w")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis_w, loadInt(dict["axis_w"]));
-    }
-
-    // w is stored already transposed. No need to additionally transpose it.
-    Tensor tmp;
-    if (w->dims().size() > 2) {
-      auto wDims = flattenCdr(w->dims(), axis_w);
-      tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
-      tmp.copyRawFrom(w);
-      w = &tmp;
-    }
-
-    auto W =
-        G_.getParent()->addConstant(new Constant("weights", std::move(*w)));
-    auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
-    auto *node = G_.createFullyConnected(opName, in, W, B);
-
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadFCTransposed(op, dict);
   }
-
   if (typeName == "Gemm") {
-    NodeValue A;
-    ASSIGN_VALUE_OR_RETURN_ERR(A,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    NodeValue B;
-    ASSIGN_VALUE_OR_RETURN_ERR(B,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
-    NodeValue C;
-    ASSIGN_VALUE_OR_RETURN_ERR(C,
-                               getNodeValueOrCreateConstantByName(op.input(2)));
-
-    bool broadcastC;
-    ASSIGN_VALUE_OR_RETURN_ERR(broadcastC, getBroadcast(dict));
-    bool transA = false;
-    if (dict.count("transA")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(transA, loadInt(dict["transA"]));
-    }
-    bool transB = false;
-    if (dict.count("transB")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(transB, loadInt(dict["transB"]));
-    }
-    // TODO: support alpha * A * B + beta * C
-
-    if (transA)
-      A = G_.createTranspose(opName, A, {1, 0});
-    if (transB)
-      B = G_.createTranspose(opName, B, {1, 0});
-
-    MatMulNode *mul = G_.createMatMul(opName, A, B);
-    if (broadcastC) {
-      int axis = mul->getResult().dims().size() - C.dims().size();
-      C = G_.createBroadcast(opName, C, mul->getResult().dims(), axis);
-    }
-
-    Node *node = G_.createAdd(opName, mul, C);
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadGemm(op, dict);
   }
-
   if (typeName == "Transpose") {
-    RETURN_IF_ERR(loadTranspose(op, dict, "perm"));
-    return llvm::Error::success();
+    return loadTranspose(op, dict, "perm");
   }
-
   if (typeName == "MatMul") {
-    NodeValue LHS;
-    ASSIGN_VALUE_OR_RETURN_ERR(LHS,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    NodeValue RHS;
-    ASSIGN_VALUE_OR_RETURN_ERR(RHS,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
-
-    Node *node = G_.createMatMul(opName, LHS, RHS);
-    addNodeAsOutput(op, node);
-    return llvm::Error::success();
+    return loadMatMul(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.");
