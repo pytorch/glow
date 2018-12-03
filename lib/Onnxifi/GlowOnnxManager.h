@@ -18,6 +18,7 @@
 
 #include "Base.h"
 
+#include <mutex>
 #include <unordered_set>
 
 namespace glow {
@@ -31,7 +32,7 @@ public:
   /// be one GlowOnnxManager.
   static GlowOnnxManager &get();
 
-  // Disallow copying GlowOnnxManager to help enforce singleton pattern.
+  /// Disallow copying GlowOnnxManager to help enforce singleton pattern.
   GlowOnnxManager(const GlowOnnxManager &) = delete;
   GlowOnnxManager &operator=(const GlowOnnxManager &) = delete;
 
@@ -85,6 +86,9 @@ private:
 
   /// The set of all valid glow Graphs.
   std::unordered_set<GraphPtr> graphs_;
+
+  /// Mutex that protects all members of GlowOnnxManager.
+  mutable std::mutex m_;
 };
 
 } // namespace onnxifi
