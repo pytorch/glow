@@ -284,7 +284,12 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
          checkSameType(dest, expected, dest.getNode());
 }
 
-bool PadNode::verify() const { return true; }
+bool PadNode::verify() const {
+  // Pad is currently only supported for constant padding.
+  return expectCompareTrue("only the 'constant' mode is currrently supported",
+                           getMode() == PaddingMode::CONSTANT, true,
+                           getResult().getNode());
+}
 
 bool ConvolutionNode::verify() const {
   return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
