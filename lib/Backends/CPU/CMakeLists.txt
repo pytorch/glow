@@ -36,9 +36,14 @@ set_target_properties(CPURuntime
                         PREFIX ""
                         SUFFIX ""
                         RULE_LAUNCH_COMPILE "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> #")
+
+# Due to the usage for NaN in the runtime, '-fno-finite-math-only' is needed
+# to disable '-ffinite-math-only' activated by '-ffast-math', while benefiting
+# from math optimizations.
 target_compile_options(CPURuntime
                        PRIVATE
                          -ffast-math
+                         -fno-finite-math-only
                          -g0
                          -emit-llvm
                          -O0)
