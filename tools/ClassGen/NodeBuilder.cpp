@@ -169,6 +169,8 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kVectorSizeTTypeInfo;
   } else if (type == MemberType::VectorNodeValue) {
     typeInfo = &kVectorNodeValueTypeInfo;
+  } else if (type == MemberType::Enum) {
+    typeInfo = &kEnumTypeInfo;
   } else {
     llvm_unreachable("Type not recognized");
   }

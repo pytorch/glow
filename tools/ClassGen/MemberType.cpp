@@ -38,3 +38,13 @@ MemberTypeInfo kVectorSizeTTypeInfo{
 MemberTypeInfo kVectorNodeValueTypeInfo{
     MemberType::VectorNodeValue, "NodeValueArrayRef", "std::vector<NodeHandle>",
     "std::vector<NodeValue>"};
+// We currently use 'unsigned_t' to represent a enum in the generic API. It can
+// carry fully the enum information even of the signess of enum is
+// implementation defined.
+// C++03: The underlying type of an enumeration is an integral type that can
+// represent all the enumerator values defined in the enumeration. It is
+// implementation-defined which integral type is used as the underlying type for
+// an enumeration except that the underlying type shall not be larger than int
+// unless the value of an enumerator cannot fit in an int or unsigned int.
+MemberTypeInfo kEnumTypeInfo{MemberType::Unsigned, "unsigned_t", "unsigned_t",
+                             "unsigned_t"};

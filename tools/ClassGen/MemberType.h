@@ -55,6 +55,7 @@ extern MemberTypeInfo kVectorUnsignedTypeInfo;
 extern MemberTypeInfo kVectorSignedTypeInfo;
 extern MemberTypeInfo kVectorSizeTTypeInfo;
 extern MemberTypeInfo kVectorNodeValueTypeInfo;
+extern MemberTypeInfo kEnumTypeInfo;
 
 inline const char *getReturnTypename(const MemberTypeInfo *typeInfo) {
   return typeInfo->returnTypename.c_str();
