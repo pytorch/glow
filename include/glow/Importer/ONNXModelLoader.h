@@ -58,6 +58,56 @@ class ONNXModelLoader
   /// ONNX model op_version;
   size_t opsetVersion_;
 
+  /// Load Constant ONNX operator.
+  llvm::Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
+                           const ArgumentDictionaryTy &dict);
+
+  /// Load Slice ONNX operator.
+  llvm::Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
+                        const ArgumentDictionaryTy &dict);
+
+  /// Load Conv ONNX operator.
+  llvm::Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
+
+  /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
+  /// ONNX operator being loaded, either MaxPool or AveragePool.
+  llvm::Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict,
+                       llvm::StringRef typeName);
+
+  /// Load GlobalAveragePool ONNX operator.
+  llvm::Error loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict);
+
+  /// Load Squeeze ONNX operator.
+  llvm::Error loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                          const ArgumentDictionaryTy &dict);
+
+  /// Load Unsqueeze ONNX operator.
+  llvm::Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict);
+
+  /// Load BatchNormalization ONNX operator.
+  llvm::Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict);
+
+  /// Load Concat ONNX operator.
+  llvm::Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
+  /// Load FCTransposed ONNX operator.
+  llvm::Error loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict);
+
+  /// Load Gemm ONNX operator.
+  llvm::Error loadGemm(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
+
+  /// Load MatMul ONNX operator.
+  llvm::Error loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
