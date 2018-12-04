@@ -57,8 +57,22 @@ inference. Then, we recompile the network using this profile information to
 convert the network into a quantized form, allowing for static optimization of
 the quantized graph. We convert portions of the network into islands of integer
 computation and aim to generate outputs in the range that the original
-floating-point network produces. The figure below shows a quantized subgraph
-from Resnet50.
+floating-point network produces. During the conversion, for the following types 
+of quantized nodes, we ignore the output's quantization params (if they are 
+provided) and force the output have the same quantization params as the input 
+for performance purpose:
+```
+LocalResponseNormalizationNode                       
+SigmoidNode                                         
+SliceNode                                      
+ReshapeNode                                       
+TanhNode                                       
+TopKNode                                        
+GatherNode                                         
+MaxPoolNode
+```
+
+The figure below shows a quantized subgraph from Resnet50.
 
 ![](resnet50_quantized_subgraph.png)
 
@@ -114,6 +128,39 @@ not be quantized. For example, to not quantize any Add or Div nodes when running
 the quantized text translator:
 
 ```./bin/text-translator -m en2gr -load-profile=en2gr.yaml -keep-original-precision-for-nodes=Add,Div```
+
+## Caffe2 Quantized Model Support 
+
+Glow is able to support Caffe2 Resnet50 quantized model: 
+https://github.com/caffe2/models/tree/master/resnet50_quantized
+
+To support Caffe2 quantized models, Glow has:
+- Supported additional quantized Caffe2 operators.
+```
+Int8Quantize
+Int8Dequantize
+Int8Conv
+Int8ConvRelu
+Int8MaxPool
+Int8AveragePool
+Int8FC
+Int8SumRelu
+Int8GivenIntTensorFill
+Int8GivenTensorFill
+```
+- Supported int32 quantized bias.
+
+In most of the cases, bias is quantized in int32 to improve precision 
+(the partial sum of the matrix-matrix multiplication is accumulated into int32, 
+so int32 bias can be added to the int32 partial sum for better accuracy). 
+Glow now supports int32 quantized bias in ```Convolution```, ```FullyConnected``` 
+and ```RowwiseQuantizedFullyConnected``` nodes.
+
+- Supported the conversion from uint8 quantized activations to int8 quantized activations.
+
+For the quantized Caffe2 ops, the activations are quantized to uint8. In Glow, the 
+activations are quantized to int_8. Therefore, for the offset read from quantized Caffe2 
+model, we need to subtract 128(i.e. INT8_MIN) to make the activations become int8.
 
 ## Compiler Optimizations
 
