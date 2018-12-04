@@ -1,3 +1,13 @@
+if(NOT TARGET onnx_proto)
+  # Note: This avoids libprotobuf.so complaining about name collisions at runtime
+  if(NOT ONNX_NAMESPACE)
+    set(ONNX_NAMESPACE "glow_onnx")
+  endif()
+  add_definitions("-DONNX_NAMESPACE=${ONNX_NAMESPACE}")
+  add_subdirectory(${GLOW_THIRDPARTY_DIR}/onnx EXCLUDE_FROM_ALL build)
+endif()
+
+
 add_library(testMain
             testMain.cpp)
 target_link_libraries(testMain
@@ -66,7 +76,7 @@ target_link_libraries(basicIRTest
                         IR
                         gtest
                         testMain)
-add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest --gtest_output=xml:basicIRTest.xml) 
+add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest --gtest_output=xml:basicIRTest.xml)
 
 add_executable(backendTest
                BackendTest.cpp)
@@ -134,7 +144,7 @@ target_link_libraries(graphOptzTest
                         Optimizer
                         gtest
                         testMain)
-add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest --gtest_output=xml:graphOptzTest.xml) 
+add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest --gtest_output=xml:graphOptzTest.xml)
 
 add_executable(graphSchedulerTest
                graphSchedulerTest.cpp)
@@ -177,7 +187,7 @@ target_link_libraries(typeAToTypeBFunctionConverterTest
                         gtest
                         testMain)
 add_glow_test(typeAToTypeBFunctionConverterTest
-              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml) 
+              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml)
 
 add_executable(UtilsTest
                UtilsTest.cpp)
@@ -312,11 +322,37 @@ add_executable(onnxifiThreadPoolTest
 target_link_libraries(onnxifiThreadPoolTest
                       PRIVATE
                         onnxifi-glow-thread-pool
+                        Importer
                         gtest
                         testMain)
 target_include_directories(onnxifiThreadPoolTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi)
 add_glow_test(NAME onnxifiThreadPoolTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxifiThreadPoolTest --gtest_output=xml:onnxifiThreadPoolTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# add_executable(GlowOnnxManagerTest
+#                GlowOnnxManagerTest.cpp)
+# target_link_libraries(GlowOnnxManagerTest
+#                       PRIVATE
+#                         # onnx_proto
+#                         onnxifi-glow-normal
+#                         gtest
+#                         testMain)
+# target_include_directories(GlowOnnxManagerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${ONNX_INCLUDE_DIRS})
+# add_glow_test(NAME GlowOnnxManagerTest
+#               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxManagerTest --gtest_output=xml:GlowOnnxManagerTest.xml
+#               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(GlowOnnxManagerTest
+               GlowOnnxManagerTest.cpp)
+target_link_libraries(GlowOnnxManagerTest
+                      PRIVATE
+                        onnxifi-glow-normal
+                        gtest
+                        testMain)
+target_include_directories(GlowOnnxManagerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
+add_glow_test(NAME GlowOnnxManagerTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxManagerTest --gtest_output=xml:GlowOnnxManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS
