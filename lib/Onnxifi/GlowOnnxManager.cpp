@@ -31,6 +31,7 @@ void GlowOnnxManager::addBackendId(BackendIdPtr backendId) {
   {
     std::lock_guard<std::mutex> lock(m_);
     auto res = backendIds_.insert(backendId);
+    (void)res;
     assert((res.second && *res.first) && "Failed to add new BackendId");
   }
 }
@@ -41,6 +42,7 @@ BackendPtr GlowOnnxManager::createBackend(BackendIdPtr backendId) {
   {
     std::lock_guard<std::mutex> lock(m_);
     auto res = backends_.insert(backend);
+    (void)res;
     assert((res.second && *res.first) && "Failed to create new Backend");
   }
   return backend;
@@ -51,6 +53,7 @@ EventPtr GlowOnnxManager::createEvent() {
   {
     std::lock_guard<std::mutex> lock(m_);
     auto res = events_.insert(event);
+    (void)res;
     assert((res.second && *res.first) && "Failed to create new Event");
   }
   return event;
@@ -62,6 +65,7 @@ GraphPtr GlowOnnxManager::createGraph(BackendPtr backend) {
   {
     std::lock_guard<std::mutex> lock(m_);
     auto res = graphs_.insert(graph);
+    (void)res;
     assert((res.second && *res.first) && "Failed to create new Graph");
   }
   return graph;
