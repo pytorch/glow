@@ -70,6 +70,7 @@ if(GLOW_WITH_CPU)
   target_link_libraries(resnet-verify
                         PRIVATE
                           ExecutionEngine
+                          Graph
                           Importer)
 endif()
 
