@@ -244,7 +244,10 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                     "Only Tensor type constants are supported.");
 
   auto *T = new Tensor();
-  RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T));
+  if (auto err = loadTensor(dict.at("value")->t(), T)) {
+    delete T;
+    return err;
+  }
   tensors_[name] = T;
   return llvm::Error::success();
 }
@@ -754,7 +757,10 @@ llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializaers:
   for (const auto &in : net.initializer()) {
     Tensor *T = new Tensor();
-    RETURN_IF_ERR(loadTensor(in, T));
+    if (auto err = loadTensor(in, T)) {
+      delete T;
+      return err;
+    }
     tensors_[in.name()] = T;
   }
   return llvm::Error::success();
