@@ -24,10 +24,31 @@ run_and_check_bundle() {
     echo "Successfully completed checking lenet_mnist bundle with QUANTIZE=${1}"
 }
 
+run_onnxifi() {
+    # Run ONNX test
+    ONNX_DIR="${GLOW_SRC}/thirdparty/onnx"
+    # ONNX test data dir
+    TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
+
+    # Banned known buggy test cases from gtest
+    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/crashed.txt)"
+    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/failed.txt)"
+    EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
+    
+    # Setup glow onnxifi backend so test driver can load it
+    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_SRC}/libonnxifi.so"
+    export LD_LIBRARY_PATH=${GLOW_SRC}
+    
+    # Run Onnxifi gtest
+    GTEST_FILTER="*-${EXCLUDED_TEST_CASES}" "${GLOW_BUILD_DIR}/onnxifi_test_driver_gtests" "${TESTDATA_DIR}"
+}
+
 # Run unit tests and bundle tests.
 cd "${GLOW_BUILD_DIR}"
 case ${CIRCLE_JOB} in
     ASAN)
+        # ASAN is not enabled in onnx, therefore we should skip it for now.
+        # TODO: Enable ASAN test.
         run_unit_tests test
         ;;
 
@@ -36,6 +57,7 @@ case ${CIRCLE_JOB} in
         run_unit_tests test_unopt
         run_and_check_bundle YES
         run_and_check_bundle NO
+        run_onnxifi
         ;;
 
     *)
@@ -43,24 +65,3 @@ case ${CIRCLE_JOB} in
         exit 1
         ;;
 esac
-
-# Run ONNX test
-ONNX_DIR="${GLOW_SRC}/thirdparty/onnx"
-# ONNX test data dir
-TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
-
-# Asan is not enbaled in onnx, therefore we should skip it for now.
-# TODO: Enable asan test. Rui Zhu.
-if [[ "$CIRCLE_JOB" != ASAN ]]; then
-    # Banned known buggy test cases from gtest
-    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/crashed.txt)"
-    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/failed.txt)"
-    EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
-
-    # Setup glow onnxifi backend so test driver can load it
-    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_SRC}/libonnxifi.so"
-    export LD_LIBRARY_PATH=${GLOW_SRC}
-
-    # Run Onnxifi gtest
-    GTEST_FILTER="*-${EXCLUDED_TEST_CASES}" "${GLOW_BUILD_DIR}/onnxifi_test_driver_gtests" "${TESTDATA_DIR}"
-fi
