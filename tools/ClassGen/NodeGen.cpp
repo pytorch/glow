@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Pad")
       .addInput("Input")
-      .addMember(MemberType::Unsigned, "Mode")
+      .addMember(MemberType::Enum, "Mode")
       .addMember(MemberType::VectorSigned, "Pads")
       .addMember(MemberType::Float, "Value")
       .addResultFromCtorArg()
