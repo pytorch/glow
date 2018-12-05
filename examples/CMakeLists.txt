@@ -85,6 +85,19 @@ if(GLOW_WITH_CPU)
                           Importer
                           Optimizer)
   target_include_directories(resnet-concurrent PUBLIC ${CMAKE_SOURCE_DIR}/lib)
+
+  add_executable(resnet-runtime
+                   resnet-runtime.cpp)
+  target_link_libraries(resnet-runtime
+                        PRIVATE
+                          Backends
+                          HostManager
+                          Partitioner
+                          ExecutionEngine
+                          Graph
+                          Importer
+                          Optimizer)
+  target_include_directories(resnet-runtime PUBLIC ${CMAKE_SOURCE_DIR}/lib)
 endif()
 
 if(GLOW_WITH_BUNDLES)

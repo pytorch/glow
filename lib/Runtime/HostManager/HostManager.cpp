@@ -154,6 +154,5 @@ RunIdentifierTy HostManager::runNetwork(llvm::StringRef networkName,
                    --activeRequest;
                    callback(runID, result, std::move(context));
                  });
-  totalRequestCount_--;
   return currentRun;
 }
