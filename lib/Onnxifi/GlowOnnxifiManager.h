@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_ONNXIFI_GLOWONNXMANAGER_H
-#define GLOW_ONNXIFI_GLOWONNXMANAGER_H
+#ifndef GLOW_ONNXIFI_GLOWONNXIFIMANAGER_H
+#define GLOW_ONNXIFI_GLOWONNXIFIMANAGER_H
 
 #include "Base.h"
 
@@ -24,17 +24,17 @@
 namespace glow {
 namespace onnxifi {
 /// Singleton class for creating and destroying objects for the ONNXIFI
-/// interface. GlowOnnxManager tracks objects it has created and can be used to
+/// interface. GlowOnnxifiManager tracks objects it has created and can be used to
 /// check if an ONNXIFI interface object was created by glow or not.
-class GlowOnnxManager final {
+class GlowOnnxifiManager final {
 public:
-  /// Get a reference to the GlowOnnxManager singleton. There should only ever
-  /// be one GlowOnnxManager.
-  static GlowOnnxManager &get();
+  /// Get a reference to the GlowOnnxifiManager singleton. There should only ever
+  /// be one GlowOnnxifiManager.
+  static GlowOnnxifiManager &get();
 
-  /// Disallow copying GlowOnnxManager to help enforce singleton pattern.
-  GlowOnnxManager(const GlowOnnxManager &) = delete;
-  GlowOnnxManager &operator=(const GlowOnnxManager &) = delete;
+  /// Disallow copying GlowOnnxifiManager to help enforce singleton pattern.
+  GlowOnnxifiManager(const GlowOnnxifiManager &) = delete;
+  GlowOnnxifiManager &operator=(const GlowOnnxifiManager &) = delete;
 
   /// Add a new glow \p backendId to the set of valid backendIds.
   /// Can be called safely by multiple threads concurrently.
@@ -85,7 +85,7 @@ public:
   void release(GraphPtr graph);
 
 private:
-  GlowOnnxManager() = default;
+  GlowOnnxifiManager() = default;
 
   /// The set of all valid glow BackendIds.
   std::unordered_set<BackendIdPtr> backendIds_;
@@ -99,7 +99,7 @@ private:
   /// The set of all valid glow Graphs.
   std::unordered_set<GraphPtr> graphs_;
 
-  /// Mutex that protects all members of GlowOnnxManager.
+  /// Mutex that protects all members of GlowOnnxifiManager.
   /// TODO use a can use a mutex per set if performance becomes an issue.
   mutable std::mutex m_;
 };
@@ -107,4 +107,4 @@ private:
 } // namespace onnxifi
 } // namespace glow
 
-#endif // GLOW_ONNXIFI_GLOWONNXMANAGER_H
+#endif // GLOW_ONNXIFI_GLOWONNXIFIMANAGER_H

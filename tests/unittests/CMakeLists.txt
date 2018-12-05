@@ -330,29 +330,16 @@ add_glow_test(NAME onnxifiThreadPoolTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxifiThreadPoolTest --gtest_output=xml:onnxifiThreadPoolTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# add_executable(GlowOnnxManagerTest
-#                GlowOnnxManagerTest.cpp)
-# target_link_libraries(GlowOnnxManagerTest
-#                       PRIVATE
-#                         # onnx_proto
-#                         onnxifi-glow-normal
-#                         gtest
-#                         testMain)
-# target_include_directories(GlowOnnxManagerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${ONNX_INCLUDE_DIRS})
-# add_glow_test(NAME GlowOnnxManagerTest
-#               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxManagerTest --gtest_output=xml:GlowOnnxManagerTest.xml
-#               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-add_executable(GlowOnnxManagerTest
-               GlowOnnxManagerTest.cpp)
-target_link_libraries(GlowOnnxManagerTest
+add_executable(GlowOnnxifiManagerTest
+GlowOnnxifiManagerTest.cpp)
+target_link_libraries(GlowOnnxifiManagerTest
                       PRIVATE
                         onnxifi-glow-normal
                         gtest
                         testMain)
-target_include_directories(GlowOnnxManagerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
-add_glow_test(NAME GlowOnnxManagerTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxManagerTest --gtest_output=xml:GlowOnnxManagerTest.xml
+target_include_directories(GlowOnnxifiManagerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
+add_glow_test(NAME GlowOnnxifiManagerTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS

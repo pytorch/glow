@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "GlowOnnxManager.h"
+#include "GlowOnnxifiManager.h"
 
 #include "Base.h"
 
@@ -21,12 +21,12 @@
 
 namespace glow {
 namespace onnxifi {
-GlowOnnxManager &GlowOnnxManager::get() {
-  static GlowOnnxManager manager;
+GlowOnnxifiManager &GlowOnnxifiManager::get() {
+  static GlowOnnxifiManager manager;
   return manager;
 }
 
-void GlowOnnxManager::addBackendId(BackendIdPtr backendId) {
+void GlowOnnxifiManager::addBackendId(BackendIdPtr backendId) {
   {
     std::lock_guard<std::mutex> lock(m_);
     assert(!backendIds_.count(backendId));
@@ -36,7 +36,7 @@ void GlowOnnxManager::addBackendId(BackendIdPtr backendId) {
   }
 }
 
-BackendPtr GlowOnnxManager::createBackend(BackendIdPtr backendId) {
+BackendPtr GlowOnnxifiManager::createBackend(BackendIdPtr backendId) {
   assert(isValid(backendId));
   BackendPtr backend = new Backend(backendId);
   {
@@ -48,7 +48,7 @@ BackendPtr GlowOnnxManager::createBackend(BackendIdPtr backendId) {
   return backend;
 }
 
-EventPtr GlowOnnxManager::createEvent() {
+EventPtr GlowOnnxifiManager::createEvent() {
   EventPtr event = new glow::onnxifi::Event();
   {
     std::lock_guard<std::mutex> lock(m_);
@@ -59,7 +59,7 @@ EventPtr GlowOnnxManager::createEvent() {
   return event;
 }
 
-GraphPtr GlowOnnxManager::createGraph(BackendPtr backend) {
+GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend) {
   assert(isValid(backend));
   GraphPtr graph = new glow::onnxifi::Graph(backend);
   {
@@ -71,27 +71,27 @@ GraphPtr GlowOnnxManager::createGraph(BackendPtr backend) {
   return graph;
 }
 
-bool GlowOnnxManager::isValid(BackendIdPtr backendId) {
+bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) {
   std::lock_guard<std::mutex> lock(m_);
   return backendId && backendIds_.count(backendId) == 1;
 }
 
-bool GlowOnnxManager::isValid(BackendPtr backend) {
+bool GlowOnnxifiManager::isValid(BackendPtr backend) {
   std::lock_guard<std::mutex> lock(m_);
   return backend && backends_.count(backend) == 1;
 }
 
-bool GlowOnnxManager::isValid(EventPtr event) {
+bool GlowOnnxifiManager::isValid(EventPtr event) {
   std::lock_guard<std::mutex> lock(m_);
   return event && events_.count(event) == 1;
 }
 
-bool GlowOnnxManager::isValid(GraphPtr graph) {
+bool GlowOnnxifiManager::isValid(GraphPtr graph) {
   std::lock_guard<std::mutex> lock(m_);
   return graph && graphs_.count(graph) == 1;
 }
 
-void GlowOnnxManager::release(BackendIdPtr backendId) {
+void GlowOnnxifiManager::release(BackendIdPtr backendId) {
   assert(isValid(backendId) && "trying to release an invalid BackendId");
   {
     std::lock_guard<std::mutex> lock(m_);
@@ -100,7 +100,7 @@ void GlowOnnxManager::release(BackendIdPtr backendId) {
   delete backendId;
 }
 
-void GlowOnnxManager::release(BackendPtr backend) {
+void GlowOnnxifiManager::release(BackendPtr backend) {
   assert(isValid(backend) && "trying to release an invalid Backend");
   {
     std::lock_guard<std::mutex> lock(m_);
@@ -109,7 +109,7 @@ void GlowOnnxManager::release(BackendPtr backend) {
   delete backend;
 }
 
-void GlowOnnxManager::release(EventPtr event) {
+void GlowOnnxifiManager::release(EventPtr event) {
   assert(isValid(event) && "trying to release an invalid Event");
   {
     std::lock_guard<std::mutex> lock(m_);
@@ -118,7 +118,7 @@ void GlowOnnxManager::release(EventPtr event) {
   delete event;
 }
 
-void GlowOnnxManager::release(GraphPtr graph) {
+void GlowOnnxifiManager::release(GraphPtr graph) {
   assert(isValid(graph) && "trying to release an invalid Graph");
   {
     std::lock_guard<std::mutex> lock(m_);
