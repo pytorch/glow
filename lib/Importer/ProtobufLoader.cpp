@@ -117,7 +117,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   auto setup = [&]() -> llvm::Error {
     RETURN_ERR_IF_NOT(tensorNames.size() == types.size(),
                       "Invalid initialization list");
-    for (unsigned i = 0; i < tensorNames.size(); i++) {
+    for (size_t i = 0, e = tensorNames.size(); i < e; i++) {
       RETURN_ERR_IF_NOT(!hasNodeByName(tensorNames[i]),
                         "Input names have duplicate");
       auto placeholderOrErr =
