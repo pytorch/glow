@@ -52,6 +52,8 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
 
 llvm::Expected<bool>
 ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+  // Starting with opset 7, broadcasting is implicit and doesn't require any
+  // attribute.
   if (opsetVersion_ > 6) {
     return true;
   }
@@ -66,11 +68,14 @@ ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
 
 bool ONNXModelLoader::hasMultidirectionalBroadcast(
     const llvm::StringRef typeName) {
-  if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
-      (typeName == "Div")) {
-    return true;
+  // Before opset 7, broadcasting was unidirectional.
+  if (opsetVersion_ > 6) {
+    if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
+        (typeName == "Div")) {
+      return true;
+    }
+    // TODO: some other operators also support multidirectional broadcasting.
   }
-  // TODO: others operators may also support broadcast
   return false;
 }
 
