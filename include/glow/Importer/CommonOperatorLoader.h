@@ -324,32 +324,44 @@ protected:
 
     Node *finalIn0 = nullptr;
     Node *finalIn1 = nullptr;
+
     if (broadcast) {
-      int axis = -1;
-      if (dict.count("axis")) {
-        ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-      }
-
-      // In ONNX, if axis == -1 then it sets the axis so that the
-      // trailing-most dimensions are aligned like this.
-
-      // Broadcasting can be multi-directional (ONNX) or uni-directional
-      // (Caffe2: in0 <- in1)
-      std::vector<size_t> targetDim;
+      // Broadcasting can be:
+      // - multidirectional (ONNX opset 7+), or
+      // - unidirectional (ONNX opset 1->6,  Caffe2).
       if (hasMultidirectionalBroadcast(typeName)) {
+        // Compute the target shape that is a combination of the operand shapes.
+        std::vector<size_t> targetDim;
         ASSIGN_VALUE_OR_RETURN_ERR(targetDim, computeMultidirectionalBroadcast(
                                                   in0.dims(), in1.dims()));
-      } else {
-        targetDim = in0.dims();
+        // Sets the axis of each inputs so that the trailing-most dimensions of
+        // input tensors and the target shape are aligned.
+        int axis0 = targetDim.size() - in0.dims().size();
+        int axis1 = targetDim.size() - in1.dims().size();
+        finalIn0 = G_.createBroadcast(opName, in0, targetDim, axis0);
+        finalIn1 = G_.createBroadcast(opName, in1, targetDim, axis1);
       }
-
-      int axis0 = axis, axis1 = axis;
-      if (axis == -1) {
-        axis0 = targetDim.size() - in0.dims().size();
-        axis1 = targetDim.size() - in1.dims().size();
+      // Unidirectional broadcasting consists of broadcasting the right operand
+      // (in1) so that it matches the shape of the left operand (in0).
+      else {
+        // With unidirectional broadcasting, the 'axis' attribute specifies
+        // from how much the right operand shape must be 'shifted' right.
+        // - In Caffe2, the 'axis' attribute is optional. If not specified, axis
+        // must be automatically computed so that the trailing-most dimensions
+        // of in1 is aligned to the trailing-most dimension of in0.
+        // - In ONNX, the 'axis' attribute is mandatory. axis == -1 is
+        // equivalent to no axis specified in Caffe2.
+        int axis = -1;
+        if (dict.count("axis")) {
+          ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+        }
+        if (axis == -1) {
+          // Align trailing most dimensions.
+          axis = in0.dims().size() - in1.dims().size();
+        }
+        finalIn0 = in0;
+        finalIn1 = G_.createBroadcast(opName, in1, in0.dims(), axis);
       }
-      finalIn0 = G_.createBroadcast(opName, in0, targetDim, axis0);
-      finalIn1 = G_.createBroadcast(opName, in1, targetDim, axis1);
     } else {
       finalIn0 = in0;
       finalIn1 = in1;
