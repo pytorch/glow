@@ -92,39 +92,47 @@ bool GlowOnnxifiManager::isValid(GraphPtr graph) {
 }
 
 void GlowOnnxifiManager::release(BackendIdPtr backendId) {
-  assert(isValid(backendId) && "trying to release an invalid BackendId");
+  size_t erased;
   {
     std::lock_guard<std::mutex> lock(m_);
-    backendIds_.erase(backendId);
+    erased = backendIds_.erase(backendId);
   }
-  delete backendId;
+  if (erased) {
+    delete backendId;
+  }
 }
 
 void GlowOnnxifiManager::release(BackendPtr backend) {
-  assert(isValid(backend) && "trying to release an invalid Backend");
+  size_t erased;
   {
     std::lock_guard<std::mutex> lock(m_);
-    backends_.erase(backend);
+    erased = backends_.erase(backend);
   }
-  delete backend;
+  if (erased) {
+    delete backend;
+  }
 }
 
 void GlowOnnxifiManager::release(EventPtr event) {
-  assert(isValid(event) && "trying to release an invalid Event");
+  size_t erased;
   {
     std::lock_guard<std::mutex> lock(m_);
-    events_.erase(event);
+    erased = events_.erase(event);
   }
-  delete event;
+  if (erased) {
+    delete event;
+  }
 }
 
 void GlowOnnxifiManager::release(GraphPtr graph) {
-  assert(isValid(graph) && "trying to release an invalid Graph");
+  size_t erased;
   {
     std::lock_guard<std::mutex> lock(m_);
-    graphs_.erase(graph);
+    erased = graphs_.erase(graph);
   }
-  delete graph;
+  if (erased) {
+    delete graph;
+  }
 }
 } // namespace onnxifi
 } // namespace glow
