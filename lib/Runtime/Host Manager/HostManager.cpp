@@ -15,18 +15,31 @@
  */
 
 #include "glow/Runtime/Host Manager/HostManager.h"
+#include "glow/Graph/Context.h"
 
 using namespace glow;
+HostManager::HostManager() {
+  provisioner_ = Provisioner();
+  partitioner_ = Partitioner();
+}
 
+HostManager::~HostManager() { clearHost(); }
 int HostManager::addNetwork(Function *F) {
-  int networkID = 5;
-  // partitions
-  // provision
+  totalCount_++;
+  int networkID = totalCount_;
+  auto dependencyGraph = partitioner_.partition(F);
+  provisioner_.provision(dependencyGraph);
+  networks_.emplace(networkID, dependencyGraph);
   return networkID;
 }
 
 void HostManager::removeNetwork(int networkID) {
-  // remove from networks
+  auto it = networks_.find(networkID);
+  if (it == networks_.end()) {
+    return;
+  }
+  auto network = it->second;
+  networks_.erase(it);
   // walk DAG and remove from deviceManagers
 }
 
@@ -34,9 +47,16 @@ bool HostManager::networkAdded(int networkID) {
   return networks_.find(networkID) != networks_.end();
 }
 
-void HostManager::clearHost() {}
+void HostManager::clearHost() {
+  for (auto it : networks_) {
+    removeNetwork(it->first);
+  }
+  for (auto it : devices_) {
+    it->second.stop();
+  }
+}
 
 bool HostManager::runNetwork(int networkID, llvm::StringRef functionName,
                              Context context) {
-  // runme
+  return executor_.runNetwork(networkID, functionName, context);
 }

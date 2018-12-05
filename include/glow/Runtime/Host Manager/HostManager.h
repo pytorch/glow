@@ -23,13 +23,18 @@
 namespace glow {
 class DependencyGraph;
 class DeviceManager;
+class Partitioner;
+class Provisioner;
 class Executor {}; // temporary the Executor header will need to be included
 class Context;
 class HostManager {
   int activeCount_;
+  int totalCount_;
   std::unordered_map<int, DependencyGraph> networks_;
   std::unordered_map<int, DeviceManager> devices_;
   Executor executor_;
+  Partitioner partitioner_;
+  Provisioner provisioner_;
 
 public:
   /// Adds the network to the host and does the necessary setup work. This
@@ -45,6 +50,8 @@ public:
   /// Runs the network specified by \p networkID and \p functionName using the
   /// provided \p context.
   bool runNetwork(int networkID, llvm::StringRef functionName, Context context);
+  HostManager();
+  ~HostManager();
 };
 
 } // end namespace glow
