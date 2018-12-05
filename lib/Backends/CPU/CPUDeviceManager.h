@@ -39,7 +39,8 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   const uint64_t functionCost_{1};
 
 public:
-  CPUDeviceManager(llvm::StringRef name = "unnamed", size_t maxMemory = 1000)
+  CPUDeviceManager(llvm::StringRef name = "unnamed",
+                   size_t maxMemory = 1000000000)
       : QueueBackedDeviceManager(BackendKind::CPU, name),
         maxMemoryBytes_(maxMemory) {}
 

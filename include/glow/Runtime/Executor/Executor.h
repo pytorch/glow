@@ -19,8 +19,8 @@
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include <functional>
+#include <map>
 #include <memory>
-#include <unordered_map>
 
 namespace glow {
 
@@ -41,7 +41,7 @@ public:
   /// Map of DeviceIDTy -> DeviceManager, used when selecting a DeviceManager
   /// to use to execute a DAGNode.
   using DeviceManagerMapTy =
-      std::unordered_map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
+      std::map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
 
   /// Callback signalling the success/failure of running a DAG. The arguments
   /// are the run identifier of the invocation, the execution result code and

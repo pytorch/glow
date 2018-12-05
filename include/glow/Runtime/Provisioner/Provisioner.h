@@ -25,7 +25,7 @@
 namespace glow {
 namespace runtime {
 using DeviceIDtoManagerMapTy =
-    std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
+    std::map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
 
 /// The Provisioner is responsible for assigning networks to an actual device.
 /// It also compiles the networks before passing the compiled functions to the
@@ -43,6 +43,10 @@ private:
   /// Pointer to backend used for compilation. This currently gets reset per
   /// device to ensure the correct backed per device.
   std::unique_ptr<Backend> backend_;
+
+  /// Map of compiledFunction unique pointers. This maintains ownership of the
+  /// functions.
+  std::unordered_map<std::string, std::unique_ptr<CompiledFunction>> functions_;
 
   /// Padding factor to account for generated code size. Should be greater
   /// than 1.0.

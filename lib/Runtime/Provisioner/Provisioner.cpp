@@ -45,7 +45,6 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
   auto currDevice = devices.begin();
   while (!nextNode.empty()) {
     FunctionMapTy compiledFunctions;
-    std::vector<std::unique_ptr<CompiledFunction>> functions;
     auto nodes = nextNode.front();
     nextNode.pop();
 
@@ -72,8 +71,9 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
       Function *function = module.getFunction(node->name);
       auto compiled = backend_->compile(function);
       node->runtimeBundle = compiled->getRuntimeBundle();
+      node->runtimeBundle.setInputsandOutputs();
       compiledFunctions.emplace(node->name, compiled.get());
-      functions.push_back(std::move(compiled));
+      functions_.emplace(node->name, std::move(compiled));
     }
 
     // Check if sufficient space on device. Currently requiring a buffer
