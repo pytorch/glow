@@ -27,7 +27,7 @@ class Partitioner;
 class Provisioner;
 class Executor {}; // temporary the Executor header will need to be included
 class Context;
-class HostManager {
+class HostManager final {
   int activeCount_;
   int totalCount_;
   std::unordered_map<int, DependencyGraph> networks_;
@@ -38,21 +38,23 @@ class HostManager {
 
 public:
   /// Adds the network to the host and does the necessary setup work. This
-  /// includes partitioning, provisioning, and compiling. Returns the networkID
-  /// of the network.
+  /// includes partitioning, provisioning, compiling and initializing backends.
+  /// Returns the networkID of the network.
   int addNetwork(Function *F);
-  /// Given \p networkID removes that network from the host.
+  /// Given \p networkID removes that network from the host. This also removes
+  /// the network from any backends setup to execute it.
   void removeNetwork(int networkID);
   /// Returns true if \p networkID is already added to the host.
   bool networkAdded(int networkID);
-  /// Removes all networks from the host.
+  /// Removes all networks from the host, and stops execution on all devices.
   void clearHost();
   /// Runs the network specified by \p networkID and \p functionName using the
-  /// provided \p context.
+  /// provided \p context returns true when results are copied into the context
+  /// false if an error occurred.
   bool runNetwork(int networkID, llvm::StringRef functionName, Context context);
   HostManager();
   ~HostManager();
 };
 
-} // end namespace glow
+} // namespace glow
 #endif // GLOW_RUNTIME_HOST_MANAGER_H
