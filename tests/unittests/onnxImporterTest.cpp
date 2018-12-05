@@ -26,6 +26,8 @@ using namespace glow;
 template <class OpType>
 static void
 importArithMultiBroadcastTest(std::string fileName,
+                              llvm::ArrayRef<size_t> inputShape, bool multi,
+                              int numLeftTile, int numRightTile,
                               const std::function<float(float, float)> &op) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
@@ -38,7 +40,8 @@ importArithMultiBroadcastTest(std::string fileName,
   // will not depend on anyting from the loader.
   {
     Tensor data;
-    getNCHWData(&data, 1, 3, 1, 2);
+    getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
+                inputShape[3]);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
@@ -54,58 +57,128 @@ importArithMultiBroadcastTest(std::string fileName,
   auto *opNode = llvm::dyn_cast<OpType>(node);
   EXPECT_NE(nullptr, opNode);
 
-  // Left operand (1 dimension to broadcast)
-  auto *lhsTileNode = llvm::dyn_cast<TileNode>(opNode->getLHS().getNode());
-  EXPECT_NE(nullptr, lhsTileNode);
-  auto *lhsReshape =
-      llvm::dyn_cast<ReshapeNode>(lhsTileNode->getInput().getNode());
-  EXPECT_NE(nullptr, lhsReshape);
+  // Left operand (numLeftTile dimensions to broadcast)
+  if (numLeftTile > 0) {
+    TileNode *tileNode = llvm::dyn_cast<TileNode>(opNode->getLHS().getNode());
+    EXPECT_NE(nullptr, tileNode);
+    for (int i = 1; i < numLeftTile; i++) {
+      tileNode = llvm::dyn_cast<TileNode>(tileNode->getInput().getNode());
+      EXPECT_NE(nullptr, tileNode);
+    }
+    auto *reshapeNode =
+        llvm::dyn_cast<ReshapeNode>(tileNode->getInput().getNode());
+    EXPECT_NE(nullptr, reshapeNode);
+  }
 
-  // Right operand (2 dimensions to broadcast)
-  auto *rhsNode = opNode->getRHS().getNode();
-  EXPECT_NE(nullptr, rhsNode);
-  auto *rhsTileNode = llvm::dyn_cast<TileNode>(opNode->getRHS().getNode());
-  EXPECT_NE(nullptr, rhsTileNode);
-  auto *rhsTileNode2 =
-      llvm::dyn_cast<TileNode>(rhsTileNode->getInput().getNode());
-  EXPECT_NE(nullptr, rhsTileNode2);
-  auto *rhsReshape =
-      llvm::dyn_cast<ReshapeNode>(rhsTileNode2->getInput().getNode());
-  EXPECT_NE(nullptr, rhsReshape);
+  // Right operand (numRightTile dimensions to broadcast)
+  if (numRightTile > 0) {
+    TileNode *tileNode = llvm::dyn_cast<TileNode>(opNode->getRHS().getNode());
+    EXPECT_NE(nullptr, tileNode);
+    for (int i = 1; i < numRightTile; i++) {
+      tileNode = llvm::dyn_cast<TileNode>(tileNode->getInput().getNode());
+      EXPECT_NE(nullptr, tileNode);
+    }
+    auto *reshapeNode =
+        llvm::dyn_cast<ReshapeNode>(tileNode->getInput().getNode());
+    EXPECT_NE(nullptr, reshapeNode);
+  }
 
   // Compile&run the graph, and check the output
   EE.compile(CompilationMode::Infer, F);
   EE.run(ctx);
   auto result = ctx.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 3, 4, 2};
-  std::vector<float> expectedValues = {
-      op(0, 2), op(1, 2), op(0, 2), op(1, 2), op(0, 2), op(1, 2),
-      op(0, 2), op(1, 2), op(2, 2), op(3, 2), op(2, 2), op(3, 2),
-      op(2, 2), op(3, 2), op(2, 2), op(3, 2), op(4, 2), op(5, 2),
-      op(4, 2), op(5, 2), op(4, 2), op(5, 2), op(4, 2), op(5, 2)};
+  std::vector<float> expectedValues;
+
+  if (multi) {
+    expectedValues = {op(0, 2), op(1, 2), op(0, 2), op(1, 2), op(0, 2),
+                      op(1, 2), op(0, 2), op(1, 2), op(2, 2), op(3, 2),
+                      op(2, 2), op(3, 2), op(2, 2), op(3, 2), op(2, 2),
+                      op(3, 2), op(4, 2), op(5, 2), op(4, 2), op(5, 2),
+                      op(4, 2), op(5, 2), op(4, 2), op(5, 2)};
+  } else {
+    expectedValues = {op(0, 2),  op(1, 2),  op(2, 2),  op(3, 2),  op(4, 2),
+                      op(5, 2),  op(6, 2),  op(7, 2),  op(8, 2),  op(9, 2),
+                      op(10, 2), op(11, 2), op(12, 2), op(13, 2), op(14, 2),
+                      op(15, 2), op(16, 2), op(17, 2), op(18, 2), op(19, 2),
+                      op(20, 2), op(21, 2), op(22, 2), op(23, 2)};
+  }
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < result.getType().size(); i++)
+  for (size_t i = 0; i < result.getType().size(); i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
 }
 
 TEST(onnx, importAddMultiBroadcastOp7) {
   importArithMultiBroadcastTest<AddNode>(
-      "addMultiBroadcastOp7.onnxtxt", [](float a, float b) { return a + b; });
+      "addMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      [](float a, float b) { return a + b; });
+}
+
+TEST(onnx, importAddUniBroadcastOp6NoAxis) {
+  importArithMultiBroadcastTest<AddNode>(
+      "addUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a + b; });
+}
+
+TEST(onnx, importAddUniBroadcastOp6Axis) {
+  importArithMultiBroadcastTest<AddNode>(
+      "addUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a + b; });
 }
 
 TEST(onnx, importSubMultiBroadcastOp7) {
   importArithMultiBroadcastTest<SubNode>(
-      "subMultiBroadcastOp7.onnxtxt", [](float a, float b) { return a - b; });
+      "subMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      [](float a, float b) { return a - b; });
+}
+
+TEST(onnx, importSubUniBroadcastOp6NoAxis) {
+  importArithMultiBroadcastTest<SubNode>(
+      "subUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a - b; });
+}
+
+TEST(onnx, importSubUniBroadcastOp6Axis) {
+  importArithMultiBroadcastTest<SubNode>(
+      "subUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a - b; });
 }
 
 TEST(onnx, importMulMultiBroadcastOp7) {
   importArithMultiBroadcastTest<MulNode>(
-      "mulMultiBroadcastOp7.onnxtxt", [](float a, float b) { return a * b; });
+      "mulMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      [](float a, float b) { return a * b; });
+}
+
+TEST(onnx, importMulUniBroadcastOp6NoAxis) {
+  importArithMultiBroadcastTest<MulNode>(
+      "mulUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a * b; });
+}
+
+TEST(onnx, importMulUniBroadcastOp6Axis) {
+  importArithMultiBroadcastTest<MulNode>(
+      "mulUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a * b; });
 }
 
 TEST(onnx, importDivMultiBroadcastOp7) {
   importArithMultiBroadcastTest<DivNode>(
-      "divMultiBroadcastOp7.onnxtxt", [](float a, float b) { return a / b; });
+      "divMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      [](float a, float b) { return a / b; });
+}
+
+TEST(onnx, importDivUniBroadcastOp6NoAxis) {
+  importArithMultiBroadcastTest<DivNode>(
+      "divUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a / b; });
+}
+
+TEST(onnx, importDivUniBroadcastOp6Axis) {
+  importArithMultiBroadcastTest<DivNode>(
+      "divUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      [](float a, float b) { return a / b; });
 }
 
 /// Test loading conv op from a ONNX model.
