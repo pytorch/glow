@@ -24,6 +24,13 @@ void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   collectConstants(F->getGraph()->getParent());
 }
 
+void glow::runtime::RuntimeBundle::setInputsandOutputs() {
+  for (auto &symbol : symbolTable_) {
+    symbol.second.input = true;
+    symbol.second.output = true;
+  }
+}
+
 void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.

@@ -76,6 +76,9 @@ public:
   void collectConstants(const IRFunction *F);
   void collectConstants(const Module *M);
 
+  /// Sets the input and output flags for each symbol in the symbolBundle.
+  void setInputsandOutputs();
+
   RuntimeBundle() = default;
   RuntimeBundle(SymbolTableTy &symbolTable, size_t constWeight,
                 size_t mutableWeight, size_t activations)
