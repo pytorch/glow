@@ -1,0 +1,58 @@
+ir_version: 3
+producer_name: "onnx-arith-broadcast"
+opset_import { 
+  version: 6
+}
+
+graph {
+  node {
+    input: "data"
+    input: "const"
+    output: "out"
+    name: "op"
+    op_type: "Mul"
+    attribute {
+      name: "broadcast"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "axis"
+      i: -1
+      type: INT
+    }
+  }
+  name: "test-model"
+  initializer {
+    dims: 2
+    data_type: FLOAT
+    float_data: 2.0
+    float_data: 2.0
+   name: "const"
+  }
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "out"
+   }
+}
