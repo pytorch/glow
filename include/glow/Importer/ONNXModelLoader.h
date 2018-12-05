@@ -108,6 +108,10 @@ class ONNXModelLoader
   llvm::Error loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
                          const ArgumentDictionaryTy &dict);
 
+  /// Load Pad ONNX operator.
+  llvm::Error loadPad(const ONNX_NAMESPACE::NodeProto &op,
+                      const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
