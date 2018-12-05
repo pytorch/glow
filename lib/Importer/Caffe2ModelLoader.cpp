@@ -1085,14 +1085,34 @@ llvm::Error Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<TypeRef> types, Function &F)
-    : CommonOperatorLoader(names, types, F) {
-  // The caffe2 network descriptor that we are deserializing.
-  caffe2::NetDef networkDef = EXIT_ON_ERR(loadProtoFile(netDescFilename));
+                                     llvm::ArrayRef<TypeRef> types, Function &F,
+                                     llvm::Error *errPtr)
+    : CommonOperatorLoader(names, types, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
 
-  // The caffe2 weights that we are deserializing.
-  caffe2::NetDef weightsDef = EXIT_ON_ERR(loadProtoFile(netWeightFilename));
+  // Lambda to setup the Caffe2ModelLoader and return any llvm::Errors that were
+  // raised.
+  auto setup = [&]() -> llvm::Error {
+    // The caffe2 network descriptor that we are deserializing.
+    caffe2::NetDef networkDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(networkDef, loadProtoFile(netDescFilename));
 
-  TEMP_EXIT_ON_ERR(loadWeights(weightsDef));
-  TEMP_EXIT_ON_ERR(loadNetwork(networkDef));
+    // The caffe2 weights that we are deserializing.
+    caffe2::NetDef weightsDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(weightsDef, loadProtoFile(netWeightFilename));
+
+    RETURN_IF_ERR(loadWeights(weightsDef));
+    RETURN_IF_ERR(loadNetwork(networkDef));
+
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
 }

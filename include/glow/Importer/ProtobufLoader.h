@@ -131,8 +131,11 @@ public:
   /// Constructs new ProtobufLoader object. It will populate the network into \p
   /// F. The list \p types and \p names are used to initialized the inputs and
   /// outputs with specific names and types.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                 llvm::ArrayRef<TypeRef> types, Function &F);
+                 llvm::ArrayRef<TypeRef> types, Function &F,
+                 llvm::Error *errPtr = nullptr);
 
   virtual ~ProtobufLoader();
 

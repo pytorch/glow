@@ -176,8 +176,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendCompatibility)(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
-  std::vector<std::pair<glow::Kinded::Kind, glow::ElemKind>> operations =
-      glow::ONNXIFIModelLoader::parseOperators(onnxModel, onnxModelSize);
+  std::vector<std::pair<glow::Kinded::Kind, glow::ElemKind>> operations;
+
+  if (auto operationsOrErr =
+          glow::ONNXIFIModelLoader::parseOperators(onnxModel, onnxModelSize)) {
+    operations = std::move(*operationsOrErr);
+  } else {
+    // TODO also print error
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
 
   // TODO: Make better error reporting.
   if (operations.empty()) {

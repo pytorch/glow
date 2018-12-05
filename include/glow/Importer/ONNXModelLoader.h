@@ -128,7 +128,9 @@ protected:
 
 public:
   /// Creates a ONNX model loader to build \p F.
-  ONNXModelLoader(Function &F);
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
+  ONNXModelLoader(Function &F, llvm::Error *errPtr = nullptr);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
@@ -154,9 +156,12 @@ public:
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The types in \p types match the list of names \p tensorNames and used as
   /// inputs to the network.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
-                  llvm::ArrayRef<TypeRef> types, Function &F);
+                  llvm::ArrayRef<TypeRef> types, Function &F,
+                  llvm::Error *errPtr = nullptr);
 };
 
 } // namespace glow
