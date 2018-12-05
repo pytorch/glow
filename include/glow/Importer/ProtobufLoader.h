@@ -29,6 +29,7 @@
 
 #include <google/protobuf/text_format.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -92,7 +93,7 @@ protected:
   /// Saves network nodes by name.
   llvm::StringMap<NodeValue> nodeValueByName_;
   /// A list of weight tensors indexed by name.
-  llvm::StringMap<Tensor *> tensors_;
+  llvm::StringMap<std::unique_ptr<Tensor>> tensors_;
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
 
@@ -137,7 +138,9 @@ public:
                  llvm::ArrayRef<TypeRef> types, Function &F,
                  llvm::Error *errPtr = nullptr);
 
-  virtual ~ProtobufLoader();
+  ProtobufLoader(const ProtobufLoader &other) = delete;
+  ProtobufLoader &operator=(const ProtobufLoader &) = delete;
+  virtual ~ProtobufLoader() = default;
 
   /// \returns the single final output of the network. The function assumes that
   /// there is only one output, returns Error otherwise. For image

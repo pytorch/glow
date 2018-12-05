@@ -116,14 +116,9 @@ static llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
 llvm::Error ONNXIFIModelLoader::loadWeights(
     uint32_t weightsCount, const onnxTensorDescriptorV1 *weightDescriptors) {
   for (uint32_t i = 0; i < weightsCount; ++i) {
-    Tensor *T = new Tensor();
-
-    if (auto err = loadWeight(weightDescriptors[i], T)) {
-      delete T;
-      return err;
-    }
-
-    tensors_[weightDescriptors[i].name] = T;
+    auto *T = new Tensor();
+    tensors_[weightDescriptors[i].name].reset(T);
+    RETURN_IF_ERR(loadWeight(weightDescriptors[i], T));
   }
 
   return llvm::Error::success();

@@ -845,14 +845,13 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      floats: -0.028315347
      */
 
-    auto *T = new Tensor();
     for (auto &o : op.output()) {
-      tensors_[o] = T;
-    }
+      auto *T = new Tensor();
+      tensors_[o].reset(T);
 
-    auto dim = getShape(dict["shape"]);
+      auto dim = getShape(dict["shape"]);
 
-    size_t i = 0;
+      size_t i = 0;
 #define LOAD_TENSOR_FILL(TYPE_NAME, NATIVE_TYPE, PROTO_TYPE_NAME)              \
   T->reset(ElemKind::TYPE_NAME, dim);                                          \
   auto TH = T->getHandle<NATIVE_TYPE>();                                       \
@@ -860,31 +859,33 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     TH.raw(i++) = num;                                                         \
   }
 
-    if (dict["values"]->floats_size()) {
-      RETURN_ERR_IF_NOT(
-          typeName != "GivenTensorIntFill" &&
-              typeName != "GivenTensorInt64Fill",
-          "Typename must not be GivenTensorIntFill or GivenTensorInt64Fill");
-      LOAD_TENSOR_FILL(FloatTy, float, floats);
-    } else if (dict["values"]->ints_size()) {
-      if (typeName == "GivenTensorIntFill") {
-        LOAD_TENSOR_FILL(Int32ITy, int32_t, ints);
-      } else if (typeName == "GivenTensorInt64Fill" ||
-                 typeName == "GivenTensorFill") {
-        LOAD_TENSOR_FILL(Int64ITy, int64_t, ints);
+      if (dict["values"]->floats_size()) {
+        RETURN_ERR_IF_NOT(
+            typeName != "GivenTensorIntFill" &&
+                typeName != "GivenTensorInt64Fill",
+            "Typename must not be GivenTensorIntFill or GivenTensorInt64Fill");
+        LOAD_TENSOR_FILL(FloatTy, float, floats);
+      } else if (dict["values"]->ints_size()) {
+        if (typeName == "GivenTensorIntFill") {
+          LOAD_TENSOR_FILL(Int32ITy, int32_t, ints);
+        } else if (typeName == "GivenTensorInt64Fill" ||
+                   typeName == "GivenTensorFill") {
+          LOAD_TENSOR_FILL(Int64ITy, int64_t, ints);
+        } else {
+          RETURN_ERR(unexpectedNodeErrorMessage(
+              op, "Unsupported data type for " + typeName));
+        }
       } else {
         RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported data type for " +
                                                       typeName));
       }
-    } else {
-      RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported data type for " +
-                                                    typeName));
-    }
 #undef LOAD_TENSOR_FILL
 
-    RETURN_ERR_IF_NOT(i == T->size(),
-                      "The number of serialized values does not "
-                      "match the size of the tensor.");
+      RETURN_ERR_IF_NOT(i == T->size(),
+                        "The number of serialized values does not "
+                        "match the size of the tensor.");
+    }
+
     return llvm::Error::success();
   }
 
@@ -915,47 +916,48 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      i: 127
      }
      */
-    auto *T = new Tensor();
     for (auto &o : op.output()) {
+      auto *T = new Tensor();
       if (tensors_.count(o)) {
         continue;
       }
-      tensors_[o] = T;
+      tensors_[o].reset(T);
+
+      auto dim = getShape(dict["shape"]);
+
+      RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                        "missing zero point for quantized output type");
+      RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                        "missing Y_scale for quantized output type");
+
+      float scale;
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+      int32_t offset;
+      ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+      size_t i = 0;
+      if (typeName == "Int8GivenTensorFill") {
+        // Although in Caffe2 quantized model, the weights is int8 quantized,
+        // the weights is stored in uint8_t format due to that Caffe2 requires
+        // the type of input and weights must be the same. Therefore, we need to
+        // convert it to int8 by subtracting 128.
+        T->reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
+        auto TH = T->getHandle<int8_t>();
+        std::string str = dict["values"]->s();
+        for (; i < str.size(); i++) {
+          TH.raw(i) = ((uint8_t)(str.c_str()[i]) - OFFSETSHIFT);
+        }
+      } else {
+        T->reset(ElemKind::Int32QTy, dim, scale, offset);
+        auto TH = T->getHandle<int32_t>();
+        for (auto num : dict["values"]->ints()) {
+          TH.raw(i++) = num;
+        }
+      }
+      RETURN_ERR_IF_NOT(i == T->size(),
+                        "The number of serialized values does not "
+                        "match the size of the tensor.");
     }
 
-    auto dim = getShape(dict["shape"]);
-
-    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
-                      "missing zero point for quantized output type");
-    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
-                      "missing Y_scale for quantized output type");
-
-    float scale;
-    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
-    int32_t offset;
-    ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
-    size_t i = 0;
-    if (typeName == "Int8GivenTensorFill") {
-      // Although in Caffe2 quantized model, the weights is int8 quantized,
-      // the weights is stored in uint8_t format due to that Caffe2 requires the
-      // type of input and weights must be the same. Therefore, we need to
-      // convert it to int8 by subtracting 128.
-      T->reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
-      auto TH = T->getHandle<int8_t>();
-      std::string str = dict["values"]->s();
-      for (; i < str.size(); i++) {
-        TH.raw(i) = ((uint8_t)(str.c_str()[i]) - OFFSETSHIFT);
-      }
-    } else {
-      T->reset(ElemKind::Int32QTy, dim, scale, offset);
-      auto TH = T->getHandle<int32_t>();
-      for (auto num : dict["values"]->ints()) {
-        TH.raw(i++) = num;
-      }
-    }
-    RETURN_ERR_IF_NOT(i == T->size(),
-                      "The number of serialized values does not "
-                      "match the size of the tensor.");
     return llvm::Error::success();
   }
 
@@ -979,7 +981,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     }
 
     auto *T = new Tensor();
-    tensors_[name] = T;
+    tensors_[name].reset(T);
 
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
@@ -1052,7 +1054,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     */
     const auto &name = op.output(0);
     auto *T = new Tensor();
-    tensors_[name] = T;
+    tensors_[name].reset(T);
     auto dim = getShape(dict["shape"]);
     T->reset(ElemKind::FloatTy, dim);
     auto TH = T->getHandle<>();

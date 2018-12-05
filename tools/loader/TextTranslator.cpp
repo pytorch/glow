@@ -322,9 +322,9 @@ int main(int argc, char **argv) {
       &encoderInputs.getType(), &attnWeights.getType(),
       &prevHyposIndices.getType(), &prevScores.getType(), &prevToken.getType()};
 
-  auto LD = Caffe2ModelLoader(loader.getCaffe2NetDescFilename(),
-                              loader.getCaffe2NetWeightFilename(), inputNames,
-                              inputTensors, *loader.getFunction());
+  Caffe2ModelLoader LD(loader.getCaffe2NetDescFilename(),
+                       loader.getCaffe2NetWeightFilename(), inputNames,
+                       inputTensors, *loader.getFunction());
 
   // Allocate tensors to back all inputs and outputs.
   ctx.allocate(loader.getModule()->getPlaceholders());

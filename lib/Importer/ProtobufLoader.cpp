@@ -30,7 +30,7 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
 llvm::Expected<Tensor *> ProtobufLoader::getTensorByName(llvm::StringRef name) {
   RETURN_ERR_IF_NOT(tensors_.count(name),
                     "There is no tensor registered with this name.");
-  return tensors_[name];
+  return tensors_[name].get();
 }
 
 llvm::Expected<Placeholder *>
@@ -133,12 +133,6 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
     *errPtr = setup();
   } else {
     EXIT_ON_ERR(setup());
-  }
-}
-
-ProtobufLoader::~ProtobufLoader() {
-  for (auto &it : tensors_) {
-    delete it.second;
   }
 }
 
