@@ -807,7 +807,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
     // Create the IR node.
-    Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
+    Node *N = G_.createPad(loadOperatorName(op), input, outTy, mode, pads, value);
     addNodeAsOutput(op, N);
 
     return llvm::Error::success();
