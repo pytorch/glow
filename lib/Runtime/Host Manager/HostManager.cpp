@@ -41,6 +41,13 @@ void HostManager::removeNetwork(int networkID) {
   auto network = it->second;
   networks_.erase(it);
   // walk DAG and remove from deviceManagers
+  // assumes modules is a list of moduleID's and everything else uses that id as
+  // the key.
+  for (auto module : network.modules) {
+    for (auto device : network.devices[module]) {
+      device.removeNetwork(module);
+    }
+  }
 }
 
 bool HostManager::networkAdded(int networkID) {
@@ -58,5 +65,8 @@ void HostManager::clearHost() {
 
 bool HostManager::runNetwork(int networkID, llvm::StringRef functionName,
                              Context context) {
-  return executor_.runNetwork(networkID, functionName, context);
+  if (networks_.find(networkID) == networks_.end()) {
+    return false;
+  }
+  return executor_.runNetwork(networks_[networkID], functionName, context);
 }
