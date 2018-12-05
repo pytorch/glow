@@ -37,6 +37,11 @@ namespace glow {
 /// from ProtobufLoader class, therefore modifying the class instance itself.
 template <typename OpType, typename AttrType>
 class CommonOperatorLoader : public ProtobufLoader {
+public:
+  CommonOperatorLoader(llvm::ArrayRef<const char *> names,
+                       llvm::ArrayRef<TypeRef> types, Function &F)
+      : ProtobufLoader(names, types, F) {}
+
 protected:
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
@@ -95,7 +100,7 @@ protected:
     // This is statically known data, and so we create a Tensor for it and
     // register it in tensors_.
     auto *T = new Tensor(ElemKind::Int64ITy, {in.dims().size()});
-    tensors_[opName] = T;
+    tensors_[opName].reset(T);
     T->template getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
