@@ -60,8 +60,12 @@ case ${CIRCLE_JOB} in
         run_onnxifi
         ;;
 
+    SHARED)
+        # No tests with shared libs; it's similar to DEBUG.
+        ;;
+
     *)
-        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, DEBUG}."
+        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, DEBUG, SHARED}."
         exit 1
         ;;
 esac

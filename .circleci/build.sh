@@ -57,17 +57,19 @@ cd ${GLOW_DIR}
 mkdir build && cd build
 CMAKE_ARGS=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
-if [[ "$CIRCLE_JOB" == ASAN ]]; then
+if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
-fi
-if [[ "$CIRCLE_JOB" == DEBUG ]]; then
+    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+else
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
-else
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+    if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
+        CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")
+    fi
 fi
+
 cmake -GNinja ${CMAKE_ARGS[*]} ../
 ninja
 
