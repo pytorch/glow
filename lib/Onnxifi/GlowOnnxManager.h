@@ -37,39 +37,51 @@ public:
   GlowOnnxManager &operator=(const GlowOnnxManager &) = delete;
 
   /// Add a new glow \p backendId to the set of valid backendIds.
+  /// Can be called safely by multiple threads concurrently.
   void addBackendId(BackendIdPtr backendId);
 
   /// Create a new glow Backend associated with \p backendId.
+  /// Can be called safely by multiple threads concurrently.
   BackendPtr createBackend(BackendIdPtr backendId);
 
   /// Create a new glow Event.
+  /// Can be called safely by multiple threads concurrently.
   EventPtr createEvent();
 
   /// Create a new glow Graph associated with \p backend.
+  /// Can be called safely by multiple threads concurrently.
   GraphPtr createGraph(BackendPtr backend);
 
   /// Check if \p backendId is a BackendId created and managed by glow.
+  /// Can be called safely by multiple threads concurrently.
   bool isValid(BackendIdPtr backendId);
 
   /// Check if \p backend is a Backend created and managed by glow.
+  /// Can be called safely by multiple threads concurrently.
   bool isValid(BackendPtr backend);
 
   /// Check if \p event is a Event created and managed by glow.
+  /// Can be called safely by multiple threads concurrently.
   bool isValid(EventPtr event);
 
   /// Check if \p graph is a Graph created and managed by glow.
+  /// Can be called safely by multiple threads concurrently.
   bool isValid(GraphPtr graph);
 
   /// Free \p backendId.
+  /// Can be called safely by multiple threads concurrently.
   void release(BackendIdPtr backendId);
 
   /// Free \p backend.
+  /// Can be called safely by multiple threads concurrently.
   void release(BackendPtr backend);
 
   /// Free \p event.
+  /// Can be called safely by multiple threads concurrently.
   void release(EventPtr event);
 
   /// Free \p graph.
+  /// Can be called safely by multiple threads concurrently.
   void release(GraphPtr graph);
 
 private:
@@ -88,6 +100,7 @@ private:
   std::unordered_set<GraphPtr> graphs_;
 
   /// Mutex that protects all members of GlowOnnxManager.
+  /// TODO use a can use a mutex per set if performance becomes an issue.
   mutable std::mutex m_;
 };
 

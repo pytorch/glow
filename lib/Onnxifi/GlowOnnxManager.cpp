@@ -27,9 +27,9 @@ GlowOnnxManager &GlowOnnxManager::get() {
 }
 
 void GlowOnnxManager::addBackendId(BackendIdPtr backendId) {
-  assert(!isValid(backendId) && backendId != nullptr);
   {
     std::lock_guard<std::mutex> lock(m_);
+    assert(!backendIds_.count(backendId));
     auto res = backendIds_.insert(backendId);
     (void)res;
     assert((res.second && *res.first) && "Failed to add new BackendId");
