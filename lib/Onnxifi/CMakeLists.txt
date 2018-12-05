@@ -6,7 +6,7 @@ add_library(onnxifi-glow
               GlowOnnxifiManager.cpp
               onnxifiGlow.cpp)
 
-add_library(onnxifi-glow-normal
+add_library(onnxifi-glow-lib
               Base.cpp
               GlowOnnxifiManager.cpp
               onnxifiGlow.cpp)
@@ -15,7 +15,7 @@ add_library(onnxifi-glow-thread-pool
               ThreadPool.cpp)
 
 
-target_link_libraries(onnxifi-glow-normal
+target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         ExecutionEngine
                         Importer

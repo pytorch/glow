@@ -24,20 +24,25 @@
 namespace glow {
 namespace onnxifi {
 /// Singleton class for creating and destroying objects for the ONNXIFI
-/// interface. GlowOnnxifiManager tracks objects it has created and can be used to
-/// check if an ONNXIFI interface object was created by glow or not.
+/// interface. GlowOnnxifiManager tracks objects it has created and can be used
+/// to check if an ONNXIFI interface object was created by glow or not.
 class GlowOnnxifiManager final {
 public:
-  /// Get a reference to the GlowOnnxifiManager singleton. There should only ever
-  /// be one GlowOnnxifiManager.
+  /// Get a reference to the GlowOnnxifiManager singleton. There should only
+  /// ever be one GlowOnnxifiManager.
   static GlowOnnxifiManager &get();
 
-  /// Disallow copying GlowOnnxifiManager to help enforce singleton pattern.
+  /// Disallow copying and moving GlowOnnxifiManager to help enforce singleton
+  /// pattern.
   GlowOnnxifiManager(const GlowOnnxifiManager &) = delete;
+  GlowOnnxifiManager(GlowOnnxifiManager &&) = delete;
   GlowOnnxifiManager &operator=(const GlowOnnxifiManager &) = delete;
+  GlowOnnxifiManager &operator=(GlowOnnxifiManager &&) = delete;
 
-  /// Add a new glow \p backendId to the set of valid backendIds.
-  /// Can be called safely by multiple threads concurrently.
+  /// Add a new glow BackendId \p backendId to the set of valid BackendIds.
+  /// GlowOnnxifiManager then owns this BackendId and is responsible for
+  /// deallocating when it is released. Can be called safely by multiple threads
+  /// concurrently.
   void addBackendId(BackendIdPtr backendId);
 
   /// Create a new glow Backend associated with \p backendId.
@@ -100,7 +105,7 @@ private:
   std::unordered_set<GraphPtr> graphs_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
-  /// TODO use a can use a mutex per set if performance becomes an issue.
+  /// TODO: can use one mutex per set if performance becomes an issue.
   mutable std::mutex m_;
 };
 

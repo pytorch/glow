@@ -334,7 +334,7 @@ add_executable(GlowOnnxifiManagerTest
 GlowOnnxifiManagerTest.cpp)
 target_link_libraries(GlowOnnxifiManagerTest
                       PRIVATE
-                        onnxifi-glow-normal
+                        onnxifi-glow-lib
                         gtest
                         testMain)
 target_include_directories(GlowOnnxifiManagerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
