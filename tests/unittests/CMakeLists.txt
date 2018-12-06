@@ -296,6 +296,22 @@ target_link_libraries(LLVMIRGenTest
 target_include_directories(LLVMIRGenTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
 add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest --gtest_output=xml:LLVMIRGenTest.xml)
 
+add_executable(cpuDeviceTest
+               CPUDeviceManagerTest.cpp)
+target_link_libraries(cpuDeviceTest
+                      PRIVATE
+                        Backends
+                        DeviceManager
+                        CPUDeviceManager
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Optimizer
+                        gtest
+                        testMain)
+target_include_directories(cpuDeviceTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
+add_glow_test(cpuDeviceTest ${GLOW_BINARY_DIR}/tests/cpuDeviceTest --gtest_output=xml:cpuDeviceTest.xml)
+
 endif()
 
 add_executable(memoryAllocatorTest

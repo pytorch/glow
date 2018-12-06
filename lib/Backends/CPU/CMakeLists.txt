@@ -108,3 +108,18 @@ if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
                           LLVMOrcJIT)
 endif()
 add_dependencies(CPUBackend CPURuntime)
+
+add_library(CPUDeviceManager
+            CPUDeviceManager.cpp)
+target_link_libraries(CPUDeviceManager
+                      PRIVATE
+                      Backends
+                      BackendUtils
+                      Base
+                      CodeGen
+                      CPUBackend
+                      DeviceManager
+                      Graph
+                      IR
+                      Optimizer
+                      QuantizationBase)

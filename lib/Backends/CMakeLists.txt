@@ -2,6 +2,8 @@ add_library(Backends Backends.cpp)
 
 add_library(BackendUtils BackendUtils.cpp)
 
+add_library(DeviceManager DeviceManager.cpp)
+
 target_link_libraries(BackendUtils
                       PRIVATE
                       CodeGen
@@ -27,3 +29,9 @@ target_link_libraries(Backends
                         ${linked_backends}
                         Base
                         Graph)
+
+target_link_libraries(DeviceManager
+                      PRIVATE
+                        Backends
+                        Graph
+                        ThreadPool)
