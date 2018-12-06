@@ -192,11 +192,13 @@ add_glow_test(typeAToTypeBFunctionConverterTest
               ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml)
 
 add_executable(UtilsTest
+               StrCheck.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE
                         Base
                         Support
+                        Testing
                         gtest
                         testMain)
 add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml)
