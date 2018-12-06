@@ -7,3 +7,6 @@
 [submodule "thirdparty/fp16"]
 	path = thirdparty/fp16
 	url = https://github.com/Maratyszcza/FP16.git
+[submodule "thirdparty/peglib"]
+	path = thirdparty/peglib
+	url = https://github.com/yhirose/cpp-peglib.git

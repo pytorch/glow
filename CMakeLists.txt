@@ -98,6 +98,12 @@ else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
 
+if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/peglib")
+  message(FATAL_ERROR "No peglib git submodule. Run: git submodule update --init --recursive")
+else()
+  include_directories(${GLOW_THIRDPARTY_DIR}/peglib)
+endif()
+
 add_subdirectory(lib)
 add_subdirectory(tools)
 
