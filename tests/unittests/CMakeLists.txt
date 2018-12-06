@@ -18,6 +18,16 @@ target_link_libraries(partitionTest
                         testMain)
 add_glow_test(partitionTest ${GLOW_BINARY_DIR}/tests/partitionTest --gtest_output=xml:partitionTest.xml)
 
+
+add_executable(LowLevelIRLoaderTest
+               LowLevelIRLoaderTest.cpp)
+target_link_libraries(LowLevelIRLoaderTest
+                      PRIVATE
+                        gtest
+                        testMain)
+add_glow_test(LowLevelIRLoaderTest ${GLOW_BINARY_DIR}/tests/LowLevelIRLoaderTest --gtest_output=xml:LowLevelIRLoaderTest.xml)
+
+
 add_executable(tensorsTest
                tensorsTest.cpp)
 target_link_libraries(tensorsTest
