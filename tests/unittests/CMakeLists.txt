@@ -70,7 +70,7 @@ target_link_libraries(basicIRTest
                         IR
                         gtest
                         testMain)
-add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest --gtest_output=xml:basicIRTest.xml) 
+add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest --gtest_output=xml:basicIRTest.xml)
 
 add_executable(backendTest
                BackendTest.cpp)
@@ -143,7 +143,7 @@ target_link_libraries(graphOptzTest
                         Optimizer
                         gtest
                         testMain)
-add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest --gtest_output=xml:graphOptzTest.xml) 
+add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest --gtest_output=xml:graphOptzTest.xml)
 
 add_executable(graphSchedulerTest
                graphSchedulerTest.cpp)
@@ -189,7 +189,7 @@ target_link_libraries(typeAToTypeBFunctionConverterTest
                         gtest
                         testMain)
 add_glow_test(typeAToTypeBFunctionConverterTest
-              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml) 
+              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml)
 
 add_executable(UtilsTest
                UtilsTest.cpp)
@@ -333,6 +333,20 @@ target_link_libraries(onnxifiThreadPoolTest
 target_include_directories(onnxifiThreadPoolTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi)
 add_glow_test(NAME onnxifiThreadPoolTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxifiThreadPoolTest --gtest_output=xml:onnxifiThreadPoolTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(GlowOnnxifiManagerTest
+               GlowOnnxifiManagerTest.cpp)
+target_link_libraries(GlowOnnxifiManagerTest
+                      PRIVATE
+                        onnxifi-glow-lib
+                        gtest
+                        testMain)
+target_include_directories(GlowOnnxifiManagerTest
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
+add_glow_test(NAME GlowOnnxifiManagerTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS
