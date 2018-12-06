@@ -217,12 +217,30 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
 }
 
 TensorQuantizationParams chooseQuantizationParams(float min, float max,
-                                                  Schema schema) {
+                                                  Schema schema, ElemKind qTy) {
   assert(min <= max && "min must not be bigger than max");
 
-  // Given 8 bit precision.
-  const int32_t qmin = std::numeric_limits<int8_t>::min();
-  const int32_t qmax = std::numeric_limits<int8_t>::max();
+  // Compute the quantized int range.
+  // Pick int64 in order to cover the uint32_t range.
+  int64_t qmin;
+  int64_t qmax;
+
+  switch (qTy) {
+  case ElemKind::Int8QTy:
+    qmin = std::numeric_limits<int8_t>::min();
+    qmax = std::numeric_limits<int8_t>::max();
+    break;
+  case ElemKind::Int16QTy:
+    qmin = std::numeric_limits<int16_t>::min();
+    qmax = std::numeric_limits<int16_t>::max();
+    break;
+  case ElemKind::Int32QTy:
+    qmin = std::numeric_limits<int32_t>::min();
+    qmax = std::numeric_limits<int32_t>::max();
+    break;
+  default:
+    llvm_unreachable("Quantized type not supported");
+  }
 
   // We extend the [min, max] interval to ensure that it contains 0.
   // Otherwise, we would not meet the requirement that 0 be an exactly
@@ -230,17 +248,18 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   min = std::min(min, 0.f);
   max = std::max(max, 0.f);
 
+  // TODO: SymmetricWithUInt8 should be renamed as SymmetricWithUnsigned
   if (schema == quantization::Schema::SymmetricWithUInt8) {
     // Check if the range we try to encode is purely positive.
-    // If not, we cannot use the UInt8 mapping and we fall back
+    // If not, we cannot use the Unsigned mapping and we fall back
     // to the symmetric schema.
     if (min >= 0.f) {
       // By construction we always have zero to our range.
       // Since min is >= 0 and 0 is in our range, min is
       // actually zero.
       // Therefore zero is going to be mapped to the first
-      // element of the quantized range -128 and thus the
-      // offset is going to be -128.
+      // element of the quantized range qmin and thus the
+      // offset is going to be qmin.
       assert(min <= std::numeric_limits<float>::epsilon() &&
              "Our range should start at zero");
     } else {
@@ -264,8 +283,9 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   // Dequantization uses the following formula scale * (X - offset), so
   // scale should not be equal to zero.
   // If scale is 0, we arbitrary adjust the scale to 0.1.
-  if (scale == 0)
+  if (scale == 0) {
     scale = 0.1;
+  }
 
   assert(scale > 0 && "Scale must be non negative");
 
@@ -309,9 +329,9 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   assert((result.offset == 0 || schema != quantization::Schema::Symmetric) &&
          "Symmetric quantization should be centered on 0");
 
-  // The only valid offsets for symmetric quantization with uint8 support are 0
-  // and -128.
-  assert((result.offset == -128 || result.offset == 0 ||
+  // The only valid offsets for symmetric quantization with unsigned support are
+  // 0 and qmin.
+  assert((result.offset == qmin || result.offset == 0 ||
           schema != quantization::Schema::SymmetricWithUInt8) &&
          "Symmetric quantization should be centered on 0");
   return result;
