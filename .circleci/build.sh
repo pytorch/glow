@@ -61,6 +61,21 @@ if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+elif [[ "$CIRCLE_JOB" == RELEASE_WITH_LIT ]]; then
+    # Setup the LLVM Integrated Tester if requested.
+    source $GLOW_DIR/utils/set_llvm_test_env.sh
+
+    # Download the models that LIT runs and tell cmake where to find them.
+    MODELS_DIR="$GLOW_DIR/downloaded_models"
+    DOWNLOAD_EXE="$GLOW_DIR/utils/download_caffe2_models.sh"
+    mkdir $MODELS_DIR
+    (
+        cd $MODELS_DIR
+        $DOWNLOAD_EXE
+    )
+    CMAKE_ARGS+=("-DGLOW_MODELS_DIR=$MODELS_DIR")
+    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 else
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
