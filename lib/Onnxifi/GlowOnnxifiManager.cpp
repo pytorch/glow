@@ -27,66 +27,72 @@ GlowOnnxifiManager &GlowOnnxifiManager::get() {
 }
 
 void GlowOnnxifiManager::addBackendId(BackendIdPtr backendId) {
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    assert(!backendIds_.count(backendId));
-    auto res = backendIds_.insert(backendId);
-    (void)res;
-    assert((res.second && *res.first) && "Failed to add new BackendId");
-  }
+  std::lock_guard<std::mutex> lock(m_);
+
+  assert(!backendIds_.count(backendId));
+
+  auto res = backendIds_.insert(backendId);
+
+  (void)res;
+  assert((res.second && *res.first) && "Failed to add new BackendId");
 }
 
 BackendPtr GlowOnnxifiManager::createBackend(BackendIdPtr backendId) {
   assert(isValid(backendId));
+
   BackendPtr backend = new Backend(backendId);
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    auto res = backends_.insert(backend);
-    (void)res;
-    assert((res.second && *res.first) && "Failed to create new Backend");
-  }
+
+  std::lock_guard<std::mutex> lock(m_);
+
+  auto res = backends_.insert(backend);
+
+  (void)res;
+  assert((res.second && *res.first) && "Failed to create new Backend");
   return backend;
 }
 
 EventPtr GlowOnnxifiManager::createEvent() {
   EventPtr event = new glow::onnxifi::Event();
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    auto res = events_.insert(event);
-    (void)res;
-    assert((res.second && *res.first) && "Failed to create new Event");
-  }
+
+  std::lock_guard<std::mutex> lock(m_);
+
+  auto res = events_.insert(event);
+
+  (void)res;
+  assert((res.second && *res.first) && "Failed to create new Event");
   return event;
 }
 
 GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend) {
   assert(isValid(backend));
+
   GraphPtr graph = new glow::onnxifi::Graph(backend);
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    auto res = graphs_.insert(graph);
-    (void)res;
-    assert((res.second && *res.first) && "Failed to create new Graph");
-  }
+
+  std::lock_guard<std::mutex> lock(m_);
+
+  auto res = graphs_.insert(graph);
+
+  (void)res;
+  assert((res.second && *res.first) && "Failed to create new Graph");
   return graph;
 }
 
-bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) {
+bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) const {
   std::lock_guard<std::mutex> lock(m_);
   return backendId && backendIds_.count(backendId) == 1;
 }
 
-bool GlowOnnxifiManager::isValid(BackendPtr backend) {
+bool GlowOnnxifiManager::isValid(BackendPtr backend) const {
   std::lock_guard<std::mutex> lock(m_);
   return backend && backends_.count(backend) == 1;
 }
 
-bool GlowOnnxifiManager::isValid(EventPtr event) {
+bool GlowOnnxifiManager::isValid(EventPtr event) const {
   std::lock_guard<std::mutex> lock(m_);
   return event && events_.count(event) == 1;
 }
 
-bool GlowOnnxifiManager::isValid(GraphPtr graph) {
+bool GlowOnnxifiManager::isValid(GraphPtr graph) const {
   std::lock_guard<std::mutex> lock(m_);
   return graph && graphs_.count(graph) == 1;
 }

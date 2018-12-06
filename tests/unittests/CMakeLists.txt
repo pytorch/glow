@@ -322,7 +322,6 @@ add_executable(onnxifiThreadPoolTest
 target_link_libraries(onnxifiThreadPoolTest
                       PRIVATE
                         onnxifi-glow-thread-pool
-                        Importer
                         gtest
                         testMain)
 target_include_directories(onnxifiThreadPoolTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi)
@@ -331,13 +330,15 @@ add_glow_test(NAME onnxifiThreadPoolTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(GlowOnnxifiManagerTest
-GlowOnnxifiManagerTest.cpp)
+               GlowOnnxifiManagerTest.cpp)
 target_link_libraries(GlowOnnxifiManagerTest
                       PRIVATE
                         onnxifi-glow-lib
                         gtest
                         testMain)
-target_include_directories(GlowOnnxifiManagerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
+target_include_directories(GlowOnnxifiManagerTest
+                           PRIVATE
+                           ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
 add_glow_test(NAME GlowOnnxifiManagerTest
               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

@@ -59,19 +59,19 @@ public:
 
   /// Check if \p backendId is a BackendId created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
-  bool isValid(BackendIdPtr backendId);
+  bool isValid(BackendIdPtr backendId) const;
 
   /// Check if \p backend is a Backend created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
-  bool isValid(BackendPtr backend);
+  bool isValid(BackendPtr backend) const;
 
   /// Check if \p event is a Event created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
-  bool isValid(EventPtr event);
+  bool isValid(EventPtr event) const;
 
   /// Check if \p graph is a Graph created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
-  bool isValid(GraphPtr graph);
+  bool isValid(GraphPtr graph) const;
 
   /// Free \p backendId.
   /// Can be called safely by multiple threads concurrently.
