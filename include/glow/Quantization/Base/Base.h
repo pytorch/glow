@@ -91,9 +91,10 @@ inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
 
 /// Converts a quantized value (type eTy) to floating point based on the
 /// quantization parameters \p TQP.
+/// Note: use int64_t to cover the 'symmetric int32 with unsigned' case.
 template <class eTy = int8_t>
 inline float dequantize(eTy input, const TensorQuantizationParams &TQP) {
-  return TQP.scale * (input - TQP.offset);
+  return TQP.scale * ((int64_t)input - TQP.offset);
 }
 
 /// Converts a floating point \p tensor to quantized tensor based on the
@@ -114,10 +115,11 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
 
 /// Calculate TensorQuantizationParams based on the clipped \p min and \p max
-/// floating point range and using the quantization method described
-/// by \p schema.
-TensorQuantizationParams chooseQuantizationParams(float min, float max,
-                                                  Schema schema = Asymmetric);
+/// floating point range and using the base quantization type \p qTy and the
+/// quantization method described by \p schema.
+TensorQuantizationParams
+chooseQuantizationParams(float min, float max, Schema schema = Asymmetric,
+                         ElemKind qTy = ElemKind::Int8QTy);
 
 /// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
 /// function \p f.
