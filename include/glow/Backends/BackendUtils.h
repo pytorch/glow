@@ -29,13 +29,19 @@ struct RuntimeSymbolInfo {
   size_t offset;
   /// Type of symbol.
   Type type;
+  /// Is the symbol an input for the function.
+  bool input;
+  /// Is the symbol an output for the function.
+  bool output;
 };
+
+using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;
 
 /// Contains the information needed to be passed forward from compile time to
 /// runtime. In order to allocate and initialize memory.
 class RuntimeBundle {
   /// Map from symbol name to a RuntimeSymbolInfo.
-  std::unordered_map<std::string, RuntimeSymbolInfo> symbolTable_;
+  SymbolTableTy symbolTable_;
   /// Pointer to memory containing the weights for execution.
   uint8_t *constants_;
   /// Amount of memory needed for weights.
@@ -60,6 +66,8 @@ public:
   size_t getValueOffset(const Named *v) const;
   /// Helper function, gets symbol info for \p v.
   RuntimeSymbolInfo getSymbolInfo(const Named *v) const;
+  /// Get a const reference to the symbol table.
+  const SymbolTableTy &getSymbolTable() const { return symbolTable_; }
   /// At compile time condense constants to a single block of memory.
   /// This allows the graph to go away after compile time.
   /// Allocates a block of memory of size \p constantMaxSize then walks the
@@ -69,8 +77,8 @@ public:
   void collectConstants(const Module *M);
 
   RuntimeBundle() = default;
-  RuntimeBundle(std::unordered_map<std::string, RuntimeSymbolInfo> &symbolTable,
-                size_t constWeight, size_t mutableWeight, size_t activations)
+  RuntimeBundle(SymbolTableTy &symbolTable, size_t constWeight,
+                size_t mutableWeight, size_t activations)
       : symbolTable_(std::move(symbolTable)), constants_(nullptr),
         constantWeightVarsMemSize_(constWeight),
         mutableWeightVarsMemSize_(mutableWeight),

@@ -20,6 +20,38 @@
 
 using namespace glow;
 
+bool Context::compare(const Context *A, const Context *B) {
+  // Trivial cases.
+  if (!A && !B) {
+    return true;
+  } else if ((!A && B) || (A && !B)) {
+    return false;
+  }
+
+  // Get the map of Placeholder -> Tensor mappings within the two Contexts.
+  const Context::PlaceholderMap &phMapA = A->pairs();
+  const Context::PlaceholderMap &phMapB = B->pairs();
+
+  // If the maps have different sizes, the Contexts cannot match.
+  if (phMapA.size() != phMapB.size()) {
+    return false;
+  }
+
+  // Iterate through all Placeholders in A, look up the corresponding tensors
+  // in A and B, and check if they match. If not, return false.
+  for (const auto &phTensorPair : phMapA) {
+    auto *placeholder = phTensorPair.first;
+    const auto *tensorA = phTensorPair.second;
+    const auto *tensorB = B->get(placeholder);
+
+    if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 Tensor *Context::get(Placeholder *P) const {
   auto it = map_.find(P);
   if (it == map_.end()) {
@@ -29,13 +61,27 @@ Tensor *Context::get(Placeholder *P) const {
   return it->second;
 }
 
+Placeholder *Context::getPlaceholderByName(llvm::StringRef name) const {
+  auto nameIt = nameMap_.find(name);
+  if (nameIt == nameMap_.end()) {
+    return nullptr;
+  }
+
+  return nameIt->second;
+}
+
 void Context::insert(Placeholder *P, Tensor &&T) {
   assert(!map_.count(P) && "Placeholder already registered");
   // Take ownership over the tensor.
   map_[P] = new Tensor(std::move(T));
+  nameMap_[P->getName()] = P;
 }
 
-size_t Context::count(Placeholder *P) const { return map_.count(P); }
+size_t Context::count(Placeholder *P) const {
+  assert((map_.size() == nameMap_.size()) &&
+         "Placeholder map and name map out of sync");
+  return map_.count(P);
+}
 
 void Context::clear() {
   // Delete all of the tensors that are owned by the context.
@@ -44,6 +90,7 @@ void Context::clear() {
   }
 
   map_.clear();
+  nameMap_.clear();
 }
 
 Context Context::clone() const {
@@ -61,6 +108,7 @@ Tensor *Context::allocate(Placeholder *P) {
   assert(!map_.count(P) && "Placeholder already registered");
   Tensor *T = new Tensor(P->getType());
   map_[P] = T;
+  nameMap_[P->getName()] = P;
   return T;
 }
 
