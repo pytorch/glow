@@ -8,7 +8,7 @@ export MAX_JOBS=8
 
 install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev
-  
+
    git clone https://github.com/pocl/pocl.git
    cd pocl && git checkout 94fba9f510e678cd7f8fc988c01618e1ae93dfdf && cd ../
    mkdir build_pocl
