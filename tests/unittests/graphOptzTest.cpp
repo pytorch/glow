@@ -1101,6 +1101,76 @@ TEST_F(GraphOptz, sinkTransposeBelowPad) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+/// Test the Transpose(Quantize(Constant))->Transpose(Constant) optimization.
+TEST_F(GraphOptz, mergeTransposeIntoQuantizedConstant) {
+  size_t origDims[] = {1, 2, 1, 3};
+  size_t transposedDims[] = {1, 3, 2, 1};
+
+  // Create Transpose(Quantize(Constant)).
+  auto *input = mod_.createConstant(ElemKind::FloatTy, origDims, "input");
+  input->getHandle() = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, origDims, 2.f, 12);
+  auto *Q = F_->createQuantize("quantize", input, qType);
+  auto *T = F_->createTranspose("transpose", Q, NHWC2NCHW);
+  auto *S = F_->createSave("save", T);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(T->dims(0), llvm::makeArrayRef(transposedDims));
+
+  // Optimize the graph.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Quantize(Constant).
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  auto *quantize = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_NE(quantize, nullptr);
+  EXPECT_EQ(quantize->dims(0), llvm::makeArrayRef(transposedDims));
+  auto *constant = llvm::cast<Constant>(quantize->getInput());
+  ASSERT_NE(constant, nullptr);
+  EXPECT_EQ(constant->dims(), llvm::makeArrayRef(transposedDims));
+
+  auto result = constant->getHandle();
+  std::vector<float> transposedValues = {0.f, 3.f, 1.f, 4.f, 2.f, 5.f};
+  for (size_t i = 0; i < transposedValues.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), transposedValues[i]);
+  }
+}
+
+/// Test the Reshape(Quantize(Constant))->Reshape(Constant) optimization.
+TEST_F(GraphOptz, mergeReshapeIntoQuantizedConstant) {
+  size_t origDims[] = {1, 2, 1, 3};
+  size_t reshapeDims[] = {1, 3, 2, 1};
+
+  // Create Reshape(Quantize(Constant)).
+  auto *input = mod_.createConstant(ElemKind::FloatTy, origDims, "input");
+  input->getHandle() = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, origDims, 2.f, 12);
+  auto *Q = F_->createQuantize("quantize", input, qType);
+  auto *R = F_->createReshape("reshape", Q, reshapeDims);
+  auto *S = F_->createSave("save", R);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(R->dims(0), llvm::makeArrayRef(reshapeDims));
+
+  // Optimize the graph.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Quantize(Constant).
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  auto *quantize = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_NE(quantize, nullptr);
+  EXPECT_EQ(quantize->dims(0), llvm::makeArrayRef(reshapeDims));
+  auto *constant = llvm::cast<Constant>(quantize->getInput());
+  ASSERT_NE(constant, nullptr);
+  EXPECT_EQ(constant->dims(), llvm::makeArrayRef(reshapeDims));
+
+  auto result = constant->getHandle();
+  std::vector<float> reshapedValues = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f};
+  for (size_t i = 0; i < reshapedValues.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), reshapedValues[i]);
+  }
+}
+
 TEST_F(GraphOptz, poolBelowReluSwapped) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
