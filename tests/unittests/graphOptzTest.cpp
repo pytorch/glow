@@ -1790,8 +1790,9 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   // Check the graph structure and additional properties after optimization.
   auto *conv = llvm::dyn_cast<ConvolutionNode>(O->getInput());
   ASSERT_NE(conv, nullptr);
-  EXPECT_EQ(conv->dims(0), llvm::makeArrayRef({outPadDims[0], outPadDims[1],
-                                               outPadDims[2], filterDims[0]}));
+  EXPECT_EQ(conv->dims(0),
+            llvm::ArrayRef<size_t>(
+                {outPadDims[0], outPadDims[1], outPadDims[2], filterDims[0]}));
   unsigned_t expectedPads[4];
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
