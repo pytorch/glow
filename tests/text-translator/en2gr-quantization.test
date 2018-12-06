@@ -1,0 +1,7 @@
+RUN: %text-translator -m %models_dir/en2gr -keep-original-precision-for-nodes=Add -dump-profile=%t.yaml -quantization-schema=symmetric <<< "My name is Bob ." && \
+RUN: (%text-translator -m %models_dir/en2gr -keep-original-precision-for-nodes=Add -load-profile=%t.yaml <<< "My name is Bob ." | %FileCheck %s)
+RUN: rm %t.yaml
+
+REQUIRES: release
+
+CHECK: mein Name ist Bob .{{$}}
