@@ -38,14 +38,28 @@ public:
   /// Maps placeholders to the tensors that back them.
   using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
 
+  /// Maps Placeholder names to Placeholders.
+  using PlaceholderNameMap = std::unordered_map<std::string, Placeholder *>;
+
 private:
   /// Maps Placeholders to Tensors.
   PlaceholderMap map_;
 
+  /// Maps Placeholder names to Placeholders.
+  PlaceholderNameMap nameMap_;
+
 public:
+  /// \returns true if \p A and \p B contain the same Placeholders mapped to
+  /// equivalent Tensors.
+  static bool compare(const Context *A, const Context *B);
+
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
   Tensor *get(Placeholder *P) const;
+
+  /// \returns the Placeholder named \name or null of the Placeholder is not
+  /// found.
+  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
 
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
@@ -88,7 +102,8 @@ public:
   Context(llvm::ArrayRef<Placeholder *> placeholders,
           llvm::ArrayRef<Tensor *> inputs);
 
-  Context(Context &&other) : map_(std::move(other.map_)) {}
+  Context(Context &&other)
+      : map_(std::move(other.map_)), nameMap_(std::move(other.nameMap_)) {}
 
   ~Context() { clear(); };
 
