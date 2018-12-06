@@ -37,6 +37,8 @@ set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_THIRDPARTY_DIR ${GLOW_SOURCE_DIR}/thirdparty)
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bin)
+set(GLOW_MODELS_DIR "" CACHE PATH
+    "Directory that contains the various models, like en2gr, resnet50")
 
 include_directories(BEFORE
   ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -96,6 +98,15 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/fp16")
   message(FATAL_ERROR "No fp16 git submodule. Run: git submodule update --init --recursive")
 else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
+endif()
+
+find_program(FILECHECK "FileCheck")
+find_program(LLVM_LIT "lit.py")
+
+if (FILECHECK AND LLVM_LIT)
+  set(HAS_LLVM_TEST_ENV ON)
+else()
+  set(HAS_LLVM_TEST_ENV OFF)
 endif()
 
 add_subdirectory(lib)
