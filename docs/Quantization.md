@@ -186,3 +186,20 @@ allow the hardware to perform a simple comparison. By normalizing both sides of
 the 'max' operation to the same scale we enable this efficient optimization.
 
 For more specific graph optimizations check [here](Optimizations.md#quantization-specific-optimizations).
+
+## Row-wise Quantization
+
+Row-wise (or channel-wise) quantization is an important way to minimize accuracy drop.  
+Glow supports row-wise quantized FullyConnected node ```RowwiseQuantizedFullyConnected```
+which is enabled by an image-classifier/loader option "-enable-rowwise".
+
+For the regular quantized FC, we quantize the whole weights tensor with the same 
+scale and offset, which are computed based on the max and min of the entire tensor). 
+But for row-wise, after getting ```min_i``` and ```max_i``` for each row ```i```, we compute the pair 
+of ```(scale_i, offset_i)``` to quantize each element in row ```i```. The figure below shows 
+the quantized FC node and RowwiseQuantizedFullyConnected node. Instead of using only 
+one tensor to represent the quantized weights, we need 2 extra vectors ```Scales``` 
+and ```Offsets``` to store the ```(scale, offset)``` for each row.
+
+
+![](rowwise_quantized_fc.png)
