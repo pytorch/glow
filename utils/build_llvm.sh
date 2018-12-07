@@ -27,7 +27,9 @@ mkdir -p llvm_install
 BASE=$PWD
 
 cd llvm_build
-cmake ../llvm_src/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" -DCMAKE_BUILD_TYPE=Release
+# LLVM_INSTALL_UTILS adds the utilities like FileCheck to the install
+cmake ../llvm_src/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" \
+  -DCMAKE_BUILD_TYPE=Release -DLLVM_INSTALL_UTILS=ON
 cmake --build . --target install
 
 echo "Built LLVM into " "$BASE/llvm_install"
