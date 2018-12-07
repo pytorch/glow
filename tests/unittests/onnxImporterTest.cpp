@@ -181,6 +181,19 @@ TEST(onnx, importDivUniBroadcastOp6Axis) {
       [](float a, float b) { return a / b; });
 }
 
+/// This tests reproduces issue #2135.
+TEST(onnx, importUniBroadcastMultiOutput) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename =
+      std::string("tests/models/onnxModels/UniBroadcastIssue2135.onnxtxt");
+  Tensor data(ElemKind::FloatTy, {20});
+  ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
+  (void)onnxLD;
+}
+
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.

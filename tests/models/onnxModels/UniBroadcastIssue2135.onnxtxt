@@ -1,0 +1,65 @@
+ir_version: 3
+
+producer_name: "onnx-arith-broadcast"
+opset_import { 
+  version: 6
+}
+
+graph {
+  name: "test-model"
+
+node {
+    name: "top"
+    op_type: "TopK"
+    input: "data"
+    output: "top_values"
+    output: "top_indexes"
+    attribute {
+      name: "k"
+      i: 5
+      type: INT
+    }
+  }
+  
+  node {
+    name: "div"
+    op_type: "Div"
+    input: "top_values"
+    input: "scalar"
+    output: "out"
+    attribute {
+      name: "broadcast"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "axis"
+      i: -1
+      type: INT
+    }
+  }
+  
+  initializer {
+    dims: 1
+    data_type: FLOAT
+    float_data: 2.0
+    name: "scalar"
+  }
+  
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 20
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "out"
+   }
+}
