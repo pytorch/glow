@@ -18,6 +18,7 @@ add_library(onnxifi-glow-thread-pool
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         ExecutionEngine
+                        Graph
                         Importer
                       PRIVATE
                         onnxifi-glow-thread-pool)
