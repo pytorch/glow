@@ -846,8 +846,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      */
 
     for (auto &o : op.output()) {
-      auto *T = new Tensor();
-      tensors_[o].reset(T);
+      std::unique_ptr<Tensor> T(new Tensor());
 
       auto dim = getShape(dict["shape"]);
 
@@ -884,6 +883,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR_IF_NOT(i == T->size(),
                         "The number of serialized values does not "
                         "match the size of the tensor.");
+      tensors_[o] = std::move(T);
     }
 
     return llvm::Error::success();
@@ -917,11 +917,10 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      }
      */
     for (auto &o : op.output()) {
-      auto *T = new Tensor();
+      std::unique_ptr<Tensor> T(new Tensor());
       if (tensors_.count(o)) {
         continue;
       }
-      tensors_[o].reset(T);
 
       auto dim = getShape(dict["shape"]);
 
@@ -956,6 +955,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR_IF_NOT(i == T->size(),
                         "The number of serialized values does not "
                         "match the size of the tensor.");
+
+      tensors_[o] = std::move(T);
     }
 
     return llvm::Error::success();
@@ -980,8 +981,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       return llvm::Error::success();
     }
 
-    auto *T = new Tensor();
-    tensors_[name].reset(T);
+    std::unique_ptr<Tensor> T(new Tensor());
 
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
@@ -1030,6 +1030,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR("Unsupported datatype for ConstantFill.");
     }
 
+    tensors_[name] = std::move(T);
     return llvm::Error::success();
   }
 
@@ -1053,8 +1054,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      }
     */
     const auto &name = op.output(0);
-    auto *T = new Tensor();
-    tensors_[name].reset(T);
+    std::unique_ptr<Tensor> T(new Tensor());
     auto dim = getShape(dict["shape"]);
     T->reset(ElemKind::FloatTy, dim);
     auto TH = T->getHandle<>();
@@ -1071,6 +1071,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     for (size_t i = 0, e = T->size(); i != e; i++) {
       TH.raw(i) = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
+
+    tensors_[name] = std::move(T);
     return llvm::Error::success();
   }
 
