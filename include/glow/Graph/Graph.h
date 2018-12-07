@@ -107,7 +107,7 @@ public:
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
 
-  /// Erase the variable \p I from the Module.
+  /// Erase the constant \p I from the Module.
   void eraseConstant(ConstList::iterator I);
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
