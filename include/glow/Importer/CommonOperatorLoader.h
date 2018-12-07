@@ -327,8 +327,8 @@ protected:
     bool broadcast;
     ASSIGN_VALUE_OR_RETURN_ERR(broadcast, getBroadcast(dict));
 
-    Node *finalIn0 = nullptr;
-    Node *finalIn1 = nullptr;
+    NodeValue finalIn0 = in0;
+    NodeValue finalIn1 = in1;
 
     if (broadcast) {
       // Broadcasting can be:
@@ -364,12 +364,8 @@ protected:
           // Align trailing most dimensions.
           axis = in0.dims().size() - in1.dims().size();
         }
-        finalIn0 = in0;
         finalIn1 = G_.createBroadcast(opName, in1, in0.dims(), axis);
       }
-    } else {
-      finalIn0 = in0;
-      finalIn1 = in1;
     }
 
     Node *node = nullptr;
