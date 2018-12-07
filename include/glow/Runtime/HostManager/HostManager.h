@@ -13,24 +13,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_RUNTIME_HOST_MANAGER_H
-#define GLOW_RUNTIME_HOST_MANAGER_H
+#ifndef GLOW_RUNTIME_HOSTMANAGER_H
+#define GLOW_RUNTIME_HOSTMANAGER_H
 #include "glow/Graph/Graph.h"
+#include "glow/Runtime/Executor.h"
+#include "glow/Runtime/Partitioner.h"
+#include "glow/Runtime/Provisioner.h"
 
 #include <llvm/ADT/StringRef.h>
 
+#include <atomic>
 #include <unordered_map>
 namespace glow {
-class DependencyGraph;
 class DeviceManager;
-class Partitioner;
-class Provisioner;
-class Executor {}; // temporary the Executor header will need to be included
 class Context;
+enum ResultCode {
+  READY,
+  EXECUTED,
+  FAILED,
+  CANCELLED
+}; // This will likely be defined in one common runtime place.
 class HostManager final {
-  int activeCount_;
-  int totalCount_;
-  std::unordered_map<int, DependencyGraph> networks_;
+  /// Count of current networks being run.
+  std::atomic<unsigned int> activeCount_;
+  /// Count of networks initialized on this node.
+  std::atomic<unsigned int> totalCount_;
+  /// Limit maximum count of networks run at once. Hardcoded for now this should
+  /// be a configurable value.
+  const unsigned int activeLimit_ = 20;
+  /// A map from a networkID to the DAG that represents the network.
+  std::unordered_map<int, ExecutorFunctionDAG> networks_;
+  /// A map of DeviceManagers by deviceID.
   std::unordered_map<int, DeviceManager> devices_;
   Executor executor_;
   Partitioner partitioner_;
@@ -40,7 +53,7 @@ public:
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing backends.
   /// Returns the networkID of the network.
-  int addNetwork(Function *F);
+  unsigned int addNetwork(Module *M);
   /// Given \p networkID removes that network from the host. This also removes
   /// the network from any backends setup to execute it.
   void removeNetwork(int networkID);
@@ -50,11 +63,13 @@ public:
   void clearHost();
   /// Runs the network specified by \p networkID and \p functionName using the
   /// provided \p context returns true when results are copied into the context
-  /// false if an error occurred.
-  bool runNetwork(int networkID, llvm::StringRef functionName, Context context);
+  /// false if an error occurred or the count of current networks is above the
+  /// threshold.
+  ResultCode runNetwork(int networkID, llvm::StringRef functionName,
+                        Context context);
   HostManager();
   ~HostManager();
 };
 
 } // namespace glow
-#endif // GLOW_RUNTIME_HOST_MANAGER_H
+#endif // GLOW_RUNTIME_HOSTMANAGER_H

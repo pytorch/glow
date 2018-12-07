@@ -14,22 +14,26 @@
  * limitations under the License.
  */
 
-#include "glow/Runtime/Host Manager/HostManager.h"
+#include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/Context.h"
 
+#include <future>
+
 using namespace glow;
+
 HostManager::HostManager() {
   provisioner_ = Provisioner();
   partitioner_ = Partitioner();
 }
 
 HostManager::~HostManager() { clearHost(); }
-int HostManager::addNetwork(Function *F) {
+unsigned int HostManager::addNetwork(Module *M) {
   totalCount_++;
   int networkID = totalCount_;
-  auto dependencyGraph = partitioner_.partition(F);
-  provisioner_.provision(dependencyGraph);
-  networks_.emplace(networkID, dependencyGraph);
+  auto dependencyGraph = partitioner_.partition(M);
+  auto executionDAG = provisioner_.provision(dependencyGraph);
+  networks_.emplace(networkID, executionDAG);
   return networkID;
 }
 
@@ -41,11 +45,11 @@ void HostManager::removeNetwork(int networkID) {
   auto network = it->second;
   networks_.erase(it);
   // walk DAG and remove from deviceManagers
-  // assumes modules is a list of moduleID's and everything else uses that id as
-  // the key.
-  for (auto module : network.modules) {
-    for (auto device : network.devices[module]) {
-      device.removeNetwork(module);
+  // assumes functions is a list of moduleID's and everything else uses that id
+  // as the key.
+  for (auto function : network.functions) {
+    for (auto device : function.devices) {
+      device.evictNetwork(function.id);
     }
   }
 }
@@ -61,12 +65,24 @@ void HostManager::clearHost() {
   for (auto it : devices_) {
     it->second.stop();
   }
+  activeCount_ = 0;
+  totalCount_ = 0;
 }
 
-bool HostManager::runNetwork(int networkID, llvm::StringRef functionName,
-                             Context context) {
+ResultCode HostManager::runNetwork(int networkID, llvm::StringRef functionName,
+                                   Context context) {
   if (networks_.find(networkID) == networks_.end()) {
-    return false;
+    return FAILED;
   }
-  return executor_.runNetwork(networks_[networkID], functionName, context);
+  if (activeCount_ > activeLimit_) {
+    return FAILED;
+  }
+  ++activeCount_;
+  std::promise<ResultCode> promise;
+  auto result = promise.get_future();
+  executor_.runNetwork(networks_[networkID], functionName, context,
+                       [&promise](ResultCode id) { promise.set_value(id); });
+  result.wait();
+  --activeCount_;
+  return result.get();
 }
