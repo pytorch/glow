@@ -1198,14 +1198,45 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
     ASSERT_TRUE(LHSQuantize);
     EXPECT_EQ(LHSQuantize->getInput().getNode(), LHS);
 
+    auto *RHSQuantize = llvm::dyn_cast<QuantizeNode>(MMN->getRHS());
+    ASSERT_TRUE(RHSQuantize);
+    EXPECT_EQ(RHSQuantize->getInput().getNode(), RHS);
+  }
+
+  // Make sure that graph can be compiled.
+  EE.compile(CompilationMode::Infer, F);
+
+  {
+    // Verify that the output variable is not quantized, and that it has a
+    // single save node writer, which is also not quantized.
+    EXPECT_TRUE(!result->getType()->isQuantizedType());
+    ASSERT_EQ(result->getUsers().size(), 1);
+    auto *SN = llvm::dyn_cast<SaveNode>(result->getUsers().begin()->getUser());
+    ASSERT_TRUE(SN);
+    EXPECT_TRUE(!SN->getOutput().getType()->isQuantizedType());
+
+    // Verify that the input to save is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
+    ASSERT_TRUE(DN);
+
+    // Verify that the matmul is quantized.
+    auto *MMN = llvm::dyn_cast<MatMulNode>(DN->getInput());
+    ASSERT_TRUE(MMN);
+    EXPECT_TRUE(MMN->getResult().getType()->isQuantizedType());
+
+    // Verify that the variable inputs to the matmul are quantized.
+    // Verify that the constant (RHS) is statically quantized by the
+    // compilation.
+    auto *LHSQuantize = llvm::dyn_cast<QuantizeNode>(MMN->getLHS());
+    ASSERT_TRUE(LHSQuantize);
+    EXPECT_EQ(LHSQuantize->getInput().getNode(), LHS);
+
     auto *RHS = llvm::dyn_cast<Constant>(MMN->getRHS());
     ASSERT_TRUE(RHS);
     EXPECT_TRUE(RHS->getType()->isQuantizedType());
   }
 
-  // Make sure that graph can be compiled and run.
-  EE.compile(CompilationMode::Infer, F);
-
+  // Make sure that graph can run.
   EE.run(ctx);
 }
 

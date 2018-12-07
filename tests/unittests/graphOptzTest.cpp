@@ -1542,7 +1542,8 @@ TEST_F(GraphOptz, DCEPublicVars) {
   EXPECT_EQ(mod_.getPlaceholders().size(), 1);
 }
 
-TEST_F(GraphOptz, foldQuantizeIntoVar) {
+/// Test the Quantize(Constant)->Constant optimization.
+TEST_F(GraphOptz, foldQuantizeIntoConstant) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
   *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
@@ -1552,8 +1553,14 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 
   EXPECT_EQ(2, F_->getNodes().size());
   ::glow::convertPlaceholdersToConstants(F_, ctx_, {S->getPlaceholder()});
+
+  // 'optimize' doesn't merge Quantize nodes into Constant.
   ::glow::optimize(F_, CompilationMode::Infer);
-  // Quantization node was merged into input var.
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  // 'quantizeConstantsPayload' merges Quantize nodes into Constant and then
+  // quantizes the Constant payload.
+  ::glow::quantizeConstantsPayload(F_);
   EXPECT_EQ(1, F_->getNodes().size());
 
   auto quantizedInput = llvm::cast<Constant>(S->getInput());
@@ -1563,7 +1570,8 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
   }
 }
 
-TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
+/// Test the Quantize(Constant)->Constant optimization.
+TEST_F(GraphOptz, foldQuantizeIntoConstantMultipleUsages) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
   *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
@@ -1574,7 +1582,8 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
   EXPECT_EQ(2, clonedF->getNodes().size());
   ::glow::convertPlaceholdersToConstants(clonedF, ctx_, {});
-  ::glow::optimize(clonedF, CompilationMode::Infer);
+
+  ::glow::quantizeConstantsPayload(clonedF);
   // F_ function should not be affected.
   EXPECT_EQ(2, F_->getNodes().size());
 
