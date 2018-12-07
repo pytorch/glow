@@ -16,10 +16,9 @@
 #ifndef GLOW_ONNXIFI_BASE_H
 #define GLOW_ONNXIFI_BASE_H
 
-#include "ThreadPool.h"
-
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include "glow/Support/ThreadPool.h"
 
 #include "onnx/onnxifi.h"
 

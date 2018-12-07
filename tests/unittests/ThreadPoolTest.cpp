@@ -13,15 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ThreadPool.h"
+#include "glow/Support/ThreadPool.h"
 #include "gtest/gtest.h"
 
 #include <future>
 #include <vector>
 
-using namespace glow::onnxifi;
+using namespace glow;
 
-TEST(onnxifiThreadPool, BasicTest) {
+TEST(ThreadPool, BasicTest) {
   const unsigned numWorkers = 100;
   const unsigned numWorkItems = 1000;
   ThreadPool tp(numWorkers);

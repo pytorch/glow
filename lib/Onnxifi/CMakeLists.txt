@@ -11,21 +11,15 @@ add_library(onnxifi-glow-lib
               GlowOnnxifiManager.cpp
               onnxifiGlow.cpp)
 
-add_library(onnxifi-glow-thread-pool
-              ThreadPool.cpp)
-
-
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         ExecutionEngine
                         Importer
-                      PRIVATE
-                        onnxifi-glow-thread-pool)
+                        ThreadPool)
 
 target_link_libraries(onnxifi-glow
                       PUBLIC
                         ExecutionEngine
                         Graph
                         Importer
-                      PRIVATE
-                        onnxifi-glow-thread-pool)
+                        ThreadPool)

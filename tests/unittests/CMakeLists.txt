@@ -191,6 +191,15 @@ target_link_libraries(typeAToTypeBFunctionConverterTest
 add_glow_test(typeAToTypeBFunctionConverterTest
               ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml)
 
+add_executable(threadPoolTest
+               ThreadPoolTest.cpp)
+target_link_libraries(threadPoolTest
+                      PRIVATE
+                        ThreadPool
+                        gtest
+                        testMain)
+add_glow_test(threadPoolTest ${GLOW_BINARY_DIR}/tests/threadPoolTest --gtest_output=xml:threadPoolTest.xml)
+
 add_executable(UtilsTest
                StrCheck.cpp
                UtilsTest.cpp)
@@ -323,18 +332,6 @@ target_link_libraries(onnxImporterTest
                         testMain)
 add_glow_test(NAME onnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest --gtest_output=xml:onnxImporterTest.xml
-              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-add_executable(onnxifiThreadPoolTest
-               onnxifiThreadPoolTest.cpp)
-target_link_libraries(onnxifiThreadPoolTest
-                      PRIVATE
-                        onnxifi-glow-thread-pool
-                        gtest
-                        testMain)
-target_include_directories(onnxifiThreadPoolTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/Onnxifi)
-add_glow_test(NAME onnxifiThreadPoolTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/onnxifiThreadPoolTest --gtest_output=xml:onnxifiThreadPoolTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(GlowOnnxifiManagerTest
