@@ -17,13 +17,52 @@
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace glow {
 namespace onnxifi {
+onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
+                                              size_t onnxModelSize) {
+  auto function = getEE().getModule().createFunction("check");
 
-bool BackendId::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) {
-  return executionEngine_.isOpSupported(opKind, elementTy);
+  // destroy function on exit
+  auto sg = llvm::make_scope_exit(
+      [&]() { getEE().getModule().eraseFunction(function); });
+
+  std::unique_ptr<ONNXIFIModelLoader> loader;
+  if (auto loaderOrErr =
+          ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
+                                    nullptr /*weightDescriptors*/, *function,
+                                    false /*loadInputsAsPlaceholders*/)) {
+    loader = std::move(*loaderOrErr);
+  } else {
+    // TODO: Use a more specific ONNXIFI error code here to denote what about
+    // this operator is not supporte (shape, type, etc).
+    return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
+
+  const auto *backend = getEE().getBackend();
+
+  if (!backend) {
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
+
+  glow::lower(function, *backend);
+
+  const auto &nodes = function->getNodes();
+
+  for (const auto &node : nodes) {
+    // TODO: Make is isOpSupported more able to handle different ElemKinds.
+    bool opSupported = getEE().isOpSupported(node.getKind(), ElemKind::FloatTy);
+    if (!opSupported) {
+      // TODO: Use a more specific ONNXIFI error code here to denote what about
+      // this operator is not supporte (shape, type, etc).
+      return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+    }
+  }
+
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 void Backend::runAsync(const std::function<void(void)> &fn) {

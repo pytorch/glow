@@ -33,8 +33,11 @@ private:
       : ONNXModelLoader(F, errPtr) {}
 
   /// Load the inputs from the GraphProto. This is useful when the
-  /// initializers are not available.
-  llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net);
+  /// initializers are not available. If \p loadInputsAsPlaceholders is true
+  /// then this will load each graph input as a placeholder otherwise it will
+  /// create an empty tensor for each input.
+  llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
+                         bool loadInputsAsPlaceholders);
 
   /// Load pre-trained weights from \p weightDescriptors.
   llvm::Error loadWeights(uint32_t weightsCount,
@@ -56,20 +59,14 @@ public:
 
   /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
   /// parsed and static weights can be loaded from the \p wightDescriptors.
-  /// \returns Error otherwise.
+  /// \returns Error otherwise. \p loadInputsAsPlaceholders is passed to
+  /// loadInputs to determine whether inputs are loaded as Placeholders or
+  /// Tensors. Loading as Tensors is useful for when the graph being loaded is
+  /// actually a small slice of a larger graph.
   static llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
-        const onnxTensorDescriptorV1 *weightDescriptors, Function &F);
-
-  /// \returns empty std::vector if any of the ONNX operators from
-  /// the \p onnxModel is not supported by the ONNX model parser.
-  /// \returns std::vector of Glow operation kind and element kind otherwise.
-  ///          It represents a mapping between ONNX nodes and Glow operations.
-  /// \returns llvm::Error if an error was encountered.
-  ///
-  /// \param onnxModel contains a single ONNX operator.
-  static llvm::Expected<std::vector<std::pair<Kinded::Kind, ElemKind>>>
-  parseOperators(const void *onnxModel, size_t onnxModelSize);
+        const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+        bool loadInputsAsPlaceholders = true);
 };
 
 } // namespace glow
