@@ -86,6 +86,8 @@ include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 
 if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
   message(FATAL_ERROR "No googletest git submodule. Run: git submodule update --init --recursive")
+else()
+    include_directories(${GLOW_SOURCE_DIR}/tests/googletest/googletest/include)
 endif()
 
 if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/onnx")
