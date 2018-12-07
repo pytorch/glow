@@ -356,7 +356,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
               batchNorm->getInput().getNode() == CV);
 }
 
-TEST_F(GraphOptz, transposePrivateVariable) {
+TEST_F(GraphOptz, transposeConstant) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   ctx_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
@@ -378,7 +378,7 @@ TEST_F(GraphOptz, transposePrivateVariable) {
 
 /// Check that the removing of transposes still happens when
 /// predicates are involved.
-TEST_F(GraphOptz, transposePrivateVariableWithPredicate) {
+TEST_F(GraphOptz, transposeConstantWithPredicate) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
@@ -2245,7 +2245,7 @@ TEST_F(GraphOptz, eliminateSingleConcat) {
 
 /// Test that a reshape of a private variable with one use has the reshape
 /// merged into the variable.
-TEST_F(GraphOptz, ReshapePrivateVarOneUse) {
+TEST_F(GraphOptz, ReshapeConstantOneUse) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
