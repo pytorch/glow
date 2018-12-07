@@ -2013,7 +2013,6 @@ static void optimizeQuantization(Function *F) {
           Q->getResult().replaceAllUsesOfWith(DQ->getInput());
           continue;
         }
-
         auto *RS = F->createRescaleQuantized(Q->getName(), DQ->getInput(),
                                              Q->getResult().getType());
         Q->getResult().replaceAllUsesOfWith(RS);
@@ -2152,6 +2151,63 @@ static void optimizeQuantization(Function *F) {
       }
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
+
+  // Merge Transpose/Reshape chains into quantized constants.
+  bool changed;
+  do {
+    changed = false;
+    for (auto &nodeRef : F->getNodes()) {
+      Node *node = &nodeRef;
+
+      // Transpose(Quantize(X)) -> Quantize(Transpose(X))
+      if (auto *T = dyn_cast<TransposeNode>(node)) {
+        if (auto *Q = dyn_cast<QuantizeNode>(T->getInput())) {
+          if (auto *C = dyn_cast<Constant>(Q->getInput())) {
+            // Create a new Constant to hold the transposed result.
+            auto newCType = F->getParent()->uniqueTypeWithNewShape(
+                C->getType(), T->getResult().dims());
+            auto *newC = F->getParent()->createConstant(newCType, C->getName());
+            genericTranspose(&C->getPayload(), &newC->getPayload(),
+                             T->getShuffle());
+            // Create a new Quantize node
+            auto newQType = F->getParent()->uniqueTypeWithNewShape(
+                Q->getResult().getType(), T->getResult().dims());
+            auto *newQ = F->createQuantize(Q->getName(), newC, newQType);
+            T->getResult().replaceAllUsesOfWith(newQ);
+            changed = true;
+            continue;
+          }
+        }
+      }
+
+      // Reshape(Quantize(Constant)) -> Quantize(Constant)
+      if (auto *R = dyn_cast<ReshapeNode>(node)) {
+        if (auto *Q = dyn_cast<QuantizeNode>(R->getInput())) {
+          if (auto *C = dyn_cast<Constant>(Q->getInput())) {
+            // Create a new Constant with the type of the reshape.
+            auto newCType = F->getParent()->uniqueTypeWithNewShape(
+                C->getType(), R->getResult().dims());
+            // Create a new Constant to hold the reshaped result.
+            auto *newC = F->getParent()->createConstant(newCType, C->getName());
+            Tensor reshapedT = C->getPayload().getUnowned(R->getDims());
+            newC->assign(&reshapedT);
+            // Create a new Quantize node
+            auto newQType = F->getParent()->uniqueTypeWithNewShape(
+                Q->getResult().getType(), R->getResult().dims());
+            auto *newQ = F->createQuantize(Q->getName(), newC, newQType);
+            R->getResult().replaceAllUsesOfWith(newQ);
+            changed = true;
+            continue;
+          }
+        }
+      }
+    } // For each node of the function.
+
+    // Run DCE to avoid an infinite loop.
+    if (changed) {
+      DCE(F);
+    }
+  } while (changed);
 
   optimizeQuantizedMaxSplat(F);
 }
@@ -2355,8 +2411,8 @@ bool glow::quantizeConstantsPayload(Function *F) {
       if (auto *C = dyn_cast<Constant>(Q->getInput())) {
         // Quantize(Constant) -> Constant
         // Note, it does not really matter how many usages this Constant has.
-        // Quantized graph will use optimized Constant and other functions will
-        // refer to the floating point original Constant.
+        // Quantized graph will use optimized Constant and other functions
+        // will refer to the floating point original Constant.
         NodeValue NC =
             convertConstant(*F->getParent(), *C, Q->getResult().getType());
         if (NC == NodeValue()) {
