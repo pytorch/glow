@@ -372,7 +372,7 @@ Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
 }
 
 Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
-  auto *V = createConstant(tensor.getElementType(), tensor.dims(), name);
+  auto *V = createConstant(&tensor.getType(), name);
   V->assign(&tensor);
   return V;
 }
