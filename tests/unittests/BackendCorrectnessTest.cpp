@@ -500,7 +500,7 @@ TEST_P(BackendCorrectnessTest, convOps) {
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
   EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                                        /* quantize */ false, 0.0002));
+                                        /* quantize */ false, 0.0004));
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
