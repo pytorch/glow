@@ -2423,3 +2423,31 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   EXPECT_EQ(preShuffleRN->getDims(),
             llvm::makeArrayRef(expectedPreShuffleRNDims));
 }
+
+/// Test that convertPlaceholdersToConstants works properly with quantized
+/// types.
+TEST_F(GraphOptz, QuantizedFC) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 1.0, 0,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 1.0, 0, "bias", false);
+  auto *output = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                        "output", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  F_->createSave("save", fc, output);
+
+  ctx_.allocate(input);
+  ctx_.allocate(weights);
+  ctx_.allocate(bias);
+  ctx_.allocate(output);
+
+  glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
+  // Two constants: weight and bias
+  EXPECT_EQ(mod_.getConstants().size(), 2);
+  // All four placeholders still exist in the module.  The old weight and bias
+  // placeholders just aren't hooked up the the Graph F_.
+  EXPECT_EQ(mod_.getPlaceholders().size(), 4);
+}
