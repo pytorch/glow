@@ -25,6 +25,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
@@ -96,6 +97,9 @@ protected:
   std::vector<std::string> vertices_{};
   // List of generated edges.
   std::unordered_set<std::string> edges_{};
+  // Map node addresses to unique numbers.
+  using VertexNumberMap = std::unordered_map<void *, unsigned>;
+  VertexNumberMap vertex_numbers{};
 
   /// Dumps label for a input/output row, given port names.
   /// E.g. {"LHS", "RHS"} will produce {<LHS>LHS|<RHS>RHS}
@@ -138,8 +142,7 @@ protected:
     }
     std::ostringstream os;
     // Print a node descriptor that looks like this:
-    // "0xf7fc43e01" [ shape = "record" label = "{...}" ];
-    // where 0xf7fc43e01 is address of node.
+    // vNNNN [ shape = "record" label = "{...}" ];
     os << uniqueVertexName(N) << "[\n";
     os << "\tlabel = \"";
     dumpLabel(N, os);
@@ -177,9 +180,16 @@ protected:
   }
 
   std::string uniqueVertexName(void *N) {
+    VertexNumberMap::iterator i;
+    bool inserted;
+    std::tie(i, inserted) = vertex_numbers.insert(std::make_pair(N, 0u));
+    if (inserted) {
+      i->second = vertex_numbers.size() - 1;
+    }
+
     std::string buffer;
     llvm::raw_string_ostream stream(buffer);
-    stream << '"' << N << '"';
+    stream << llvm::format("v%04u", i->second);
     return stream.str();
   }
 
@@ -207,8 +217,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
   void visitFunction(Function *F) {
     std::ostringstream os;
     // Print a Function descriptor that looks like this:
-    // "0xf7fc43e01" [ label = "{...}" ];
-    // where 0xf7fc43e01 is address of Function.
+    // vNNNN [ label = "{...}" ];
     os << uniqueVertexName(F) << "[\n"
        << "\tlabel = \"Function\\l"
        << "name : " << F->getName().str() << "\\l"
@@ -2177,6 +2186,8 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       return;
     visitedNodes_.insert(N);
 
+    dumpNode(N);
+
     // Print edges for the predicate field, if it's used.
     if (N->hasPredicate()) {
       auto pred = N->getPredicate();
@@ -2208,10 +2219,6 @@ public:
   void visitGraph(Function *F) {
     for (auto &N : F->getNodes()) {
       visitNode(&N);
-    }
-
-    for (auto N : visitedNodes_) {
-      dumpNode(N);
     }
   }
 };
