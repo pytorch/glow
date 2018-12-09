@@ -24,6 +24,7 @@
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Support/Debug.h"
 
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -187,7 +188,7 @@ static void hoistDealloc(IRFunction &M) {
   // Maps activation instructions to their last non-dealloc user.
   std::unordered_map<Value *, Instruction *> lastUser;
   // Dealloc instructions in the current function.
-  InstructionPtrSet deallocs;
+  llvm::SetVector<Instruction *> deallocs;
   auto &instrs = M.getInstrs();
 
   // Record the last use of each dealloc.
