@@ -1203,7 +1203,7 @@ TEST(Graph, hookTest) {
   ASSERT_EQ(ph, in);
 }
 
-// Check that getConstantsSize returns the correct size of constants.
+/// Check that getConstantsSize returns the correct size of constants.
 TEST(Graph, moduleSize) {
   Module mod;
 
@@ -1217,7 +1217,7 @@ TEST(Graph, moduleSize) {
             sizeof(float) + sizeof(float) * cons2->getPayload().size());
 }
 
-// Check that getDataSize() returns the correct size of backing tensors.
+/// Check that getDataSize() returns the correct size of backing tensors.
 TEST(Graph, contextSize) {
   Module mod;
   Context ctx;
@@ -1229,4 +1229,100 @@ TEST(Graph, contextSize) {
   ctx.allocate(PH);
   EXPECT_EQ(ctx.get(PH)->size(), 4 * 320 * 200 * 3);
   EXPECT_EQ(ctx.getDataSize(), sizeof(float) * ctx.get(PH)->size());
+}
+
+/// Check that clones of the context are distinct and share no references back
+/// to the original object.
+TEST(Graph, cloneContext) {
+  Module mod;
+
+  Placeholder *PH1 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH1", false);
+
+  Context ctx1;
+  ctx1.allocate(PH1);
+
+  Context ctx2 = ctx1.clone();
+
+  Tensor *t1 = ctx1.get(PH1);
+  Tensor *t2 = ctx2.get(PH1);
+
+  EXPECT_NE(t1, nullptr);
+  EXPECT_NE(t2, nullptr);
+  EXPECT_NE(t1, t2);
+
+  // The new Context has no references back, and changing it does not affect
+  // ctx1
+  Placeholder *PH2 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH2", false);
+
+  ctx2.allocate(PH2);
+  // now exists in ctx1 but not ctx2
+  EXPECT_EQ(ctx1.get(PH2), nullptr);
+  EXPECT_NE(ctx2.get(PH2), nullptr);
+
+  // Likewise changing ctx1 does not affect ctx2
+  ctx1.clear();
+  EXPECT_EQ(ctx1.count(PH1), 0);
+  EXPECT_EQ(ctx2.count(PH1), 1);
+
+  // Adds are distinct
+  Placeholder *PH3 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH3", false);
+  ctx1.allocate(PH3);
+  ctx2.allocate(PH3);
+  EXPECT_NE(ctx1.get(PH3), nullptr);
+  EXPECT_NE(ctx2.get(PH3), nullptr);
+  EXPECT_NE(ctx1.get(PH3), ctx2.get(PH3));
+}
+
+/// Check that running a function multiple times on cloned Contexts have
+/// distinct outputs.
+TEST(Graph, cloneContextRuns) {
+  ExecutionEngine EE;
+  PseudoRNG PRNG;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Context ctx;
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
+
+  ctx.allocate(input);
+
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", input, 10);
+  auto *RL3 = F->createRELU("relu4", FCL1);
+  auto *save = F->createSave("ret", RL3);
+
+  ctx.allocate(save->getPlaceholder());
+
+  // Compile once.
+  EE.compile(CompilationMode::Infer, F);
+
+  // Run with random inputs.
+  inputs.getHandle<>().randomize(-3.0, 3.0, PRNG);
+  updateInputPlaceholders(ctx, {input}, {&inputs});
+  EE.run(ctx);
+
+  // Clone the context.
+  Context ctx2 = ctx.clone();
+
+  // Contexts are identical.
+  Tensor *saveBacking1, *saveBacking2;
+  saveBacking1 = ctx.get(save->getPlaceholder());
+  saveBacking2 = ctx2.get(save->getPlaceholder());
+  EXPECT_NE(saveBacking1, saveBacking2);
+  EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
+  EXPECT_TRUE(saveBacking1->isEqual(*saveBacking2));
+
+  // Run again with different random inputs using the cloned context.
+  Tensor inputs2(ElemKind::FloatTy, {1, 32, 32, 3});
+  inputs2.getHandle<>().randomize(-3.0, 3.0, PRNG);
+  updateInputPlaceholders(ctx2, {input}, {&inputs2});
+  EE.run(ctx2);
+
+  // Contexts are no longer identical.
+  EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
+  EXPECT_FALSE(saveBacking1->isEqual(*saveBacking2));
 }

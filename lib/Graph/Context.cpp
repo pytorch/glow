@@ -46,6 +46,17 @@ void Context::clear() {
   map_.clear();
 }
 
+Context Context::clone() const {
+  Context cloned;
+  for (auto PH : map_) {
+    Placeholder *P = PH.first;
+    Tensor *T = PH.second;
+    cloned.insert(P, T->clone());
+  }
+
+  return cloned;
+}
+
 Tensor *Context::allocate(Placeholder *P) {
   assert(!map_.count(P) && "Placeholder already registered");
   Tensor *T = new Tensor(P->getType());

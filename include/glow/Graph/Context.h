@@ -71,6 +71,10 @@ public:
   /// tensors.
   void clear();
 
+  /// \returns a copy of the Context, with each placeholder mapped to a new
+  /// Tensor, with their own memory.
+  Context clone() const;
+
   /// \returns the mapping between placeholder to tensors.
   const PlaceholderMap &pairs() const { return map_; }
 
@@ -84,13 +88,13 @@ public:
   Context(llvm::ArrayRef<Placeholder *> placeholders,
           llvm::ArrayRef<Tensor *> inputs);
 
+  Context(Context &&other) : map_(std::move(other.map_)) {}
+
   ~Context() { clear(); };
 
-  // Don't copy or move this class around.
+  // Don't copy this class around.
   Context(const Context &other) = delete;
-  Context(Context &&other) = delete;
   Context &operator=(const Context &other) = delete;
-  Context &operator=(Context &&other) = delete;
 };
 
 } // namespace glow
