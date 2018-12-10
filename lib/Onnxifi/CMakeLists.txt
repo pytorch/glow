@@ -24,3 +24,11 @@ target_link_libraries(onnxifi-glow
                         Graph
                         Importer
                         ThreadPool)
+			
+target_compile_definitions(onnxifi-glow
+                           PRIVATE
+                             ONNXIFI_BUILD_LIBRARY)
+
+target_compile_definitions(onnxifi-glow-lib
+                           PRIVATE
+                             ONNXIFI_BUILD_LIBRARY)
