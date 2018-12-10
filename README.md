@@ -242,6 +242,31 @@ code.  We provide resnet50 (both quantized and non-quantized versions) as an
 example of this capability in `examples/bundles/resnet50`.  See [Creating
 Standalone Executable Bundles](docs/AOT.md) for more detail.
 
+
+### LLVM Integrated Tester (LIT) Testing
+
+Glow also comes with tests integrated with the build environment for our command
+line tools. We run those tests as part of our continuous integration (CI).
+
+To run them as part of your local build, you need to install a couple more
+dependencies (see [Using LIT](docs/LIT.md) for more details).
+Then, you can reproduce what our CI configuration with:
+```bash
+  cmake -G Ninja <glow_src>  -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm         \
+        -DGLOW_MODELS_DIR=<downloaded_c2_models>
+```
+
+Assuming you have all the required dependencies, the lit tests get
+run with the other CMake tests using:
+```bash
+  ninja check
+```
+
+Note: The difference between `ninja test` and `ninja check` is that
+`ninja check` makes sure the build dependencies are current before
+running the tests.
+
 ## Contributing
 
 To get started, please refer to the following guides:
