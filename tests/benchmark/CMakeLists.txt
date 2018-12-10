@@ -4,10 +4,10 @@ add_executable(GemmBench
 target_link_libraries(GemmBench
                       PRIVATE
                         CPURuntimeNative)
+
 add_executable(ConvBench
-			   ConvBench.cpp)
+               ConvBench.cpp)
 target_link_libraries(ConvBench
                       PRIVATE
                         CPURuntimeNative)
-
 endif()

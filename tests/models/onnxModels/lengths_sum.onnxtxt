@@ -17,12 +17,12 @@ graph {
           dim {
             dim_value: 10
           }
-	  dim {
-	    dim_value: 2
-	  }
-	  dim {
-	    dim_value: 3
-	  }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
         }
       }
     }
@@ -36,7 +36,7 @@ graph {
           dim {
             dim_value: 5 
           }
-	}
+        }
       }
     }
   }
@@ -52,9 +52,9 @@ graph {
           dim {
             dim_value: 2
           }
-	  dim {
-	    dim_value: 3
-	  }
+          dim {
+            dim_value: 3
+          }
         }
       }
     }
