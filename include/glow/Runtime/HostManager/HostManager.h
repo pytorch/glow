@@ -34,13 +34,13 @@ enum ResultCode {
   CANCELLED
 }; // This will likely be defined in one common runtime place.
 class HostManager final {
-  /// Count of current networks being run.
-  std::atomic<unsigned int> activeCount_;
-  /// Count of networks initialized on this node.
-  std::atomic<unsigned int> totalCount_;
+  /// Count of current in-flight networks being run.
+  std::atomic<unsigned int> activeRequestCount_;
+  /// Count of networks ever initialized on this host.
+  std::atomic<unsigned int> nextNetworkId_;
   /// Limit maximum count of networks run at once. Hardcoded for now this should
   /// be a configurable value.
-  const unsigned int activeLimit_ = 20;
+  const unsigned int activeRequestLimit_ = 20;
   /// A map from a networkID to the DAG that represents the network.
   std::unordered_map<int, ExecutorFunctionDAG> networks_;
   /// A map of DeviceManagers by deviceID.

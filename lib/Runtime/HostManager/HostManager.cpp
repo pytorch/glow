@@ -29,8 +29,8 @@ HostManager::HostManager() {
 
 HostManager::~HostManager() { clearHost(); }
 unsigned int HostManager::addNetwork(Module *M) {
-  totalCount_++;
-  int networkID = totalCount_;
+  nextNetworkId_++;
+  int networkID = nextNetworkId_;
   auto dependencyGraph = partitioner_.partition(M);
   auto executionDAG = provisioner_.provision(dependencyGraph);
   networks_.emplace(networkID, executionDAG);
@@ -65,8 +65,8 @@ void HostManager::clearHost() {
   for (auto it : devices_) {
     it->second.stop();
   }
-  activeCount_ = 0;
-  totalCount_ = 0;
+  activeRequestCount_ = 0;
+  nextNetworkId_ = 0;
 }
 
 ResultCode HostManager::runNetwork(int networkID, llvm::StringRef functionName,
@@ -74,15 +74,15 @@ ResultCode HostManager::runNetwork(int networkID, llvm::StringRef functionName,
   if (networks_.find(networkID) == networks_.end()) {
     return FAILED;
   }
-  if (activeCount_ > activeLimit_) {
+  if (activeRequestCount_ >= activeRequestLimit_) {
     return FAILED;
   }
-  ++activeCount_;
+  ++activeRequestCount_;
   std::promise<ResultCode> promise;
   auto result = promise.get_future();
   executor_.runNetwork(networks_[networkID], functionName, context,
                        [&promise](ResultCode id) { promise.set_value(id); });
   result.wait();
-  --activeCount_;
+  --activeRequestCount_;
   return result.get();
 }
