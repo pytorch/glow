@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_ONNXIFI_THREAD_POOL_H
-#define GLOW_ONNXIFI_THREAD_POOL_H
+#ifndef GLOW_SUPPORT_THREADPOOL_H
+#define GLOW_SUPPORT_THREADPOOL_H
 
 #include <atomic>
 #include <condition_variable>
@@ -25,7 +25,6 @@
 #include <vector>
 
 namespace glow {
-namespace onnxifi {
 
 /// Thread pool for asynchronous execution of generic functions.
 class ThreadPool final {
@@ -40,6 +39,9 @@ public:
 
   /// Submit \p fn as a work item for the thread pool.
   void submit(const std::function<void(void)> &fn);
+
+  /// Stop all threads and optionally wait for them to join.
+  void stop(bool block = false);
 
 private:
   /// Main loop run by the workers in the thread pool.
@@ -65,7 +67,6 @@ private:
   /// Vector of worker thread objects.
   std::vector<std::thread> workers_;
 };
-} // namespace onnxifi
 } // namespace glow
 
-#endif // GLOW_ONNXIFI_THREAD_POOL_H
+#endif // GLOW_SUPPORT_THREADPOOL_H

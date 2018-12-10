@@ -6,3 +6,8 @@ add_library(Support
 target_link_libraries(Support
                       PRIVATE
                         LLVMSupport)
+
+add_library(ThreadPool
+              ThreadPool.cpp)
+
+

@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ThreadPool.h"
+#include "glow/Support/ThreadPool.h"
 
 namespace glow {
-namespace onnxifi {
 
 ThreadPool::ThreadPool(unsigned numWorkers) : shouldStop_(false) {
   // Intialize all workers and make each one run threadPoolWorkerMain.
@@ -26,7 +25,17 @@ ThreadPool::ThreadPool(unsigned numWorkers) : shouldStop_(false) {
   }
 }
 
-ThreadPool::~ThreadPool() {
+ThreadPool::~ThreadPool() { stop(true); }
+
+void ThreadPool::submit(const std::function<void(void)> &fn) {
+  // Add fn to the work queue.
+  std::unique_lock<std::mutex> lock(workQueueMtx_);
+  workQueue_.push(fn);
+  lock.unlock();
+  queueNotEmpty_.notify_one();
+}
+
+void ThreadPool::stop(bool block) {
   // Lock mutex before signalling for threads to stop to make sure
   // a thread can't wait on the condition variable after checking the
   // *old* value of shouldStop_.
@@ -40,19 +49,15 @@ ThreadPool::~ThreadPool() {
   lock.unlock();
   queueNotEmpty_.notify_all();
 
+  if (!block) {
+    return;
+  }
+
   // Join all worker threads.
   for (auto &w : workers_) {
     w.join();
   }
   workers_.clear();
-}
-
-void ThreadPool::submit(const std::function<void(void)> &fn) {
-  // Add fn to the work queue.
-  std::unique_lock<std::mutex> lock(workQueueMtx_);
-  workQueue_.push(fn);
-  lock.unlock();
-  queueNotEmpty_.notify_one();
 }
 
 void ThreadPool::threadPoolWorkerMain() {
@@ -84,5 +89,4 @@ void ThreadPool::threadPoolWorkerMain() {
     workItem();
   }
 }
-} // namespace onnxifi
 } // namespace glow
