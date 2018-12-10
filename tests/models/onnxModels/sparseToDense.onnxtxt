@@ -31,12 +31,12 @@ graph {
           dim {
             dim_value: 5
           }
-	  dim {
-	    dim_value: 10
-	  }
-	  dim {
-	    dim_value: 5
-	  }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
         }
       }
     }
@@ -47,15 +47,15 @@ graph {
       tensor_type {
         elem_type: FLOAT
         shape {
-	  dim {
+          dim {
             dim_value: 20 
           }
-	  dim {
-	    dim_value: 10
-	  }
-	  dim {
-	    dim_value: 5
-	  }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
         }
       }
     }
@@ -66,15 +66,15 @@ graph {
       tensor_type {
         elem_type: FLOAT
         shape {
-	  dim {
+          dim {
             dim_value: 20 
           }
-	  dim {
-	    dim_value: 10
-	  }
-	  dim {
-	    dim_value: 5
-	  }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
         }
       }
     }
