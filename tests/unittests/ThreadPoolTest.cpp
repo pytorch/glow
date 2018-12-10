@@ -49,3 +49,29 @@ TEST(ThreadPool, BasicTest) {
     EXPECT_EQ(result, 2 * i);
   }
 }
+
+TEST(ThreadPool, moveCaptureTest) {
+  ThreadPool tp(1);
+
+  std::unique_ptr<int> input = std::make_unique<int>(42);
+  int output = 0;
+  auto func = [input = std::move(input), &output]() { output = (*input) * 2; };
+
+  auto done = tp.submit(std::move(func));
+
+  done.wait();
+  EXPECT_EQ(output, 84);
+}
+
+TEST(ThreadPool, completionFutureTest) {
+  ThreadPool tp(1);
+
+  int input = 42, output = 0;
+  std::packaged_task<void(void)> task(
+      [&input, &output]() { output = input * 3; });
+
+  auto done = tp.submit(std::move(task));
+
+  done.wait();
+  EXPECT_EQ(output, 126);
+}
