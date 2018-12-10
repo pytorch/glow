@@ -311,6 +311,19 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest --gtest_output=xml:MemoryAllocatorTest.xml)
 
+add_executable(PartitionerTest	  
+               PartitionerTest.cpp) 
+target_link_libraries(PartitionerTest	
+                      PRIVATE		
+                        Backends	
+                        ExecutionEngine	
+                        Graph		
+                        IR		
+                        Partitioner	
+                        gtest		
+                        TestMain)	
+add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
+
 add_executable(Caffe2ImporterTest
                Caffe2ImporterTest.cpp)
 target_link_libraries(Caffe2ImporterTest
