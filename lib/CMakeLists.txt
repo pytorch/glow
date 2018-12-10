@@ -12,3 +12,5 @@ add_subdirectory(Optimizer)
 add_subdirectory(Quantization)
 add_subdirectory(Support)
 add_subdirectory(Onnxifi)
+add_subdirectory(Partitioner)
+
