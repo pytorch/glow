@@ -1594,6 +1594,63 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   }
 }
 
+/// Check that the Quantize(Splat) -> Splat' optimization works.
+TEST_F(GraphOptz, foldQuantizeIntoSplat) {
+  TypeRef fType = mod_.uniqueType(ElemKind::FloatTy, {4});
+  TypeRef qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
+
+  const float splatVal = 6.0;
+  SplatNode *SN = F_->createSplat("splat", fType, splatVal);
+
+  QuantizeNode *Q = F_->createQuantize("quantize", SN, qType);
+  SaveNode *S = F_->createSave("save", Q);
+
+  // Splat, quantize, save.
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Quantization node was merged into input splat.
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  // New quantized splat should exist with same value.
+  SplatNode *newSN = llvm::dyn_cast<SplatNode>(S->getInput());
+  ASSERT_TRUE(newSN);
+  EXPECT_EQ(splatVal, newSN->getValue());
+  EXPECT_EQ(qType, newSN->getResult().getType());
+}
+
+/// Check that the Quantize(Splat) -> Splat' optimization works when the Splat
+/// has multiple users.
+TEST_F(GraphOptz, foldQuantizeIntoSplatMultipleUsers) {
+  TypeRef fType = mod_.uniqueType(ElemKind::FloatTy, {4});
+  TypeRef qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
+
+  SplatNode *SN = F_->createSplat("splat", fType, 6.0);
+
+  QuantizeNode *Q = F_->createQuantize("quantize", SN, qType);
+  SaveNode *SQ = F_->createSave("saveQ", Q);
+  SaveNode *SF = F_->createSave("saveF", SN);
+
+  // Splat, quantize, 2 saves.
+  EXPECT_EQ(4, F_->getNodes().size());
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Quantization node was merged into input splat creating a new quantized
+  // splat, but the original float splat still exists.
+  EXPECT_EQ(4, F_->getNodes().size());
+
+  // New quantized splat should exist with same value.
+  SplatNode *newSN = llvm::dyn_cast<SplatNode>(SQ->getInput());
+  ASSERT_TRUE(newSN);
+  EXPECT_EQ(SN->getValue(), newSN->getValue());
+  EXPECT_EQ(qType, newSN->getResult().getType());
+
+  // Original float splat should still exist.
+  EXPECT_EQ(llvm::dyn_cast<SplatNode>(SF->getInput()), SN);
+}
+
 /// Check that rescale gets correctly merged into a following dequantize node
 TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
   // Check that we are combining quantization-dequantization pairs.

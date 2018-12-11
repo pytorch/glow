@@ -2017,6 +2017,14 @@ static void optimizeQuantization(Function *F) {
         Q->getResult().replaceAllUsesOfWith(NC);
         continue;
       }
+
+      if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
+        // Quantize(Splat) -> Splat'
+        SplatNode *newSN = F->createSplat(
+            SN->getName(), Q->getResult().getType(), SN->getValue());
+        Q->getResult().replaceAllUsesOfWith(newSN);
+        continue;
+      }
     }
 
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
