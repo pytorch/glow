@@ -27,6 +27,11 @@
 
 using namespace glow;
 
+enum class ModelKind {
+  MODEL_SIMPLE,
+  MODEL_VGG,
+};
+
 namespace {
 llvm::cl::OptionCategory cifarCat("CIFAR10 Options");
 llvm::cl::opt<BackendKind> executionBackend(
@@ -36,6 +41,13 @@ llvm::cl::opt<BackendKind> executionBackend(
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
                      clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(cifarCat));
+llvm::cl::opt<ModelKind>
+    model(llvm::cl::desc("Model to use:"), llvm::cl::Optional,
+          llvm::cl::values(clEnumValN(ModelKind::MODEL_SIMPLE, "model-simple",
+                                      "simple default model"),
+                           clEnumValN(ModelKind::MODEL_VGG, "model-vgg",
+                                      "model similar to vgg11")),
+          llvm::cl::init(ModelKind::MODEL_SIMPLE), llvm::cl::cat(cifarCat));
 } // namespace
 
 /// The CIFAR file format is structured as one byte label in the range 0..9.
@@ -46,6 +58,59 @@ llvm::cl::opt<BackendKind> executionBackend(
 /// Size: (1 + (32 * 32 * 3)) * 10000 = 30730000.
 const size_t cifarImageSize = 1 + (32 * 32 * 3);
 const size_t cifarNumImages = 10000;
+const unsigned numLabels = 10;
+
+static Placeholder *createDefaultModel(Context &ctx, Function *F,
+                                       NodeValue input, NodeValue expected) {
+  auto *CV0 = F->createConv(ctx, "conv", input, 16, 5, 1, 2, 1);
+  auto *RL0 = F->createRELU("relu", CV0);
+  auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
+
+  auto *CV1 = F->createConv(ctx, "conv", MP0, 20, 5, 1, 2, 1);
+  auto *RL1 = F->createRELU("relu", CV1);
+  auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
+
+  auto *CV2 = F->createConv(ctx, "conv", MP1, 20, 5, 1, 2, 1);
+  auto *RL2 = F->createRELU("relu", CV2);
+  auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
+
+  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, numLabels);
+  auto *SM = F->createSoftMax("softmax", FCL1, expected);
+  auto *save = F->createSave("ret", SM);
+  return save->getPlaceholder();
+}
+
+/// Creates a VGG Model. Inspired by pytorch/torchvision vgg.py/vgg11:
+/// https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
+static Placeholder *createVGGModel(Context &ctx, Function *F, NodeValue input,
+                                   NodeValue expected) {
+  NodeValue v = input;
+
+  // Create feature detection part.
+  unsigned cfg[] = {64, 0, 128, 0, 256, 256, 0, 512, 512, 0, 512, 512, 0};
+  for (unsigned c : cfg) {
+    if (c == 0) {
+      v = F->createMaxPool("pool", v, 2, 2, 0);
+    } else {
+      auto *conv = F->createConv(ctx, "conv", v, c, 3, 1, 1, 1);
+      auto *relu = F->createRELU("relu", conv);
+      v = relu;
+    }
+  }
+
+  // Create classifier part.
+  for (unsigned i = 0; i < 2; ++i) {
+    auto *fc0 = F->createFullyConnected(ctx, "fc", v, 4096);
+    auto *relu0 = F->createRELU("relu", fc0);
+    // TODO: There is not builtin dropout node in glow yet
+    // Dropout
+    v = relu0;
+  }
+  v = F->createFullyConnected(ctx, "fc", v, numLabels);
+  auto *softmax = F->createSoftMax("softmax", v, expected);
+  auto *save = F->createSave("ret", softmax);
+  return save->getPlaceholder();
+}
 
 /// This test classifies digits from the CIFAR labeled dataset.
 /// Details: http://www.cs.toronto.edu/~kriz/cifar.html
@@ -114,29 +179,17 @@ void testCIFAR10() {
                                   "expected", false);
   ctx.allocate(E);
 
-  // Create the rest of the network.
-  auto *CV0 = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 1);
-  auto *RL0 = F->createRELU("relu", CV0);
-  auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
-
-  auto *CV1 = F->createConv(ctx, "conv", MP0, 20, 5, 1, 2, 1);
-  auto *RL1 = F->createRELU("relu", CV1);
-  auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
-
-  auto *CV2 = F->createConv(ctx, "conv", MP1, 20, 5, 1, 2, 1);
-  auto *RL2 = F->createRELU("relu", CV2);
-  auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
-
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
-  auto *SM = F->createSoftMax("softmax", FCL1, E);
-  auto *save = F->createSave("ret", SM);
-  auto *result = ctx.allocate(save->getPlaceholder());
+  auto createModel =
+      model == ModelKind::MODEL_SIMPLE ? createDefaultModel : createVGGModel;
+  auto *resultPH = createModel(ctx, F, A, E);
+  auto *result = ctx.allocate(resultPH);
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.
-  int reportRate = 256;
+  // Report less often for fast models.
+  int reportRate = model == ModelKind::MODEL_SIMPLE ? 256 : 64;
 
   llvm::outs() << "Training.\n";
 
@@ -145,7 +198,9 @@ void testCIFAR10() {
   size_t sampleCounter = 0;
 
   for (int iter = 0; iter < 100000; iter++) {
-    llvm::outs() << "Training - iteration #" << iter << "\n";
+    unsigned epoch = (iter * reportRate) / labels.getType().sizes_[0];
+    llvm::outs() << "Training - iteration #" << iter << " (epoch #" << epoch
+                 << ")\n";
 
     llvm::Timer timer("Training", "Training");
     timer.startTimer();
@@ -168,7 +223,7 @@ void testCIFAR10() {
         size_t correct = labelsH.at({minibatchSize * i + iter, 0});
         score += guess == correct;
 
-        if ((iter < 10) && i == 0) {
+        if ((iter < numLabels) && i == 0) {
           llvm::outs() << iter << ") Expected: " << textualLabels[correct]
                        << " Got: " << textualLabels[guess] << "\n";
         }
