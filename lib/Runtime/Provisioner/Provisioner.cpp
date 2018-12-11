@@ -25,8 +25,11 @@ ResultCode
 Provisioner::provision(dependencyDAG &networks, executionDAG &runDAG,
                        std::unordered_map<int, DeviceManager> &devices){
     // Check that there is available space for provisioning.
+    // This can be the planning phase, we can start with a greedy approach for
+    // now building a mapping of deviceID:moduleID.
     // Assuming there is space, start provisioning.
     // Walk the list of modules and call addNetwork.
+    // On success add the deviceID to the executionDAG
     // If a module fails to provision try on a different device if available.
 
 };
