@@ -1202,3 +1202,17 @@ TEST(Graph, hookTest) {
   ASSERT_TRUE(ph);
   ASSERT_EQ(ph, in);
 }
+
+/// Check that output placeholders can be identified.
+TEST(Graph, outputPlaceholderTest) {
+  Module mod;
+  auto *F = mod.createFunction("main");
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "input", false);
+  auto *weights = mod.createConstant(ElemKind::FloatTy, {4, 4}, "weights");
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {4}, "bias");
+  auto *FC = F->createFullyConnected("fc", input, weights, bias);
+  auto *save = F->createSave("save", FC);
+  EXPECT_TRUE(save->getPlaceholder()->isOutput());
+  EXPECT_FALSE(input->isOutput());
+}

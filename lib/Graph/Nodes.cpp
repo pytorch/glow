@@ -35,6 +35,15 @@ llvm::hash_code Placeholder::getHash() const {
   return llvm::hash_combine(getName());
 }
 
+bool Placeholder::isOutput() const {
+  for (auto const &use : getUsers()) {
+    if (llvm::isa<SaveNode>(use.getUser())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
