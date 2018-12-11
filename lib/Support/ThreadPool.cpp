@@ -27,12 +27,13 @@ ThreadPool::ThreadPool(unsigned numWorkers) : shouldStop_(false) {
 
 ThreadPool::~ThreadPool() { stop(true); }
 
-void ThreadPool::submit(const std::function<void(void)> &fn) {
-  // Add fn to the work queue.
+std::future<void> ThreadPool::submit(std::packaged_task<void(void)> &&task) {
   std::unique_lock<std::mutex> lock(workQueueMtx_);
-  workQueue_.push(fn);
+  auto future = task.get_future();
+  workQueue_.push(std::move(task));
   lock.unlock();
   queueNotEmpty_.notify_one();
+  return future;
 }
 
 void ThreadPool::stop(bool block) {
@@ -81,7 +82,7 @@ void ThreadPool::threadPoolWorkerMain() {
 
     // Pop a work item from the queue, and make sure to unlock
     // the lock before processing it.
-    auto workItem = workQueue_.front();
+    auto workItem = std::move(workQueue_.front());
     workQueue_.pop();
     lock.unlock();
 

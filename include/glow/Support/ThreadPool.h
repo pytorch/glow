@@ -19,6 +19,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -38,7 +39,20 @@ public:
   ~ThreadPool();
 
   /// Submit \p fn as a work item for the thread pool.
-  void submit(const std::function<void(void)> &fn);
+  /// \p fn must be a lambda with void return type and arguments.
+  template <typename F> std::future<void> submit(F &&fn) {
+    // Add fn to the work queue.
+    std::unique_lock<std::mutex> lock(workQueueMtx_);
+    std::packaged_task<void(void)> task(std::move(fn));
+    auto future = task.get_future();
+    workQueue_.push(std::move(task));
+    lock.unlock();
+    queueNotEmpty_.notify_one();
+    return future;
+  }
+
+  /// Submit \p task as a work item for the thread pool.
+  std::future<void> submit(std::packaged_task<void(void)> &&task);
 
   /// Stop all threads and optionally wait for them to join.
   void stop(bool block = false);
@@ -55,7 +69,7 @@ private:
   std::atomic<bool> shouldStop_;
 
   /// Queue of work items.
-  std::queue<std::function<void(void)>> workQueue_;
+  std::queue<std::packaged_task<void(void)>> workQueue_;
 
   /// Mutex to coordinate access to the work queue.
   std::mutex workQueueMtx_;
