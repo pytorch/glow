@@ -2372,6 +2372,45 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   }
 }
 
+/// Test that transpose is merged into matmul.
+TEST_F(GraphOptz, mergeTransposeIntoMatMulQuantized) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3}, "input", false);
+  auto *weights =
+      F_->getParent()->createConstant(ElemKind::FloatTy, {6, 1}, "weights");
+
+  weights->getHandle() = {0, 1, 2, 3, 4, 5};
+  float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
+
+  auto qInType = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 2, 3}, 2.f, 12);
+  auto *Qinput = F_->createQuantize("quantize", input, qInType);
+  auto qWType = mod_.uniqueType(ElemKind::Int8QTy, {6, 1}, 2.f, 12);
+  auto *QW = F_->createQuantize("quantize", weights, qWType);
+  auto *TN = F_->createTranspose("transpose", Qinput, NHWC2NCHW);
+  auto *RN = F_->createReshape("reshape", TN, {1, 6});
+  auto *MMN = F_->createMatMul("matmul", RN, QW);
+  auto *SN = F_->createSave("ret", MMN);
+
+  // Transpose + Reshape + MatMul + Save.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Reshape + MatMul + Save.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  // Check reordered weights.
+  auto *newMMN = llvm::dyn_cast<MatMulNode>(SN->getInput());
+  ASSERT_TRUE(newMMN != nullptr);
+  auto *newQW = llvm::dyn_cast<QuantizeNode>(newMMN->getRHS());
+  ASSERT_TRUE(newQW != nullptr);
+  auto *newW = llvm::dyn_cast<Constant>(newQW->getInput());
+  ASSERT_TRUE(newW != nullptr);
+  for (unsigned i = 0; i < 6; ++i) {
+    EXPECT_EQ(newWeightsRef[i], newW->getHandle().raw(i));
+  }
+}
+
 TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
