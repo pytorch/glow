@@ -1769,6 +1769,36 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
   EXPECT_EQ(maxSave->getInput().getType(), rescaleOutTy);
 }
 
+/// Check that the Rescale(MatMul) -> MatMul' optimization works correctly.
+TEST_F(GraphOptz, FuseRescaleUpIntoMatMul) {
+  // This test ensures the fact that fusing of rescale is done.
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+
+  Placeholder *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0,
+                                            "LHS", /* isTrainable */ false);
+  Placeholder *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0,
+                                            "RHS", /* isTrainable */ false);
+
+  MatMulNode *MMN = F_->createMatMul("matmul", opOutTy, LHS, RHS);
+  RescaleQuantizedNode *rescaleMMN =
+      F_->createRescaleQuantized("rsMMN", MMN, rescaleOutTy);
+  SaveNode *saveMMN = F_->createSave("saveMMN", rescaleMMN);
+
+  // MatMul, Rescale, Save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  // All rescales must be fused into arithmetic operations above.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Rescale merged up into the MatMul.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  MatMulNode *newMMN = llvm::dyn_cast<MatMulNode>(saveMMN->getInput());
+  ASSERT_TRUE(newMMN);
+  EXPECT_EQ(newMMN->getResult().getType(), rescaleOutTy);
+}
+
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
   // This test ensures the fact that fusing of rescale is done.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5,

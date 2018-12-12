@@ -2107,6 +2107,16 @@ static void optimizeQuantization(Function *F) {
       COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Max);
 #undef COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE
 
+      // Combine Rescale Nodes up into MatMul Nodes.
+      // Rescale(MatMul) -> MatMul'
+      if (auto *MMN = dyn_cast<MatMulNode>(RS->getInput())) {
+        auto *newMMN =
+            F->createMatMul(MMN->getName(), RS->getResult().getType(),
+                            MMN->getLHS(), MMN->getRHS());
+        RS->getResult().replaceAllUsesOfWith(newMMN);
+        continue;
+      }
+
       // Combine the rescale node up into the convolution.
       // Rescale(Conv()) -> Conv()
       if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
