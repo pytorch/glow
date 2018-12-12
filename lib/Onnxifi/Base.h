@@ -42,7 +42,10 @@ public:
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
 
-  /// Verify that a given graph is supported by the backend.
+  /// Verify that a given onnx graph is supported by the backend by importing
+  /// the onnx graph to a glow function, lowering this function, and checking
+  /// that all of the glow nodes that are contained in the lowered graph are
+  /// compatible with the glow backend.
   onnxStatus checkGraphCompatibility(const void *onnxModel,
                                      size_t onnxModelSize);
 

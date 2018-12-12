@@ -24,11 +24,9 @@ namespace glow {
 namespace onnxifi {
 onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
                                               size_t onnxModelSize) {
-  auto function = getEE().getModule().createFunction("check");
+  Module module;
 
-  // destroy function on exit
-  auto sg = llvm::make_scope_exit(
-      [&]() { getEE().getModule().eraseFunction(function); });
+  auto function = module.createFunction("check");
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   if (auto loaderOrErr =
@@ -38,7 +36,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     loader = std::move(*loaderOrErr);
   } else {
     // TODO: Use a more specific ONNXIFI error code here to denote what about
-    // this operator is not supporte (shape, type, etc).
+    // this operator is not supported (shape, type, etc).
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -57,7 +55,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     bool opSupported = getEE().isOpSupported(node.getKind(), ElemKind::FloatTy);
     if (!opSupported) {
       // TODO: Use a more specific ONNXIFI error code here to denote what about
-      // this operator is not supporte (shape, type, etc).
+      // this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
     }
   }

@@ -32,10 +32,9 @@ private:
   ONNXIFIModelLoader(Function &F, llvm::Error *errPtr = nullptr)
       : ONNXModelLoader(F, errPtr) {}
 
-  /// Load the inputs from the GraphProto. This is useful when the
-  /// initializers are not available. If \p loadInputsAsPlaceholders is true
-  /// then this will load each graph input as a placeholder otherwise it will
-  /// create an empty tensor for each input.
+  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
+  /// true then this will load each graph input as a placeholder otherwise it
+  /// will create an empty tensor for each input.
   llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
                          bool loadInputsAsPlaceholders);
 
