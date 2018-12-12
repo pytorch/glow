@@ -1213,6 +1213,6 @@ TEST(Graph, outputPlaceholderTest) {
   auto *bias = mod.createConstant(ElemKind::FloatTy, {4}, "bias");
   auto *FC = F->createFullyConnected("fc", input, weights, bias);
   auto *save = F->createSave("save", FC);
-  EXPECT_TRUE(save->getPlaceholder()->isOutput());
-  EXPECT_FALSE(input->isOutput());
+  EXPECT_TRUE(save->getPlaceholder()->isOutput(F));
+  EXPECT_FALSE(input->isOutput(F));
 }

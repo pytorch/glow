@@ -35,9 +35,10 @@ llvm::hash_code Placeholder::getHash() const {
   return llvm::hash_combine(getName());
 }
 
-bool Placeholder::isOutput() const {
+bool Placeholder::isOutput(Function *F) const {
   for (auto const &use : getUsers()) {
-    if (llvm::isa<SaveNode>(use.getUser())) {
+    auto *user = use.getUser();
+    if (llvm::isa<SaveNode>(user) && (user->getParent() == F)) {
       return true;
     }
   }

@@ -123,8 +123,8 @@ public:
   /// differentiation.
   bool isTraining() const { return isTrainable_; }
 
-  /// \returns True if the placeholder is a Function output.
-  bool isOutput() const;
+  /// \returns True if this placeholder is an output of \p F.
+  bool isOutput(Function *F) const;
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;
