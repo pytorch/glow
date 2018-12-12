@@ -33,10 +33,10 @@ using DeviceID = size_t;
 enum ResultCode { READY, EXECUTED, FAILED, CANCELLED };
 
 struct DeviceMemoryInfo {
-  /// Available memory on device in MB
-  double availableMemory;
-  /// Total useable memory on device in MB
-  double maximumUsableMemory;
+  /// Available memory on device in bytes.
+  uint64_t availableMemory;
+  /// Total useable memory on device in bytes.
+  uint64_t maximumUsableMemory;
 };
 
 /// Data structure that contains everything needed by the executor to execute a
@@ -71,12 +71,6 @@ struct DependencyDAG {
   std::unordered_map<Module *, std::vector<Module *>> dependencies;
   /// Mapping of Module * to a vector of networks that depend on it.
   std::unordered_map<Module *, std::vector<Module *>> dependents;
-  /// Mapping of Module * to a vector of input placeholder names for the
-  /// network.
-  std::unordered_map<Module *, std::vector<std::string>> inputs;
-  /// Mapping of Module * to a vector of output placeholder names for the
-  /// network.
-  std::unordered_map<Module *, std::vector<std::string>> outputs;
 };
 
 } // namespace runtime
