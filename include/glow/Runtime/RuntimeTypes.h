@@ -62,7 +62,7 @@ struct ExecutionDAG {
 
 /// Data structure containing the output from the Partitioner. It is consumed by
 /// the Provisioner and used to generate an executionDAG.
-struct DependancyDAG {
+struct DependencyDAG {
   /// Vector of unique pointers to modules containing sub-networks.
   std::vector<std::unique_ptr<Module>> modules;
   /// Vector of root nodes.
