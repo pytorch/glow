@@ -98,12 +98,7 @@ ninja
 
 # Build onnxifi test driver (Only for DEBUG mode)
 if [[ "$CIRCLE_JOB" == DEBUG ]]; then
-    ONNX_DIR="${GLOW_DIR}/thirdparty/onnx"
-    cd ${ONNX_DIR}
-    mkdir build_onnx && cd build_onnx
-    cmake -GNinja -DONNX_BUILD_TESTS=ON -DONNXIFI_DUMMY_BACKEND=OFF ../
-    ninja onnxifi_test_driver_gtests
-    cp ${ONNX_DIR}/build_onnx/onnxifi_test_driver_gtests ${GLOW_DIR}/build
+    ${GLOW_DIR}/tests/onnxifi/build_onnxifi_tests.sh
 fi
 
 # Report sccache hit/miss stats

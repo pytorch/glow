@@ -25,22 +25,7 @@ run_and_check_bundle() {
 }
 
 run_onnxifi() {
-    # Run ONNX test
-    ONNX_DIR="${GLOW_SRC}/thirdparty/onnx"
-    # ONNX test data dir
-    TESTDATA_DIR="${ONNX_DIR}/onnx/backend/test/data/node"
-
-    # Banned known buggy test cases from gtest
-    CRASHED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/crashed.txt)"
-    FAILED_TEST_CASES="$(paste -sd: "${GLOW_SRC}"/.circleci/onnxifi_driver_test/failed.txt)"
-    EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
-
-    # Setup glow onnxifi backend so test driver can load it
-    cp "${GLOW_BUILD_DIR}/lib/Onnxifi/libonnxifi-glow.so" "${GLOW_SRC}/libonnxifi.so"
-    export LD_LIBRARY_PATH=${GLOW_SRC}
-
-    # Run Onnxifi gtest
-    GTEST_FILTER="*-${EXCLUDED_TEST_CASES}" "${GLOW_BUILD_DIR}/onnxifi_test_driver_gtests" "${TESTDATA_DIR}"
+    ${GLOW_DIR}/tests/onnxifi/test.sh
 }
 
 # Run unit tests and bundle tests.
