@@ -190,15 +190,15 @@ TEST(Quantization, quantizeTensorSymmetricInt32) {
 }
 TEST(Quantization, quantizeTensorSymmetricUInt8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
-                             quantization::Schema::SymmetricWithUInt8);
+                             quantization::Schema::SymmetricWithUnsigned);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
-                              quantization::Schema::SymmetricWithUInt8);
+                              quantization::Schema::SymmetricWithUnsigned);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
-                              quantization::Schema::SymmetricWithUInt8);
+                              quantization::Schema::SymmetricWithUnsigned);
 }
 
 TEST(Quantization, quantizeGraph) {
@@ -775,7 +775,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   // Map float [0.0; 6.0] to int [-128; 127].
   // With symmetric with uint8 mapping, we basically map [0.0; 6.0]
   TensorQuantizationParams symmetricParams = chooseQuantizationParams(
-      0.0, 6.0, quantization::Schema::SymmetricWithUInt8);
+      0.0, 6.0, quantization::Schema::SymmetricWithUnsigned);
   // Given this is a purely positive range, we should use uint8,
   // thus int8 - (-128).
   EXPECT_EQ(symmetricParams.offset, -128);
@@ -783,7 +783,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
 
   // Map float [-3.0; 3.0] to int [-128; 127].
   symmetricParams = chooseQuantizationParams(
-      -3.0, 3.0, quantization::Schema::SymmetricWithUInt8);
+      -3.0, 3.0, quantization::Schema::SymmetricWithUnsigned);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 6.0 / 255, 0.001);
 
@@ -791,13 +791,13 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   // This has negative value, thus we fall back to purely symmetric.
   // => [-5.0; 5.0] range for symmetric mode.
   symmetricParams = chooseQuantizationParams(
-      -2.0, 5.0, quantization::Schema::SymmetricWithUInt8);
+      -2.0, 5.0, quantization::Schema::SymmetricWithUnsigned);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 10.0 / 255, 0.001);
 
   // Map float [0; 0] to int [-128; 127].
   symmetricParams = chooseQuantizationParams(
-      0.0, 0.0, quantization::Schema::SymmetricWithUInt8);
+      0.0, 0.0, quantization::Schema::SymmetricWithUnsigned);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 0.1, 0.001);
 
@@ -806,7 +806,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   // However, our quantization schemas always include zero.
   // => [0.0; 5.0] range for uint8 mode.
   symmetricParams = chooseQuantizationParams(
-      2.0, 5.0, quantization::Schema::SymmetricWithUInt8);
+      2.0, 5.0, quantization::Schema::SymmetricWithUnsigned);
   // Scale: (5.0 - (0.0)) / (127 - (-128)) == 5.0 / 255.0
   // Offset from min: scale(-128 - offset) == 0.0
   EXPECT_EQ(symmetricParams.offset, -128);
@@ -815,7 +815,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   // Map float [-8.0; -2.0] to int [-128; 127].
   // => [-8.0; 8.0] range for symmetric mode.
   symmetricParams = chooseQuantizationParams(
-      -8.0, -2.0, quantization::Schema::SymmetricWithUInt8);
+      -8.0, -2.0, quantization::Schema::SymmetricWithUnsigned);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }

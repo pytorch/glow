@@ -87,7 +87,7 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
                    "Use asymmetric ranges"),
         clEnumValN(quantization::Schema::Symmetric, "symmetric",
                    "Use symmetric ranges"),
-        clEnumValN(quantization::Schema::SymmetricWithUInt8,
+        clEnumValN(quantization::Schema::SymmetricWithUnsigned,
                    "symmetric_with_uint8",
                    "Use symmetric ranges with potentially uint8 ranges")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
