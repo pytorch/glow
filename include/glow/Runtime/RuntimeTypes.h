@@ -25,13 +25,15 @@
 namespace glow {
 namespace runtime {
 
-using NetworkID = size_t;
-using DeviceID = size_t;
+using NetworkIDty = size_t;
+using DeviceIDty = size_t;
 
 /// Enum to communicate results when communicating with device at initialization
 /// and runtime.
 enum ResultCode { READY, EXECUTED, FAILED, CANCELLED };
 
+/// Data structure that contains memory information for each device. Used to
+/// communicate memory constraints to the Partitioner and Provisioner.
 struct DeviceMemoryInfo {
   /// Available memory on device in bytes.
   uint64_t availableMemory;
@@ -43,21 +45,21 @@ struct DeviceMemoryInfo {
 /// network at runtime.
 struct ExecutionDAG {
   /// Vector of networks to be run.
-  std::vector<NetworkID> networks;
-  /// Mapping of networkID to the deviceID where the network is loaded.
-  std::unordered_map<NetworkID, DeviceID> devices;
+  std::vector<NetworkIDty> networks;
+  /// Mapping of networkID to the deviceIDty where the network is loaded.
+  std::unordered_map<NetworkIDty, DeviceIDty> devices;
   /// vector of root nodes, these have no dependencies and can be run first.
-  std::vector<NetworkID> roots;
+  std::vector<NetworkIDty> roots;
   /// Mapping of networkID to a vector of it's dependancies.
-  std::unordered_map<NetworkID, std::vector<NetworkID>> dependencies;
+  std::unordered_map<NetworkIDty, std::vector<NetworkIDty>> dependencies;
   /// Mapping of networkID to a vector of networks that depend on it.
-  std::unordered_map<NetworkID, std::vector<NetworkID>> dependents;
-  /// Mapping of NetworkID to a vector of input placeholder names for the
+  std::unordered_map<NetworkIDty, std::vector<NetworkIDty>> dependents;
+  /// Mapping of NetworkIDty to a vector of input placeholder names for the
   /// network.
-  std::unordered_map<NetworkID, std::vector<std::string>> inputs;
-  /// Mapping of NetworkID to a vector of output placeholder names for the
+  std::unordered_map<NetworkIDty, std::vector<std::string>> inputs;
+  /// Mapping of NetworkIDty to a vector of output placeholder names for the
   /// network.
-  std::unordered_map<NetworkID, std::vector<std::string>> outputs;
+  std::unordered_map<NetworkIDty, std::vector<std::string>> outputs;
 };
 
 /// Data structure containing the output from the Partitioner. It is consumed by
