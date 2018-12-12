@@ -1207,6 +1207,7 @@ TEST(Graph, hookTest) {
 TEST(Graph, outputPlaceholderTest) {
   Module mod;
   auto *F = mod.createFunction("main");
+  auto *G = mod.createFunction("nope");
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "input", false);
   auto *weights = mod.createConstant(ElemKind::FloatTy, {4, 4}, "weights");
@@ -1215,4 +1216,6 @@ TEST(Graph, outputPlaceholderTest) {
   auto *save = F->createSave("save", FC);
   EXPECT_TRUE(save->getPlaceholder()->isOutput(F));
   EXPECT_FALSE(input->isOutput(F));
+  EXPECT_FALSE(save->getPlaceholder()->isOutput(G));
+  EXPECT_FALSE(input->isOutput(G));
 }
