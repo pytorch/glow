@@ -117,11 +117,11 @@ TEST(Quantization, quantScaleOffset) {
   }
 }
 
-TEST(Quantization, quantizeTensor) {
-  // Map float [0.0; 5.0] to int [-128; 127].
-  // With symmetric mapping, we basically map [-5.0; 5.0]
-  TensorQuantizationParams symmetricParams =
-      chooseQuantizationParams(0.0, 6.0, quantization::Schema::Symmetric);
+template <class qtype>
+void quantizeTensorTest(ElemKind qTy, quantization::Schema schema) {
+  // Map float [0.0; 6.0] to a quantized type using its entire value range.
+  TensorQuantizationParams quantParams =
+      chooseQuantizationParams(0.0, 6.0, schema, qTy);
 
   // Create an FP32 tensor with 6 elements and initialize it with numbers from 0
   // to 5.
@@ -132,15 +132,15 @@ TEST(Quantization, quantizeTensor) {
   }
 
   // Quantize the tensor.
-  auto quantizedFP32 = quantization::quantizeTensor(inputFP32, symmetricParams);
+  auto quantizedFP32 =
+      quantization::quantizeTensor(inputFP32, quantParams, qTy);
   // Check that the dequantized result is close to the original values before
   // the quantization.
-  Handle<int8_t> THquantizedFP32 = quantizedFP32.getHandle<int8_t>();
+  Handle<qtype> THquantizedFP32 = quantizedFP32.getHandle<qtype>();
   for (unsigned i = 0; i < 6; ++i) {
-    EXPECT_NEAR(
-        THFP32.at({i}),
-        quantization::dequantize(THquantizedFP32.at({i}), symmetricParams),
-        0.05f);
+    EXPECT_NEAR(THFP32.at({i}),
+                quantization::dequantize(THquantizedFP32.at({i}), quantParams),
+                0.05f);
   }
 
   // Create an FP16 tensor with 6 elements and initialize it with numbers from 0
@@ -152,16 +152,53 @@ TEST(Quantization, quantizeTensor) {
   }
 
   // Quantize the tensor.
-  auto quantizedFP16 = quantization::quantizeTensor(inputFP16, symmetricParams);
+  auto quantizedFP16 =
+      quantization::quantizeTensor(inputFP16, quantParams, qTy);
   // Check that the dequantized result is close to the original values before
   // the quantization.
-  Handle<int8_t> THquantizedFP16 = quantizedFP16.getHandle<int8_t>();
+  Handle<qtype> THquantizedFP16 = quantizedFP16.getHandle<qtype>();
   for (unsigned i = 0; i < 6; ++i) {
-    EXPECT_NEAR(
-        THFP16.at({i}),
-        quantization::dequantize(THquantizedFP16.at({i}), symmetricParams),
-        0.05f);
+    EXPECT_NEAR(THFP16.at({i}),
+                quantization::dequantize(THquantizedFP16.at({i}), quantParams),
+                0.05f);
   }
+}
+
+TEST(Quantization, quantizeTensorAsymmetricInt8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorAsymmetricInt16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorAsymmetricInt32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::Asymmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricInt32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::Symmetric);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::SymmetricWithUInt8);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::SymmetricWithUInt8);
+}
+TEST(Quantization, quantizeTensorSymmetricUInt32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::SymmetricWithUInt8);
 }
 
 TEST(Quantization, quantizeGraph) {
