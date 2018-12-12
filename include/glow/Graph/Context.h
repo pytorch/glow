@@ -74,6 +74,9 @@ public:
   /// \returns the mapping between placeholder to tensors.
   const PlaceholderMap &pairs() const { return map_; }
 
+  /// \returns the size in bytes of allocated Tensors owned by Context.
+  uint64_t getDataSize() const;
+
   Context() = default;
 
   /// Construct the Context with an initial mapping between \p placeholders

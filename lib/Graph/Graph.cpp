@@ -295,6 +295,14 @@ void Module::eraseFunction(Function *F) {
   delete F;
 }
 
+uint64_t Module::getConstantsSize() {
+  uint64_t size = 0;
+  for (auto *constant : constants_) {
+    size += constant->getPayload().getSizeInBytes();
+  }
+  return size;
+}
+
 Function::~Function() {
   // Delete all of the nodes.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {

@@ -80,6 +80,15 @@ Placeholder *Context::getFirstUnallocated(std::list<Placeholder *> &lst) const {
   return nullptr;
 }
 
+uint64_t Context::getDataSize() const {
+  uint64_t size = 0;
+  for (const auto &PH : map_) {
+    Tensor *T = PH.second;
+    size += T->getSizeInBytes();
+  }
+  return size;
+}
+
 Context::Context(llvm::ArrayRef<Placeholder *> placeholders,
                  llvm::ArrayRef<Tensor *> inputs) {
   assert(placeholders.size() == inputs.size() &&

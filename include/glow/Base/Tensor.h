@@ -121,6 +121,9 @@ public:
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
 
+  /// \returns the number of bytes required to store the tensor.
+  uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
+
   /// Initialize an empty tensor.
   Tensor() = default;
 
