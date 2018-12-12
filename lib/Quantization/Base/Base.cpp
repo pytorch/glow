@@ -221,7 +221,7 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   assert(min <= max && "min must not be bigger than max");
 
   // Compute the quantized int range.
-  // Pick int64 in order to cover the uint32_t range.
+  // Pick int64_t in order to cover the uint32_t range.
   int64_t qmin;
   int64_t qmax;
 
@@ -248,8 +248,7 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   min = std::min(min, 0.f);
   max = std::max(max, 0.f);
 
-  // TODO: SymmetricWithUInt8 should be renamed as SymmetricWithUnsigned
-  if (schema == quantization::Schema::SymmetricWithUInt8) {
+  if (schema == quantization::Schema::SymmetricWithUnsigned) {
     // Check if the range we try to encode is purely positive.
     // If not, we cannot use the Unsigned mapping and we fall back
     // to the symmetric schema.
@@ -332,8 +331,9 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   // The only valid offsets for symmetric quantization with unsigned support are
   // 0 and qmin.
   assert((result.offset == qmin || result.offset == 0 ||
-          schema != quantization::Schema::SymmetricWithUInt8) &&
-         "Symmetric quantization should be centered on 0");
+          schema != quantization::Schema::SymmetricWithUnsigned) &&
+         "Symmetric quantization with unsigned should be centered on 0 or on "
+         "-qmin");
   return result;
 }
 

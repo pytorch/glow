@@ -65,11 +65,12 @@ enum Schema {
   Asymmetric,
   /// Symmetric quantization produces ranges centered on 0.
   Symmetric,
-  /// Symmetric quantization produces ranges centered on 0 or 128
-  /// (i.e., offset == -128).
-  /// An offset of -128 represents an unsigned int8 with an offset of zero:
-  /// int8 is [-128; 127] - (-128) == uint8 [0; 255] - 0
-  SymmetricWithUInt8,
+  /// Symmetric quantization produces ranges centered on 0 or -qmin, qmin being
+  /// the minimum value of the quantized type.
+  /// An offset of qmin (i.e., offset == -128 for int8) represents an unsigned
+  /// version of the quantized type with an offset of zero:
+  /// For example, int8 is [-128; 127] - (-128) == uint8 [0; 255] - 0
+  SymmetricWithUnsigned,
 };
 
 /// \returns the value \p in as clipped to the range of \p DestTy.
