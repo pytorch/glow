@@ -16,17 +16,12 @@
 #ifndef GLOW_RUNTIME_PROVISIONER_H
 #define GLOW_RUNTIME_PROVISIONER_H
 
+#include "glow/Runtime/RuntimeTypes.h"
 #include <unordered_map>
 
 namespace glow {
-enum ResultCode {
-  READY,
-  EXECUTED,
-  FAILED,
-  CANCELLED
-}; // This will be defined in one common runtime place.
-class executionDAG;
-class dependencyDAG;
+namespace runtime {
+
 class DeviceManager;
 /// The Provisioner is responsible for assigning networks to an actual device.
 /// It is a stateless class, relying on information being passed in by the
@@ -42,7 +37,7 @@ public:
   ResultCode provision(dependencyDAG &networks, executionDAG &runDAG,
                        std::unordered_map<int, DeviceManager> &devices);
 };
-
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_RUNTIME_PROVISIONER_H
