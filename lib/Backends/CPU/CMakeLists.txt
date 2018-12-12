@@ -13,52 +13,58 @@ set(CMAKE_LLIR_CREATE_SHARED_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_STATIC_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 
-add_library(CPURuntime
-              libjit/libjit.cpp
-              libjit/libjit_conv.cpp
-              libjit/libjit_matmul.cpp)
+set(CPURunttimeCompileOptions
+      -std=c++11
+      -ffast-math
+      -fno-finite-math-only
+      -g0
+      -emit-llvm 
+      -O0)
 
-# NOTE(abdulras) explicitly override the compiler invocations with a custom
-# rule.  The trailing `#` is the comment leader intended to nullify the compile
-# commands.  Doing this allows us to override the compiler (driver) used for
-# building the runtime which requires clang (to emit LLVM IR for the LTO'ed AOT
-# JIT runtime).  Use a custom linker language with the rule specified above to
-# invoke our custom linker to merge the bitcode files.
-set_target_properties(CPURuntime
-                      PROPERTIES
-                        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-                        CXX_STANDARD 11
-                        CXX_STANDARD_REQUIRED YES
-                        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-                        LINKER_LANGUAGE LLIR
-                        OUTPUT_NAME libjit.bc
-                        POSITION_INDEPENDENT_CODE YES
-                        PREFIX ""
-                        SUFFIX ""
-                        RULE_LAUNCH_COMPILE "${CLANG_BIN} <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE> #")
+set(libjit_files "libjit;libjit_conv;libjit_matmul")
 
-# Due to the usage for NaN in the runtime, '-fno-finite-math-only' is needed
-# to disable '-ffinite-math-only' activated by '-ffast-math', while benefiting
-# from math optimizations.
-target_compile_options(CPURuntime
-                       PRIVATE
-                         -ffast-math
-                         -fno-finite-math-only
-                         -g0
-                         -emit-llvm
-                         -O0)
+set(libjit_obj_file_path ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime)
+file(MAKE_DIRECTORY ${libjit_obj_file_path})
+
+set(CPURuntime_OBJS)
+set(CPURuntime_SRCS)
+
+foreach(libjit_src_file ${libjit_files})
+  set(libjit_obj_file ${libjit_obj_file_path}/${libjit_src_file}${CMAKE_C_OUTPUT_EXTENSION})
+  set(libjit_src_file_path ${CMAKE_CURRENT_LIST_DIR}/libjit/${libjit_src_file}.cpp)
+
+  add_custom_command(
+    OUTPUT  ${libjit_obj_file}
+    COMMAND ${CLANG_BIN} -c ${libjit_src_file_path} ${CPURunttimeCompileOptions} -o ${libjit_obj_file}
+    DEPENDS ${libjit_src_file_path}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+
+  list(APPEND CPURuntime_OBJS ${libjit_obj_file})
+  list(APPEND CPURuntime_SRCS ${libjit_src_file_path})
+endforeach()
 
 add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
-  COMMAND include-bin "${CMAKE_BINARY_DIR}/libjit.bc" "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
-  DEPENDS include-bin CPURuntime)
+    OUTPUT ${GLOW_BINARY_DIR}/libjit.bc
+    COMMAND ${LLVM_LINK_BIN} -o ${GLOW_BINARY_DIR}/libjit.bc ${CPURuntime_OBJS}
+    DEPENDS  ${CPURuntime_OBJS} ${CPURuntime_SRCS}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/glow/libjit_bc.inc
+    COMMAND include-bin "${CMAKE_BINARY_DIR}/libjit.bc" "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
+    DEPENDS ${GLOW_BINARY_DIR}/libjit.bc
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+
+add_custom_target(CPURuntime
+  DEPENDS ${CMAKE_BINARY_DIR}/glow/libjit_bc.inc
+  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 if (NOT MSVC)
-add_library(CPURuntimeNative
+  add_library(CPURuntimeNative
               libjit/libjit.cpp
               libjit/libjit_conv.cpp
               libjit/libjit_matmul.cpp)
-endif()
+endif(NOT MSVC)
 
 add_library(CPUBackend
             "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
