@@ -1202,3 +1202,31 @@ TEST(Graph, hookTest) {
   ASSERT_TRUE(ph);
   ASSERT_EQ(ph, in);
 }
+
+// Check that getConstantsSize returns the correct size of constants.
+TEST(Graph, moduleSize) {
+  Module mod;
+
+  EXPECT_EQ(mod.getConstantsSize(), 0);
+
+  auto *cons1 = mod.createConstant(ElemKind::FloatTy, {1}, "var");
+  EXPECT_EQ(mod.getConstantsSize(), sizeof(float) * cons1->getPayload().size());
+
+  auto *cons2 = mod.createConstant(ElemKind::FloatTy, {1, 32, 32, 16}, "var2");
+  EXPECT_EQ(mod.getConstantsSize(),
+            sizeof(float) + sizeof(float) * cons2->getPayload().size());
+}
+
+// Check that getDataSize() returns the correct size of backing tensors.
+TEST(Graph, contextSize) {
+  Module mod;
+  Context ctx;
+
+  Placeholder *PH =
+      mod.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
+
+  EXPECT_EQ(ctx.getDataSize(), 0);
+  ctx.allocate(PH);
+  EXPECT_EQ(ctx.get(PH)->size(), 4 * 320 * 200 * 3);
+  EXPECT_EQ(ctx.getDataSize(), sizeof(float) * ctx.get(PH)->size());
+}

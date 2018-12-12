@@ -181,6 +181,9 @@ public:
   /// Erase a function \p F from the module.
   void eraseFunction(Function *F);
 
+  /// \Returns the size in bytes of data used by constants.
+  uint64_t getConstantsSize();
+
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
   // the original Module only dangling pointers.
