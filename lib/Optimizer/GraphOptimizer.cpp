@@ -1814,15 +1814,10 @@ static void optimizeQuantizedMaxSplat(Function *F) {
       Node *otherInput =
           isa<SplatNode>(MN->getLHS()) ? MN->getRHS() : MN->getLHS();
 
-      float splatValue = (dyn_cast<SplatNode>(splatNode))->getValue();
-      // Calculate quantization [min,max] range.
-      TensorQuantizationParams TQP{MN->getResult().getType()->getScale(),
-                                   MN->getResult().getType()->getOffset()};
-      float min =
-          quantization::dequantize(std::numeric_limits<int8_t>::min(), TQP);
-
       // If splat value is smaller than values that can be covered by
       // quantition [min,max] range then just remove MaxNode operation.
+      float splatValue = (dyn_cast<SplatNode>(splatNode))->getValue();
+      float min = MN->getResult().getType()->getQuantizedValueRange().first;
       if (splatValue <= min) {
         MN->getResult().replaceAllUsesOfWith(otherInput);
       }
