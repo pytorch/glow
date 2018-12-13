@@ -32,13 +32,11 @@ using DeviceIDty = size_t;
 /// and runtime.
 enum ResultCode { READY, EXECUTED, FAILED, CANCELLED };
 
-/// Data structure that contains memory information for each device. Used to
-/// communicate memory constraints to the Partitioner and Provisioner.
-struct DeviceMemoryInfo {
+/// Data structure that contains device constraint information for each device.
+/// Used to communicate memory constraints and later costs to the Partitioner.
+struct DeviceInfo {
   /// Available memory on device in bytes.
   uint64_t availableMemory;
-  /// Total useable memory on device in bytes.
-  uint64_t maximumUsableMemory;
 };
 
 /// Data structure that contains everything needed by the executor to execute a
