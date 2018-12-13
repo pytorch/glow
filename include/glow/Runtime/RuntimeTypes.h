@@ -73,6 +73,8 @@ struct DependencyDAG {
   std::unordered_map<Module *, std::vector<Module *>> dependencies;
   /// Mapping of Module * to a vector of networks that depend on it.
   std::unordered_map<Module *, std::vector<Module *>> dependents;
+  /// Mapping of Module * to total size of constants/weights for module.
+  std::unordered_map<Module *, uint64_t> moduleSize;
 };
 
 } // namespace runtime
