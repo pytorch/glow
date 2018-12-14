@@ -9,3 +9,4 @@ def set_glow_available_features(config):
   config.models_dir = "@GLOW_MODELS_DIR@"
   config.src_dir = "@GLOW_SOURCE_DIR@"
   config.binary_dir = "@GLOW_BINARY_DIR@"
+  config.tools_dir = "@GLOW_OUTPUT_DIR@"
