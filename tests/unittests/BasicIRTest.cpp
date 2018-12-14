@@ -218,3 +218,51 @@ TEST(IR, predicateIR) {
     M.verify();
   }
 }
+
+/// Note that IRFunction validation uses asserts, so these tests only die when
+/// asserts are turned on.
+#ifndef NDEBUG
+
+/// Check that the verify call dies when verifying an IRFunction with a
+/// non-memory/view Instruction with another non-memory/view Instruction as
+/// an input operand.
+TEST(IR, VerifyDiesOnInvalidInputOperand) {
+  Module mod;
+  Function *F = mod.createFunction("InvalidOperands");
+  IRFunction M(F);
+  {
+    IRBuilder builder(&M);
+    auto *LHS = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *RHS = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *O = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *EAI = builder.createElementAddInst("Add", O, LHS, RHS);
+
+    // Invalid to use a non-memory/view Instruction as input operand.
+    builder.createElementAddInst("Add", O, EAI, RHS);
+
+    EXPECT_DEATH(M.verify(), "");
+  }
+}
+
+/// Check that the verify call dies when verifying an IRFunction with a
+/// non-memory/view Instruction with another non-memory/view Instruction as
+/// an output operand.
+TEST(IR, VerifyDiesOnInvalidOutputOperand) {
+  Module mod;
+  Function *F = mod.createFunction("InvalidOperands");
+  IRFunction M(F);
+  {
+    IRBuilder builder(&M);
+    auto *LHS = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *RHS = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *O = builder.createWeightVar(ElemKind::FloatTy, {10, 10});
+    auto *EAI = builder.createElementAddInst("Add", O, LHS, RHS);
+
+    // Invalid to use a non-memory/view Instruction as output operand.
+    builder.createElementAddInst("Add", EAI, LHS, RHS);
+
+    EXPECT_DEATH(M.verify(), "");
+  }
+}
+
+#endif /* NDEBUG */
