@@ -54,11 +54,6 @@ void CopyInst::verify() const {
   (void)dest;
   (void)src;
   assert(dest->getType() == src->getType() && "Invalid type.");
-  // The operands of the copy instruction must be variables.
-  assert(isa<AllocActivationInst>(dest) || isa<WeightVar>(dest) ||
-         isa<TensorViewInst>(dest));
-  assert(isa<AllocActivationInst>(src) || isa<WeightVar>(src) ||
-         isa<TensorViewInst>(src));
 }
 
 void TensorViewInst::verify() const {
