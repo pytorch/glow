@@ -115,6 +115,17 @@ void Instruction::verifyUseList(
 }
 
 void Instruction::verify() const {
+  // All operands of instructions must be either memory (AllocActivation or
+  // WeightVar), or a TensorView of such.
+  for (const auto &opPair : getOperands()) {
+    const Value *op = opPair.first;
+    (void)op;
+    assert((isa<AllocActivationInst>(op) || isa<WeightVar>(op) ||
+            isa<TensorViewInst>(op)) &&
+           "Operands must be one of {AllocActivation, WeightVar, TensorView}");
+  }
+
+  // Perform Instruction-specific verification.
 #define DEF_INSTR(CLASS, NAME)                                                 \
   if (auto *X = dyn_cast<const CLASS>(this))                                   \
     X->verify();
