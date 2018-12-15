@@ -1351,6 +1351,14 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                                   indices, lengths));
 }
 
+SparseLengthsWeightedSumNode *
+Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
+                                         NodeValue data, NodeValue weights,
+                                         NodeValue indices, NodeValue lengths) {
+  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
+                                                  indices, lengths));
+}
+
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
                                                      NodeValue lengths) {
   ShapeVector outDims({lengths.dims()[0], 2});

@@ -1799,6 +1799,45 @@ TEST_F(GraphOptz, FuseRescaleUpIntoMatMul) {
   EXPECT_EQ(newMMN->getResult().getType(), rescaleOutTy);
 }
 
+/// Check that the Rescale(SparseLengthsWeightedSum) ->
+/// SparseLengthsWeightedSum' optimization works correctly.
+TEST_F(GraphOptz, FuseRescaleUpIntoSparseLengthsWeightedSum) {
+  // This test ensures the fact that fusing of rescale is done.
+  TypeRef rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 1);
+
+  Placeholder *data =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3}, 0.5, 0, "data",
+                             /* isTrainable */ false);
+  Placeholder *weights = mod_.createPlaceholder(
+      ElemKind::Int8QTy, {8}, 0.5, 0, "weights", /* isTrainable */ false);
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                             /* isTrainable */ false);
+
+  SparseLengthsWeightedSumNode *SLWS = F_->createSparseLengthsWeightedSum(
+      "SLWS", data, weights, indices, lengths);
+  RescaleQuantizedNode *rescaleSLWS =
+      F_->createRescaleQuantized("rsSLWS", SLWS, rescaleOutTy);
+  SaveNode *saveSLWS = F_->createSave("saveSLWS", rescaleSLWS);
+
+  // SparseLengthsWeightedSum, Rescale, Save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  // All rescales must be fused into arithmetic operations above.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Rescale merged up into the SparseLengthsWeightedSum.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  SparseLengthsWeightedSumNode *newSLWS =
+      llvm::dyn_cast<SparseLengthsWeightedSumNode>(saveSLWS->getInput());
+  ASSERT_TRUE(newSLWS);
+  EXPECT_EQ(newSLWS->getResult().getType(), rescaleOutTy);
+}
+
 TEST_F(GraphOptz, fuseRescaleIntoConv) {
   // This test ensures the fact that fusing of rescale is done.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.5,

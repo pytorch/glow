@@ -545,6 +545,13 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
+  /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
+  /// specified.
+  SparseLengthsWeightedSumNode *
+  createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
+                                 NodeValue data, NodeValue weights,
+                                 NodeValue indices, NodeValue lengths);
+
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the
   /// output is a Nx2 matrix with (offset, lengths) packaged for each segment.
