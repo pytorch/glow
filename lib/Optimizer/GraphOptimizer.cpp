@@ -2117,6 +2117,17 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
+      // Combine Rescale Nodes up into SparseLengthsWeightedSum Nodes.
+      // Rescale(SparseLengthsWeightedSum) -> SparseLengthsWeightedSum'
+      if (auto *SLWSN =
+              dyn_cast<SparseLengthsWeightedSumNode>(RS->getInput())) {
+        auto *newSLWSN = F->createSparseLengthsWeightedSum(
+            SLWSN->getName(), RS->getResult().getType(), SLWSN->getData(),
+            SLWSN->getWeights(), SLWSN->getIndices(), SLWSN->getLengths());
+        RS->getResult().replaceAllUsesOfWith(newSLWSN);
+        continue;
+      }
+
       // Combine the rescale node up into the convolution.
       // Rescale(Conv()) -> Conv()
       if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
