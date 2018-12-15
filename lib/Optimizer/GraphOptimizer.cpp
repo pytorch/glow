@@ -1960,6 +1960,23 @@ static void optimizeConversions(Function *F) {
   }
 }
 
+/// \returns a cloned version of node \p N, but with each of the cloned node's
+/// output types set to the corresponding type in \p types. The new node is
+/// added to Function \p F.
+/// \pre types.size() == N->getNumResults()
+static Node *cloneNodeWithNewTypes(Function *F, Node *N,
+                                   llvm::ArrayRef<TypeRef> types) {
+  assert(N->getNumResults() == types.size() &&
+         "Number of types must equal number of results of the node.");
+
+  Node *newNode = F->addNode(N->clone());
+  for (size_t i = 0; i < types.size(); i++) {
+    newNode->setType(i, types[i]);
+  }
+
+  return newNode;
+}
+
 /// Eliminate node sequences that are related to quantization.
 static void optimizeQuantization(Function *F) {
   // A worklist that contains the nodes to process.
@@ -2048,24 +2065,40 @@ static void optimizeQuantization(Function *F) {
         continue;
       }
 
-      // Merge splat and rescale nodes.
-      // Rescale(Splat()) -> Splat()
-      if (auto *SP = dyn_cast<SplatNode>(RS->getInput())) {
-        auto *newRS = F->createSplat(SP->getName(), RS->getResult().getType(),
-                                     SP->getValue());
-
-        worklist.push_back(newRS);
-        RS->getResult().replaceAllUsesOfWith(newRS);
+      // All optimizations in this scope below combine a Rescale up into or
+      // above the Rescale's input X. If X has multiple users then this merging
+      // will duplicate X, just with a different output scale/offset. If X is
+      // not a Splat then this is likely not desired, as it means a
+      // computational node (e.g. Add) is duplicated.
+      if (!RS->getInput().hasOneUse() && !isa<SplatNode>(RS->getInput())) {
         continue;
       }
 
-      // All other optimizations in this scope below combine a Rescale up into
-      // the Rescale's input X. If X has multiple users then this merging will
-      // duplicate X, just with a different output scale/offset. If X is a
-      // computational node (e.g. Add, and not Splat) then this is likely not
-      // desired.
-      if (!RS->getInput().hasOneUse()) {
+      // Combine the rescale node up into its parent node.
+      // Rescale(Node()) -> 'Node().
+      bool addNewNodeToWorklist = false;
+      switch (RS->getInput().getNode()->getKind()) {
+      case Kinded::Kind::RescaleQuantizedNodeKind:
+      case Kinded::Kind::QuantizeNodeKind:
+        addNewNodeToWorklist = true;
+      case Kinded::Kind::SplatNodeKind:
+      case Kinded::Kind::AddNodeKind:
+      case Kinded::Kind::SubNodeKind:
+      case Kinded::Kind::MulNodeKind:
+      case Kinded::Kind::DivNodeKind:
+      case Kinded::Kind::MinNodeKind:
+      case Kinded::Kind::MatMulNodeKind:
+      case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
+        Node *newNode =
+            cloneNodeWithNewTypes(F, RS->getInput(), RS->getResult().getType());
+        RS->getResult().replaceAllUsesOfWith(newNode);
+        if (addNewNodeToWorklist) {
+          worklist.push_back(newNode);
+        }
         continue;
+      }
+      default:;
       }
 
       if (auto *MN = dyn_cast<MaxNode>(RS->getInput())) {
@@ -2083,81 +2116,6 @@ static void optimizeQuantization(Function *F) {
         worklist.push_back(L);
         worklist.push_back(R);
         RS->getResult().replaceAllUsesOfWith(newMN);
-        continue;
-      }
-
-// Combine the rescale node up into the arithmetic node.
-// Rescale(Arithmetic()) -> Arithmetic().
-// Not all arithmetic nodes support explicit output quantized type.
-// Combine up rescale with Add, Sub, Mul, Div, Min, Max.
-#define COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                      \
-  if (auto *AN = dyn_cast<NODE_NAME_##Node>(RS->getInput())) {                 \
-    auto *newAN = F->create##NODE_NAME_(                                       \
-        AN->getName(), RS->getResult().getType(), AN->getLHS(), AN->getRHS()); \
-    RS->getResult().replaceAllUsesOfWith(newAN);                               \
-                                                                               \
-    continue;                                                                  \
-  }
-
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Add);
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Sub);
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Mul);
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Div);
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Min);
-      COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE(Max);
-#undef COMBINE_UP_RESCALE_TO_ARITHMETIC_NODE
-
-      // Combine Rescale Nodes up into MatMul Nodes.
-      // Rescale(MatMul) -> MatMul'
-      if (auto *MMN = dyn_cast<MatMulNode>(RS->getInput())) {
-        auto *newMMN =
-            F->createMatMul(MMN->getName(), RS->getResult().getType(),
-                            MMN->getLHS(), MMN->getRHS());
-        RS->getResult().replaceAllUsesOfWith(newMMN);
-        continue;
-      }
-
-      // Combine Rescale Nodes up into SparseLengthsWeightedSum Nodes.
-      // Rescale(SparseLengthsWeightedSum) -> SparseLengthsWeightedSum'
-      if (auto *SLWSN =
-              dyn_cast<SparseLengthsWeightedSumNode>(RS->getInput())) {
-        auto *newSLWSN = F->createSparseLengthsWeightedSum(
-            SLWSN->getName(), RS->getResult().getType(), SLWSN->getData(),
-            SLWSN->getWeights(), SLWSN->getIndices(), SLWSN->getLengths());
-        RS->getResult().replaceAllUsesOfWith(newSLWSN);
-        continue;
-      }
-
-      // Combine the rescale node up into the convolution.
-      // Rescale(Conv()) -> Conv()
-      if (auto *CN = dyn_cast<ConvolutionNode>(RS->getInput())) {
-        // Create the exact same convolution but with a different scaling
-        // return type.
-        auto *newCN = F->createConv(
-            CN->getName(), CN->getInput(), CN->getFilter(), CN->getBias(),
-            RS->getResult().getType(), CN->getKernels(), CN->getStrides(),
-            CN->getPads(), CN->getGroup());
-        RS->getResult().replaceAllUsesOfWith(newCN);
-        continue;
-      }
-
-      // Fold the rescale into the previous rescale.
-      // Rescale(Rescale()) -> Rescale()
-      if (auto *RS2 = dyn_cast<RescaleQuantizedNode>(RS->getInput())) {
-        auto *newRS = F->createRescaleQuantized(RS->getName(), RS2->getInput(),
-                                                RS->getResult().getType());
-        worklist.push_back(newRS);
-        RS->getResult().replaceAllUsesOfWith(newRS);
-        continue;
-      }
-
-      // Fold the rescale into the previous quantize.
-      // Rescale(Quantize()) -> Quantize()
-      if (auto *QN = dyn_cast<QuantizeNode>(RS->getInput())) {
-        auto *newQ = F->createQuantize(QN->getName(), QN->getInput(),
-                                       RS->getResult().getType());
-        worklist.push_back(newQ);
-        RS->getResult().replaceAllUsesOfWith(newQ);
         continue;
       }
     } // Handle RescaleQuantizedNode
