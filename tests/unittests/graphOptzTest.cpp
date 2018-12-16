@@ -1651,6 +1651,27 @@ TEST_F(GraphOptz, foldQuantizeIntoSplatMultipleUsers) {
   EXPECT_EQ(llvm::dyn_cast<SplatNode>(SF->getInput()), SN);
 }
 
+/// Check that an unnecessary rescale gets removed.
+TEST_F(GraphOptz, removeUnnecessaryRescale) {
+  TypeRef qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03f, 5);
+  Placeholder *input =
+      mod_.createPlaceholder(qType, "input", /* isTrainable */ true);
+  RescaleQuantizedNode *RQ =
+      F_->createRescaleQuantized("rescale", input, qType);
+  SaveNode *save = F_->createSave("ret", RQ);
+
+  // RescaleQuantized and Save.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Only Save should be left, which saves the Placeholder directly with
+  // unchanged quantization parameters.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(save->getInput().getNode(), input);
+  EXPECT_EQ(save->getInput().getType(), qType);
+}
+
 /// Check that rescale gets correctly merged into a following dequantize node
 TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
   // Check that we are combining quantization-dequantization pairs.
