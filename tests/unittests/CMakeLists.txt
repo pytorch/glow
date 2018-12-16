@@ -1,42 +1,42 @@
-add_library(testMain
-            testMain.cpp)
-target_link_libraries(testMain
+add_library(TestMain
+            TestMain.cpp)
+target_link_libraries(TestMain
                       PRIVATE
                         LLVMSupport
                         gtest)
 
-add_executable(tensorsTest
-               tensorsTest.cpp)
-target_link_libraries(tensorsTest
+add_executable(TensorsTest
+               TensorsTest.cpp)
+target_link_libraries(TensorsTest
                       PRIVATE
                         Base
                         gtest
-                        testMain)
-add_glow_test(tensorsTest ${GLOW_BINARY_DIR}/tests/tensorsTest --gtest_output=xml:tensorsTest.xml)
+                        TestMain)
+add_glow_test(TensorsTest ${GLOW_BINARY_DIR}/tests/TensorsTest --gtest_output=xml:TensorsTest.xml)
 
 if(PNG_FOUND)
-add_executable(imageTest
-               imageTest.cpp)
-target_link_libraries(imageTest
+add_executable(ImageTest
+               ImageTest.cpp)
+target_link_libraries(ImageTest
                       PRIVATE
                         Base
                         gtest
-                        testMain)
-add_glow_test(imageTest ${GLOW_BINARY_DIR}/tests/imageTest --gtest_output=xml:imageTest.xml
+                        TestMain)
+add_glow_test(ImageTest ${GLOW_BINARY_DIR}/tests/ImageTest --gtest_output=xml:ImageTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 
-add_executable(gradCheckTest
-               gradCheckTest.cpp)
-target_link_libraries(gradCheckTest
+add_executable(GradCheckTest
+               GradCheckTest.cpp)
+target_link_libraries(GradCheckTest
                       PRIVATE
                         Base
                         ExecutionEngine
                         Graph
                         IR
                         gtest
-                        testMain)
-add_glow_test(gradCheckTest ${GLOW_BINARY_DIR}/tests/gradCheckTest --gtest_output=xml:gradCheckTest.xml)
+                        TestMain)
+add_glow_test(GradCheckTest ${GLOW_BINARY_DIR}/tests/GradCheckTest --gtest_output=xml:GradCheckTest.xml)
 
 add_executable(IROptTest
                IROptTest.cpp)
@@ -46,22 +46,22 @@ target_link_libraries(IROptTest
                         IR
                         Optimizer
                         gtest
-                        testMain)
+                        TestMain)
 add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest --gtest_output=xml:IROptTest.xml)
 
-add_executable(basicIRTest
-               basicIRTest.cpp)
-target_link_libraries(basicIRTest
+add_executable(BasicIRTest
+               BasicIRTest.cpp)
+target_link_libraries(BasicIRTest
                       PRIVATE
                         Graph
                         IR
                         gtest
-                        testMain)
-add_glow_test(basicIRTest ${GLOW_BINARY_DIR}/tests/basicIRTest --gtest_output=xml:basicIRTest.xml)
+                        TestMain)
+add_glow_test(BasicIRTest ${GLOW_BINARY_DIR}/tests/BasicIRTest --gtest_output=xml:BasicIRTest.xml)
 
-add_executable(backendTest
+add_executable(BackendTest
                BackendTest.cpp)
-target_link_libraries(backendTest
+target_link_libraries(BackendTest
                       PRIVATE
                         Backends
                         Graph
@@ -69,8 +69,8 @@ target_link_libraries(backendTest
                         ExecutionEngine
                         Optimizer
                         gtest
-                        testMain)
-add_glow_test(backendTest ${GLOW_BINARY_DIR}/tests/backendTest --gtest_output=xml:backendTest.xml)
+                        TestMain)
+add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
 
 add_executable(MLTest
                MLTest.cpp)
@@ -82,24 +82,24 @@ target_link_libraries(MLTest
                         Optimizer
                         Quantization
                         gtest
-                        testMain)
+                        TestMain)
 add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest --gtest_output=xml:MLTest.xml)
 
-add_executable(operatorTest
+add_executable(OperatorTest
                OperatorTest.cpp)
-target_link_libraries(operatorTest
+target_link_libraries(OperatorTest
                       PRIVATE
                         Graph
                         IR
                         ExecutionEngine
                         Quantization
                         gtest
-                        testMain)
-add_glow_test(operatorTest ${GLOW_BINARY_DIR}/tests/operatorTest --gtest_output=xml:operatorTest.xml)
+                        TestMain)
+add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
 
-add_executable(graphTest
-               graphTest.cpp)
-target_link_libraries(graphTest
+add_executable(GraphTest
+               GraphTest.cpp)
+target_link_libraries(GraphTest
                       PRIVATE
                         Backends
                         ExecutionEngine
@@ -107,45 +107,45 @@ target_link_libraries(graphTest
                         IR
                         Optimizer
                         gtest
-                        testMain)
-add_glow_test(graphTest ${GLOW_BINARY_DIR}/tests/graphTest --gtest_output=xml:graphTest.xml)
+                        TestMain)
+add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:GraphTest.xml)
 
-add_executable(graphGradTest
-               graphGradTest.cpp)
-target_link_libraries(graphGradTest
+add_executable(GraphGradTest
+               GraphGradTest.cpp)
+target_link_libraries(GraphGradTest
                       PRIVATE
                         Graph
                         IR
                         ExecutionEngine
                         gtest
-                        testMain)
-add_glow_test(graphGradTest ${GLOW_BINARY_DIR}/tests/graphGradTest --gtest_output=xml:graphGradTest.xml)
+                        TestMain)
+add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
 
-add_executable(graphOptzTest
-               graphOptzTest.cpp)
-target_link_libraries(graphOptzTest
+add_executable(GraphOptzTest
+               GraphOptzTest.cpp)
+target_link_libraries(GraphOptzTest
                       PRIVATE
                         Graph
                         IR
                         Optimizer
                         gtest
-                        testMain)
-add_glow_test(graphOptzTest ${GLOW_BINARY_DIR}/tests/graphOptzTest --gtest_output=xml:graphOptzTest.xml)
+                        TestMain)
+add_glow_test(GraphOptzTest ${GLOW_BINARY_DIR}/tests/GraphOptzTest --gtest_output=xml:GraphOptzTest.xml)
 
-add_executable(graphSchedulerTest
-               graphSchedulerTest.cpp)
-target_link_libraries(graphSchedulerTest
+add_executable(GraphSchedulerTest
+               GraphSchedulerTest.cpp)
+target_link_libraries(GraphSchedulerTest
                       PRIVATE
                         Graph
                         IR
                         gtest
-                        testMain)
-target_include_directories(graphSchedulerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/IR)
-add_glow_test(graphSchedulerTest ${GLOW_BINARY_DIR}/tests/graphSchedulerTest --gtest_output=xml:graphSchedulerTest.xml)
+                        TestMain)
+target_include_directories(GraphSchedulerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/IR)
+add_glow_test(GraphSchedulerTest ${GLOW_BINARY_DIR}/tests/GraphSchedulerTest --gtest_output=xml:GraphSchedulerTest.xml)
 
-add_executable(quantizationTest
-               quantizationTest.cpp)
-target_link_libraries(quantizationTest
+add_executable(QuantizationTest
+               QuantizationTest.cpp)
+target_link_libraries(QuantizationTest
                       PRIVATE
                         Backends
                         ExecutionEngine
@@ -153,39 +153,39 @@ target_link_libraries(quantizationTest
                         Optimizer
                         Quantization
                         gtest
-                        testMain)
-add_glow_test(quantizationTest ${GLOW_BINARY_DIR}/tests/quantizationTest --gtest_output=xml:quantizationTest.xml)
+                        TestMain)
+add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
 
-add_executable(float16Test
-               float16Test.cpp)
-target_link_libraries(float16Test
+add_executable(Float16Test
+               Float16Test.cpp)
+target_link_libraries(Float16Test
                       PRIVATE
                         Support
                         gtest
-                        testMain)
-add_glow_test(float16Test ${GLOW_BINARY_DIR}/tests/float16Test --gtest_output=xml:float16Test.xml)
+                        TestMain)
+add_glow_test(Float16Test ${GLOW_BINARY_DIR}/tests/Float16Test --gtest_output=xml:Float16Test.xml)
 
-add_executable(typeAToTypeBFunctionConverterTest
-               typeAToTypeBFunctionConverterTest.cpp)
-target_link_libraries(typeAToTypeBFunctionConverterTest
+add_executable(TypeAToTypeBFunctionConverterTest
+               TypeAToTypeBFunctionConverterTest.cpp)
+target_link_libraries(TypeAToTypeBFunctionConverterTest
                       PRIVATE
                         Converter
                         ExecutionEngine
                         Graph
                         Optimizer
                         gtest
-                        testMain)
-add_glow_test(typeAToTypeBFunctionConverterTest
-              ${GLOW_BINARY_DIR}/tests/typeAToTypeBFunctionConverterTest --gtest_output=xml:typeAToTypeBFunctionConverterTest.xml)
+                        TestMain)
+add_glow_test(TypeAToTypeBFunctionConverterTest
+              ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml)
 
-add_executable(threadPoolTest
+add_executable(ThreadPoolTest
                ThreadPoolTest.cpp)
-target_link_libraries(threadPoolTest
+target_link_libraries(ThreadPoolTest
                       PRIVATE
                         ThreadPool
                         gtest
-                        testMain)
-add_glow_test(threadPoolTest ${GLOW_BINARY_DIR}/tests/threadPoolTest --gtest_output=xml:threadPoolTest.xml)
+                        TestMain)
+add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest --gtest_output=xml:ThreadPoolTest.xml)
 
 add_executable(UtilsTest
                StrCheck.cpp
@@ -196,7 +196,7 @@ target_link_libraries(UtilsTest
                         Support
                         Testing
                         gtest
-                        testMain)
+                        TestMain)
 add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml)
 
 if(GLOW_WITH_OPENCL)
@@ -210,14 +210,14 @@ target_link_libraries(OCLTest
                         IR
                         Optimizer
                         gtest
-                        testMain)
+                        TestMain)
 add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest --gtest_output=xml:OCLTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
-add_executable(convCorrectnessTest
-               convTest.cpp)
-target_link_libraries(convCorrectnessTest
+add_executable(ConvTest
+               ConvTest.cpp)
+target_link_libraries(ConvTest
                       PRIVATE
                         Graph
                         IR
@@ -225,12 +225,12 @@ target_link_libraries(convCorrectnessTest
                         Optimizer
                         Support
                         gtest
-                        testMain)
+                        TestMain)
 
-add_glow_test(convCorrectnessTest
-              ${GLOW_BINARY_DIR}/tests/convCorrectnessTest)
+add_glow_test(ConvTest
+              ${GLOW_BINARY_DIR}/tests/ConvTest)
 
-LIST(APPEND UNOPT_TESTS ./tests/convCorrectnessTest -optimize-ir=false &&)
+LIST(APPEND UNOPT_TESTS ./tests/ConvTest -optimize-ir=false &&)
 
 add_executable(BackendCorrectnessTest
                BackendTestUtils.cpp
@@ -245,7 +245,7 @@ target_link_libraries(BackendCorrectnessTest
                         Quantization
                         Support
                         gtest
-                        testMain)
+                        TestMain)
 
 add_glow_test(BackendCorrectnessTest
               ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest --gtest_output=xml:BackendCorrectnessTest.xml)
@@ -266,7 +266,7 @@ target_link_libraries(GemmTest
                         ExecutionEngine
                         Support
                         gtest
-                        testMain)
+                        TestMain)
 add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest --gtest_output=xml:GemmLTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
 endif()
@@ -279,46 +279,46 @@ target_link_libraries(LLVMIRGenTest
                         IR
                         Support
                         gtest
-                        testMain)
+                        TestMain)
 target_include_directories(LLVMIRGenTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
 add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest --gtest_output=xml:LLVMIRGenTest.xml)
 
 endif()
 
-add_executable(memoryAllocatorTest
-               memoryAllocatorTest.cpp)
-target_link_libraries(memoryAllocatorTest
+add_executable(MemoryAllocatorTest
+               MemoryAllocatorTest.cpp)
+target_link_libraries(MemoryAllocatorTest
                       PRIVATE
                         CodeGen
                         gtest
                         Support
-                        testMain)
-add_glow_test(memoryAllocatorTest ${GLOW_BINARY_DIR}/tests/memoryAllocatorTest --gtest_output=xml:memoryAllocatorTest.xml)
+                        TestMain)
+add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest --gtest_output=xml:MemoryAllocatorTest.xml)
 
-add_executable(caffe2ImporterTest
-               caffe2ImporterTest.cpp)
-target_link_libraries(caffe2ImporterTest
+add_executable(Caffe2ImporterTest
+               Caffe2ImporterTest.cpp)
+target_link_libraries(Caffe2ImporterTest
                       PRIVATE
                         Graph
                         Importer
                         ExecutionEngine
                         gtest
-                        testMain)
-add_glow_test(NAME caffe2ImporterTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/caffe2ImporterTest --gtest_output=xml:Caffe2ImporterTest.xml
+                        TestMain)
+add_glow_test(NAME Caffe2ImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(onnxImporterTest
-               onnxImporterTest.cpp)
-target_link_libraries(onnxImporterTest
+add_executable(OnnxImporterTest
+               OnnxImporterTest.cpp)
+target_link_libraries(OnnxImporterTest
                       PRIVATE
                         Graph
                         Importer
                         ExecutionEngine
                         gtest
-                        testMain)
-add_glow_test(NAME onnxImporterTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/onnxImporterTest --gtest_output=xml:onnxImporterTest.xml
+                        TestMain)
+add_glow_test(NAME OnnxImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest --gtest_output=xml:OnnxImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(GlowOnnxifiManagerTest
@@ -327,7 +327,7 @@ target_link_libraries(GlowOnnxifiManagerTest
                       PRIVATE
                         onnxifi-glow-lib
                         gtest
-                        testMain)
+                        TestMain)
 target_include_directories(GlowOnnxifiManagerTest
                            PRIVATE
                            ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
@@ -336,13 +336,13 @@ add_glow_test(NAME GlowOnnxifiManagerTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS
-       ./tests/backendTest -optimize-ir=false &&
+       ./tests/BackendTest -optimize-ir=false &&
        ./tests/MLTest -optimize-ir=false &&
-       ./tests/operatorTest -optimize-ir=false &&
-       ./tests/quantizationTest -optimize-ir=false &&
-       ./tests/gradCheckTest -optimize-ir=false &&
-       ./tests/graphTest -optimize-ir=false &&
-       ./tests/graphGradTest -optimize-ir=false)
+       ./tests/OperatorTest -optimize-ir=false &&
+       ./tests/QuantizationTest -optimize-ir=false &&
+       ./tests/GradCheckTest -optimize-ir=false &&
+       ./tests/GraphTest -optimize-ir=false &&
+       ./tests/GraphGradTest -optimize-ir=false)
 
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
