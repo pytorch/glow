@@ -126,10 +126,10 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
-                               idim.w + pdim.left + pdim.right, kdim.height,
+                               idim.h + pdim.top + pdim.bottom, kdim.height,
                                parent, CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
-                               idim.h + pdim.top + pdim.bottom, kdim.width,
+                               idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, size_t(0), parent);
@@ -189,10 +189,10 @@ static bool verifyPool(NodeValue src, NodeValue dest,
 
   bool isValid =
       expectCompareTrue("buffer height too small for selected stride",
-                        idim.w + pdim.left + pdim.right, kdim.height, parent,
+                        idim.h + pdim.top + pdim.bottom, kdim.height, parent,
                         CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
-                               idim.h + pdim.top + pdim.bottom, kdim.width,
+                               idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<size_t>());
 
   auto outSz =
