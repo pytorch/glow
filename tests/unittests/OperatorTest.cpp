@@ -3198,7 +3198,7 @@ TEST_P(InterpAndCPU, Int8Tanh) {
       mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
                       quantizationParams.offset);
 
-  auto *intTanh = F_->createIntTanh("int8Tanh", quantize, tanhTy);
+  auto *intTanh = F_->createTanh("int8Tanh", tanhTy, quantize);
   auto *dequantize = F_->createDequantize("dequantize", intTanh);
   auto *saveInt = F_->createSave("int8Save", dequantize);
   ctx_.allocate(saveInt->getPlaceholder());

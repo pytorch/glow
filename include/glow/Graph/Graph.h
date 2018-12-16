@@ -312,6 +312,12 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
+  /// Create a Tanh node with the given \p name, \p input and
+  /// output type \p outTy.
+  TanhNode *createTanh(llvm::StringRef name, TypeRef outTy, NodeValue input);
+
+  /// Create a Tanh node with the given \p name and \p input.
+  /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
   /// Create a Log node with \p name, which calculates element-wise natural log

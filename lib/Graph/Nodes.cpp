@@ -247,7 +247,15 @@ static bool verifySigmoid(NodeValue src, NodeValue dest) {
 }
 
 static bool verifyTanh(NodeValue src, NodeValue dest) {
-  return checkSameType(src, dest, dest.getNode());
+  const Node *parent = dest.getNode();
+  bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
+  if (src.getType()->isQuantizedType()) {
+    isValid &= checkType(src, dest.getElementType(), dest.getNode());
+    isValid &= checkSameShape(src, dest, parent);
+  } else {
+    isValid &= checkSameType(src, dest, parent);
+  }
+  return isValid;
 }
 
 static bool verifySoftMax(NodeValue src, NodeValue dest) {

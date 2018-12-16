@@ -384,7 +384,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Tanh")
       .addInput("Input")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Applies hyperbolic tangent to each element in the Input "
                     "tensor.");
