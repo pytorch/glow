@@ -377,7 +377,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Sigmoid")
       .addInput("Input")
-      .addResult("Input.getType()")
+      .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Applies Sigmoid, 1 / (1 + exp(-x)), to each element in "
                     "the Input tensor.");
