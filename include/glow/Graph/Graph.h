@@ -303,6 +303,13 @@ public:
   /// output type \p outTy.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
+  /// Create a Sigmoid node with the given \p name, \p input and
+  /// output type \p outTy.
+  SigmoidNode *createSigmoid(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input);
+
+  /// Create a Sigmoid node with the given \p name and \p input.
+  /// Result type will be implicitly set based on the \p input type.
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);

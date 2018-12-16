@@ -3475,7 +3475,7 @@ TEST_P(InterpAndCPU, Int8Sigmoid) {
   auto sigmoidTy =
       mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
                       quantizationParams.offset);
-  auto *intSigmoid = F_->createIntSigmoid("int8Sigmoid", quantize, sigmoidTy);
+  auto *intSigmoid = F_->createSigmoid("int8Sigmoid", sigmoidTy, quantize);
   auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
   auto *saveInt = F_->createSave("int8Save", dequantize);
   ctx_.allocate(saveInt->getPlaceholder());

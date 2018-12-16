@@ -646,8 +646,13 @@ ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input.getType(), input));
 }
 
+SigmoidNode *Function::createSigmoid(llvm::StringRef name, TypeRef outTy,
+                                     NodeValue input) {
+  return addNode(new SigmoidNode(name, outTy, input));
+}
+
 SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
-  return addNode(new SigmoidNode(name, input));
+  return createSigmoid(name, input.getType(), input);
 }
 
 TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
