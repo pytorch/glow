@@ -391,7 +391,8 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
