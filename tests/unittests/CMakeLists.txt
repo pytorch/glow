@@ -5,19 +5,6 @@ target_link_libraries(testMain
                         LLVMSupport
                         gtest)
 
-add_executable(partitionTest
-               partitionTest.cpp)
-target_link_libraries(partitionTest
-                      PRIVATE
-                        Backends
-                        ExecutionEngine
-                        Graph
-                        IR
-                        Optimizer
-                        gtest
-                        testMain)
-add_glow_test(partitionTest ${GLOW_BINARY_DIR}/tests/partitionTest --gtest_output=xml:partitionTest.xml)
-
 add_executable(tensorsTest
                tensorsTest.cpp)
 target_link_libraries(tensorsTest
