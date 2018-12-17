@@ -22,9 +22,9 @@
 using namespace glow;
 
 TypeAToTypeBFunctionConverter::TypeAToTypeBFunctionConverter(
-    Function &F, ElemKind fromKind, ElemKind toKind,
+    Function &F, const ExecutionEngine &EE, ElemKind fromKind, ElemKind toKind,
     const KindSet *doNotConvertKinds)
-    : FunctionConverter(F), mod_(*F.getParent()), dstKind_(toKind),
+    : FunctionConverter(F, EE), mod_(*F.getParent()), dstKind_(toKind),
       srcKind_(fromKind) {
   if (doNotConvertKinds) {
     doNotConvertKinds_ = *doNotConvertKinds;

@@ -172,7 +172,8 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
   // converted later.
   if (convertInAndOutToFp16) {
     TypeAToTypeBFunctionConverter converter(
-        *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
+        *loader.getFunction(), loader.getExecutionEngine(), ElemKind::FloatTy,
+        ElemKind::Float16Ty);
     for (auto *placeholder : loader.getModule()->getPlaceholders()) {
       converter.convertPlaceholder(*placeholder, &ctx);
     }

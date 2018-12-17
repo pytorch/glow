@@ -66,8 +66,10 @@ protected:
 public:
   /// Create a type converter from \p fromKind to \p toKind for \p F.
   /// If \p doNotConvertKinds is not nullptr, the nodes which kind
-  /// is in this set won't be converted.
-  TypeAToTypeBFunctionConverter(Function &F, ElemKind fromKind, ElemKind toKind,
+  /// is in this set won't be converted. Conversion to the \p toKind is done
+  /// only as permitted by what is supported by the backend in \p EE.
+  TypeAToTypeBFunctionConverter(Function &F, const ExecutionEngine &EE,
+                                ElemKind fromKind, ElemKind toKind,
                                 const KindSet *doNotConvertKinds = nullptr);
 };
 } // namespace glow

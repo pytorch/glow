@@ -5,4 +5,5 @@ add_library(Converter
 target_link_libraries(Converter
                       PRIVATE
                         Base
-                        Graph)
+                        Graph
+                        ExecutionEngine)

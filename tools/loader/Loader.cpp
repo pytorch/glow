@@ -272,7 +272,7 @@ void Loader::compile(Context &ctx) {
   }
 
   if (convertToFP16) {
-    TypeAToTypeBFunctionConverter converter(*F_, ElemKind::FloatTy,
+    TypeAToTypeBFunctionConverter converter(*F_, EE_, ElemKind::FloatTy,
                                             ElemKind::Float16Ty,
                                             &keepOriginalPrecisionForNodes);
     converter.convert();

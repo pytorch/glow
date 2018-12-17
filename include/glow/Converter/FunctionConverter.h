@@ -19,6 +19,7 @@
 #define GLOW_CONVERTER_FUNCTIONCONVERTER_H
 
 #include "glow/Base/Type.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include <utility> // For std::pair.
 
@@ -37,6 +38,9 @@ class FunctionConverter {
 protected:
   /// The function to be converted.
   Function &function_;
+
+  /// Execution engine used to check if an operator is supported.
+  const ExecutionEngine &EE_;
 
   /// \return the type that \p out needs to have at the end of the conversion
   /// procedure. In other words, this is the type this value will have at the
@@ -139,12 +143,14 @@ protected:
   virtual void cleanUp() {}
 
 public:
-  /// Create a function converter for \p F.
+  /// Create a function converter for \p F. The backend from the \p EE is used
+  /// when determining if the backend supports the destination type.
   ///
   /// \note This method will modify \p F when calling ::convert.
   ///       If one wants to keep the original function around,
   ///       they need to clone it before creating this converter.
-  FunctionConverter(Function &F) : function_(F) {}
+  FunctionConverter(Function &F, const ExecutionEngine &EE)
+      : function_(F), EE_(EE) {}
 
   virtual ~FunctionConverter() {}
 

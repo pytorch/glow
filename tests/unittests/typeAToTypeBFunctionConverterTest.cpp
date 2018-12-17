@@ -78,7 +78,7 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
 
   size_t origGraphSize = F->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   converter.convert();
 
@@ -176,7 +176,7 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
 
   size_t origGraphSize = F->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   converter.convert();
 
@@ -291,7 +291,7 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
   KindSet doNotConvertKinds;
   doNotConvertKinds.insert(Kinded::Kind::ReluNodeKind);
   TypeAToTypeBFunctionConverter converter(
-      *F, ElemKind::FloatTy, ElemKind::Float16Ty, &doNotConvertKinds);
+      *F, EE_, ElemKind::FloatTy, ElemKind::Float16Ty, &doNotConvertKinds);
   converter.convert();
 
   // We should have 4 more nodes:
@@ -394,7 +394,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
 
   size_t origGraphSize = F->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   converter.convert();
 
@@ -516,7 +516,7 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
 
   size_t origGraphSize = F->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   converter.convert();
 
@@ -705,7 +705,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   size_t f2OrigGraphSize = F2->getNodes().size();
   size_t f3OrigGraphSize = F3->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   for (auto *placeholder : mod.getPlaceholders()) {
     if (output2 == placeholder) {
@@ -834,7 +834,7 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
 
   size_t origSize = F->getNodes().size();
 
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+  TypeAToTypeBFunctionConverter converter(*F, EE_, ElemKind::FloatTy,
                                           ElemKind::Float16Ty);
   converter.convert();
 

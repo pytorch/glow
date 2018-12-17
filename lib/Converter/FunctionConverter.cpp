@@ -13,14 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define DEBUG_TYPE "function-converter"
+
 #include "glow/Converter/FunctionConverter.h"
 
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h" // For Function.
 #include "glow/Graph/Node.h"  // For Node.
 #include "glow/Graph/Nodes.h" // For Placeholder and Constant.
+#include "glow/Support/Debug.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 
@@ -181,6 +186,8 @@ void FunctionConverter::convert() {
     --nodeIt;
     Node &node = *nodeIt;
     if (!canConvert(node)) {
+      DEBUG_GLOW(llvm::dbgs()
+                 << "Cannot convert Node \"" << node.getName() << "\"\n");
       continue;
     }
     // Mutate the output types and insert the conversion to keep our
