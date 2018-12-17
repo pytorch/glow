@@ -174,7 +174,7 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     }
   }
 
-  return true;
+  return elementTy == ElemKind::FloatTy;
 }
 
 bool CPUBackend::shouldLower(const Node *N) const {

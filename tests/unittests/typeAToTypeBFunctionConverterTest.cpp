@@ -25,10 +25,14 @@
 
 using namespace glow;
 
-struct AllBackends : public ::testing::TestWithParam<BackendKind> {
+struct ConvertTest : public ::testing::TestWithParam<BackendKind> {
 protected:
   ExecutionEngine EE_{GetParam()};
 };
+
+class AllBackends : public ConvertTest {};
+
+class InterpOnly : public ConvertTest {};
 
 /// Check that a simple graph is converted properly.
 /// Namely, check that:
@@ -63,7 +67,7 @@ protected:
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
+TEST_P(InterpOnly, SimpleOneUseConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Context ctx;
@@ -160,7 +164,7 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
+TEST_P(InterpOnly, SimpleChainOfComputationConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Context ctx;
@@ -272,7 +276,7 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
+TEST_P(InterpOnly, DoNotConvertReLUConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Context ctx;
@@ -376,7 +380,7 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
 ///
 /// In particular, the input and outputs of the network shouldn't be modified
 /// as well as the Int64I result.
-TEST_P(AllBackends, int64IConversionFloatToFloat16) {
+TEST_P(InterpOnly, int64IConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Context ctx;
@@ -485,7 +489,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
+TEST_P(InterpOnly, OptimizeMiddleConversionsFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Context ctx;
@@ -822,7 +826,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
 /// |
 /// V
 /// Save
-TEST_P(AllBackends, convertExistingConversionToNoop) {
+TEST_P(InterpOnly, convertExistingConversionToNoop) {
   Module mod;
   Function *F = mod.createFunction("test");
   auto *placeholder =
@@ -855,6 +859,8 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
   EXPECT_TRUE(F->verify());
 }
 
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
+                        ::testing::Values(BackendKind::Interpreter));
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
                         ::testing::Values(BackendKind::Interpreter));
 

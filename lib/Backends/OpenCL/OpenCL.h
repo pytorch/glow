@@ -197,7 +197,7 @@ public:
         return false;
       }
     }
-    return true;
+    return elementTy == ElemKind::FloatTy;
   };
 
   bool shouldLower(const Node *N) const override {
