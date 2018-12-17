@@ -36,7 +36,8 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/CMakeGraphVizOptions.cm
 set(GLOW_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(GLOW_THIRDPARTY_DIR ${GLOW_SOURCE_DIR}/thirdparty)
 set(GLOW_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bin)
+set(GLOW_OUTPUT_DIR ${GLOW_BINARY_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_OUTPUT_DIR})
 set(GLOW_MODELS_DIR "" CACHE PATH
     "Directory that contains the various models, like en2gr, resnet50")
 

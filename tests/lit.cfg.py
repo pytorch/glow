@@ -12,12 +12,18 @@ import imp
 import lit.util
 import lit.formats
 
-# Play with the importer path to import the cmake generated config file.
-build_dir = os.getcwdu()
-path = os.path.join(build_dir, 'tests', 'litconfig.py')
-litconfig = imp.load_source('litconfig', path)
+# Set the path to the build generated config file.
+litconfig_path = lit_config.params.get('glow_config', None)
+if not litconfig_path:
+    litconfig_path = os.path.join(os.getcwd(), 'tests', 'litconfig.py')
+
+litconfig = imp.load_source('litconfig', litconfig_path)
 
 import litconfig
+
+# Set the available features and different paths based on the actual build
+# variables.
+litconfig.set_glow_available_features(config)
 
 def getToolPath(tool_name, tools_dir):
     tool_exe = lit.util.which(tool_name, tools_dir)
@@ -36,11 +42,10 @@ config.test_format = lit.formats.ShTest(execute_external=True)
 config.suffixes = ['.test']
 
 # Set the different string substitutions that we use in our test suite.
-tools_dir = os.path.join(build_dir, 'bin')
 config.tool_to_path = {}
 
 for tool_name in ('text-translator', 'image-classifier', 'model-runner'):
-    tool_exe = getToolPath(tool_name, tools_dir)
+    tool_exe = getToolPath(tool_name, config.tools_dir)
     config.tool_to_path[tool_name] = tool_exe
     if not tool_exe:
         # Skip the substitution for tools that are not here.
@@ -53,10 +58,6 @@ for tool_name in ('text-translator', 'image-classifier', 'model-runner'):
     # E.g., %t (tmpFile expansion) would be applied before %text-translator,
     # leaving us with <tmpFile>ext-translator and that's not what we want.
     config.substitutions.insert(0, ('%' + tool_name, tool_exe))
-
-
-# Set the available feature based on the actual cmake variables.
-litconfig.set_glow_available_features(config)
 
 if config.release_mode:
     config.available_features.add('release')
