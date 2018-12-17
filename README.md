@@ -65,7 +65,9 @@ Install the required dependencies using [Homebrew](https://brew.sh/):
   ```
 
 Note that LLVM is installed in a non-default location (`/usr/local/opt/llvm`) to
-avoid conflicts with the system's LLVM. This means CMake will need to be told where to find LLVM when building, instructions on that can be found [here](#building-with-dependencies-llvm).
+avoid conflicts with the system's LLVM. This means CMake will need to be told
+where to find LLVM when building, instructions on that can be found
+[here](#building-with-dependencies-llvm).
 
 #### Ubuntu
 
@@ -107,7 +109,8 @@ Finally, in order to support the ONNX net serialization format, Glow requires
 version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
 at `utils/install_protobuf.sh` to install a newer version from source.
 
-For details on installing OpenCL on Ubuntu please see [these instructions](docs/Building.md#opencl-on-ubuntu).
+For details on installing OpenCL on Ubuntu please see
+[these instructions](docs/Building.md#opencl-on-ubuntu).
 
 ### Configure and Build
 
@@ -197,7 +200,8 @@ slower than that of release builds. If you wish to benchmark the compiler, run
 long benchmarks, or release the product then you should compile the compiler in
 Release mode. Check the main CMake file for more details.
 
-More details on testing and running Glow can be found in: [Testing the Glow Compiler](docs/Testing.md).
+More details on testing and running Glow can be found in:
+[Testing the Glow Compiler](docs/Testing.md).
 
 ### Ahead-of-time Compilation
 
