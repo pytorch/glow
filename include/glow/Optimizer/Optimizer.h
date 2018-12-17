@@ -36,6 +36,9 @@ void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, const CompilationOptions &opts);
 void optimize(Function *F, CompilationMode mode);
+/// Fold nodes that were expressed lowered in the input model.
+void fold(Function *F, const CompilationOptions &opts);
+void fold(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent

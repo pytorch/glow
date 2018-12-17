@@ -246,7 +246,15 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
-  // Handle the request to profile the graph in preperation for quantization.
+  // Fold low-level operators into higher-level operators.
+  // This is useful when compiling an input model where some high-level
+  // operators have been lowered (this can be for instance a side effect of
+  // model converters, like converters from Tensorflow to ONNX). In this
+  // situation, such folding can then enable more optimizations and also improve
+  // the performance backends that support natively such high-level operators.
+  ::fold(F_, glow::CompilationMode::Infer);
+
+  // Handle the request to profile the graph in preparation for quantization.
   if (!dumpProfileFileOpt.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
     // optimization phase will remove stuff like repetitive transpose operations
