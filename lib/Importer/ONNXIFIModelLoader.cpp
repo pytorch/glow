@@ -155,6 +155,8 @@ ONNXIFIModelLoader::parse(const void *onnxModel, uint32_t onnxModelSize,
 
   RETURN_IF_ERR(loader->loadInputs(graphDef, loadInputsAsPlaceholders));
 
+  RETURN_IF_ERR(loader->loadInitializers(graphDef));
+
   RETURN_IF_ERR(loader->loadNetwork(graphDef));
 
   RETURN_IF_ERR(loader->setOutputNodes(graphDef));
