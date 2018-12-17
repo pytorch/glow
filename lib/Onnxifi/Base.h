@@ -40,8 +40,14 @@ public:
   explicit BackendId(glow::BackendKind kind, int id, int concurrency)
       : id_(id), concurrency_(concurrency), executionEngine_(kind) {}
 
-  /// Verify that given operation kind is supported by the backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
+
+  /// Verify that a given onnx graph is supported by the backend by importing
+  /// the onnx graph to a glow function, lowering this function, and checking
+  /// that all of the glow nodes that are contained in the lowered graph are
+  /// compatible with the glow backend.
+  onnxStatus checkGraphCompatibility(const void *onnxModel,
+                                     size_t onnxModelSize);
 
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return executionEngine_; }

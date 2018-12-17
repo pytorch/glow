@@ -58,6 +58,9 @@ public:
   /// Set the code generator to a custom \p backend.
   void setBackend(Backend *backend);
 
+  /// Get a pointer to the backend.
+  const Backend *getBackend() const;
+
   /// \returns the internal graph.
   Module &getModule() { return M_; }
 

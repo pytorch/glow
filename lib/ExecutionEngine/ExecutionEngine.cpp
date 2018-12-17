@@ -39,6 +39,8 @@ void ExecutionEngine::setBackend(Backend *backend) {
   function_.reset();
 }
 
+const Backend *ExecutionEngine::getBackend() const { return backend_.get(); }
+
 ExecutionEngine::~ExecutionEngine() = default;
 
 void glow::updateInputPlaceholders(Context &ctx,

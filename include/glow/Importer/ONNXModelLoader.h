@@ -45,9 +45,6 @@ class ONNXModelLoader
   /// multidirectional broadcasting.
   bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) override;
 
-  /// Load the network initializers from the GraphProto.
-  llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
-
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network. \returns Error if operator \p op cannot be loaded.
   llvm::Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
@@ -129,6 +126,9 @@ protected:
   /// stream \p iStream.
   static llvm::Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(google::protobuf::io::ZeroCopyInputStream &iStream);
+
+  /// Load the network initializers from the GraphProto.
+  llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
 public:
   /// Creates a ONNX model loader to build \p F.
