@@ -80,11 +80,57 @@ bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
       return false;
     }
   }
+
   if (elementTy == ElemKind::Float16Ty) {
-    return false;
+    switch (opKind) {
+    case Kinded::Kind::TileNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
+    case Kinded::Kind::GatherNodeKind:
+    case Kinded::Kind::ConvolutionNodeKind:
+    case Kinded::Kind::FullyConnectedNodeKind:
+    case Kinded::Kind::AvgPoolNodeKind:
+    case Kinded::Kind::MaxPoolNodeKind:
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+    case Kinded::Kind::SoftMaxNodeKind:
+    case Kinded::Kind::CrossEntropyLossNodeKind:
+    case Kinded::Kind::BatchOneHotNodeKind:
+    case Kinded::Kind::LocalResponseNormalizationNodeKind:
+    case Kinded::Kind::AddNodeKind:
+    case Kinded::Kind::SubNodeKind:
+    case Kinded::Kind::MulNodeKind:
+    case Kinded::Kind::DivNodeKind:
+    case Kinded::Kind::MaxNodeKind:
+    case Kinded::Kind::MinNodeKind:
+    case Kinded::Kind::CmpLTENodeKind:
+    case Kinded::Kind::CmpEQNodeKind:
+    case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::PowNodeKind:
+    case Kinded::Kind::IsNaNNodeKind:
+    case Kinded::Kind::LogNodeKind:
+    case Kinded::Kind::SelectNodeKind:
+    case Kinded::Kind::MatMulNodeKind:
+    case Kinded::Kind::BatchedAddNodeKind:
+    case Kinded::Kind::BatchedReduceAddNodeKind:
+    case Kinded::Kind::LengthsSumNodeKind:
+    case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    case Kinded::Kind::SparseToDenseNodeKind:
+    case Kinded::Kind::TopKNodeKind:
+    case Kinded::Kind::BatchNormalizationNodeKind:
+    case Kinded::Kind::SliceNodeKind:
+    case Kinded::Kind::ConcatNodeKind:
+    case Kinded::Kind::PadNodeKind:
+    case Kinded::Kind::ConvertToNodeKind:
+    case Kinded::Kind::SplatNodeKind:
+    case Kinded::Kind::SigmoidCrossEntropyWithLogitsNodeKind:
+      return true;
+    default:
+      return false;
+    }
   }
 
-  return true;
+  return elementTy == ElemKind::FloatTy;
 }
 
 bool Interpreter::shouldLower(const Node *N) const {

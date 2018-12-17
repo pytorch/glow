@@ -32,6 +32,9 @@ TypeAToTypeBFunctionConverter::TypeAToTypeBFunctionConverter(
 }
 
 bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
+  if (!EE_.isOpSupported(node.getKind(), dstKind_)) {
+    return false;
+  }
   if (doNotConvertKinds_.count(node.getKind())) {
     return false;
   }
