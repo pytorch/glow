@@ -61,11 +61,11 @@ Install the required dependencies using [Homebrew](https://brew.sh/):
 
   ```bash
   brew install cmake graphviz libpng ninja protobuf wget
-  brew install --with-toolchain llvm@6
+  brew install --with-toolchain llvm@7
   ```
 
 Note that LLVM is installed in a non-default location (`/usr/local/opt/llvm`) to
-avoid conflicts with the system's LLVM.
+avoid conflicts with the system's LLVM. This means CMake will need to be told where to find LLVM when building, instructions on that can be found [here](#building-with-dependencies-llvm).
 
 #### Ubuntu
 
@@ -107,44 +107,9 @@ Finally, in order to support the ONNX net serialization format, Glow requires
 version on older Ubuntu (e.g. 14.04). If this is the case, we suggest to look
 at `utils/install_protobuf.sh` to install a newer version from source.
 
-#### OpenCL on Ubuntu
+For details on installing OpenCL on Ubuntu please see [these instructions](docs/Building.md#opencl-on-ubuntu).
 
-If you decide to use OpenCL, the easiest way is to install
-portable open source implementation of the OpenCL standard,
-[pocl](https://github.com/pocl/pocl). Glow relies on pocl to run OpenCL tests
-on CI. All required steps are outlined in the [install_pocl]
-(https://github.com/pytorch/glow/blob/master/.circleci/build.sh#L9) method.
-
-Alternatively, you can follow these steps:
-
-1. Install necessary packages:
-
-  ```bash
-  sudo apt-get install ocl-icd-opencl-dev ocl-icd-libopencl1 opencl-headers \
-      clinfo
-  ```
-
-2. Install the appropriate runtime for your CPU/GPU. This will depend on your
-hardware. If you have an Intel CPU with onboard graphics, you can navigate to
-Intel's compute-runtime releases page on Github at
-https://github.com/intel/compute-runtime/releases/ and follow their
-instructions. You will probably want to choose the latest release and then
-download and install about ~4 prebuilt packages. At the time of this writing,
-the prebuilt packages of compute-runtime Release 18.45.11804 ran successfully
-with Glow on an Intel Core i7-7600U running Ubuntu 16.04.1.
-
-3. To determine if installation was successful, you can run the following
-command:
-
-  ```bash
-  clinfo
-  ```
-
-This will display information about your OpenCL platforms and devices (if
-found). Lastly, build Glow with the cmake flag `-DGLOW_WITH_OPENCL=ON` and run
-the test `OCLTest`.
-
-### Configure and build
+### Configure and Build
 
 To build the compiler, create a build directory and run cmake on the source
 directory. It's a good idea to build two configurations (Release and Debug)
@@ -161,7 +126,11 @@ good idea to build the project outside of the source directory.
 It's possible to configure and build the compiler with any CMake generator,
 like GNU Makefiles, Ninja and Xcode build.
 
-### Building with dependencies (LLVM)
+For platform-specific build instructions and advanced options, such as
+building with Address-Sanitizers refer to this guide:
+[Building the Compiler](docs/Building.md).
+
+#### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
 5.0 or later. If you have LLVM installed in a non-default location (for
@@ -172,7 +141,7 @@ installed in `/usr/local/opt`:
   ```bash
   cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm
+      -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm@7
   ```
 
 If LLVM is not available on your system you'll need to build it manually.  Run
@@ -180,10 +149,6 @@ the script '`/utils/build_llvm.sh` to clone, build and install LLVM in a local
 directory. You will need to configure Glow with the flag `-DCMAKE_PREFIX_PATH`
 to tell the build system where to find LLVM (e.g. the location of
 `llvm_install/` if using `build_llvm.sh`).
-
-For more platform-specific build instructions and advanced options, such as
-building with Address-Sanitizers refer to this guide:
-[Building the Compiler](docs/Building.md).
 
 ## Testing and Running
 
@@ -232,8 +197,7 @@ slower than that of release builds. If you wish to benchmark the compiler, run
 long benchmarks, or release the product then you should compile the compiler in
 Release mode. Check the main CMake file for more details.
 
-More details on testing and running Glow can be found in: [Testing the Glow
-Compiler](docs/Testing.md).
+More details on testing and running Glow can be found in: [Testing the Glow Compiler](docs/Testing.md).
 
 ### Ahead-of-time Compilation
 
@@ -242,36 +206,12 @@ code.  We provide resnet50 (both quantized and non-quantized versions) as an
 example of this capability in `examples/bundles/resnet50`.  See [Creating
 Standalone Executable Bundles](docs/AOT.md) for more detail.
 
-
-### LLVM Integrated Tester (LIT) Testing
-
-Glow also comes with tests integrated with the build environment for our command
-line tools. We run those tests as part of our continuous integration (CI).
-
-To run them as part of your local build, you need to install a couple more
-dependencies (see [Using LIT](docs/LIT.md) for more details).
-Then, you can reproduce what our CI configuration with:
-```bash
-  cmake -G Ninja <glow_src>  -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm         \
-        -DGLOW_MODELS_DIR=<downloaded_c2_models>
-```
-
-Assuming you have all the required dependencies, the lit tests get
-run with the other CMake tests using:
-```bash
-  ninja check
-```
-
-Note: The difference between `ninja test` and `ninja check` is that
-`ninja check` makes sure the build dependencies are current before
-running the tests.
-
 ## Contributing
 
-To get started, please refer to the following guides:
+To get started contributing, please refer to the following guides:
 * [Contributing](CONTRIBUTING.md)
 * [Coding Standards](docs/CodingStandards.md)
+* [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ### Communication
 
