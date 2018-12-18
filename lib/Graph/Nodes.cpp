@@ -330,6 +330,14 @@ bool Constant::verify() const {
                            *getType(), getPayload().getType(), this);
 }
 
+Constant *Constant::clone() const {
+  return new Constant(getName(), payload_.clone());
+}
+
+Placeholder *Placeholder::clone() const {
+  return new Placeholder(getName(), Node::getType(0), isTrainable_);
+}
+
 bool ConvolutionGradNode::verify() const {
   bool isValid = verifyInputAndGradInputTypes(getInput(),
                                               getGradOfInputNamedInput(), this);

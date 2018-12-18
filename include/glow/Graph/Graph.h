@@ -32,7 +32,7 @@ namespace glow {
 class Context;
 
 /// List of Types.
-using TypesList = std::list<Type>;
+using TypesList = std::shared_ptr<std::list<Type>>;
 /// Intrusive list of Nodes.
 using NodesList = llvm::iplist<glow::Node>;
 /// List of pointers to Nodes. The nodes are not owned by the list.
@@ -60,7 +60,7 @@ class Module final {
   PseudoRNG PRNG_;
 
 public:
-  Module() = default;
+  Module() : types_(std::make_shared<std::list<Type>>()) {}
 
   ~Module();
 
@@ -103,6 +103,10 @@ public:
   FunctionList &getFunctions() { return functions_; }
 
   const FunctionList &getFunctions() const { return functions_; }
+
+  /// \returns a new Module with a copy of each Function and Constant node, but
+  /// with the same Placeholders.
+  std::unique_ptr<Module> clone() const;
 
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
@@ -771,6 +775,11 @@ public:
   /// \returns a new function that is a copy of the current function.
   Function *clone(llvm::StringRef newName,
                   llvm::DenseMap<Node *, Node *> *map = nullptr);
+
+  /// Clone the current function into the provided Function, which may be in a
+  /// different Module.
+  bool cloneInto(Function *fn, llvm::DenseMap<Node *, Node *> *map = nullptr,
+                 llvm::DenseMap<Node *, Node *> *constants = nullptr);
 
   /// Verify the correctness of the Function.
   /// \returns true when the function is valid. False otherwise.

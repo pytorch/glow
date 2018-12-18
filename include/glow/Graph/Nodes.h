@@ -92,7 +92,7 @@ public:
   const Tensor &getPayload() const { return payload_; }
 
   template <class ElemTy = float> Handle<ElemTy> getHandle() {
-    return getPayload().getHandle<ElemTy>();
+    return payload_.getHandle<ElemTy>();
   }
 
   void assign(const Tensor *t) { payload_.assign(t); }
@@ -102,12 +102,14 @@ public:
   llvm::hash_code getHash() const;
 
   bool verify() const;
+
+  Constant *clone() const;
 };
 
 /// Placeholder nodes are unbound-storage. The content tensors are attached to
 /// this node at runtime. Placeholders are used as inputs and output nodes to
 /// the network.
-class Placeholder : public Storage {
+class Placeholder : public Storage, public Refcounted {
   /// Specifies if the placeholder is trainable.
   bool isTrainable_;
 
@@ -119,6 +121,8 @@ public:
     addResult(Ty);
   }
 
+  virtual ~Placeholder() {}
+
   /// \returns True if the placeholder are trainable during
   /// differentiation.
   bool isTraining() const { return isTrainable_; }
@@ -126,6 +130,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;
   }
+
+  Placeholder *clone() const;
 
   std::string getDebugDesc() const;
 

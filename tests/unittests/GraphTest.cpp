@@ -25,10 +25,12 @@
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
 
 using namespace glow;
+using llvm::isa;
 
 TEST(Graph, testVariableErasure) {
   Module MD;
@@ -1325,4 +1327,64 @@ TEST(Graph, cloneContextRuns) {
   // Contexts are no longer identical.
   EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
   EXPECT_FALSE(saveBacking1->isEqual(*saveBacking2));
+}
+
+TEST(Graph, cloneModule) {
+  Module mod;
+
+  auto *F = mod.createFunction("main");
+  auto *in = mod.createPlaceholder(ElemKind::FloatTy, {1}, "in", false);
+  auto *relu1 = F->createRELU("relu1", in);
+  auto *relu2 = F->createRELU("relu2", relu1);
+
+  Constant *C = mod.createConstant(ElemKind::FloatTy, {1}, "const");
+  auto *add = F->createAdd("add", relu2, C);
+  F->createSave("save", add);
+
+  // Sanity check module looks how we expect.
+  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  EXPECT_EQ(mod.getConstants().size(), 1);
+
+  // Make a copy.
+  auto modClone = mod.clone();
+
+  // Cloned module has the same number of nodes.
+  EXPECT_EQ(modClone->getPlaceholders().size(), mod.getPlaceholders().size());
+  EXPECT_EQ(modClone->getConstants().size(), mod.getConstants().size());
+  EXPECT_EQ(modClone->getFunctions().size(), mod.getFunctions().size());
+  EXPECT_EQ(modClone->getFunction("main")->getNodes().size(),
+            mod.getFunction("main")->getNodes().size());
+
+  // Placeholders are the same.
+  EXPECT_EQ(modClone->getPlaceholderByName("in"),
+            mod.getPlaceholderByName("in"));
+
+  // Constants are not the same.
+  EXPECT_NE(modClone->getConstantByName("const"),
+            mod.getConstantByName("const"));
+
+  // Functions are not the same.
+  Function *OF = mod.getFunction("main");
+  Function *CF = modClone->getFunction("main");
+  EXPECT_EQ(F, OF);
+  EXPECT_NE(OF, CF);
+
+  // Functions are *really* not the same.
+  for (const auto &node : OF->getNodes()) {
+    auto *clonedNode = CF->getNodeByName(node.getName());
+    EXPECT_NE(&node, clonedNode);
+    EXPECT_EQ(node.getNumInputs(), clonedNode->getNumInputs());
+
+    for (unsigned inp = 0, e = node.getNumInputs(); inp < e; inp++) {
+      auto input = node.getNthInput(inp);
+      auto clonedInput = clonedNode->getNthInput(inp);
+      if (isa<Placeholder>(input.getNode())) {
+        // But Placeholders are the same.
+        EXPECT_EQ(input.getNode(), clonedInput.getNode());
+      } else {
+        EXPECT_NE(input.getNode(), clonedInput.getNode());
+      }
+    }
+  }
 }

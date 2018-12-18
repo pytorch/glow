@@ -61,10 +61,13 @@ void Module::clear() {
     Constant *v = *it;
     delete v;
   }
+
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
        it++) {
     Placeholder *p = *it;
-    delete p;
+    if (p->decRef()) {
+      delete p;
+    }
   }
   constants_.clear();
   placeholders_.clear();
@@ -325,13 +328,13 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
 }
 
 TypeRef Module::uniqueType(const Type &T) {
-  for (auto &tp : types_) {
+  for (auto &tp : *types_) {
     if (T.isEqual(tp)) {
       return &tp;
     }
   }
 
-  return &*types_.insert(types_.begin(), T);
+  return &*types_->insert(types_->begin(), T);
 }
 
 TypeRef Module::getVoidTy() { return uniqueType(Type()); }
@@ -2310,6 +2313,33 @@ Placeholder *Module::getPlaceholderByName(llvm::StringRef name) {
   return nullptr;
 }
 
+std::unique_ptr<Module> Module::clone() const {
+  auto newM = std::make_unique<Module>();
+  newM->types_ = types_;
+
+  llvm::DenseMap<Node *, Node *> constantMap;
+  for (auto *constant : constants_) {
+    auto *newC = constant->clone();
+    constantMap[constant] = newC;
+    newM->addConstant(newC);
+  }
+
+  for (auto *ph : placeholders_) {
+    ph->incRef();
+  }
+  newM->placeholders_ = placeholders_;
+
+  for (auto *F : functions_) {
+    auto *newF = newM->createFunction(F->getName());
+    bool cloneResult = F->cloneInto(newF, nullptr, &constantMap);
+    assert(cloneResult && "Failed to clone a function while cloning Module");
+    (void)cloneResult;
+  }
+
+  assert(newM->verify());
+  return newM;
+}
+
 void Module::eraseConstant(Constant *N) {
   auto &vars = getConstants();
   auto I = std::find(vars.begin(), vars.end(), N);
@@ -2331,7 +2361,13 @@ Function *Function::clone(llvm::StringRef newName,
                           llvm::DenseMap<Node *, Node *> *map) {
   Module *M = getParent();
   auto *newF = M->createFunction(newName);
+  cloneInto(newF, map);
+  assert(newF->verify());
+  return newF;
+}
 
+bool Function::cloneInto(Function *fn, llvm::DenseMap<Node *, Node *> *map,
+                         llvm::DenseMap<Node *, Node *> *constants) {
   // Maps current nodes to new nodes.
   llvm::DenseMap<Node *, Node *> currToNew;
 
@@ -2340,13 +2376,13 @@ Function *Function::clone(llvm::StringRef newName,
     Node *copy = N.clone();
     // Record the copy relationship between the graphs.
     currToNew[&N] = copy;
-    newF->addNode(copy);
+    fn->addNode(copy);
   }
 
   // At this point we have a new invalid function that points into nodes in
   // the original function. Here we update the links between the nodes in the
   // new function.
-  for (auto &N : newF->getNodes()) {
+  for (auto &N : fn->getNodes()) {
     // Fix each one of the inputs of this node.
     for (unsigned inp = 0, e = N.getNumInputs(); inp < e; inp++) {
       auto input = N.getNthInput(inp);
@@ -2355,6 +2391,18 @@ Function *Function::clone(llvm::StringRef newName,
       if (it == currToNew.end()) {
         assert(isa<Storage>(input.getNode()) &&
                "Could not find a mapping for some node!");
+
+        assert((fn->getParent() == getParent() || constants != nullptr) &&
+               "Attempt to clone a function into a new Module without cloning "
+               "Constants.");
+
+        // Fix constants inputs to the copy.
+        if (constants) {
+          auto cIt = constants->find(input.getNode());
+          if (cIt != constants->end()) {
+            N.setNthInput(inp, NodeValue(cIt->second, input.getResNo()));
+          }
+        }
         continue;
       }
 
@@ -2371,8 +2419,9 @@ Function *Function::clone(llvm::StringRef newName,
     }
   }
 
-  assert(newF->getNodes().size() == getNodes().size() && "Invalid func size");
-  return newF;
+  assert(fn->verify());
+  assert(fn->getNodes().size() == getNodes().size() && "Invalid func size");
+  return true;
 }
 
 /// Verify the input \p idx of a node \p N. Check that the node \p N is in the

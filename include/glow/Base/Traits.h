@@ -22,6 +22,8 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 
+#include <atomic>
+
 namespace glow {
 
 /// This add the capability to name subclasses.
@@ -101,6 +103,40 @@ public:
 };
 
 using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
+
+/// Subclasses of Refcounted have an internal count which can be used to manage
+/// lifetime of shared objects.
+/// Note: object is constructed with count == 1.
+class Refcounted {
+private:
+  std::atomic<size_t> count_{1};
+
+public:
+  virtual ~Refcounted() { assert(count_ == 0); }
+  /// Increment the refcount.
+  /// /returns true if the increment was safe, i.e. it was not previously
+  /// deleted.
+  bool incRef() {
+    bool res = count_.fetch_add(1, std::memory_order_release) > 0;
+    assert(res && "object refcount was zero, object may be deleted");
+    return res;
+  }
+
+  /// Decrement the refcount.
+  /// /returns true if the count is now zero.
+  bool decRef() {
+    // Spin over the decref because we need to be precise about which
+    // decremement caused a drop to zero, since it may be used to trigger
+    // delete
+    while (true) {
+      size_t pre = count_.load();
+      if (count_.compare_exchange_strong(pre, pre - 1)) {
+        return pre == 1;
+      }
+    }
+    return false;
+  };
+};
 
 } // namespace glow
 
