@@ -17,38 +17,50 @@
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Graph/Graph.h"
 
-#include <list>
+#include <future>
+#include <mutex>
 
 using namespace glow;
 using namespace runtime;
+using DeviceID = unsigned int;
 Provisioner::Provisioner() = default;
 
 ResultCode
 Provisioner::provision(dependencyDAG &networks, executionDAG &runDAG,
-                       std::unordered_map<int, DeviceManager> &devices) {
+                       std::unordered_map<DeviceID, DeviceManager> &devices) {
   // Check that there is available space for provisioning.
-  // This will be planning phase, for the first pass we will just assign in
+  // This will be the planning phase, for the first pass we will just assign in
   // order. Later we will want to check if networks are already loaded.
-  std::unordered_map<int, Module *> deviceAssignment;
-  std::list<int> devicesList;
-  for (auto deviceID : devices) {
-    deviceList.push_back(deviceID.first);
-  }
+  std::unordered_map<DeviceID, Module *> deviceAssignment;
   // Assuming number of devices > number of modules.
-  for (auto module : networks.modules) {
-    auto device = deviceList.pop_front();
-    deviceAssignment.emplace(device, module);
+  if (networks.modules.size() > devices.size()) {
+    return FAILED;
   }
-  // Assuming there is space, start provisioning.
-  // Walk the list of modules and call addNetwork.
-  // On success add the deviceID to the executionDAG
-  // If a module fails to provision try on a different device if available.
-  ////// If assignment fails, how do we get the unique_ptr back?
-  /// through callback?
+  // Walk devices and networks.modules and pair them as assignments.
+  for (auto it_device = devices.begin(), it_module = networks.modules.begin();
+       it_device != devices.end() || it_module != networks.modules.end();) {
+    // Pair Module and Device
+    deviceAssignment.emplace(it_device->first, std::move(*it_module));
+    ++it_module;
+    ++it_device;
+  }
+  // For each assignment:
+  // Check that the device has space, if not fail.
+  // Call addNetwork and pass in callback, on success add the deviceID to the
+  // executionDAG If a module fails to provision return failure, otherwise wait
+  // until all modules are added then return success.
+  std::mutex provisioned;
+  std::unordered_map<Module *, DeviceID> networkIDs;
+  std::promise<bool> done;
+  auto ready = done.get_future();
   for (auto assignment : deviceAssignment) {
-    deviceID = assignment.first;
-    module = assignment.second;
+    deviceID = assignment->first;
+    modulePtr = assignment->second.get();
     device = devices[deviceID];
-    device.addNetwork()
+    device.addNetwork(std::move(assignment.second),
+                      [&provisioned, &networkIDs, modulePtr, &done]() {
+                        provisioned.lock();
+                        provisioned.unlock();
+                      })
   }
 };
