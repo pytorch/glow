@@ -30,12 +30,6 @@ namespace glow {
 /// line numbers also.
 extern llvm::ExitOnError exitOnErr;
 
-/// Take a message \p str and prepend it with the given \p file and \p line
-/// number. This is useful for augmenting StringErrors with information about
-/// where they were generated.
-std::string addFileAndLineToError(llvm::StringRef str, llvm::StringRef file,
-                                  uint32_t line);
-
 /// Is true_type only if applied to llvm::Error or a descendant.
 template <typename T>
 struct IsLLVMError : public std::is_base_of<llvm::Error, T> {};
@@ -44,6 +38,78 @@ struct IsLLVMError : public std::is_base_of<llvm::Error, T> {};
 template <typename> struct IsLLVMExpected : public std::false_type {};
 template <typename T>
 struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
+
+/// Represents errors in Glow. GlowErr track the file name and line number of
+/// where they were created as well as a textual message and/or a error code to
+/// help identify the type of error the occurred programtically.
+class GlowErr final : public llvm::ErrorInfo<GlowErr> {
+public:
+  /// Used by ErrorInfo::classID.
+  static char ID;
+  /// An enumeration of error codes representing various possible errors that
+  /// could occur.
+  enum EC {
+    // An unknown error ocurred. This is the default value.
+    UNKNOWN = 0,
+    // Model loader encountered an unsupported shape.
+    MODEL_LOADER_UNSUPPORTED_SHAPE = 1,
+    // Model loader encountered an unsupported operator.
+    MODEL_LOADER_UNSUPPORTED_OPERATOR = 2,
+    // Model loader encountered an unsupported attribute.
+    MODEL_LOADER_UNSUPPORTED_ATTRIBUTE = 3,
+    // Model loader encountered an unsupported datatype.
+    MODEL_LOADER_UNSUPPORTED_DATATYPE = 4,
+    // Model loader encountered an unsupported ONNX version.
+    MODEL_LOADER_UNSUPPORTED_ONNX_VERSION = 5,
+    // Model loader encountered an invalid protobuf.
+    MODEL_LOADER_INVALID_PROTOBUF = 6,
+  };
+
+  /// GlowErr is not convertable to std::error_code. This is included for
+  /// compatiblity with ErrorInfo.
+  virtual std::error_code convertToErrorCode() const override {
+    return llvm::inconvertibleErrorCode();
+  }
+
+  /// Log to \p OS relevant error information including the file name and
+  /// line number the GlowErr was created on as well as the message and/or error
+  /// code the GlowErr was created with.
+  void log(llvm::raw_ostream &OS) const override {
+    OS << "file: " << fileName_ << " line: " << lineNumber_;
+    if (ec_ != EC::UNKNOWN) {
+      OS << " error code: " << ec_;
+    }
+    if (!message_.empty()) {
+      OS << " message: " << message_;
+    }
+  }
+
+  GlowErr(llvm::StringRef fileName, int32_t lineNumber, llvm::StringRef message,
+          EC ec)
+      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
+        ec_(ec) {}
+
+  GlowErr(llvm::StringRef fileName, int32_t lineNumber, EC ec,
+          llvm::StringRef message)
+      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
+        ec_(ec) {}
+
+  GlowErr(llvm::StringRef fileName, int32_t lineNumber, EC ec)
+      : lineNumber_(lineNumber), fileName_(fileName), ec_(ec) {}
+
+  GlowErr(llvm::StringRef fileName, int32_t lineNumber, llvm::StringRef message)
+      : lineNumber_(lineNumber), fileName_(fileName), message_(message) {}
+
+private:
+  /// The line number the error was generated on.
+  size_t lineNumber_;
+  /// The name of the file the error was generated in.
+  std::string fileName_;
+  /// Optional message associated with the error.
+  std::string message_;
+  /// Optional error code associated with the error.
+  EC ec_ = EC::UNKNOWN;
+};
 
 /// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
 /// an error, the program will exit.
@@ -56,15 +122,12 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 #define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
 
 /// Make a new llvm::StringError.
-#define MAKE_ERR(str)                                                          \
-  llvm::make_error<llvm::StringError>(                                         \
-      (addFileAndLineToError(str, __FILE__, __LINE__)),                        \
-      llvm::inconvertibleErrorCode())
+#define MAKE_ERR(...) llvm::make_error<GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
 
 /// Makes a new llvm::StringError and returns it.
-#define RETURN_ERR(str)                                                        \
+#define RETURN_ERR(...)                                                        \
   do {                                                                         \
-    return MAKE_ERR(str);                                                      \
+    return MAKE_ERR(__VA_ARGS__);                                              \
   } while (0)
 
 /// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
@@ -94,10 +157,10 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 
 /// Takes a predicate \p and if it is false then creates a new llvm::StringError
 /// and returns it.
-#define RETURN_ERR_IF_NOT(p, str)                                              \
+#define RETURN_ERR_IF_NOT(p, ...)                                              \
   do {                                                                         \
     if (!(p)) {                                                                \
-      RETURN_ERR(str);                                                         \
+      RETURN_ERR(__VA_ARGS__);                                                 \
     }                                                                          \
   } while (0)
 } // end namespace glow
