@@ -16,6 +16,7 @@ target_link_libraries(onnxifi-glow-lib
                         ExecutionEngine
                         Graph
                         Importer
+                        Optimizer
                         ThreadPool)
 
 target_link_libraries(onnxifi-glow
@@ -23,8 +24,9 @@ target_link_libraries(onnxifi-glow
                         ExecutionEngine
                         Graph
                         Importer
+                        Optimizer
                         ThreadPool)
-			
+
 target_compile_definitions(onnxifi-glow
                            PRIVATE
                              ONNXIFI_BUILD_LIBRARY)
