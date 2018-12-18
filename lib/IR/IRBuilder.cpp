@@ -56,7 +56,7 @@ void IRBuilder::deallocateActiveInstrs() {
 //                        High level operators.
 //===----------------------------------------------------------------------===//
 MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
-    Value *input, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
 
@@ -66,14 +66,14 @@ MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
   // Allocate cache arrays that store the x and y coordinates of the incoming
   // gradient for each max element.
   Value *srcXY =
-      createAllocActivationInst("srcXY", ElemKind::Int64ITy,
+      createAllocActivationInst(name.str() + ".srcXY", ElemKind::Int64ITy,
                                 {idim.n, outSz.first, outSz.second, idim.c, 2});
 
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
-  Value *dest = createAllocActivationInst("pool.res", outTy);
+  Value *dest = createAllocActivationInst(name.str() + ".res", outTy);
 
-  return createMaxPoolWithXYInst("pool", dest, input, srcXY, kernels, strides,
+  return createMaxPoolWithXYInst(name, dest, input, srcXY, kernels, strides,
                                  pads);
 }
 
@@ -92,10 +92,12 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
   return createAvgPoolInst("pool", dest, input, kernels, strides, pads);
 }
 
-CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(Value *p,
+CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(llvm::StringRef name,
+                                                          Value *p,
                                                           Value *labels) {
-  auto *res = createAllocActivationInst("celoss.res", ElemKind::FloatTy, {1});
-  return createCrossEntropyLossInst("celoss", p, labels, res);
+  auto *res =
+      createAllocActivationInst(name.str() + ".res", ElemKind::FloatTy, {1});
+  return createCrossEntropyLossInst(name, p, labels, res);
 }
 
 /// Creates a tensorview instruction with the following parameters:
@@ -120,17 +122,19 @@ TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
 }
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
-    Value *input, size_t halfWindowSize, float alpha, float beta, float k) {
+    llvm::StringRef name, Value *input, size_t halfWindowSize, float alpha,
+    float beta, float k) {
   auto ty = input->getType();
-  auto *scale = createAllocActivationInst("scale", ty);
+  auto *scale = createAllocActivationInst(name.str() + ".scale", ty);
 
   // The output tensor is of the same shape as the input tensor.
-  auto *res = createAllocActivationInst("LRN.res", ty);
-  return createLocalResponseNormalizationInst("LRN", res, input, scale,
+  auto *res = createAllocActivationInst(name.str() + ".res", ty);
+  return createLocalResponseNormalizationInst(name, res, input, scale,
                                               halfWindowSize, alpha, beta, k);
 }
 
-TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
+TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input,
+                                  size_t k) {
   auto inDims = input->dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
@@ -139,13 +143,13 @@ TopKInst *IRBuilder::createTopKOp(Value *input, size_t k) {
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
   // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst("topk.scratch", ElemKind::Int64ITy,
-                                            {inDims.back() * 2});
-  createSplatInst("topk.zero.scratch", scratch, 0);
-  auto *values = createAllocActivationInst("topk.values", outTy);
-  auto *indices =
-      createAllocActivationInst("topk.indices", ElemKind::Int64ITy, outDims);
-  return createTopKInst("topk", values, indices, input, scratch, k);
+  auto *scratch = createAllocActivationInst(
+      name.str() + ".scratch", ElemKind::Int64ITy, {inDims.back() * 2});
+  createSplatInst(name.str() + ".zero.scratch", scratch, 0);
+  auto *values = createAllocActivationInst(name.str() + ".values", outTy);
+  auto *indices = createAllocActivationInst(name.str() + ".indices",
+                                            ElemKind::Int64ITy, outDims);
+  return createTopKInst(name.str(), values, indices, input, scratch, k);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {
@@ -171,7 +175,6 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
                                       WeightVar::MutabilityKind m) {
   auto *A = new WeightVar(uniqueName(name), T, m);
   F_->getWeights().push_back(A);
-  A->setName(name);
   return A;
 }
 
