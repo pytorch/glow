@@ -155,11 +155,10 @@ public:
     case glow::Kinded::Kind::MaxPoolNodeKind: {
       auto *P = cast<MaxPoolNode>(N);
       auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createMaxPoolWithXYOp(in, P->getKernels(),
-                                               P->getStrides(), P->getPads());
+      auto *V = builder_.createMaxPoolWithXYOp(
+          N->getName(), in, P->getKernels(), P->getStrides(), P->getPads());
       Value *dest = V->getDest();
       nodeToInstr_[N] = V;
-      V->setName(N->getName());
       registerIR(N, dest);
       break;
     }
@@ -222,8 +221,7 @@ public:
       auto *CELoss = cast<CrossEntropyLossNode>(N);
       auto *P = valueForNode(CELoss->getP());
       auto *Labels = valueForNode(CELoss->getLabels());
-      auto *V = builder_.createCrossEntropyLossOp(P, Labels);
-      V->setName(N->getName());
+      auto *V = builder_.createCrossEntropyLossOp(N->getName(), P, Labels);
       registerIR(N, V->getCE());
       nodeToInstr_[N] = V;
       break;
@@ -326,9 +324,8 @@ public:
       auto *LR = cast<LocalResponseNormalizationNode>(N);
       auto *in = valueForNode(LR->getInput());
       auto *V = builder_.createLocalResponseNormalizationOp(
-          in, LR->getHalfWindowSize(), LR->getAlpha(), LR->getBeta(),
-          LR->getK());
-      V->setName(N->getName());
+          N->getName(), in, LR->getHalfWindowSize(), LR->getAlpha(),
+          LR->getBeta(), LR->getK());
       nodeToInstr_[N] = V;
       registerIR(N, V->getDest());
       break;
@@ -361,15 +358,13 @@ public:
       auto *R = cast<SaveNode>(N);
       auto *src = valueForNode(R->getInput());
       auto *dest = valueForNode(R->getOutput());
-      auto *V = builder_.createCopyInst("save", dest, src);
-      V->setName(N->getName());
+      builder_.createCopyInst(N->getName(), dest, src);
       break;
     }
     case glow::Kinded::Kind::ConstantKind: {
       auto *V = cast<Constant>(N);
       auto *W = builder_.createWeightVar(V->getType(), V->getName(),
                                          WeightVar::MutabilityKind::Constant);
-      W->setName(N->getName());
       registerIR(N, W);
       break;
     }
@@ -377,7 +372,6 @@ public:
       auto *P = cast<Placeholder>(N);
       auto *W = builder_.createWeightVar(P->getType(), P->getName(),
                                          WeightVar::MutabilityKind::Mutable);
-      W->setName(N->getName());
       registerIR(N, W);
       break;
     }
@@ -395,10 +389,9 @@ public:
       auto *TKN = cast<TopKNode>(N);
       auto *inputTensor = valueForNode(TKN->getInput());
       auto k = TKN->getK();
-      auto *V = builder_.createTopKOp(inputTensor, k);
+      auto *V = builder_.createTopKOp(N->getName(), inputTensor, k);
       registerIR(TKN->getValues(), V->getValues());
       registerIR(TKN->getIndices(), V->getIndices());
-      V->setName(N->getName());
       break;
     }
     }

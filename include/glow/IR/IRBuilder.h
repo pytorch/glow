@@ -52,7 +52,7 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  MaxPoolWithXYInst *createMaxPoolWithXYOp(Value *input,
+  MaxPoolWithXYInst *createMaxPoolWithXYOp(llvm::StringRef name, Value *input,
                                            llvm::ArrayRef<unsigned_t> kernels,
                                            llvm::ArrayRef<unsigned_t> strides,
                                            llvm::ArrayRef<unsigned_t> pads);
@@ -61,19 +61,19 @@ public:
                                llvm::ArrayRef<unsigned_t> strides,
                                llvm::ArrayRef<unsigned_t> pads);
 
-  CrossEntropyLossInst *createCrossEntropyLossOp(Value *P, Value *labels);
+  CrossEntropyLossInst *createCrossEntropyLossOp(llvm::StringRef name, Value *P,
+                                                 Value *labels);
 
   TensorViewInst *createTensorView(ElemKind elemKind,
                                    llvm::ArrayRef<size_t> dims, Value *src,
                                    llvm::StringRef name,
                                    llvm::ArrayRef<size_t> offsets = {});
 
-  LocalResponseNormalizationInst *
-  createLocalResponseNormalizationOp(Value *input, size_t halfWindowSize = 2,
-                                     float alpha = 1e-4, float beta = 0.75,
-                                     float k = 2.0);
+  LocalResponseNormalizationInst *createLocalResponseNormalizationOp(
+      llvm::StringRef name, Value *input, size_t halfWindowSize = 2,
+      float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
-  TopKInst *createTopKOp(Value *input, size_t k);
+  TopKInst *createTopKOp(llvm::StringRef name, Value *input, size_t k);
 
   Value *createReturnOp(Value *input);
 
