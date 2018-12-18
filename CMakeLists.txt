@@ -127,7 +127,7 @@ if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)
 endif()
 
 if (GLOW_BUILD_TESTS)
-  add_subdirectory(tests/googletest)
+  add_subdirectory(tests/googletest EXCLUDE_FROM_ALL)
   add_subdirectory(tests)
 
   # Fetch the dependencies for all the tests.
