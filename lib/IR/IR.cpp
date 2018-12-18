@@ -20,6 +20,7 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Support.h"
 
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
@@ -303,10 +304,14 @@ static void verifyLiveness(const IRFunction &M) {
 void IRFunction::verify() const {
   InstructionNumbering InstrNumbering(*this);
   assert(!instrs_.empty() && "Instruction list is empty!");
+  llvm::StringSet<> nameSet;
   for (const auto &I : instrs_) {
     I.verifyUseList(InstrNumbering);
     verifyOperandsAccess(&I);
     I.verify();
+    auto it = nameSet.insert(I.getName());
+    (void)it;
+    assert(it.second && "All Instruction and WeightVar names must be unique.");
   }
 
   verifyLiveness(*this);
@@ -317,6 +322,9 @@ void IRFunction::verify() const {
            "Weight and variable must have the same type");
     p.second->verify(*this);
     p.second->verifyUseList(InstrNumbering);
+    auto it = nameSet.insert(p.second->getName());
+    (void)it;
+    assert(it.second && "All Instruction and WeightVar names must be unique.");
   }
 }
 
