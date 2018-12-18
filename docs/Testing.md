@@ -124,3 +124,27 @@ Caffe2:
 ```
 python caffe2_pb_runner.py -i [location_of_image] -d resnet50
 ```
+
+## LLVM Integrated Tester (LIT) Testing
+
+Glow also comes with tests integrated with the build environment for our command
+line tools. We run those tests as part of our continuous integration (CI).
+
+To run them as part of your local build, you need to install a couple more
+dependencies (see [Using LIT](LIT.md) for more details).
+Then, you can reproduce what our CI configuration with:
+```bash
+  cmake -G Ninja <glow_src>  -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm         \
+        -DGLOW_MODELS_DIR=<downloaded_c2_models>
+```
+
+Assuming you have all the required dependencies, the lit tests get
+run with the other CMake tests using:
+```bash
+  ninja check
+```
+
+Note: The difference between `ninja test` and `ninja check` is that
+`ninja check` makes sure the build dependencies are current before
+running the tests.

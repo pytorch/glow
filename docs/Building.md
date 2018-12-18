@@ -12,6 +12,43 @@ support for the JIT and/or OpenCL backends, pass additional options to cmake:
   -DGLOW_WITH_CPU=1 -DGLOW_WITH_OPENCL=1
   ```
 
+### OpenCL on Ubuntu
+
+If you decide to use OpenCL, the easiest way is to install
+portable open source implementation of the OpenCL standard,
+[pocl](https://github.com/pocl/pocl). Glow relies on pocl to run OpenCL tests
+on CI. All required steps are outlined in the [install_pocl]
+(https://github.com/pytorch/glow/blob/master/.circleci/build.sh#L9) method.
+
+Alternatively, you can follow these steps:
+
+1. Install necessary packages:
+
+  ```bash
+  sudo apt-get install ocl-icd-opencl-dev ocl-icd-libopencl1 opencl-headers \
+      clinfo
+  ```
+
+2. Install the appropriate runtime for your CPU/GPU. This will depend on your
+hardware. If you have an Intel CPU with onboard graphics, you can navigate to
+Intel's compute-runtime releases page on Github at
+https://github.com/intel/compute-runtime/releases/ and follow their
+instructions. You will probably want to choose the latest release and then
+download and install about ~4 prebuilt packages. At the time of this writing,
+the prebuilt packages of compute-runtime Release 18.45.11804 ran successfully
+with Glow on an Intel Core i7-7600U running Ubuntu 16.04.1.
+
+3. To determine if installation was successful, you can run the following
+command:
+
+  ```bash
+  clinfo
+  ```
+
+This will display information about your OpenCL platforms and devices (if
+found). Lastly, build Glow with the cmake flag `-DGLOW_WITH_OPENCL=ON` and run
+the test `OCLTest`.
+
 ### Supporting multiple targets
 
 The JIT is able to target all environments supported by LLVM.  If the
