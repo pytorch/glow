@@ -381,8 +381,8 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
        << "__ = builder_.createAllocActivationInst(allocName,"
        << "CN__->get" << nodeResultName << "().getType());\n";
   }
-  os << "  auto *V = builder_.create" << name_ << "Inst(\"" << autoIRGenNodeName
-     << "\"";
+  os << "  auto *V = builder_.create" << name_ << "Inst(N->getName()";
+
   // Pass down all the output operand Values as Instruction's constructor
   // arguments.
   for (auto &kv : nodeResultNameToValueName) {
@@ -403,7 +403,6 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   }
   os << ");\n";
 
-  os << "  V->setName(N->getName());\n";
   os << "  if (N->hasPredicate()) { "
         "V->setPredicate(valueForNode(N->getPredicate())); }\n";
   // Register which outputs of a node are mapped to which output operands of the
