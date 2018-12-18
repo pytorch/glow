@@ -20,6 +20,7 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
 
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
@@ -266,3 +267,69 @@ TEST(IR, VerifyDiesOnInvalidOutputOperand) {
 }
 
 #endif /* NDEBUG */
+
+/// Verify that names of Instructions and WeightVars are uniqued when given the
+/// same name.
+TEST(IR, InstUniqueNames) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  {
+    const std::string name = "name";
+
+    // Add all of the names of the Instructions/WeightVars created to this set
+    // to verify they are unique.
+    llvm::StringSet<> nameSet;
+
+    IRBuilder builder(&M);
+    WeightVar *V1 =
+        builder.createWeightVar(ElemKind::FloatTy, {1, 4, 4, 1}, name);
+    auto it = nameSet.insert(V1->getName());
+    EXPECT_TRUE(it.second);
+
+    WeightVar *V2 = builder.createWeightVar(ElemKind::FloatTy, {4}, name);
+    it = nameSet.insert(V2->getName());
+    EXPECT_TRUE(it.second);
+
+    MaxPoolWithXYInst *MP1 =
+        builder.createMaxPoolWithXYOp(name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3});
+    it = nameSet.insert(MP1->getName());
+    EXPECT_TRUE(it.second);
+
+    // IRBuilder::createMaxPoolWithXYOp() creates alloc activation insts
+    // internally, so we dealloc them here to keep the instruction list
+    // well-formed.
+    DeallocActivationInst *DAI1 =
+        builder.createDeallocActivationInst(name, MP1->getSrcXY());
+    it = nameSet.insert(DAI1->getName());
+    EXPECT_TRUE(it.second);
+
+    DeallocActivationInst *DAI2 =
+        builder.createDeallocActivationInst(name, MP1->getDest());
+    it = nameSet.insert(DAI2->getName());
+    EXPECT_TRUE(it.second);
+
+    // IRBuilder::createTopKOp() creates alloc activation insts internally, so
+    // we dealloc them here to keep the instruction list well-formed.
+    TopKInst *TK = builder.createTopKOp(name, V2, 2);
+    it = nameSet.insert(TK->getName());
+    EXPECT_TRUE(it.second);
+
+    DeallocActivationInst *DAI3 =
+        builder.createDeallocActivationInst(name, TK->getScratch());
+    it = nameSet.insert(DAI3->getName());
+    EXPECT_TRUE(it.second);
+
+    DeallocActivationInst *DAI4 =
+        builder.createDeallocActivationInst(name, TK->getValues());
+    it = nameSet.insert(DAI4->getName());
+    EXPECT_TRUE(it.second);
+
+    DeallocActivationInst *DAI5 =
+        builder.createDeallocActivationInst(name, TK->getIndices());
+    it = nameSet.insert(DAI5->getName());
+    EXPECT_TRUE(it.second);
+
+    M.verify();
+  }
+}
