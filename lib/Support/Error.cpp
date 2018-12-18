@@ -25,4 +25,27 @@ std::string addFileAndLineToError(llvm::StringRef str, llvm::StringRef file,
   return llvm::formatv("Error at file {0} line {1} \"{2}\"", file, line, str);
 }
 
+char ModelLoadingErr::ID = 0;
+char RuntimeErr::ID = 0;
+
+llvm::Error doSomething() {
+  RETURN_MODEL_LOADING_ERR("Glow doesn't support 3D convolution",
+                           ModelLoadingErr::EC::UNSUPPORTED_SHAPE);
+}
+
+/*
+// EXAMPLE FROM DEVICE MANAGER
+using ReadyCB = std::function<void(llvm::Expected<DeviceNetworkID>)>;
+using ResultCB = std::function<void(llvm::Expected<std::unique_ptr<Context>>)>;
+
+addNetwork(networkId, module, [](llvm::Expected<DeviceNetworkID>
+deviceNetworIdOrErr) { if (deviceNetworIdOrErr) {
+    // do whatever this callback does
+    signalResults(llvm::Error::success());
+  } else {
+    signalResults(std::move(deviceNetworIdOrErr.takeError()));
+  }
+}
+
+*/
 } // namespace glow
