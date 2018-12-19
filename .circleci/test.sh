@@ -26,7 +26,7 @@ run_and_check_bundle() {
 
 run_onnxifi() {
     cd ${GLOW_SRC}
-    ${GLOW_SRC}/tests/onnxifi/test.sh
+    ./tests/onnxifi/test.sh
 }
 
 # Run unit tests and bundle tests.
