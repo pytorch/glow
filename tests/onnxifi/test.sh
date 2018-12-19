@@ -20,7 +20,7 @@ TEST_NAME=$1
 check_glow_build_dir_exist() {
   if [ ! -d "$GLOW_BUILD_DIR" ]; then
     echo "Expected Glow to be built in ${GLOW_BUILD_DIR}"
-    exit -1
+    exit 1
   fi
 }
 
@@ -30,17 +30,19 @@ copy_glow_lib() {
 
   if [ -f "${GLOW_ONNXIFI_DIR}/libonnxifi-glow.dylib" ]; then
    cp "${GLOW_ONNXIFI_DIR}/libonnxifi-glow.dylib" "${GLOW_ONNXIFI_DIR}/libonnxifi.dylib"
+   export DYLD_LIBRARY_PATH=${GLOW_ONNXIFI_DIR}
    COPIED=1
   fi
 
   if [ -f "${GLOW_ONNXIFI_DIR}/libonnxifi-glow.so" ]; then
    cp "${GLOW_ONNXIFI_DIR}/libonnxifi-glow.so" "${GLOW_ONNXIFI_DIR}/libonnxifi.so"
+   export LD_LIBRARY_PATH=${GLOW_ONNXIFI_DIR}
    COPIED=1
   fi
 
   if [ $COPIED -eq 0 ]; then
    echo "Could not find the libonnxifi-glow dynamic library in ${GLOW_ONNXIFI_DIR}"
-   exit -1
+   exit 1
   fi
 }
 
@@ -57,7 +59,7 @@ run_node_tests() {
     EXCLUDED_TEST_CASES="${CRASHED_TEST_CASES}:${FAILED_TEST_CASES}"
     GTEST_FILTER="*-${EXCLUDED_TEST_CASES}"
   fi
-  LD_LIBRARY_PATH=${GLOW_ONNXIFI_DIR} GTEST_FILTER=$GTEST_FILTER "${ONNX_BUILD_DIR}/onnxifi_test_driver_gtests" "${ONNX_TESTDATA_DIR}"
+  GTEST_FILTER=$GTEST_FILTER "${ONNX_BUILD_DIR}/onnxifi_test_driver_gtests" "${ONNX_TESTDATA_DIR}"
 }
 
 check_glow_build_dir_exist
