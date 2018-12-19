@@ -98,6 +98,7 @@ ninja
 
 # Build onnxifi test driver (Only for DEBUG mode)
 if [[ "$CIRCLE_JOB" == DEBUG ]]; then
+    cd ${GLOW_DIR}
     ${GLOW_DIR}/tests/onnxifi/build_onnxifi_tests.sh
 fi
 

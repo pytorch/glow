@@ -25,6 +25,7 @@ run_and_check_bundle() {
 }
 
 run_onnxifi() {
+    cd ${GLOW_DIR}
     ${GLOW_DIR}/tests/onnxifi/test.sh
 }
 
