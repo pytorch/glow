@@ -261,6 +261,14 @@ public:
   }
 };
 
+/// This enum is expected to match the indices order of any Arithmetic node as
+/// defined in Node::isArithmetic().
+namespace ArithmeticNode {
+constexpr unsigned LHSIdx = 0;
+constexpr unsigned RHSIdx = 1;
+constexpr unsigned ResultIdx = 0;
+} // namespace ArithmeticNode
+
 } // namespace glow
 
 namespace llvm {

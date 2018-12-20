@@ -222,14 +222,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
                     llvm::cast<Placeholder>(var.getNode()));
 
       // Replace the BN's mean and variance with the new mean and variance
-      // calculated from MVN. The indices here are based on the assumed
-      // auto-generated order from NodeGen/NodeBuilder.
-      constexpr size_t idxMean = 3;
-      assert(BN->getNthInput(idxMean) == mean && "Mean idx is incorrect");
-      BN->setNthInput(idxMean, mean);
-      constexpr size_t idxVar = 4;
-      assert(BN->getNthInput(idxVar) == var && "Var idx is incorrect");
-      BN->setNthInput(idxVar, var);
+      // calculated from MVN.
+      BN->setNthInput(BatchNormalizationNode::MeanIdx, mean);
+      BN->setNthInput(BatchNormalizationNode::VarIdx, var);
 
       toAppend.push_back(BN->getGrad(map));
 

@@ -81,25 +81,24 @@ protected:
 
     const TensorQuantizationParams &TQP = valTQPIt->second;
     // For bias of a conv op, it is quantized to int32.
-    if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind && idx == 2) {
+    if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind &&
+        idx == ConvolutionNode::BiasIdx) {
       // For bias of a conv op, it is quantized to int32. Also, we should make
       // sure its scale should be (scale of input) * (scale of weights).
       auto convN = llvm::dyn_cast<ConvolutionNode>(&use);
       NodeValue input = convN->getInput();
       NodeValue weights = convN->getFilter();
-      float scaleInput = input.getNode()->getNthResult(0).getType()->getScale();
-      float scaleWeights =
-          weights.getNode()->getNthResult(0).getType()->getScale();
+      float scaleInput = input.getType()->getScale();
+      float scaleWeights = weights.getType()->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
-               idx == 2) {
+               idx == FullyConnectedNode::BiasIdx) {
       auto fcN = llvm::dyn_cast<FullyConnectedNode>(&use);
       NodeValue input = fcN->getInput();
       NodeValue weights = fcN->getWeights();
-      float scaleInput = input.getNode()->getNthResult(0).getType()->getScale();
-      float scaleWeights =
-          weights.getNode()->getNthResult(0).getType()->getScale();
+      float scaleInput = input.getType()->getScale();
+      float scaleWeights = weights.getType()->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
     } else {
@@ -186,6 +185,34 @@ protected:
   case Kinded::Kind::TopKNodeKind:                                             \
   case Kinded::Kind::GatherNodeKind:                                           \
   case Kinded::Kind::MaxPoolNodeKind
+  /// Note that the above cases all assume that the input and output index that
+  /// they are looking for the type is at idx 0. We statically assert that here.
+  static constexpr unsigned IRConstraintInputResultIdx = 0;
+  static_assert(
+      (LocalResponseNormalizationNode::InputIdx == IRConstraintInputResultIdx &&
+       LocalResponseNormalizationNode::ResultIdx == IRConstraintInputResultIdx),
+      "LRNNode format is unexpected.");
+  static_assert((SigmoidNode::InputIdx == IRConstraintInputResultIdx &&
+                 SigmoidNode::ResultIdx == IRConstraintInputResultIdx),
+                "SigmoidNode format is unexpected.");
+  static_assert((SliceNode::InputIdx == IRConstraintInputResultIdx &&
+                 SliceNode::ResultIdx == IRConstraintInputResultIdx),
+                "SliceNode format is unexpected.");
+  static_assert((ReshapeNode::InputIdx == IRConstraintInputResultIdx &&
+                 ReshapeNode::ResultIdx == IRConstraintInputResultIdx),
+                "ReshapeNode format is unexpected.");
+  static_assert((TanhNode::InputIdx == IRConstraintInputResultIdx &&
+                 TanhNode::ResultIdx == IRConstraintInputResultIdx),
+                "TanhNode format is unexpected.");
+  static_assert((TopKNode::InputIdx == IRConstraintInputResultIdx &&
+                 TopKNode::ValuesIdx == IRConstraintInputResultIdx),
+                "TopKNode format is unexpected.");
+  static_assert((GatherNode::DataIdx == IRConstraintInputResultIdx &&
+                 GatherNode::ResultIdx == IRConstraintInputResultIdx),
+                "GatherNode format is unexpected.");
+  static_assert((MaxPoolNode::InputIdx == IRConstraintInputResultIdx &&
+                 MaxPoolNode::ResultIdx == IRConstraintInputResultIdx),
+                "MaxPoolNode format is unexpected.");
 
   /// \see FunctionConverter::morphNode.
   /// This method does the final adjustment to the output types
@@ -233,12 +260,13 @@ protected:
     casesForNodesWithIRConstraint : {
       // The constraints on the IR says that the input type must
       // be the same as the output type.
-      TypeRef inTy = node.getNthInput(0).getType();
+      TypeRef inTy = node.getNthInput(IRConstraintInputResultIdx).getType();
       TypeRef fixedTy =
-          mod_.uniqueType(ElemKind::Int8QTy, node.getNthResult(0).dims(),
+          mod_.uniqueType(ElemKind::Int8QTy,
+                          node.getNthResult(IRConstraintInputResultIdx).dims(),
                           inTy->getScale(), inTy->getOffset());
 
-      node.setType(0, fixedTy);
+      node.setType(IRConstraintInputResultIdx, fixedTy);
       assert(!lastMorphedNodeWithTypeChanges &&
              "Missed one node to rescale in postprocessing");
       lastMorphedNodeWithTypeChanges = &node;
@@ -258,7 +286,7 @@ protected:
 
     case Kinded::Kind::ConcatNodeKind: {
       auto *concat = cast<ConcatNode>(&node);
-      TypeRef outputTy = concat->getType(0);
+      TypeRef outputTy = concat->getType(ConcatNode::ResultIdx);
       assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
 
       // Concat just moves tensors around, make sure that all tensors have the
@@ -286,11 +314,12 @@ protected:
       // These nodes do not change {S,O} of the output, they use the same
       // {S,O} as the input. Make sure that rescale is applied to comply with
       // the taken profile from the node.
-      TypeRef outputTy = getTargetTypeForOutputImpl(NodeValue(&node, 0));
+      TypeRef outputTy = getTargetTypeForOutputImpl(
+          NodeValue(&node, IRConstraintInputResultIdx));
       assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
       auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
-      NodeValue val = node.getNthResult(0);
+      NodeValue val = node.getNthResult(IRConstraintInputResultIdx);
       // "node" should have only one use, the dequantize node.
       // Update this use.
       assert(
@@ -302,7 +331,7 @@ protected:
       auto *rescale =
           function_.createRescaleQuantized(node.getName(), val, outTy);
       quantizedNode = rescale;
-      dequantize->setNthInput(0, rescale);
+      dequantize->setNthInput(DequantizeNode::InputIdx, rescale);
       break;
     }
     }

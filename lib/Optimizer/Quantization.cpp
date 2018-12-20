@@ -42,7 +42,7 @@ Function *glow::profileQuantization(Context &ctx, Function *F,
   // Add Quantization Profile node to all of the floating point outputs.
   for (auto &node : G->getNodes()) {
     for (unsigned i = 0, e = node.getNumResults(); i < e; ++i) {
-      if (node.getNthResult(i).getElementType() != ElemKind::FloatTy) {
+      if (node.getElementType(i) != ElemKind::FloatTy) {
         continue;
       }
       nodesToInstrument.insert(node.getNthResult(i));

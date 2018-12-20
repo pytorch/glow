@@ -207,22 +207,33 @@ bool Node::hasSideEffects() const {
 }
 
 // NOTE: This is used in conjunction with assuming the 1st input is LHS, and 2nd
-// input is RHS. If adding a new Arithmetic inst, ensure this is the case.
+// input is RHS, and 1st result is Result.
 bool Node::isArithmetic() const {
+  // Each case includes a static assert that the generated nodes that we
+  // consider arithmetic have the expected format/order of LHS, RHS, Result.
+#define ARITHMETIC_NODE_CASE(NODE_NAME_)                                       \
+  static_assert((NODE_NAME_##Node::LHSIdx == ArithmeticNode::LHSIdx &&         \
+                 NODE_NAME_##Node::RHSIdx == ArithmeticNode::RHSIdx &&         \
+                 NODE_NAME_##Node::ResultIdx == ArithmeticNode::ResultIdx),    \
+                #NODE_NAME_                                                    \
+                "Node does not match expected arithmetic node format.");       \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind:
+
   switch (getKind()) {
-  case glow::Kinded::Kind::AddNodeKind:
-  case glow::Kinded::Kind::MulNodeKind:
-  case glow::Kinded::Kind::SubNodeKind:
-  case glow::Kinded::Kind::DivNodeKind:
-  case glow::Kinded::Kind::MaxNodeKind:
-  case glow::Kinded::Kind::MinNodeKind:
-  case glow::Kinded::Kind::CmpLTENodeKind:
-  case glow::Kinded::Kind::CmpEQNodeKind:
-  case glow::Kinded::Kind::PowNodeKind:
+    ARITHMETIC_NODE_CASE(Add)
+    ARITHMETIC_NODE_CASE(Mul)
+    ARITHMETIC_NODE_CASE(Sub)
+    ARITHMETIC_NODE_CASE(Div)
+    ARITHMETIC_NODE_CASE(Max)
+    ARITHMETIC_NODE_CASE(Min)
+    ARITHMETIC_NODE_CASE(CmpLTE)
+    ARITHMETIC_NODE_CASE(CmpEQ)
+    ARITHMETIC_NODE_CASE(Pow)
     return true;
   default:
     return false;
   }
+#undef ARITHMETIC_NODE_CASE
 }
 
 bool Node::isOverwrittenNthInput(unsigned idx) const {

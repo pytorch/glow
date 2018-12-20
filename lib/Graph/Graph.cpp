@@ -1628,10 +1628,20 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   auto *BL2 = createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
                               /*axis=*/1);
 
+  // Broadcast is usually implemented via a Tile node returned from
+  // createBroadcast(). However, if the Broadcast was a noop then there is a
+  // Reshape instead of a Tile returned. Thus, get the index here to use based
+  // on the returned kinds from createBroadcast() above.
+  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
+         "Broadcast is assumed to be either implemented via Tile or Reshape.");
+  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
+                        ? BL1->getType(TileNode::ResultIdx)
+                        : BL1->getType(ReshapeNode::ResultIdx);
+
   // Add a small epsilon to lambda1 so that we can avoid dividing by zero
   // later. It doesn't matter that this is technically incorrect because the
   // final Select will discard the results of this computation.
-  auto *eps = createSplat(name.str() + ".eps", BL1->getNthResult(0).getType(),
+  auto *eps = createSplat(name.str() + ".eps", typeBL1,
                           std::numeric_limits<float>::min());
   auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
 
@@ -1660,8 +1670,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   auto *DN = createDiv(name.str() + ".div", SN, EBL1);
 
   // Compute predicates for selecting between the two cases above.
-  auto *zeroes =
-      createSplat(name.str() + ".zeroes", BL1->getNthResult(0).getType(), 0.0f);
+  auto *zeroes = createSplat(name.str() + ".zeroes", typeBL1, 0.0f);
   auto *predicate = createCmpEQ(name.str() + ".cmpeq", BL1, zeroes);
 
   // Create Select to pick between the two Box-Cox cases.

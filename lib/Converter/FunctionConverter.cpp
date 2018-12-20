@@ -101,12 +101,10 @@ void FunctionConverter::convertOutputs(Node &node) {
       // Thus, if we want to change the value of the output of
       // a save node, we actually have to convert the input.
       if (saveNode && saveNode->getOutput() == val) {
-        unsigned inputIdx = 0;
-        assert(saveNode->getInput() == saveNode->getNthInput(inputIdx) &&
-               "Input is not idx 0");
         NodeValue input = saveNode->getInput();
         Node *conversion = createConversion(*parent, input, targetTy);
-        saveNode->setNthInput(inputIdx, getConversionOutput(*conversion));
+        saveNode->setNthInput(SaveNode::InputIdx,
+                              getConversionOutput(*conversion));
         continue;
       }
 
