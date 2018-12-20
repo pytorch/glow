@@ -1,12 +1,12 @@
-@LIT_CONFIG_HEADER@
+@FLIT_CONFIG_AUX_HEADER@
 
-def set_glow_available_features(config):
+def setup_config(config):
   config.release_mode = ("@CMAKE_BUILD_TYPE@" == "Release" or
                          "@CMAKE_BUILD_TYPE@" == "RelWithDebInfo")
   config.has_opencl = "@GLOW_WITH_OPENCL@" == "ON"
   config.has_cpu = "@GLOW_WITH_CPU@" == "ON"
-  config.filecheck_path = "@FILECHECK@"
   config.models_dir = "@GLOW_MODELS_DIR@"
   config.src_dir = "@GLOW_SOURCE_DIR@"
   config.binary_dir = "@GLOW_BINARY_DIR@"
   config.tools_dir = "@GLOW_OUTPUT_DIR@"
+  config.filechecker_command = "@FILECHECKER_COMMAND@"

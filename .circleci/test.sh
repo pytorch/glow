@@ -50,12 +50,12 @@ case ${CIRCLE_JOB} in
         # No tests with shared libs; it's similar to DEBUG.
         ;;
 
-    RELEASE_WITH_LIT)
+    RELEASE_WITH_FLIT)
         run_unit_tests check
         ;;
 
     *)
-        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, DEBUG, SHARED, RELEASE_WITH_LIT}."
+        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, DEBUG, SHARED, RELEASE_WITH_FLIT}."
         exit 1
         ;;
 esac

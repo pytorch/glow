@@ -24,14 +24,6 @@ install_pocl() {
    cd ../
 }
 
-install_lit_env() {
-    sudo apt-get install -y llvm-6.0-tools
-    # We could also use `pip install lit` if the package didn't come with
-    # lit.py.
-    export PATH="$PATH:/usr/lib/llvm-6.0/build/utils/lit:/usr/lib/llvm-6.0/bin"
-    hash lit.py FileCheck
-}
-
 # setup sccache wrappers
 if hash sccache 2>/dev/null; then
     SCCACHE_BIN_DIR="/tmp/sccache"
@@ -69,11 +61,8 @@ if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-elif [[ "$CIRCLE_JOB" == RELEASE_WITH_LIT ]]; then
-    # Setup the LLVM Integrated Tester if requested.
-    install_lit_env
-
-    # Download the models that LIT runs and tell cmake where to find them.
+elif [[ "$CIRCLE_JOB" == RELEASE_WITH_FLIT ]]; then
+    # Download the models that FLIT runs and tell cmake where to find them.
     MODELS_DIR="$GLOW_DIR/downloaded_models"
     DOWNLOAD_EXE="$GLOW_DIR/utils/download_caffe2_models.sh"
     mkdir $MODELS_DIR

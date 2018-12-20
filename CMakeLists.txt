@@ -101,20 +101,6 @@ else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
 
-find_program(FILECHECK "FileCheck")
-# The lit environment works equally with lit.py from llvm source or
-# the python lit package. Check for the other one if lit.py failed.
-find_program(LLVM_LIT "lit.py")
-if (NOT LLVM_LIT)
-  find_program(LLVM_LIT "lit")
-endif()
-
-if (FILECHECK AND LLVM_LIT)
-  set(HAS_LLVM_TEST_ENV ON)
-else()
-  set(HAS_LLVM_TEST_ENV OFF)
-endif()
-
 add_subdirectory(lib)
 add_subdirectory(tools)
 
