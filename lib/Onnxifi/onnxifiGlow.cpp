@@ -66,6 +66,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   glow::BackendKind backendKind = glow::BackendKind::Interpreter;
 #endif
 
+  // TODO: cCange concurrency level to std::thread::hardware_concurrency() when
+  // Glow CPU backend can handle concurrent execution.  For now, limit
+  // concurrent execution to a single worker thread.
   auto *defaultBackend =
       new glow::onnxifi::BackendId(backendKind,
                                    /*id*/ 1, /*concurrency*/ 1);
