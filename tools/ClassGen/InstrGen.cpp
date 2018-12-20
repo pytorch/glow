@@ -483,8 +483,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addOperand("Mapping", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Dest", "Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
       .dataParallel()
       .autoIRGen();
 
@@ -509,8 +509,8 @@ int main(int argc, char **argv) {
   BB.newInstr("RescaleQuantized")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Dest", "Src", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::TypeCheck, {"Dest", "isQuantizedType()"})
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .dataParallel()
       .autoIRGen();

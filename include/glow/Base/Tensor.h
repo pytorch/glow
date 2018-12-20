@@ -300,8 +300,16 @@ public:
              "Offsets must match.");
       return isEqualImpl<int8_t>(other, allowedError);
     case ElemKind::Int16QTy:
+      assert(getType().getScale() == other.getType().getScale() &&
+             "Scales must match.");
+      assert(getType().getOffset() == other.getType().getOffset() &&
+             "Offsets must match.");
       return isEqualImpl<int16_t>(other, allowedError);
     case ElemKind::Int32QTy:
+      assert(getType().getScale() == other.getType().getScale() &&
+             "Scales must match.");
+      assert(getType().getOffset() == other.getType().getOffset() &&
+             "Offsets must match.");
       return isEqualImpl<int32_t>(other, allowedError);
     case ElemKind::Int32ITy:
       return isEqualImpl<int32_t>(other, allowedError);

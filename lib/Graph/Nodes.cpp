@@ -675,12 +675,9 @@ bool BatchedAddNode::verify() const {
                                    rhsShape, this);
   isValid &= checkSameShape(getBatch(), getResult(), this);
 
-  if (getBatch().getType()->getElementType() == ElemKind::Int8QTy) {
-    ElemKind sliceEltTy = getSlice().getType()->getElementType();
+  if (getBatch().getType()->isQuantizedType()) {
     expectCompareTrue("Mismatched slice element types",
-                      sliceEltTy == ElemKind::Int8QTy ||
-                          sliceEltTy == ElemKind::Int32QTy,
-                      true, this);
+                      getSlice().getType()->isQuantizedType(), true, this);
   } else {
     isValid &=
         checkType(getBatch(), getSlice().getType()->getElementType(), this);
@@ -765,11 +762,16 @@ bool QuantizationProfileNode::verify() const {
 }
 
 bool IntLookupTableNode::verify() const {
-  bool isValid = checkType(getInput(), ElemKind::Int8QTy, this);
-  isValid &= checkType(getResult(), ElemKind::Int8QTy, this);
+  bool isValid =
+      expectCompareTrue("Input should be quantized type",
+                        getInput().getType()->isQuantizedType(), true, this);
+  isValid &=
+      expectCompareTrue("Result should be quantized type",
+                        getResult().getType()->isQuantizedType(), true, this);
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Mapping should cover whole int8 range",
+
+  isValid &= expectCompareTrue("Mapping should cover whole quantized range",
                                getMapping().dims()[0], size_t(256), this);
   return isValid;
 }
