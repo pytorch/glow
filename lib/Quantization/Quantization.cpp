@@ -163,9 +163,6 @@ protected:
   Node *createConversion(Function &function, NodeValue &val,
                          TypeRef destTy) override {
     if (destTy->isQuantizedType()) {
-      assert((destTy->getElementType() == ElemKind::Int8QTy ||
-              destTy->getElementType() == ElemKind::Int32QTy) &&
-             "We only support int8_t and int32_t quantization now");
       return function_.createQuantize("quantize", val, destTy);
     }
     assert(destTy->getElementType() == ElemKind::FloatTy && "");

@@ -109,40 +109,40 @@ private:
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #include "glow/AutoGenInstr.def"
 
-  void fwdConvolutionInst_I8Impl(Value *inV, Value *outV, Value *filterV,
-                                 Value *biasV,
-                                 llvm::ArrayRef<unsigned_t> kernelSizes,
-                                 llvm::ArrayRef<unsigned_t> strides,
-                                 llvm::ArrayRef<unsigned_t> pads, size_t group);
+  template <typename ElemTy, typename AccumulatorTy>
+  void fwdConvolutionInstQuantizedImpl(Value *inV, Value *outV, Value *filterV,
+                                       Value *biasV,
+                                       llvm::ArrayRef<unsigned_t> kernelSizes,
+                                       llvm::ArrayRef<unsigned_t> strides,
+                                       llvm::ArrayRef<unsigned_t> pads,
+                                       size_t group);
 
   template <typename ElemTy = float>
-  void fwdConvolutionInst_FloatImpl(Value *inV, Value *outV, Value *filterV,
-                                    Value *biasV,
-                                    llvm::ArrayRef<unsigned_t> kernelSizes,
-                                    llvm::ArrayRef<unsigned_t> strides,
-                                    llvm::ArrayRef<unsigned_t> pads,
-                                    size_t group);
+  void fwdConvolutionInstFloatImpl(Value *inV, Value *outV, Value *filterV,
+                                   Value *biasV,
+                                   llvm::ArrayRef<unsigned_t> kernelSizes,
+                                   llvm::ArrayRef<unsigned_t> strides,
+                                   llvm::ArrayRef<unsigned_t> pads,
+                                   size_t group);
 
-  void fwdAvgPoolInst_I8Impl(const AvgPoolInst *I);
-  template <typename ElemTy>
-  void fwdAvgPoolInst_FloatImpl(const AvgPoolInst *I);
-  template <typename ElemTy> void fwdSoftMaxInst_Impl(const SoftMaxInst *I);
+  void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
+  template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
+  template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);
 
-  void fwdMatMulInst_I8Impl(const glow::MatMulInst *I);
+  void fwdMatMulInstI8Impl(const glow::MatMulInst *I);
   template <typename ElemTy>
-  void fwdMatMulInst_FloatImpl(const glow::MatMulInst *I);
+  void fwdMatMulInstFloatImpl(const glow::MatMulInst *I);
 
-  void fwdElementAddInst_I8Impl(const ElementAddInst *I);
+  void fwdElementAddInstI8Impl(const ElementAddInst *I);
   template <typename ElemTy>
-  void fwdElementAddInst_FloatImpl(const ElementAddInst *I);
+  void fwdElementAddInstFloatImpl(const ElementAddInst *I);
 
-  void fwdElementMaxInst_I8Impl(const ElementMaxInst *I);
+  void fwdElementMaxInstI8Impl(const ElementMaxInst *I);
   template <typename ElemTy>
-  void fwdElementMaxInst_FloatImpl(const ElementMaxInst *I);
+  void fwdElementMaxInstFloatImpl(const ElementMaxInst *I);
 
-  void fwdBatchedAddInst_I8Impl(const BatchedAddInst *I);
   template <typename ElemTy>
-  void fwdBatchedAddInst_FloatImpl(const BatchedAddInst *I);
+  void fwdBatchedAddInstFloatImpl(const BatchedAddInst *I);
 
   template <typename ElemTy>
   void fwdElementCmpEQInstImpl(const glow::ElementCmpEQInst *I);
@@ -150,68 +150,67 @@ private:
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
 
-  template <typename ElemTy>
-  void fwdSigmoidInst_FloatImpl(const SigmoidInst *I);
+  template <typename ElemTy> void fwdSigmoidInstFloatImpl(const SigmoidInst *I);
 
-  template <typename ElemTy> void fwdTanhInst_FloatImpl(const TanhInst *I);
-
-  template <typename ElemTy>
-  void fwdCrossEntropyLossInst_FloatImpl(const CrossEntropyLossInst *I);
+  template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
 
   template <typename ElemTy>
-  void fwdLocalResponseNormalizationInst_FloatImpl(
+  void fwdCrossEntropyLossInstFloatImpl(const CrossEntropyLossInst *I);
+
+  template <typename ElemTy>
+  void fwdLocalResponseNormalizationInstFloatImpl(
       const glow::LocalResponseNormalizationInst *I);
 
   template <typename ElemTy>
-  void fwdElementSubInst_FloatImpl(const ElementSubInst *I);
+  void fwdElementSubInstFloatImpl(const ElementSubInst *I);
 
   template <typename ElemTy>
-  void fwdElementMulInst_FloatImpl(const ElementMulInst *I);
+  void fwdElementMulInstFloatImpl(const ElementMulInst *I);
 
   template <typename ElemTy>
-  void fwdElementMinInst_FloatImpl(const ElementMinInst *I);
+  void fwdElementMinInstFloatImpl(const ElementMinInst *I);
 
   template <typename ElemTy>
-  void fwdElementCmpLTEInst_FloatImpl(const ElementCmpLTEInst *I);
+  void fwdElementCmpLTEInstFloatImpl(const ElementCmpLTEInst *I);
 
   template <typename ElemTy>
-  void fwdElementPowInst_FloatImpl(const ElementPowInst *I);
+  void fwdElementPowInstFloatImpl(const ElementPowInst *I);
 
   template <typename ElemTy>
-  void fwdElementIsNaNInst_FloatImpl(const ElementIsNaNInst *I);
+  void fwdElementIsNaNInstFloatImpl(const ElementIsNaNInst *I);
 
   template <typename ElemTy>
-  void fwdElementLogInst_FloatImpl(const ElementLogInst *I);
+  void fwdElementLogInstFloatImpl(const ElementLogInst *I);
 
   template <typename ElemTy>
-  void fwdElementSelectInst_FloatImpl(const ElementSelectInst *I);
+  void fwdElementSelectInstFloatImpl(const ElementSelectInst *I);
 
   template <typename ElemTy>
-  void fwdBatchedReduceAddInst_FloatImpl(Value *batch, Value *dest,
-                                         unsigned_t axis,
-                                         const ShapeVector &eBatchDims,
-                                         const ShapeVector &eDestDims);
+  void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
+                                        unsigned_t axis,
+                                        const ShapeVector &eBatchDims,
+                                        const ShapeVector &eDestDims);
 
   template <typename ElemTy>
-  void fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I);
+  void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
 
   void
-  fwdSparseLengthsWeightedSumInst_I8Impl(const SparseLengthsWeightedSumInst *I);
+  fwdSparseLengthsWeightedSumInstI8Impl(const SparseLengthsWeightedSumInst *I);
   template <typename ElemTy>
-  void fwdSparseLengthsWeightedSumInst_FloatImpl(
+  void fwdSparseLengthsWeightedSumInstFloatImpl(
       const SparseLengthsWeightedSumInst *I);
 
   template <typename ElemTy>
-  void fwdSparseToDenseInst_FloatImpl(const SparseToDenseInst *I);
+  void fwdSparseToDenseInstFloatImpl(const SparseToDenseInst *I);
 
   template <class eTy>
-  void fwdRescaleQuantizedInst_impl(Value *src, Value *dest,
-                                    TensorQuantizationParams &srcQ,
-                                    TensorQuantizationParams &destQ);
+  void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,
+                                   TensorQuantizationParams &srcQ,
+                                   TensorQuantizationParams &destQ);
   ///@}
 };
 
