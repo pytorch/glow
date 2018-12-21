@@ -16,6 +16,7 @@
 #ifndef GLOW_IR_IR_H
 #define GLOW_IR_IR_H
 
+#include "glow/Base/TaggedList.h"
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
@@ -25,8 +26,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/ADT/ilist.h"
-#include "llvm/ADT/ilist_node.h"
 
 #include <list>
 #include <unordered_map>
@@ -108,13 +107,12 @@ public:
 };
 
 /// This represents an instruction in our IR.
-class Instruction : public Value, public llvm::ilist_node<Instruction> {
+class Instruction : public Value, public TaggedListNode<Instruction> {
 public:
   using Operand = InstructionOperand;
 
 private:
-  friend llvm::ilist_traits<Instruction>;
-  friend llvm::ilist_traits<IRFunction>;
+  friend struct InstructionTraits;
   friend IRFunction;
 
   /// Parent function.
@@ -218,39 +216,21 @@ protected:
   /// Dump the operands of the instruction into the stream \p os.
   void dumpOperands(llvm::raw_ostream &os) const;
 };
-} // namespace glow
 
 //===----------------------------------------------------------------------===//
-// ilist_traits for glow::Instruction
+// TaggedListTraits for glow::Instruction
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-
-template <>
-struct ilist_traits<glow::Instruction>
-    : public ilist_node_traits<glow::Instruction> {
-  using Instruction = glow::Instruction;
-
-private:
-  glow::IRFunction *getContainingFunction();
-
-  using instr_iterator = simple_ilist<Instruction>::iterator;
-
-public:
+struct InstructionTraits : public TaggedListTraits<Instruction> {
   static void deleteNode(Instruction *V) { Instruction::destroyInstruction(V); }
 
   void addNodeToList(Instruction *I);
   void removeNodeFromList(Instruction *I);
-  void transferNodesFromList(ilist_traits<Instruction> &L2,
-                             instr_iterator first, instr_iterator last);
 
 private:
+  IRFunction *getContainingFunction();
   void createNode(const Instruction &);
 };
-
-} // namespace llvm
-
-namespace glow {
 
 class WeightVar;
 class Value;
@@ -260,7 +240,7 @@ class Node;
 class IRFunction final {
 public:
   using VariableMap = std::unordered_map<const Node *, Value *>;
-  using InstListTy = llvm::iplist<Instruction>;
+  using InstListTy = TaggedList<Instruction, InstructionTraits>;
   using InstrIterator = InstListTy::iterator;
   using InstrConstIterator = InstListTy::const_iterator;
   using WeightVarListTy = std::list<WeightVar *>;

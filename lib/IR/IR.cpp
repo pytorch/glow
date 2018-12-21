@@ -211,7 +211,7 @@ void IRFunction::clear() {
   for (auto &I : weights_) {
     delete I;
   }
-  // iplist's destructor is going to destroy the InstList.
+  // TaggedList's destructor is going to destroy the InstList.
   instrs_.clearAndLeakNodesUnsafely();
   weights_.clear();
 
@@ -553,40 +553,26 @@ void IRFunction::dump(llvm::raw_ostream &OS) const {
 }
 
 //===----------------------------------------------------------------------===//
-// ilist_traits<glow::Instruction> Implementation
+// InstructionTraits<Instruction> Implementation
 //===----------------------------------------------------------------------===//
 
 // The trait object is embedded into a IRFunction.  Use dirty hacks to
 // reconstruct the IRFunction from the 'self' pointer of the trait.
-IRFunction *llvm::ilist_traits<Instruction>::getContainingFunction() {
+IRFunction *InstructionTraits::getContainingFunction() {
   size_t Offset(
       size_t(&((IRFunction *)nullptr->*IRFunction::getInstrsMemberPtr())));
-  iplist<Instruction> *Anchor(static_cast<iplist<Instruction> *>(this));
+  IRFunction::InstListTy *Anchor(static_cast<IRFunction::InstListTy *>(this));
   return reinterpret_cast<IRFunction *>(reinterpret_cast<char *>(Anchor) -
                                         Offset);
 }
 
-void llvm::ilist_traits<Instruction>::addNodeToList(Instruction *I) {
+void InstructionTraits::addNodeToList(Instruction *I) {
   assert(I->getParent() == nullptr && "Already in a list!");
   I->setParent(getContainingFunction());
 }
 
-void llvm::ilist_traits<Instruction>::removeNodeFromList(Instruction *I) {
+void InstructionTraits::removeNodeFromList(Instruction *I) {
   // When an instruction is removed from a function, clear the parent pointer.
   assert(I->getParent() && "Not in a list!");
   I->setParent(nullptr);
-}
-
-void llvm::ilist_traits<Instruction>::transferNodesFromList(
-    llvm::ilist_traits<Instruction> &L2, instr_iterator first,
-    instr_iterator last) {
-  // If transferring instructions within the same IRFunction, no reason to
-  // update their parent pointers.
-  IRFunction *ThisParent = getContainingFunction();
-  if (ThisParent == L2.getContainingFunction())
-    return;
-
-  // Update the parent fields in the instructions.
-  for (; first != last; ++first)
-    first->setParent(ThisParent);
 }
