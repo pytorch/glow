@@ -179,13 +179,8 @@ onnxStatus Graph::setIO(uint32_t inputsCount,
   // Process inputs.
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &in = inputDescriptors[i];
-    // TODO: Fix this.
-    // This check is to avoid issues when weight is passed in input descriptors.
-    // The issue needs to be fixed on the caller side first. Once it is fixed
-    // we'd need to handle missing variable accordingly here, e.g., return
-    // ONNXIFI_STATUS_UNIDENTIFIED_NAME.
     if (!onnxInputToPlaceholder_.count(in.name)) {
-      continue;
+      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
     }
 
     auto *input = onnxInputToPlaceholder_[in.name];
