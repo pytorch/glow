@@ -29,10 +29,7 @@ class ONNXIFIModelLoader {
 private:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
-  ONNXIFIModelLoader(Function &F, llvm::Error *errPtr = nullptr) : f_(F) {}
-
-  /// Function to be loaded to
-  Function &f_;
+  ONNXIFIModelLoader(llvm::Error *errPtr = nullptr) {}
 
   /// The real loader. It can be ONNXModelLoader or Caffe2ModelLoader
   std::unique_ptr<ProtobufLoader> core_{nullptr};

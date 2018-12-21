@@ -26,7 +26,7 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     bool loadInputsAsPlaceholders, bool use_onnx) {
   llvm::Error loaderConstructionErr = llvm::Error::success();
   std::unique_ptr<ONNXIFIModelLoader> loader(
-      new ONNXIFIModelLoader(F, &loaderConstructionErr));
+      new ONNXIFIModelLoader(&loaderConstructionErr));
   if (loaderConstructionErr) {
     return std::move(loaderConstructionErr);
   }
