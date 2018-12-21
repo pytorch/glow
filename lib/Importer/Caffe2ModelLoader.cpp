@@ -882,7 +882,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     } else {
       GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
     }
-    tensors_[op.output()[0]] = std::move(T);
+    tensors_[op.output().Get(0)] = std::move(T);
     return llvm::Error::success();
   }
 
