@@ -25,22 +25,17 @@
 
 namespace glow {
 
-class ONNXIFIModelLoader : public ONNXModelLoader {
+class ONNXIFIModelLoader {
 private:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
-  ONNXIFIModelLoader(Function &F, llvm::Error *errPtr = nullptr)
-      : ONNXModelLoader(F, errPtr) {}
+  ONNXIFIModelLoader(Function &F, llvm::Error *errPtr = nullptr) : f_(F) {}
 
-  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
-  /// true then this will load each graph input as a placeholder otherwise it
-  /// will create an empty tensor for each input.
-  llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                         bool loadInputsAsPlaceholders);
+  /// Function to be loaded to
+  Function &f_;
 
-  /// Load pre-trained weights from \p weightDescriptors.
-  llvm::Error loadWeights(uint32_t weightsCount,
-                          const onnxTensorDescriptorV1 *weightDescriptors);
+  /// The real loader. It can be ONNXModelLoader or Caffe2ModelLoader
+  std::unique_ptr<ProtobufLoader> core_{nullptr};
 
   /// Mapping between ONNX names for inputs and actual Glow input vars.
   llvm::StringMap<Placeholder *> onnxNameToInputVars_;
@@ -53,7 +48,7 @@ public:
 
   /// \returns mapping between ONNX names and actual Glow output nodes.
   const llvm::StringMap<Placeholder *> &getOutputVarsMapping() const {
-    return outputVarsByName_;
+    return core_->getOutputVarsMapping();
   }
 
   /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
@@ -67,7 +62,7 @@ public:
   static llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-        bool loadInputsAsPlaceholders = true);
+        bool loadInputsAsPlaceholders = true, bool use_onnx = true);
 };
 
 } // namespace glow

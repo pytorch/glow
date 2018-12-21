@@ -36,6 +36,33 @@
 using namespace glow;
 using llvm::cast;
 
+namespace {
+/// Creates tensor \p T from the input \p in. Note, there is no data associated
+/// with the Tensor. This method makes sure that the tensor is created with the
+/// proper shape and element type.
+llvm::Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
+  std::vector<size_t> dim;
+  for (auto d : in.tensor_type().shape().dim()) {
+    dim.push_back(d.dim_value());
+  }
+
+  if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    T->reset(ElemKind::FloatTy, dim);
+    return llvm::Error::success();
+  } else if (in.tensor_type().elem_type() ==
+             ONNX_NAMESPACE::TensorProto::INT64) {
+    T->reset(ElemKind::Int64ITy, dim);
+    return llvm::Error::success();
+  } else if (in.tensor_type().elem_type() ==
+             ONNX_NAMESPACE::TensorProto::INT32) {
+    T->reset(ElemKind::Int32ITy, dim);
+    return llvm::Error::success();
+  } else {
+    RETURN_ERR("Only float and index tensors are supported");
+  }
+}
+} // namespace
+
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
@@ -48,6 +75,31 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
     dict[arg.name()] = &arg;
   }
   return dict;
+}
+
+llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
+                                        bool loadInputsAsPlaceholders) {
+  for (const auto &in : net.input()) {
+    // Skip static weights.
+    if (tensors_.count(in.name())) {
+      continue;
+    }
+
+    if (loadInputsAsPlaceholders) {
+      Tensor T;
+      RETURN_IF_ERR(setTensorType(in.type(), &T));
+
+      Placeholder *placeholder;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
+      onnxNameToInputVars_.try_emplace(in.name(), placeholder);
+    } else {
+      std::unique_ptr<Tensor> T(new Tensor());
+      RETURN_IF_ERR(setTensorType(in.type(), T.get()));
+      tensors_[in.name()] = std::move(T);
+    }
+  }
+  return llvm::Error::success();
 }
 
 llvm::Expected<bool>

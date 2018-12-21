@@ -17,6 +17,8 @@
 #ifndef GLOW_IMPORTER_COMMONOPERATORLOADER_H
 #define GLOW_IMPORTER_COMMONOPERATORLOADER_H
 
+#include "onnx/onnxifi.h"
+
 #include "glow/Importer/ProtobufLoader.h"
 
 #include "glow/Base/Tensor.h"
@@ -31,6 +33,54 @@
 #include <vector>
 
 namespace glow {
+/// Loads tensor \p T from the input \p in.
+inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
+  // Only support CPU memory tensors.
+  if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
+    RETURN_ERR("Only support CPU memory tensors.");
+  }
+
+  std::vector<size_t> dims;
+  for (unsigned i = 0; i < in.dimensions; ++i) {
+    dims.push_back(in.shape[i]);
+  }
+
+  if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
+    T->reset(ElemKind::FloatTy, dims);
+
+    auto TH = T->getHandle<>();
+    float *data = (float *)in.buffer;
+    for (size_t i = 0; i < TH.size(); ++i) {
+      TH.raw(i) = data[i];
+    }
+  } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
+             in.dataType == ONNXIFI_DATATYPE_INT64) {
+    const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
+    (void)inDataSigned;
+    T->reset(ElemKind::Int64ITy, dims);
+
+    auto TH = T->getHandle<int64_t>();
+    int64_t *data = (int64_t *)in.buffer;
+    for (size_t i = 0; i < TH.size(); ++i) {
+      RETURN_ERR_IF_NOT(
+          (inDataSigned || data[i] >= 0),
+          "Disallow overflow of loaded UINT64 data into Int64ITy.");
+      TH.raw(i) = data[i];
+    }
+  } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+    T->reset(ElemKind::Int32ITy, dims);
+
+    auto TH = T->getHandle<int32_t>();
+    int32_t *data = (int32_t *)in.buffer;
+    for (size_t i = 0; i < TH.size(); ++i) {
+      TH.raw(i) = data[i];
+    }
+  } else {
+    RETURN_ERR("Only float and index tensors are supported.");
+  }
+
+  return llvm::Error::success();
+}
 
 /// Contains loaders for operators, which are common to ONNX and Caffe2 formats.
 /// Every loader method adds necessary nodes to property G_, which is inherited
@@ -58,6 +108,18 @@ protected:
     for (int i = 0, e = op.output_size(); i < e; i++) {
       nodeValueByName_[op.output(i)] = NodeValue(R, i);
     }
+  }
+
+  /// Load pre-trained weights from \p weightDescriptors.
+  llvm::Error loadWeights(uint32_t weightsCount,
+                          const onnxTensorDescriptorV1 *weightDescriptors) {
+    for (uint32_t i = 0; i < weightsCount; ++i) {
+      std::unique_ptr<Tensor> T(new Tensor());
+      RETURN_IF_ERR(loadWeight(weightDescriptors[i], T.get()));
+      tensors_[weightDescriptors[i].name] = std::move(T);
+    }
+
+    return llvm::Error::success();
   }
 
   /// Loads RELU operator, given its protobuf representation and parsed args.
