@@ -822,20 +822,20 @@ llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   return llvm::Error::success();
 }
 
+/// Fills \p T with data from \p values.
 template <typename ElemTy, typename RangeTy>
 static llvm::Error fillTensor(Tensor &T, ElemKind kind,
                               llvm::ArrayRef<size_t> dim, RangeTy values) {
   T.reset(kind, dim);
   auto TH = T.getHandle<ElemTy>();
+  RETURN_ERR_IF_NOT(values.size() == T.size(),
+                    llvm::formatv("Wrong number of values for GivenTensorFill "
+                                  "({0} given, {1} expected)",
+                                  values.size(), T.size()).str());
   size_t i = 0;
   for (auto num : values) {
     TH.raw(i++) = num;
   }
-  RETURN_ERR_IF_NOT(i == T.size(),
-                    llvm::formatv("Wrong number of values for GivenTensorFill "
-                                  "({0} given, {1} expected)",
-                                  i, T.size())
-                        .str());
   return llvm::Error::success();
 }
 
