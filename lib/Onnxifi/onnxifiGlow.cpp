@@ -50,8 +50,34 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
+  auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
+
   const size_t numBackendsCapacity = *numBackends;
 
+#ifdef GLOW_WITH_CPU
+  *numBackends = 2;
+
+  // In case backendIDs is nullptr or does not have enough capacity just return
+  // the total number of supported backends.
+  if (numBackendsCapacity < *numBackends || !backendIDs) {
+    return ONNXIFI_STATUS_FALLBACK;
+  }
+
+  // TODO: change concurrency level to std::thread::hardware_concurrency()
+  // when Glow CPU backend can handle concurrent execution.
+  // For now, limit concurrent execution to a single worker thread..
+  auto *cpuBackend =
+      new glow::onnxifi::BackendId(glow::BackendKind::CPU, /*id*/ 1,
+                                   /*concurrency*/ 1);
+  auto *interpreterBackend =
+      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
+                                   /*id*/ 2, /*concurrency*/ 1);
+  manager.addBackendId(cpuBackend);
+  manager.addBackendId(interpreterBackend);
+
+  backendIDs[0] = cpuBackend;
+  backendIDs[1] = interpreterBackend;
+#else
   *numBackends = 1;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
@@ -60,20 +86,14 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-#ifdef GLOW_WITH_CPU
-  glow::BackendKind backendKind = glow::BackendKind::CPU;
-#else
-  glow::BackendKind backendKind = glow::BackendKind::Interpreter;
-#endif
-
-  // TODO: Change concurrency level to std::thread::hardware_concurrency() when
-  // Glow CPU backend can handle concurrent execution.  For now, limit
-  // concurrent execution to a single worker thread.
-  auto *defaultBackend =
-      new glow::onnxifi::BackendId(backendKind,
+  auto *interpreterBackend =
+      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
                                    /*id*/ 1, /*concurrency*/ 1);
-  glow::onnxifi::GlowOnnxifiManager::get().addBackendId(defaultBackend);
-  backendIDs[0] = defaultBackend;
+
+  manager.addBackendId(interpreterBackend);
+
+  backendIDs[0] = interpreterBackend;
+#endif
 
   return ONNXIFI_STATUS_SUCCESS;
 }
