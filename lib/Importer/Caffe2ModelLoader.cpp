@@ -831,7 +831,8 @@ static llvm::Error fillTensor(Tensor &T, ElemKind kind,
   RETURN_ERR_IF_NOT(values.size() == T.size(),
                     llvm::formatv("Wrong number of values for GivenTensorFill "
                                   "({0} given, {1} expected)",
-                                  values.size(), T.size()).str());
+                                  values.size(), T.size())
+                        .str());
   size_t i = 0;
   for (auto num : values) {
     TH.raw(i++) = num;
