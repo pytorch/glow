@@ -828,7 +828,7 @@ static llvm::Error fillTensor(Tensor &T, ElemKind kind,
                               llvm::ArrayRef<size_t> dim, RangeTy values) {
   T.reset(kind, dim);
   auto TH = T.getHandle<ElemTy>();
-  RETURN_ERR_IF_NOT(values.size() == T.size(),
+  RETURN_ERR_IF_NOT((size_t)values.size() == T.size(),
                     llvm::formatv("Wrong number of values for GivenTensorFill "
                                   "({0} given, {1} expected)",
                                   values.size(), T.size())
