@@ -29,7 +29,7 @@ class ONNXIFIModelLoader {
 private:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
-  ONNXIFIModelLoader(llvm::Error *errPtr = nullptr) {}
+  explicit ONNXIFIModelLoader(llvm::Error *errPtr = nullptr) {}
 
   /// The real loader. It can be ONNXModelLoader or Caffe2ModelLoader
   std::unique_ptr<ProtobufLoader> core_{nullptr};
