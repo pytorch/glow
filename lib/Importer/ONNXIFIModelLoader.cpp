@@ -15,13 +15,15 @@
  */
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 
+#include "caffe2/proto/caffe2.pb.h"
 #include "onnx/onnx_pb.h"
 
 namespace glow {
 
 llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
-    const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
+    const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
     bool loadInputsAsPlaceholders, bool use_onnx) {
   llvm::Error loaderConstructionErr = llvm::Error::success();
@@ -39,7 +41,7 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     }
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef,
-                               onnxLoader->loadProto(onnxModel, onnxModelSize));
+                               onnxLoader->loadProto(model, modelSize));
 
     RETURN_IF_ERR(onnxLoader->setVersion(modelDef));
 
@@ -59,6 +61,30 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
     // Keep hold of the context
     loader->core_ = std::move(onnxLoader);
+  } else {
+    // Use Caffe2 Model loader
+    std::unique_ptr<Caffe2ModelLoader> c2Loader(
+        new Caffe2ModelLoader(F, &loaderConstructionErr));
+    if (loaderConstructionErr) {
+      return std::move(loaderConstructionErr);
+    }
+
+    caffe2::NetDef networkDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(networkDef,
+                               c2Loader->loadProto(model, modelSize));
+
+    RETURN_IF_ERR(c2Loader->loadWeights(weightsCount, weightDescriptors));
+
+    RETURN_IF_ERR(c2Loader->loadInputs(networkDef, loadInputsAsPlaceholders));
+
+    // TODO: in Caffe2ModelLoader, setOutputNodes is actually inside
+    // loadNetwork, maybe we should make it a separate function?
+    RETURN_IF_ERR(c2Loader->loadNetwork(networkDef));
+
+    loader->onnxNameToInputVars_ = c2Loader->getInputVarsMapping();
+
+    // Keep hold of the context
+    loader->core_ = std::move(c2Loader);
   }
   return llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
 }

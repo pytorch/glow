@@ -48,7 +48,7 @@ class Caffe2ModelLoader
 
   /// Load the weight tensors from the 'init' file and register them in the map
   /// \p tensors.
-  llvm::Error loadWeights(caffe2::NetDef &net);
+  llvm::Error loadWeightsFromNet(caffe2::NetDef &net);
 
   /// Loads an individual weight \p op.
   llvm::Error loadWeight(const caffe2::OperatorDef &op);
@@ -64,6 +64,17 @@ class Caffe2ModelLoader
   /// file.
   llvm::Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);
 
+  /// Mapping between Caffe2 tensor names for inputs and actual Glow input vars.
+  llvm::StringMap<Placeholder *> nameToInputVars_;
+
+  /// Load the inputs from the NetDef. If \p loadInputsAsPlaceholders is
+  /// true then this will load each graph input as a placeholder otherwise it
+  /// will create an empty tensor for each input.
+  llvm::Error loadInputs(const caffe2::NetDef &net,
+                         bool loadInputsAsPlaceholders);
+
+  friend class ONNXIFIModelLoader;
+
 public:
   /// Loads the caffe2 model that's represented by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
@@ -77,6 +88,23 @@ public:
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<TypeRef> types, Function &F,
                     llvm::Error *errPtr = nullptr);
+
+  /// Creates a Caffe2 model loader to build \p F.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
+  Caffe2ModelLoader(Function &F, llvm::Error *errPtr);
+
+  /// \returns Expected<NetDef> if a NetDef can be constructed from the
+  /// in-memory serialized protobuf.
+  /// Loads ModelProto from the in-memory serialized protobuf \p
+  /// c2Model with the model size \p c2ModelSize.
+  llvm::Expected<caffe2::NetDef> loadProto(const void *c2Model,
+                                           size_t c2ModelSize);
+
+  /// \returns mapping between Caffe2 tensor names and actual Glow input vars.
+  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
+    return nameToInputVars_;
+  }
 };
 
 } // namespace glow

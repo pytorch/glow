@@ -48,6 +48,31 @@ using ArgumentDictionaryTy =
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
+namespace {
+/// Creates tensor \p T from the input \p in. Note, there is no data associated
+/// with the Tensor. This method makes sure that the tensor is created with the
+/// proper shape and element type.
+llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
+  std::vector<size_t> dim;
+  for (auto d : in.dims()) {
+    dim.push_back(d);
+  }
+
+  if (in.data_type() == caffe2::TensorProto::FLOAT) {
+    T->reset(ElemKind::FloatTy, dim);
+    return llvm::Error::success();
+  } else if (in.data_type() == caffe2::TensorProto::INT64) {
+    T->reset(ElemKind::Int64ITy, dim);
+    return llvm::Error::success();
+  } else if (in.data_type() == caffe2::TensorProto::INT32) {
+    T->reset(ElemKind::Int32ITy, dim);
+    return llvm::Error::success();
+  } else {
+    RETURN_ERR("Only float and index tensors are supported");
+  }
+}
+} // namespace
+
 /// Translates the protocol buffer node \p op into a random access map.
 static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict;
@@ -143,6 +168,20 @@ Caffe2ModelLoader::loadProtoFile(const std::string &filename) {
 
   RETURN_ERR_IF_NOT(parseNet, "Failed to parse the network descriptor.");
   return net;
+}
+
+llvm::Expected<caffe2::NetDef>
+Caffe2ModelLoader::loadProto(const void *c2Model, size_t c2ModelSize) {
+  google::protobuf::io::ArrayInputStream arrayStream(c2Model, c2ModelSize);
+  // Construct and configure a Coded Input Stream
+  google::protobuf::io::CodedInputStream codedStream(&arrayStream);
+
+  // Don't warn about large file sizes.
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+  caffe2::NetDef MP;
+  bool parseNet = MP.ParseFromCodedStream(&codedStream);
+  RETURN_ERR_IF_NOT(parseNet, "Failed to parse NetDef");
+  return MP;
 }
 
 llvm::Expected<bool>
@@ -802,6 +841,40 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
+llvm::Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
+                                          bool loadInputsAsPlaceholders) {
+  const caffe2::Argument *arg = nullptr;
+  for (auto i = 0, e = net.arg_size(); i < e; ++i) {
+    if (net.arg(i).name() == "input_shape_info") {
+      arg = &net.arg(i);
+      break;
+    }
+  }
+  if (arg) {
+    for (const auto &in : arg->tensors()) {
+      // Skip static weights
+      if (tensors_.count(in.name())) {
+        continue;
+      }
+
+      if (loadInputsAsPlaceholders) {
+        Tensor T;
+        RETURN_IF_ERR(setTensorType(in, &T));
+
+        Placeholder *placeholder;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
+        nameToInputVars_.try_emplace(in.name(), placeholder);
+      } else {
+        std::unique_ptr<Tensor> T(new Tensor());
+        RETURN_IF_ERR(setTensorType(in, T.get()));
+        tensors_[in.name()] = std::move(T);
+      }
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
@@ -1077,12 +1150,15 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
 }
 
-llvm::Error Caffe2ModelLoader::loadWeights(caffe2::NetDef &net) {
+llvm::Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {
   for (auto &op : net.op()) {
     RETURN_IF_ERR(loadWeight(op));
   }
   return llvm::Error::success();
 }
+
+Caffe2ModelLoader::Caffe2ModelLoader(Function &F, llvm::Error *errPtr)
+    : CommonOperatorLoader({}, {}, F, errPtr) {}
 
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
@@ -1106,7 +1182,7 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     caffe2::NetDef weightsDef;
     ASSIGN_VALUE_OR_RETURN_ERR(weightsDef, loadProtoFile(netWeightFilename));
 
-    RETURN_IF_ERR(loadWeights(weightsDef));
+    RETURN_IF_ERR(loadWeightsFromNet(weightsDef));
     RETURN_IF_ERR(loadNetwork(networkDef));
 
     return llvm::Error::success();
