@@ -55,7 +55,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   const size_t numBackendsCapacity = *numBackends;
 
 #ifdef GLOW_WITH_CPU
-  *numBackends = 2;
+  *numBackends = 4;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -66,19 +66,29 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   // TODO: change concurrency level to std::thread::hardware_concurrency()
   // when Glow CPU backend can handle concurrent execution.
   // For now, limit concurrent execution to a single worker thread..
-  auto *cpuBackend =
-      new glow::onnxifi::BackendId(glow::BackendKind::CPU, /*id*/ 1,
-                                   /*concurrency*/ 1);
-  auto *interpreterBackend =
-      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
-                                   /*id*/ 2, /*concurrency*/ 1);
-  manager.addBackendId(cpuBackend);
-  manager.addBackendId(interpreterBackend);
+  auto *cpuBackendC2 = new glow::onnxifi::BackendId(
+      glow::BackendKind::CPU, /*use_onnx*/ false, /*id*/ 1,
+      /*concurrency*/ 1);
+  auto *cpuBackendOnnx = new glow::onnxifi::BackendId(
+      glow::BackendKind::CPU, /*use_onnx*/ true, /*id*/ 2,
+      /*concurrency*/ 1);
+  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
+      glow::BackendKind::Interpreter, /*use_onnx*/ false,
+      /*id*/ 3, /*concurrency*/ 1);
+  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
+      glow::BackendKind::Interpreter, /*use_onnx*/ true,
+      /*id*/ 4, /*concurrency*/ 1);
+  manager.addBackendId(cpuBackendC2);
+  manager.addBackendId(cpuBackendOnnx);
+  manager.addBackendId(interpreterBackendC2);
+  manager.addBackendId(interpreterBackendOnnx);
 
-  backendIDs[0] = cpuBackend;
-  backendIDs[1] = interpreterBackend;
+  backendIDs[0] = cpuBackendC2;
+  backendIDs[1] = cpuBackendOnnx;
+  backendIDs[2] = interpreterBackendC2;
+  backendIDs[3] = interpreterBackendOnnx;
 #else
-  *numBackends = 1;
+  *numBackends = 2;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -86,13 +96,18 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-  auto *interpreterBackend =
-      new glow::onnxifi::BackendId(glow::BackendKind::Interpreter,
-                                   /*id*/ 1, /*concurrency*/ 1);
+  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
+      glow::BackendKind::Interpreter, /*use_onnx*/ false,
+      /*id*/ 1, /*concurrency*/ 1);
+  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
+      glow::BackendKind::Interpreter, /*use_onnx*/ true,
+      /*id*/ 2, /*concurrency*/ 1);
 
-  manager.addBackendId(interpreterBackend);
+  manager.addBackendId(interpreterBackendC2);
+  manager.addBackendId(interpreterBackendOnnx);
 
-  backendIDs[0] = interpreterBackend;
+  backendIDs[0] = interpreterBackendC2;
+  backendIDs[1] = interpreterBackendOnnx;
 #endif
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -171,7 +186,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendInfo)(
   case ONNXIFI_BACKEND_VERSION:
     return setBackendInfoString(infoValue, infoValueSize, "1.0.0");
   case ONNXIFI_BACKEND_DEVICE:
-    return setBackendInfoString(infoValue, infoValueSize, "Glow");
+    return setBackendInfoString(infoValue, infoValueSize,
+                                glowBackendId->getUseOnnx() ? "Glow Onnx"
+                                                            : "Glow Caffe2");
   case ONNXIFI_BACKEND_MEMORY_TYPES:
     return setBackendInfoUInt64(infoValue, infoValueSize,
                                 ONNXIFI_MEMORY_TYPE_CPU);

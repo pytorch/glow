@@ -36,9 +36,12 @@ namespace onnxifi {
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind, \p id and \p concurrency.
-  explicit BackendId(glow::BackendKind kind, int id, int concurrency)
-      : id_(id), concurrency_(concurrency), executionEngine_(kind) {}
+  /// given Glow backend \p kind, \p id, \p concurrency and whether to use onnx
+  /// or caffe2 for models (\p use_onnx).
+  explicit BackendId(glow::BackendKind kind, int id, int concurrency,
+                     bool use_onnx)
+      : id_(id), use_onnx_(use_onnx), concurrency_(concurrency),
+        executionEngine_(kind) {}
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
 
@@ -52,14 +55,18 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return executionEngine_; }
 
+  /// \returns the whether use onnx or not
+  bool getUseOnnx() const { return use_onnx_; }
+
   /// \returns the backend id.
-  int getID() { return id_; }
+  int getID() const { return id_; }
 
   /// \returns concurrency for the backend.
-  int getConcurrency() { return concurrency_; }
+  int getConcurrency() const { return concurrency_; }
 
 private:
   int id_;
+  bool use_onnx_;
   int concurrency_;
   glow::ExecutionEngine executionEngine_;
 };

@@ -142,6 +142,11 @@ public:
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;
   virtual ~ProtobufLoader() = default;
 
+  /// \returns mapping between ONNX names and actual Glow output nodes.
+  const llvm::StringMap<Placeholder *> &getOutputVarsMapping() const {
+    return outputVarsByName_;
+  }
+
   /// \returns the single final output of the network. The function assumes that
   /// there is only one output, returns Error otherwise. For image
   /// classification, this single final output is usually the result of the last
