@@ -16,22 +16,6 @@ op {
   }
 }
 op {
-  output: "tensor_fill_int"
-  type: "GivenTensorFill"
-  arg {
-    name: "shape"
-    ints: 2
-    ints: 2
-  }
-  arg {
-    name: "values"
-    ints: 0
-    ints: 1
-    ints: 2
-    ints: 3
-  }
-}
-op {
   output: "tensor_int_fill"
   type: "GivenTensorIntFill"
   arg {

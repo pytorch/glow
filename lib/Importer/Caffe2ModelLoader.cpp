@@ -822,70 +822,68 @@ llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   return llvm::Error::success();
 }
 
+/// Fills \p T with data from \p values.
+template <typename ElemTy, typename RangeTy>
+static llvm::Error fillTensor(Tensor &T, ElemKind kind,
+                              llvm::ArrayRef<size_t> dim, RangeTy values) {
+  T.reset(kind, dim);
+  auto TH = T.getHandle<ElemTy>();
+  RETURN_ERR_IF_NOT((size_t)values.size() == T.size(),
+                    llvm::formatv("Wrong number of values for GivenTensorFill "
+                                  "({0} given, {1} expected)",
+                                  values.size(), T.size())
+                        .str());
+  size_t i = 0;
+  for (auto num : values) {
+    TH.raw(i++) = num;
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
-  /// Load tensors with values:
+  // Load tensors with values:
   if (typeName == "GivenTensorFill" || typeName == "GivenTensorIntFill" ||
       typeName == "GivenTensorInt64Fill") {
     /*
-     output: "conv1_w"
-     name: ""
-     type: "GivenTensorFill"
-     arg {
-     name: "shape"
-     ints: 96
-     ints: 3
-     ints: 11
-     ints: 11
-     }
-     arg {
-     name: "values"
-     floats: -0.028315347
+     * op {
+     *   output: "conv1_w"
+     *   name: ""
+     *   type: "GivenTensorFill"
+     *   arg {
+     *     name: "shape"
+     *     ints: 96
+     *     ints: 3
+     *     ints: 11
+     *     ints: 11
+     *   }
+     *   arg {
+     *     name: "values"
+     *     floats: -0.028315347
+     *     ...
+     *   }
+     * }
      */
-
-    for (auto &o : op.output()) {
-      std::unique_ptr<Tensor> T(new Tensor());
-
-      auto dim = getShape(dict["shape"]);
-
-      size_t i = 0;
-#define LOAD_TENSOR_FILL(TYPE_NAME, NATIVE_TYPE, PROTO_TYPE_NAME)              \
-  T->reset(ElemKind::TYPE_NAME, dim);                                          \
-  auto TH = T->getHandle<NATIVE_TYPE>();                                       \
-  for (auto num : dict["values"]->PROTO_TYPE_NAME()) {                         \
-    TH.raw(i++) = num;                                                         \
-  }
-
-      if (dict["values"]->floats_size()) {
-        RETURN_ERR_IF_NOT(
-            typeName != "GivenTensorIntFill" &&
-                typeName != "GivenTensorInt64Fill",
-            "Typename must not be GivenTensorIntFill or GivenTensorInt64Fill");
-        LOAD_TENSOR_FILL(FloatTy, float, floats);
-      } else if (dict["values"]->ints_size()) {
-        if (typeName == "GivenTensorIntFill") {
-          LOAD_TENSOR_FILL(Int32ITy, int32_t, ints);
-        } else if (typeName == "GivenTensorInt64Fill" ||
-                   typeName == "GivenTensorFill") {
-          LOAD_TENSOR_FILL(Int64ITy, int64_t, ints);
-        } else {
-          RETURN_ERR(unexpectedNodeErrorMessage(
-              op, "Unsupported data type for " + typeName));
-        }
-      } else {
-        RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported data type for " +
-                                                      typeName));
-      }
-#undef LOAD_TENSOR_FILL
-
-      RETURN_ERR_IF_NOT(i == T->size(),
-                        "The number of serialized values does not "
-                        "match the size of the tensor.");
-      tensors_[o] = std::move(T);
+    auto dim = getShape(dict["shape"]);
+    auto const &values = dict["values"];
+    RETURN_ERR_IF_NOT(op.output_size() == 1,
+                      "GivenTensorFill must have exactly 1 output");
+    std::unique_ptr<Tensor> T(new Tensor());
+    if (typeName == "GivenTensorFill") {
+      RETURN_IF_ERR(
+          fillTensor<float>(*T, ElemKind::FloatTy, dim, values->floats()));
+    } else if (typeName == "GivenTensorIntFill") {
+      RETURN_IF_ERR(
+          fillTensor<int32_t>(*T, ElemKind::Int32ITy, dim, values->ints()));
+    } else if (typeName == "GivenTensorInt64Fill") {
+      RETURN_IF_ERR(
+          fillTensor<int64_t>(*T, ElemKind::Int64ITy, dim, values->ints()));
+    } else {
+      GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
     }
-
+    tensors_[op.output().Get(0)] = std::move(T);
     return llvm::Error::success();
   }
 

@@ -1477,7 +1477,7 @@ TEST(caffe2, tensorFillsTest) {
   std::string NetWeightFilename(
       "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
-  Constant *tensorFillFloat, *tensorFillInt, *tensorIntFill, *tensorInt64Fill;
+  Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill;
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
@@ -1490,8 +1490,6 @@ TEST(caffe2, tensorFillsTest) {
                                {"unused_output"}, {&unusedTy}, *F);
     tensorFillFloat = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_float")));
-    tensorFillInt = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_int")));
     tensorIntFill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill")));
     tensorInt64Fill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
@@ -1499,26 +1497,22 @@ TEST(caffe2, tensorFillsTest) {
   }
 
   ASSERT_TRUE(tensorFillFloat);
-  ASSERT_TRUE(tensorFillInt);
   ASSERT_TRUE(tensorIntFill);
   ASSERT_TRUE(tensorInt64Fill);
 
   // All fills in fill_test_init_net.pbtxt use shape {2, 2}.
   const std::vector<size_t> expectedDims = {2, 2};
   ASSERT_TRUE(tensorFillFloat->dims().equals(expectedDims));
-  ASSERT_TRUE(tensorFillInt->dims().equals(expectedDims));
   ASSERT_TRUE(tensorIntFill->dims().equals(expectedDims));
   ASSERT_TRUE(tensorInt64Fill->dims().equals(expectedDims));
 
   auto tensorFillFloatH = tensorFillFloat->getPayload().getHandle<float>();
-  auto tensorFillIntH = tensorFillInt->getPayload().getHandle<int64_t>();
   auto tensorIntFillH = tensorIntFill->getPayload().getHandle<int32_t>();
   auto tensorInt64FillH = tensorInt64Fill->getPayload().getHandle<int64_t>();
 
   // All fills in fill_test_init_net.pbtxt are set to 0 through 3.
   for (size_t i = 0, e = 4; i < e; i++) {
     EXPECT_FLOAT_EQ(tensorFillFloatH.raw(i), (float)i);
-    EXPECT_EQ(tensorFillIntH.raw(i), (int64_t)i);
     EXPECT_EQ(tensorIntFillH.raw(i), (int32_t)i);
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);
   }
