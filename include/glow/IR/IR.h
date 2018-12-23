@@ -239,7 +239,7 @@ class Node;
 /// A function that represents the compilation unit.
 class IRFunction final {
 public:
-  using VariableMap = std::unordered_map<const Node *, Value *>;
+  using VariableMap = std::unordered_map<const Storage *, Value *>;
   using InstListTy = TaggedList<Instruction, InstructionTraits>;
   using InstrIterator = InstListTy::iterator;
   using InstrConstIterator = InstListTy::const_iterator;
@@ -320,7 +320,7 @@ public:
 
   /// \returns the weight that the variable \p v is lowered into, or null if the
   /// variable is unknown.
-  Value *getWeightForNode(const Node *V) const;
+  Value *getWeightForNode(const Storage *V) const;
 
   /// \returns the list of instructions.
   InstListTy &getInstrs() { return instrs_; }
