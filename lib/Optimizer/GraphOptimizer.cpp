@@ -506,11 +506,12 @@ static bool sinkCode(Function *F) {
 
 #define ARITHMETIC_CASE(NODE_NAME_)                                            \
   case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
-    newAN = F->create##NODE_NAME_(                                             \
-        node->getName(),                                                       \
-        F->getParent()->uniqueTypeWithNewShape(                                \
-            node->getType(0), LTR->getInput().getType()->dims()),              \
-        LTR->getInput(), RTR->getInput());                                     \
+    newAN =                                                                    \
+        F->create##NODE_NAME_(node->getName(),                                 \
+                              F->getParent()->uniqueTypeWithNewShape(          \
+                                  node->getType(ArithmeticNode::ResultIdx),    \
+                                  LTR->getInput().getType()->dims()),          \
+                              LTR->getInput(), RTR->getInput());               \
     break;
 
 #define BOOLEAN_OP_CASE(NODE_NAME_)                                            \
@@ -1831,7 +1832,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
            "We should always be able to get a constant from a constant!");
     // This type setting updates the type of the node.
     // The underlying tensor still needs to be converted after this call.
-    oneUseCst->setType(0, dstTy);
+    oneUseCst->setType(Storage::OutputIdx, dstTy);
     return *oneUseCst;
   };
   const Tensor &tensor = constant.getPayload();

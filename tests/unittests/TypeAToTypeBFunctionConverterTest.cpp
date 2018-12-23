@@ -113,7 +113,11 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
   }
   // At this point we know the input of FC is convertTo(placeholder).
   // Check that this placeholder is the expected input.
-  EXPECT_EQ(convertedFC->getInput().getNode()->getNthInput(0).getNode(), input);
+  EXPECT_EQ(convertedFC->getInput()
+                .getNode()
+                ->getNthInput(ConvertToNode::InputIdx)
+                .getNode(),
+            input);
 }
 
 /// Check that a graph with a simple chain of computation is converted
@@ -238,7 +242,11 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
   }
   // At this point we know the input of FC is convertTo(placeholder).
   // Check that this placeholder is the expected input.
-  EXPECT_EQ(convertedFC->getInput().getNode()->getNthInput(0).getNode(), input);
+  EXPECT_EQ(convertedFC->getInput()
+                .getNode()
+                ->getNthInput(ConvertToNode::InputIdx)
+                .getNode(),
+            input);
 }
 
 /// Check that the conversion honor the doNotConvertKinds set (here ReLU)
@@ -345,7 +353,11 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
   }
   // At this point we know the input of FC is convertTo(placeholder).
   // Check that this placeholder is the expected input.
-  EXPECT_EQ(convertedFC->getInput().getNode()->getNthInput(0).getNode(), input);
+  EXPECT_EQ(convertedFC->getInput()
+                .getNode()
+                ->getNthInput(ConvertToNode::InputIdx)
+                .getNode(),
+            input);
 }
 
 /// Check that don't convert types we didn't asked for.
@@ -445,7 +457,10 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   EXPECT_EQ(convertedTopKInput->getInput().getElementType(), ElemKind::FloatTy);
   // At this point we know the input of TopK is convertTo(placeholder).
   // Check that this placeholder is the expected input.
-  EXPECT_EQ(convertedTopK->getInput().getNode()->getNthInput(0).getNode(),
+  EXPECT_EQ(convertedTopK->getInput()
+                .getNode()
+                ->getNthInput(ConvertToNode::InputIdx)
+                .getNode(),
             input);
 
   // Now check the Int64ITy part of the graph.
