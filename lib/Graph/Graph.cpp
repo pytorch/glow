@@ -1007,7 +1007,7 @@ ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
 void Function::createSplit(llvm::StringRef name, NodeValue input,
                            unsigned_t outputNum, unsigned_t axis,
                            llvm::ArrayRef<size_t> split,
-                           std::vector<Node *> &outputs) {
+                           std::vector<SliceNode *> &outputs) {
   auto inDims = input.dims();
   if (split.empty()) {
     assert(inDims[axis] % outputNum == 0 &&

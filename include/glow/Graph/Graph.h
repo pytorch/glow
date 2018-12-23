@@ -433,7 +433,7 @@ public:
   /// empty, \p input is split to equal sized parts.
   void createSplit(llvm::StringRef name, NodeValue input, unsigned_t outputNum,
                    unsigned_t axis, llvm::ArrayRef<size_t> split,
-                   std::vector<Node *> &outputs);
+                   std::vector<SliceNode *> &outputs);
 
   BatchNormalizationNode *
   createBatchNormalization(llvm::StringRef name, NodeValue input,

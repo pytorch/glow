@@ -286,7 +286,7 @@ protected:
 
     // LRN in Caffe2 has a scale_ output, but I believe it's unused for
     // inference. So explicitly only set output 0.
-    nodeValueByName_[op.output(0)] = NodeValue(N, 0);
+    nodeValueByName_[op.output(0)] = N->getResult();
     return llvm::Error::success();
   }
 
@@ -461,13 +461,13 @@ protected:
     if (dict.count("split"))
       split = getShape(dict["split"]);
 
-    std::vector<Node *> outputs;
+    std::vector<SliceNode *> outputs;
     G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       // Each output from Split is a SliceNode which only has a single output,
       // so only use 0 here as the node value result.
-      nodeValueByName_[op.output(i)] = NodeValue(outputs[i], 0);
+      nodeValueByName_[op.output(i)] = outputs[i]->getResult();
     }
     return llvm::Error::success();
   }
@@ -537,7 +537,7 @@ protected:
 
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
-    nodeValueByName_[op.output(0)] = NodeValue(node, 0);
+    nodeValueByName_[op.output(0)] = node->getResult();
     return true;
   }
 
@@ -583,7 +583,7 @@ protected:
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
-    nodeValueByName_[op.output(0)] = NodeValue(in, 0);
+    nodeValueByName_[op.output(0)] = in;
     return llvm::Error::success();
   }
 
