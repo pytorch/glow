@@ -1323,3 +1323,62 @@ TEST(Graph, cloneContextRuns) {
   EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
   EXPECT_FALSE(saveBacking1->isEqual(*saveBacking2));
 }
+
+/// Check that using the indices enums in nodes works correctly, with
+/// multi-input, multi-output, and single-input/output nodes.
+TEST(Graph, TestNodeEnums) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  Context ctx;
+  Placeholder *I =
+      MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  Placeholder *O = MD.createPlaceholder(ElemKind::FloatTy, {3}, "output", true);
+
+  TopKNode *TKN = F->createTopK("topk", I, 3);
+  GatherNode *GN =
+      F->createGather("gather", TKN->getValues(), TKN->getIndices());
+  TanhNode *TN = F->createTanh("tanh", GN);
+  SaveNode *SN = F->createSave("save", TN, O);
+
+  // Check structure of Placeholders.
+  EXPECT_EQ(I->getNthResult(Storage::OutputIdx), I->getOutput());
+  EXPECT_EQ(O->getNthResult(Storage::OutputIdx), O->getOutput());
+
+  // Check structure of TopK.
+  EXPECT_EQ(TKN->getInput(), TKN->getNthInput(TopKNode::InputIdx));
+  EXPECT_EQ(TKN->getNthResult(TopKNode::ValuesIdx), TKN->getValues());
+  EXPECT_EQ(TKN->getNthResult(TopKNode::IndicesIdx), TKN->getIndices());
+
+  // Check structure of Gather.
+  EXPECT_EQ(GN->getNthInput(GatherNode::DataIdx), GN->getData());
+  EXPECT_EQ(GN->getNthInput(GatherNode::IndicesIdx), GN->getIndices());
+  EXPECT_EQ(GN->getNthResult(GatherNode::ResultIdx), GN->getResult());
+
+  // Check structure of Tanh.
+  EXPECT_EQ(TN->getNthInput(TanhNode::InputIdx), TN->getInput());
+  EXPECT_EQ(TN->getNthResult(TanhNode::ResultIdx), TN->getResult());
+
+  // Check structure of Save.
+  EXPECT_EQ(SN->getNthInput(SaveNode::InputIdx), SN->getInput());
+  EXPECT_EQ(SN->getNthInput(SaveNode::OutputIdx), SN->getOutput());
+
+  // Check connection between Placeholder and TopK.
+  EXPECT_EQ(TKN->getNthInput(TopKNode::InputIdx), I->getOutput());
+
+  // Check connections between TopK and Gather.
+  EXPECT_EQ(TKN->getNthResult(TopKNode::ValuesIdx),
+            GN->getNthInput(GatherNode::DataIdx));
+  EXPECT_EQ(TKN->getNthResult(TopKNode::IndicesIdx),
+            GN->getNthInput(GatherNode::IndicesIdx));
+
+  // Check connection between Gather and Tanh.
+  EXPECT_EQ(GN->getNthResult(GatherNode::ResultIdx),
+            TN->getNthInput(TanhNode::InputIdx));
+
+  // Check connection between Gather and Tanh.
+  EXPECT_EQ(TN->getNthResult(TanhNode::ResultIdx),
+            SN->getNthInput(SaveNode::InputIdx));
+
+  // Check connection between Gather and Tanh.
+  EXPECT_EQ(SN->getNthInput(SaveNode::OutputIdx), O->getOutput());
+}
