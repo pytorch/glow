@@ -102,9 +102,9 @@ TEST(Graph, float16Conv) {
 
   auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
   EXPECT_TRUE(conv->verify());
-  EXPECT_EQ(conv->getType(0)->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(conv->getFilter().getType()->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(conv->getBias().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
   lower(F, MockBackend());
 
@@ -118,12 +118,9 @@ TEST(Graph, float16Conv) {
                              });
   ASSERT_TRUE(convIt != M.getInstrs().end());
   const auto *convInst = llvm::cast<ConvolutionInst>(&*convIt);
-  EXPECT_EQ(convInst->getSrc()->getType()->getElementType(),
-            ElemKind::Float16Ty);
-  EXPECT_EQ(convInst->getFilter()->getType()->getElementType(),
-            ElemKind::Float16Ty);
-  EXPECT_EQ(convInst->getBias()->getType()->getElementType(),
-            ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::Float16Ty);
 }
 
 /// Check that we can create batchNorm with float16.
@@ -137,11 +134,11 @@ TEST(Graph, float16BatchNorm) {
       F->createBatchNormalization(ctx, "batch", input, 3, 0.0001, 0.9);
 
   EXPECT_TRUE(BN->verify());
-  EXPECT_EQ(BN->getType(0)->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(BN->getScale().getType()->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(BN->getBias().getType()->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(BN->getMean().getType()->getElementType(), ElemKind::Float16Ty);
-  EXPECT_EQ(BN->getVar().getType()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getScale().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getBias().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getMean().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(BN->getVar().getElementType(), ElemKind::Float16Ty);
 
   lower(F, MockBackend());
 
@@ -1038,35 +1035,35 @@ TEST(Graph, setType) {
   TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
   TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
 
-  EXPECT_EQ(topK->getType(0), origTopKRes0);
-  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), origTopKRes0);
+  EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
 
   // Modify the type of result 0 and make sure type 1 is not
   // affected. Similarly the input shouldn't be affected.
   TypeRef inputTy = M.uniqueType(ElemKind::FloatTy, inputDims);
   TypeRef topKRes0 = M.uniqueType(ElemKind::Float16Ty, top5Dims);
-  topK->setType(0, topKRes0);
+  topK->setType(TopKNode::ValuesIdx, topKRes0);
   EXPECT_EQ(input->getType(), inputTy);
-  EXPECT_EQ(topK->getType(0), topKRes0);
-  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), topKRes0);
+  EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
 
   // Make sure the NodeValue API works the same way
   // as the Node::setType API.
-  NodeValue valRes1 = topK->getNthResult(1);
+  NodeValue valRes1 = topK->getNthResult(TopKNode::IndicesIdx);
   valRes1.setType(topKRes0);
   EXPECT_EQ(input->getType(), inputTy);
-  EXPECT_EQ(topK->getType(0), topKRes0);
-  EXPECT_EQ(topK->getType(1), topKRes0);
+  EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), topKRes0);
+  EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), topKRes0);
   EXPECT_EQ(valRes1.getType(), topKRes0);
 
   // Now restore sane types.
-  NodeValue valRes0 = topK->getNthResult(0);
+  NodeValue valRes0 = topK->getNthResult(TopKNode::ValuesIdx);
   valRes0.setType(origTopKRes0);
-  topK->setType(1, origTopKRes1);
+  topK->setType(TopKNode::IndicesIdx, origTopKRes1);
   EXPECT_EQ(input->getType(), inputTy);
-  EXPECT_EQ(topK->getType(0), origTopKRes0);
+  EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), origTopKRes0);
   EXPECT_EQ(valRes0.getType(), origTopKRes0);
-  EXPECT_EQ(topK->getType(1), origTopKRes1);
+  EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
   EXPECT_EQ(valRes1.getType(), origTopKRes1);
 }
 
@@ -1159,7 +1156,7 @@ TEST(Graph, verifyConstantTensorTypeMatchesConstantTypeChanged) {
   // Fresh constant should verify just fine.
   EXPECT_TRUE(input->verify());
 
-  input->setType(0, M.uniqueType(ElemKind::Float16Ty, {5}));
+  input->setType(Storage::OutputIdx, M.uniqueType(ElemKind::Float16Ty, {5}));
 
   EXPECT_FALSE(input->verify());
 }
