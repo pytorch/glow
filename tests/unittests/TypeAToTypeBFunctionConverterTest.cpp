@@ -93,18 +93,21 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackFCRes = llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackFCRes, nullptr);
-  EXPECT_EQ(convertedBackFCRes->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedBackFCRes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   auto *convertedFC =
       llvm::dyn_cast<FullyConnectedNode>(convertedBackFCRes->getInput());
   ASSERT_NE(convertedFC, nullptr);
-  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFC->getElementType(FullyConnectedNode::ResultIdx),
+            ElemKind::Float16Ty);
   // Check that all the input of FC are convertTo node with from float to
   // Float16Ty.
   for (unsigned idx = 0, end = convertedFC->getNumInputs(); idx != end; ++idx) {
     auto *convertedFCInput =
         llvm::dyn_cast<ConvertToNode>(convertedFC->getNthInput(idx));
     ASSERT_NE(convertedFCInput, nullptr);
-    EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+    EXPECT_EQ(convertedFCInput->getElementType(ConvertToNode::ResultIdx),
+              ElemKind::Float16Ty);
     EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
     EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
   }
@@ -194,35 +197,41 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackReLURes, nullptr);
-  EXPECT_EQ(convertedBackReLURes->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedBackReLURes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   auto *convertedReLU =
       llvm::dyn_cast<ReluNode>(convertedBackReLURes->getInput());
   ASSERT_NE(convertedReLU, nullptr);
-  EXPECT_EQ(convertedReLU->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedReLU->getElementType(ReluNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   // Check that the ReLU is fed from a conversion from float to float16.
   auto *convertedToReLUInput =
       llvm::dyn_cast<ConvertToNode>(convertedReLU->getInput());
   ASSERT_NE(convertedToReLUInput, nullptr);
-  EXPECT_EQ(convertedToReLUInput->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedToReLUInput->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   // Check that this conversion is fed from a conversion from float16 to float.
   auto *convertedBackFCRes =
       llvm::dyn_cast<ConvertToNode>(convertedToReLUInput->getInput());
   ASSERT_NE(convertedBackFCRes, nullptr);
-  EXPECT_EQ(convertedBackFCRes->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedBackFCRes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   // Check that this conversion comes from the float16 FC node.
   auto *convertedFC =
       llvm::dyn_cast<FullyConnectedNode>(convertedBackFCRes->getInput());
   ASSERT_NE(convertedFC, nullptr);
-  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFC->getElementType(FullyConnectedNode::ResultIdx),
+            ElemKind::Float16Ty);
   // Check that all the input of FC are convertTo node with from float to
   // Float16Ty.
   for (unsigned idx = 0, end = convertedFC->getNumInputs(); idx != end; ++idx) {
     auto *convertedFCInput =
         llvm::dyn_cast<ConvertToNode>(convertedFC->getNthInput(idx));
     ASSERT_NE(convertedFCInput, nullptr);
-    EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+    EXPECT_EQ(convertedFCInput->getElementType(ConvertToNode::ResultIdx),
+              ElemKind::Float16Ty);
     EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
     EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
   }
@@ -305,26 +314,30 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
   // Check that the save is fed from a conversion from float16 to float.
   auto *resultInput = llvm::dyn_cast<ReluNode>(result->getInput());
   ASSERT_NE(resultInput, nullptr);
-  EXPECT_EQ(resultInput->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(resultInput->getElementType(ReluNode::ResultIdx),
+            ElemKind::FloatTy);
   EXPECT_EQ(resultInput, ReLU);
 
   // Check that the ReLU is fed from a conversion from float16 to float.
   auto *convertedToReLUInput = llvm::dyn_cast<ConvertToNode>(ReLU->getInput());
   ASSERT_NE(convertedToReLUInput, nullptr);
-  EXPECT_EQ(convertedToReLUInput->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedToReLUInput->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
 
   // Check that this conversion comes from the float16 FC node.
   auto *convertedFC =
       llvm::dyn_cast<FullyConnectedNode>(convertedToReLUInput->getInput());
   ASSERT_NE(convertedFC, nullptr);
-  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFC->getElementType(FullyConnectedNode::ResultIdx),
+            ElemKind::Float16Ty);
   // Check that all the input of FC are convertTo node with from float to
   // Float16Ty.
   for (unsigned idx = 0, end = convertedFC->getNumInputs(); idx != end; ++idx) {
     auto *convertedFCInput =
         llvm::dyn_cast<ConvertToNode>(convertedFC->getNthInput(idx));
     ASSERT_NE(convertedFCInput, nullptr);
-    EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+    EXPECT_EQ(convertedFCInput->getElementType(ConvertToNode::ResultIdx),
+              ElemKind::Float16Ty);
     EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
     EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
   }
@@ -410,18 +423,22 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   auto *convertedBackTopKRes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackTopKRes, nullptr);
-  EXPECT_EQ(convertedBackTopKRes->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedBackTopKRes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   auto *convertedTopK =
       llvm::dyn_cast<TopKNode>(convertedBackTopKRes->getInput());
   ASSERT_NE(convertedTopK, nullptr);
-  EXPECT_EQ(convertedTopK->getElementType(0), ElemKind::Float16Ty);
-  EXPECT_EQ(convertedTopK->getElementType(1), ElemKind::Int64ITy);
+  EXPECT_EQ(convertedTopK->getElementType(TopKNode::ValuesIdx),
+            ElemKind::Float16Ty);
+  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx),
+            ElemKind::Int64ITy);
   // Check that the input of TopK is a convertTo node from float to
   // Float16Ty.
   auto *convertedTopKInput =
       llvm::dyn_cast<ConvertToNode>(convertedTopK->getInput());
   ASSERT_NE(convertedTopKInput, nullptr);
-  EXPECT_EQ(convertedTopKInput->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedTopKInput->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
   EXPECT_TRUE(llvm::isa<Placeholder>(convertedTopKInput->getInput()));
   EXPECT_EQ(convertedTopKInput->getInput().getElementType(), ElemKind::FloatTy);
   // At this point we know the input of TopK is convertTo(placeholder).
@@ -534,23 +551,27 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackReLURes, nullptr);
-  EXPECT_EQ(convertedBackReLURes->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedBackReLURes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   auto *convertedReLU =
       llvm::dyn_cast<ReluNode>(convertedBackReLURes->getInput());
   ASSERT_NE(convertedReLU, nullptr);
-  EXPECT_EQ(convertedReLU->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedReLU->getElementType(ReluNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   // Check that the ReLU is fed directly by FC float16.
   auto *convertedFC =
       llvm::dyn_cast<FullyConnectedNode>(convertedReLU->getInput());
   ASSERT_NE(convertedFC, nullptr);
-  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFC->getElementType(FullyConnectedNode::ResultIdx),
+            ElemKind::Float16Ty);
   // Check that the input of FC is a convertTo node from "input" from float to
   // Float16Ty.
   auto *convertedFCInput =
       llvm::dyn_cast<ConvertToNode>(convertedFC->getInput());
   ASSERT_NE(convertedFCInput, nullptr);
-  EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedFCInput->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
   EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
   EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::FloatTy);
   EXPECT_EQ(convertedFCInput->getInput().getNode(), input);
@@ -726,23 +747,27 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackReLURes, nullptr);
-  EXPECT_EQ(convertedBackReLURes->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertedBackReLURes->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
   auto *convertedReLU =
       llvm::dyn_cast<ReluNode>(convertedBackReLURes->getInput());
   ASSERT_NE(convertedReLU, nullptr);
-  EXPECT_EQ(convertedReLU->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedReLU->getElementType(ReluNode::ResultIdx),
+            ElemKind::FloatTy);
 
   // Check that the ReLU is fed directly by FC float.
   auto *convertedFC =
       llvm::dyn_cast<FullyConnectedNode>(convertedReLU->getInput());
   ASSERT_NE(convertedFC, nullptr);
-  EXPECT_EQ(convertedFC->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedFC->getElementType(FullyConnectedNode::ResultIdx),
+            ElemKind::FloatTy);
   // Check that the input of FC is a convertTo node from "input" from float to
   // Float16Ty.
   auto *convertedFCInput =
       llvm::dyn_cast<ConvertToNode>(convertedFC->getInput());
   ASSERT_NE(convertedFCInput, nullptr);
-  EXPECT_EQ(convertedFCInput->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertedFCInput->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   EXPECT_TRUE(llvm::isa<Placeholder>(convertedFCInput->getInput()));
   EXPECT_EQ(convertedFCInput->getInput().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convertedFCInput->getInput().getNode(), input);
@@ -761,7 +786,8 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   // Check that the save is fed from a conversion from float16 to float.
   auto *inputToFloat = llvm::dyn_cast<ConvertToNode>(saveOutput2->getInput());
   ASSERT_NE(inputToFloat, nullptr);
-  EXPECT_EQ(inputToFloat->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(inputToFloat->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   // Check that this input is "input".
   auto *inputOfF2 = llvm::dyn_cast<Placeholder>(inputToFloat->getInput());
   ASSERT_NE(inputOfF2, nullptr);
@@ -785,12 +811,14 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertOutput3 = llvm::dyn_cast<ConvertToNode>(saveOutput3->getInput());
   ASSERT_NE(convertOutput3, nullptr);
-  EXPECT_EQ(convertOutput3->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convertOutput3->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   auto *convertInputFor3 =
       llvm::dyn_cast<ConvertToNode>(convertOutput3->getInput());
   ASSERT_NE(convertInputFor3, nullptr);
-  EXPECT_EQ(convertInputFor3->getElementType(0), ElemKind::FloatTy);
+  EXPECT_EQ(convertInputFor3->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::FloatTy);
   // Check that this input is "input".
   auto *inputOfF3 = llvm::dyn_cast<Placeholder>(convertInputFor3->getInput());
   ASSERT_NE(inputOfF3, nullptr);
@@ -842,12 +870,14 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
 
   auto *convertToSave = llvm::dyn_cast<ConvertToNode>(save->getInput());
   EXPECT_EQ(convertToSave, convert);
-  EXPECT_EQ(convert->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(convert->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   auto *addedConversion = llvm::dyn_cast<ConvertToNode>(convert->getInput());
   ASSERT_NE(addedConversion, nullptr);
   // At this point both the input and output of convert are FP16.
-  EXPECT_EQ(addedConversion->getElementType(0), ElemKind::Float16Ty);
+  EXPECT_EQ(addedConversion->getElementType(ConvertToNode::ResultIdx),
+            ElemKind::Float16Ty);
 
   EXPECT_EQ(addedConversion->getInput().getNode(), placeholder);
   EXPECT_EQ(placeholder->getElementType(), ElemKind::FloatTy);
