@@ -89,7 +89,7 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackFCRes = llvm::dyn_cast<ConvertToNode>(result->getInput());
   ASSERT_NE(convertedBackFCRes, nullptr);
@@ -174,7 +174,8 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
   auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
-  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *ReLU =
+      F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
 
   size_t origGraphSize = F->getNodes().size();
@@ -192,7 +193,7 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
@@ -292,7 +293,8 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
   auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
-  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *ReLU =
+      F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
 
   size_t origGraphSize = F->getNodes().size();
@@ -310,7 +312,7 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *resultInput = llvm::dyn_cast<ReluNode>(result->getInput());
   ASSERT_NE(resultInput, nullptr);
@@ -418,7 +420,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackTopKRes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
@@ -451,8 +453,9 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   // unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(),
                         *resultIndices) != F->getNodes().end());
-  EXPECT_EQ(resultIndices->getOutput(), NodeValue(outputIdx, 0));
-  EXPECT_EQ(resultIndices->getInput(), NodeValue(convertedTopK, 1));
+  EXPECT_EQ(resultIndices->getOutput(), outputIdx->getOutput());
+  EXPECT_EQ(resultIndices->getInput(),
+            convertedTopK->getNthResult(TopKNode::IndicesIdx));
   EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
 }
 
@@ -528,7 +531,8 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   auto *saveBias = F->createSave("saveBias", bias);
   TypeRef FCTy = mod.uniqueType(ElemKind::FloatTy, {20, 10});
   auto *FC = F->createFullyConnected("FC", input, weights, bias, FCTy);
-  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *ReLU =
+      F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
 
   size_t origGraphSize = F->getNodes().size();
@@ -546,7 +550,7 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   // Make sure the save node is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
@@ -719,7 +723,8 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
 
   TypeRef FCTy = mod.uniqueType(ElemKind::FloatTy, {20, 10});
   auto *FC = F->createFullyConnected("FC", input, weights, bias, FCTy);
-  auto *ReLU = F->createRELU("ReLU", FC, FC->getType(0));
+  auto *ReLU =
+      F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
 
   size_t origGraphSize = F->getNodes().size();
@@ -742,7 +747,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   // Make the save node of F is still in the function and is unchanged.
   EXPECT_TRUE(std::find(F->getNodes().begin(), F->getNodes().end(), *result) !=
               F->getNodes().end());
-  EXPECT_EQ(result->getOutput(), NodeValue(output, 0));
+  EXPECT_EQ(result->getOutput(), output->getOutput());
   // Check that the save is fed from a conversion from float16 to float.
   auto *convertedBackReLURes =
       llvm::dyn_cast<ConvertToNode>(result->getInput());
@@ -781,7 +786,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   EXPECT_EQ(F2->getNodes().size(), f2OrigGraphSize + 1);
   EXPECT_TRUE(std::find(F2->getNodes().begin(), F2->getNodes().end(),
                         *saveOutput2) != F2->getNodes().end());
-  EXPECT_EQ(saveOutput2->getOutput(), NodeValue(output2, 0));
+  EXPECT_EQ(saveOutput2->getOutput(), output2->getOutput());
 
   // Check that the save is fed from a conversion from float16 to float.
   auto *inputToFloat = llvm::dyn_cast<ConvertToNode>(saveOutput2->getInput());
@@ -805,7 +810,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   EXPECT_EQ(F3->getNodes().size(), f3OrigGraphSize + 2);
   EXPECT_TRUE(std::find(F3->getNodes().begin(), F3->getNodes().end(),
                         *saveOutput3) != F3->getNodes().end());
-  EXPECT_EQ(saveOutput3->getOutput(), NodeValue(output3, 0));
+  EXPECT_EQ(saveOutput3->getOutput(), output3->getOutput());
   EXPECT_EQ(output3->getElementType(), ElemKind::Float16Ty);
 
   // Check that the save is fed from a conversion from float16 to float.
