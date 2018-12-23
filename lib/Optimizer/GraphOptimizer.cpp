@@ -718,7 +718,7 @@ static void mergeMatMul(Function *F) {
       size_t H = origMM->getResult().dims()[0];
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
-      NodeValue(origMM).replaceAllUsesOfWith(ex);
+      origMM->getResult().replaceAllUsesOfWith(ex);
     }
   }
 }
@@ -1051,7 +1051,7 @@ static void mergeBatchedAdd(Function *F) {
     for (auto *BA : BAs) {
       for (int i = 0, e = order.size(); i < e; i++) {
         if (BA->getBatch().getNode() == order[i]) {
-          NodeValue(BA).replaceAllUsesOfWith(newSlices[i]);
+          BA->getResult().replaceAllUsesOfWith(newSlices[i]);
           break;
         }
       }
@@ -1241,7 +1241,7 @@ static void optimizeBatchNorm(Function *F) {
       }
 
       bool normalizationHappened = false;
-      switch (CV->getElementType(0)) {
+      switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
       case ElemKind::FloatTy:
         normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
         break;
@@ -1823,7 +1823,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
                                  TypeRef dstTy) {
   // Sort out the easy case first.
   if (constant.getType() == dstTy) {
-    return NodeValue(&constant, 0);
+    return constant.getOutput();
   }
   auto modifyConstantTyAndGet = [&]() -> Constant & {
     Constant *oneUseCst = getUniquelyUsedConstant(&mod, constant);
@@ -1844,7 +1844,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       constantToBeModified.getPayload().convertToType(dstTy->getElementType());
-      return NodeValue(&constantToBeModified, 0);
+      return constantToBeModified.getOutput();
     }
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
@@ -1861,7 +1861,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
              "Type quantization not implemented");
       tensorToBeModified = quantization::quantizeTensor(
           tensorToBeModified, params, dstTy->getElementType());
-      return NodeValue(&constantToBeModified, 0);
+      return constantToBeModified.getOutput();
     }
     default:
       // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
