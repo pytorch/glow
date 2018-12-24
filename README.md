@@ -11,6 +11,14 @@ active development. The project plan is described in the Github issues
 section and in the [Roadmap](https://github.com/pytorch/glow/wiki/Glow-Roadmap)
 wiki page.
 
+## Partners
+
+Contributions to Glow are welcomed and encouraged! Glow is developed in
+collaboration with the following partners:
+
+|![Habana Logo](./docs/partners/habana.png) | ![CEVA Logo](./docs/partners/ceva.png) | ![NXP Logo](./docs/partners/nxp.png) |
+:-------------------------:|:-------------------------:|:-------------------------:
+|![Esperanto Logo](./docs/partners/esperanto.png)| ![Bitmain Logo](./docs/partners/bitmain.png) | |
 
 ## How does it work?
 
