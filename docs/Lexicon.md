@@ -34,7 +34,7 @@
 ### D
 
 * DAG  
-  Directed Acylic Graph  
+  Directed Acyclic Graph  
 
 * DMA  
   Direct Memory Access  
@@ -74,7 +74,7 @@
 
 * LGTM  
   Looks Good To Me  
-  Indiciates that the reviewer belives your code to be correct and a positive
+  Indicates that the reviewer believes your code to be correct and a positive
   change.  Used to indicate approval for merging the changes.
 
 * LSTM  
@@ -88,8 +88,8 @@
 * MLP  
   Multi-Layer Perceptron  
   A class of feed-forward ANN, consisting of an input, hidden, and output
-  layers.  Excluding the input, the nodes consitute a neuron in the ANN.  Using
-  non-linear activation functions and back-progation allows these networks to
+  layers.  Excluding the input, the nodes constitute a neuron in the ANN.  Using
+  non-linear activation functions and back-propagation allows these networks to
   distinguish between data with non-linear relationships.
 
 ### N

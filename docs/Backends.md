@@ -82,7 +82,7 @@ Additionally, there are virtual functions that backends can override:
 - `virtual bool shouldShareBuffers() const;`
 
   - Allow the backend to disable the buffer sharing optimization. This may be
-    prefered by backends which would like to do their own memory
+    preferred by backends which would like to do their own memory
     optimizations. Returns true by default.
 
 - `virtual void save(Function *F, llvm::StringRef outputDir, llvm::StringRef networkName) const;`
