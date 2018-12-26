@@ -22,7 +22,7 @@ instruction is executed. When a matrix multiplication is compiled the JIT knows
 exactly the dimensions of the matrices that are being executed. The knowledge enables
 much better code generation and vectorization. The JIT is also able to eliminate
 all calls to 'malloc', because the memory is statically allocated. The whole
-network is allocated by a single malloc call, all inputs and outputs a single seperate call.
+network is allocated by a single malloc call, all inputs and outputs a single separate call.
 
 ### How the JIT Works
 

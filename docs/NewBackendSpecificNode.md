@@ -9,7 +9,7 @@ Glow has two levels of IR. The high-level IR is a dataflow node-based graph. The
 
 #### Operator Fusion
 
-There are mainly two advantanges of operator fusion:
+There are mainly two advantages of operator fusion:
 
 - Good locality and less memory access
 - Reduce kernel launch time in GPU and specialized accelerators
