@@ -1,3 +1,5 @@
+add_custom_target(AutoGen)
+
 add_subdirectory(Backends)
 add_subdirectory(Base)
 add_subdirectory(CodeGen)

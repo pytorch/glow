@@ -10,6 +10,12 @@ add_custom_command(OUTPUT
                    COMMAND NodeGen ${NODES_HDR} ${NODES_SRC} ${NODES_DEF}
                    DEPENDS NodeGen
                    COMMENT "NodeGen: Generating nodes." VERBATIM)
+add_custom_target(AutoGenNode
+                   DEPENDS
+                     "${NODES_HDR}"
+                     "${NODES_SRC}"
+                     "${NODES_DEF}")
+add_dependencies(AutoGen AutoGenNode)
 
 add_library(Graph
             ${NODES_HDR}
@@ -30,4 +36,4 @@ target_link_libraries(Graph
                         Support
                         QuantizationBase)
 
-add_dependencies(Graph IRGenHeaders)
+add_dependencies(Graph AutoGen)

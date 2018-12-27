@@ -18,12 +18,16 @@ add_custom_command(OUTPUT
                       "${INSTR_BLD_HDR}" "${INSTR_BLD_SRC}" "${INSTR_IR_GEN}"
                     DEPENDS InstrGen
                     COMMENT "InstrGen: Generating instructions." VERBATIM)
-
-add_custom_target(IRGenHeaders
-                  DEPENDS
+add_custom_target(AutoGenInstr
+                   DEPENDS
                     "${INSTR_HDR}"
+                    "${INSTR_SRC}"
                     "${INSTR_DEF}"
-                    "${INSTR_BLD_HDR}")
+                    "${INSTR_BLD_HDR}"
+                    "${INSTR_BLD_SRC}"
+                    "${INSTR_IR_GEN}")
+add_dependencies(AutoGen AutoGenInstr)
+
 
 add_library(IR
               "${INSTR_SRC}"
@@ -42,3 +46,5 @@ target_link_libraries(IR
                         Graph
                         Base
                         Support)
+
+add_dependencies(IR AutoGen)
