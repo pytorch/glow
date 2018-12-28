@@ -57,8 +57,8 @@ TEST(Tensor, randomizeInt) {
   H.randomize(-50, 50, PRNG);
 
   // Check that all of the numbers fall in the range -50 to 50.
-  for (size_t i = 0, e = H.size(); i < e; i++) {
-    EXPECT_NEAR(H.raw(i), 0, 50);
+  for (auto elem : H) {
+    EXPECT_NEAR(elem, 0, 50);
   }
 }
 
@@ -69,8 +69,8 @@ TEST(Tensor, randomizeFloat16) {
   H.randomize(-50, 50, PRNG);
 
   // Check that all of the numbers fall in the range -50 to 50.
-  for (size_t i = 0, e = H.size(); i < e; i++) {
-    EXPECT_NEAR(H.raw(i), 0, 50);
+  for (auto elem : H) {
+    EXPECT_NEAR(elem, 0, 50);
   }
 }
 
@@ -666,33 +666,33 @@ TEST(Tensor, zeroQuantizedTensor) {
 
   auto Q8H = Q8T.getHandle<int8_t>();
   EXPECT_TRUE(Q8H.isZero());
-  for (size_t i = 0, e = Q8H.size(); i < e; i++) {
-    EXPECT_EQ(Q8H.raw(i), offsetQ8);
+  for (auto elem : Q8H) {
+    EXPECT_EQ(elem, offsetQ8);
   }
 
   auto Q16H = Q16T.getHandle<int16_t>();
   EXPECT_TRUE(Q16H.isZero());
-  for (size_t i = 0, e = Q16H.size(); i < e; i++) {
-    EXPECT_EQ(Q16H.raw(i), offsetQ16);
+  for (auto elem : Q16H) {
+    EXPECT_EQ(elem, offsetQ16);
   }
 
   auto Q32H = Q32T.getHandle<int32_t>();
   EXPECT_TRUE(Q32H.isZero());
-  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
-    EXPECT_EQ(Q32H.raw(i), offsetQ32);
+  for (auto elem : Q32H) {
+    EXPECT_EQ(elem, offsetQ32);
   }
 
   Q32H = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
   EXPECT_FALSE(Q32H.isZero());
 
-  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
-    EXPECT_NE(Q32H.raw(i), offsetQ32);
+  for (auto elem : Q32H) {
+    EXPECT_NE(elem, offsetQ32);
   }
 
   Q32T.zero();
   EXPECT_TRUE(Q32H.isZero());
-  for (size_t i = 0, e = Q32H.size(); i < e; i++) {
-    EXPECT_EQ(Q32H.raw(i), offsetQ32);
+  for (auto elem : Q32H) {
+    EXPECT_EQ(elem, offsetQ32);
   }
 }
 

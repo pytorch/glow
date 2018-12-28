@@ -99,8 +99,8 @@ void generateTensorHistogram(const Handle<float> inputTensor,
   }
 
   float binWidth = (max - min) / nBins;
-  for (size_t i = 0, e = inputTensor.size(); i < e; ++i) {
-    size_t newBin = getBin(nBins, binWidth, min, inputTensor.raw(i));
+  for (auto elem : inputTensor) {
+    size_t newBin = getBin(nBins, binWidth, min, elem);
     existingHistogram.raw(newBin)++;
   }
 }

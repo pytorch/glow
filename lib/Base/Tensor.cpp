@@ -87,9 +87,9 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
 
-  for (size_t i = 0, e = handle.size(); i < e; i++) {
-    mx = std::max(mx, handle.raw(i));
-    mn = std::min(mn, handle.raw(i));
+  for (auto elem : handle) {
+    mx = std::max(mx, elem);
+    mn = std::min(mn, elem);
   }
 
   // Check for zero tensor.

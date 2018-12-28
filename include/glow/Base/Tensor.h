@@ -477,6 +477,22 @@ template <class ElemTy> class Handle final {
   Handle() = default;
 
 public:
+  /// Random access iterator to tensor elements.
+  using iterator = ElemTy *;
+
+  /// Constant random access iterator to tensor elements.
+  using const_iterator = const iterator;
+
+  /// \returns an iterator to the first element of the tensor.
+  iterator begin() { return tensor_->getRawDataPointer<ElemTy>(); }
+  const_iterator begin() const { return tensor_->getRawDataPointer<ElemTy>(); }
+
+  /// \returns an iterator to the last element of the tensor.
+  iterator end() { return tensor_->getRawDataPointer<ElemTy>() + size(); }
+  const_iterator end() const {
+    return tensor_->getRawDataPointer<ElemTy>() + size();
+  }
+
   /// Allocate a new invalid handle.
   static Handle createInvalidHandle() { return Handle(); }
 
@@ -547,10 +563,7 @@ public:
     return tensor_->isInBounds(indices);
   }
 
-  void clear(ElemTy value = 0) {
-    auto *data = tensor_->getRawDataPointer<ElemTy>();
-    std::fill(&data[0], &data[0] + size(), value);
-  }
+  void clear(ElemTy value = 0) { std::fill(begin(), end(), value); }
 
   ElemTy &at(llvm::ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
@@ -630,9 +643,7 @@ public:
 
   void operator=(llvm::ArrayRef<ElemTy> array) {
     assert(size() == array.size() && "Invalid input size.");
-    for (size_t i = 0, e = array.size(); i < e; ++i) {
-      raw(i) = array[i];
-    }
+    std::copy(array.begin(), array.end(), begin());
   }
 
   void dumpAscii(llvm::raw_ostream &os) const { dumpAsciiImpl(tensor_, os); }
@@ -664,12 +675,7 @@ public:
   /// \returns true if tensor contains only elements equal to zero.
   bool isZero() const {
     int32_t trueZero = getType().isQuantizedType() ? getType().getOffset() : 0;
-    for (size_t i = 0, e = size(); i < e; i++) {
-      if (raw(i) != trueZero)
-        return false;
-    }
-
-    return true;
+    return std::all_of(begin(), end(), [=](ElemTy e) { return e == trueZero; });
   }
 
   void dump(llvm::raw_ostream &os) const { dumpImpl(tensor_, os); }
@@ -687,8 +693,8 @@ public:
     assert(filterSize > 0 && "invalid filter size");
     double scale = std::sqrt(3.0 / double(filterSize));
     std::uniform_real_distribution<> dist(-scale, scale);
-    for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = dist(PRNG);
+    for (auto &e : *this) {
+      e = dist(PRNG);
     }
   }
 
@@ -699,8 +705,8 @@ public:
   randomize(float low, float high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
     std::uniform_real_distribution<ElemTy> dist(low, high);
-    for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = dist(PRNG);
+    for (auto &elem : *this) {
+      elem = dist(PRNG);
     }
   }
 
@@ -711,8 +717,8 @@ public:
   randomize(int low, int high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
     std::uniform_int_distribution<int> dist(low, high);
-    for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = dist(PRNG);
+    for (auto &elem : *this) {
+      elem = dist(PRNG);
     }
   }
 
@@ -724,8 +730,8 @@ public:
   randomize(float low, float high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
     std::uniform_real_distribution<float> dist(low, high);
-    for (size_t i = 0, e = size(); i < e; i++) {
-      raw(i) = ElemTy(dist(PRNG));
+    for (auto &elem : *this) {
+      elem = dist(PRNG);
     }
   }
 

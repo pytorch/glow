@@ -70,8 +70,7 @@ using ArgumentDictionaryTy =
 static ArgumentDictionaryTy
 loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict;
-  for (auto i = 0, e = op.attribute_size(); i < e; i++) {
-    const ONNX_NAMESPACE::AttributeProto &arg = op.attribute(i);
+  for (auto &arg : op.attribute()) {
     dict[arg.name()] = &arg;
   }
   return dict;

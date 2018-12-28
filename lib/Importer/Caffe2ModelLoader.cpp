@@ -51,8 +51,7 @@ const int32_t OFFSETSHIFT = 128;
 /// Translates the protocol buffer node \p op into a random access map.
 static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict;
-  for (auto i = 0, e = op.arg_size(); i < e; i++) {
-    const caffe2::Argument &arg = op.arg(i);
+  for (auto &arg : op.arg()) {
     dict[arg.name()] = &arg;
   }
   return dict;
@@ -1066,8 +1065,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
                  << " random numbers. This could be source of discrepancy.\n";
 #endif // NDEBUG
     // Uniformly generate random numbers in [tensorMin; tensorMax).
-    for (size_t i = 0, e = T->size(); i != e; i++) {
-      TH.raw(i) = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
+    for (auto &elem : TH) {
+      elem = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
 
     tensors_[name] = std::move(T);

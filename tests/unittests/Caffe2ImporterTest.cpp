@@ -1511,7 +1511,7 @@ TEST(caffe2, tensorFillsTest) {
   auto tensorInt64FillH = tensorInt64Fill->getPayload().getHandle<int64_t>();
 
   // All fills in fill_test_init_net.pbtxt are set to 0 through 3.
-  for (size_t i = 0, e = 4; i < e; i++) {
+  for (size_t i = 0; i < 4; i++) {
     EXPECT_FLOAT_EQ(tensorFillFloatH.raw(i), (float)i);
     EXPECT_EQ(tensorIntFillH.raw(i), (int32_t)i);
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);

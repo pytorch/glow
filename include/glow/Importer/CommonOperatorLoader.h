@@ -490,15 +490,15 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(constShapeTensor,
                                  getTensorByName(op.input(1)));
       auto TH = constShapeTensor->getHandle<int64_t>();
-      for (size_t i = 0, e = constShapeTensor->size(); i != e; i++) {
-        requestedDims.push_back(TH.at({i}));
+      for (auto dim : TH) {
+        requestedDims.push_back(dim);
       }
     } else if (dict.count("shape")) {
       RETURN_ERR_IF_NOT(op.input_size() == 1,
                         "Cannot specify new shape by both argument and input.");
       std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
-      for (size_t i = 0, e = protoDims.size(); i != e; i++) {
-        requestedDims.push_back(protoDims[i]);
+      for (auto dim : protoDims) {
+        requestedDims.push_back(dim);
       }
     } else {
       RETURN_ERR("Missing output shape information for the Reshape operator.");
