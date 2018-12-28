@@ -32,6 +32,8 @@ struct RuntimeSymbolInfo {
   Type type;
   /// Is the symbol an input for the function.
   bool input;
+  /// Is the symbol an output for the function.
+  bool output;
 };
 
 /// Contains the information needed to be passed forward from compile time to
