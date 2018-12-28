@@ -30,6 +30,8 @@ struct RuntimeSymbolInfo {
   size_t offset;
   /// Type of symbol.
   Type type;
+  /// Is the symbol an input for the function.
+  bool input;
 };
 
 /// Contains the information needed to be passed forward from compile time to

@@ -16,6 +16,7 @@
 #ifndef GLOW_RUNTIME_RUNTIMETYPES_H
 #define GLOW_RUNTIME_RUNTIMETYPES_H
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 
 #include <string>
@@ -39,40 +40,26 @@ struct DeviceInfo {
   uint64_t availableMemory;
 };
 
-/// Data structure that contains everything needed by the executor to execute a
-/// network at runtime.
-struct ExecutionDAG {
-  /// Vector of networks to be run.
-  std::vector<NetworkIDty> networks;
-  /// Mapping of networkID to the deviceIDty where the network is loaded.
-  std::unordered_map<NetworkIDty, DeviceIDty> devices;
-  /// vector of root nodes, these have no dependencies and can be run first.
-  std::vector<NetworkIDty> roots;
-  /// Mapping of networkID to a vector of it's dependancies.
-  std::unordered_map<NetworkIDty, std::vector<NetworkIDty>> dependencies;
-  /// Mapping of networkID to a vector of networks that depend on it.
-  std::unordered_map<NetworkIDty, std::vector<NetworkIDty>> dependents;
-  /// Mapping of NetworkIDty to a vector of input placeholder names for the
-  /// network.
-  std::unordered_map<NetworkIDty, std::vector<std::string>> inputs;
-  /// Mapping of NetworkIDty to a vector of output placeholder names for the
-  /// network.
-  std::unordered_map<NetworkIDty, std::vector<std::string>> outputs;
-};
-
-/// Data structure containing the output from the Partitioner. It is consumed by
-/// the Provisioner and used to generate an executionDAG.
-struct DependencyDAG {
-  /// Vector of unique pointers to modules containing sub-networks.
-  std::vector<std::unique_ptr<Module>> modules;
-  /// Vector of root nodes.
-  std::vector<Module *> roots;
-  /// Mapping of Module * to a vector of it's dependancies.
-  std::unordered_map<Module *, std::vector<Module *>> dependencies;
-  /// Mapping of Module * to a vector of networks that depend on it.
-  std::unordered_map<Module *, std::vector<Module *>> dependents;
-  /// Mapping of Module * to total size of constants/weights for module.
-  std::unordered_map<Module *, uint64_t> moduleSize;
+/// Individual Node in the DAG for a given network. This contains all the
+/// information needed to run the sub-network at inference time.
+struct DAGNode {
+  /// The children of this node, these are nodes that depend on the current
+  /// node.
+  std::vector<DAGNode> children;
+  /// Pointers to the parents of this node. This is used by the executor for
+  /// determining if a given node has all dependencies met.
+  std::vector<DAGNode *> parents;
+  /// ID of the deviceManager that this network is assigned to.
+  DeviceIDty deviceID;
+  /// The logicalDevice is an output of the Partitioner to indicate that two
+  /// networks should be assigned to the same device.
+  DeviceIDty logicalDevice;
+  /// Name assigned to the sub-network, this is the id that will be passed to
+  /// the DeviceManager when requesting a run of the network.
+  std::string name;
+  /// Runtime bundle containing all the symbol information for this network at
+  /// runtime.
+  RuntimeBundle runtimeBundle;
 };
 
 } // namespace runtime
