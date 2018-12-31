@@ -33,14 +33,12 @@ add_custom_target(RunQuantizedLeNetMnistBundle DEPENDS RunQuantizedBundleCommand
 # =================
 # Regular
 add_executable(LeNetMnistBundle $<TARGET_OBJECTS:LeNetMnistBundleMain>)
-set_target_properties(LeNetMnistBundle PROPERTIES LINK_FLAGS "-lpng")
-target_link_libraries(LeNetMnistBundle ${LENET_MNIST_BUNDLE_DIR}/lenet_mnist.o)
+target_link_libraries(LeNetMnistBundle ${LENET_MNIST_BUNDLE_DIR}/lenet_mnist.o png)
 add_dependencies(LeNetMnistBundle LeNetMnistBundleMain LeNetMnistBundleNet)
 
 # Quantized
 add_executable(QuantizedLeNetMnistBundle $<TARGET_OBJECTS:LeNetMnistBundleMain>)
-set_target_properties(QuantizedLeNetMnistBundle PROPERTIES LINK_FLAGS "-lpng")
-target_link_libraries(QuantizedLeNetMnistBundle ${LENET_MNIST_BUNDLE_DIR}/quantized_lenet_mnist.o)
+target_link_libraries(QuantizedLeNetMnistBundle ${LENET_MNIST_BUNDLE_DIR}/quantized_lenet_mnist.o png)
 add_dependencies(QuantizedLeNetMnistBundle LeNetMnistBundleMain QuantizedLeNetMnistBundleNet)
 
 # Glow Bundles
