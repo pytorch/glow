@@ -33,14 +33,12 @@ add_custom_target(RunQuantizedResNet50Bundle DEPENDS RunQuantizedBundleCommand Q
 # =================
 # Regular
 add_executable(ResNet50Bundle $<TARGET_OBJECTS:ResNet50BundleMain>)
-set_target_properties(ResNet50Bundle PROPERTIES LINK_FLAGS "-lpng")
-target_link_libraries(ResNet50Bundle ${RESNET50_BUNDLE_DIR}/resnet50.o)
+target_link_libraries(ResNet50Bundle ${RESNET50_BUNDLE_DIR}/resnet50.o png)
 add_dependencies(ResNet50Bundle ResNet50BundleMain ResNet50BundleNet)
 
 # Quantized
 add_executable(QuantizedResNet50Bundle $<TARGET_OBJECTS:ResNet50BundleMain>)
-set_target_properties(QuantizedResNet50Bundle PROPERTIES LINK_FLAGS "-lpng")
-target_link_libraries(QuantizedResNet50Bundle ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o)
+target_link_libraries(QuantizedResNet50Bundle ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o png)
 add_dependencies(QuantizedResNet50Bundle ResNet50BundleMain QuantizedResNet50BundleNet)
 
 # Glow Bundles
