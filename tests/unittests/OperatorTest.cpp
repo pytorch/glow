@@ -1723,8 +1723,8 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
   auto H = ctx.get(res->getPlaceholder())->getHandle();
 
   // Check that the difference in the results is less than 0.1.
-  for (int i = 0, e = H.size(); i < e; i++) {
-    EXPECT_NEAR(H.raw(i), 0, 0.1);
+  for (auto elem : H) {
+    EXPECT_NEAR(elem, 0, 0.1);
   }
 }
 
@@ -1763,8 +1763,8 @@ TEST_P(InterpAndCPU, IntConcat) {
 
   auto R = ctx_.get(res->getPlaceholder())->getHandle();
   // Check that the difference in the results is less than 0.2.
-  for (int i = 0, e = R.size(); i < e; i++) {
-    EXPECT_NEAR(R.raw(i), 0, 0.2);
+  for (auto elem : R) {
+    EXPECT_NEAR(elem, 0, 0.2);
   }
 }
 
@@ -1809,8 +1809,8 @@ TEST_P(Operator, IntFC) {
   // Check that there aren't too many elements with a difference in the results
   // of greater than 0.2.
   int count = 0;
-  for (int i = 0, e = H.size(); i < e; i++) {
-    if (std::abs(H.raw(i)) > 0.2) {
+  for (auto elem : H) {
+    if (std::abs(elem) > 0.2) {
       count++;
     }
   }
@@ -4404,8 +4404,8 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
   auto H = ctx_.get(save->getPlaceholder())->getHandle();
 
   // The difference in the results should be less than 0.05.
-  for (int i = 0, e = H.size(); i < e; i++) {
-    EXPECT_LE(std::abs(H.raw(i)), 0.05);
+  for (auto elem : H) {
+    EXPECT_LE(std::abs(elem), 0.05);
   }
 }
 

@@ -255,12 +255,12 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
   float denominator = 0.0f;
 
-  for (size_t i = 0, e = H.size(); i < e; ++i) {
-    denominator += std::exp(static_cast<float>(H.raw(i)));
+  for (auto elem : H) {
+    denominator += std::exp(static_cast<float>(elem));
   }
 
-  for (size_t j = 0, e = H.size(); j < e; ++j) {
-    H.raw(j) = std::exp(static_cast<float>(H.raw(j))) / denominator;
+  for (auto &elem : H) {
+    elem = std::exp(static_cast<float>(elem)) / denominator;
   }
 }
 

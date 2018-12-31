@@ -1043,8 +1043,7 @@ static void mergeBatchedAdd(Function *F) {
 
     // Create the new slices. These slices will replace the original scalar
     // batched-add nodes.
-    for (int i = 0, e = order.size(); i < e; i++) {
-      auto *orig = order[i];
+    for (auto *orig : order) {
       newSlices.push_back(F->createSlice(orig->getName(), BA, orig->getStart(),
                                          orig->getResult().getType()));
     }

@@ -286,9 +286,8 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  for (int i = 0, e = inputsH.size(); i < e; i++) {
-    inputsH.raw(i) *= 6;
-    inputsH.raw(i) += 4;
+  for (auto &elem : inputsH) {
+    elem = elem * 6 + 4;
   }
 
   performGradCheck(EE_, ctx, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
