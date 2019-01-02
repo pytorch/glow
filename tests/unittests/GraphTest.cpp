@@ -435,13 +435,13 @@ TEST(Graph, moduleTest) {
 
 TEST(Graph, functionDependenciesTest) {
   Module M;
-  auto F1 = M.createFunction("one");
-  auto F2 = M.createFunction("two");
-  auto V1 =
+  auto *F1 = M.createFunction("one");
+  auto *F2 = M.createFunction("two");
+  auto *V1 =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V1", true);
-  auto V2 =
+  auto *V2 =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V2", true);
-  auto V3 =
+  auto *V3 =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V3", true);
   M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V4", true);
 
