@@ -275,7 +275,7 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   Node *O = F->createBatchNormalization(ctx, "batch", A, 3, 0.0001, 0.9);
   O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
   O = F->createRegression("reg", O, Ex);
-  auto result = F->createSave("ret", O);
+  auto *result = F->createSave("ret", O);
 
   Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 3});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});

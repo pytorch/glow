@@ -275,7 +275,7 @@ TEST_P(Operator, matmul) {
   ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
   ctx_.allocate(rhs)->getHandle() = {7, 10};
 
-  auto R = F_->createMatMul("MM", lhs, rhs);
+  auto *R = F_->createMatMul("MM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
@@ -296,7 +296,7 @@ TEST_P(InterpOnly, FP16Matmul) {
   ctx_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
   ctx_.allocate(rhs)->getHandle<float16_t>() = {7, 10};
 
-  auto R = F_->createMatMul("MM", lhs, rhs);
+  auto *R = F_->createMatMul("MM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
   auto *saveTensor = ctx_.allocate(save->getPlaceholder());
@@ -365,7 +365,7 @@ TEST_P(Operator, batchedReduceAdd) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
-  auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
@@ -385,7 +385,7 @@ TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-  auto R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
 
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
@@ -475,7 +475,7 @@ TEST_P(Operator, batchedReduceMean) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
-  auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
+  auto *R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
@@ -495,7 +495,7 @@ TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-  auto R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
+  auto *R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
 
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
@@ -591,7 +591,7 @@ TEST_P(Operator, BatchedAdd) {
                                        6, 7, 8, 9, 10, 11, 12, 13, 14};
   ctx_.allocate(added)->getHandle().clear(1.0);
 
-  auto R = F_->createBatchedAdd("batch.add", batch, added);
+  auto *R = F_->createBatchedAdd("batch.add", batch, added);
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
@@ -633,8 +633,8 @@ TEST_P(InterpAndCPU, broadcastSimple) {
 
   const unsigned axis = 0;
 
-  auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
-  auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
+  auto *R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto *QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
   auto *save = F_->createSave("save", R);
   auto *broadcasted = ctx_.allocate(save->getPlaceholder());
@@ -697,8 +697,8 @@ TEST_P(InterpAndCPU, broadcast) {
 
   const unsigned axis = 1;
 
-  auto R = F_->createBroadcast("broadcasted", B, dims_A, axis);
-  auto QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
+  auto *R = F_->createBroadcast("broadcasted", B, dims_A, axis);
+  auto *QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
   auto *save = F_->createSave("save", R);
   auto *broadcasted = ctx_.allocate(save->getPlaceholder());
@@ -857,7 +857,7 @@ TEST_P(Operator, TopK) {
   ctx_.allocate(values);
   ctx_.allocate(indices);
 
-  auto R = F_->createTopK("TopK", inp, 3);
+  auto *R = F_->createTopK("TopK", inp, 3);
 
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
@@ -1008,7 +1008,7 @@ TEST_P(InterpAndCPU, TopK1) {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
   };
 
-  auto R = F_->createTopK("TopK", inp, 1);
+  auto *R = F_->createTopK("TopK", inp, 1);
 
   auto *values = F_->createSave("save.values", {R, 0});
   ctx_.allocate(values->getPlaceholder());
@@ -1037,7 +1037,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
       -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
   };
 
-  auto TK = F_->createTopK("TopK", INV, 3);
+  auto *TK = F_->createTopK("TopK", INV, 3);
 
   auto *values = F_->createSave("save.values", TK->getValues());
   ctx_.allocate(values->getPlaceholder());
@@ -1108,7 +1108,7 @@ TEST_P(InterpAndCPU, Gather64) {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto R = F_->createGather("gather", data, indices);
+  auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -1174,7 +1174,7 @@ TEST_P(InterpAndCPU, Gather32) {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto R = F_->createGather("gather", data, indices);
+  auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -1324,7 +1324,7 @@ TEST_P(InterpAndCPU, GatherSizeT) {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto R = F_->createGather("gather", data, indices);
+  auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -1382,7 +1382,7 @@ TEST_P(Operator, BatchedGather) {
   };
 
   // Create a batched gather (a single batch dimension).
-  auto R = F_->createGather("gather", data, indices, 1);
+  auto *R = F_->createGather("gather", data, indices, 1);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -1410,7 +1410,7 @@ TEST_P(Operator, ScatterAssign) {
   ctx_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   ctx_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
-  auto R = F_->createScatterAssign("scatterassign", data, indices, slices);
+  auto *R = F_->createScatterAssign("scatterassign", data, indices, slices);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -1737,8 +1737,8 @@ TEST_P(Operator, IntConvolutionDepth8) {
 }
 
 TEST_P(InterpAndCPU, IntConcat) {
-  auto A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
-  auto B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
+  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
   ctx_.allocate(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   ctx_.allocate(B)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
 
@@ -1746,15 +1746,15 @@ TEST_P(InterpAndCPU, IntConcat) {
   auto BTy = mod_.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 3}, 0.01, 0);
 
-  auto QA = F_->createQuantize("QA", A, ATy);
-  auto QB = F_->createQuantize("QB", B, BTy);
+  auto *QA = F_->createQuantize("QA", A, ATy);
+  auto *QB = F_->createQuantize("QB", B, BTy);
 
-  auto C = F_->createConcat("concat", {A, B}, 0);
-  auto CQ = F_->createConcat("concatQ", {QA, QB}, 0, outTy);
-  auto DCQ = F_->createDequantize("DQ", CQ);
+  auto *C = F_->createConcat("concat", {A, B}, 0);
+  auto *CQ = F_->createConcat("concatQ", {QA, QB}, 0, outTy);
+  auto *DCQ = F_->createDequantize("DQ", CQ);
 
   // Subtract the results of the Concat from the quantized Concat.
-  auto sub = F_->createSub("compare", C, DCQ);
+  auto *sub = F_->createSub("compare", C, DCQ);
 
   auto *res = F_->createSave("save", sub);
   ctx_.allocate(res->getPlaceholder());
@@ -2761,10 +2761,10 @@ TEST_P(InterpAndCPU, Split) {
   std::vector<SliceNode *> outputs2;
   F_->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
                   /*split = */ {2, 4}, outputs2);
-  auto S1 = F_->createSave("save1", outputs1[0]);
-  auto S2 = F_->createSave("save2", outputs1[1]);
-  auto S3 = F_->createSave("save3", outputs2[0]);
-  auto S4 = F_->createSave("save4", outputs2[1]);
+  auto *S1 = F_->createSave("save1", outputs1[0]);
+  auto *S2 = F_->createSave("save2", outputs1[1]);
+  auto *S3 = F_->createSave("save3", outputs2[0]);
+  auto *S4 = F_->createSave("save4", outputs2[1]);
 
   ctx_.allocate(S1->getPlaceholder());
   ctx_.allocate(S2->getPlaceholder());
@@ -3583,9 +3583,9 @@ TEST_P(InterpAndCPU, IntLookupTable) {
     initValues[i] = i - 128;
   }
 
-  auto lookupTable =
+  auto *lookupTable =
       F_->createIntLookupTable("lookupTable", input, initValues, outTy);
-  auto save = F_->createSave("save", lookupTable);
+  auto *save = F_->createSave("save", lookupTable);
   ctx_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -3727,7 +3727,7 @@ TEST_P(InterpAndCPU, LengthsSum) {
                                       3.0f, 2.9f, 1.1f, 1.4f, 2.8f, 8.4f};
   ctx_.allocate(lengths)->getHandle<int32_t>() = {2, 0, 3, 1};
 
-  auto R = F_->createLengthsSum("LS", data, lengths);
+  auto *R = F_->createLengthsSum("LS", data, lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -3774,7 +3774,7 @@ TEST_P(InterpAndCPU, SparseLengthsSum) {
       2, 0, 2, 1, 3,
   };
 
-  auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -3824,7 +3824,7 @@ TEST_P(InterpOnly, SparseLengthsSumI8) {
       2, 0, 2, 1, 3,
   };
 
-  auto R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -3873,8 +3873,8 @@ TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
       2,
   };
 
-  auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
-                                              lengths);
+  auto *R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                               lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -3928,8 +3928,8 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
       2,
   };
 
-  auto R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
-                                              lengths);
+  auto *R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                               lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -3970,7 +3970,7 @@ TEST_P(InterpAndCPU, SparseToDense) {
   IH = {1, 3, 1, 9};
   VH.randomize(-3.0, 3.0, mod_.getPRNG());
 
-  auto STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
+  auto *STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
   auto *S = F_->createSave("save", STDN);
   ctx_.allocate(S->getPlaceholder());
 
@@ -4243,7 +4243,7 @@ TEST_P(InterpAndCPU, DivSizeT) {
   LHSH = {10, 20, 30, 40, 50, 60};
   RHSH = {2, 20, 100, 41, 3, 59};
 
-  auto R = F_->createDiv("div", LHS, RHS);
+  auto *R = F_->createDiv("div", LHS, RHS);
 
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
@@ -4566,7 +4566,7 @@ TEST_P(InterpAndCPU, LengthsToRanges) {
 
   ctx_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 0, 2};
 
-  auto R = F_->createLengthsToRanges("LTR", lengths);
+  auto *R = F_->createLengthsToRanges("LTR", lengths);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 
@@ -4599,7 +4599,7 @@ TEST_P(InterpOnly, BatchOneHot) {
   ctx_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
   ctx_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
 
-  auto R = F_->createBatchOneHot("BOH", data, lengths, values);
+  auto *R = F_->createBatchOneHot("BOH", data, lengths, values);
   auto *S = F_->createSave("save", R);
   ctx_.allocate(S->getPlaceholder());
 

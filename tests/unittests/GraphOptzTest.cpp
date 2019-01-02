@@ -1547,8 +1547,8 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
   *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
-  auto Q = F_->createQuantize("quantize", input, qType);
-  auto S = F_->createSave("save", Q);
+  auto *Q = F_->createQuantize("quantize", input, qType);
+  auto *S = F_->createSave("save", Q);
 
   EXPECT_EQ(2, F_->getNodes().size());
   ::glow::convertPlaceholdersToConstants(F_, ctx_, {S->getPlaceholder()});
@@ -1568,7 +1568,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   *ctx_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
-  auto Q = F_->createQuantize("quantize", input, qType);
+  auto *Q = F_->createQuantize("quantize", input, qType);
   F_->createSave("save", Q);
   auto clonedF = F_->clone("cloned");
 

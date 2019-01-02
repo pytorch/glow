@@ -43,8 +43,8 @@ static void lowerMulGradNode(Function *F, const MulGradNode &node) {
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto lhsResult = F->createMul("mul.grad.rhs", outG, RHS);
-  auto rhsResult = F->createMul("mul.grad.lhs", outG, LHS);
+  auto *lhsResult = F->createMul("mul.grad.rhs", outG, RHS);
+  auto *rhsResult = F->createMul("mul.grad.lhs", outG, LHS);
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
 }
@@ -54,8 +54,8 @@ static void lowerSubGradNode(Function *F, const SubGradNode &node) {
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
   auto outG = node.getGradOfOriginalOutputNamedResult();
-  auto zero = F->createSplat("zero", outG.getType(), 0);
-  auto sub = F->createSub("sub.grad", zero, outG);
+  auto *zero = F->createSplat("zero", outG.getType(), 0);
+  auto *sub = F->createSub("sub.grad", zero, outG);
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(outG);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(sub);
 }
@@ -67,14 +67,14 @@ static void lowerDivGradNode(Function *F, const DivGradNode &node) {
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto lhsResult = F->createDiv("div.grad.rhs", outG, RHS);
+  auto *lhsResult = F->createDiv("div.grad.rhs", outG, RHS);
 
-  auto zero = F->createSplat("zero", outG.getType(), 0);
-  auto subGrad = F->createSub("sub.grad", zero, outG);
-  auto mulLhsGrad = F->createMul("mul.sub.grad.lhs", subGrad, LHS);
+  auto *zero = F->createSplat("zero", outG.getType(), 0);
+  auto *subGrad = F->createSub("sub.grad", zero, outG);
+  auto *mulLhsGrad = F->createMul("mul.sub.grad.lhs", subGrad, LHS);
 
-  auto squareRhs = F->createMul("square.rhs", RHS, RHS);
-  auto rhsResult = F->createDiv("div.grad", mulLhsGrad, squareRhs);
+  auto *squareRhs = F->createMul("square.rhs", RHS, RHS);
+  auto *rhsResult = F->createDiv("div.grad", mulLhsGrad, squareRhs);
 
   node.getGradOfInputNamedLHS().replaceAllUsesOfWith(lhsResult);
   node.getGradOfInputNamedRHS().replaceAllUsesOfWith(rhsResult);
@@ -89,8 +89,8 @@ static void lowerRegressionGradNode(Function *F,
                                     const RegressionGradNode &node) {
   auto outG = node.getInput();
 
-  auto inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
-  auto expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
+  auto *inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
+  auto *expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
 
   node.getGradOfInputNamedInput().replaceAllUsesOfWith(inputG);
   node.getGradOfInputNamedExpected().replaceAllUsesOfWith(expG);
@@ -104,8 +104,8 @@ static void lowerFullyConnectedNode(Function *F, const FullyConnectedNode &FC) {
       FC.getResult().getType(), {X->getResult().dims()[0], W.dims()[1]});
   auto *mul = F->createMatMul("fc.dot", outTy, X, W);
 
-  auto add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
-                                 FC.getBias());
+  auto *add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
+                                  FC.getBias());
   FC.getResult().replaceAllUsesOfWith(add);
 
   if (FC.hasPredicate()) {
@@ -402,17 +402,18 @@ static void lowerBatchNormalizationNode(Function *F,
   auto channelIdx = BN.getChannelIdx();
   auto epsilon = BN.getEpsilon();
 
-  auto epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
+  auto *epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
   Node *coef = F->createAdd("var_plus_eps", var, epsilonSplat);
   coef = F->createPow("sqrt_var_plus_eps", coef, 0.5);
   coef = F->createDiv("inverse_sqrt_var_plus_eps", gamma, coef);
 
   // Apply: out := (in - mean) * coef + beta
   // in and out are of the same size, while others must be broadcasted.
-  auto meanB = F->createBroadcast("muBroadcasted", mean, in.dims(), channelIdx);
-  auto coefB =
+  auto *meanB =
+      F->createBroadcast("muBroadcasted", mean, in.dims(), channelIdx);
+  auto *coefB =
       F->createBroadcast("coefBroadcasted", coef, in.dims(), channelIdx);
-  auto betaB =
+  auto *betaB =
       F->createBroadcast("betaBroadcasted", beta, in.dims(), channelIdx);
 
   Node *newResult = F->createSub("in_minus_mean", in, meanB);
@@ -471,8 +472,8 @@ static void lowerMeanVarNormalizationNode(Function *F,
 
   // Calculate Variance:
   // sum((x - mu) ^ 2)
-  auto localMeanB = F->createBroadcast("new_mean_broadcasted", localMean,
-                                       inFlat->getResult().dims(), 1);
+  auto *localMeanB = F->createBroadcast("new_mean_broadcasted", localMean,
+                                        inFlat->getResult().dims(), 1);
 
   Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
   localVar = F->createPow("x_mu2", localVar, 2);
@@ -481,18 +482,18 @@ static void lowerMeanVarNormalizationNode(Function *F,
   localVar = F->createDiv("localVar", localVar, samplesPerChannelSplat);
 
   // Update the global variance and mean:
-  auto momentumSplat = F->createSplat(
+  auto *momentumSplat = F->createSplat(
       "momentumSplat", localMean->getResult().getType(), momentum);
-  auto oneMinusMomentumSplat = F->createSplat(
+  auto *oneMinusMomentumSplat = F->createSplat(
       "oneMinusMomentumSplat", localMean->getResult().getType(), 1 - momentum);
 
   // newMean := P * localMean + (1 - P) * oldMean
-  auto newMean = F->createAdd(
+  auto *newMean = F->createAdd(
       "newMean",
       F->createMul("momentum_by_localMean", momentumSplat, localMean),
       F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, inMean));
   // newVar := P * localVar + (1 - P) * oldVar
-  auto newVar = F->createAdd(
+  auto *newVar = F->createAdd(
       "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
       F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, inVar));
 
@@ -519,9 +520,9 @@ static void lowerBatchNormalizationGradNode(Function *F,
   const size_t samplesPerChannel = inW.getType()->size() / numChannels;
 
   // Calculate: sum(dy * (h - mu))
-  auto meanB =
+  auto *meanB =
       F->createBroadcast("mean_broadcasted", mean, inW.dims(), channelIdx);
-  auto hmu = F->createSub("x_minus_mean", inW, meanB);
+  auto *hmu = F->createSub("x_minus_mean", inW, meanB);
   NodeValue sumDyhmu = F->createMul("dy_mul_h_minus_mu", outG, hmu);
 
   // Calculate: sum(dy)
@@ -556,9 +557,9 @@ static void lowerBatchNormalizationGradNode(Function *F,
   //     np.sum(dy * (h - mu)))
   //
 
-  auto epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
-  auto oneSplat = F->createSplat("oneSplat", var.getType(), 1.0);
-  auto invNSplat =
+  auto *epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
+  auto *oneSplat = F->createSplat("oneSplat", var.getType(), 1.0);
+  auto *invNSplat =
       F->createSplat("invNSplat", var.getType(), 1.0 / samplesPerChannel);
   Node *invVar = F->createAdd("var_plus_eps", var, epsilonSplat);
   invVar = F->createDiv("inverse_var_plus_eps", oneSplat, invVar);
@@ -576,23 +577,23 @@ static void lowerBatchNormalizationGradNode(Function *F,
       F->createBroadcast("coef1_broadcasted", coef1, inW.dims(), channelIdx);
   coef2 =
       F->createBroadcast("coef2_broadcasted", coef2, inW.dims(), channelIdx);
-  auto sumDyB =
+  auto *sumDyB =
       F->createBroadcast("sumDy_broadcasted", sumDy, inW.dims(), channelIdx);
-  auto NSplat = F->createSplat("oneSplat", inW.getType(), samplesPerChannel);
+  auto *NSplat = F->createSplat("oneSplat", inW.getType(), samplesPerChannel);
   Node *inBrackets = F->createMul("NSplat_outG", NSplat, outG);
   inBrackets = F->createSub("inBrackets",
                             F->createSub("inBrackets_2ops", inBrackets, sumDyB),
                             F->createMul("hmu_coef2", hmu, coef2));
 
-  auto inG = F->createMul("inG", coef1, inBrackets);
+  auto *inG = F->createMul("inG", coef1, inBrackets);
   BNG.getGradOfInputNamedInput().replaceAllUsesOfWith(inG);
 
   BNG.getGradOfInputNamedBias().replaceAllUsesOfWith(sumDy);
 
-  auto gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
+  auto *gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
   BNG.getGradOfInputNamedScale().replaceAllUsesOfWith(gammaG);
 
-  auto zeroSplat = F->createSplat("zeroSplat", var.getType(), 0);
+  auto *zeroSplat = F->createSplat("zeroSplat", var.getType(), 0);
   BNG.getGradOfInputNamedMean().replaceAllUsesOfWith(zeroSplat);
   BNG.getGradOfInputNamedVar().replaceAllUsesOfWith(zeroSplat);
 }
@@ -635,7 +636,7 @@ static void lowerGroupConvolutionNode(Function *F, const ConvolutionNode &BNG) {
                                   bias_slice, outTy, kernels, strides, pads,
                                   1));
   }
-  auto result = F->createConcat(BNG.getName(), convs, 3);
+  auto *result = F->createConcat(BNG.getName(), convs, 3);
   BNG.getResult().replaceAllUsesOfWith(result);
 }
 
