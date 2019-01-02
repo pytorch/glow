@@ -871,14 +871,18 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto qLRNIt = std::find_if(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
         return llvm::isa<LocalResponseNormalizationNode>(&node) &&
-               node.getNthResult(0).getType()->isQuantizedType();
+               node.getNthResult(LocalResponseNormalizationNode::ResultIdx)
+                   .getType()
+                   ->isQuantizedType();
       });
   ASSERT_NE(qLRNIt, F->getNodes().end());
-  auto qSMIt = std::find_if(
-      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
-        return llvm::isa<SoftMaxNode>(&node) &&
-               node.getNthResult(0).getType()->isQuantizedType();
-      });
+  auto qSMIt = std::find_if(F->getNodes().begin(), F->getNodes().end(),
+                            [](const Node &node) -> bool {
+                              return llvm::isa<SoftMaxNode>(&node) &&
+                                     node.getNthResult(SoftMaxNode::ResultIdx)
+                                         .getType()
+                                         ->isQuantizedType();
+                            });
   ASSERT_NE(qSMIt, F->getNodes().end());
 }
 
@@ -907,11 +911,13 @@ TEST(Quantization, quantizeAvgPool) {
 
   F = quantization::quantizeFunction(EE, QI, F);
 
-  auto qPool = std::find_if(
-      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
-        return llvm::isa<AvgPoolNode>(&node) &&
-               node.getNthResult(0).getType()->isQuantizedType();
-      });
+  auto qPool = std::find_if(F->getNodes().begin(), F->getNodes().end(),
+                            [](const Node &node) -> bool {
+                              return llvm::isa<AvgPoolNode>(&node) &&
+                                     node.getNthResult(AvgPoolNode::ResultIdx)
+                                         .getType()
+                                         ->isQuantizedType();
+                            });
   ASSERT_NE(qPool, F->getNodes().end());
   auto *avgPool = llvm::cast<AvgPoolNode>(qPool);
   ASSERT_NE(avgPool->getInput().getType()->getScale(),

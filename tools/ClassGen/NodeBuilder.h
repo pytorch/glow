@@ -276,6 +276,9 @@ private:
   /// Emit the class-level documentation string, if any.
   void emitDocstring(std::ostream &os) const;
 
+  /// Emit enums for each of the node's inputs and results indices.
+  void emitIndicesEnum(std::ostream &os) const;
+
   /// Emit the class definition for the node.
   void emitNodeClass(std::ostream &os) const;
 

@@ -466,28 +466,29 @@ static bool sinkCode(Function *F) {
       }
     }
 
-    // Sink Transpose below Arithmetic nodes. Note: For simplicity, we
-    // assume for the arithmetic node, LHS is the 0th input, RHS is 1st, and
-    // Result is 0th result.
+    // Sink Transpose below Arithmetic nodes.
     if (node->isArithmetic()) {
-#define GET_LHS(NODE_) NODE_->getNthInput(0)
-#define GET_RHS(NODE_) NODE_->getNthInput(1)
-      TransposeNode *LTR = dyn_cast<TransposeNode>(GET_LHS(node));
-      TransposeNode *RTR = dyn_cast<TransposeNode>(GET_RHS(node));
+      TransposeNode *LTR =
+          dyn_cast<TransposeNode>(node->getNthInput(ArithmeticNode::LHSIdx));
+      TransposeNode *RTR =
+          dyn_cast<TransposeNode>(node->getNthInput(ArithmeticNode::RHSIdx));
 
       if (!LTR || !RTR) {
         // If one of the sides is a splat, it can be seen as
         // transpose (splat').
-        if (isa<SplatNode>(GET_LHS(node)) && RTR) {
+        if (isa<SplatNode>(node->getNthInput(ArithmeticNode::LHSIdx)) && RTR) {
           // Build splat' for LHS.
-          auto *SN = dyn_cast<SplatNode>(GET_LHS(node));
+          auto *SN =
+              dyn_cast<SplatNode>(node->getNthInput(ArithmeticNode::LHSIdx));
           auto *NS = F->createSplat("splat", RTR->getInput().getType(),
                                     SN->getValue());
           LTR = F->createTranspose("transpose", NS, RTR->getShuffle());
           changed = true;
-        } else if (isa<SplatNode>(GET_RHS(node)) && LTR) {
+        } else if (isa<SplatNode>(node->getNthInput(ArithmeticNode::RHSIdx)) &&
+                   LTR) {
           // Build splat' for RHS.
-          auto *SN = dyn_cast<SplatNode>(GET_RHS(node));
+          auto *SN =
+              dyn_cast<SplatNode>(node->getNthInput(ArithmeticNode::RHSIdx));
           auto *NS = F->createSplat("splat", LTR->getInput().getType(),
                                     SN->getValue());
           RTR = F->createTranspose("transpose", NS, LTR->getShuffle());
@@ -496,8 +497,6 @@ static bool sinkCode(Function *F) {
           continue;
         }
       }
-#undef GET_LHS
-#undef GET_RHS
       // The masks of the transposes on both sizes must match.
       if (LTR->getShuffle() != RTR->getShuffle()) {
         continue;
@@ -507,11 +506,12 @@ static bool sinkCode(Function *F) {
 
 #define ARITHMETIC_CASE(NODE_NAME_)                                            \
   case glow::Kinded::Kind::NODE_NAME_##NodeKind:                               \
-    newAN = F->create##NODE_NAME_(                                             \
-        node->getName(),                                                       \
-        F->getParent()->uniqueTypeWithNewShape(                                \
-            node->getType(0), LTR->getInput().getType()->dims()),              \
-        LTR->getInput(), RTR->getInput());                                     \
+    newAN =                                                                    \
+        F->create##NODE_NAME_(node->getName(),                                 \
+                              F->getParent()->uniqueTypeWithNewShape(          \
+                                  node->getType(ArithmeticNode::ResultIdx),    \
+                                  LTR->getInput().getType()->dims()),          \
+                              LTR->getInput(), RTR->getInput());               \
     break;
 
 #define BOOLEAN_OP_CASE(NODE_NAME_)                                            \
@@ -540,9 +540,7 @@ static bool sinkCode(Function *F) {
       auto *newTR =
           F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
       newTR->setPredicate(node->getPredicate());
-#define GET_RESULT(NODE_) NODE_->getNthResult(0)
-      GET_RESULT(node).replaceAllUsesOfWith(newTR);
-#undef GET_RESULT
+      node->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(newTR);
     }
 
     // Sink RELU below batch concat nodes.
@@ -721,7 +719,7 @@ static void mergeMatMul(Function *F) {
       size_t H = origMM->getResult().dims()[0];
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
-      NodeValue(origMM).replaceAllUsesOfWith(ex);
+      origMM->getResult().replaceAllUsesOfWith(ex);
     }
   }
 }
@@ -1053,7 +1051,7 @@ static void mergeBatchedAdd(Function *F) {
     for (auto *BA : BAs) {
       for (int i = 0, e = order.size(); i < e; i++) {
         if (BA->getBatch().getNode() == order[i]) {
-          NodeValue(BA).replaceAllUsesOfWith(newSlices[i]);
+          BA->getResult().replaceAllUsesOfWith(newSlices[i]);
           break;
         }
       }
@@ -1140,15 +1138,10 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
 
   // Set the new filter and bias on CV if necessary.
   if (filterC != CV.getFilter().getNode()) {
-    constexpr size_t idxFilter = 1;
-    assert(CV.getNthInput(idxFilter) == CV.getFilter() &&
-           "Filter idx is incorrect");
-    CV.setNthInput(idxFilter, filterC);
+    CV.setNthInput(ConvolutionNode::FilterIdx, filterC);
   }
   if (cbiasC != CV.getBias().getNode()) {
-    constexpr size_t idxBias = 2;
-    assert(CV.getNthInput(idxBias) == CV.getBias() && "Bias idx is incorrect");
-    CV.setNthInput(idxBias, cbiasC);
+    CV.setNthInput(ConvolutionNode::BiasIdx, cbiasC);
   }
 
   // First, BN computation can be phrased as follows:
@@ -1248,7 +1241,7 @@ static void optimizeBatchNorm(Function *F) {
       }
 
       bool normalizationHappened = false;
-      switch (CV->getElementType(0)) {
+      switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
       case ElemKind::FloatTy:
         normalizationHappened = normalizeWeights<float>(M, *CV, *BN);
         break;
@@ -1511,13 +1504,12 @@ static void optimizeArithmeticNodes(Function *F) {
   }
   while (!worklist.empty()) {
     Node *N = worklist.back();
+    assert(N->isArithmetic() && "Must be an Arithmetic node.");
     worklist.pop_back();
 
     auto *SN = simplifyNode(N, F);
     if (SN != N) {
-      assert(N->getNumResults() == 1 &&
-             "All arithmetic nodes should have 1 result.");
-      N->getNthResult(0).replaceAllUsesOfWith(SN);
+      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SN);
 
       // The simplified node could be further simplified. Note that the
       // simplified node might not be arithmetic; it could be a splat.
@@ -1739,7 +1731,7 @@ static void optimizeReshape(Function *F) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
       continue;
-    auto inputNode = reshapeNode->getNthInput(0);
+    auto inputNode = reshapeNode->getNthInput(ReshapeNode::InputIdx);
     // Eliminate ReshapeNode when the input is already the correct shape.
     if (inputNode.dims() == reshapeNode->getResult().dims()) {
       reshapeNode->getResult().replaceAllUsesOfWith(inputNode);
@@ -1831,7 +1823,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
                                  TypeRef dstTy) {
   // Sort out the easy case first.
   if (constant.getType() == dstTy) {
-    return NodeValue(&constant, 0);
+    return constant.getOutput();
   }
   auto modifyConstantTyAndGet = [&]() -> Constant & {
     Constant *oneUseCst = getUniquelyUsedConstant(&mod, constant);
@@ -1839,7 +1831,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
            "We should always be able to get a constant from a constant!");
     // This type setting updates the type of the node.
     // The underlying tensor still needs to be converted after this call.
-    oneUseCst->setType(0, dstTy);
+    oneUseCst->setType(Storage::OutputIdx, dstTy);
     return *oneUseCst;
   };
   const Tensor &tensor = constant.getPayload();
@@ -1852,7 +1844,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       constantToBeModified.getPayload().convertToType(dstTy->getElementType());
-      return NodeValue(&constantToBeModified, 0);
+      return constantToBeModified.getOutput();
     }
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
@@ -1869,7 +1861,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
              "Type quantization not implemented");
       tensorToBeModified = quantization::quantizeTensor(
           tensorToBeModified, params, dstTy->getElementType());
-      return NodeValue(&constantToBeModified, 0);
+      return constantToBeModified.getOutput();
     }
     default:
       // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.

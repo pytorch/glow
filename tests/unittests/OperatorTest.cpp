@@ -2577,6 +2577,7 @@ TEST_P(Operator, simpleCmpSelectPredication) {
     cnt = F_->createSub("sub1", cnt, const1);
     Node *pred = F_->createCmpLTE("cmp", const0, cnt);
 
+    assert(data->getNumResults() == 1 && "Data should have a single output.");
     Node *const2 = F_->createSplat("const2", data->getType(0), 2.0);
     Node *newData = F_->createMul("mul2x", data, const2);
 
@@ -2754,10 +2755,10 @@ TEST_P(InterpAndCPU, Split) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 6}, "inputs", false);
   ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 
-  std::vector<Node *> outputs1;
+  std::vector<SliceNode *> outputs1;
   F_->createSplit("Split1", inputs, /*outputNum = */ 2, /*axis = */ 2,
                   /*split = */ {}, outputs1);
-  std::vector<Node *> outputs2;
+  std::vector<SliceNode *> outputs2;
   F_->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
                   /*split = */ {2, 4}, outputs2);
   auto S1 = F_->createSave("save1", outputs1[0]);

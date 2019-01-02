@@ -587,6 +587,24 @@ void NodeBuilder::emitDocstring(std::ostream &os) const {
   }
 }
 
+void NodeBuilder::emitIndicesEnum(std::ostream &os) const {
+  os << "  enum InputIndices {\n";
+  for (size_t i = 0; i < nodeInputs_.size(); i++) {
+    os << "    ";
+    os << nodeInputs_[i];
+    os << "Idx = " << i << ",\n";
+  }
+  os << "  };\n\n";
+
+  os << "  enum ResultIndices {\n";
+  for (int i = 0, e = nodeOutputs_.size(); i < e; i++) {
+    os << "    ";
+    os << nodeOutputs_[i].second;
+    os << "Idx = " << i << ",\n";
+  }
+  os << "  };\n\n";
+}
+
 void NodeBuilder::emitNodeClass(std::ostream &os) const {
   emitMemberForwardDecls(os);
 
@@ -600,6 +618,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
   os << "\n public:\n";
 
+  emitIndicesEnum(os);
   emitCtor(os);
   emitSettersGetters(os);
 

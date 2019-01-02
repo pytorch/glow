@@ -42,19 +42,19 @@ bool OCLBackend::transformPostLowering(Function *F,
       if (CN->getGroup() > 1)
         continue;
       auto *NR = convertConvToNCHWConv<OCLConvolutionNode>(CN, F);
-      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      CN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
     }
     if (auto *PMN = dyn_cast<MaxPoolNode>(&node)) {
       auto *NR = convertPoolToNCHWPool<MaxPoolNode, OCLMaxPoolNode>(PMN, F);
-      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      PMN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
     }
     if (auto *PAN = dyn_cast<AvgPoolNode>(&node)) {
       auto *NR = convertPoolToNCHWPool<AvgPoolNode, OCLAvgPoolNode>(PAN, F);
-      NodeValue(&node, 0).replaceAllUsesOfWith(NR);
+      PAN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
     }

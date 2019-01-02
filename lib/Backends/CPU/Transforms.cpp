@@ -103,7 +103,7 @@ static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
            "Types should be quantized");
     auto *RS = F->createRescaleQuantized(MN->getName(), input,
                                          MN->getResult().getType());
-    input = NodeValue(RS, 0);
+    input = RS->getResult();
   }
 
   assert(input.getType() == splat->getResult().getType() &&
@@ -120,7 +120,7 @@ bool CPUBackend::transformPostLowering(Function *F,
     // Try to replace generic convolution with cpu-optimized version.
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       if (Node *NCN = optimizeCPUConv(CN, F)) {
-        NodeValue(&node, 0).replaceAllUsesOfWith(NCN);
+        CN->getResult().replaceAllUsesOfWith(NCN);
         changed = true;
         continue;
       }
@@ -129,7 +129,7 @@ bool CPUBackend::transformPostLowering(Function *F,
     // Merge Max and Splat nodes into CPUMaxSplat.
     if (auto *MN = dyn_cast<MaxNode>(&node)) {
       if (Node *MSN = optimizeCPUMaxSplat(MN, F)) {
-        NodeValue(&node, 0).replaceAllUsesOfWith(MSN);
+        MN->getResult().replaceAllUsesOfWith(MSN);
         changed = true;
         continue;
       }

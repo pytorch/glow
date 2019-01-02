@@ -318,7 +318,7 @@ void IRFunction::verify() const {
 
   for (auto p : variableMap_) {
     (void)p;
-    assert(p.first->getType(0) == p.second->getType() &&
+    assert(p.first->getType() == p.second->getType() &&
            "Weight and variable must have the same type");
     p.second->verify(*this);
     p.second->verifyUseList(InstrNumbering);
@@ -328,7 +328,7 @@ void IRFunction::verify() const {
   }
 }
 
-Value *IRFunction::getWeightForNode(const Node *V) const {
+Value *IRFunction::getWeightForNode(const Storage *V) const {
   auto it = variableMap_.find(V);
   if (it == variableMap_.end()) {
     return nullptr;

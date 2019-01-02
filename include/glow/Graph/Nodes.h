@@ -32,6 +32,10 @@ namespace glow {
 // Placeholder nodes which are unbound.
 class Storage : public Node {
 public:
+  enum ResultIndices {
+    OutputIdx = 0,
+  };
+
   Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
 
   /// \return the single output value of the node.

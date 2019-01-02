@@ -215,15 +215,21 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t depth = wtag.dims()[0];
 
     // We expect the input to be NHWC.
-    Node *tr;
+    Node *finalIn;
     if (order == "NCHW") {
-      tr = G_.createTranspose(opName, in, NCHW2NHWC);
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC);
     } else {
-      tr = in;
+      finalIn = in;
     }
 
+    RETURN_ERR_IF_NOT(
+        llvm::isa<TransposeNode>(finalIn) || llvm::isa<Storage>(finalIn),
+        "Internal error: Final input had to be either Storage or Transpose.");
+    TypeRef finalInType = llvm::isa<Storage>(finalIn)
+                              ? finalIn->getType(Storage::OutputIdx)
+                              : finalIn->getType(TransposeNode::ResultIdx);
     // Calculate the size and allocate the output buffer.
-    ShapeNHWC idim = ShapeNHWC(tr->getType(0)->dims());
+    ShapeNHWC idim = ShapeNHWC(finalInType->dims());
     auto outSz =
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     std::array<size_t, 4> outDims = {
@@ -287,7 +293,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       bias->assign(&biasTensor);
     }
 
-    Node *node = G_.createConv(opName, tr, filter, bias, outTy, kernels,
+    Node *node = G_.createConv(opName, finalIn, filter, bias, outTy, kernels,
                                strides, pads, group);
 
     if (order == "NCHW") {
@@ -369,11 +375,11 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
     }
     // We expect the input to be NHWC.
-    Node *tr;
+    Node *finalIn;
     if (order == "NCHW") {
-      tr = G_.createTranspose(opName, in, NCHW2NHWC);
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC);
     } else {
-      tr = in;
+      finalIn = in;
     }
 
     // If 'global_pooling' is set then the operation will pool over the size of
@@ -392,7 +398,13 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         "missing zero point for quantized output type");
       RETURN_ERR_IF_NOT(dict.count("Y_scale"),
                         "missing Y_scale for quantized output type");
-      ShapeNHWC idim = ShapeNHWC(tr->getType(0)->dims());
+      RETURN_ERR_IF_NOT(
+          llvm::isa<TransposeNode>(finalIn) || llvm::isa<Storage>(finalIn),
+          "Internal error: Final input had to be either Storage or Transpose.");
+      TypeRef finalInType = llvm::isa<Storage>(finalIn)
+                                ? finalIn->getType(Storage::OutputIdx)
+                                : finalIn->getType(TransposeNode::ResultIdx);
+      ShapeNHWC idim = ShapeNHWC(finalInType->dims());
       auto outSz =
           calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
       std::array<size_t, 4> outDims = {
@@ -400,7 +412,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (typeName == "Int8MaxPool") {
         // Int8Maxpool output quantization should be same as the input, so just
         // ignore the given params.
-        node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+        node = G_.createMaxPool(opName, finalIn, kernels, strides, pads);
       } else {
         float yScale;
         ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
@@ -408,12 +420,12 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
         auto outTy = G_.getParent()->uniqueType(
             ElemKind::Int8QTy, outDims, yScale, yZeroPoint - OFFSETSHIFT);
-        node = G_.createAvgPool(opName, tr, outTy, kernels, strides, pads);
+        node = G_.createAvgPool(opName, finalIn, outTy, kernels, strides, pads);
       }
     } else if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      node = G_.createMaxPool(opName, finalIn, kernels, strides, pads);
     } else {
-      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+      node = G_.createAvgPool(opName, finalIn, kernels, strides, pads);
     }
     if (order == "NCHW") {
       // Transpose the output back.
@@ -494,7 +506,15 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
     // Concat has multiple outputs in Caffe2, but I believe the other output
     // (split_info) is not used for inference.
-    nodeValueByName_[op.output(0)] = NodeValue(node, 0);
+
+    // If we add the axis then node is a Reshape, otherwise it should be Concat.
+    RETURN_ERR_IF_NOT(
+        llvm::isa<ConcatNode>(node) || llvm::isa<ReshapeNode>(node),
+        "Internal error: Node should either be a Concat or Reshape.");
+    NodeValue finalNode = llvm::isa<ConcatNode>(node)
+                              ? NodeValue(node, ConcatNode::ResultIdx)
+                              : NodeValue(node, ReshapeNode::ResultIdx);
+    nodeValueByName_[op.output(0)] = finalNode;
     return llvm::Error::success();
   }
 
