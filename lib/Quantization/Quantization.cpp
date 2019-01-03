@@ -55,22 +55,24 @@ protected:
   }
 
   /// \see FunctionConverter::getTargetTypeForOutput.
-  /// Get the quantized type for \p out if any.
+  /// \returns quantized type for \p out if any; if not quantizable, then
+  /// \returns the original type.
   TypeRef getTargetTypeForOutput(const NodeValue &out) const override {
     if (out.getElementType() != ElemKind::FloatTy) {
-      return nullptr;
+      return out.getType();
     }
     return getTargetTypeForOutputImpl(out);
   }
 
   /// \see FunctionConverter::getTargetTypeForInput.
-  /// Get the quantized type for the \p idx-th argument of \p use, if any.
+  /// \returns the quantized type for the \p idx-th argument of \p use, if any;
+  /// if not quantizable, then \returns the original type.
   TypeRef getTargetTypeForInput(const Node &use, unsigned idx) const override {
     NodeValue val = use.getNthInput(idx);
 
     // Do not quantize non floating point type, e.g., Index type.
     if (val.getElementType() != ElemKind::FloatTy) {
-      return nullptr;
+      return val.getType();
     }
 
     std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
@@ -85,20 +87,30 @@ protected:
         idx == ConvolutionNode::BiasIdx) {
       // For bias of a conv op, it is quantized to int32. Also, we should make
       // sure its scale should be (scale of input) * (scale of weights).
-      auto convN = llvm::dyn_cast<ConvolutionNode>(&use);
-      NodeValue input = convN->getInput();
-      NodeValue weights = convN->getFilter();
-      float scaleInput = input.getType()->getScale();
-      float scaleWeights = weights.getType()->getScale();
+
+      // Get the input and weights types. This ensures the types will be
+      // quantized. This is often the case when calling into this function from
+      // canConvert(), as we have not yet converted the inputs.
+      TypeRef inputTy = getTargetTypeForInput(use, ConvolutionNode::InputIdx);
+      TypeRef weightsTy =
+          getTargetTypeForInput(use, ConvolutionNode::FilterIdx);
+
+      float scaleInput = inputTy->getScale();
+      float scaleWeights = weightsTy->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
-      auto fcN = llvm::dyn_cast<FullyConnectedNode>(&use);
-      NodeValue input = fcN->getInput();
-      NodeValue weights = fcN->getWeights();
-      float scaleInput = input.getType()->getScale();
-      float scaleWeights = weights.getType()->getScale();
+      // Get the input and weights types. This ensures the types will be
+      // quantized. This is often the case when calling into this function from
+      // canConvert(), as we have not yet converted the inputs.
+      TypeRef inputTy =
+          getTargetTypeForInput(use, FullyConnectedNode::InputIdx);
+      TypeRef weightsTy =
+          getTargetTypeForInput(use, FullyConnectedNode::WeightsIdx);
+
+      float scaleInput = inputTy->getScale();
+      float scaleWeights = weightsTy->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
     } else if (use.getKind() == glow::Kinded::Kind::BatchedAddNodeKind &&
@@ -152,56 +164,64 @@ protected:
   /// Only convert nodes that use floating point types and that
   /// weren't specifically marked as to-ignore with doNotQuantizeKinds_.
   bool canConvert(const Node &node) const override {
-    auto kind = node.getKind();
-
+    // Check if the node is one that we never want to convert, e.g. SaveNode.
     if (!FunctionConverter::canConvert(node)) {
       return false;
     }
 
-    // Do not quantize node if target quantization precision is not supported
-    // by the backend.
-    if (!EE_.isOpSupported(kind, quantizationPrecision_)) {
+    // Check if the node kind should not be converted based on supplied kinds
+    // informed to the converter.
+    if (doNotQuantizeKinds_.count(node.getKind())) {
       return false;
     }
 
-    if (doNotQuantizeKinds_.count(kind)) {
-      return false;
-    }
-
-    // Handle special cases like Gather node where some of the inputs do not
-    // need to be quantized while some do.
-    switch (node.getKind()) {
-    case Kinded::Kind::GatherNodeKind: {
-      auto *gather = cast<GatherNode>(&node);
-      return gather->getData().getElementType() == ElemKind::FloatTy;
-    }
-    case Kinded::Kind::SoftMaxNodeKind: {
-      auto *SMN = cast<SoftMaxNode>(&node);
-      return SMN->getInput().getElementType() == ElemKind::FloatTy;
-    }
-    case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
-      auto *SLS = cast<SparseLengthsWeightedSumNode>(&node);
-      return (SLS->getData().getElementType() == ElemKind::FloatTy) &&
-             (SLS->getWeights().getElementType() == ElemKind::FloatTy);
-    }
-    case Kinded::Kind::SelectNodeKind: {
-      auto *SN = cast<SelectNode>(&node);
-      return SN->getLHS().getElementType() == ElemKind::FloatTy &&
-             SN->getRHS().getElementType() == ElemKind::FloatTy;
-    }
-    default:
-      // Let the general procedure handle this node kind.
-      break;
-    }
-
-    // Make sure that all inputs are floats.
-    for (unsigned i = 0, e = node.getNumInputs(); i < e; ++i) {
-      if (node.getNthInput(i).getElementType() != ElemKind::FloatTy) {
-        return false;
+    // Gather the input and output types that we will have once we quantize the
+    // node, and check if the backend supports such a node. Note that if a node
+    // has float inputs or outputs then we must have quantization parameters for
+    // them. For inputs and outputs without quantization parameters, we keep
+    // their original element type.
+    bool needsQuantization = false;
+    std::vector<TypeRef> inputTypes, outputTypes;
+    for (unsigned idx = 0, end = node.getNumInputs(); idx != end; ++idx) {
+      NodeValue val = node.getNthInput(idx);
+      if (val.getElementType() == ElemKind::FloatTy) {
+        needsQuantization = true;
+        if (!quantizationParamsExist(val)) {
+          return false;
+        }
       }
+      TypeRef targetTy = getTargetTypeForInput(node, idx);
+      inputTypes.push_back(targetTy);
+    }
+    for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+      NodeValue val = node.getNthResult(idx);
+      if (val.getElementType() == ElemKind::FloatTy) {
+        needsQuantization = true;
+        if (!quantizationParamsExist(val)) {
+          return false;
+        }
+      }
+      TypeRef targetTy = getTargetTypeForOutput(val);
+      outputTypes.push_back(targetTy);
     }
 
-    return true;
+    // If none of the inputs were FPType then there's no quantization to
+    // perform, so we return that we cannot convert this node.
+    if (!needsQuantization) {
+      return false;
+    }
+
+    // Only convert the node if the backend supports the newly converted node.
+    return EE_.isOpSupported(NodeInfo(node.getKind(), inputTypes, outputTypes));
+  }
+
+  /// Helper that \returns whether quantization parameters exist
+  /// in \ref nodeToTQP_ given the name and result number of \p val.
+  bool quantizationParamsExist(const NodeValue &val) const {
+    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
+        val.getNode()->getName(), val.getResNo());
+    auto valTQPIt = nodeToTQP_.find(nodeOutputName);
+    return valTQPIt != nodeToTQP_.end();
   }
 
   /// Create either a QuantizeNode or DequantizeNode in \p function based on the
@@ -324,25 +344,29 @@ protected:
     default:
       break;
 
-    case Kinded::Kind::ConcatNodeKind: {
-      auto *concat = cast<ConcatNode>(&node);
-      TypeRef outputTy = concat->getType(ConcatNode::ResultIdx);
-      assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
+      // Cases for nodes where all inputs should use the same scale/offset as
+      // the output.
+#define CASE_ALL_INS_MATCH_SINGLE_OUT(NODE_KIND_)                              \
+  case Kinded::Kind::NODE_KIND_##NodeKind: {                                   \
+    auto *N = cast<NODE_KIND_##Node>(&node);                                   \
+    TypeRef outputTy = N->getResult().getType();                               \
+    assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!"); \
+    unsigned idx = 0;                                                          \
+    for (size_t i = 0, e = N->getNumInputs(); i < e; ++i) {                    \
+      NodeValue input = N->getNthInput(i);                                     \
+      auto argOutTy =                                                          \
+          mod_.uniqueType(quantizationPrecision_, input.dims(),                \
+                          outputTy->getScale(), outputTy->getOffset());        \
+      auto *rescale = function_.createRescaleQuantized(                        \
+          input.getNode()->getName(), input, argOutTy);                        \
+      N->setNthInput(idx++, rescale);                                          \
+    }                                                                          \
+    break;                                                                     \
+  }
+      CASE_ALL_INS_MATCH_SINGLE_OUT(Concat);
+      CASE_ALL_INS_MATCH_SINGLE_OUT(InsertTensor);
+#undef CASE_ALL_INS_MATCH_SINGLE_OUT
 
-      // Concat just moves tensors around, make sure that all tensors have the
-      // same {S,O} params.
-      unsigned idx = 0;
-      for (NodeValue input : concat->getInputs()) {
-        auto argOutTy =
-            mod_.uniqueType(quantizationPrecision_, input.dims(),
-                            outputTy->getScale(), outputTy->getOffset());
-        auto *rescale = function_.createRescaleQuantized(
-            input.getNode()->getName(), input, argOutTy);
-        concat->setNthInput(idx++, rescale);
-      }
-
-      break;
-    }
     casesForSingleMatchingInOutType : {
       // Check that the main loop hands us the node in the order we expect:
       // morph then postprocessing.
