@@ -55,6 +55,7 @@ sudo apt-get install -y llvm-6.0 llvm-6.0-dev libpng-dev
 # Redirect clang
 sudo ln -s /usr/bin/clang-6.0 /usr/bin/clang
 sudo ln -s /usr/bin/clang++-6.0 /usr/bin/clang++
+sudo ln -s /usr/bin/llvm-symbolizer-6.0 /usr/bin/llvm-symbolizer
 
 # Install ninja and (newest version of) cmake through pip
 sudo pip install ninja cmake
