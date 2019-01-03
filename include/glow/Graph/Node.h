@@ -26,8 +26,10 @@
 #include "glow/Base/Type.h"
 #include "glow/Graph/NodeValue.h"
 #include "glow/Graph/UseDef.h"
+#include "glow/Support/Support.h"
 
 #include <list>
+#include <unordered_set>
 
 namespace glow {
 
@@ -183,6 +185,98 @@ public:
 
   /// Dtor.
   virtual ~NodeWalker() = default;
+};
+
+using IndicesSet = std::unordered_set<unsigned>;
+
+/// Helper class to hold info of a Node, containing its \p opKind, \p inTypes,
+/// and \p outTypes
+class NodeInfo : public Kinded {
+private:
+  /// The input types of the NodeInfo.
+  std::vector<TypeRef> inTypes_;
+  /// The output types of the NodeInfo.
+  std::vector<TypeRef> outTypes_;
+
+  /// Helper function for checking if all of the ElemKinds contained in \p types
+  /// are equal to \p allowedElemKind. Indices in \p ignore are ignored when
+  /// checking from \p types.
+  bool allSameElemKind(const ElemKind allowedElemKind,
+                       llvm::ArrayRef<TypeRef> types,
+                       const IndicesSet &ignore) const {
+    for (size_t i = 0; i < types.size(); i++) {
+      if (ignore.count(i)) {
+        continue;
+      }
+      const TypeRef currType = types[i];
+      if (currType->getElementType() != allowedElemKind) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+public:
+  NodeInfo(Kinded::Kind kind, llvm::ArrayRef<TypeRef> inTypes,
+           llvm::ArrayRef<TypeRef> outTypes)
+      : Kinded(kind), inTypes_(inTypes), outTypes_(outTypes) {}
+
+  NodeInfo(const Node &N) : Kinded(N.getKind()) {
+    for (unsigned i = 0, e = N.getNumResults(); i < e; ++i) {
+      outTypes_.push_back(N.getType(i));
+    }
+    for (unsigned idx = 0, end = N.getNumInputs(); idx != end; ++idx) {
+      inTypes_.push_back(N.getNthInput(idx).getType());
+    }
+  }
+
+  /// \returns the input type located at \p idx.
+  const TypeRef getInTy(size_t idx) const {
+    assert(idx < inTypes_.size());
+    return inTypes_[idx];
+  }
+
+  /// \returns the output type located at \p idx.
+  const TypeRef getOutTy(size_t idx) const {
+    assert(idx < outTypes_.size());
+    return outTypes_[idx];
+  }
+
+  /// \returns the input type located at \p idx.
+  const ElemKind getInElemTy(size_t idx) const {
+    assert(idx < inTypes_.size());
+    return inTypes_[idx]->getElementType();
+  }
+
+  /// \returns the output type located at \p idx.
+  const ElemKind getOutElemTy(size_t idx) const {
+    assert(idx < outTypes_.size());
+    return outTypes_[idx]->getElementType();
+  }
+
+  bool
+  allInputsAndOutputsHaveSameElemKind(llvm::ArrayRef<ElemKind> allowedElemKinds,
+                                      const IndicesSet &ignoreIn = {},
+                                      const IndicesSet &ignoreOut = {}) const {
+    for (const ElemKind elemKind : allowedElemKinds) {
+      if (allSameElemKind(elemKind, inTypes_, ignoreIn) &&
+          allSameElemKind(elemKind, outTypes_, ignoreOut)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::string getDebugDesc() const {
+    DescriptionBuilder db(getKindName());
+    for (size_t i = 0; i < inTypes_.size(); ++i) {
+      db.addParam("inType" + std::to_string(i), *inTypes_[i]);
+    }
+    for (size_t i = 0; i < outTypes_.size(); ++i) {
+      db.addParam("outType" + std::to_string(i), *outTypes_[i]);
+    }
+    return db;
+  }
 };
 
 /// Helper class to walk through the specific uses of a NodeValue.
