@@ -47,7 +47,7 @@ public:
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override;
 
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
+  bool isOpSupported(const NodeInfo &NI) const override;
 
   bool shouldLower(const Node *N) const override;
 
