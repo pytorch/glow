@@ -33,14 +33,15 @@ are two pure virtual functions all backends must implement:
     If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate
     an optimized `IRFunction`.
 
-- `virtual bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const;`
+- `virtual bool isOpSupported(const NodeInfo &NI) const;`
 
-  - Returns whether the backend supports the given operation `opKind` with the
-    given `ElemKind elementTy`. For example, a backend may not support a
-    specific bit-width quantization kind (e.g. `Int16QTy`) at all, or may only
-    support it for certain operations (e.g. `ConvolutionNodeKind`). Any
-    `(opKind, elementTy)` pair passed in that returns true must be supported
-    during `compile()`.
+  - Returns whether the backend can execute a node with given NodeInfo `NI`,
+    containing the node kind and input and output types. For example, a backend
+    may not support a specific bit-width quantization kind (e.g. `Int16QTy`) at
+    all, or may only support it for certain operations
+    (e.g. `ConvolutionNodeKind`). Any `(opKind, inputTypes, outputTypes)` passed
+    in that returns true must be supported by the backed during `compile()` and
+    `execute()`.
 
 Additionally, there are virtual functions that backends can override:
 

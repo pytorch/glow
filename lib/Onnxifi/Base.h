@@ -59,6 +59,8 @@ public:
       : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
         glowBackend_(createBackend(kind)), useHostManager_(useHostManager) {}
 
+  bool isOpSupported(const NodeInfo &NI);
+
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
   /// that all of the glow nodes that are contained in the lowered graph are

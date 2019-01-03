@@ -94,9 +94,10 @@ public:
   void insertCompiledFunction(llvm::StringRef name,
                               std::unique_ptr<CompiledFunction> func);
 
-  /// \returns whether operation is supported by the underlying backend.
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
-    return backend_->isOpSupported(opKind, elementTy);
+  /// \returns whether a node with the provided \p NI is supported by the
+  /// underlying backend.
+  bool isOpSupported(const NodeInfo &NI) const {
+    return backend_->isOpSupported(NI);
   }
 
   /// Optimize the Function \p f and pass it to the backend to compile it for a

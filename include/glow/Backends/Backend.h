@@ -73,9 +73,8 @@ public:
     return false;
   }
 
-  /// \returns true if backend supports given kind of operation with
-  /// the given \p elementTy element type.
-  virtual bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const = 0;
+  /// \returns whether the provided \p NI is supported by the backend.
+  virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.

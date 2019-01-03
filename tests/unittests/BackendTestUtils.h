@@ -47,9 +47,7 @@ class MockBackend : public Backend {
     return llvm::make_unique<MockFunction>();
   }
 
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    return false;
-  }
+  bool isOpSupported(const NodeInfo &NI) const override { return false; }
 
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     return false;
@@ -76,9 +74,7 @@ class MockBackendCustomIRGen : public Backend {
     return llvm::make_unique<MockFunction>();
   }
 
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    return false;
-  }
+  bool isOpSupported(const NodeInfo &NI) const override { return false; }
 
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     bool hasChanged = false;
