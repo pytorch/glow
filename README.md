@@ -86,7 +86,7 @@ following command should install the required dependencies:
 
   ```bash
   sudo apt-get install clang clang-6.0 cmake graphviz libpng-dev \
-      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget
+      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget opencl-headers
   ```
 
 It may be desirable to use `update-alternatives` to manage the version of
