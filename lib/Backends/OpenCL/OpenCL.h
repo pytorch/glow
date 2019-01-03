@@ -183,42 +183,7 @@ public:
   bool transformPostLowering(Function *F,
                              const CompilationOptions &opts) const override;
 
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    // Check quantization support.
-    if (elementTy == ElemKind::Int8QTy) {
-      switch (opKind) {
-      case Kinded::Kind::AddNodeKind:
-      case Kinded::Kind::ConcatNodeKind:
-      case Kinded::Kind::ConvolutionNodeKind:
-      case Kinded::Kind::DequantizeNodeKind:
-      case Kinded::Kind::DivNodeKind:
-      case Kinded::Kind::FullyConnectedNodeKind:
-      case Kinded::Kind::MaxNodeKind:
-      case Kinded::Kind::MinNodeKind:
-      case Kinded::Kind::MulNodeKind:
-      case Kinded::Kind::MaxPoolNodeKind:
-      case Kinded::Kind::AvgPoolNodeKind:
-      case Kinded::Kind::QuantizeNodeKind:
-      case Kinded::Kind::ReluNodeKind:
-      case Kinded::Kind::RescaleQuantizedNodeKind:
-      case Kinded::Kind::ReshapeNodeKind:
-      case Kinded::Kind::SliceNodeKind:
-      case Kinded::Kind::SplatNodeKind:
-      case Kinded::Kind::SubNodeKind:
-      case Kinded::Kind::TopKInstKind:
-      case Kinded::Kind::TransposeNodeKind:
-        return true;
-      default:
-        return false;
-      }
-    }
-
-    if (elementTy == ElemKind::Int16QTy) {
-      return false;
-    }
-
-    return true;
-  };
+  bool isOpSupported(const NodeInfo &NI) const override;
 
   bool shouldLower(const Node *N) const override {
     // The group convolution is supported in OpenCL slow convolution kernel.
