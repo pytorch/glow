@@ -65,10 +65,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   const auto &nodes = function->getNodes();
 
   for (const auto &node : nodes) {
-    // TODO: Make is isOpSupported more able to handle different ElemKinds.
-    bool opSupported =
-        glowBackend_->isOpSupported(node.getKind(), ElemKind::FloatTy);
-    if (!opSupported) {
+    if (!glowBackend_->isOpSupported(node)) {
       // TODO: Use a more specific ONNXIFI error code here to denote what about
       // this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;

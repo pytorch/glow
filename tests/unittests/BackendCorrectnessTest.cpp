@@ -264,9 +264,7 @@ public:
   compileIR(std::unique_ptr<IRFunction> IR) const override {
     return backend_->compileIR(std::move(IR));
   }
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    return true;
-  }
+  bool isOpSupported(const NodeInfo &NI) const override { return true; }
 };
 
 TEST_P(CPUOnly, dataParallelStackingTest) {

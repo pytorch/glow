@@ -878,15 +878,14 @@ public:
   compile(Function *F, const CompilationOptions &opts) const override {
     return backend_->compile(F, opts);
   }
-
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    if (opKind == Kinded::Kind::SoftMaxNodeKind ||
-        opKind == Kinded::Kind::LocalResponseNormalizationNodeKind ||
-        opKind == Kinded::Kind::SaveNodeKind ||
-        opKind == Kinded::Kind::SelectNodeKind) {
+  bool isOpSupported(const NodeInfo &NI) const override {
+    if (NI.getKind() == Kinded::Kind::SoftMaxNodeKind ||
+        NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||
+        NI.getKind() == Kinded::Kind::SaveNodeKind ||
+        NI.getKind() == Kinded::Kind::SelectNodeKind) {
       return true;
     }
-    return backend_->isOpSupported(opKind, elementTy);
+    return backend_->isOpSupported(NI);
   }
 };
 
@@ -1503,17 +1502,13 @@ class MockBackendUnloweredFC : public MockBackend {
     }
     return true;
   }
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    return true;
-  }
+  bool isOpSupported(const NodeInfo &NI) const override { return true; }
 };
 
 /// Mock backend that does lower FC nodes.
 class MockBackendLoweredFC : public MockBackend {
   bool shouldLower(const Node *N) const override { return true; }
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
-    return true;
-  }
+  bool isOpSupported(const NodeInfo &NI) const override { return true; }
 };
 
 /// Create a simple network with an FC given \p ctx, \p EE, and \p F.
