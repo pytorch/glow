@@ -130,10 +130,10 @@ static size_t get_element_ptr(const ElemTy *tensor, const size_t *dims,
 }
 
 template <typename ElemTy>
-void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
-                          size_t *tensorDim, size_t *sliceDim,
-                          size_t numDimsTensor, size_t numDimsSlice,
-                          size_t offsetDim, size_t count, size_t axis) {
+static void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
+                                 size_t *tensorDim, size_t *sliceDim,
+                                 size_t numDimsTensor, size_t numDimsSlice,
+                                 size_t offsetDim, size_t count, size_t axis) {
   // Destination coordinates.
   size_t C[5];
 
@@ -221,10 +221,10 @@ void libjit_insert_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
 }
 
 template <typename ElemTy>
-void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
-                           size_t *tensorDim, size_t *sliceDim,
-                           size_t numDimsTensor, size_t numDimsSlice,
-                           size_t offsetDim) {
+static void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, size_t *offset,
+                                  size_t *tensorDim, size_t *sliceDim,
+                                  size_t numDimsTensor, size_t numDimsSlice,
+                                  size_t offsetDim) {
   // Source coordinates.
   size_t C[5];
 
@@ -307,7 +307,8 @@ template <typename T> struct value_index {
 };
 
 /// Helper function for TopK
-template <typename T> int value_index_sort(const void *va, const void *vb) {
+template <typename T>
+static int value_index_sort(const void *va, const void *vb) {
   value_index<T> *a = (value_index<T> *)va;
   value_index<T> *b = (value_index<T> *)vb;
   if (a->value != b->value)
@@ -319,8 +320,8 @@ template <typename T> int value_index_sort(const void *va, const void *vb) {
 /// size is the size of the input, and \p n is the size of the last dimension of
 /// the input.
 template <typename T>
-void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
-                 size_t k, size_t n, size_t size) {
+static void libjit_topk(T *values, size_t *indices, const T *input,
+                        size_t *scratch, size_t k, size_t n, size_t size) {
   size_t in = 0;
   size_t out = 0;
 
@@ -360,9 +361,9 @@ void libjit_topk(T *values, size_t *indices, const T *input, size_t *scratch,
 }
 
 template <typename T, typename IDX>
-void libjit_gather(T *dest, const T *data, const IDX *indices,
-                   size_t numIndices, size_t sliceSize, size_t numSamples,
-                   size_t sampleSize) {
+static void libjit_gather(T *dest, const T *data, const IDX *indices,
+                          size_t numIndices, size_t sliceSize,
+                          size_t numSamples, size_t sampleSize) {
   // The index of the slice that is being written.
   size_t outIdx = 0;
 
@@ -385,8 +386,9 @@ void libjit_gather(T *dest, const T *data, const IDX *indices,
 }
 
 template <typename T, typename U>
-void libjit_gatherranges(T *output, U *lengths, const T *data, const U *ranges,
-                         size_t numExamples, size_t exampleSize) {
+static void libjit_gatherranges(T *output, U *lengths, const T *data,
+                                const U *ranges, size_t numExamples,
+                                size_t exampleSize) {
   // Indices into the output and range buffers.
   size_t outputIdx = 0;
   size_t rangesIdx = 0;
@@ -423,8 +425,9 @@ void libjit_gatherranges(T *output, U *lengths, const T *data, const U *ranges,
 }
 
 template <typename T>
-void libjit_scatterassign(T *data, const size_t *indices, const T *slices,
-                          size_t numIndices, size_t sliceSize) {
+static void libjit_scatterassign(T *data, const size_t *indices,
+                                 const T *slices, size_t numIndices,
+                                 size_t sliceSize) {
   for (size_t i = 0; i < numIndices; i++) {
     size_t destDataIdx = indices[i];
     memcpy(data + destDataIdx * sliceSize, slices + i * sliceSize,
@@ -433,9 +436,9 @@ void libjit_scatterassign(T *data, const size_t *indices, const T *slices,
 }
 
 template <typename T>
-void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
-                              const size_t *odim, const size_t *shuffle,
-                              size_t numDims) {
+static void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
+                                     const size_t *odim, const size_t *shuffle,
+                                     size_t numDims) {
   // Transpose 2d matrices one tile at a time. This access pattern ensures
   // that the whole tile is kept in L1 cache. When scanning the whole row at
   // once we invalidate many cache lines when we touch a single column.
@@ -515,9 +518,10 @@ void libjit_transpose_generic(const T *inW, T *outW, const size_t *idim,
 }
 
 template <typename T>
-void libjit_max_pool_generic(const T *inW, T *outW, const size_t *inWdims,
-                             const size_t *outWdims, size_t *kernelSizes,
-                             size_t *strides, size_t *pads) {
+static void libjit_max_pool_generic(const T *inW, T *outW,
+                                    const size_t *inWdims,
+                                    const size_t *outWdims, size_t *kernelSizes,
+                                    size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
@@ -567,10 +571,10 @@ void libjit_max_pool_generic(const T *inW, T *outW, const size_t *inWdims,
 }
 
 template <typename T>
-void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
-                                const size_t *inWdims, const size_t *outWdims,
-                                size_t *kernels, size_t *strides,
-                                size_t *pads) {
+static void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
+                                       const size_t *inWdims,
+                                       const size_t *outWdims, size_t *kernels,
+                                       size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
@@ -627,13 +631,14 @@ void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
 }
 
 template <typename T>
-void libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch,
-                                 const T *slice, size_t numSlice,
-                                 size_t sliceSize, int32_t destOffset,
-                                 int32_t batchOffset, int32_t sliceOffset,
-                                 int32_t batchPre, int32_t batchPost,
-                                 int32_t batchScale, int32_t slicePre,
-                                 int32_t slicePost, int32_t sliceScale) {
+static void libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch,
+                                        const T *slice, size_t numSlice,
+                                        size_t sliceSize, int32_t destOffset,
+                                        int32_t batchOffset,
+                                        int32_t sliceOffset, int32_t batchPre,
+                                        int32_t batchPost, int32_t batchScale,
+                                        int32_t slicePre, int32_t slicePost,
+                                        int32_t sliceScale) {
   for (size_t n = 0; n < numSlice; n++) {
     size_t base = n * sliceSize;
     for (size_t i = 0; i < sliceSize; i++) {
@@ -644,6 +649,40 @@ void libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch,
       dest[base + i] = libjit_clip(x + y + destOffset);
     }
   }
+}
+
+static void find_min_max_f(float *tensor, size_t size, float &min, float &max) {
+  min = tensor[0];
+  max = tensor[0];
+
+  for (size_t i = 1; i < size; ++i) {
+    float tensorVal = tensor[i];
+    if (tensorVal < min)
+      min = tensorVal;
+
+    if (tensorVal > max)
+      max = tensorVal;
+  }
+}
+
+static int check_all_zeros(float *arrayToCheck, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    if (arrayToCheck[i] != 0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/// Gen a bin number to insert \p value into the histogram which has \p nBins
+/// with \p minValue and binWidth in histogram.
+static size_t get_bin(size_t nBins, float binWidth, float minValue,
+                      float value) {
+  size_t result =
+      binWidth == 0
+          ? 0
+          : MIN(static_cast<size_t>((value - minValue) / binWidth), nBins - 1);
+  return result;
 }
 } // namespace
 
@@ -1576,40 +1615,6 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
                     std::chrono::steady_clock::now().time_since_epoch())
                     .count();
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
-}
-
-static void find_min_max_f(float *tensor, size_t size, float &min, float &max) {
-  min = tensor[0];
-  max = tensor[0];
-
-  for (size_t i = 1; i < size; ++i) {
-    float tensorVal = tensor[i];
-    if (tensorVal < min)
-      min = tensorVal;
-
-    if (tensorVal > max)
-      max = tensorVal;
-  }
-}
-
-static int check_all_zeros(float *arrayToCheck, size_t size) {
-  for (size_t i = 0; i < size; ++i) {
-    if (arrayToCheck[i] != 0) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
-/// Gen a bin number to insert \p value into the histogram which has \p nBins
-/// with \p minValue and binWidth in histogram.
-static size_t get_bin(size_t nBins, float binWidth, float minValue,
-                      float value) {
-  size_t result =
-      binWidth == 0
-          ? 0
-          : MIN(static_cast<size_t>((value - minValue) / binWidth), nBins - 1);
-  return result;
 }
 
 // code ported from Profile.cpp: generateTensorHistogram
