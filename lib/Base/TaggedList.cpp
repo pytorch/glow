@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// The online list ordering algorithm is based on Bender et al., “Two Simplified
-// Algorithms for Maintaining Order in a List.”
+// The online list ordering algorithm is based on Bender et al., "Two Simplified
+// Algorithms for Maintaining Order in a List."
 
 #include "glow/Base/TaggedList.h"
 #include "llvm/Support/MathExtras.h"
