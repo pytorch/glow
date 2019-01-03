@@ -383,6 +383,44 @@ void libjit_gather(T *dest, const T *data, const IDX *indices,
   }
 }
 
+template <typename T, typename U>
+void libjit_gatherranges(T *output, U *lengths, const T *data, const U *ranges,
+                         size_t numExamples, size_t exampleSize) {
+  // Indices into the output and range buffers.
+  size_t outputIdx = 0;
+  size_t rangesIdx = 0;
+
+  // For each example:
+  for (size_t example = 0; example < numExamples; ++example) {
+    // Keep track of the total length of the gathered ranges for the example.
+    U totalLen = 0;
+
+    // For each range:
+    for (size_t range = 0; range < exampleSize; ++range) {
+      // Get the start and length of the range.
+      const U start = ranges[rangesIdx];
+      const U len = ranges[rangesIdx + 1];
+
+      // Copy the specified elements.
+      memcpy(output + outputIdx, data + start, len * sizeof(T));
+
+      // len elements were copied, so increment the output index by len.
+      outputIdx += len;
+
+      // Each range is of the form (start, len), so increment the ranges
+      // index by 2 to get to the next range.
+      rangesIdx += 2;
+
+      // Increment the total length for the example by len.
+      totalLen += len;
+    }
+
+    // Record the total length of gathered ranges for the current example in
+    // the lengths buffer.
+    lengths[example] = totalLen;
+  }
+}
+
 template <typename T>
 void libjit_scatterassign(T *data, const size_t *indices, const T *slices,
                           size_t numIndices, size_t sliceSize) {
@@ -919,6 +957,42 @@ void libjit_gather32_u(size_t *dest, const size_t *data, const int32_t *indices,
                        size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
+}
+
+void libjit_gatherranges64_f(float *output, size_t *lengths, const float *data,
+                             const size_t *ranges, size_t numExamples,
+                             size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
+void libjit_gatherranges64_i8(int8_t *output, size_t *lengths,
+                              const int8_t *data, const size_t *ranges,
+                              size_t numExamples, size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
+void libjit_gatherranges64_u(size_t *output, size_t *lengths,
+                             const size_t *data, const size_t *ranges,
+                             size_t numExamples, size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
+void libjit_gatherranges32_f(float *output, int32_t *lengths, const float *data,
+                             const int32_t *ranges, size_t numExamples,
+                             size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
+void libjit_gatherranges32_i8(int8_t *output, int32_t *lengths,
+                              const int8_t *data, const int32_t *ranges,
+                              size_t numExamples, size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
+void libjit_gatherranges32_u(size_t *output, int32_t *lengths,
+                             const size_t *data, const int32_t *ranges,
+                             size_t numExamples, size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
 void libjit_scatterassign_f(float *data, const size_t *indices,

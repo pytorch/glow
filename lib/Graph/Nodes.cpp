@@ -862,6 +862,27 @@ bool GatherNode::verify() const {
   return isValid;
 }
 
+bool GatherRangesNode::verify() const {
+  bool isValid = expectCompareTrue("Data must be 1D", getData().dims().size(),
+                                   size_t(1), this);
+  isValid &= expectCompareTrue("Ranges must be 3D", getRanges().dims().size(),
+                               size_t(3), this);
+  isValid &= expectCompareTrue("Last dimension of Ranges must be equal to 2",
+                               getRanges().dims()[2], size_t(2), this);
+  isValid &= expectCompareTrue("Output must be 1D", getOutput().dims().size(),
+                               size_t(1), this);
+  isValid &= expectCompareTrue("Lengths must be 1D", getLengths().dims().size(),
+                               size_t(1), this);
+  isValid &=
+      expectCompareTrue("Number of examples must match number of lengths",
+                        getRanges().dims()[0], getLengths().dims()[0], this);
+
+  isValid &= checkTypeIgnoreShape(getOutput(), getData(), this);
+  isValid &= checkTypeIgnoreShape(getRanges(), getLengths(), this);
+
+  return isValid;
+}
+
 bool ScatterAssignNode::verify() const {
   const auto &slicesDims = getSlices().dims();
   const auto &dataDims = getData().dims();

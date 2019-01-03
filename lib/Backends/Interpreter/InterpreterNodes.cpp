@@ -876,6 +876,88 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   }
 }
 
+template <typename ElemTy>
+void InterpreterFunction::fwdGatherRangesInstImpl(
+    const glow::GatherRangesInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  auto &dataTy = dataT->getType();
+  Tensor *rangesT = getTensor(I->getRanges());
+  auto &rangesTy = rangesT->getType();
+  Tensor *outT = getTensor(I->getOutput());
+  Tensor *lengthsT = getTensor(I->getLengths());
+
+  // Offset into the output tensor that keeps track of where to start
+  // copying data.
+  size_t outP = 0;
+
+  unsigned dataElementSize = dataTy.getElementSize();
+  size_t numExamples = rangesTy.dims()[0];
+  size_t exampleSize = rangesTy.dims()[1];
+
+  // Keep track of the total number of elements gathered across all
+  // examples for a sanity check later.
+  size_t grandTotalLen = 0;
+
+  // For each example in ranges:
+  for (size_t example = 0; example < numExamples; ++example) {
+    // Keep a running total of the lengths of all ranges in this example
+    // to record into lengthsT once the entire example is processed.
+    ElemTy totalLen = 0;
+
+    // For each range in the example:
+    for (size_t range = 0; range < exampleSize; ++range) {
+      // Get the start index and range length.
+      ElemTy startIdx = rangesT->getHandle<ElemTy>().at({example, range, 0});
+      ElemTy len = rangesT->getHandle<ElemTy>().at({example, range, 1});
+
+      // Add the length of this current range to the example length counter.
+      totalLen += len;
+
+      // Compute the start and end offsets.
+      size_t startOffset = startIdx * dataElementSize;
+      size_t endOffset = startOffset + (len * dataElementSize);
+
+      // Sanity checks on the offsets.
+      assert(startOffset < dataT->getSizeInBytes());
+      assert(endOffset <= dataT->getSizeInBytes());
+      assert(endOffset >= startOffset);
+      assert(outP < outT->getSizeInBytes());
+      assert((outP + (len * dataElementSize)) <= outT->getSizeInBytes());
+
+      // Copy the specified data to outT.
+      std::copy(&dataT->getUnsafePtr()[startOffset],
+                &dataT->getUnsafePtr()[endOffset], &outT->getUnsafePtr()[outP]);
+
+      // Advance the offset into outT.
+      outP += len * dataElementSize;
+    }
+
+    // Record the total number of elements gathered for the example in
+    // lengthsT.
+    lengthsT->getHandle<ElemTy>().at({example}) = totalLen;
+
+    // Add the total length of the entire example to the grand total.
+    grandTotalLen += static_cast<size_t>(totalLen);
+  }
+
+  // Make sure that number of elements written to outT is equal to the
+  // total of all elements in lengthsT.
+  assert(grandTotalLen == (outP / dataElementSize));
+}
+
+void InterpreterFunction::fwdGatherRangesInst(const glow::GatherRangesInst *I) {
+  switch (I->getRanges()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherRangesInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherRangesInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("Unsupported type for ranges input of GatherRanges.");
+  }
+}
+
 void InterpreterFunction::fwdScatterAssignInst(
     const glow::ScatterAssignInst *I) {
   Tensor *dataT = getTensor(I->getData());

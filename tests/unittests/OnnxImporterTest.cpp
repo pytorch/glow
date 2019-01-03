@@ -796,7 +796,6 @@ TEST(onnx, gather) {
                            {&data.getType(), &indices.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
   }
-  EE.compile(CompilationMode::Infer, F);
 
   // Verify structure: PH/PH -> Gather -> Save -> PH.
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
@@ -805,6 +804,33 @@ TEST(onnx, gather) {
   auto *gather = llvm::dyn_cast<GatherNode>(save->getInput().getNode());
   ASSERT_TRUE(gather);
   EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
+}
+
+/// Test loading GatherRanges from an ONNX model.
+TEST(onnx, gatherRanges) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename("tests/models/onnxModels/gatherranges.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {6});
+  Tensor ranges(ElemKind::Int32ITy, {2, 2, 2});
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"data", "ranges"},
+                           {&data.getType(), &ranges.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("output"));
+  }
+
+  // Verify structure: PH/PH -> GatherRanges -> Save -> PH/PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  auto *gatherRanges =
+      llvm::dyn_cast<GatherRangesNode>(save->getInput().getNode());
+  ASSERT_TRUE(gatherRanges);
+  EXPECT_TRUE(gatherRanges->getOutput().dims().equals({5}));
+  EXPECT_TRUE(gatherRanges->getLengths().dims().equals({2}));
 }
 
 static void importSliceTest(std::string fileName, const char *inputName,

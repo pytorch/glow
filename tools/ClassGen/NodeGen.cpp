@@ -448,6 +448,20 @@ int main(int argc, char **argv) {
                     "batch and will concat the result of the gather operation "
                     "on each sample in the batch.");
 
+  BB.newNode("GatherRanges")
+      .addInput("Data")
+      .addInput("Ranges")
+      .addResultFromCtorArg("Output")
+      .addResultFromCtorArg("Lengths")
+      .setDocstring("Gathers entries of Data into Output in groups specified "
+                    "by the elements of Ranges. Each element of Ranges "
+                    "contains a list of pairs of indices of the form (index, "
+                    "length) which specify which entries of data to gather. "
+                    "The ordering of elements in Ranges and of pairs within an "
+                    "element is preserved in Output. Lengths contains the "
+                    "lengths of the ranges gathered by each list of pairs in "
+                    "Ranges.");
+
   BB.newNode("ScatterAssign")
       .addInput("Data")
       .addInput("Indices")

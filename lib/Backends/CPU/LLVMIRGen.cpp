@@ -2209,6 +2209,45 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::GatherRangesInstKind: {
+    auto *GRI = llvm::cast<GatherRangesInst>(I);
+    auto *output = GRI->getOutput();
+    auto *lengths = GRI->getLengths();
+    auto *data = GRI->getData();
+    auto *ranges = GRI->getRanges();
+
+    auto *outputPtr = emitValueAddress(builder, output);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *rangesPtr = emitValueAddress(builder, ranges);
+
+    auto rangesType = ranges->getType();
+
+    // The number of examples in ranges.
+    size_t numExamples = rangesType->dims()[0];
+    // The number of range pairs in each example.
+    size_t exampleSize = rangesType->dims()[1];
+
+    auto *numExamplesVal = emitConstSizeT(builder, numExamples);
+    auto *exampleSizeVal = emitConstSizeT(builder, exampleSize);
+
+    // Dispatching function depending on the input type of Ranges.
+    llvm::Function *F = nullptr;
+    if (ranges->getElementType() == ElemKind::Int64ITy) {
+      F = getFunction("gatherranges64", output->getElementType());
+    } else if (ranges->getElementType() == ElemKind::Int32ITy) {
+      F = getFunction("gatherranges32", output->getElementType());
+    }
+    if (!F) {
+      llvm_unreachable("Cannot get function for GatherRanges. "
+                       "Ranges input of GatherRanges has to be int32 or int64");
+    }
+    createCall(builder, F,
+               {outputPtr, lengthsPtr, dataPtr, rangesPtr, numExamplesVal,
+                exampleSizeVal});
+    break;
+  }
+
   case Kinded::Kind::ScatterAssignInstKind: {
     auto *SAI = llvm::cast<ScatterAssignInst>(I);
     auto *data = SAI->getData();
