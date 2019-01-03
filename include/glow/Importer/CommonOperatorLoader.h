@@ -857,6 +857,31 @@ protected:
     return true;
   }
 
+  llvm::Expected<bool> loadGatherRanges(const std::string &typeName,
+                                        const OpType &op,
+                                        const ArgumentDictionaryTy &dict) {
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    RETURN_ERR_IF_NOT(data.dims().size() == 1, "Data must be a 1D vector.");
+
+    NodeValue ranges;
+    ASSIGN_VALUE_OR_RETURN_ERR(ranges,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
+    RETURN_ERR_IF_NOT(ranges.dims().size() == 3, "Ranges must be a 3D vector.");
+    RETURN_ERR_IF_NOT(ranges.dims()[2] == 2,
+                      "Last dimension of ranges must be 2.");
+
+    unsigned_t maxOutputSize;
+    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize,
+                               loadInt(dict.find("maxOutputSize")->second));
+
+    Node *GR = G_.createGatherRanges(loadOperatorName(op), data, ranges,
+                                     maxOutputSize);
+    addNodeAsOutput(op, GR);
+    return true;
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -991,6 +1016,10 @@ protected:
 
     if (typeName == "Gather" || typeName == "BatchGather") {
       return loadGatherOps(typeName, op, dict);
+    }
+
+    if (typeName == "GatherRanges") {
+      return loadGatherRanges(typeName, op, dict);
     }
 
     return false;

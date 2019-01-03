@@ -1422,7 +1422,7 @@ TEST(caffe2, testNCHW2NHWC) {
   EXPECT_EQ(mod.getConstants().size(), 0);
 }
 
-// Test loading a LengthsSum operator.
+/// Test loading a LengthsSum operator.
 TEST(caffe2, lengthsSum) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
@@ -1464,6 +1464,38 @@ TEST(caffe2, lengthsSum) {
 
   // Graph has two inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
+}
+
+/// Test loading a GatherRanges op.
+TEST(caffe2, gatherRanges) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  std::string NetDescFilename("tests/models/caffe2Models/gather_ranges.pbtxt");
+  std::string NetWeightFilename(
+      "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {6});
+  Tensor ranges(ElemKind::Int32ITy, {2, 2, 2});
+
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"data", "ranges"},
+                               {&data.getType(), &ranges.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getOutputByName("output"));
+  }
+
+  // Verify structure: PH/PH -> GatherRanges -> Save -> PH/PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  auto *gatherRanges =
+      llvm::dyn_cast<GatherRangesNode>(save->getInput().getNode());
+  ASSERT_TRUE(gatherRanges);
+  EXPECT_TRUE(gatherRanges->getOutput().dims().equals({5}));
+  EXPECT_TRUE(gatherRanges->getLengths().dims().equals({2}));
 }
 
 /// Verify that different fill types are loaded with the correct types.

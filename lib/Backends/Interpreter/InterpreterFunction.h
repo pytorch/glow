@@ -196,6 +196,8 @@ private:
   void fwdLengthsSumInst_FloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
+  template <typename ElemTy>
+  void fwdGatherRangesInstImpl(const GatherRangesInst *I);
 
   void
   fwdSparseLengthsWeightedSumInst_I8Impl(const SparseLengthsWeightedSumInst *I);

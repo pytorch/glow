@@ -1,0 +1,78 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    op_type: "GatherRanges"
+    input: "data"
+    input: "ranges"
+    output: "output"
+    output: "lengths"
+    attribute {
+      name: "maxOutputSize"
+      i: 5
+      type: INT
+    }
+  }
+  name: "test_gather_ranges"
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 6
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "ranges"
+    type {
+      tensor_type {
+        elem_type: INT32
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "lengths"
+    type {
+      tensor_type {
+        elem_type: INT32
+        shape {
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

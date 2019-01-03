@@ -1071,6 +1071,7 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EXPECT_EQ(VH.at({2, 0, 2}), 3);
   EXPECT_EQ(IH.at({2, 0, 2}), 4);
 }
+
 TEST_P(InterpAndCPU, Gather64) {
   /*
     DATA  = [
@@ -1201,6 +1202,64 @@ TEST_P(InterpAndCPU, Gather32) {
   EXPECT_FLOAT_EQ(H.at({1, 2, 1}), 5.7);
   EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
+}
+
+template <typename IndexType>
+void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
+                      glow::Function *F_, glow::ExecutionEngine &EE_,
+                      ElemKind ITy) {
+  /*
+    DATA  = [1, 2, 3, 4, 5, 6]
+    RANGES = [
+      [
+        [0, 1],
+        [2, 2],
+      ],
+      [
+        [4, 1],
+        [5, 1],
+      ]
+    ]
+    OUTPUT = [1, 3, 4, 5, 6]
+    LENGTHS = [3, 2]
+  */
+  auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "data", false);
+  auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
+
+  ctx_.allocate(data)->getHandle<int64_t>() = {1, 2, 3, 4, 5, 6};
+  ctx_.allocate(ranges)->getHandle<IndexType>() = {0, 1, 2, 2, 4, 1, 5, 1};
+
+  auto *R =
+      F_->createGatherRanges("gatherranges", data, ranges, /*maxOutputSize=*/5);
+
+  auto *output = F_->createSave("output", R->getOutput());
+  auto *lengths = F_->createSave("lengths", R->getLengths());
+
+  ctx_.allocate(output->getPlaceholder());
+  ctx_.allocate(lengths->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto OH = ctx_.get(output->getPlaceholder())->getHandle<int64_t>();
+  auto LH = ctx_.get(lengths->getPlaceholder())->getHandle<IndexType>();
+
+  EXPECT_EQ(OH.at({0}), 1);
+  EXPECT_EQ(OH.at({1}), 3);
+  EXPECT_EQ(OH.at({2}), 4);
+  EXPECT_EQ(OH.at({3}), 5);
+  EXPECT_EQ(OH.at({4}), 6);
+
+  EXPECT_EQ(LH.at({0}), 3);
+  EXPECT_EQ(LH.at({1}), 2);
+}
+
+TEST_P(InterpAndCPU, GatherRanges32) {
+  gatherRangesTest<int32_t>(ctx_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(InterpAndCPU, GatherRanges64) {
+  gatherRangesTest<int64_t>(ctx_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Check if the code generation of transposes

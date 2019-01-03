@@ -622,6 +622,19 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Gathers entries of \p data in groups specified by the "examples" in
+  /// \p ranges. Each example in \p ranges contains a list of pairs of
+  /// indices of the form (index, length) which specify which entries of \p
+  /// data to gather. The ordering of elements in \p ranges and of pairs
+  /// within an element is preserved in the output. In addition to the result
+  /// of gathering ("output"), the lengths of the ranges gathered by each
+  /// example in \p ranges is also produced as an output ("lengths").
+  /// \p maxOutputSize is the maximum possible size of "output" and is used to
+  /// set its type. Users must use "lengths" to interpret "output" correctly.
+  GatherRangesNode *createGatherRanges(llvm::StringRef name, NodeValue data,
+                                       NodeValue ranges,
+                                       unsigned_t maxOutputSize);
+
   /// Copies each slice from \p slices into \p data at the corresponding index
   /// in \p indices, and \returns this new version of data. For example, given
   /// input data {{1,2},{3,4},{5,6}}, slices {{-3,-4}}, and indices {1}, the

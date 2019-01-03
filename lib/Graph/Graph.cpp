@@ -1516,6 +1516,19 @@ GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
       indices, batchDims));
 }
 
+GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
+                                               NodeValue data, NodeValue ranges,
+                                               unsigned_t maxOutputSize) {
+  auto numRanges = ranges.dims()[0];
+  return addNode(new GatherRangesNode(
+      name,
+      /*OutputTy=*/
+      getParent()->uniqueTypeWithNewShape(data.getType(), {maxOutputSize}),
+      /*LengthsTy=*/
+      getParent()->uniqueTypeWithNewShape(ranges.getType(), numRanges), data,
+      ranges));
+}
+
 ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
                                                  NodeValue data,
                                                  NodeValue indices,

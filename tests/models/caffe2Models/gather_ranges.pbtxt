@@ -1,0 +1,17 @@
+name: "gatherRanges"
+op {
+  input: "data"
+  input: "ranges"
+  output: "output"
+  output: "lengths"
+  arg {
+    name: "maxOutputSize"
+    i: 5
+  }
+  name: ""
+  type: "GatherRanges"
+}
+external_input: "data"
+external_input: "ranges"
+external_output: "output"
+external_output: "lengths"

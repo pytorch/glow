@@ -434,6 +434,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoIRGen();
 
+  BB.newInstr("GatherRanges")
+      .addOperand("Output", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Ranges", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"Data", "Output"})
+      .autoVerify(VerifyKind::SameElementType, {"Ranges", "Lengths"})
+      .autoIRGen();
+
   BB.newInstr("ScatterAssign")
       .addOperand("Data", OperandKind::InOut)
       .addOperand("Indices", OperandKind::In)
