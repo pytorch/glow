@@ -15,10 +15,12 @@
  */
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Signals.h"
 #include "gtest/gtest.h"
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(argc, argv);
   return RUN_ALL_TESTS();
 }

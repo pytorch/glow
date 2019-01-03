@@ -26,6 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Signals.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -323,6 +324,7 @@ void Loader::generateAndSerializeQuantizationInfos(Context &ctx) {
 }
 
 Loader::Loader(int argc, char **argv) {
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       " The Glow compiler\n\n"
