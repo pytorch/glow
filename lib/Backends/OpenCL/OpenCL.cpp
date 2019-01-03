@@ -1574,3 +1574,119 @@ OCLBackend::compile(Function *F, const CompilationOptions &opts) const {
 
   return compileIRWithoutConstants(std::move(IR));
 }
+
+bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
+  switch (NI.getKind()) {
+  case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TransposeNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::PowNodeKind:
+  case Kinded::Kind::BatchedReduceAddNodeKind:
+  case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::MaxPoolGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::AddNodeKind:
+  case Kinded::Kind::SubNodeKind:
+  case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::DivNodeKind:
+  case Kinded::Kind::MaxNodeKind:
+  case Kinded::Kind::MinNodeKind:
+  case Kinded::Kind::MatMulNodeKind:
+  case Kinded::Kind::ConcatNodeKind:
+  case Kinded::Kind::SliceNodeKind:
+  case Kinded::Kind::InsertTensorNodeKind:
+  case Kinded::Kind::OCLAvgPoolNodeKind:
+  case Kinded::Kind::OCLMaxPoolNodeKind:
+    // Note: Pools/Conv support Int8QTy because they're always transformed via
+    // the backend to be an OCLPool/OCLConv.
+  case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::MaxPoolNodeKind:
+  case Kinded::Kind::ConvolutionNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::OCLConvolutionNodeKind:
+    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+    }
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
+                                                  {ConvolutionNode::BiasIdx}) &&
+           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+
+  case Kinded::Kind::TopKNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {TopKNode::IndicesIdx}) &&
+           (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::BatchedAddNodeKind:
+    if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+    }
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
+                                                  {BatchedAddNode::SliceIdx}) &&
+           ((NI.getInElemTy(BatchedAddNode::SliceIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(BatchedAddNode::SliceIdx) == ElemKind::Int32QTy));
+
+  case Kinded::Kind::GatherNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                                  {GatherNode::IndicesIdx}) &&
+           (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::ScatterAssignNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy}, {ScatterAssignNode::IndicesIdx}) &&
+           (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
+            ElemKind::Int64ITy);
+
+  case Kinded::Kind::QuantizeNodeKind:
+    return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) &&
+           ((NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy) ||
+            (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int32QTy));
+
+  case Kinded::Kind::DequantizeNodeKind:
+    return (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) &&
+           (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy);
+
+  case Kinded::Kind::RescaleQuantizedNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+
+  case Kinded::Kind::SelectNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                                  {SelectNode::CondIdx}) &&
+           (NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::CmpLTENodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy}, {},
+                                                  {CmpLTENode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::SoftMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
+                                                  {SoftMaxNode::SelectedIdx}) &&
+           (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::ConvolutionGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy}, {},
+        {ConvolutionGradNode::GradOfInputNamedInputIdx});
+
+  case Kinded::Kind::SoftMaxGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},
+               {SoftMaxGradNode::GradOfInputNamedSelectedIdx}) &&
+           (NI.getInElemTy(SoftMaxGradNode::SelectedIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::SaveNodeKind:
+  case Kinded::Kind::ReshapeNodeKind:
+    // These work regardless of the underlying type.
+    return true;
+
+  default:
+    return false;
+  }
+}
