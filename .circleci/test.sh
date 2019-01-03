@@ -7,6 +7,7 @@ set -euxo pipefail
 export GLOW_SRC=$PWD
 export GLOW_BUILD_DIR=${GLOW_SRC}/build
 export LOADER=${GLOW_BUILD_DIR}/bin/image-classifier
+export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/suppressions.txt"
 
 # Pass in which tests to run (one of {test, test_unopt}).
 run_unit_tests() {
