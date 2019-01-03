@@ -594,6 +594,16 @@ bool InsertTensorNode::verify() const {
     return false;
   }
 
+  isValid &= checkType(dest, src.getType()->getElementType(), this);
+  if (dest.getType()->isQuantizedType()) {
+    isValid &= expectCompareTrue("Scales of Big and Small must match.",
+                                 src.getType()->getScale(),
+                                 dest.getType()->getScale(), this);
+    isValid &= expectCompareTrue("Offsets of Big and Small must match.",
+                                 src.getType()->getOffset(),
+                                 dest.getType()->getOffset(), this);
+  }
+
   for (unsigned i = 0; i < numDims; i++) {
     // TODO: We could come up with a mechanism to lazy compute that
     // string since it is going to be used only in case of an error.
