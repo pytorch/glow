@@ -18,7 +18,7 @@ collaboration with the following partners:
 
 |![Habana Logo](./docs/partners/habana.png) | ![CEVA Logo](./docs/partners/ceva.png) | ![NXP Logo](./docs/partners/nxp.png) |
 :-------------------------:|:-------------------------:|:-------------------------:
-|![Esperanto Logo](./docs/partners/esperanto.png)| ![Bitmain Logo](./docs/partners/bitmain.png) | |
+|![Esperanto Logo](./docs/partners/esperanto.png)| ![Bitmain Logo](./docs/partners/bitmain.png) |![Cadence Logo](./docs/partners/cadence.png) |
 
 ## How does it work?
 
