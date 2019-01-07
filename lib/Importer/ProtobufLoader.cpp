@@ -28,19 +28,22 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
 }
 
 llvm::Expected<Tensor *> ProtobufLoader::getTensorByName(llvm::StringRef name) {
-  RETURN_ERR_IF_NOT(tensors_.count(name),
-                    "There is no tensor registered with this name.");
+  RETURN_ERR_IF_NOT(
+      tensors_.count(name),
+      llvm::Twine("There is no tensor registered with name ", name).str());
   return tensors_[name].get();
 }
 
 llvm::Expected<Placeholder *>
 ProtobufLoader::getOutputByName(llvm::StringRef name) const {
-  RETURN_ERR_IF_NOT(outputVarsByName_.count(name),
-                    "There is no Variable registered with this name.");
+  RETURN_ERR_IF_NOT(
+      outputVarsByName_.count(name),
+      llvm::Twine("There is no Variable registered with name ", name).str());
   auto it = outputVarsByName_.find(name);
   RETURN_ERR_IF_NOT(
       it != outputVarsByName_.end(),
-      "No external output Variable was registered with this name.");
+      llvm::Twine("No external output Variable was registered with name ", name)
+          .str());
   return it->second;
 }
 
@@ -56,7 +59,8 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
 
 llvm::Expected<NodeValue>
 ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
-  RETURN_ERR_IF_NOT(hasNodeByName(name), "No node under that name");
+  RETURN_ERR_IF_NOT(hasNodeByName(name),
+                    llvm::Twine("No node under name ", name).str());
   auto node = getNodeValueByNameOrNullNodeValue(name);
   RETURN_ERR_IF_NOT(node.getNode(), "Null is under that name??");
   return node;
@@ -65,7 +69,9 @@ ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
 llvm::Expected<Constant *>
 ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
                                           const Tensor &tensor) {
-  RETURN_ERR_IF_NOT(!hasNodeByName(name), "Creating an already existing node");
+  RETURN_ERR_IF_NOT(
+      !hasNodeByName(name),
+      llvm::Twine("Creating an already existing node ", name).str());
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node = G_.getParent()->createConstant(name, tensor);
@@ -75,7 +81,9 @@ ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
 
 llvm::Expected<Placeholder *>
 ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
-  RETURN_ERR_IF_NOT(!hasNodeByName(name), "Creating an already existing node");
+  RETURN_ERR_IF_NOT(
+      !hasNodeByName(name),
+      llvm::Twine("Creating an already existing node ", name).str());
   Placeholder *node = G_.getParent()->createPlaceholder(T, name, false);
   nodeValueByName_[name] = node->getOutput();
   return node;

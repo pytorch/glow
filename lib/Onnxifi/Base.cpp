@@ -29,14 +29,17 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   auto function = module.createFunction("check");
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
-  if (auto loaderOrErr =
-          ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
-                                    nullptr /*weightDescriptors*/, *function,
-                                    false /*loadInputsAsPlaceholders*/)) {
+  auto loaderOrErr =
+      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
+                                nullptr /*weightDescriptors*/, *function,
+                                false /*loadInputsAsPlaceholders*/, use_onnx_);
+  if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
+    llvm::errs() << "Error when loading protobuf: "
+                 << llvm::toString(loaderOrErr.takeError()) << "\n";
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -91,9 +94,10 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   function_ = backendPtr_->getEE().getModule().createFunction("inference");
 
   // TODO: make better error reporting.
-  std::unique_ptr<ONNXIFIModelLoader> loader = TEMP_EXIT_ON_ERR(
-      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, weightCount,
-                                weightDescriptors, *function_));
+  std::unique_ptr<ONNXIFIModelLoader> loader =
+      TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
+          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
+          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();

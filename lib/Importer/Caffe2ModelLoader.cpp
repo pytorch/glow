@@ -543,8 +543,6 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       outputDims.insert(outputDims.begin() + channel, numInputs);
       node = G_.createReshape(opName, node, outputDims);
     }
-    // Concat has multiple outputs in Caffe2, but I believe the other output
-    // (split_info) is not used for inference.
 
     // If we add the axis then node is a Reshape, otherwise it should be Concat.
     RETURN_ERR_IF_NOT(
@@ -554,6 +552,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                               ? NodeValue(node, ConcatNode::ResultIdx)
                               : NodeValue(node, ReshapeNode::ResultIdx);
     nodeValueByName_[op.output(0)] = finalNode;
+    // Concat may have a second output in Caffe2 (split_info), but we don't use
+    // it for inference
     return llvm::Error::success();
   }
 
