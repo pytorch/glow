@@ -40,11 +40,11 @@ class RuntimeBundle {
   /// Pointer to memory containing the weights for execution.
   uint8_t *constants_;
   /// Amount of memory needed for weights.
-  const size_t constantWeightVarsMemSize_;
+  size_t constantWeightVarsMemSize_;
   /// Amount of memory needed for mutable vars.
-  const size_t mutableWeightVarsMemSize_;
+  size_t mutableWeightVarsMemSize_;
   /// Amount of memory needed for activations.
-  const size_t activationsMemSize_;
+  size_t activationsMemSize_;
 
 public:
   /// Get Constant Weights memory size.
@@ -65,6 +65,7 @@ public:
   /// given function \p F and and copies weights to their address as specified
   /// by offsets contained in symbolTable_.
   void collectConstants(const IRFunction *F);
+  RuntimeBundle() = default;
   RuntimeBundle(std::unordered_map<std::string, RuntimeSymbolInfo> &symbolTable,
                 size_t constWeight, size_t mutableWeight, size_t activations)
       : symbolTable_(std::move(symbolTable)),
