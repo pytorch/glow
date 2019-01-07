@@ -83,7 +83,7 @@ llvm::Expected<Placeholder *>
 ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
   RETURN_ERR_IF_NOT(
       !hasNodeByName(name),
-      llvm::Twine("Creating an already existing node", name).str());
+      llvm::Twine("Creating an already existing node ", name).str());
   Placeholder *node = G_.getParent()->createPlaceholder(T, name, false);
   nodeValueByName_[name] = node->getOutput();
   return node;

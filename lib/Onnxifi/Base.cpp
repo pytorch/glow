@@ -97,7 +97,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   std::unique_ptr<ONNXIFIModelLoader> loader =
       TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
-          true, backendPtr_->getUseOnnx()));
+          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
