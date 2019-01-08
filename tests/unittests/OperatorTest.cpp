@@ -948,7 +948,7 @@ TEST_P(InterpAndCPU, ConcatTopK) {
 }
 
 // Check that matrix multiplication works well on some predefined values.
-TEST_P(Operator, matMul) {
+TEST_P(Operator, matmul2) {
   auto *inp0 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input0", false);
   auto *inp1 =
