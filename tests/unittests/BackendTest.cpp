@@ -168,6 +168,22 @@ TEST_P(BackendTest, debugPrint) {
   function->tearDownRuns();
 }
 
+/// Test the compileWithoutConstants method on the backend completes without
+/// error.
+TEST_P(BackendTest, CompileWithoutConstants) {
+  Module mod;
+  Context ctx;
+  Function *F = mod.createFunction("main");
+  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = ctx.allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  ctx.allocate(save->getPlaceholder());
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  auto function = backend->compileWithoutConstants(F);
+}
+
 /// This test checks that we can compile a function without depending on the
 /// graph representation. We compile some function and then delete the function.
 /// Later we execute the code and check that things work.

@@ -32,6 +32,10 @@ class MockBackend : public Backend {
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return llvm::make_unique<MockFunction>();
   }
+  std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const override {
+    return llvm::make_unique<MockFunction>();
+  }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return false;
   }

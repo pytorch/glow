@@ -39,6 +39,10 @@ InterpreterFunction::~InterpreterFunction() {
   tearDownRuns();
 }
 
+void InterpreterFunction::collectConstants(IRFunction *F) {
+  runtimeBundle_.collectConstants(F);
+}
+
 void InterpreterFunction::setupRuns() {
   if (!runsSetup_) {
     if (runtimeBundle_.getConstantWeightSize()) {

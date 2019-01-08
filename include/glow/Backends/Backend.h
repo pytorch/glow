@@ -43,6 +43,10 @@ public:
   /// Generate code for input function \param F.
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const = 0;
 
+  /// Generate code for input function \param F but do not collect constants.
+  virtual std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const = 0;
+
   /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for
   /// the entry point of the network and prepend all generated

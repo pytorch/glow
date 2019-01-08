@@ -38,6 +38,10 @@ public:
   /// Ctor.
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
               const runtime::RuntimeBundle &runtimeBundle);
+
+  /// Collects constants for runtime.
+  void collectConstants(IRFunction *F);
+
   /// Allocate Mutable buffers on device this includes Activations and
   /// Placeholders.
   void setupRuns() override;

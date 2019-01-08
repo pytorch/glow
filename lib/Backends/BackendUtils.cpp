@@ -141,8 +141,6 @@ glow::generateRuntimeBundle(const IRFunction &F,
   }
   auto activationsMaxSize = activationsAllocator.getMaxMemoryUsage();
 
-  runtime::RuntimeBundle info(symbolTable, constantMaxSize, placeholderMaxSize,
-                              activationsMaxSize);
-  info.collectConstants(&F);
-  return info;
+  return runtime::RuntimeBundle(symbolTable, constantMaxSize,
+                                placeholderMaxSize, activationsMaxSize);
 }

@@ -45,6 +45,10 @@ void CPUFunction::setupRuns() {
   }
 }
 
+void CPUFunction::collectConstants(IRFunction *F) {
+  runtimeBundle_.collectConstants(F);
+}
+
 void CPUFunction::beforeRun(const Context &ctx) {
   // Copy Placeholders into allocated memory.
   for (auto PH : ctx.pairs()) {

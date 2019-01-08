@@ -45,7 +45,13 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
+  std::unique_ptr<CompiledFunction>
+  compileIRWithoutConstants(IRFunction *IR) const;
+
   std::unique_ptr<CompiledFunction> compile(Function *F) const override;
+
+  std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const override;
 
   void save(Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName) const override;

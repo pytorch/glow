@@ -54,6 +54,8 @@ public:
   size_t getActivationsSize() const { return activationsMemSize_; }
   /// Get pointer to memory block of constants.
   uint8_t *getConstants() const { return constants_; }
+  /// Set pointer to memory block of constants.
+  void setConstants(uint8_t *constants) { constants_ = constants; }
   /// Helper function, gets offset of \p v.
   size_t getValueOffset(const Named *v) const;
   /// Helper function, gets symbol info for \p v.
@@ -67,7 +69,7 @@ public:
   RuntimeBundle() = default;
   RuntimeBundle(std::unordered_map<std::string, RuntimeSymbolInfo> &symbolTable,
                 size_t constWeight, size_t mutableWeight, size_t activations)
-      : symbolTable_(std::move(symbolTable)),
+      : symbolTable_(std::move(symbolTable)), constants_(nullptr),
         constantWeightVarsMemSize_(constWeight),
         mutableWeightVarsMemSize_(mutableWeight),
         activationsMemSize_(activations) {}
