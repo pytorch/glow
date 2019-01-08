@@ -41,7 +41,8 @@ public:
   virtual ~Backend() = default;
 
   /// Generate code for input function \param F.
-  virtual std::unique_ptr<CompiledFunction> compile(Function *F) const = 0;
+  virtual std::unique_ptr<CompiledFunction>
+  compile(Function *F, bool collectConstants = true) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for
@@ -91,7 +92,8 @@ public:
   /// maps the graph to the concrete execution environment for a specific
   /// function. This is used only for unit testing.
   virtual std::unique_ptr<CompiledFunction>
-  compileIR(std::unique_ptr<IRFunction> IR) const = 0;
+  compileIR(std::unique_ptr<IRFunction> IR,
+            bool collectConstants = true) const = 0;
 };
 
 } // namespace glow

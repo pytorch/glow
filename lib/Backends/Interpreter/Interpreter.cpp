@@ -24,13 +24,15 @@
 #include "glow/IR/IR.h"
 
 using namespace glow;
-std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
+std::unique_ptr<CompiledFunction>
+Interpreter::compile(Function *F, bool collectConstants) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
   return compileIR(std::move(IR));
 }
 
 std::unique_ptr<CompiledFunction>
-Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
+Interpreter::compileIR(std::unique_ptr<IRFunction> IR,
+                       bool collectConstants) const {
   MemoryAllocator constantWeightsAllocator("ConstantWeights", 0);
   MemoryAllocator placeholderWeightsAllocator("PlaceholderWeights", 0);
   MemoryAllocator activationsAllocator("Activations", 0);

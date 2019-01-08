@@ -1514,14 +1514,16 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
+OCLBackend::compileIR(std::unique_ptr<IRFunction> IR,
+                      bool collectConstants) const {
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   runtime::RuntimeBundle bundle =
       generateRuntimeBundle(*IR, allocator, allocator, allocator);
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
 
-std::unique_ptr<CompiledFunction> OCLBackend::compile(Function *F) const {
+std::unique_ptr<CompiledFunction>
+OCLBackend::compile(Function *F, bool collectConstants) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
   return compileIR(std::move(IR));
 }

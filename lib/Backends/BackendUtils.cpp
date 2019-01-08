@@ -55,11 +55,10 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   return it->second;
 }
 
-runtime::RuntimeBundle
-glow::generateRuntimeBundle(const IRFunction &F,
-                            MemoryAllocator &constantAllocator,
-                            MemoryAllocator &placeholderAllocator,
-                            MemoryAllocator &activationsAllocator) {
+runtime::RuntimeBundle glow::generateRuntimeBundle(
+    const IRFunction &F, MemoryAllocator &constantAllocator,
+    MemoryAllocator &placeholderAllocator,
+    MemoryAllocator &activationsAllocator, bool collectConstants) {
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
@@ -143,6 +142,8 @@ glow::generateRuntimeBundle(const IRFunction &F,
 
   runtime::RuntimeBundle info(symbolTable, constantMaxSize, placeholderMaxSize,
                               activationsMaxSize);
-  info.collectConstants(&F);
+  if (collectConstants) {
+    info.collectConstants(&F);
+  }
   return info;
 }

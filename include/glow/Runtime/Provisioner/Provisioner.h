@@ -16,8 +16,63 @@
 #ifndef GLOW_RUNTIME_PROVISIONER_H
 #define GLOW_RUNTIME_PROVISIONER_H
 
-#include "glow/Runtime/RuntimeTypes.h"
+// #include "glow/Runtime/RuntimeTypes.h"
+
+//////////////////////////////////////////////////////////
+#include "glow/Backends/Backend.h"
+#include "glow/Backends/BackendUtils.h"
+#include "glow/Backends/CompiledFunction.h"
+#include "glow/Graph/Graph.h"
+
+#include <string>
 #include <unordered_map>
+#include <vector>
+
+namespace glow {
+namespace runtime {
+
+using NetworkIDty = size_t;
+using DeviceIDty = size_t;
+
+/// Enum to communicate results when communicating with device at initialization
+/// and runtime.
+enum ResultCode { READY, EXECUTED, FAILED, CANCELLED };
+
+/// Data structure that contains device constraint information for each device.
+/// Used to communicate memory constraints and later costs to the Partitioner.
+struct DeviceInfo {
+  /// Available memory on device in bytes.
+  uint64_t availableMemory;
+};
+
+/// Individual Node in the DAG for a given network. This contains all the
+/// information needed to run the sub-network at inference time.
+struct DAGNode {
+  /// The children of this node, these are nodes that depend on the current
+  /// node.
+  std::vector<DAGNode> children;
+  /// Pointers to the parents of this node. This is used by the executor for
+  /// determining if a given node has all dependencies met.
+  std::vector<DAGNode *> parents;
+  /// ID of the deviceManager that this network is assigned to.
+  DeviceIDty deviceID;
+  /// The logicalDevice is an output of the Partitioner to indicate that two
+  /// networks should be assigned to the same device.
+  DeviceIDty logicalDevice;
+  /// Name assigned to the sub-network, this is the id that will be passed to
+  /// the DeviceManager when requesting a run of the network.
+  std::string name;
+  /// Runtime bundle containing all the symbol information for this network at
+  /// runtime.
+  RuntimeBundle runtimeBundle;
+};
+
+} // namespace runtime
+} // namespace glow
+///////////////////////////////////////////////
+
+#include <unordered_map>
+#include <vector>
 
 namespace glow {
 namespace runtime {
@@ -34,8 +89,12 @@ public:
   /// devices. The Provisioner calls the addNetwork method for each
   /// DeviceManager and uses the returned networkID to populate \p runDAG.
   /// Returns a ResultCode indicating if the operation was a success.
-  ResultCode provision(dependencyDAG &networks, executionDAG &runDAG,
-                       std::unordered_map<int, DeviceManager> &devices);
+  ResultCode provision(std::vector<DAGNode> &networks,
+                       std::unordered_map<DeviceIDty, DeviceManager> &devices,
+                       Module &module);
+
+private:
+  std::unique_ptr<Backend> backend_;
 };
 } // namespace runtime
 } // namespace glow

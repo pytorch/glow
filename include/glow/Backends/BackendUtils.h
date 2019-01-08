@@ -16,7 +16,6 @@
 #ifndef GLOW_BACKENDS_BACKENDUTILS_H
 #define GLOW_BACKENDS_BACKENDUTILS_H
 
-#include "glow/Backends/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 
@@ -79,7 +78,8 @@ public:
 runtime::RuntimeBundle
 generateRuntimeBundle(const IRFunction &F, MemoryAllocator &constantAllocator,
                       MemoryAllocator &placeholderAllocator,
-                      MemoryAllocator &activationsAllocator);
+                      MemoryAllocator &activationsAllocator,
+                      bool collectConstants = true);
 
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

@@ -16,12 +16,15 @@
 #ifndef GLOW_BACKENDS_COMPILEDFUNCTION_H
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Nodes.h"
+
 #include <unordered_map>
 
 namespace glow {
 
 class Context;
+
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:
@@ -41,6 +44,8 @@ public:
   virtual void afterRun(const Context &ctx) = 0;
   /// Final cleanup. Release memory, reset device.
   virtual void tearDownRuns() = 0;
+  /// Return RuntimeBundle containing symbol information.
+  virtual runtime::RuntimeBundle getRuntimeBundle();
 };
 } // end namespace glow
 

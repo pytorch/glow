@@ -98,7 +98,8 @@ CPUBackend::createIRGen(IRFunction *IR,
 }
 
 std::unique_ptr<CompiledFunction>
-CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
+CPUBackend::compileIR(std::unique_ptr<IRFunction> IR,
+                      bool collectConstants) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
   irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
@@ -118,14 +119,16 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator constantAllocator("ConstantWeights", 0);
   MemoryAllocator placeholderAllocator("Placeholders", 0);
   MemoryAllocator activationsAllocator("Activations", 0);
-  runtime::RuntimeBundle runtimeInfo = generateRuntimeBundle(
-      *IR, constantAllocator, placeholderAllocator, activationsAllocator);
+  runtime::RuntimeBundle runtimeInfo =
+      generateRuntimeBundle(*IR, constantAllocator, placeholderAllocator,
+                            activationsAllocator, collectConstants);
   return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeInfo);
 }
 
-std::unique_ptr<CompiledFunction> CPUBackend::compile(Function *F) const {
+std::unique_ptr<CompiledFunction>
+CPUBackend::compile(Function *F, bool collectConstants) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
-  return compileIR(std::move(IR));
+  return compileIR(std::move(IR), collectConstants);
 }
 
 void CPUBackend::save(Function *F, llvm::StringRef outputDir,

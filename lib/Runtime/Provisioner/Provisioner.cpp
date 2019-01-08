@@ -15,10 +15,14 @@
  */
 
 #include "glow/Runtime/Provisioner/Provisioner.h"
+#include "glow/Backends/BackendUtils.h"
+#include "glow/Backends/CompiledFunction.h"
 #include "glow/Graph/Graph.h"
 
 #include <future>
 #include <mutex>
+#include <queue>
+#include <vector>
 
 using namespace glow;
 using namespace runtime;
@@ -41,30 +45,70 @@ void addNetworkCallback(std::promise<bool> &promise, NetworkIDty id,
   cbMutex.unlock();
 }
 
+void addNodes(std::queue<std::vector<DAGNode *>> &nextNodes,
+              std::vector<DAGNode *> currentNodes) {
+  for (int i = 0; i < currentNodes[0]->children.size(); i++) {
+    std::vector<DAGNode *> newSet;
+    for (auto node : currentNodes) {
+      newSet.push_back(&node->children[i]);
+    }
+    nextNodes.push(newSet);
+  }
+}
 ResultCode
-Provisioner::provision(dependencyDAG &networks, executionDAG &runDAG,
-                       std::unordered_map<DeviceID, DeviceManager> &devices) {
-  // Check that there is available space for provisioning.
-  // This will be the planning phase, for the first pass we will just assign in
-  // order. Later we will want to check if networks are already loaded.
-  std::unordered_map<Module *, DeviceID> deviceAssignment;
-  // Assuming number of devices > number of modules.
-  if (networks.modules.size() > devices.size()) {
-    return FAILED;
+Provisioner::provision(std::vector<DAGNode> &networks,
+                       std::unordered_map<DeviceIDty, DeviceManager> &devices,
+                       Module &module) {
+  // For the first pass we will just assign and load devices in order and update
+  // the deviceID field of the node.
+  std::queue<std::vector<DAGNode *>> nextNode;
+  // Process head node, this does not contain a function but serves as an entry
+  // point for the network. We build a vector of nodes, containing all family
+  // members of a sub-function.
+  for (int i; i < networks[0].children.size(); i++) {
+    std::vector<DAGNode *> newSet;
+    for (auto node : networks) {
+      newSet.push_back(&node.children[i]);
+    }
+    nextNode.push(newSet);
   }
-  // Walk devices and networks.modules and pair them as assignments.
-  for (auto itDevice = devices.begin(), itModule = networks.modules.begin();
-       itDevice != devices.end() || itModule != networks.modules.end();) {
-    // Pair Module and Device
-    deviceAssignment.emplace(std::move(*itModule), itDevice->first, );
-    ++itModule;
-    ++itDevice;
+  while (!nextNode.empty()) {
+    std::unordered_map<std::string, CompiledFunction *> compiledFunctions;
+    auto nodes = nextNode.front();
+    nextNode.pop();
+    // Add child nodes to the queue.
+    addNodes(nextNode, nodes);
+    // Assign collection of nodes to a device, compile and load the device.
+    // We will do a round robin assignment of nodes. If there is not space we
+    // will return an error.
+    // TODO Add ability to try against another device when currDevice has
+    // insufficient space.
+    auto currDevice = devices.begin();
+    // Set backend to match the device.
+    backend_.reset(createBackend(currDevice->second.getBackendKind()));
+    // Iterate over the nodes, compile them and add them to compiledFunctions.
+    for (auto node : nodes) {
+      node->deviceID = currDevice->first;
+      Function *function = module.getFunction(node->name);
+      auto compiled = backend_->compile(function, false);
+      // node->runtimeBundle = compiled->getRuntimeBundle(); //FIXME constants
+      // in bundle are issues....
+      compiledFunctions.emplace(node->name, compiled.get());
+    }
+    // Check if sufficient space on device.
+    // Load functions on device.
+    currDevice++;
+    // Handle wrapping around to start of devices again.
+    if (currDevice == devices.end()) {
+      currDevice = devices.begin();
+    }
   }
+
   // For each assignment:
   // Check that the device has space, if not fail.
   // Call addNetwork and pass in callback, on success add the network ID to
-  // networkIDs. If a module fails to provision return failure, otherwise wait
-  // until all modules are added then return success.
+  // networkIDs. If a module fails to provision return failure, otherwise
+  // wait until all modules are added then return success.
   std::mutex addNetworkMutex;
   std::unordered_map<Module *, NetworkIDty> networkIDs;
   std::promise<bool> addNetwork;
