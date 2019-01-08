@@ -36,9 +36,6 @@ llvm::Expected<Tensor *> ProtobufLoader::getTensorByName(llvm::StringRef name) {
 
 llvm::Expected<Placeholder *>
 ProtobufLoader::getOutputByName(llvm::StringRef name) const {
-  RETURN_ERR_IF_NOT(
-      outputVarsByName_.count(name),
-      llvm::Twine("There is no Variable registered with name ", name).str());
   auto it = outputVarsByName_.find(name);
   RETURN_ERR_IF_NOT(
       it != outputVarsByName_.end(),
