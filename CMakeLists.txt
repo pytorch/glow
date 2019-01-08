@@ -67,18 +67,6 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
-# sets pre processor flag so some of glow projects
-# can link against protobuf libray that is build as DLL.
-if(MSVC AND LINK_PROTOBUF_AS_DLL)
-  # For protobuf warning when it is build as dll.
-  # Supresses a warning that is treated as error.
-  # Basically one of the header files has interface class
-  # containing STL string. Which might cause issues
-  # if things are build with different compilers.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
-  add_definitions(-DPROTOBUF_USE_DLLS)
-endif()
-
 # Prefer LLVM 7.
 find_package(LLVM 7 CONFIG)
 
