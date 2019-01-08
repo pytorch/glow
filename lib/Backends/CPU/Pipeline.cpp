@@ -79,6 +79,16 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   // Next, we remove all of the 'no-inline' attributes that clang in -O0 adds to
   // all functions.
   for (auto &FF : *M) {
+    // For libjit functions that are marked as dllimport or dllexport
+    // This sets them as regular functions.
+    // This allows LLVM to eliminate unused functions,
+    // and speeds up compilation.
+    if (FF.getDLLStorageClass() !=
+        llvm::GlobalValue::DLLStorageClassTypes::DefaultStorageClass) {
+      FF.setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+      FF.setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
+    }
+
     FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
   }
 
