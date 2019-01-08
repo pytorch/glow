@@ -254,19 +254,15 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t depth = wtag.dims()[0];
 
     // We expect the input to be NHWC.
-    Node *finalIn;
+    NodeValue finalIn;
     if (order == "NCHW") {
-      finalIn = G_.createTranspose(opName, in, NCHW2NHWC);
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
     } else {
       finalIn = in;
     }
 
-    RETURN_ERR_IF_NOT(
-        llvm::isa<TransposeNode>(finalIn) || llvm::isa<Storage>(finalIn),
-        "Internal error: Final input had to be either Storage or Transpose.");
-    TypeRef finalInType = llvm::isa<Storage>(finalIn)
-                              ? finalIn->getType(Storage::OutputIdx)
-                              : finalIn->getType(TransposeNode::ResultIdx);
+    TypeRef finalInType = finalIn.getType();
+
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(finalInType->dims());
     auto outSz =
@@ -414,9 +410,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
     }
     // We expect the input to be NHWC.
-    Node *finalIn;
+    NodeValue finalIn;
     if (order == "NCHW") {
-      finalIn = G_.createTranspose(opName, in, NCHW2NHWC);
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
     } else {
       finalIn = in;
     }
@@ -437,12 +433,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         "missing zero point for quantized output type");
       RETURN_ERR_IF_NOT(dict.count("Y_scale"),
                         "missing Y_scale for quantized output type");
-      RETURN_ERR_IF_NOT(
-          llvm::isa<TransposeNode>(finalIn) || llvm::isa<Storage>(finalIn),
-          "Internal error: Final input had to be either Storage or Transpose.");
-      TypeRef finalInType = llvm::isa<Storage>(finalIn)
-                                ? finalIn->getType(Storage::OutputIdx)
-                                : finalIn->getType(TransposeNode::ResultIdx);
+
+      TypeRef finalInType = finalIn.getType();
       ShapeNHWC idim = ShapeNHWC(finalInType->dims());
       auto outSz =
           calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
