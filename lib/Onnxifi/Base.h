@@ -79,7 +79,7 @@ public:
       : backendIdPtr_(backendId), threadPool_(backendIdPtr_->getConcurrency()) {
   }
 
-  /// Whether this backend is use ONNX proto or Caffe2 proto
+  /// Whether this backend uses ONNX proto or Caffe2 proto.
   bool getUseOnnx() const { return backendIdPtr_->getUseOnnx(); }
 
   /// \returns Execution Engine associated with the Backend.
