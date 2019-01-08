@@ -1525,15 +1525,31 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
+void OpenCLFunction::collectConstants(IRFunction *F) {
+  runtimeBundle_.collectConstants(F);
+}
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
+  auto function = compileIRWithoutConstants(std::move(IR));
+  auto OCLFunction = static_cast<OpenCLFunction *>(function.get());
+  OCLFunction->collectConstants(OCLFunction->getIR());
+  return function;
+}
+
+std::unique_ptr<CompiledFunction>
+OCLBackend::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   runtime::RuntimeBundle bundle =
       generateRuntimeBundle(*IR, allocator, allocator, allocator);
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
-
 std::unique_ptr<CompiledFunction> OCLBackend::compile(Function *F) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
   return compileIR(std::move(IR));
+}
+
+std::unique_ptr<CompiledFunction>
+OCLBackend::compileWithoutConstants(Function *F) const {
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  return compileIRWithoutConstants(std::move(IR));
 }

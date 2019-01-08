@@ -99,14 +99,21 @@ CPUBackend::createIRGen(IRFunction *IR,
 
 std::unique_ptr<CompiledFunction>
 CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
+  auto function = compileIRWithoutConstants(IR.get());
+  static_cast<CPUFunction *>(function.get())->collectConstants(IR.get());
+  return function;
+}
+
+std::unique_ptr<CompiledFunction>
+CPUBackend::compileIRWithoutConstants(IRFunction *IR) const {
   AllocationsInfo allocationsInfo;
-  std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR.get(), allocationsInfo);
+  std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
   irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
                            llvm::CodeModel::Model::Large);
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
 
-  allocateJITMemory(IR.get(), irgen->getAllocationsInfo());
+  allocateJITMemory(IR, irgen->getAllocationsInfo());
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
@@ -126,6 +133,12 @@ CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
 std::unique_ptr<CompiledFunction> CPUBackend::compile(Function *F) const {
   auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
   return compileIR(std::move(IR));
+}
+
+std::unique_ptr<CompiledFunction>
+CPUBackend::compileWithoutConstants(Function *F) const {
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  return compileIRWithoutConstants(IR.get());
 }
 
 void CPUBackend::save(Function *F, llvm::StringRef outputDir,

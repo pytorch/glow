@@ -30,7 +30,21 @@ std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
 }
 
 std::unique_ptr<CompiledFunction>
+Interpreter::compileWithoutConstants(Function *F) const {
+  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  return compileIRWithoutConstants(std::move(IR));
+}
+
+std::unique_ptr<CompiledFunction>
 Interpreter::compileIR(std::unique_ptr<IRFunction> IR) const {
+  auto function = compileIRWithoutConstants(std::move(IR));
+  auto IFunction = static_cast<InterpreterFunction *>(function.get());
+  IFunction->collectConstants(IFunction->getIR());
+  return function;
+}
+
+std::unique_ptr<CompiledFunction>
+Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator constantWeightsAllocator("ConstantWeights", 0);
   MemoryAllocator placeholderWeightsAllocator("PlaceholderWeights", 0);
   MemoryAllocator activationsAllocator("Activations", 0);

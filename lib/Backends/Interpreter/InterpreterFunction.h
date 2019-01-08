@@ -62,6 +62,10 @@ public:
 
   /// Does any needed initialization work for the Backend, creates tensors from
   /// constants.
+
+  /// Collects constants for runtime.
+  void collectConstants(IRFunction *F);
+
   void setupRuns() override;
 
   /// Per run setup, adds references for tensors from \p ctx to
@@ -76,6 +80,8 @@ public:
   void tearDownRuns() override;
 
   void execute() override;
+  /// Get reference to IR function.
+  IRFunction *getIR() { return F_.get(); }
   ///@}
 
 private:

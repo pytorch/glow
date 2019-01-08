@@ -239,6 +239,11 @@ public:
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return backend_->compile(F);
   }
+
+  std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const override {
+    return backend_->compile(F);
+  }
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override {
     return backend_->compileIR(std::move(IR));

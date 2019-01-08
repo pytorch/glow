@@ -107,6 +107,12 @@ public:
   /// Final cleanup, currently an empty function in OpenCL.
   void tearDownRuns() override;
 
+  /// Returns IR function pointer.
+  IRFunction *getIR() { return F_.get(); }
+
+  /// Collects constants for runtime.
+  void collectConstants(IRFunction *F);
+
 private:
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
@@ -161,8 +167,12 @@ public:
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
+  std::unique_ptr<CompiledFunction>
+  compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
   std::unique_ptr<CompiledFunction> compile(Function *F) const override;
+  std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const override;
 
   bool transformPostLowering(Function *F, CompilationMode mode) const override;
 
