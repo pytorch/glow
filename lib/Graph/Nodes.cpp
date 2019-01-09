@@ -770,9 +770,9 @@ bool IntLookupTableNode::verify() const {
                         getResult().getType()->isQuantizedType(), true, this);
   isValid &= expectCompareTrue("Mapping should be 1 dimensional",
                                getMapping().dims().size(), size_t(1), this);
-
-  isValid &= expectCompareTrue("Mapping should cover whole quantized range",
-                               getMapping().dims()[0], size_t(256), this);
+  isValid &= expectCompareTrue(
+      "Mapping should cover whole quantized range", getMapping().dims()[0],
+      (size_t)(256 * getResult().getType()->getElementSize()), this);
   return isValid;
 }
 

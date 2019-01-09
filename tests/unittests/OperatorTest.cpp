@@ -1736,7 +1736,8 @@ TEST_P(InterpOnly, FP16ConvolutionDepth8) {
   checkFloat16Convolution(EE_, F_, 8);
 }
 
-void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
+void checkIntConvolution(ExecutionEngine &EE, Function *F,
+                         ElemKind quantizationKind, unsigned convDepth,
                          Context &ctx) {
   // In this test we generate a Floating-point based convolution and an integer
   // convolution. We pass the same values and then subtract the results. We
@@ -1756,10 +1757,10 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
   ctx.get(bias)->getHandle().randomize(-2.0, 2.0, mod.getPRNG());
 
   TypeRef resTy =
-      mod.uniqueType(ElemKind::Int8QTy, conv->getResult().dims(), 0.08, 0.0);
-  TypeRef inputTy = mod.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0.0);
+      mod.uniqueType(quantizationKind, conv->getResult().dims(), 0.08, 0.0);
+  TypeRef inputTy = mod.uniqueType(quantizationKind, input->dims(), 0.01, 0.0);
   TypeRef filterTy =
-      mod.uniqueType(ElemKind::Int8QTy, filter->dims(), 0.01, 0.0);
+      mod.uniqueType(quantizationKind, filter->dims(), 0.01, 0.0);
   TypeRef biasTy = mod.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.04, 0.0);
 
   auto *inputq = F->createQuantize("input.q", input, inputTy);
@@ -1787,12 +1788,20 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
   }
 }
 
-TEST_P(Operator, IntConvolutionDepth10) {
-  checkIntConvolution(EE_, F_, 10, ctx_);
+TEST_P(Operator, Int8ConvolutionDepth10) {
+  checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 10, ctx_);
 }
 
-TEST_P(Operator, IntConvolutionDepth8) {
-  checkIntConvolution(EE_, F_, 8, ctx_);
+TEST_P(InterpOnly, Int16ConvollutionDepth10) {
+  checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 10, ctx_);
+}
+
+TEST_P(Operator, Int8ConvolutionDepth8) {
+  checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 8, ctx_);
+}
+
+TEST_P(InterpOnly, Int16ConvolutionDepth8) {
+  checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 8, ctx_);
 }
 
 TEST_P(InterpAndCPU, IntConcat) {
