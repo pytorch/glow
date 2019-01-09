@@ -916,21 +916,22 @@ void libjit_cross_entropy_loss_f(float *CE, float *P, size_t *labels,
   }
 }
 
-void libjit_gather64_f(float *dest, const float *data, const size_t *indices,
+void libjit_gather64_f(float *dest, const float *data, const int64_t *indices,
                        size_t numIndices, size_t sliceSize, size_t numSamples,
                        size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
 }
 
-void libjit_gather64_i8(int8_t *dest, const int8_t *data, const size_t *indices,
-                        size_t numIndices, size_t sliceSize, size_t numSamples,
+void libjit_gather64_i8(int8_t *dest, const int8_t *data,
+                        const int64_t *indices, size_t numIndices,
+                        size_t sliceSize, size_t numSamples,
                         size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
                 sampleSize);
 }
 
-void libjit_gather64_u(size_t *dest, const size_t *data, const size_t *indices,
+void libjit_gather64_u(size_t *dest, const size_t *data, const int64_t *indices,
                        size_t numIndices, size_t sliceSize, size_t numSamples,
                        size_t sampleSize) {
   libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
@@ -959,20 +960,20 @@ void libjit_gather32_u(size_t *dest, const size_t *data, const int32_t *indices,
                 sampleSize);
 }
 
-void libjit_gatherranges64_f(float *output, size_t *lengths, const float *data,
-                             const size_t *ranges, size_t numExamples,
+void libjit_gatherranges64_f(float *output, int64_t *lengths, const float *data,
+                             const int64_t *ranges, size_t numExamples,
                              size_t exampleSize) {
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
-void libjit_gatherranges64_i8(int8_t *output, size_t *lengths,
-                              const int8_t *data, const size_t *ranges,
+void libjit_gatherranges64_i8(int8_t *output, int64_t *lengths,
+                              const int8_t *data, const int64_t *ranges,
                               size_t numExamples, size_t exampleSize) {
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
-void libjit_gatherranges64_u(size_t *output, size_t *lengths,
-                             const size_t *data, const size_t *ranges,
+void libjit_gatherranges64_u(size_t *output, int64_t *lengths,
+                             const size_t *data, const int64_t *ranges,
                              size_t numExamples, size_t exampleSize) {
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
