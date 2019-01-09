@@ -27,3 +27,12 @@ target_link_libraries(Backends
                         ${linked_backends}
                         Base
                         Graph)
+
+add_library(DeviceManager QueueBackedDeviceManager.cpp)
+
+target_link_libraries(DeviceManager
+                      PRIVATE
+                        Backends
+                        Graph
+                        ThreadPool)
+
