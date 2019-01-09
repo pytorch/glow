@@ -155,7 +155,7 @@ void InterpreterFunction::fwdConvolutionInstQuantizedImpl(
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
-  auto biasW = getWeightHandle<AccumulatorTy>(biasV);
+  auto biasW = getWeightHandle<int32_t>(biasV);
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -1636,13 +1636,14 @@ void InterpreterFunction::fwdElementSelectInst(
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
-
-void InterpreterFunction::fwdMatMulInstI8Impl(const glow::MatMulInst *I) {
+template <typename ElemTy, typename AccumulatorTy>
+void InterpreterFunction::fwdMatMulInstQuantizedImpl(
+    const glow::MatMulInst *I) {
   assert(getTensor(I->getLHS())->getType().isQuantizedType());
-  auto lhs = getWeightHandle<int8_t>(I->getLHS());
-  auto rhs = getWeightHandle<int8_t>(I->getRHS());
+  auto lhs = getWeightHandle<ElemTy>(I->getLHS());
+  auto rhs = getWeightHandle<ElemTy>(I->getRHS());
 
-  auto dest = getWeightHandle<int8_t>(I->getDest());
+  auto dest = getWeightHandle<ElemTy>(I->getDest());
 
   auto destDim = dest.dims();
   auto lhsDim = lhs.dims();
@@ -1666,16 +1667,16 @@ void InterpreterFunction::fwdMatMulInstI8Impl(const glow::MatMulInst *I) {
     for (size_t y = 0; y < destDim[1]; y++) {
 
       // Perform DOT on the row an column.
-      int32_t sum = 0;
+      AccumulatorTy sum = 0;
       for (size_t i = 0; i < lhsDim[1]; i++) {
-        int32_t L = lhs.at({x, i});
-        int32_t R = rhs.at({i, y});
+        AccumulatorTy L = lhs.at({x, i});
+        AccumulatorTy R = rhs.at({i, y});
         // We represent the element multiplication with offset as
         // (value - offset).
         sum += (L - lhsOffset) * (R - rhsOffset);
       }
 
-      dest.at({x, y}) = quantization::clip<int32_t, int8_t>(
+      dest.at({x, y}) = quantization::clip<AccumulatorTy, ElemTy>(
           std::round(scale * sum + destOffset));
     }
   }
@@ -1710,7 +1711,8 @@ void InterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
 
 void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    fwdMatMulInstI8Impl(I);
+    dispatchQuantizedWithAccumulationImpl(fwdMatMulInstQuantizedImpl,
+                                          I->getLHS()->getElementType(), I);
     return;
   }
 
