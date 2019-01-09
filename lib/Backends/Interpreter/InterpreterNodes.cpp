@@ -46,6 +46,9 @@ using namespace glow;
   case ElemKind::Int16QTy:                                                     \
     functionName<int16_t>(__VA_ARGS__);                                        \
     break;                                                                     \
+  case ElemKind::Int32QTy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
   default:                                                                     \
     llvm_unreachable("Type is not supported");                                 \
   }
