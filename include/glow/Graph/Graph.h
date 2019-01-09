@@ -622,6 +622,7 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of
   /// indices of the form (index, length) which specify which entries of \p
@@ -631,6 +632,7 @@ public:
   /// example in \p ranges is also produced as an output ("lengths").
   /// \p maxOutputSize is the maximum possible size of "output" and is used to
   /// set its type. Users must use "lengths" to interpret "output" correctly.
+  /// \returns the GatherRangesNode.
   GatherRangesNode *createGatherRanges(llvm::StringRef name, NodeValue data,
                                        NodeValue ranges,
                                        unsigned_t maxOutputSize);

@@ -770,20 +770,20 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Expected<bool> loadExpandDims(const OpType &op,
-                                      const ArgumentDictionaryTy &dict) {
+  llvm::Error loadExpandDims(const OpType &op,
+                             const ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto dims = dict.find("dims");
     if (dims == dict.end()) {
-      return false;
+      RETURN_ERR("Missing dims argument for ExpandDims operator.");
     }
     Node *node =
         G_.createExpandDims(loadOperatorName(op), in, getShape(dims->second));
     addNodeAsOutput(op, node);
 
-    return true;
+    return llvm::Error::success();
   }
 
   llvm::Error loadClip(const OpType &op, const ArgumentDictionaryTy &dict) {
@@ -805,10 +805,10 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Expected<bool> loadSparseToDense(const OpType &op,
-                                         const ArgumentDictionaryTy &dict) {
+  llvm::Error loadSparseToDense(const OpType &op,
+                                const ArgumentDictionaryTy &dict) {
     if (op.input_size() != 3) {
-      return false;
+      RETURN_ERR("SparseToDense operator must have three inputs.");
     }
 
     NodeValue indices;
@@ -824,7 +824,7 @@ protected:
     auto *node = G_.createSparseToDense(loadOperatorName(op), indices, values,
                                         dataToInferDim);
     addNodeAsOutput(op, node);
-    return true;
+    return llvm::Error::success();
   }
 
   llvm::Expected<bool> loadGatherOps(const std::string &typeName,
@@ -857,9 +857,8 @@ protected:
     return true;
   }
 
-  llvm::Expected<bool> loadGatherRanges(const std::string &typeName,
-                                        const OpType &op,
-                                        const ArgumentDictionaryTy &dict) {
+  llvm::Error loadGatherRanges(const std::string &typeName, const OpType &op,
+                               const ArgumentDictionaryTy &dict) {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data,
                                getNodeValueOrCreateConstantByName(op.input(0)));
@@ -879,7 +878,7 @@ protected:
     Node *GR = G_.createGatherRanges(loadOperatorName(op), data, ranges,
                                      maxOutputSize);
     addNodeAsOutput(op, GR);
-    return true;
+    return llvm::Error::success();
   }
 
   using ProtobufLoader::ProtobufLoader;
@@ -1002,7 +1001,8 @@ protected:
       return true;
     }
     if (typeName == "ExpandDims") {
-      return loadExpandDims(op, dict);
+      RETURN_IF_ERR(loadExpandDims(op, dict));
+      return true;
     }
 
     if (typeName == "Clip") {
@@ -1011,7 +1011,8 @@ protected:
     }
 
     if (typeName == "SparseToDense") {
-      return loadSparseToDense(op, dict);
+      RETURN_IF_ERR(loadSparseToDense(op, dict));
+      return true;
     }
 
     if (typeName == "Gather" || typeName == "BatchGather") {
@@ -1019,7 +1020,8 @@ protected:
     }
 
     if (typeName == "GatherRanges") {
-      return loadGatherRanges(typeName, op, dict);
+      RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
+      return true;
     }
 
     return false;
