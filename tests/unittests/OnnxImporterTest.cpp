@@ -923,7 +923,8 @@ static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<size_t> inputShape,
                       const llvm::ArrayRef<ssize_t> starts,
                       const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
-                      float value, bool testOutput) {
+                      float value, bool testOutput,
+                      bool expectLoadError = false) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -937,6 +938,12 @@ static void importPad(std::string fileName, const char *inputName,
     Tensor data;
     getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
                 inputShape[3]);
+    if (expectLoadError) {
+      llvm::Error err = llvm::Error::success();
+      ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
+      EXPECT_TRUE(bool(err));
+      return;
+    }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     ctx.allocate(mod.getPlaceholders());
@@ -1012,14 +1019,21 @@ TEST(onnx, importPadConstant) {
 }
 
 TEST(onnx, importPadReflect) {
+  // Note: PaddingMode::REFLECT is not yet supported, so we assert death when
+  // loading the model.
   importPad("padReflect.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::REFLECT, 0.f /* any */, false);
+            PaddingMode::REFLECT, 0.f /* any */, false,
+            /* expectLoadError */ true);
 }
+
 TEST(onnx, importPadEdge) {
+  // Note: PaddingMode::EDGE is not yet supported, so we assert death when
+  // loading the model.
   importPad("padEdge.onnxtxt", "data", {4, 6, 5, 7} /* input */,
             {1, 2, -2, 0} /* starts */, {0, -2, 1, 2} /* ends */,
-            PaddingMode::EDGE, 0.f /* any */, false);
+            PaddingMode::EDGE, 0.f /* any */, false,
+            /* expectLoadError */ true);
 }
 
 TEST(onnx, importPadConstantPositive) {
