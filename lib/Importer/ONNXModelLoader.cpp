@@ -975,6 +975,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     RETURN_IF_ERR(setOutputNodes(graphDef));
 
+    RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
+
     return llvm::Error::success();
   };
 
