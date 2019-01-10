@@ -16,9 +16,17 @@ issues section and in the
 Contributions to Glow are welcomed and encouraged! Glow is developed in
 collaboration with the following partners:
 
-|![Habana Logo](./docs/partners/habana.png) | ![CEVA Logo](./docs/partners/ceva.png) | ![NXP Logo](./docs/partners/nxp.png) |
+
+<!---
+Note:
+List of partner logos sorted alphabetically column order.
+-->
+
+|![Bitmain Logo](./docs/partners/bitmain.png) |![Esperanto Logo](./docs/partners/esperanto.png)  |  ![NXP Logo](./docs/partners/nxp.png) |
 :-------------------------:|:-------------------------:|:-------------------------:
-|![Esperanto Logo](./docs/partners/esperanto.png)| ![Bitmain Logo](./docs/partners/bitmain.png) |![Cadence Logo](./docs/partners/cadence.png) |
+|![CEVA Logo](./docs/partners/ceva.png)  |![Habana Logo](./docs/partners/habana.png)  |  |
+|![Cadence Logo](./docs/partners/cadence.png)  |  ![Intel Logo](./docs/partners/intel.png)|  |
+
 
 ## How does it work?
 
