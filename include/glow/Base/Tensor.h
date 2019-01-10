@@ -487,7 +487,7 @@ public:
   iterator begin() { return tensor_->getRawDataPointer<ElemTy>(); }
   const_iterator begin() const { return tensor_->getRawDataPointer<ElemTy>(); }
 
-  /// \returns an iterator to the last element of the tensor.
+  /// \returns an iterator referring to the past-the-end element.
   iterator end() { return tensor_->getRawDataPointer<ElemTy>() + size(); }
   const_iterator end() const {
     return tensor_->getRawDataPointer<ElemTy>() + size();
