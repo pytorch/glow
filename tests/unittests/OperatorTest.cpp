@@ -1558,7 +1558,7 @@ void quantizeAndDequantizeTest(glow::Context &ctx_, glow::Module &mod_,
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
-  float allowedError = (FTy == ElemKind::Float16Ty) ? 0.01f : 0.0001f;
+  float allowedError = (FTy == ElemKind::Float16Ty) ? 0.01f : 0.002f;
   EXPECT_TRUE(
       ctx_.get(result->getPlaceholder())
           ->isEqual(*ctx_.get(fpResult->getPlaceholder()), allowedError));
@@ -1660,16 +1660,16 @@ TEST_P(InterpAndCPU, IntBatchedArith) {
   // B = [-9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1]
   // A + B = [-0.4, 6.1, 5.6, 4.3, -7.1, 2.5, -10.4, -2. , 9.3]
   auto H = ctx_.get(result->getPlaceholder())->getHandle();
-  EXPECT_NEAR(H.at({0, 0, 0}), -0.4, 0.1);
-  EXPECT_NEAR(H.at({0, 0, 1}), 6.1, 0.1);
-  EXPECT_NEAR(H.at({0, 0, 2}), 5.6, 0.1);
-  EXPECT_NEAR(H.at({0, 1, 0}), 4.3, 0.1);
-  EXPECT_NEAR(H.at({0, 1, 1}), -7.1, 0.1);
-  EXPECT_NEAR(H.at({0, 1, 2}), 2.5, 0.1);
-  EXPECT_NEAR(H.at({0, 2, 0}), -10.4, 0.1);
-  // TODO: verify slight deviation for this test case.
-  EXPECT_NEAR(H.at({0, 2, 1}), -2, 0.11);
-  EXPECT_NEAR(H.at({0, 2, 2}), 9.3, 0.1);
+  constexpr float allowedError = 0.105;
+  EXPECT_NEAR(H.at({0, 0, 0}), -0.4, allowedError);
+  EXPECT_NEAR(H.at({0, 0, 1}), 6.1, allowedError);
+  EXPECT_NEAR(H.at({0, 0, 2}), 5.6, allowedError);
+  EXPECT_NEAR(H.at({0, 1, 0}), 4.3, allowedError);
+  EXPECT_NEAR(H.at({0, 1, 1}), -7.1, allowedError);
+  EXPECT_NEAR(H.at({0, 1, 2}), 2.5, allowedError);
+  EXPECT_NEAR(H.at({0, 2, 0}), -10.4, allowedError);
+  EXPECT_NEAR(H.at({0, 2, 1}), -2, allowedError);
+  EXPECT_NEAR(H.at({0, 2, 2}), 9.3, allowedError);
 }
 
 void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
@@ -2104,7 +2104,8 @@ TEST_P(Operator, QuantizedTranspose) {
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
-  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(*ctx_.get(B)));
+  EXPECT_TRUE(
+      ctx_.get(result->getPlaceholder())->isEqual(*ctx_.get(B), 0.001f));
   EXPECT_TRUE(ctx_.get(fpResult->getPlaceholder())->isEqual(*ctx_.get(B)));
 }
 
