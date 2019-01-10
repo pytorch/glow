@@ -2453,6 +2453,40 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   }
 }
 
+/// Test that transpose is merged into FullyConnected.
+TEST_F(GraphOptz, mergeTransposeIntoFC) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3}, "input", false);
+  auto *weights =
+      F_->getParent()->createConstant(ElemKind::FloatTy, {6, 1}, "weights");
+  auto *bias = F_->getParent()->createConstant(ElemKind::FloatTy, {1}, "bias");
+
+  weights->getHandle() = {0, 1, 2, 3, 4, 5};
+  float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
+
+  auto *TN = F_->createTranspose("transpose", input, NHWC2NCHW);
+  auto *RN = F_->createReshape("reshape", TN, {1, 6});
+  auto *FCN = F_->createFullyConnected("fc", RN, weights, bias);
+  auto *SN = F_->createSave("ret", FCN);
+
+  // Transpose + Reshape + FC + Save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Reshape + FC + Save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  // Check reordered weights.
+  auto *newFCN = llvm::dyn_cast<FullyConnectedNode>(SN->getInput());
+  ASSERT_TRUE(newFCN != nullptr);
+  auto *newW = llvm::dyn_cast<Constant>(newFCN->getWeights());
+  ASSERT_TRUE(newW != nullptr);
+  for (unsigned i = 0; i < 6; ++i) {
+    EXPECT_EQ(newWeightsRef[i], newW->getHandle().raw(i));
+  }
+}
+
 TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);

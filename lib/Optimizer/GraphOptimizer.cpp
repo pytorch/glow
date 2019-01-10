@@ -798,31 +798,40 @@ static bool mergePadIntoConvolution(Function *F) {
   return changed;
 }
 
-/// Merge Transpose into MatMul.
-/// MatMul(Reshape(Transpose(X)), Weights) ->
-/// -> MatMul(Reshape(X), reordered Weights)
+/// Merge Transpose into MatMul or FC.
+/// MatMul/FC(Reshape(Transpose(X)), Weights) ->
+/// -> MatMul/FC(Reshape(X), reordered Weights)
 /// Common sequence while using NCHW as input layout, because GLOW convolution
 /// layout is NHWC:
 /// Transpose([N, H, W, C]) -> [N, C, H, W]
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
-/// MatMul([N, C * H * W], [C * H * W, K]) -> [N, K]
-static bool mergeTransposeIntoMatMul(Function *F) {
+/// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
+static bool mergeTransposeIntoMatMulOrFC(Function *F) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *MMN = dyn_cast<MatMulNode>(&node);
-    if (!MMN) {
+    auto *FCN = dyn_cast<FullyConnectedNode>(&node);
+    Constant *W;
+    ReshapeNode *RN;
+
+    // Node is either MatMul or FC.
+    if (MMN) {
+      W = dyn_cast<Constant>(MMN->getRHS());
+      RN = dyn_cast<ReshapeNode>(MMN->getLHS());
+    } else if (FCN) {
+      W = dyn_cast<Constant>(FCN->getWeights());
+      RN = dyn_cast<ReshapeNode>(FCN->getInput());
+    } else {
       continue;
     }
 
-    // MatMul RHS is constant weights.
-    auto *W = dyn_cast<Constant>(MMN->getRHS());
+    // Weights node (or MatMul RHS) is constant.
     if (!W) {
       continue;
     }
 
-    // Linearizing Reshape precedes MatMul.
+    // Linearizing Reshape precedes MatMul/FC.
     // The first dimension must be kept unchanged, the others are linearized.
-    auto *RN = dyn_cast<ReshapeNode>(MMN->getLHS());
     if (!RN || !RN->hasOneUse() ||
         RN->getInput().dims()[0] != RN->getDims()[0]) {
       continue;
@@ -836,10 +845,10 @@ static bool mergeTransposeIntoMatMul(Function *F) {
       continue;
     }
 
-    // MatMul weights tensor is 2D. De-linearize the first dimension according
-    // to Transpose output layout (original shape) and input layout (reordered
-    // shape). Then we can do weights reordering by simply transposing the
-    // tensor from original shape to reordered shape.
+    // MatMul/FC weights tensor is 2D. De-linearize the first dimension
+    // according to Transpose output layout (original shape) and input layout
+    // (reordered shape). Then we can do weights reordering by simply
+    // transposing the tensor from original shape to reordered shape.
     //
     // Example for [N, H, W, C] -> [N, C, H, W] transpose (common case):
     //   De-linearized original shape: [C * H * W, K] -> [C, H, W, K]
@@ -867,12 +876,22 @@ static bool mergeTransposeIntoMatMul(Function *F) {
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
 
-    // New Reshape and MatMul.
+    // New Reshape and MatMul/FC.
     auto *newRN =
         F->createReshape(RN->getName(), TN->getInput(), RN->getDims());
-    auto *newMMN = F->createMatMul(MMN->getName(), MMN->getResult().getType(),
-                                   newRN, newW);
-    MMN->getResult().replaceAllUsesOfWith(newMMN);
+    if (MMN) {
+      auto *newMMN = F->createMatMul(MMN->getName(), MMN->getResult().getType(),
+                                     newRN, newW);
+      MMN->getResult().replaceAllUsesOfWith(newMMN);
+    } else if (FCN) {
+      auto *newFCN =
+          F->createFullyConnected(FCN->getName(), newRN, newW, FCN->getBias(),
+                                  FCN->getResult().getType());
+      FCN->getResult().replaceAllUsesOfWith(newFCN);
+    } else {
+      llvm_unreachable("Unexpected node kind");
+    }
+
     changed = true;
   }
 
@@ -2386,10 +2405,10 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
 
-  // Merge Transpose into MatMul.
+  // Merge Transpose into MatMul/FC.
   // Run DCE to ensure correct number of node users.
   DCE(F);
-  mergeTransposeIntoMatMul(F);
+  mergeTransposeIntoMatMulOrFC(F);
 
   // Optimize away intermediate type conversions.
   optimizeConversions(F);
