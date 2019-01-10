@@ -237,7 +237,7 @@ class Value;
 class Node;
 
 /// A function that represents the compilation unit.
-class IRFunction final {
+class IRFunction final : public Named {
 public:
   using VariableMap = std::unordered_map<const Storage *, Value *>;
   using InstListTy = TaggedList<Instruction, InstructionTraits>;

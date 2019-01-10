@@ -490,7 +490,8 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
   }
 }
 
-IRFunction::IRFunction(Function *G) : G_(G) {}
+IRFunction::IRFunction(Function *G)
+    : Named(G ? G->getName() : llvm::StringRef{}), G_(G) {}
 
 static bool hasResultValue(const Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
@@ -504,7 +505,7 @@ void IRFunction::dump(llvm::raw_ostream &OS) const {
   // Print all of the variables:
   std::string s;
   llvm::raw_string_ostream sb{s};
-  sb << "function " << G_->getName().str() << "\n";
+  sb << "function " << getName().str() << "\n";
 
   size_t sizeInBytes = 0;
   sb << "declare {\n";
