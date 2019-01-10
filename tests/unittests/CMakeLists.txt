@@ -93,6 +93,7 @@ target_link_libraries(OperatorTest
                         IR
                         ExecutionEngine
                         Quantization
+                        Optimizer
                         gtest
                         TestMain)
 add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
