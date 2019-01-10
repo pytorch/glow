@@ -1718,6 +1718,10 @@ void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
       ctx.allocate(llvm::cast<Placeholder>(saveFloat16->getOutput()))
           ->getHandle<float16_t>();
 
+  ::glow::convertPlaceholdersToConstants(F, ctx,
+                                         {input, inputFloat16,
+                                          save->getPlaceholder(),
+                                          saveFloat16->getPlaceholder()});
   EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
@@ -1776,6 +1780,8 @@ void checkIntConvolution(ExecutionEngine &EE, Function *F, unsigned convDepth,
 
   auto *res = F->createSave("save", sub);
   ctx.allocate(res->getPlaceholder());
+  ::glow::convertPlaceholdersToConstants(F, ctx,
+                                         {input, res->getPlaceholder()});
   EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
@@ -1859,6 +1865,8 @@ TEST_P(Operator, IntFC) {
   auto *sub = F_->createSub("compare", dequantRes, fc);
 
   auto *res = F_->createSave("save", sub);
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, res->getPlaceholder()});
   ctx_.allocate(res->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -2688,6 +2696,8 @@ TEST_P(Operator, simplePredication) {
   FC1->setPredicate(pred);
   FC2->setPredicate(pred);
 
+  ::glow::convertPlaceholdersToConstants(
+      F_, ctx_, {inputs, counters, save->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 }
@@ -2968,6 +2978,8 @@ TEST_P(Operator, GroupConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
@@ -3018,6 +3030,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
   Tensor &result = *ctx_.get(S->getPlaceholder());
@@ -3039,6 +3053,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   S = refF->createSave("save1", CN);
   ctx_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, input1, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, refF);
   EE_.run(ctx_);
   Tensor &result1 = *ctx_.get(S->getPlaceholder());
@@ -3368,6 +3384,8 @@ TEST_P(Operator, NonSquareKernelConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
   Tensor &result = *ctx_.get(S->getPlaceholder());
@@ -3445,6 +3463,8 @@ TEST_P(Operator, NonSquareStrideConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   ctx_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
   Tensor &result = *ctx_.get(S->getPlaceholder());
@@ -4458,6 +4478,8 @@ TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
 
   ctx_.allocate(save->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+                                         {input, save->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
