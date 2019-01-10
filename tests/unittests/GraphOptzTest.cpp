@@ -1401,7 +1401,6 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
   for (int shouldReverse = 0; shouldReverse <= 1; shouldReverse++) {
     Module mod;
     Function *F = mod.createFunction("foo");
-    Context ctx;
 
     Type t(ElemKind::FloatTy, {1000, 1000, 1000});
     Node *Z = F->createSplat("zero", &t, 0.);
