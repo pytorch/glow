@@ -60,7 +60,8 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F,
                               Schema schema = Schema::Asymmetric);
 
 /// Quantizes the function \p F into a new unoptimized partially quantized
-/// function based on \p quantizationInfos. This method converts to integer as
+/// function based on \p quantizationInfos and target quantization precision
+/// \p quantizationPrecision. This method converts to integer as
 /// many nodes as permitted by the backend \p EE. The new quantized function is
 /// called \p newFuncName. If no name is given the method will generate a name.
 /// This method clones original function \p F and caller is responsible for
@@ -73,7 +74,8 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F,
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 Function *F, llvm::StringRef newFuncName = "",
+                 ElemKind quantizationPrecision, Function *F,
+                 llvm::StringRef newFuncName = "",
                  const KindSet &doNotQuantizeKinds = {},
                  bool enableRowwise = false);
 

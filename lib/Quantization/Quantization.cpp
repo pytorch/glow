@@ -50,7 +50,7 @@ protected:
            "Missing quantization params for a node");
 
     const TensorQuantizationParams &TQP = outTQPIt->second;
-    return mod_.uniqueType(ElemKind::Int8QTy, out.dims(), TQP.scale,
+    return mod_.uniqueType(quantizationPrecision_, out.dims(), TQP.scale,
                            TQP.offset);
   }
 
@@ -102,7 +102,7 @@ protected:
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
     } else {
-      return mod_.uniqueType(ElemKind::Int8QTy, val.dims(), TQP.scale,
+      return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
                              TQP.offset);
     }
   }
@@ -112,7 +112,7 @@ protected:
   /// weren't specifically marked as to-ignore with doNotQuantizeKinds_.
   bool canConvert(const Node &node) const override {
     auto kind = node.getKind();
-    if (!EE_.isOpSupported(kind, ElemKind::Int8QTy)) {
+    if (!EE_.isOpSupported(kind, quantizationPrecision_)) {
       return false;
     }
 
@@ -244,9 +244,10 @@ protected:
       // The constraints on the IR says that the input type must
       // be the same as the output type.
       TypeRef inTy = node.getNthInput(IRConstraintInputIdx).getType();
-      TypeRef fixedTy = mod_.uniqueType(
-          ElemKind::Int8QTy, node.getNthResult(IRConstraintResultIdx).dims(),
-          inTy->getScale(), inTy->getOffset());
+      TypeRef fixedTy =
+          mod_.uniqueType(quantizationPrecision_,
+                          node.getNthResult(IRConstraintResultIdx).dims(),
+                          inTy->getScale(), inTy->getOffset());
 
       node.setType(IRConstraintResultIdx, fixedTy);
       assert(!lastMorphedNodeWithTypeChanges &&
@@ -276,7 +277,7 @@ protected:
       unsigned idx = 0;
       for (NodeValue input : concat->getInputs()) {
         auto argOutTy =
-            mod_.uniqueType(ElemKind::Int8QTy, input.dims(),
+            mod_.uniqueType(quantizationPrecision_, input.dims(),
                             outputTy->getScale(), outputTy->getOffset());
         auto *rescale = function_.createRescaleQuantized(
             input.getNode()->getName(), input, argOutTy);
@@ -299,7 +300,7 @@ protected:
       TypeRef outputTy =
           getTargetTypeForOutputImpl(NodeValue(&node, IRConstraintResultIdx));
       assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
-      auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outputTy->dims(),
+      auto outTy = mod_.uniqueType(quantizationPrecision_, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
       NodeValue val = node.getNthResult(IRConstraintResultIdx);
       // "node" should have only one use, the dequantize node.
@@ -342,10 +343,12 @@ protected:
 
   void convertTensor(Tensor &tensor, TypeRef destTy) override {
     assert(tensor.getElementType() == ElemKind::FloatTy &&
-           destTy->getElementType() == ElemKind::Int8QTy &&
+           (destTy->getElementType() == ElemKind::Int8QTy ||
+            destTy->getElementType() == ElemKind::Int16QTy) &&
            "Dequantization not implemented");
 
-    tensor = quantizeTensor(tensor, {destTy->getScale(), destTy->getOffset()});
+    tensor = quantizeTensor(tensor, {destTy->getScale(), destTy->getOffset()},
+                            destTy->getElementType());
   }
 
 private:
@@ -354,6 +357,8 @@ private:
   /// Execution engine used to check is a quantized operator is
   /// supported.
   const ExecutionEngine &EE_;
+  /// Quantization precision.
+  const ElemKind quantizationPrecision_;
   /// Set of node kinds that should not be quantized.
   const KindSet &doNotQuantizeKinds_;
   /// Map the (name of a node, idx) to its quantization parameters.
@@ -364,13 +369,16 @@ private:
 
 public:
   /// Creates a function quantizer for \p F using the quantization
-  /// parameters defined by \p quantizationInfos.
+  /// parameters defined by \p quantizationInfos and target quantization
+  /// precision defined by \p quantizationPrecision.
   /// \p EE and \p doNotQuantizeKinds are used to check which
   /// nodes shouldn't be converted.
   FunctionQuantizer(Function &F, const ExecutionEngine &EE,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+                    ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds)
       : FunctionConverter(F), mod_(*F.getParent()), EE_(EE),
+        quantizationPrecision_(quantizationPrecision),
         doNotQuantizeKinds_(doNotQuantizeKinds) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
@@ -477,8 +485,12 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F, Schema schema) {
 Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 Function *F, llvm::StringRef newFuncName,
-                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
+                 ElemKind quantizationPrecision, Function *F,
+                 llvm::StringRef newFuncName, const KindSet &doNotQuantizeKinds,
+                 bool enableRowwise) {
+  assert((quantizationPrecision == ElemKind::Int8QTy ||
+          quantizationPrecision == ElemKind::Int16QTy) &&
+         "Only Int8 and Int16 quantization supported");
   std::string tmpName;
   if (newFuncName.empty()) {
     tmpName = std::string(F->getName()) + "_quantized";
@@ -487,7 +499,8 @@ quantizeFunction(const ExecutionEngine &EE,
 
   Function *G = F->clone(newFuncName);
 
-  FunctionQuantizer quantizer(*G, EE, quantizationInfos, doNotQuantizeKinds);
+  FunctionQuantizer quantizer(*G, EE, quantizationInfos, quantizationPrecision,
+                              doNotQuantizeKinds);
   quantizer.convert();
   if (enableRowwise) {
     quantizer.enableRowwise();

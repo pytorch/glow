@@ -174,6 +174,14 @@ bool CPUBackend::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     }
   }
 
+  if (elementTy == ElemKind::Float16Ty) {
+    return false;
+  }
+
+  if (elementTy == ElemKind::Int16QTy) {
+    return false;
+  }
+
   return true;
 }
 

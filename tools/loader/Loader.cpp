@@ -93,6 +93,15 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
                    "Use symmetric ranges with potentially uint8 ranges")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<ElemKind> quantizationPrecision(
+    "quantization-precision",
+    llvm::cl::desc("Specify which quantization precision to use, e.g., Int8"),
+    llvm::cl::Optional,
+    llvm::cl::values(
+        clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 quantization"),
+        clEnumValN(ElemKind::Int16QTy, "Int16", "Use Int16 quantization")),
+    llvm::cl::init(ElemKind::Int8QTy), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load-profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
@@ -263,8 +272,8 @@ void Loader::compile(Context &ctx) {
 
     // Quantize the graph based on the captured profile.
     auto *Q = quantization::quantizeFunction(
-        EE_, quantizationInfos, F_, oldName, keepOriginalPrecisionForNodes,
-        enableRowwiseOpt);
+        EE_, quantizationInfos, quantizationPrecision, F_, oldName,
+        keepOriginalPrecisionForNodes, enableRowwiseOpt);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.
