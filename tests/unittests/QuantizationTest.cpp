@@ -201,7 +201,7 @@ TEST(Quantization, quantizeTensorSymmetricUInt32) {
                               quantization::Schema::SymmetricWithUnsigned);
 }
 
-TEST(Quantization, quantizeGraph) {
+void quantizeGraph(ElemKind quantizationPrecision) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -226,13 +226,15 @@ TEST(Quantization, quantizeGraph) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, quantizationPrecision, F);
 
-  // Make sure that graph can be compiled and run.
+  // Make sure that graph can be compiled.
   EE.compile(CompilationMode::Infer, F);
-
-  EE.run(ctx);
 }
+
+TEST(Quantization, int8QuantizeGraph) { quantizeGraph(ElemKind::Int8QTy); }
+
+TEST(Quantization, int16QuantizeGraph) { quantizeGraph(ElemKind::Int16QTy); }
 
 /// Test enabling RowwiseQuantizedFullyConnected in Glow quantization
 /// procuedure. A FC can be quantized and converted to a
@@ -266,7 +268,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F, "", {}, true);
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, "", {},
+                                     true);
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
@@ -313,7 +316,7 @@ TEST(Quantization, quantizeReLU) {
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
        {0.2f, -128}}};
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
   EE.compile(CompilationMode::Infer, F);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -410,7 +413,8 @@ TEST_P(Operator, end2end) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
+                                      F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -545,7 +549,8 @@ TEST_P(Operator, end2endGRU) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI, F2);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
+                                      F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -866,7 +871,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
       {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
   auto qLRNIt = std::find_if(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
@@ -909,7 +914,7 @@ TEST(Quantization, quantizeAvgPool) {
       {NodeQuantizationInfo::generateNodeOutputName(s->getName()), {0.4f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, F);
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
   auto qPool = std::find_if(F->getNodes().begin(), F->getNodes().end(),
                             [](const Node &node) -> bool {
@@ -958,8 +963,8 @@ TEST(Quantization, quantizeGraphPartially) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1039,8 +1044,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1130,8 +1135,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
   doNotQuantize.insert(Kinded::Kind::AddNodeKind);
 
-  auto *QF =
-      quantization::quantizeFunction(EE, QI, F, "_quantized", doNotQuantize);
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1212,7 +1217,8 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, F, "_quantized");
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1275,7 +1281,8 @@ TEST(Quantization, quantizeSlice) {
        {0.4f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, F, "_quantized");
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1344,7 +1351,8 @@ TEST(Quantization, quantizeReshape) {
        {0.4f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, F, "_quantized");
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                            "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
 

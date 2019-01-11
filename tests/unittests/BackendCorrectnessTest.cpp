@@ -85,8 +85,8 @@ compareAgainstInterpreter(BackendKind backendKind,
   if (quantize) {
     std::vector<NodeQuantizationInfo> QI =
         profileAndGetNodeQuantizationInfo(ICtx, IEE, IF);
-    IF = quantization::quantizeFunction(IEE, QI, IF);
-    BF = quantization::quantizeFunction(BEE, QI, BF);
+    IF = quantization::quantizeFunction(IEE, QI, ElemKind::Int8QTy, IF);
+    BF = quantization::quantizeFunction(BEE, QI, ElemKind::Int8QTy, BF);
   }
 
   IEE.compile(CompilationMode::Infer, IF);
