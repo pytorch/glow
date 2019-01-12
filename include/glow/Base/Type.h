@@ -366,16 +366,27 @@ struct Type final {
 
   /// \returns true if the type of this Tensor is one of the quantized types.
   bool isQuantizedType() const {
-    return elementType_ == ElemKind::Int8QTy ||
-           elementType_ == ElemKind::Int16QTy ||
-           elementType_ == ElemKind::Int32QTy;
+    return isQuantizedType(elementType_);
   }
 
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.
   bool isFPType() const {
-    return getElementType() == ElemKind::FloatTy ||
-           getElementType() == ElemKind::Float16Ty;
+    return isFPType(elementType_);
+  }
+
+  /// \returns true if \p elemKind is one of the quantized types.
+  static bool isQuantizedType(ElemKind elemKind) {
+    return elemKind == ElemKind::Int8QTy ||
+      elemKind == ElemKind::Int16QTy ||
+      elemKind == ElemKind::Int32QTy;
+  }
+
+  /// \returns true if \p elemKind is one of the floating point
+  /// types.
+  static bool isFPType(ElemKind elemKind) {
+    return elemKind  == ElemKind::FloatTy ||
+      elemKind == ElemKind::Float16Ty;
   }
 
   /// \return the size of the type element.
