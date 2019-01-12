@@ -1,5 +1,7 @@
 add_subdirectory(Base)
 
+find_package(glog REQUIRED)
+
 add_library(Quantization
               Serialization.cpp
               Quantization.cpp)
@@ -10,4 +12,5 @@ target_link_libraries(Quantization
                         Graph
                         ExecutionEngine
                         QuantizationBase
-                        LLVMSupport)
+                        LLVMSupport
+                        glog::glog)

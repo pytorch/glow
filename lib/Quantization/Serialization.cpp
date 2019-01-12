@@ -17,10 +17,18 @@
 #include "glow/Quantization/Serialization.h"
 #include "glow/Quantization/Quantization.h"
 
+#include "glog/logging.h"
+
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/YAMLParser.h"
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
+
+namespace std {
+std::ostream &operator<<(std::ostream &os, llvm::StringRef str) {
+  return os.write(str.data(), str.size());
+}
+}
 
 namespace llvm {
 namespace yaml {
@@ -61,13 +69,13 @@ deserializeFromYaml(llvm::StringRef fileName) {
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
       llvm::MemoryBuffer::getFileAsStream(fileName);
-  GLOW_ASSERT(!text.getError() && "Unable to open file");
+  CHECK(!text.getError()) << "Unable to open profile file: " << fileName;
 
   std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
   llvm::yaml::Input yin(buffer->getBuffer());
   yin >> result;
 
-  GLOW_ASSERT(!yin.error() && "Error reading yaml file");
+  CHECK(!yin.error()) << "Error reading yaml file: " << fileName;
 
   return result;
 }
