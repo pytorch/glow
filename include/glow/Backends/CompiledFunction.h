@@ -16,7 +16,9 @@
 #ifndef GLOW_BACKENDS_COMPILEDFUNCTION_H
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Nodes.h"
+
 #include <unordered_map>
 
 namespace glow {
@@ -25,6 +27,13 @@ class Context;
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:
+  /// Default Ctor.
+  CompiledFunction() = default;
+
+  /// Ctor that accepts runtimeBundle.
+  CompiledFunction(const runtime::RuntimeBundle &bundle)
+      : runtimeBundle_(bundle){};
+
   /// Dtor.
   virtual ~CompiledFunction() = default;
   /// Execute the network and allocate Placeholder memory with given
@@ -35,16 +44,26 @@ public:
   /// This includes device init constant memory allocation and copying to
   /// device.
   virtual void setupRuns() = 0;
+
   /// Per run setup. Copy inputs to device.
   virtual void beforeRun(const Context &ctx) = 0;
+
   /// Per run cleanup. Copy outputs from device.
   virtual void afterRun(const Context &ctx) = 0;
+
   /// Final cleanup. Release memory, reset device.
   virtual void tearDownRuns() = 0;
+
+  /// Getter for the runtimeBundle.
+  const runtime::RuntimeBundle &getRuntimeBundle() const {
+    return runtimeBundle_;
+  }
 
 protected:
   /// Flag to ensure setupRuns is only called once.
   bool runsSetup_{false};
+  /// Contains symbol offsets and allocation sizes.
+  runtime::RuntimeBundle runtimeBundle_;
 };
 } // end namespace glow
 

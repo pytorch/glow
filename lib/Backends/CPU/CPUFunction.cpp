@@ -23,7 +23,7 @@ using namespace glow;
 
 CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          const runtime::RuntimeBundle &runtimeBundle)
-    : JIT_(std::move(JIT)), runtimeBundle_(runtimeBundle) {}
+    : CompiledFunction(runtimeBundle), JIT_(std::move(JIT)) {}
 
 CPUFunction::~CPUFunction() {
   alignedFree(runtimeBundle_.getConstants());

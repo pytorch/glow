@@ -51,8 +51,6 @@ class InterpreterFunction final : public CompiledFunction {
   std::unordered_map<const Value *, Tensor *> externalTensors_;
   /// Maps Value.name to tensors for constants.
   std::unordered_map<std::string, Tensor *> constants_;
-  /// Runtime bundle that contains symbol offsets and constants.
-  runtime::RuntimeBundle bundle_;
 
 public:
   InterpreterFunction(std::unique_ptr<IRFunction> F,
@@ -61,15 +59,19 @@ public:
   /// \name CompiledFunction interface
   ///@{
   ~InterpreterFunction() override;
+
   /// Does any needed initialization work for the Backend, creates tensors from
   /// constants.
   void setupRuns() override;
+
   /// Per run setup, adds references for tensors from \p ctx to
   /// externalTensors_.
   void beforeRun(const Context &ctx) override;
+
   /// Per run cleanup, removes references for tensors from \p ctx from
   /// externalTensors_.
   void afterRun(const Context &ctx) override;
+
   /// Final cleanup, remove created constant Tensors.
   void tearDownRuns() override;
 
