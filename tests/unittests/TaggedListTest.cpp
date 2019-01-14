@@ -104,6 +104,23 @@ TEST(TaggedList, insert) {
   EXPECT_EQ(i->id, 8);
   EXPECT_TRUE(i == ls.begin());
 
+  // Same, with const_iterator.
+  {
+    const auto &cls = ls;
+    auto i = cls.begin();
+    EXPECT_EQ(i->id, 8);
+    ++i;
+    EXPECT_EQ(i++->id, 9);
+    EXPECT_EQ(i->id, 7);
+    ++i;
+    EXPECT_TRUE(i == cls.end());
+    EXPECT_EQ((--i)->id, 7);
+    --i;
+    EXPECT_EQ((i--)->id, 9);
+    EXPECT_EQ(i->id, 8);
+    EXPECT_TRUE(i == cls.begin());
+  }
+
   // Destructor crashes trying to delete stack nodes.
   ls.clearAndLeakNodesUnsafely();
 }
@@ -182,6 +199,25 @@ TEST(TaggedList, reverse_iterator) {
   --i;
   EXPECT_EQ(i->id, 3);
   EXPECT_TRUE(i == ls.rbegin());
+
+  // Same, with const_reverse_iterator.
+  {
+    const auto &cls = ls;
+    auto i = cls.rbegin();
+    EXPECT_EQ(i->id, 3);
+    ++i;
+    EXPECT_EQ(i->id, 2);
+    i++;
+    EXPECT_EQ(i->id, 1);
+    EXPECT_TRUE(++i == cls.rend());
+
+    EXPECT_EQ((--i)->id, 1);
+    EXPECT_EQ((i--)->id, 1);
+    EXPECT_EQ(i->id, 2);
+    --i;
+    EXPECT_EQ(i->id, 3);
+    EXPECT_TRUE(i == cls.rbegin());
+  }
 
   ls.clearAndLeakNodesUnsafely();
 }

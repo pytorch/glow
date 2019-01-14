@@ -331,8 +331,8 @@ public:
   reverse_iterator rend() { return impl_.rend(); }
   const_iterator begin() const { return impl_.begin(); }
   const_iterator end() const { return impl_.end(); }
-  const_reverse_iterator rbegin() const { return impl_.begin(); }
-  const_reverse_iterator rend() const { return impl_.end(); }
+  const_reverse_iterator rbegin() const { return impl_.rbegin(); }
+  const_reverse_iterator rend() const { return impl_.rend(); }
 
   /// Insert `node` before `next`.
   ///
