@@ -26,7 +26,7 @@ using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
                                          const runtime::RuntimeBundle &bundle)
-    : F_(std::move(F)), bundle_(bundle) {}
+    : CompiledFunction(bundle), F_(std::move(F)) {}
 
 InterpreterFunction::~InterpreterFunction() {
   // Delete the tensors that are owned by this backend.
@@ -35,16 +35,16 @@ InterpreterFunction::~InterpreterFunction() {
   }
   tensors_.clear();
   externalTensors_.clear();
-  alignedFree(bundle_.getConstants());
+  alignedFree(runtimeBundle_.getConstants());
   tearDownRuns();
 }
 
 void InterpreterFunction::setupRuns() {
   if (!runsSetup_) {
-    if (bundle_.getConstantWeightSize()) {
+    if (runtimeBundle_.getConstantWeightSize()) {
       for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
-        auto symbolInfo = bundle_.getSymbolInfo(v);
-        auto addr = bundle_.getConstants() + symbolInfo.offset;
+        auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
+        auto addr = runtimeBundle_.getConstants() + symbolInfo.offset;
         auto tensor = new Tensor(addr, &symbolInfo.type);
         constants_.emplace(std::string(v->getName()), tensor);
       }

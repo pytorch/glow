@@ -16,7 +16,6 @@
 #ifndef GLOW_BACKENDS_BACKENDUTILS_H
 #define GLOW_BACKENDS_BACKENDUTILS_H
 
-#include "glow/Backends/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 

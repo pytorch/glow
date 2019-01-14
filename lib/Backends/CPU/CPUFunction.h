@@ -27,10 +27,10 @@ class CPUFunction final : public CompiledFunction {
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_;
-  /// runtimeBundle contains symbol offsets and allocation sizes.
-  runtime::RuntimeBundle runtimeBundle_;
+
   /// Base address for Activations memory block.
   uint8_t *baseActivationsAddress_{};
+
   /// Base address for Mutable weights memory block, Inputs and Outputs.
   uint8_t *baseMutableWeightVarsAddress_{};
 
@@ -41,12 +41,16 @@ public:
   /// Allocate Mutable buffers on device this includes Activations and
   /// Placeholders.
   void setupRuns() override;
+
   /// Copy Input Placeholder data to position.
   void beforeRun(const Context &ctx) override;
+
   /// Copy Outputs to Placeholders in \p ctx.
   void afterRun(const Context &ctx) override;
+
   /// Final cleanup, free all allocations.
   void tearDownRuns() override;
+
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;

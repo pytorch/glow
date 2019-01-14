@@ -86,8 +86,6 @@ class OpenCLFunction final : public CompiledFunction {
   cl_mem deviceBuffer_{0};
   /// Information about kernel launches.
   std::vector<KernelLaunch> kernelLaunches_;
-  /// Runtime bundle that contains symbol offsets and constants.
-  runtime::RuntimeBundle bundle_;
 
 public:
   /// Ctor.

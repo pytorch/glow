@@ -125,7 +125,7 @@ static void addStringOption(std::vector<std::string> &options,
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
                                const runtime::RuntimeBundle &bundle)
-    : F_(std::move(F)), bundle_(bundle) {
+    : CompiledFunction(bundle), F_(std::move(F)) {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
@@ -542,10 +542,10 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);
-  setKernelArg<cl_uint>(kernel, 1, bundle_.getValueOffset(input));
-  setKernelArg<cl_uint>(kernel, 2, bundle_.getValueOffset(weights));
-  setKernelArg<cl_uint>(kernel, 3, bundle_.getValueOffset(bias));
-  setKernelArg<cl_uint>(kernel, 4, bundle_.getValueOffset(output));
+  setKernelArg<cl_uint>(kernel, 1, runtimeBundle_.getValueOffset(input));
+  setKernelArg<cl_uint>(kernel, 2, runtimeBundle_.getValueOffset(weights));
+  setKernelArg<cl_uint>(kernel, 3, runtimeBundle_.getValueOffset(bias));
+  setKernelArg<cl_uint>(kernel, 4, runtimeBundle_.getValueOffset(output));
 
   // Extra options for quantized kernel
   if (isQuantized) {
@@ -671,7 +671,7 @@ void OpenCLFunction::execute() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       auto numMandatoryArgs = numArgs;
       (void)numMandatoryArgs;
 
@@ -763,7 +763,7 @@ void OpenCLFunction::execute() {
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
@@ -782,7 +782,7 @@ void OpenCLFunction::execute() {
       // the batch is processed by a different parallel 'thread'.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       // This is the number of elements for each slice. There are N slices in
       // our batch.
@@ -799,7 +799,7 @@ void OpenCLFunction::execute() {
     if (auto *ET = dyn_cast<ExtractTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       // Currently support tensors up to 4 dimensions.
       // TODO: Handle other dimensions.
@@ -839,7 +839,7 @@ void OpenCLFunction::execute() {
     if (auto *IT = dyn_cast<InsertTensorInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       // Currently support tensors of up to 4 dimensions.
       // TODO: Handle other dimensions.
@@ -893,7 +893,7 @@ void OpenCLFunction::execute() {
       cl_kernel kernel =
           createKernel(useTiledMatMul ? tiledKernelName : kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
       auto ldim = ShapeNHWC::fromXY(BMM->getLHS()->getType()->dims());
@@ -936,7 +936,7 @@ void OpenCLFunction::execute() {
       }
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto bdim = flattenCdr(BA->getBatch()->dims());
       setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
@@ -970,7 +970,7 @@ void OpenCLFunction::execute() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto bdim = flattenCdr(BRA->getBatch()->dims());
       setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
@@ -992,7 +992,7 @@ void OpenCLFunction::execute() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(CC->getPads());
@@ -1037,7 +1037,7 @@ void OpenCLFunction::execute() {
       auto *biasGrad = CG->getBiasGrad();
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto destGradDim = ShapeNHWC(destGrad->dims());
       auto srcDim = ShapeNHWC(src->dims());
@@ -1053,11 +1053,11 @@ void OpenCLFunction::execute() {
       setKernelArg(kernel, numArgs + 6, destGradDim);
       setKernelArg(kernel, numArgs + 7, filterGradDim);
       // Zero memory for the output buffers.
-      fillBuffer(deviceBuffer_, bundle_.getValueOffset(srcGrad),
+      fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(srcGrad),
                  srcGrad->size(), 0, srcGrad->getElementType());
-      fillBuffer(deviceBuffer_, bundle_.getValueOffset(filterGrad),
+      fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(filterGrad),
                  filterGrad->size(), 0, filterGrad->getElementType());
-      fillBuffer(deviceBuffer_, bundle_.getValueOffset(biasGrad),
+      fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(biasGrad),
                  biasGrad->size(), 0, biasGrad->getElementType());
 
       (void)filter;
@@ -1075,7 +1075,7 @@ void OpenCLFunction::execute() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
@@ -1100,7 +1100,7 @@ void OpenCLFunction::execute() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
@@ -1123,7 +1123,7 @@ void OpenCLFunction::execute() {
     if (auto *PMG = dyn_cast<MaxPoolWithXYGradInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto destGradDim = ShapeNHWC(PMG->getDestGrad()->dims());
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
@@ -1151,7 +1151,7 @@ void OpenCLFunction::execute() {
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
@@ -1179,7 +1179,7 @@ void OpenCLFunction::execute() {
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       // Temporary hack to support 3-dim transposes.
       // TODO: support any dimensional transposes.
@@ -1213,8 +1213,8 @@ void OpenCLFunction::execute() {
       if (src == dest) {
         continue;
       }
-      size_t destOff = bundle_.getValueOffset(dest);
-      size_t srcOff = bundle_.getValueOffset(src);
+      size_t destOff = runtimeBundle_.getValueOffset(dest);
+      size_t srcOff = runtimeBundle_.getValueOffset(src);
       size_t sizeInBytes = dest->getSizeInBytes();
       cl_event event{nullptr};
       cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
@@ -1230,7 +1230,7 @@ void OpenCLFunction::execute() {
     if (auto *GI = dyn_cast<GatherInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       unsigned_t batchDims = GI->getBatchDims();
 
       auto *data = GI->getData();
@@ -1266,7 +1266,7 @@ void OpenCLFunction::execute() {
     if (auto *SAI = dyn_cast<ScatterAssignInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto *data = SAI->getData();
       size_t dataSliceSize = data->size() / data->dims()[0];
@@ -1327,7 +1327,7 @@ void OpenCLFunction::execute() {
     if (auto PA = dyn_cast<OCLAvgPoolInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PA->getSrc()->getType()->dims());
@@ -1357,7 +1357,7 @@ void OpenCLFunction::execute() {
     if (auto *PM = dyn_cast<OCLMaxPoolInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, bundle_);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
       auto idim = ShapeNCHW(PM->getSrc()->getType()->dims());
@@ -1383,7 +1383,7 @@ void OpenCLFunction::execute() {
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
   uint64_t copiedBytes = 0;
-  auto symbolInfo = bundle_.getSymbolInfo(v);
+  auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer to the device.
   if (sizeInBytes) {
@@ -1404,7 +1404,7 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
 
 uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   uint64_t copiedBytes = 0;
-  auto symbolInfo = bundle_.getSymbolInfo(v);
+  auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
   // Issue a non-blocking command to copy the buffer from the device.
   if (sizeInBytes) {
@@ -1427,13 +1427,13 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
 
 void OpenCLFunction::setupRuns() {
   if (!runsSetup_) {
-    deviceBuffer_ = allocDeviceBuffer(bundle_.getConstantWeightSize() +
-                                      bundle_.getMutableWeightSize() +
-                                      bundle_.getActivationsSize());
-    size_t sizeInBytes = bundle_.getConstantWeightSize();
-    if (bundle_.getConstants()) {
+    deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
+                                      runtimeBundle_.getMutableWeightSize() +
+                                      runtimeBundle_.getActivationsSize());
+    size_t sizeInBytes = runtimeBundle_.getConstantWeightSize();
+    if (runtimeBundle_.getConstants()) {
       // Issue a non-blocking command to copy the buffer to the device.
-      auto buf = bundle_.getConstants();
+      auto buf = runtimeBundle_.getConstants();
       size_t valueOffset = 0;
       cl_event event{nullptr};
       cl_int err = clEnqueueWriteBuffer(
@@ -1454,7 +1454,7 @@ void OpenCLFunction::setupRuns() {
 
 void OpenCLFunction::beforeRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
-    auto symbolInfo = bundle_.getSymbolInfo(PH.first);
+    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
@@ -1476,7 +1476,7 @@ void OpenCLFunction::beforeRun(const Context &ctx) {
 
 void OpenCLFunction::afterRun(const Context &ctx) {
   for (auto PH : ctx.pairs()) {
-    auto symbolInfo = bundle_.getSymbolInfo(PH.first);
+    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
