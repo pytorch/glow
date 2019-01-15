@@ -2134,6 +2134,82 @@ static void optimizeQuantization(Function *F) {
   optimizeQuantizedMaxSplat(F);
 }
 
+template <class T, class U>
+using enable_if_same_t = std::enable_if_t<std::is_same<T, U>::value, U>;
+#define FUNCTION_ENABLE_IF_TEMPLATE(NODE_NAME_)                                \
+  template <class T, typename... Args>                                         \
+  enable_if_same_t<T, NODE_NAME_##Node> static
+
+FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) * createNode(Function &F, Args... args) {
+  return F.createAvgPool(args...);
+}
+
+FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) * createNode(Function &F, Args... args) {
+  return F.createMaxPool(args...);
+}
+
+FUNCTION_ENABLE_IF_TEMPLATE(Add)
+*createNode(Function &F, Args... var2) { return F.createAdd(var2...); }
+
+FUNCTION_ENABLE_IF_TEMPLATE(Sub)
+*createNode(Function &F, Args... var2) { return F.createSub(var2...); }
+
+FUNCTION_ENABLE_IF_TEMPLATE(Mul)
+*createNode(Function &F, Args... var2) { return F.createMul(var2...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Div)
+*createNode(Function &F, Args... var2) { return F.createDiv(var2...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Min)
+*createNode(Function &F, Args... var2) { return F.createMin(var2...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Max)
+*createNode(Function &F, Args... var2) { return F.createMax(var2...); }
+
+/// Sink Rescale down with Pooling node.
+/// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
+/// Apply this transformation for AvgPool and MaxPool.
+template <typename T>
+static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
+  bool changed = false;
+
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
+    T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
+                             PN->getKernels(), PN->getStrides(), PN->getPads());
+    auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
+        rescale->getResult().getType(), PN->getResult().dims());
+    auto *newRescale =
+        F.createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);
+    PN->getResult().replaceAllUsesOfWith(newRescale);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Combine Rescale down with Arithmetic node.
+///   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
+///   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
+///   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
+/// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
+template <typename T>
+static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
+  bool changed = false;
+
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {
+    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
+                             rescale->getInput(), AN->getRHS());
+    AN->getResult().replaceAllUsesOfWith(newAN);
+    AN = newAN;
+    changed = true;
+  }
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getRHS())) {
+    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
+                             AN->getLHS(), rescale->getInput());
+    AN->getResult().replaceAllUsesOfWith(newAN);
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Sink Rescale nodes down when possible.
 static bool sinkRescaleQuantizedNode(Function *F) {
   bool changed = false;
@@ -2196,27 +2272,15 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
-// Sink Rescale down with Pooling node.
-// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
-// Apply this transformation for AvgPool and MaxPool.
-#define SINK_DOWN_RESCALE_TO_POOLING_NODE(NODE_NAME_)                          \
-  if (auto *PN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
-    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {      \
-      auto *newPN = F->create##NODE_NAME_(PN->getName(), rescale->getInput(),  \
-                                          PN->getKernels(), PN->getStrides(),  \
-                                          PN->getPads());                      \
-      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(              \
-          rescale->getResult().getType(), PN->getResult().dims());             \
-      auto *newRescale =                                                       \
-          F->createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);  \
-      PN->getResult().replaceAllUsesOfWith(newRescale);                        \
-      changed = true;                                                          \
-    }                                                                          \
-    continue;                                                                  \
-  }
-    SINK_DOWN_RESCALE_TO_POOLING_NODE(AvgPool);
-    SINK_DOWN_RESCALE_TO_POOLING_NODE(MaxPool);
-#undef SINK_DOWN_RESCALE_TO_POOLING_NODE
+    if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
+      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      continue;
+    }
+
+    if (auto *PN = dyn_cast<MaxPoolNode>(&node)) {
+      changed |= sinkDownRescaleToPoolingNode<MaxPoolNode>(*F, PN);
+      continue;
+    }
 
     // Combine Rescale down with FullyConnected node.
     // FullyConnected(Rescale(X)) -> FullyConnected(X).
@@ -2257,37 +2321,30 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
-// Combine Rescale down with Arithmetic node.
-//   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
-//   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
-//   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
-// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
-#define COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(NODE_NAME_)                    \
-  if (auto *AN = dyn_cast<NODE_NAME_##Node>(&node)) {                          \
-    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {        \
-      auto *newAN =                                                            \
-          F->create##NODE_NAME_(AN->getName(), AN->getResult().getType(),      \
-                                rescale->getInput(), AN->getRHS());            \
-      AN->getResult().replaceAllUsesOfWith(newAN);                             \
-      AN = newAN;                                                              \
-      changed = true;                                                          \
-    }                                                                          \
-    if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getRHS())) {        \
-      auto *newAN =                                                            \
-          F->create##NODE_NAME_(AN->getName(), AN->getResult().getType(),      \
-                                AN->getLHS(), rescale->getInput());            \
-      AN->getResult().replaceAllUsesOfWith(newAN);                             \
-      changed = true;                                                          \
-    }                                                                          \
-    continue;                                                                  \
-  }
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Add);
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Sub);
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Mul);
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Div);
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Min);
-    COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE(Max);
-#undef COMBINE_DOWN_RESCALE_TO_ARITHMETIC_NODE
+    if (auto *AN = dyn_cast<AddNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<AddNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<SubNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<SubNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MulNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MulNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<DivNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<DivNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MinNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MinNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MaxNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MaxNode>(*F, AN);
+      continue;
+    }
 
     // Combine Rescale down with Relu node.
     //   ReluNode(Rescale(in)) -> ReluNode(in).
