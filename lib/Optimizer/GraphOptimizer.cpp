@@ -2143,25 +2143,23 @@ using enable_if_same_t = std::enable_if_t<std::is_same<T, U>::value, U>;
 FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) * createNode(Function &F, Args... args) {
   return F.createAvgPool(args...);
 }
-
 FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) * createNode(Function &F, Args... args) {
   return F.createMaxPool(args...);
 }
-
 FUNCTION_ENABLE_IF_TEMPLATE(Add)
-*createNode(Function &F, Args... var2) { return F.createAdd(var2...); }
-
+*createNode(Function &F, Args... args) { return F.createAdd(args...); }
 FUNCTION_ENABLE_IF_TEMPLATE(Sub)
-*createNode(Function &F, Args... var2) { return F.createSub(var2...); }
-
+*createNode(Function &F, Args... args) { return F.createSub(args...); }
 FUNCTION_ENABLE_IF_TEMPLATE(Mul)
-*createNode(Function &F, Args... var2) { return F.createMul(var2...); }
+*createNode(Function &F, Args... args) { return F.createMul(args...); }
 FUNCTION_ENABLE_IF_TEMPLATE(Div)
-*createNode(Function &F, Args... var2) { return F.createDiv(var2...); }
+*createNode(Function &F, Args... args) { return F.createDiv(args...); }
 FUNCTION_ENABLE_IF_TEMPLATE(Min)
-*createNode(Function &F, Args... var2) { return F.createMin(var2...); }
+*createNode(Function &F, Args... args) { return F.createMin(args...); }
 FUNCTION_ENABLE_IF_TEMPLATE(Max)
-*createNode(Function &F, Args... var2) { return F.createMax(var2...); }
+*createNode(Function &F, Args... args) { return F.createMax(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
+*createNode(Function &F, Args... args) { return F.createMatMul(args...); }
 
 /// Sink Rescale down with Pooling node.
 /// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
@@ -2358,24 +2356,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       continue;
     }
 
-    // Combine Rescale down with MatMul node.
-    //   MatMulNode(Rescale(LHS), RHS) -> MatMulNode(LHS', RHS).
-    //   MatMulNode(LHS, Rescale(RHS)) -> MatMulNode(LHS, RHS').
-    //   MatMulNode(Rescale(LHS), Rescale(RHS)) -> MatMulNode(LHS', RHS').
     if (auto *MN = dyn_cast<MatMulNode>(&node)) {
-      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(MN->getLHS())) {
-        auto *newMN = F->createMatMul(MN->getName(), MN->getResult().getType(),
-                                      rescale->getInput(), MN->getRHS());
-        MN->getResult().replaceAllUsesOfWith(newMN);
-        MN = newMN;
-        changed = true;
-      }
-      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(MN->getRHS())) {
-        auto *newMN = F->createMatMul(MN->getName(), MN->getResult().getType(),
-                                      MN->getLHS(), rescale->getInput());
-        MN->getResult().replaceAllUsesOfWith(newMN);
-        changed = true;
-      }
+      changed |= combineDownRescaleToArithmeticNode<MatMulNode>(*F, MN);
       continue;
     }
   }
