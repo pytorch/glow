@@ -839,7 +839,8 @@ public:
   }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||
-        opKind == Kinded::Kind::LocalResponseNormalizationNodeKind) {
+        opKind == Kinded::Kind::LocalResponseNormalizationNodeKind ||
+        opKind == Kinded::Kind::SaveNodeKind) {
       return true;
     }
     return backend_->isOpSupported(opKind, elementTy);
@@ -862,14 +863,14 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto *LRN =
       F->createLocalResponseNormalization("LRN", input, 2, 1.0, 0.0001, 0.75);
   auto *SM = F->createSoftMax("softmax", LRN, selected);
-  F->createSave("ret", SM);
+  auto *SN = F->createSave("ret", SM);
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(LRN->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
-  };
+      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.4f, 0}}};
 
   F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
@@ -889,6 +890,13 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
                                          ->isQuantizedType();
                             });
   ASSERT_NE(qSMIt, F->getNodes().end());
+
+  // Make sure that SaveNode is not quantized.
+  for (const auto &node : F->getNodes()) {
+    if (auto *saveNode = llvm::dyn_cast<SaveNode>(&node)) {
+      EXPECT_FALSE(saveNode->getInput().getType()->isQuantizedType());
+    }
+  }
 }
 
 /// Check that AvgPool is quantized, and its input and output have different

@@ -112,6 +112,13 @@ protected:
   /// weren't specifically marked as to-ignore with doNotQuantizeKinds_.
   bool canConvert(const Node &node) const override {
     auto kind = node.getKind();
+
+    if (!FunctionConverter::canConvert(node)) {
+      return false;
+    }
+
+    // Do not quantize node if target quantization precision is not supported
+    // by the backend.
     if (!EE_.isOpSupported(kind, quantizationPrecision_)) {
       return false;
     }
