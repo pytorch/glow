@@ -24,7 +24,7 @@ List of partner logos sorted alphabetically column order.
 
 |![Bitmain Logo](./docs/partners/bitmain.png) |![Esperanto Logo](./docs/partners/esperanto.png)  |  ![NXP Logo](./docs/partners/nxp.png) |
 :-------------------------:|:-------------------------:|:-------------------------:
-|![CEVA Logo](./docs/partners/ceva.png)  |![Habana Logo](./docs/partners/habana.png)  |  |
+|![CEVA Logo](./docs/partners/ceva.png)  |![Habana Logo](./docs/partners/habana.png)  | ![ST Logo](./docs/partners/st.png)  |
 |![Cadence Logo](./docs/partners/cadence.png)  |  ![Intel Logo](./docs/partners/intel.png)|  |
 
 
