@@ -63,10 +63,8 @@ provided) and force the output have the same quantization params as the input
 for performance purpose:
 ```
 LocalResponseNormalizationNode                       
-SigmoidNode                                         
 SliceNode                                      
 ReshapeNode                                       
-TanhNode                                       
 TopKNode                                        
 GatherNode                                         
 MaxPoolNode
@@ -128,6 +126,10 @@ not be quantized. For example, to not quantize any Add or Div nodes when running
 the quantized text translator:
 
 ```./bin/text-translator -m en2gr -load-profile=en2gr.yaml -keep-original-precision-for-nodes=Add,Div```
+
+By default, target quantization precision is int8. However, precision can be
+controlled via command line parameter: `quantization-precision`. There are
+two supported values: `Int8` and `Int16`.
 
 ## Caffe2 Quantized Model Support 
 
