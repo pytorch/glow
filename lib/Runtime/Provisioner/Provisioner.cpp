@@ -15,6 +15,7 @@
  */
 
 #include "glow/Runtime/Provisioner/Provisioner.h"
+// #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Graph/Graph.h"
@@ -26,47 +27,31 @@
 using namespace glow;
 using namespace runtime;
 using DeviceID = unsigned int;
-Provisioner::Provisioner() = default;
-
-void addNetworkCallback(std::promise<bool> &promise, NetworkIDty id,
-                        ResultCode result, std::mutex &cbMutex,
-                        std::unordered_map<Module *, DeviceID> &networkIDs,
-                        Module *moduleID, unsigned int networkCount) {
-  cbMutex.lock();
-  if (result == READY) {
-    networkIDs.emplace(moduleID, id);
-    if (networkIDs.size() == networkCount) {
-      promise.set_value(true);
-    }
-  } else {
-    promise.set_value(false);
-  }
-  cbMutex.unlock();
-}
 
 void addNodes(std::queue<std::vector<DAGNode *>> &nextNodes,
               std::vector<DAGNode *> currentNodes) {
   for (int i = 0; i < currentNodes[0]->children.size(); i++) {
     std::vector<DAGNode *> newSet;
     for (auto node : currentNodes) {
-      newSet.push_back(&node->children[i]);
+      newSet.push_back(node->children[i]);
     }
     nextNodes.push(newSet);
   }
 }
-ResultCode Provisioner::provision(std::vector<DAGNode> &networks,
-                                  std::map<DeviceIDty, DeviceManager> &devices,
-                                  Module &module) {
+ResultCode Provisioner::provision(
+    std::vector<DAGNode> &networks,
+    std::map<DeviceIDTy, std::unique_ptr<DeviceManager>> &devices,
+    Module &module) {
   // For the first pass we will just assign and load devices in order and update
   // the deviceID field of the node.
   std::queue<std::vector<DAGNode *>> nextNode;
   // Process head node, this does not contain a function but serves as an entry
   // point for the network. We build a vector of nodes, containing all family
   // members of a sub-function.
-  for (int i; i < networks[0].children.size(); i++) {
+  for (int i = 0; i < networks[0].children.size(); i++) {
     std::vector<DAGNode *> newSet;
     for (auto node : networks) {
-      newSet.push_back(&node.children[i]);
+      newSet.push_back(node.children[i]);
     }
     nextNode.push(newSet);
   }
@@ -83,39 +68,37 @@ ResultCode Provisioner::provision(std::vector<DAGNode> &networks,
     // insufficient space.
     auto currDevice = devices.begin();
     // Set backend to match the device.
-    backend_.reset(createBackend(currDevice->second.getBackendKind()));
+    backend_.reset(createBackend(currDevice->second->getBackendKind()));
     // Iterate over the nodes, compile them and add them to compiledFunctions.
     for (auto node : nodes) {
       node->deviceID = currDevice->first;
       Function *function = module.getFunction(node->name);
       auto compiled = backend_->compile(function);
-      node->runtimeBundle = compiled->getRuntimeBundle(); // FIXME constants
-      // in bundle are issues....
+      node->runtimeBundle = compiled->getRuntimeBundle();
       compiledFunctions.emplace(node->name, compiled.get());
     }
     // Check if sufficient space on device. Currently requiring a 10% buffer
     // over the size of constants.
-    auto availableMemory = currDevice->second.getAvailableMemory();
+    auto availableMemory = currDevice->second->getAvailableMemory();
     if (availableMemory <
         1.1 * nodes[0]->runtimeBundle.getConstantWeightSize()) {
-      return FAILED;
+      return Failed;
     }
     // Load functions on device.
     std::promise<bool> addNetwork;
     auto ready = addNetwork.get_future();
-    currDevice->second.addNetwork(module, compiledFunctions,
-                                  [&addNetwork](ResultCode result) {
-                                    if (result == READY) {
-                                      addNetwork.set_value(true);
-                                    } else {
-                                      addNetwork.set_value(false);
-                                    }
-                                  });
+    currDevice->second->addNetwork(
+        &module, compiledFunctions,
+        [&addNetwork](const Module *, ResultCode result) {
+          if (result == Ready) {
+            addNetwork.set_value(true);
+          } else {
+            addNetwork.set_value(false);
+          }
+        });
     auto result = ready.get();
     if (!result) {
-      return FAILED;
-    } else {
-      // update Dag Nodes, and move on
+      return Failed;
     }
     currDevice++;
     // Handle wrapping around to start of devices again.
@@ -123,4 +106,5 @@ ResultCode Provisioner::provision(std::vector<DAGNode> &networks,
       currDevice = devices.begin();
     }
   }
+  return Ready;
 };
