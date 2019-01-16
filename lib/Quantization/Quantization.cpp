@@ -188,10 +188,8 @@ protected:
   // clang-format off
 #define casesForNodesWithIRConstraint                                          \
   IR_CONSTRAINT_CASE(LocalResponseNormalization, Input, Result):               \
-  IR_CONSTRAINT_CASE(Sigmoid, Input, Result):                                  \
   IR_CONSTRAINT_CASE(Slice, Input, Result):                                    \
   IR_CONSTRAINT_CASE(Reshape, Input, Result):                                  \
-  IR_CONSTRAINT_CASE(Tanh, Input, Result):                                     \
   IR_CONSTRAINT_CASE(TopK, Input, Values):                                     \
   IR_CONSTRAINT_CASE(Gather, Data, Result):                                    \
   IR_CONSTRAINT_CASE(MaxPool, Input, Result)
