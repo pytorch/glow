@@ -170,10 +170,11 @@ protected:
   Node *createConversion(Function &function, NodeValue &val,
                          TypeRef destTy) override {
     if (destTy->isQuantizedType()) {
-      return function_.createQuantize("quantize", val, destTy);
+      return function.createQuantize("quantize", val, destTy);
     }
-    assert(destTy->getElementType() == ElemKind::FloatTy && "");
-    return function.createDequantize("quantize", val);
+    assert(destTy->getElementType() == ElemKind::FloatTy &&
+           "Can't dequantize to any type except float.");
+    return function.createDequantize("dequantize", val);
   }
 
   /// All IRConstraint cases below assume that the input and output index that

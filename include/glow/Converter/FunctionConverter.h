@@ -31,7 +31,7 @@ class Placeholder;
 class Tensor;
 
 /// This class implements the high-level APIs used to convert a function
-/// to one type to another. The actual conversions must be implemented
+/// from one type to another. The actual conversions must be implemented
 /// by derived classes.
 class FunctionConverter {
 protected:
