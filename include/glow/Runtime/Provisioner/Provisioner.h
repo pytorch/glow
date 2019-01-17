@@ -30,7 +30,7 @@ namespace runtime {
 /// caller.
 class Provisioner final {
 public:
-  /// Walks \p networks and assigns each module to a DeviceManager in \p
+  /// Walks \p networks and assigns each function to a DeviceManager in \p
   /// devices. The Provisioner calls the addNetwork method for each
   /// DeviceManager and uses the returned networkID to populate \p runDAG.
   /// Returns a ResultCode indicating if the operation was a success.
