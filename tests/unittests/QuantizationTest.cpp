@@ -388,7 +388,9 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   return F;
 }
 
-TEST_P(Operator, end2end) {
+void testQuantizationEnd2End(ExecutionEngine &profileEE,
+                             ExecutionEngine &backendSpecificEE,
+                             ElemKind quantizationPrecision) {
   auto *mod = &profileEE.getModule();
   Context ctx;
 
@@ -408,13 +410,14 @@ TEST_P(Operator, end2end) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, F1);
+      quantization::generateNodeQuantizationInfos(
+          ctx, F1, quantization::Schema::Asymmetric, quantizationPrecision);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
-                                      F2);
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI,
+                                      quantizationPrecision, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -431,6 +434,14 @@ TEST_P(Operator, end2end) {
     // Allow 3% difference.
     EXPECT_NEAR(diff, 0, 0.03);
   }
+}
+
+TEST_P(Operator, end2endInt8) {
+  testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int8QTy);
+}
+
+TEST_P(Operator, end2endInt16) {
+  testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int16QTy);
 }
 
 /// Fills the tensor \p H with some stable random integers with the seed \p seed

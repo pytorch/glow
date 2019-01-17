@@ -328,7 +328,8 @@ void Loader::generateAndSerializeQuantizationInfos(Context &ctx) {
   assert(!dumpProfileFileOpt.empty() &&
          "Filename to dump serialized profile to must not be empty.");
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, F_, quantizationSchema);
+      quantization::generateNodeQuantizationInfos(ctx, F_, quantizationSchema,
+                                                  quantizationPrecision);
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 

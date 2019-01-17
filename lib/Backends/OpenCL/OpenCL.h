@@ -205,6 +205,11 @@ public:
         return false;
       }
     }
+
+    if (elementTy == ElemKind::Int16QTy) {
+      return false;
+    }
+
     return true;
   };
 

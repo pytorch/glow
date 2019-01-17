@@ -53,11 +53,12 @@ struct NodeQuantizationInfo {
 namespace quantization {
 
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
-/// using the method specified by \p schema.  Profiling values will be written
-/// into context \p ctx.
-std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(Context &ctx, const Function *F,
-                              Schema schema = Schema::Asymmetric);
+/// using the method specified by \p schema and target quantization
+/// precision \p quantizationPrecision. Profiling values will be written into
+/// context \p ctx.
+std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
+    Context &ctx, const Function *F, Schema schema = Schema::Asymmetric,
+    ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
 /// Quantizes the function \p F into a new unoptimized partially quantized
 /// function based on \p quantizationInfos and target quantization precision
