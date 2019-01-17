@@ -364,10 +364,13 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
                                Tensor &scales, Tensor &offsets) {
-  ShapeHW idim(input.dims());
+  const auto fDims = flattenCdr(input.dims());
+  Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
+  Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
+  ShapeHW idim(finalIn.dims());
 
-  auto srcH = input.getHandle<float>();
-  auto destH = output.getHandle<int8_t>();
+  auto srcH = finalIn.getHandle<float>();
+  auto destH = finalOut.getHandle<int8_t>();
   auto scalesH = scales.getHandle<float>();
   auto offsetsH = offsets.getHandle<int32_t>();
   for (size_t i = 0; i < idim.height; i++) {
