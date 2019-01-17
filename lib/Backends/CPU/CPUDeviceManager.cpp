@@ -36,7 +36,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   if (modIt != modules_.end()) {
     // Already have a module with this ID.
     // TODO: should we replace it?
-    readyCB(module, Failed);
+    readyCB(module, ResultCode::Failed);
     return;
   }
 
@@ -46,7 +46,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   size_t moduleSize = 200 * 1024 * 1024;
 
   if (usedMemoryBytes + moduleSize > maxMemoryBytes) {
-    readyCB(module, Failed);
+    readyCB(module, ResultCode::Failed);
     return;
   }
 
@@ -60,7 +60,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   usedMemoryBytes += moduleSize;
 
   // Fire the ready CB.
-  readyCB(module, Ready);
+  readyCB(module, ResultCode::Ready);
 }
 
 void CPUDeviceManager::evictNetworkImpl(const Module *module) {
@@ -85,7 +85,7 @@ void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,
                                        ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
-    resultCB(id, Failed, std::move(ctx));
+    resultCB(id, ResultCode::Failed, std::move(ctx));
     return;
   }
 
@@ -99,5 +99,5 @@ void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,
   func->tearDownRuns();
 
   // Fire the resultCB.
-  resultCB(id, Executed, std::move(ctx));
+  resultCB(id, ResultCode::Executed, std::move(ctx));
 }

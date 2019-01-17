@@ -31,7 +31,7 @@ using RunIdentifierTy = size_t;
 
 /// Enum to communicate results when communicating with device at initialization
 /// and runtime.
-enum ResultCode { Ready, Executed, Failed, Cancelled };
+enum class ResultCode { Ready, Executed, Failed, Cancelled };
 
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.

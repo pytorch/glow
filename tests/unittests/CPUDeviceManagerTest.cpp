@@ -113,7 +113,8 @@ TEST(CPUDeviceManagerTest, Basic) {
 
   cpuCoreDevice.addNetwork(module.get(), std::move(functions),
                            [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
                            });
 
   future.wait_for(2s);
@@ -134,7 +135,7 @@ TEST(CPUDeviceManagerTest, Basic) {
                             [&runPromise](RunIdentifierTy, ResultCode result,
                                           std::unique_ptr<Context> ctx_) {
                               callbackHelper(runPromise, std::move(ctx_),
-                                             result, Executed);
+                                             result, ResultCode::Executed);
                             });
 
   runFuture.wait_for(2s);
@@ -155,7 +156,8 @@ TEST(CPUDeviceManagerTest, MultiRun) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module.get(), std::move(functions),
                            [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
                            });
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module.get());
@@ -185,14 +187,14 @@ TEST(CPUDeviceManagerTest, MultiRun) {
                             [&runP1](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP1, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   cpuCoreDevice.runFunction("main", std::move(ctx2),
                             [&runP2](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP2, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   ctx1 = runF1.get();
@@ -225,7 +227,8 @@ TEST(CPUDeviceManagerTest, MultiFunction) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module.get(), std::move(functions),
                            [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
                            });
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module.get());
@@ -245,14 +248,14 @@ TEST(CPUDeviceManagerTest, MultiFunction) {
                             [&runP1](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP1, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   cpuCoreDevice.runFunction("func2", std::move(ctx2),
                             [&runP2](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP2, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   ctx1 = runF1.get();
@@ -276,7 +279,8 @@ TEST(CPUDeviceManagerTest, MultiModule) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module1.get(), std::move(functions1),
                            [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
                            });
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module1.get());
@@ -284,7 +288,8 @@ TEST(CPUDeviceManagerTest, MultiModule) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module2.get(), std::move(functions2),
                            [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
                            });
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module2.get());
@@ -309,14 +314,14 @@ TEST(CPUDeviceManagerTest, MultiModule) {
                             [&runP1](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP1, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   cpuCoreDevice.runFunction("func2", std::move(ctx2),
                             [&runP2](RunIdentifierTy, ResultCode result,
                                      std::unique_ptr<Context> ctx_) {
                               callbackHelper(runP2, std::move(ctx_), result,
-                                             Executed);
+                                             ResultCode::Executed);
                             });
 
   ctx1 = runF1.get();
@@ -340,11 +345,11 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
 
   auto module = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module.get(),
-                           compileFunctions(module.get(), backing),
-                           [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
-                           });
+  cpuCoreDevice.addNetwork(
+      module.get(), compileFunctions(module.get(), backing),
+      [&promise](const Module *module, ResultCode result) {
+        callbackHelper(promise, module, result, ResultCode::Ready);
+      });
 
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module.get());
@@ -357,11 +362,11 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
   // Let's try again.
   auto module2 = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module2.get(),
-                           compileFunctions(module2.get(), backing),
-                           [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
-                           });
+  cpuCoreDevice.addNetwork(
+      module2.get(), compileFunctions(module2.get(), backing),
+      [&promise](const Module *module, ResultCode result) {
+        callbackHelper(promise, module, result, ResultCode::Ready);
+      });
 
   future.wait_for(2s);
   auto *resultModule = future.get();
@@ -377,11 +382,11 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
 
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module2.get(),
-                           compileFunctions(module2.get(), backing),
-                           [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result, Ready);
-                           });
+  cpuCoreDevice.addNetwork(
+      module2.get(), compileFunctions(module2.get(), backing),
+      [&promise](const Module *module, ResultCode result) {
+        callbackHelper(promise, module, result, ResultCode::Ready);
+      });
 
   future.wait_for(2s);
   EXPECT_EQ(future.get(), module2.get());
