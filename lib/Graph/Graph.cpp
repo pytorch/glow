@@ -1369,6 +1369,60 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
                                                   indices, lengths));
 }
 
+/// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
+/// Function \p F with \p name, using \ data, \p weights, \p indices, and \p
+/// lengths as inputs. The provided float data in \p Tensor is rowwise
+/// quantized, creating Constants for the rowwise quantized data as well as
+/// Scales and Offsets, in the Module containing \p F.
+static RowwiseQuantizedSparseLengthsWeightedSumNode *
+quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
+    Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
+    NodeValue indices, NodeValue lengths) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  // Note: In rwqData, we are using a quantized type, however the scale/offset
+  // are set to dummy values 0.0/0. This is because the actually used
+  // scale/offset come from dataScales and dataOffsets.
+  Constant *rwqData =
+      F->getParent()->createConstant(ElemKind::Int8QTy, inDims, 0.0, 0, "data");
+  Constant *dataScales = F->getParent()->createConstant(
+      ElemKind::FloatTy, {inDims[0]}, "dataScales");
+  Constant *dataOffsets = F->getParent()->createConstant(
+      ElemKind::Int32ITy, {inDims[0]}, "dataOffsets");
+
+  quantization::tensorRowwiseQuantization(data, rwqData->getPayload(),
+                                          dataScales->getPayload(),
+                                          dataOffsets->getPayload());
+
+  return F->addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
+      name, outTy, rwqData, dataScales, dataOffsets, weights, indices,
+      lengths));
+}
+
+RowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
+                                                         Tensor &data,
+                                                         NodeValue weights,
+                                                         NodeValue indices,
+                                                         NodeValue lengths) {
+  return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
+      this, name, data, weights, indices, lengths);
+}
+
+RowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
+                                                 Tensor &data,
+                                                 NodeValue indices,
+                                                 NodeValue lengths) {
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
+      this, name, data, ones, indices, lengths);
+}
+
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
                                                      NodeValue lengths) {
   ShapeVector outDims({lengths.dims()[0], 2});
