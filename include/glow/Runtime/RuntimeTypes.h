@@ -45,10 +45,10 @@ struct DeviceInfo {
 struct DAGNode {
   /// The children of this node, these are nodes that depend on the current
   /// node.
-  std::vector<DAGNode *> children;
+  std::vector<std::shared_ptr<DAGNode>> children;
   /// Pointers to the parents of this node. This is used by the executor for
   /// determining if a given node has all dependencies met.
-  std::vector<DAGNode *> parents;
+  std::vector<std::weak_ptr<DAGNode>> parents;
   /// ID of the deviceManager that this network is assigned to.
   DeviceIDTy deviceID;
   /// The logicalDevice is an output of the Partitioner to indicate that two
