@@ -574,7 +574,7 @@ static void calculateLiveIntervals(const IRFunction &M,
           (opKind == OperandKind::Out) &&
           (op->getType()->size() < loc->getType()->size());
 
-      auto opIdx = instIdx;
+      unsigned opIdx;
       if (opKind == OperandKind::Out && !isPartialWrite) {
         opIdx =
             LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(instIdx);
