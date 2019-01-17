@@ -15,13 +15,11 @@
  */
 
 #include "glow/Runtime/Provisioner/Provisioner.h"
-// #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Graph/Graph.h"
 
 #include <future>
-#include <mutex>
 #include <queue>
 
 using namespace glow;
