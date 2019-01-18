@@ -96,7 +96,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute() override;
+  void execute(Context *ctx) override;
   ///@}
   /// Allocates on device buffer and copies Constant weights to device.
   void setupRuns() override;

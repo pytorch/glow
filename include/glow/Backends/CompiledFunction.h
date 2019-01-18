@@ -38,21 +38,21 @@ public:
   virtual ~CompiledFunction() = default;
   /// Execute the network and allocate Placeholder memory with given
   /// \p ctx providing mapping between Placeholder and populated tensor.
-  virtual void execute() = 0;
+  virtual void execute(Context *ctx) = 0;
 
   /// Does any needed initialization work for the Backend.
   /// This includes device init constant memory allocation and copying to
-  /// device.
-  virtual void setupRuns() = 0;
+  /// device. \deprecated
+  virtual void setupRuns() { runsSetup_ = true; }
 
-  /// Per run setup. Copy inputs to device.
-  virtual void beforeRun(const Context &ctx) = 0;
+  /// Per run setup. Copy inputs to device. \deprecated
+  virtual void beforeRun(const Context &ctx) {}
 
-  /// Per run cleanup. Copy outputs from device.
-  virtual void afterRun(const Context &ctx) = 0;
+  /// Per run cleanup. Copy outputs from device. \deprecated
+  virtual void afterRun(const Context &ctx) {}
 
-  /// Final cleanup. Release memory, reset device.
-  virtual void tearDownRuns() = 0;
+  /// Final cleanup. Release memory, reset device. \deprecated
+  virtual void tearDownRuns() { runsSetup_ = false; }
 
   /// Getter for the runtimeBundle.
   const runtime::RuntimeBundle &getRuntimeBundle() const {

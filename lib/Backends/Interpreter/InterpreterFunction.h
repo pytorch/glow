@@ -45,10 +45,7 @@ class Constant;
 class InterpreterFunction final : public CompiledFunction {
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
-  /// Maps values to Tensors, that are owned by this class.
-  std::unordered_map<const Value *, Tensor *> tensors_;
-  /// Maps values to Tensors, that are *not* owned by this class.
-  std::unordered_map<const Value *, Tensor *> externalTensors_;
+
   /// Maps Value.name to tensors for constants.
   std::unordered_map<std::string, Tensor *> constants_;
 
@@ -60,29 +57,34 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  /// Does any needed initialization work for the Backend, creates tensors from
-  /// constants.
-
   /// Collects constants for runtime.
   void collectConstants(IRFunction *F);
 
-  void setupRuns() override;
+  void execute(Context *ctx) override;
 
-  /// Per run setup, adds references for tensors from \p ctx to
-  /// externalTensors_.
-  void beforeRun(const Context &ctx) override;
-
-  /// Per run cleanup, removes references for tensors from \p ctx from
-  /// externalTensors_.
-  void afterRun(const Context &ctx) override;
-
-  /// Final cleanup, remove created constant Tensors.
-  void tearDownRuns() override;
-
-  void execute() override;
   /// Get reference to IR function.
   IRFunction *getIR() { return F_.get(); }
   ///@}
+};
+
+/// An InterpreterFunction bound to a specific invocation.
+class BoundInterpreterFunction {
+  /// Maps values to Tensors, that are owned by this class.
+  std::unordered_map<const Value *, Tensor *> tensors_;
+
+  /// Maps values to Tensors, that are *not* owned by this class.
+  std::unordered_map<const Value *, Tensor *> externalTensors_;
+
+  /// A reference to the constant map from the owning InterpreterFunction.
+  const std::unordered_map<std::string, Tensor *> &constants_;
+
+public:
+  BoundInterpreterFunction(
+      const std::unordered_map<std::string, Tensor *> &constants)
+      : constants_(constants) {}
+  ~BoundInterpreterFunction();
+
+  void execute(IRFunction *F, Context *ctx);
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.
@@ -108,8 +110,9 @@ private:
     return getTensor(v)->getHandle<ElemTy>();
   }
 
-  /// @name Interpreter methods. This is a list of method declerations that are
-  /// used by the interpreter to dispatch different instructions.
+  /// @name BoundInterpreterFunction methods. This is a list of method
+  /// declerations that are used by the interpreter to dispatch different
+  /// instructions.
   ///@{
 
 #define DEF_VALUE(CLASS, NAME)

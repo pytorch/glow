@@ -22,6 +22,7 @@
 
 #include "llvm/Support/Casting.h"
 
+#include "llvm/Support/raw_ostream.h"
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
@@ -29,22 +30,18 @@ InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
     : CompiledFunction(bundle), F_(std::move(F)) {}
 
 InterpreterFunction::~InterpreterFunction() {
-  // Delete the tensors that are owned by this backend.
-  for (const auto &p : tensors_) {
+  for (const auto &p : constants_) {
     delete p.second;
   }
-  tensors_.clear();
-  externalTensors_.clear();
+  constants_.clear();
+
   alignedFree(runtimeBundle_.getConstants());
   tearDownRuns();
 }
 
 void InterpreterFunction::collectConstants(IRFunction *F) {
   runtimeBundle_.collectConstants(F);
-}
-
-void InterpreterFunction::setupRuns() {
-  if (!runsSetup_) {
+  if (constants_.empty()) {
     if (runtimeBundle_.getConstantWeightSize()) {
       for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
         auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
@@ -53,36 +50,27 @@ void InterpreterFunction::setupRuns() {
         constants_.emplace(std::string(v->getName()), tensor);
       }
     }
-    runsSetup_ = true;
   }
 }
 
-void InterpreterFunction::beforeRun(const Context &ctx) {
-  // Register the concrete tensors that back the placeholder tensors.
-  for (auto &ph : ctx.pairs()) {
-    auto *w = F_->getWeightForNode(ph.first);
-    assert(!externalTensors_.count(w) && "The tensor is already registered");
-    externalTensors_[w] = ph.second;
+void InterpreterFunction::execute(Context *ctx) {
+  if (constants_.empty()) {
+    collectConstants(F_.get());
   }
+  BoundInterpreterFunction boundFunc(constants_);
+  boundFunc.execute(F_.get(), ctx);
 }
 
-void InterpreterFunction::afterRun(const Context &ctx) {
-  // Remove the concrete tensors that back the placeholder tensors.
-  for (auto &ph : ctx.pairs()) {
-    auto *w = F_->getWeightForNode(ph.first);
-    externalTensors_.erase(w);
-  }
-}
-
-void InterpreterFunction::tearDownRuns() {
-  for (const auto &p : constants_) {
+BoundInterpreterFunction::~BoundInterpreterFunction() {
+  // Delete the tensors that are owned by this backend.
+  for (const auto &p : tensors_) {
     delete p.second;
   }
-  constants_.clear();
-  runsSetup_ = false;
+  tensors_.clear();
+  externalTensors_.clear();
 }
 
-Tensor *InterpreterFunction::getTensor(const Value *v) const {
+Tensor *BoundInterpreterFunction::getTensor(const Value *v) const {
   auto it = tensors_.find(v);
   if (it != tensors_.end()) {
     return it->second;
@@ -97,7 +85,7 @@ Tensor *InterpreterFunction::getTensor(const Value *v) const {
   return ie->second;
 }
 
-Tensor *InterpreterFunction::getOrCreateTensor(const Value *v) {
+Tensor *BoundInterpreterFunction::getOrCreateTensor(const Value *v) {
   auto ie = externalTensors_.find(v);
   if (ie != externalTensors_.end()) {
     return ie->second;
@@ -117,9 +105,8 @@ Tensor *InterpreterFunction::getOrCreateTensor(const Value *v) {
   return it->second;
 }
 
-Tensor *
-InterpreterFunction::getOrCreateUnownedTensor(const Value *v, const Value *src,
-                                              llvm::ArrayRef<size_t> offsets) {
+Tensor *BoundInterpreterFunction::getOrCreateUnownedTensor(
+    const Value *v, const Value *src, llvm::ArrayRef<size_t> offsets) {
   assert(llvm::isa<TensorViewInst>(v) && "Expected a tensor view");
 
   // Pick the tensor.
@@ -136,7 +123,7 @@ InterpreterFunction::getOrCreateUnownedTensor(const Value *v, const Value *src,
   return T;
 }
 
-void InterpreterFunction::deleteTensor(const Value *v) {
+void BoundInterpreterFunction::deleteTensor(const Value *v) {
   auto it = tensors_.find(v);
   if (it == tensors_.end()) {
     return;
@@ -146,7 +133,14 @@ void InterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-void InterpreterFunction::execute() {
+void BoundInterpreterFunction::execute(IRFunction *F, Context *ctx) {
+  // Register the concrete tensors that back the placeholder tensors.
+  for (auto &ph : ctx->pairs()) {
+    auto *w = F->getWeightForNode(ph.first);
+    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    externalTensors_[w] = ph.second;
+  }
+
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
@@ -156,12 +150,18 @@ void InterpreterFunction::execute() {
   }
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
   // Dispatch the interpreter on each instruction in the program:
-  for (const auto &I : F_->getInstrs()) {
+  for (const auto &I : F->getInstrs()) {
     switch (I.getKind()) {
 #include "glow/AutoGenInstr.def"
 
     default:
       llvm_unreachable("Invalid instruction.");
     }
+  }
+
+  // Remove the concrete tensors that back the placeholder tensors.
+  for (auto &ph : ctx->pairs()) {
+    auto *w = F->getWeightForNode(ph.first);
+    externalTensors_.erase(w);
   }
 }

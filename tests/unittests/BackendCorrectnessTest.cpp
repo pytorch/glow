@@ -316,7 +316,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   auto function = backend.compileIR(std::move(M));
   function->setupRuns();
   function->beforeRun(ctx);
-  function->execute();
+  function->execute(&ctx);
   function->afterRun(ctx);
   function->tearDownRuns();
   auto H = outputTensor->getHandle();

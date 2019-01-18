@@ -82,7 +82,7 @@ void ExecutionEngine::run(Context &ctx) {
   ctx.allocate(M_.getPlaceholders());
   function_->setupRuns();
   function_->beforeRun(ctx);
-  function_->execute();
+  function_->execute(&ctx);
   function_->afterRun(ctx);
 }
 
