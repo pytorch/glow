@@ -57,16 +57,16 @@ inference. Then, we recompile the network using this profile information to
 convert the network into a quantized form, allowing for static optimization of
 the quantized graph. We convert portions of the network into islands of integer
 computation and aim to generate outputs in the range that the original
-floating-point network produces. During the conversion, for the following types 
-of quantized nodes, we ignore the output's quantization params (if they are 
-provided) and force the output have the same quantization params as the input 
+floating-point network produces. During the conversion, for the following types
+of quantized nodes, we ignore the output's quantization params (if they are
+provided) and force the output have the same quantization params as the input
 for performance purpose:
 ```
-LocalResponseNormalizationNode                       
-SliceNode                                      
-ReshapeNode                                       
-TopKNode                                        
-GatherNode                                         
+LocalResponseNormalizationNode
+SliceNode
+ReshapeNode
+TopKNode
+GatherNode
 MaxPoolNode
 ```
 
@@ -131,9 +131,9 @@ By default, target quantization precision is int8. However, precision can be
 controlled via command line parameter: `quantization-precision`. There are
 two supported values: `Int8` and `Int16`.
 
-## Caffe2 Quantized Model Support 
+## Caffe2 Quantized Model Support
 
-Glow is able to support Caffe2 Resnet50 quantized model: 
+Glow is able to support Caffe2 Resnet50 quantized model:
 https://github.com/caffe2/models/tree/master/resnet50_quantized
 
 To support Caffe2 quantized models, Glow has:
@@ -152,16 +152,16 @@ Int8GivenTensorFill
 ```
 - Supported int32 quantized bias.
 
-In most of the cases, bias is quantized in int32 to improve precision 
-(the partial sum of the matrix-matrix multiplication is accumulated into int32, 
-so int32 bias can be added to the int32 partial sum for better accuracy). 
-Glow now supports int32 quantized bias in ```Convolution```, ```FullyConnected``` 
+In most of the cases, bias is quantized in int32 to improve precision
+(the partial sum of the matrix-matrix multiplication is accumulated into int32,
+so int32 bias can be added to the int32 partial sum for better accuracy).
+Glow now supports int32 quantized bias in ```Convolution```, ```FullyConnected```
 and ```RowwiseQuantizedFullyConnected``` nodes.
 
 - Supported the conversion from uint8 quantized activations to int8 quantized activations.
 
-For the quantized Caffe2 ops, the activations are quantized to uint8. In Glow, the 
-activations are quantized to int_8. Therefore, for the offset read from quantized Caffe2 
+For the quantized Caffe2 ops, the activations are quantized to uint8. In Glow, the
+activations are quantized to int_8. Therefore, for the offset read from quantized Caffe2
 model, we need to subtract 128(i.e. INT8_MIN) to make the activations become int8.
 
 ## Compiler Optimizations
@@ -191,17 +191,24 @@ For more specific graph optimizations check [here](Optimizations.md#quantization
 
 ## Row-wise Quantization
 
-Row-wise (or channel-wise) quantization is an important way to minimize accuracy drop.  
-Glow supports row-wise quantized FullyConnected node ```RowwiseQuantizedFullyConnected```
-which is enabled by an image-classifier/loader option "-enable-rowwise".
+Row-wise (or channel-wise) quantization is an important way to minimize accuracy
+drop.  Glow supports row-wise quantized FullyConnected node
+```RowwiseQuantizedFullyConnected``` which is enabled by an
+image-classifier/loader option "-enable-rowwise".
 
-For the regular quantized FC, we quantize the whole weights tensor with the same 
-scale and offset, which are computed based on the max and min of the entire tensor). 
-But for row-wise, after getting ```min_i``` and ```max_i``` for each row ```i```, we compute the pair 
-of ```(scale_i, offset_i)``` to quantize each element in row ```i```. The figure below shows 
-the quantized FC node and RowwiseQuantizedFullyConnected node. Instead of using only 
-one tensor to represent the quantized weights, we need 2 extra vectors ```Scales``` 
-and ```Offsets``` to store the ```(scale, offset)``` for each row.
+For the regular quantized FC, we quantize the whole weights tensor with the same
+scale and offset, which are computed based on the max and min of the entire
+tensor).  But for row-wise, after getting ```min_i``` and ```max_i``` for each
+row ```i```, we compute the pair of ```(scale_i, offset_i)``` to quantize each
+element in row ```i```. The figure below shows the quantized FC node and
+RowwiseQuantizedFullyConnected node. Instead of using only one tensor to
+represent the quantized weights, we need 2 extra vectors ```Scales``` and
+```Offsets``` to store the ```(scale, offset)``` for each row.
 
 
 ![](rowwise_quantized_fc.png)
+
+Row-wise quantized SparseLengthsWeightedSum is also supported. Similar to the
+above, we compute scales and offsets per row, to be used with the `Data` input
+for the `RowwiseQuantizedSparseLengthsSumNode`. Scales and Offsets are inputs to
+the node. Output of this node is float, matching the Caffe2 implementation.
