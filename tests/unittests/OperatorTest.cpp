@@ -4037,7 +4037,7 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, RowwiseQuantizedSparseLengthsWeightedSum) {
+TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsWeightedSum) {
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -4094,7 +4094,7 @@ TEST_P(InterpOnly, RowwiseQuantizedSparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, RowwiseQuantizedSparseLengthsSum) {
+TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
   /*
     DATA  = [
         [1.0, 1.2],

@@ -1037,6 +1037,26 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
+void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f(
+    float *dest, int8_t *data, float *scales, int32_t *offsets, float *weights,
+    size_t *indices, int32_t *lengths, size_t segments, size_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      const float scale = scales[line];
+      const int32_t offset = offsets[line];
+      for (size_t k = 0; k < lineSize; k++) {
+        const float fData = scale * (data[line * lineSize + k] - offset);
+        dest[i * lineSize + k] += weight * fData;
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_sparse_to_dense_f(float *dest, const size_t *indices,
                               const float *values, size_t numIndices,
                               size_t destSize, size_t valueSize) {
