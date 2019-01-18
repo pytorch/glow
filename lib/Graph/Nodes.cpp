@@ -384,7 +384,7 @@ bool AvgPoolGradNode::verify() const {
   isValid &= verifyPool(getGradOfInputNamedInput(),
                         getGradOfOriginalOutputNamedResult(), Kernels_,
                         Strides_, Pads_);
-  return true;
+  return isValid;
 }
 
 bool MatMulNode::verify() const {
