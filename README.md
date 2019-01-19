@@ -22,10 +22,10 @@ Note:
 List of partner logos sorted alphabetically column order.
 -->
 
-|![Bitmain Logo](./docs/partners/bitmain.png) |![Esperanto Logo](./docs/partners/esperanto.png)  |  ![NXP Logo](./docs/partners/nxp.png) |
+|![Bitmain Logo](./docs/partners/bitmain.png) |![Esperanto Logo](./docs/partners/esperanto.png)  |  ![Marvell Logo](./docs/partners/marvell.png) |
 :-------------------------:|:-------------------------:|:-------------------------:
-|![CEVA Logo](./docs/partners/ceva.png)  |![Habana Logo](./docs/partners/habana.png)  | ![ST Logo](./docs/partners/st.png)  |
-|![Cadence Logo](./docs/partners/cadence.png)  |  ![Intel Logo](./docs/partners/intel.png)|  |
+|![CEVA Logo](./docs/partners/ceva.png)  |![Habana Logo](./docs/partners/habana.png)  |  ![NXP Logo](./docs/partners/nxp.png) |
+|![Cadence Logo](./docs/partners/cadence.png)  |  ![Intel Logo](./docs/partners/intel.png)| ![ST Logo](./docs/partners/st.png) |
 
 
 ## How does it work?
