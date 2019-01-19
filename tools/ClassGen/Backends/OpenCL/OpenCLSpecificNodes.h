@@ -51,6 +51,6 @@ BB.newNode("OCLMaxPool")
         "provided "
         "Kernel, Stride, and Pads. The input and output are in NCHW format");
 
-BB.includeBackendSpecificVerification("OpenCLSpecificNodesVerification.h");
+BB.includeBackendSpecificVerification("glow/OpenCLSpecificNodesVerification.h");
 
 #endif // GLOW_WITH_CPU
