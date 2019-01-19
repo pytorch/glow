@@ -47,6 +47,7 @@ BB.newBackendSpecificInstr("OCLMaxPool")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
-BB.includeBackendSpecificVerification("OpenCLSpecificInstrsVerification.h");
+BB.includeBackendSpecificVerification(
+    "glow/OpenCLSpecificInstrsVerification.h");
 
 #endif // GLOW_WITH_CPU
