@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "CPUDeviceManager.h"
+#include "../../lib/Backends/CPU/CPUDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include "gtest/gtest.h"

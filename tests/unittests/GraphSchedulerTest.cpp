@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "GraphScheduler.h"
+#include "../../lib/IR/GraphScheduler.h"
 
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"

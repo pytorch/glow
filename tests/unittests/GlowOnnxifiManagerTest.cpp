@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "GlowOnnxifiManager.h"
+#include "../../lib/Onnxifi/GlowOnnxifiManager.h"
 
 #include "gtest/gtest.h"
 
