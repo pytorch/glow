@@ -45,24 +45,26 @@ struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
 class GlowErr final : public llvm::ErrorInfo<GlowErr> {
 public:
   /// Used by ErrorInfo::classID.
-  static char ID;
+  static const uint8_t ID;
   /// An enumeration of error codes representing various possible errors that
   /// could occur.
-  enum EC {
+  /// NOTE: when updating this enum, also update ErrorCodeToString function
+  /// below.
+  enum class ErrorCode {
     // An unknown error ocurred. This is the default value.
-    UNKNOWN = 0,
+    UNKNOWN,
     // Model loader encountered an unsupported shape.
-    MODEL_LOADER_UNSUPPORTED_SHAPE = 1,
+    MODEL_LOADER_UNSUPPORTED_SHAPE,
     // Model loader encountered an unsupported operator.
-    MODEL_LOADER_UNSUPPORTED_OPERATOR = 2,
+    MODEL_LOADER_UNSUPPORTED_OPERATOR,
     // Model loader encountered an unsupported attribute.
-    MODEL_LOADER_UNSUPPORTED_ATTRIBUTE = 3,
+    MODEL_LOADER_UNSUPPORTED_ATTRIBUTE,
     // Model loader encountered an unsupported datatype.
-    MODEL_LOADER_UNSUPPORTED_DATATYPE = 4,
+    MODEL_LOADER_UNSUPPORTED_DATATYPE,
     // Model loader encountered an unsupported ONNX version.
-    MODEL_LOADER_UNSUPPORTED_ONNX_VERSION = 5,
+    MODEL_LOADER_UNSUPPORTED_ONNX_VERSION,
     // Model loader encountered an invalid protobuf.
-    MODEL_LOADER_INVALID_PROTOBUF = 6,
+    MODEL_LOADER_INVALID_PROTOBUF,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -76,31 +78,52 @@ public:
   /// code the GlowErr was created with.
   void log(llvm::raw_ostream &OS) const override {
     OS << "file: " << fileName_ << " line: " << lineNumber_;
-    if (ec_ != EC::UNKNOWN) {
-      OS << " error code: " << ec_;
+    if (ec_ != ErrorCode::UNKNOWN) {
+      OS << " error code: " << errorCodeToString(ec_);
     }
     if (!message_.empty()) {
       OS << " message: " << message_;
     }
   }
 
-  GlowErr(llvm::StringRef fileName, int32_t lineNumber, llvm::StringRef message,
-          EC ec)
+  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message,
+          ErrorCode ec)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message),
         ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, int32_t lineNumber, EC ec,
+  GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec,
           llvm::StringRef message)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message),
         ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, int32_t lineNumber, EC ec)
+  GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec)
       : lineNumber_(lineNumber), fileName_(fileName), ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, int32_t lineNumber, llvm::StringRef message)
+  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message) {}
 
 private:
+  /// Convert ErrorCode values to string.
+  static std::string errorCodeToString(const ErrorCode &ec) {
+    switch (ec) {
+    case ErrorCode::UNKNOWN:
+      return "UNKNOWN";
+    case ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE:
+      return "MODEL_LOADER_UNSUPPORTED_SHAPE";
+    case ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR:
+      return "MODEL_LOADER_UNSUPPORTED_OPERATOR";
+    case ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE:
+      return "MODEL_LOADER_UNSUPPORTED_ATTRIBUTE";
+    case ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE:
+      return "MODEL_LOADER_UNSUPPORTED_DATATYPE";
+    case ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION:
+      return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
+    case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
+      return "MODEL_LOADER_INVALID_PROTOBUF";
+    };
+    llvm_unreachable("unsupported ErrorCode");
+  }
+
   /// The line number the error was generated on.
   size_t lineNumber_;
   /// The name of the file the error was generated in.
@@ -108,7 +131,7 @@ private:
   /// Optional message associated with the error.
   std::string message_;
   /// Optional error code associated with the error.
-  EC ec_ = EC::UNKNOWN;
+  ErrorCode ec_ = ErrorCode::UNKNOWN;
 };
 
 /// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains

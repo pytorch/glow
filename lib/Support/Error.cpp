@@ -20,5 +20,6 @@
 namespace glow {
 llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");
 
-char GlowErr::ID = 0;
+/// ID used by llvm::ErrorInfo::isA's dynamic typing.
+uint8_t const GlowErr::ID = 0;
 } // namespace glow
