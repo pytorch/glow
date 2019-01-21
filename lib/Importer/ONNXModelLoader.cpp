@@ -135,7 +135,8 @@ llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   opsetVersion_ = 0;
   RETURN_ERR_IF_NOT(
       irVersion_ >= 3,
-      "This ONNX model with ir_version < 3 is too old to be supported.");
+      "This ONNX model with ir_version < 3 is too old to be supported.",
+      GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION);
   for (const auto &imp : MP.opset_import()) {
     if (!imp.has_domain() || imp.domain() == "") {
       opsetVersion_ = imp.version();
@@ -156,7 +157,8 @@ ONNXModelLoader::loadProto(google::protobuf::io::ZeroCopyInputStream &iStream) {
   codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
   ONNX_NAMESPACE::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
-  RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto");
+  RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
+                    GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   return MP;
 }
 
@@ -169,7 +171,8 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 llvm::Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.");
+  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.",
+                    GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
 
   // TODO: intend to find a way to reuse the following function later
   // for the text format onnx model:
@@ -181,7 +184,8 @@ ONNXModelLoader::loadProto(const std::string &filename) {
     ONNX_NAMESPACE::ModelProto MP;
     bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
 
-    RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto");
+    RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
+                      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
     return MP;
   }
 
@@ -232,7 +236,8 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
     } else {
-      RETURN_ERR("Unsupported Tensor format.");
+      RETURN_ERR("Unsupported Tensor format.",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
@@ -247,7 +252,8 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.");
+      RETURN_ERR("Unsupported Tensor format.",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
     // There are few cases when we will have int32 tensors. For example, the
@@ -264,10 +270,12 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.");
+      RETURN_ERR("Unsupported Tensor format.",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else {
-    RETURN_ERR("Only float and index tensors are supported");
+    RETURN_ERR("Only float and index tensors are supported",
+               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
   }
   return llvm::Error::success();
 }
@@ -307,7 +315,8 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 
   RETURN_ERR_IF_NOT(dict.at("value")->type() ==
                         ONNX_NAMESPACE::AttributeProto::TENSOR,
-                    "Only Tensor type constants are supported.");
+                    "Only Tensor type constants are supported.",
+                    GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
 
   std::unique_ptr<Tensor> T(new Tensor());
   RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T.get()));
@@ -511,7 +520,8 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   // Glow doesn't support argmax output yet.
   if (op.output_size() > 1) {
-    RETURN_ERR("Glow doesn't support argmax output yet.");
+    RETURN_ERR("Glow doesn't support argmax output yet.",
+               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
   }
   // Load the inputs:
   NodeValue in;
@@ -529,7 +539,8 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
-    RETURN_ERR("Glow only handles 2D pooling currently.");
+    RETURN_ERR("Glow only handles 2D pooling currently.",
+               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
   auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -785,7 +796,8 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
     } else if (modeStr == "edge") {
       mode = PaddingMode::EDGE;
     } else {
-      RETURN_ERR("Pad: Invalid mode");
+      RETURN_ERR("Pad: Invalid mode",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
   float value = 0.f; // Default
@@ -873,7 +885,8 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadPad(op, dict);
   }
 
-  RETURN_ERR("Failed to load operator.");
+  RETURN_ERR("Failed to load operator.",
+             GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 
 llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {

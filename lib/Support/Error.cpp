@@ -20,9 +20,6 @@
 namespace glow {
 llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");
 
-std::string addFileAndLineToError(llvm::StringRef str, llvm::StringRef file,
-                                  uint32_t line) {
-  return llvm::formatv("Error at file {0} line {1} \"{2}\"", file, line, str);
-}
-
+/// ID used by llvm::ErrorInfo::isA's dynamic typing.
+uint8_t const GlowErr::ID = 0;
 } // namespace glow
