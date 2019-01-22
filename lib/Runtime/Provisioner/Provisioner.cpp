@@ -73,7 +73,7 @@ ResultCode Provisioner::provision(
     // Check if sufficient space on device. Currently requiring a 10% buffer
     // over the size of constants.
     auto availableMemory = currDevice->second->getAvailableMemory();
-    if (availableMemory < networkPaddingFactor_ *
+    if (availableMemory < NETWORK_PADDING_FACTOR *
                               nodes[0]->runtimeBundle.getConstantWeightSize()) {
       return Failed;
     }
