@@ -580,11 +580,25 @@ public:
   /// Result[0], next Lengths[1] slices are aggregated to Result[1],
   /// etc. I.e. sum(Lengths) must be equal to len(Indices).
   RowwiseQuantizedSparseLengthsWeightedSumNode *
+  createRowwiseQuantizedSparseLengthsWeightedSum(
+      llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+      NodeValue weights, NodeValue indices, NodeValue lengths);
+
+  /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
+  /// float input \p data, which is rowwise-quantized internally.
+  RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Tensor &data,
                                          NodeValue indices, NodeValue lengths);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
+  RowwiseQuantizedSparseLengthsWeightedSumNode *
+  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Constant *data,
+                                         Constant *scales, Constant *offsets,
+                                         NodeValue indices, NodeValue lengths);
+
+  /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but expects
+  /// float input \p data, which is rowwise-quantized internally.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
                                                  Tensor &data,

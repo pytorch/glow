@@ -1376,6 +1376,28 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
                                                   indices, lengths));
 }
 
+RowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+    NodeValue weights, NodeValue indices, NodeValue lengths) {
+  auto inDims = data->dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
+      name, outTy, data, scales, offsets, weights, indices, lengths));
+}
+
+RowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createRowwiseQuantizedSparseLengthsSum(
+    llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+    NodeValue indices, NodeValue lengths) {
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return createRowwiseQuantizedSparseLengthsWeightedSum(
+      name, data, scales, offsets, ones, indices, lengths);
+}
+
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
 /// Function \p F with \p name, using \ data, \p weights, \p indices, and \p
 /// lengths as inputs. The provided float data in \p Tensor is rowwise
@@ -1386,9 +1408,6 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
     NodeValue indices, NodeValue lengths) {
   auto inDims = data.dims();
-  ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = lengths.dims()[0];
-  auto outTy = F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
   // are set to dummy values 0.0/0. This is because the actually used
@@ -1403,10 +1422,8 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   quantization::tensorRowwiseQuantization(data, rwqData->getPayload(),
                                           dataScales->getPayload(),
                                           dataOffsets->getPayload());
-
-  return F->addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
-      name, outTy, rwqData, dataScales, dataOffsets, weights, indices,
-      lengths));
+  return F->createRowwiseQuantizedSparseLengthsWeightedSum(
+      name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *

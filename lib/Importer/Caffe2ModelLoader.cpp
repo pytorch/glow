@@ -870,6 +870,80 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
+      typeName == "SparseLengthsSum8BitsRowwise") {
+    // If SparseLengthsWeightedSum8BitsRowwise, then the weights are the second
+    // input and so we need to shift indices/lengths/scalesBiases.
+    size_t indicesIdx = 1;
+    size_t lengthsIdx = 2;
+    size_t scalesBiasesIdx = 3;
+    if (typeName == "SparseLengthsWeightedSum8BitsRowwise") {
+      indicesIdx++;
+      lengthsIdx++;
+      scalesBiasesIdx++;
+    }
+
+    NodeValue data;
+    ASSIGN_VALUE_OR_RETURN_ERR(data,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        indices, getNodeValueOrCreateConstantByName(op.input(indicesIdx)));
+    NodeValue lengths;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        lengths, getNodeValueOrCreateConstantByName(op.input(lengthsIdx)));
+    NodeValue scalesBiases;
+    ASSIGN_VALUE_OR_RETURN_ERR(scalesBiases, getNodeValueOrCreateConstantByName(
+                                                 op.input(scalesBiasesIdx)));
+
+    Constant *scalesBiasesC = llvm::dyn_cast<Constant>(scalesBiases);
+    RETURN_ERR_IF_NOT(scalesBiasesC, "scales_biases must be Constant.");
+    Constant *dataC = llvm::dyn_cast<Constant>(data);
+    RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::Int8QTy,
+                      "Data must be Int8QTy.");
+
+    const size_t numRows = data.dims()[0];
+
+    // Make sure all the shapes make sense.
+    RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
+    RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
+    RETURN_ERR_IF_NOT(scalesBiases.dims().size() == 2,
+                      "scale_bias has to be a matrix.");
+    RETURN_ERR_IF_NOT(scalesBiases.dims()[0] == numRows,
+                      "scale_bias must have the same number of rows as data.");
+    RETURN_ERR_IF_NOT(scalesBiases.dims()[1] == 2,
+                      "Second dim of scale_bias has to be equal to 2.");
+
+    // Now strip out the scales and biases into their own tensors.
+    Constant *dataScales = G_.getParent()->createConstant(
+        ElemKind::FloatTy, {numRows}, "dataScales");
+    Constant *dataOffsets = G_.getParent()->createConstant(
+        ElemKind::Int32ITy, {numRows}, "dataOffsets");
+
+    auto dataScalesH = dataScales->getHandle<float>();
+    auto dataOffsetsH = dataOffsets->getHandle<int32_t>();
+    auto scalesBiasesH = scalesBiasesC->getHandle<float>();
+    for (size_t i = 0, e = numRows; i < e; i++) {
+      dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
+      // Caffe2 represents offsets (bias) using float, while Glow uses int32_t.
+      dataOffsetsH.at({i}) = static_cast<int32_t>(scalesBiasesH.at({i, 1}));
+    }
+
+    Node *node;
+    if (typeName == "SparseLengthsWeightedSum8BitsRowwise") {
+      NodeValue weights;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          weights, getNodeValueOrCreateConstantByName(op.input(1)));
+      node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
+          opName, dataC, dataScales, dataOffsets, weights, indices, lengths);
+    } else {
+      node = G_.createRowwiseQuantizedSparseLengthsSum(
+          opName, dataC, dataScales, dataOffsets, indices, lengths);
+    }
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return llvm::Error::success();
+  }
+
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 

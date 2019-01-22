@@ -1,0 +1,58 @@
+name: "rowwise_quantized_sparse_lengths_weighted_sum_init_net_test"
+op {
+  output: "data"
+  type: "Int8GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 3
+  }
+  arg {
+    name: "values"
+    s: "\377\000\377"
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+  arg {
+    name: "Y_scale"
+    f: 0.0
+  }
+}
+op {
+  output: "weights"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 8
+  }
+  arg {
+    name: "values"
+    floats: 3.0
+    floats: 1.0
+    floats: 0.0
+    floats: 0.0
+    floats: 0.0
+    floats: 0.0
+    floats: 2.0
+    floats: -0.5
+  }
+}
+op {
+  output: "scales_bias"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 3
+    ints: 2
+  }
+  arg {
+    name: "values"
+    floats: 0.007843
+    floats: -128.0
+    floats: 0.001961
+    floats: 127.0
+    floats: 0.050980
+    floats: -128.0
+  }
+}

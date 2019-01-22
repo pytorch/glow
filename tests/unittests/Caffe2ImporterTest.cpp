@@ -1701,3 +1701,199 @@ TEST(caffe2, Modulo) {
   auto *N = llvm::dyn_cast<ModuloNode>(saveNode->getInput());
   ASSERT_TRUE(N);
 }
+
+/// Test loading SparseLengthsWeightedSum8BitsRowwise. This is created as a
+/// RowwiseQuantizedSparseLengthsWeightedSumNode. The following inputs/outputs
+/// are used/expected for this test. Note that the DATA input is
+/// rowwise-quantized in the init_net proto. Scales/offsets are loaded in a
+/// separate tensor scales_bias. The C2 loader will copy the scales/offsets into
+/// separate Constants for use by RowwiseQuantizedSparseLengthsWeightedSumNode.
+///    DATA  =   [[2.0, -0.5, 13]]
+///    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+///    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+///    LENGTHS = [3, 0, 3, 2]
+///    OUTPUT =  [[0.5, 0, 0, 25]]
+TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "rowwise_quantized_sparse_lengths_weighted_sum_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "rowwise_quantized_sparse_lengths_weighted_sum_init_net.pbtxt");
+
+  Placeholder *output, *indices, *lengths;
+  Context ctx;
+
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"indices", "lengths"},
+                               {indicesType, lengthsType}, *F);
+
+    indices = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("indices")));
+    lengths = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("lengths")));
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(indices);
+  ASSERT_TRUE(lengths);
+
+  ctx.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  ctx.allocate(lengths)->getHandle<int32_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  // High level check on the content of the graph. We have 1 rowwise-quantized
+  // SLWS and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  SaveNode *saveNode = getSaveNodeFromDest(output);
+  RowwiseQuantizedSparseLengthsWeightedSumNode *RWQSLWS =
+      llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+          saveNode->getInput().getNode());
+  ASSERT_TRUE(RWQSLWS);
+  // Check that the weights input is a Constant node.
+  Constant *weights = llvm::dyn_cast<Constant>(RWQSLWS->getWeights().getNode());
+  ASSERT_TRUE(weights);
+
+  // We have 3 placeholders: 1 for save, and then indices and lengths.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  // We have 5 constants: originally fused data (no longer used), data, scales,
+  // offsets, and weights.
+  EXPECT_EQ(mod.getConstants().size(), 5);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  // Post compile, DCE should have gotten rid of the originally fused data
+  // Constant, as it is no longer used.
+  EXPECT_EQ(mod.getConstants().size(), 4);
+
+  EE.run(ctx);
+
+  Tensor &result = *ctx.get(output);
+  Tensor expected(ElemKind::FloatTy, {4});
+  expected.getHandle() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
+/// Test loading SparseLengthsSum8BitsRowwise. This is created as a
+/// RowwiseQuantizedSparseLengthsWeightedSumNode. The following inputs/outputs
+/// are used/expected for this test. Note that the DATA input is
+/// rowwise-quantized in the init_net proto. Scales/offsets are loaded in a
+/// separate tensor scales_bias. The C2 loader will copy the scales/offsets into
+/// separate Constants for use by RowwiseQuantizedSparseLengthsSumNode.
+///    DATA  = [
+///        [1.0, 1.2],
+///        [2.3, 3.4],
+///        [4.5, 5.7],
+///    ]
+///    INDICES = [2, 0, 1, 2, 0, 0, 0, 0]
+///    LENGTHS = [2, 0, 2, 1, 3]
+///    OUTPUT = [
+///        [5.5, 6.9],
+///        [0.0, 0.0],
+///        [6.8, 9.1],
+///        [1.0, 1.2],
+///        [3.0, 3.6],
+///    ]
+TEST(caffe2, SparseLengthsSum8BitsRowwise) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/"
+                     "rowwise_quantized_sparse_lengths_sum_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/"
+                     "rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
+
+  Placeholder *output, *indices, *lengths;
+  Context ctx;
+
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"indices", "lengths"},
+                               {indicesType, lengthsType}, *F);
+
+    indices = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("indices")));
+    lengths = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("lengths")));
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(indices);
+  ASSERT_TRUE(lengths);
+
+  ctx.allocate(indices)->getHandle<int64_t>() = {
+      2, 0, 1, 2, 0, 0, 0, 0,
+  };
+  ctx.allocate(lengths)->getHandle<int32_t>() = {
+      2, 0, 2, 1, 3,
+  };
+
+  // High level check on the content of the graph. We have 1 rowwise-quantized
+  // SLWS (which implements SLS), 1 Splat for the weights, and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  SaveNode *saveNode = getSaveNodeFromDest(output);
+  RowwiseQuantizedSparseLengthsWeightedSumNode *RWQSLS =
+      llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+          saveNode->getInput().getNode());
+  ASSERT_TRUE(RWQSLS);
+  SplatNode *splatNode =
+      llvm::dyn_cast<SplatNode>(RWQSLS->getWeights().getNode());
+  ASSERT_TRUE(splatNode);
+  EXPECT_EQ(splatNode->getValue(), 1.0f);
+
+  // We have 3 placeholders: 1 for save, and then indices and lengths.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  // We have 5 constants: originally fused data (no longer used), data, scales,
+  // and offsets.
+  EXPECT_EQ(mod.getConstants().size(), 4);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  // Post compile, DCE should have gotten rid of the originally fused data
+  // Constant, as it is no longer used.
+  EXPECT_EQ(mod.getConstants().size(), 3);
+
+  EE.run(ctx);
+
+  Tensor &result = *ctx.get(output);
+  Tensor expected(ElemKind::FloatTy, {5, 2});
+  expected.getHandle() = {
+      5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
