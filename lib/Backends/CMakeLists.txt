@@ -1,4 +1,6 @@
-add_library(Backends Backends.cpp)
+add_library(Backends
+              Backend.cpp
+              Backends.cpp)
 
 add_library(BackendUtils BackendUtils.cpp)
 

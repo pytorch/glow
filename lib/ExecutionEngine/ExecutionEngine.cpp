@@ -121,42 +121,14 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
   }
 }
 
-void ExecutionEngine::optimizeFunction(CompilationMode mode, Function *F) {
-  // Verify the function pre-optimization/lowering.
-  assert(F->verify() && "Function must be valid");
-
-  // Optimize the graph.
-  ::glow::optimize(F, mode);
-
-  // Allow the backend to transform the graph prior to lowering.
-  if (backend_->transformPreLowering(F, mode)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, mode);
-  }
-
-  // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, *backend_);
-
-  // Optimize the graph again.
-  ::glow::optimize(F, mode);
-
-  // Allow the backend to transform the graph after lowering.
-  if (backend_->transformPostLowering(F, mode)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, mode);
-  }
-}
-
 void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  optimizeFunction(mode, F);
+  backend_->optimizeFunction(mode, F);
   function_ = backend_->compile(F);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
-  optimizeFunction(mode, F);
+  backend_->optimizeFunction(mode, F);
   backend_->save(F, outputDir, networkName);
 }

@@ -41,42 +41,13 @@ std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
   return module;
 }
 
-// TODO: This really should be a helper function somewhere
-void optimizeFunction(Backend *backend, CompilationMode mode, Function *F) {
-  // Verify the function pre-optimization/lowering.
-  assert(F->verify() && "Function must be valid");
-
-  // Optimize the graph.
-  ::glow::optimize(F, mode);
-
-  // Allow the backend to transform the graph prior to lowering.
-  if (backend->transformPreLowering(F, mode)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, mode);
-  }
-
-  // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, *backend);
-
-  // Optimize the graph again.
-  ::glow::optimize(F, mode);
-
-  // Allow the backend to transform the graph after lowering.
-  if (backend->transformPostLowering(F, mode)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, mode);
-  }
-}
-
 FunctionMapTy
 compileFunctions(Module *module,
                  std::vector<std::unique_ptr<CompiledFunction>> &backing) {
   FunctionMapTy results;
   auto *backend = createBackend(BackendKind::CPU);
   for (auto *F : module->getFunctions()) {
-    optimizeFunction(backend, CompilationMode::Infer, F);
+    backend->optimizeFunction(CompilationMode::Infer, F);
     auto f = backend->compile(F);
     backing.push_back(std::move(f));
     results.emplace(F->getName(), backing.back().get());
