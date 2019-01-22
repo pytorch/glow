@@ -24,7 +24,6 @@ using namespace glow::runtime;
 class ProvisionerTest : public ::testing::Test {};
 std::unique_ptr<Module> setupModule(uint functionCount) {
   std::unique_ptr<Module> module = std::make_unique<Module>();
-  std::unique_ptr<Context> ctx = std::make_unique<Context>();
   for (int i = 0; i < functionCount; i++) {
     Function *F = module->createFunction("function" + std::to_string(i));
     auto *X = module->createPlaceholder(ElemKind::FloatTy, {3},
