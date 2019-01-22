@@ -25,17 +25,6 @@
 using namespace glow;
 using namespace runtime;
 using DeviceID = unsigned int;
-
-void addNodes(std::queue<std::vector<DAGNode *>> &nextNodes,
-              std::vector<DAGNode *> currentNodes) {
-  for (int i = 0; i < currentNodes[0]->children.size(); i++) {
-    std::vector<DAGNode *> newSet;
-    for (auto node : currentNodes) {
-      newSet.push_back(node->children[i]);
-    }
-    nextNodes.push(newSet);
-  }
-}
 ResultCode Provisioner::provision(
     std::vector<DAGNode> &networks,
     std::map<DeviceIDTy, std::unique_ptr<DeviceManager>> &devices,
@@ -58,7 +47,13 @@ ResultCode Provisioner::provision(
     auto nodes = nextNode.front();
     nextNode.pop();
     // Add child nodes to the queue.
-    addNodes(nextNode, nodes);
+    for (int i = 0; i < nodes[0]->children.size(); i++) {
+      std::vector<DAGNode *> newSet;
+      for (auto node : nodes) {
+        newSet.push_back(node->children[i]);
+      }
+      nextNode.push(newSet);
+    }
     // Assign collection of nodes to a device, compile and load the device.
     // We will do a round robin assignment of nodes. If there is not space we
     // will return an error.
@@ -78,8 +73,8 @@ ResultCode Provisioner::provision(
     // Check if sufficient space on device. Currently requiring a 10% buffer
     // over the size of constants.
     auto availableMemory = currDevice->second->getAvailableMemory();
-    if (availableMemory <
-        1.1 * nodes[0]->runtimeBundle.getConstantWeightSize()) {
+    if (availableMemory < networkPaddingFactor_ *
+                              nodes[0]->runtimeBundle.getConstantWeightSize()) {
       return Failed;
     }
     // Load functions on device.

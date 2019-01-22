@@ -26,8 +26,8 @@ namespace glow {
 namespace runtime {
 
 /// The Provisioner is responsible for assigning networks to an actual device.
-/// It is a stateless class, relying on information being passed in by the
-/// caller.
+/// It also compiles the networks before passing the compiled functions to the
+/// device.
 class Provisioner final {
 public:
   /// Walks \p networks and assigns each function to a DeviceManager in \p
@@ -40,7 +40,13 @@ public:
             Module &module);
 
 private:
+  /// Pointer to backend used for compilation. This currently gets reset per
+  /// device to ensure the correct backed per device.
   std::unique_ptr<Backend> backend_;
+
+  /// Padding factor to account for generated code size. Should be greater
+  /// than 1.0.
+  double networkPaddingFactor_{1.1};
 };
 } // namespace runtime
 } // namespace glow
