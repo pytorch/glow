@@ -1,0 +1,14 @@
+name: "rowwise_quantized_sparse_lengths_weighted_sum_predict_net_test"
+op {
+  input: "data"
+  input: "weights"
+  input: "indices"
+  input: "lengths"
+  input: "scales_bias"
+  output: "result"
+  name: ""
+  type: "SparseLengthsWeightedSum8BitsRowwise"
+}
+external_input: "indices"
+external_input: "lengths"
+external_output: "result"
