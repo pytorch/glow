@@ -2292,6 +2292,32 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumInstKind: {
+    auto *N = cast<RowwiseQuantizedSparseLengthsWeightedSumInst>(I);
+    auto *dest = N->getDest();
+    auto *data = N->getData();
+    auto *scales = N->getScales();
+    auto *offsets = N->getOffsets();
+    auto *weights = N->getWeights();
+    auto *indices = N->getIndices();
+    auto *lengths = N->getLengths();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *scalesPtr = emitValueAddress(builder, scales);
+    auto *offsetsPtr = emitValueAddress(builder, offsets);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *F = getFunction("rowwise_quantized_sparse_lengths_weighted_sum",
+                          dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, scalesPtr, offsetsPtr, weightsPtr, indicesPtr,
+                lengthsPtr, segments, lineSize});
+    break;
+  }
+
   case Kinded::Kind::SparseToDenseInstKind: {
     auto *STDI = llvm::cast<SparseToDenseInst>(I);
     auto *indices = STDI->getIndices();

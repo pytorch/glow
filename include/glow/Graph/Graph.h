@@ -565,6 +565,25 @@ public:
                                  NodeValue data, NodeValue weights,
                                  NodeValue indices, NodeValue lengths);
 
+  /// Create a node, performing SparseLengthsSum operation, using rowwise
+  /// quantization for the input data. Gathers slices of the outer-most
+  /// dimension of Data indexed by Indices vector, and then accumulates them
+  /// into len(Lengths) entries: first Lengths[0] slices are aggregated to
+  /// Result[0], next Lengths[1] slices are aggregated to Result[1],
+  /// etc. I.e. sum(Lengths) must be equal to len(Indices).
+  RowwiseQuantizedSparseLengthsWeightedSumNode *
+  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Tensor &data,
+                                         NodeValue indices, NodeValue lengths);
+
+  /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
+  /// multiplied by weights[i]. len(weights) must be equal to len(indices).
+  RowwiseQuantizedSparseLengthsWeightedSumNode *
+  createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
+                                                 Tensor &data,
+                                                 NodeValue weights,
+                                                 NodeValue indices,
+                                                 NodeValue lengths);
+
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the
   /// output is a Nx2 matrix with (offset, lengths) packaged for each segment.

@@ -2097,6 +2097,55 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
                             I->getData()->getElementType(), I);
 }
 
+void InterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
+    const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  auto *out = getTensor(I->getDest());
+  auto *data = getTensor(I->getData());
+  auto *dataScales = getTensor(I->getScales());
+  auto *dataOffsets = getTensor(I->getOffsets());
+  auto *weights = getTensor(I->getWeights());
+  auto *indices = getTensor(I->getIndices());
+  auto *lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength == indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<int8_t>();
+  auto DSH = dataScales->getHandle<float>();
+  auto DOH = dataOffsets->getHandle<int32_t>();
+  auto WH = weights->getHandle<float>();
+  auto OH = out->getHandle<float>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      const float weight = WH.raw(curIdx);
+      const size_t rowIdx = IH.raw(curIdx++);
+      const float scale = DSH.at({rowIdx});
+      const int32_t offset = DOH.at({rowIdx});
+      size_t offsetIn = rowIdx * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        float d = quantization::dequantize(
+            DH.raw(offsetIn++), TensorQuantizationParams{scale, offset});
+        OH.raw(offsetOut++) += d * weight;
+      }
+    }
+  }
+}
+
 void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int32_t>();
   auto lengths = getTensor(I->getLengths())->getHandle<int32_t>();

@@ -4037,6 +4037,114 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsWeightedSum) {
+  /*
+    DATA  =   [2.0, -0.5, 13]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  Tensor data(ElemKind::FloatTy, {3});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
+  weights->getPayload().getHandle<float>() = {
+      3., 1., 0., 0., 0., 0., 2., -0.5,
+  };
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                             /* isTrainable */ false);
+
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto *R = F_->createRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths);
+  SaveNode *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {4});
+  expected.getHandle() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [2, 0, 1, 2, 0, 0, 0, 0]
+    LENGTHS = [2, 0, 2, 1, 3]
+    OUTPUT = [
+        [5.5, 6.9],
+        [0.0, 0.0],
+        [6.8, 9.1],
+        [1.0, 1.2],
+        [3.0, 3.6],
+    ]
+  */
+  Tensor data(ElemKind::FloatTy, {3, 2});
+  data.getHandle() = {
+      1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
+  };
+
+  Placeholder *indices = mod_.createPlaceholder(
+      ElemKind::Int64ITy, {8}, "indices", /* isTrainable */ false);
+  Placeholder *lengths = mod_.createPlaceholder(
+      ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
+
+  ctx_.allocate(indices)->getHandle<int64_t>() = {
+      2, 0, 1, 2, 0, 0, 0, 0,
+  };
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+      2, 0, 2, 1, 3,
+  };
+
+  auto *R = F_->createRowwiseQuantizedSparseLengthsSum("RQSLWS", data, indices,
+                                                       lengths);
+  SaveNode *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {5, 2});
+  expected.getHandle() = {
+      5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02));
+}
+
 TEST_P(InterpAndCPU, SparseToDense) {
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
