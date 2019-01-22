@@ -100,7 +100,9 @@ CPUBackend::createIRGen(IRFunction *IR,
 std::unique_ptr<CompiledFunction>
 CPUBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   auto function = compileIRWithoutConstants(IR.get());
-  static_cast<CPUFunction *>(function.get())->collectConstants(IR.get());
+  static_cast<CPUFunction *>(function.get())
+      ->getRuntimeBundle()
+      .collectConstants(IR.get());
   return function;
 }
 

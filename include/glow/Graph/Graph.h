@@ -112,7 +112,7 @@ public:
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
-  Constant *getConstantByName(llvm::StringRef name);
+  Constant *getConstantByName(llvm::StringRef name) const;
 
   /// \returns the list of constants that the Module owns.
   ConstList &getConstants() { return constants_; }
@@ -126,7 +126,7 @@ public:
 
   /// \returns a pointer to the placeholder with the name \p name or
   /// nullptr if no placeholder has this name.
-  Placeholder *getPlaceholderByName(llvm::StringRef name);
+  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
 
   /// @name High-level Variable builders.
   ///@{

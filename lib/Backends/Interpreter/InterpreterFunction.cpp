@@ -22,7 +22,6 @@
 
 #include "llvm/Support/Casting.h"
 
-#include "llvm/Support/raw_ostream.h"
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
@@ -39,11 +38,11 @@ InterpreterFunction::~InterpreterFunction() {
   tearDownRuns();
 }
 
-void InterpreterFunction::collectConstants(IRFunction *F) {
-  runtimeBundle_.collectConstants(F);
+void InterpreterFunction::collectConstants(Module *module) {
+  runtimeBundle_.collectConstants(module);
   if (constants_.empty()) {
     if (runtimeBundle_.getConstantWeightSize()) {
-      for (const auto &v : F_->getGraph()->getParent()->getConstants()) {
+      for (const auto &v : module->getConstants()) {
         auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
         auto addr = runtimeBundle_.getConstants() + symbolInfo.offset;
         auto tensor = new Tensor(addr, &symbolInfo.type);
@@ -54,9 +53,6 @@ void InterpreterFunction::collectConstants(IRFunction *F) {
 }
 
 void InterpreterFunction::execute(Context *ctx) {
-  if (constants_.empty()) {
-    collectConstants(F_.get());
-  }
   BoundInterpreterFunction boundFunc(constants_);
   boundFunc.execute(F_.get(), ctx);
 }

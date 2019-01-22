@@ -30,8 +30,8 @@ CPUFunction::~CPUFunction() {
   tearDownRuns();
 }
 
-void CPUFunction::collectConstants(IRFunction *F) {
-  runtimeBundle_.collectConstants(F);
+void CPUFunction::collectConstants(Module *module) {
+  runtimeBundle_.collectConstants(module);
 }
 
 void CPUFunction::loadPlaceholders(Context *ctx,
@@ -61,7 +61,6 @@ void CPUFunction::updatePlaceholders(Context *ctx,
 }
 
 void CPUFunction::execute(Context *ctx) {
-  /// Base address for Activations memory block.
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.

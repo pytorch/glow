@@ -66,6 +66,8 @@ public:
   /// given function \p F and and copies weights to their address as specified
   /// by offsets contained in symbolTable_.
   void collectConstants(const IRFunction *F);
+  void collectConstants(const Module *M);
+
   RuntimeBundle() = default;
   RuntimeBundle(std::unordered_map<std::string, RuntimeSymbolInfo> &symbolTable,
                 size_t constWeight, size_t mutableWeight, size_t activations)

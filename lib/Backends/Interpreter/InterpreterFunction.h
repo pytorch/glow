@@ -57,10 +57,10 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  /// Collects constants for runtime.
-  void collectConstants(IRFunction *F);
-
   void execute(Context *ctx) override;
+
+  /// Collects constants for runtime.
+  void collectConstants(Module *module) override;
 
   /// Get reference to IR function.
   IRFunction *getIR() { return F_.get(); }

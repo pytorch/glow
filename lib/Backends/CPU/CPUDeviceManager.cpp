@@ -52,7 +52,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
 
   // Add to the function name lookup map.
   for (const auto &func : functions) {
-    // TODO: collect constants here when available.
+    func.second->getRuntimeBundle().collectConstants(module);
     functions_.emplace(func.first, func.second);
   }
 

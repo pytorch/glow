@@ -33,13 +33,12 @@ public:
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
               const runtime::RuntimeBundle &runtimeBundle);
 
-  /// Collects constants for runtime.
-  void collectConstants(IRFunction *F);
-
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;
   void execute(Context *ctx) override;
+
+  void collectConstants(Module *module) override;
   ///@}
 private:
   /// Load constant tensors from \p ctx into \p weightsAddress, as defined by

@@ -2368,7 +2368,7 @@ void Module::eraseConstant(ConstList::iterator I) {
 
 void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
 
-Constant *Module::getConstantByName(llvm::StringRef name) {
+Constant *Module::getConstantByName(llvm::StringRef name) const {
   for (auto *V : getConstants()) {
     if (V->getName() == name)
       return V;
@@ -2376,7 +2376,7 @@ Constant *Module::getConstantByName(llvm::StringRef name) {
   return nullptr;
 }
 
-Placeholder *Module::getPlaceholderByName(llvm::StringRef name) {
+Placeholder *Module::getPlaceholderByName(llvm::StringRef name) const {
   for (auto *P : getPlaceholders()) {
     if (P->getName() == name) {
       return P;
