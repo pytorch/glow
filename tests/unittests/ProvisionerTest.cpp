@@ -65,5 +65,5 @@ TEST_F(ProvisionerTest, provisionDag) {
     devices.emplace(i, std::move(device));
   }
   auto result = provisioner.provision(networks, devices, *mod.get());
-  EXPECT_EQ(result, Ready);
+  EXPECT_EQ(result, ResultCode::Ready);
 }
