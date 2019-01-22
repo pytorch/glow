@@ -141,7 +141,6 @@ target_link_libraries(GraphSchedulerTest
                         IR
                         gtest
                         TestMain)
-target_include_directories(GraphSchedulerTest PRIVATE ${CMAKE_SOURCE_DIR}/lib/IR)
 add_glow_test(GraphSchedulerTest ${GLOW_BINARY_DIR}/tests/GraphSchedulerTest --gtest_output=xml:GraphSchedulerTest.xml)
 
 add_executable(QuantizationTest
@@ -283,12 +282,11 @@ target_link_libraries(LLVMIRGenTest
                         Support
                         gtest
                         TestMain)
-target_include_directories(LLVMIRGenTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
 add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest --gtest_output=xml:LLVMIRGenTest.xml)
 
-add_executable(cpuDeviceTest
+add_executable(CPUDeviceTest
                CPUDeviceManagerTest.cpp)
-target_link_libraries(cpuDeviceTest
+target_link_libraries(CPUDeviceTest
                       PRIVATE
                         Backends
                         DeviceManager
@@ -299,8 +297,7 @@ target_link_libraries(cpuDeviceTest
                         Optimizer
                         gtest
                         TestMain)
-target_include_directories(cpuDeviceTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
-add_glow_test(cpuDeviceTest ${GLOW_BINARY_DIR}/tests/cpuDeviceTest --gtest_output=xml:cpuDeviceTest.xml)
+add_glow_test(CPUDeviceTest ${GLOW_BINARY_DIR}/tests/CPUDeviceTest --gtest_output=xml:CPUDeviceTest.xml)
 
 endif()
 
@@ -347,9 +344,6 @@ target_link_libraries(GlowOnnxifiManagerTest
                         onnxifi-glow-lib
                         gtest
                         TestMain)
-target_include_directories(GlowOnnxifiManagerTest
-                           PRIVATE
-                           ${CMAKE_SOURCE_DIR}/lib/Onnxifi ${GLOW_THIRDPARTY_DIR}/onnx)
 add_glow_test(NAME GlowOnnxifiManagerTest
               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

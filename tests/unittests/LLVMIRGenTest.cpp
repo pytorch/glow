@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "LLVMIRGen.h"
-#include "AllocationsInfo.h"
+#include "../../lib/Backends/CPU/LLVMIRGen.h"
+#include "../../lib/Backends/CPU/AllocationsInfo.h"
 
 #include "glow/IR/IR.h"
 
