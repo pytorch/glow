@@ -83,7 +83,7 @@ ResultCode Provisioner::provision(
     currDevice->second->addNetwork(
         &module, compiledFunctions,
         [&addNetwork](const Module *, ResultCode result) {
-          if (result == Ready) {
+          if (result == ResultCode::Ready) {
             addNetwork.set_value(true);
           } else {
             addNetwork.set_value(false);
