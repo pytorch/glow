@@ -46,7 +46,7 @@ private:
 
   /// Padding factor to account for generated code size. Should be greater
   /// than 1.0.
-  double networkPaddingFactor_{1.1};
+  const float NETWORK_PADDING_FACTOR = 1.1;
 };
 } // namespace runtime
 } // namespace glow
