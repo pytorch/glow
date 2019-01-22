@@ -75,7 +75,7 @@ ResultCode Provisioner::provision(
     auto availableMemory = currDevice->second->getAvailableMemory();
     if (availableMemory < NETWORK_PADDING_FACTOR *
                               nodes[0]->runtimeBundle.getConstantWeightSize()) {
-      return Failed;
+      return ResultCode::Failed;
     }
     // Load functions on device.
     std::promise<bool> addNetwork;
@@ -91,7 +91,7 @@ ResultCode Provisioner::provision(
         });
     auto result = ready.get();
     if (!result) {
-      return Failed;
+      return ResultCode::Failed;
     }
     currDevice++;
     // Handle wrapping around to start of devices again.
@@ -99,5 +99,5 @@ ResultCode Provisioner::provision(
       currDevice = devices.begin();
     }
   }
-  return Ready;
+  return ResultCode::Ready;
 };
