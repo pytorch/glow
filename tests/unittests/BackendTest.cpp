@@ -163,7 +163,7 @@ TEST_P(BackendTest, debugPrint) {
   auto function = backend->compileIR(std::move(IR));
   function->setupRuns();
   function->beforeRun(ctx);
-  function->execute();
+  function->execute(&ctx);
   function->afterRun(ctx);
   function->tearDownRuns();
 }

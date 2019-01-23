@@ -621,7 +621,9 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-void OpenCLFunction::execute() {
+void OpenCLFunction::execute(Context *ctx) {
+  (void)ctx;
+
   for (const auto &I : F_->getInstrs()) {
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also

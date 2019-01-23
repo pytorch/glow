@@ -78,7 +78,7 @@ using namespace glow;
 
 /// This is the floating point implementation of Convolution.
 template <typename ElemTy>
-void InterpreterFunction::fwdConvolutionInstFloatImpl(
+void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
@@ -148,7 +148,7 @@ void InterpreterFunction::fwdConvolutionInstFloatImpl(
 /// This is the quantized implementation of Convolution.
 /// For bias, we support int32 quantization.
 template <typename ElemTy, typename AccumulatorTy>
-void InterpreterFunction::fwdConvolutionInstQuantizedImpl(
+void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, size_t group) {
@@ -242,7 +242,7 @@ void InterpreterFunction::fwdConvolutionInstQuantizedImpl(
   }         // N
 }
 
-void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
+void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
@@ -262,7 +262,8 @@ void InterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
                             kernelSizes, strides, pads, group);
 }
 
-void InterpreterFunction::fwdConvolutionGradInst(const ConvolutionGradInst *I) {
+void BoundInterpreterFunction::fwdConvolutionGradInst(
+    const ConvolutionGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -400,7 +401,7 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
   }       // N
 }
 
-void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
@@ -416,7 +417,8 @@ void InterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
                             I->getPads());
 }
 
-void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolWithXYInst(
+    const MaxPoolWithXYInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
@@ -433,7 +435,7 @@ void InterpreterFunction::fwdMaxPoolWithXYInst(const MaxPoolWithXYInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
+void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   ShapeNHWC odim(I->getDest()->dims());
@@ -481,7 +483,7 @@ void InterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   }       // N
 }
 
-void InterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
+void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   ShapeNHWC odim(I->getDest()->dims());
   ShapeNHWC idim(I->getSrc()->dims());
 
@@ -534,7 +536,7 @@ void InterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   }       // N
 }
 
-void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInstI8Impl(I);
     return;
@@ -544,7 +546,7 @@ void InterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
-void InterpreterFunction::fwdMaxPoolWithXYGradInst(
+void BoundInterpreterFunction::fwdMaxPoolWithXYGradInst(
     const MaxPoolWithXYGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
@@ -578,7 +580,7 @@ void InterpreterFunction::fwdMaxPoolWithXYGradInst(
   }       // N
 }
 
-void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -630,7 +632,7 @@ void InterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
 //                       Activation functions
 //===----------------------------------------------------------------------===//
 template <typename ElemTy>
-void InterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
+void BoundInterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
@@ -642,13 +644,13 @@ void InterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
   }
 }
 
-void InterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
+void BoundInterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
   dispatchFloatingPointImpl(fwdSigmoidInstFloatImpl,
                             I->getSrc()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
+void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
@@ -660,7 +662,7 @@ void InterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   }
 }
 
-void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
+void BoundInterpreterFunction::fwdTanhInst(const TanhInst *I) {
   dispatchFloatingPointImpl(fwdTanhInstFloatImpl, I->getSrc()->getElementType(),
                             I);
 }
@@ -670,7 +672,7 @@ void InterpreterFunction::fwdTanhInst(const TanhInst *I) {
 //===----------------------------------------------------------------------===//
 
 template <typename ElemTy>
-void InterpreterFunction::fwdSoftMaxInstImpl(const SoftMaxInst *I) {
+void BoundInterpreterFunction::fwdSoftMaxInstImpl(const SoftMaxInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
@@ -699,12 +701,12 @@ void InterpreterFunction::fwdSoftMaxInstImpl(const SoftMaxInst *I) {
   } // N
 }
 
-void InterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
+void BoundInterpreterFunction::fwdSoftMaxInst(const SoftMaxInst *I) {
   dispatchFloatingPointImpl(fwdSoftMaxInstImpl, I->getSrc()->getElementType(),
                             I);
 }
 
-void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
+void BoundInterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
@@ -723,7 +725,7 @@ void InterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
+void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
     const CrossEntropyLossInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -739,13 +741,13 @@ void InterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdCrossEntropyLossInst(
+void BoundInterpreterFunction::fwdCrossEntropyLossInst(
     const CrossEntropyLossInst *I) {
   dispatchFloatingPointImpl(fwdCrossEntropyLossInstFloatImpl,
                             I->getP()->getElementType(), I);
 }
 
-void InterpreterFunction::fwdCrossEntropyLossGradInst(
+void BoundInterpreterFunction::fwdCrossEntropyLossGradInst(
     const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
   auto Labels = getWeightHandle<int64_t>(I->getLabels());
@@ -763,13 +765,13 @@ void InterpreterFunction::fwdCrossEntropyLossGradInst(
 //                       Tensor shape (copy/transpose/concat/...)
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdCopyInst(const CopyInst *I) {
+void BoundInterpreterFunction::fwdCopyInst(const CopyInst *I) {
   auto inT = getTensor(I->getSrc());
   auto outT = getTensor(I->getDest());
   outT->copyRawFrom(inT);
 }
 
-void InterpreterFunction::fwdTransposeInst(const TransposeInst *I) {
+void BoundInterpreterFunction::fwdTransposeInst(const TransposeInst *I) {
   auto inT = getTensor(I->getSrc());
   (void)inT;
   auto outT = getTensor(I->getDest());
@@ -783,11 +785,11 @@ void InterpreterFunction::fwdTransposeInst(const TransposeInst *I) {
   }
 }
 
-void InterpreterFunction::fwdTensorViewInst(const TensorViewInst *I) {
+void BoundInterpreterFunction::fwdTensorViewInst(const TensorViewInst *I) {
   getOrCreateUnownedTensor(I, I->getSrc(), I->getOffsets());
 }
 
-void InterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
+void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
 
@@ -815,7 +817,8 @@ void InterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   llvm_unreachable("Unsupported tensor type");
 }
 
-void InterpreterFunction::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
+void BoundInterpreterFunction::fwdInsertTensorInst(
+    const glow::InsertTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());
   Tensor *inT = getTensor(I->getSrc());
   ElemKind k = outT->getElementType();
@@ -835,7 +838,7 @@ void InterpreterFunction::fwdInsertTensorInst(const glow::InsertTensorInst *I) {
   llvm_unreachable("Unsupported tensor type");
 }
 
-void InterpreterFunction::fwdExtractTensorInst(
+void BoundInterpreterFunction::fwdExtractTensorInst(
     const glow::ExtractTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());
   Tensor *inT = getTensor(I->getSrc());
@@ -857,7 +860,7 @@ void InterpreterFunction::fwdExtractTensorInst(
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
+void BoundInterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
   auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
@@ -895,7 +898,7 @@ void InterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   }
 }
 
-void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
+void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   switch (I->getIndices()->getElementType()) {
   case ElemKind::Int64ITy:
     fwdGatherInstImpl<int64_t>(I);
@@ -909,7 +912,7 @@ void InterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdGatherRangesInstImpl(
+void BoundInterpreterFunction::fwdGatherRangesInstImpl(
     const glow::GatherRangesInst *I) {
   Tensor *dataT = getTensor(I->getData());
   auto &dataTy = dataT->getType();
@@ -977,7 +980,8 @@ void InterpreterFunction::fwdGatherRangesInstImpl(
   assert(grandTotalLen == (outP / dataElementSize));
 }
 
-void InterpreterFunction::fwdGatherRangesInst(const glow::GatherRangesInst *I) {
+void BoundInterpreterFunction::fwdGatherRangesInst(
+    const glow::GatherRangesInst *I) {
   switch (I->getRanges()->getElementType()) {
   case ElemKind::Int64ITy:
     fwdGatherRangesInstImpl<int64_t>(I);
@@ -990,7 +994,7 @@ void InterpreterFunction::fwdGatherRangesInst(const glow::GatherRangesInst *I) {
   }
 }
 
-void InterpreterFunction::fwdScatterAssignInst(
+void BoundInterpreterFunction::fwdScatterAssignInst(
     const glow::ScatterAssignInst *I) {
   Tensor *dataT = getTensor(I->getData());
   Tensor *indicesT = getTensor(I->getIndices());
@@ -1010,7 +1014,8 @@ void InterpreterFunction::fwdScatterAssignInst(
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdBatchOneHotImpl(const glow::BatchOneHotInst *I) {
+void BoundInterpreterFunction::fwdBatchOneHotImpl(
+    const glow::BatchOneHotInst *I) {
   auto dataH = getWeightHandle<ElemTy>(I->getData());
   auto lengthsH = getWeightHandle<int32_t>(I->getLengths());
   auto valuesH = getWeightHandle<ElemTy>(I->getValues());
@@ -1034,7 +1039,8 @@ void InterpreterFunction::fwdBatchOneHotImpl(const glow::BatchOneHotInst *I) {
   }
 }
 
-void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
+void BoundInterpreterFunction::fwdBatchOneHotInst(
+    const glow::BatchOneHotInst *I) {
   switch (I->getData()->getElementType()) {
   case ElemKind::Int64ITy:
     fwdBatchOneHotImpl<int64_t>(I);
@@ -1053,7 +1059,7 @@ void InterpreterFunction::fwdBatchOneHotInst(const glow::BatchOneHotInst *I) {
 //===----------------------------------------------------------------------===//
 
 template <typename ElemTy>
-void InterpreterFunction::fwdLocalResponseNormalizationInstFloatImpl(
+void BoundInterpreterFunction::fwdLocalResponseNormalizationInstFloatImpl(
     const glow::LocalResponseNormalizationInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -1111,13 +1117,13 @@ void InterpreterFunction::fwdLocalResponseNormalizationInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdLocalResponseNormalizationInst(
+void BoundInterpreterFunction::fwdLocalResponseNormalizationInst(
     const LocalResponseNormalizationInst *I) {
   dispatchFloatingPointImpl(fwdLocalResponseNormalizationInstFloatImpl,
                             I->getSrc()->getElementType(), I);
 }
 
-void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
+void BoundInterpreterFunction::fwdLocalResponseNormalizationGradInst(
     const glow::LocalResponseNormalizationGradInst *I) {
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
@@ -1190,7 +1196,8 @@ void InterpreterFunction::fwdLocalResponseNormalizationGradInst(
 //===----------------------------------------------------------------------===//
 //                       Arithmetic operations
 //===----------------------------------------------------------------------===//
-void InterpreterFunction::fwdElementAddInstI8Impl(const ElementAddInst *I) {
+void BoundInterpreterFunction::fwdElementAddInstI8Impl(
+    const ElementAddInst *I) {
   assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
          "Wrong function");
   auto lhsTy = I->getLHS()->getType();
@@ -1224,7 +1231,8 @@ void InterpreterFunction::fwdElementAddInstI8Impl(const ElementAddInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementAddInstFloatImpl(const ElementAddInst *I) {
+void BoundInterpreterFunction::fwdElementAddInstFloatImpl(
+    const ElementAddInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1235,7 +1243,7 @@ void InterpreterFunction::fwdElementAddInstFloatImpl(const ElementAddInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
+void BoundInterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementAddInstI8Impl(I);
     return;
@@ -1246,7 +1254,8 @@ void InterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementSubInstFloatImpl(const ElementSubInst *I) {
+void BoundInterpreterFunction::fwdElementSubInstFloatImpl(
+    const ElementSubInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1257,7 +1266,7 @@ void InterpreterFunction::fwdElementSubInstFloatImpl(const ElementSubInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
+void BoundInterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
     auto lhsTy = I->getLHS()->getType();
@@ -1290,7 +1299,8 @@ void InterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementMulInstFloatImpl(const ElementMulInst *I) {
+void BoundInterpreterFunction::fwdElementMulInstFloatImpl(
+    const ElementMulInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1301,7 +1311,7 @@ void InterpreterFunction::fwdElementMulInstFloatImpl(const ElementMulInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
+void BoundInterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -1327,7 +1337,7 @@ void InterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
                             I->getDest()->getElementType(), I);
 }
 
-void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
+void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
     auto lhsTy = I->getLHS()->getType();
@@ -1382,7 +1392,8 @@ void InterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMaxInstI8Impl(const ElementMaxInst *I) {
+void BoundInterpreterFunction::fwdElementMaxInstI8Impl(
+    const ElementMaxInst *I) {
   assert(getTensor(I->getLHS())->getType().isQuantizedType() &&
          "Wrong function");
   auto lhsTy = I->getLHS()->getType();
@@ -1408,7 +1419,8 @@ void InterpreterFunction::fwdElementMaxInstI8Impl(const ElementMaxInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementMaxInstFloatImpl(const ElementMaxInst *I) {
+void BoundInterpreterFunction::fwdElementMaxInstFloatImpl(
+    const ElementMaxInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1419,7 +1431,7 @@ void InterpreterFunction::fwdElementMaxInstFloatImpl(const ElementMaxInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
+void BoundInterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     fwdElementMaxInstI8Impl(I);
     return;
@@ -1430,7 +1442,8 @@ void InterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementMinInstFloatImpl(const ElementMinInst *I) {
+void BoundInterpreterFunction::fwdElementMinInstFloatImpl(
+    const ElementMinInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1441,7 +1454,7 @@ void InterpreterFunction::fwdElementMinInstFloatImpl(const ElementMinInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
+void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -1471,7 +1484,7 @@ void InterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementCmpLTEInstFloatImpl(
+void BoundInterpreterFunction::fwdElementCmpLTEInstFloatImpl(
     const ElementCmpLTEInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -1485,7 +1498,8 @@ void InterpreterFunction::fwdElementCmpLTEInstFloatImpl(
 
 // For both quantized and non-quantized CmpLTE, we set the result to 1.0/0.0.
 // In the quantized case, we assume that the scale params are (1.0, 0).
-void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
+void BoundInterpreterFunction::fwdElementCmpLTEInst(
+    const ElementCmpLTEInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto lhsTy = I->getLHS()->getType();
     auto rhsTy = I->getRHS()->getType();
@@ -1513,7 +1527,8 @@ void InterpreterFunction::fwdElementCmpLTEInst(const ElementCmpLTEInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementCmpEQInstImpl(const ElementCmpEQInst *I) {
+void BoundInterpreterFunction::fwdElementCmpEQInstImpl(
+    const ElementCmpEQInst *I) {
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
@@ -1522,7 +1537,7 @@ void InterpreterFunction::fwdElementCmpEQInstImpl(const ElementCmpEQInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
+void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getDest());
 
   switch (T->getElementType()) {
@@ -1536,7 +1551,8 @@ void InterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementPowInstFloatImpl(const ElementPowInst *I) {
+void BoundInterpreterFunction::fwdElementPowInstFloatImpl(
+    const ElementPowInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto baseW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1547,13 +1563,14 @@ void InterpreterFunction::fwdElementPowInstFloatImpl(const ElementPowInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementPowInst(const glow::ElementPowInst *I) {
+void BoundInterpreterFunction::fwdElementPowInst(
+    const glow::ElementPowInst *I) {
   dispatchFloatingPointImpl(fwdElementPowInstFloatImpl,
                             I->getLHS()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementIsNaNInstFloatImpl(
+void BoundInterpreterFunction::fwdElementIsNaNInstFloatImpl(
     const ElementIsNaNInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -1565,13 +1582,15 @@ void InterpreterFunction::fwdElementIsNaNInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdElementIsNaNInst(const glow::ElementIsNaNInst *I) {
+void BoundInterpreterFunction::fwdElementIsNaNInst(
+    const glow::ElementIsNaNInst *I) {
   dispatchFloatingPointImpl(fwdElementIsNaNInstFloatImpl,
                             I->getSrc()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementLogInstFloatImpl(const ElementLogInst *I) {
+void BoundInterpreterFunction::fwdElementLogInstFloatImpl(
+    const ElementLogInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
@@ -1582,13 +1601,13 @@ void InterpreterFunction::fwdElementLogInstFloatImpl(const ElementLogInst *I) {
   }
 }
 
-void InterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
+void BoundInterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
   dispatchFloatingPointImpl(fwdElementLogInstFloatImpl,
                             I->getSrc()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdElementSelectInstFloatImpl(
+void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
     const glow::ElementSelectInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -1601,7 +1620,7 @@ void InterpreterFunction::fwdElementSelectInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdElementSelectInst(
+void BoundInterpreterFunction::fwdElementSelectInst(
     const glow::ElementSelectInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     auto destTy = I->getDest()->getType();
@@ -1637,7 +1656,7 @@ void InterpreterFunction::fwdElementSelectInst(
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
 template <typename ElemTy, typename AccumulatorTy>
-void InterpreterFunction::fwdMatMulInstQuantizedImpl(
+void BoundInterpreterFunction::fwdMatMulInstQuantizedImpl(
     const glow::MatMulInst *I) {
   assert(getTensor(I->getLHS())->getType().isQuantizedType());
   auto lhs = getWeightHandle<ElemTy>(I->getLHS());
@@ -1683,7 +1702,7 @@ void InterpreterFunction::fwdMatMulInstQuantizedImpl(
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
+void BoundInterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto lhs = getWeightHandle<ElemTy>(I->getLHS());
@@ -1709,7 +1728,7 @@ void InterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
   }
 }
 
-void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
+void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
     dispatchQuantizedWithAccumulationImpl(fwdMatMulInstQuantizedImpl,
                                           I->getLHS()->getElementType(), I);
@@ -1723,7 +1742,7 @@ void InterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
-void InterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
+void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
     const RowwiseQuantizedFullyConnectedInst *I) {
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1811,7 +1830,7 @@ static void fwdBatchedAdd(Tensor *batch, Tensor *slice, Tensor *dest) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdBatchedAddInstFloatImpl(
+void BoundInterpreterFunction::fwdBatchedAddInstFloatImpl(
     const glow::BatchedAddInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -1834,7 +1853,8 @@ void InterpreterFunction::fwdBatchedAddInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
+void BoundInterpreterFunction::fwdBatchedAddInst(
+    const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
     dispatchQuantizedImpl(fwdBatchedAdd, I->getSlice()->getElementType(),
                           getTensor(I->getBatch()), getTensor(I->getSlice()),
@@ -1846,7 +1866,7 @@ void InterpreterFunction::fwdBatchedAddInst(const glow::BatchedAddInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdBatchedReduceAddInstFloatImpl(
+void BoundInterpreterFunction::fwdBatchedReduceAddInstFloatImpl(
     Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
     const ShapeVector &eDestDims) {
   staticAssertFloatingPointType(ElemTy);
@@ -1878,7 +1898,7 @@ void InterpreterFunction::fwdBatchedReduceAddInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdBatchedReduceAddInst(
+void BoundInterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
   static_assert(max_tensor_dimensions == 6,
                 "Loops below assume max_tensor_dimensions = 6.");
@@ -1956,7 +1976,8 @@ void InterpreterFunction::fwdBatchedReduceAddInst(
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdLengthsSumInstFloatImpl(const LengthsSumInst *I) {
+void BoundInterpreterFunction::fwdLengthsSumInstFloatImpl(
+    const LengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto out = getTensor(I->getDest());
@@ -1989,13 +2010,13 @@ void InterpreterFunction::fwdLengthsSumInstFloatImpl(const LengthsSumInst *I) {
   assert(offsetOut == out->size() && "All values in Dest should be written to");
 }
 
-void InterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
+void BoundInterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
   dispatchFloatingPointImpl(fwdLengthsSumInstFloatImpl,
                             I->getData()->getElementType(), I)
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
     const SparseLengthsWeightedSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -2036,7 +2057,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
     const SparseLengthsWeightedSumInst *I) {
 
   auto out = getTensor(I->getDest());
@@ -2088,7 +2109,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
   }
 }
 
-void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
   if (I->getDest()->getType()->isQuantizedType()) {
     return fwdSparseLengthsWeightedSumInstI8Impl(I);
@@ -2097,7 +2118,7 @@ void InterpreterFunction::fwdSparseLengthsWeightedSumInst(
                             I->getData()->getElementType(), I);
 }
 
-void InterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
+void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
   auto *data = getTensor(I->getData());
@@ -2146,7 +2167,8 @@ void InterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
   }
 }
 
-void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
+void BoundInterpreterFunction::fwdLengthsToRangesInst(
+    const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int32_t>();
   auto lengths = getTensor(I->getLengths())->getHandle<int32_t>();
   int32_t offset = 0;
@@ -2159,7 +2181,7 @@ void InterpreterFunction::fwdLengthsToRangesInst(const LengthsToRangesInst *I) {
 }
 
 template <typename ElemTy>
-void InterpreterFunction::fwdSparseToDenseInstFloatImpl(
+void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
     const SparseToDenseInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
@@ -2207,7 +2229,8 @@ void InterpreterFunction::fwdSparseToDenseInstFloatImpl(
   }
 }
 
-void InterpreterFunction::fwdSparseToDenseInst(const SparseToDenseInst *I) {
+void BoundInterpreterFunction::fwdSparseToDenseInst(
+    const SparseToDenseInst *I) {
   dispatchFloatingPointImpl(fwdSparseToDenseInstFloatImpl,
                             I->getDest()->getElementType(), I);
 }
@@ -2250,7 +2273,7 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
 //                       Sorting operators
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdTopKInst(const TopKInst *I) {
+void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   auto outW = getTensor(I->getValues());
   auto indW = getTensor(I->getIndices());
   auto inW = getTensor(I->getInput());
@@ -2268,11 +2291,12 @@ void InterpreterFunction::fwdTopKInst(const TopKInst *I) {
 //                  Tensor allocation operations
 //===----------------------------------------------------------------------===//
 
-void InterpreterFunction::fwdAllocActivationInst(const AllocActivationInst *I) {
+void BoundInterpreterFunction::fwdAllocActivationInst(
+    const AllocActivationInst *I) {
   getOrCreateTensor(I);
 }
 
-void InterpreterFunction::fwdDeallocActivationInst(
+void BoundInterpreterFunction::fwdDeallocActivationInst(
     const DeallocActivationInst *I) {
   deleteTensor(I->getSrc());
 }
@@ -2284,7 +2308,7 @@ void InterpreterFunction::fwdDeallocActivationInst(
 /// Prints a value of the instruction's operand.
 /// In most cases it will be the name of the variable and the value of the
 /// tensor.
-void InterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
+void BoundInterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
   auto *V = I->getSrc();
   llvm::outs() << I->getName() << ": ";
   // Dump the content of a value.
@@ -2297,7 +2321,7 @@ void InterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
 //===----------------------------------------------------------------------===//
 //                Instructions used by Quantization
 //===----------------------------------------------------------------------===//
-void InterpreterFunction::fwdQuantizationProfileInst(
+void BoundInterpreterFunction::fwdQuantizationProfileInst(
     const glow::QuantizationProfileInst *I) {
   auto inputTensor = getWeightHandle(I->getInputTensor());
   auto currentHistogram = getWeightHandle(I->getHistogram());
@@ -2313,7 +2337,7 @@ void InterpreterFunction::fwdQuantizationProfileInst(
 
 /// Quantize floating point tensor. Scale and Offset are based on return type
 /// of the instruction \p I.
-void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
+void BoundInterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
   auto *srcTensor = getTensor(I->getSrc());
   auto *destTensor = getTensor(I->getDest());
   auto destTy = destTensor->getType();
@@ -2325,7 +2349,8 @@ void InterpreterFunction::fwdQuantizeInst(const glow::QuantizeInst *I) {
 
 /// Dequantize integer tensor. Scale and Offset are based
 /// on the source tensor type.
-void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
+void BoundInterpreterFunction::fwdDequantizeInst(
+    const glow::DequantizeInst *I) {
   auto *srcTensor = getTensor(I->getSrc());
   auto *destTensor = getTensor(I->getDest());
   auto destTy = destTensor->getType();
@@ -2335,7 +2360,7 @@ void InterpreterFunction::fwdDequantizeInst(const glow::DequantizeInst *I) {
 }
 
 template <class eTy>
-void InterpreterFunction::fwdRescaleQuantizedInstImpl(
+void BoundInterpreterFunction::fwdRescaleQuantizedInstImpl(
     Value *src, Value *dest, TensorQuantizationParams &srcQ,
     TensorQuantizationParams &destQ) {
 
@@ -2348,7 +2373,7 @@ void InterpreterFunction::fwdRescaleQuantizedInstImpl(
   }
 }
 
-void InterpreterFunction::fwdRescaleQuantizedInst(
+void BoundInterpreterFunction::fwdRescaleQuantizedInst(
     const glow::RescaleQuantizedInst *I) {
   auto src = I->getSrc();
   auto dest = I->getDest();
@@ -2362,7 +2387,8 @@ void InterpreterFunction::fwdRescaleQuantizedInst(
                         src, dest, srcQ, destQ);
 }
 
-void InterpreterFunction::fwdIntLookupTableInst(const IntLookupTableInst *I) {
+void BoundInterpreterFunction::fwdIntLookupTableInst(
+    const IntLookupTableInst *I) {
   auto srcH = getWeightHandle<int8_t>(I->getSrc());
   auto destH = getWeightHandle<int8_t>(I->getDest());
   auto mappingH = getWeightHandle<int8_t>(I->getMapping());
@@ -2372,7 +2398,7 @@ void InterpreterFunction::fwdIntLookupTableInst(const IntLookupTableInst *I) {
   }
 }
 
-void InterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
+void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   Tensor *source = getTensor(I->getInput());
   Tensor *dest = getTensor(I->getResult());
   if (source->getType() == dest->getType()) {

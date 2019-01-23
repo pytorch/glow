@@ -28,12 +28,6 @@ class CPUFunction final : public CompiledFunction {
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_;
 
-  /// Base address for Activations memory block.
-  uint8_t *baseActivationsAddress_{};
-
-  /// Base address for Mutable weights memory block, Inputs and Outputs.
-  uint8_t *baseMutableWeightVarsAddress_{};
-
 public:
   /// Ctor.
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
@@ -42,24 +36,19 @@ public:
   /// Collects constants for runtime.
   void collectConstants(IRFunction *F);
 
-  /// Allocate Mutable buffers on device this includes Activations and
-  /// Placeholders.
-  void setupRuns() override;
-
-  /// Copy Input Placeholder data to position.
-  void beforeRun(const Context &ctx) override;
-
-  /// Copy Outputs to Placeholders in \p ctx.
-  void afterRun(const Context &ctx) override;
-
-  /// Final cleanup, free all allocations.
-  void tearDownRuns() override;
-
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override;
-  void execute() override;
+  void execute(Context *ctx) override;
   ///@}
+private:
+  /// Load constant tensors from \p ctx into \p weightsAddress, as defined by
+  /// the RuntimeBundle (pre-run).
+  void loadPlaceholders(Context *ctx, uint8_t *weightsAddress);
+
+  /// Load weights from \p weightsAddress into applicable backing tensors in
+  /// \p ctx, as defined by the RuntimeBundle (post-run).
+  void updatePlaceholders(Context *ctx, uint8_t *weightsAddress);
 };
 } // end namespace glow
 

@@ -92,11 +92,7 @@ void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,
   CompiledFunction *func = funcIt->second;
 
   // Run that function.
-  func->setupRuns();
-  func->beforeRun(*ctx);
-  func->execute();
-  func->afterRun(*ctx);
-  func->tearDownRuns();
+  func->execute(ctx.get());
 
   // Fire the resultCB.
   resultCB(id, ResultCode::Executed, std::move(ctx));

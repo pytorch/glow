@@ -30,42 +30,29 @@ CPUFunction::~CPUFunction() {
   tearDownRuns();
 }
 
-void CPUFunction::setupRuns() {
-  if (!runsSetup_) {
-    if (runtimeBundle_.getActivationsSize() != 0) {
-      baseActivationsAddress_ = (uint8_t *)alignedAlloc(
-          runtimeBundle_.getActivationsSize(), TensorAlignment);
-    }
-
-    if (runtimeBundle_.getMutableWeightSize() != 0) {
-      baseMutableWeightVarsAddress_ = (uint8_t *)alignedAlloc(
-          runtimeBundle_.getMutableWeightSize(), TensorAlignment);
-    }
-    runsSetup_ = true;
-  }
-}
-
 void CPUFunction::collectConstants(IRFunction *F) {
   runtimeBundle_.collectConstants(F);
 }
 
-void CPUFunction::beforeRun(const Context &ctx) {
+void CPUFunction::loadPlaceholders(Context *ctx,
+                                   uint8_t *baseMutableWeightVarsAddress) {
   // Copy Placeholders into allocated memory.
-  for (auto PH : ctx.pairs()) {
+  for (auto PH : ctx->pairs()) {
     auto payload = PH.second->getUnsafePtr();
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // copy PH to allocated memory.
-    memcpy(baseMutableWeightVarsAddress_ + addr, payload, numBytes);
+    memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
   }
 }
 
-void CPUFunction::afterRun(const Context &ctx) {
+void CPUFunction::updatePlaceholders(Context *ctx,
+                                     uint8_t *baseMutableWeightVarsAddress) {
   // Copy placeholders from device back into context.
-  for (auto PH : ctx.pairs()) {
+  for (auto PH : ctx->pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
-    auto payload = baseMutableWeightVarsAddress_ + symbolInfo.offset;
+    auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     auto addr = PH.second->getUnsafePtr();
     // copy PH from allocated memory.
@@ -73,20 +60,25 @@ void CPUFunction::afterRun(const Context &ctx) {
   }
 }
 
-void CPUFunction::tearDownRuns() {
-  if (baseMutableWeightVarsAddress_) {
-    alignedFree(baseMutableWeightVarsAddress_);
-    baseMutableWeightVarsAddress_ = nullptr;
+void CPUFunction::execute(Context *ctx) {
+  /// Base address for Activations memory block.
+  uint8_t *baseActivationsAddress{nullptr};
+
+  /// Base address for Mutable weights memory block, Inputs and Outputs.
+  uint8_t *baseMutableWeightVarsAddress{nullptr};
+
+  if (runtimeBundle_.getActivationsSize() != 0) {
+    baseActivationsAddress = (uint8_t *)alignedAlloc(
+        runtimeBundle_.getActivationsSize(), TensorAlignment);
   }
 
-  if (baseActivationsAddress_) {
-    alignedFree(baseActivationsAddress_);
-    baseActivationsAddress_ = nullptr;
+  if (runtimeBundle_.getMutableWeightSize() != 0) {
+    baseMutableWeightVarsAddress = (uint8_t *)alignedAlloc(
+        runtimeBundle_.getMutableWeightSize(), TensorAlignment);
   }
-  runsSetup_ = false;
-}
 
-void CPUFunction::execute() {
+  loadPlaceholders(ctx, baseMutableWeightVarsAddress);
+
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType =
@@ -95,9 +87,14 @@ void CPUFunction::execute() {
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress_,
-            baseActivationsAddress_);
+    funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
+            baseActivationsAddress);
   } else {
     GLOW_ASSERT(false && "Error getting address.");
   }
+
+  updatePlaceholders(ctx, baseMutableWeightVarsAddress);
+
+  alignedFree(baseMutableWeightVarsAddress);
+  alignedFree(baseActivationsAddress);
 }
