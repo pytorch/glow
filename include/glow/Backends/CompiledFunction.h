@@ -55,9 +55,10 @@ public:
   virtual void tearDownRuns() { runsSetup_ = false; }
 
   /// Getter for the runtimeBundle.
-  const runtime::RuntimeBundle &getRuntimeBundle() const {
-    return runtimeBundle_;
-  }
+  runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
+
+  /// Collects constants for runtime.
+  virtual void collectConstants(Module *){};
 
 protected:
   /// Flag to ensure setupRuns is only called once.

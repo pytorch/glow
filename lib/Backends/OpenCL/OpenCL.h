@@ -97,7 +97,6 @@ public:
   ~OpenCLFunction() override;
 
   void execute(Context *ctx) override;
-  ///@}
   /// Allocates on device buffer and copies Constant weights to device.
   void setupRuns() override;
   /// Per run setup, copies Inputs from \p ctx to on device memory.
@@ -107,11 +106,12 @@ public:
   /// Final cleanup, currently an empty function in OpenCL.
   void tearDownRuns() override;
 
+  /// Collects constants for runtime.
+  void collectConstants(Module *module) override;
+  ///@}
+
   /// Returns IR function pointer.
   IRFunction *getIR() { return F_.get(); }
-
-  /// Collects constants for runtime.
-  void collectConstants(IRFunction *F);
 
 private:
   /// Copy the value from a device to a provided buffer.

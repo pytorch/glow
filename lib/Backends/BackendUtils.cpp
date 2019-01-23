@@ -21,7 +21,10 @@ using llvm::cast;
 using llvm::isa;
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
+  collectConstants(F->getGraph()->getParent());
+}
 
+void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
   // If there are no constants return nullptr.
@@ -29,16 +32,24 @@ void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
     constants_ = nullptr;
     return;
   }
+
   constants_ =
       (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
-  for (auto &v : F->getGraph()->getParent()->getConstants()) {
-    assert(isa<WeightVar>(F->getWeightForNode(v)));
-    auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    auto payload = v->getPayload().getUnsafePtr();
-    auto numBytes = w->getSizeInBytes();
-    auto addr = getValueOffset(v);
+
+  for (const auto &symbol : symbolTable_) {
+    llvm::StringRef name = symbol.first;
+    const RuntimeSymbolInfo &info = symbol.second;
+
+    Constant *c = M->getConstantByName(name);
+    if (!c) {
+      continue;
+    }
+    auto *payload = c->getPayload().getUnsafePtr();
+    assert(info.size == c->getPayload().getSizeInBytes() &&
+           "Mismatched constant size");
+
     // Copy weight to offset.
-    memcpy(constants_ + addr, payload, numBytes);
+    memcpy(constants_ + info.offset, payload, info.size);
   }
 }
 

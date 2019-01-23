@@ -1527,14 +1527,15 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
-void OpenCLFunction::collectConstants(IRFunction *F) {
-  runtimeBundle_.collectConstants(F);
+void OpenCLFunction::collectConstants(Module *module) {
+  runtimeBundle_.collectConstants(module);
 }
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
+  auto *module = IR->getGraph()->getParent();
   auto function = compileIRWithoutConstants(std::move(IR));
   auto OCLFunction = static_cast<OpenCLFunction *>(function.get());
-  OCLFunction->collectConstants(OCLFunction->getIR());
+  OCLFunction->collectConstants(module);
   return function;
 }
 

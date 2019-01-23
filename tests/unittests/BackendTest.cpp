@@ -200,6 +200,9 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   auto *saveTensor = ctx.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F);
 
+  // Collect constants to fill out the RuntimeBundle.
+  EE_.getCompiledFunction().collectConstants(&mod);
+
   // Erase all of the functions to ensure that the compiled code does not
   // depend on the graph.
   mod.eraseFunctions();
