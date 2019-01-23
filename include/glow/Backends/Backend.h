@@ -82,6 +82,9 @@ public:
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
+
+  /// Optimize the Function \p F given compilation mode \p mode.
+  void optimizeFunction(CompilationMode mode, Function *F);
 };
 
 /// Create a backend of kind \p kind.

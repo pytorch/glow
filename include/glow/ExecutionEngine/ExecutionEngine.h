@@ -43,9 +43,6 @@ class ExecutionEngine final {
   /// A glow function compiled for this ExecutionEngine's backend.
   std::unique_ptr<CompiledFunction> function_;
 
-  /// Optimize the Function \p F given compilation mode \p mode.
-  void optimizeFunction(CompilationMode mode, Function *F);
-
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
 
