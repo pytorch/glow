@@ -22,7 +22,7 @@ namespace glow {
 
 class CPUDeviceManager : public QueueBackedDeviceManager {
   /// Loaded module list.
-  std::map<const Module *, FunctionMapTy> modules_;
+  std::map<const Module *, std::set<std::string>> modules_;
 
   /// Compiled function list by name.
   FunctionMapTy functions_;
