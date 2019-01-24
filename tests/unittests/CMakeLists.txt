@@ -299,6 +299,21 @@ target_link_libraries(CPUDeviceTest
                         TestMain)
 add_glow_test(CPUDeviceTest ${GLOW_BINARY_DIR}/tests/CPUDeviceTest --gtest_output=xml:CPUDeviceTest.xml)
 
+add_executable(ProvisionerTest	  
+               ProvisionerTest.cpp) 
+target_link_libraries(ProvisionerTest	
+                      PRIVATE		
+                        Backends		
+                        Graph		
+                        IR		
+                        Provisioner	
+                        DeviceManager
+                        CPUDeviceManager
+                        gtest		
+                        TestMain)	
+target_include_directories(ProvisionerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)                        
+add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest --gtest_output=xml:ProvisionerTest.xml)
+
 endif()
 
 add_executable(MemoryAllocatorTest
@@ -360,6 +375,7 @@ target_link_libraries(GlowOnnxifiManagerTest
 add_glow_test(NAME GlowOnnxifiManagerTest
               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 
 LIST(APPEND UNOPT_TESTS
        ./tests/BackendTest -optimize-ir=false &&
