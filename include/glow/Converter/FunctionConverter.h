@@ -31,7 +31,7 @@ class Placeholder;
 class Tensor;
 
 /// This class implements the high-level APIs used to convert a function
-/// to one type to another. The actual conversions must be implemented
+/// from one type to another. The actual conversions must be implemented
 /// by derived classes.
 class FunctionConverter {
 protected:
@@ -167,6 +167,9 @@ public:
   /// Modify the type of \p placeholder according to getTargetTypeForOutput.
   /// If the \p context is provided and \p placeholder has a backing tensor,
   /// this tensor is also updated.
+  /// Note: If \p placeholder is used in functions other than F, changes to
+  /// those functions will be made as well to accommodate the converted
+  /// placeholder.
   void convertPlaceholder(Placeholder &placeholder, Context *context);
 };
 } // namespace glow

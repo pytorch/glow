@@ -169,11 +169,15 @@ protected:
   ///      the other must be a quantized type.
   Node *createConversion(Function &function, NodeValue &val,
                          TypeRef destTy) override {
+    assert((&function == &function_) &&
+           "Trying to add quantize/dequantize conversion to a function other "
+           "than the function being quantized.");
     if (destTy->isQuantizedType()) {
-      return function_.createQuantize("quantize", val, destTy);
+      return function.createQuantize("quantize", val, destTy);
     }
-    assert(destTy->getElementType() == ElemKind::FloatTy && "");
-    return function.createDequantize("quantize", val);
+    assert(destTy->getElementType() == ElemKind::FloatTy &&
+           "Can't dequantize to any type except float.");
+    return function.createDequantize("dequantize", val);
   }
 
   /// All IRConstraint cases below assume that the input and output index that
