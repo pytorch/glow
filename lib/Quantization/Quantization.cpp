@@ -169,6 +169,9 @@ protected:
   ///      the other must be a quantized type.
   Node *createConversion(Function &function, NodeValue &val,
                          TypeRef destTy) override {
+    assert((&function == &function_) &&
+           "Trying to add quantize/dequantize conversion to a function other "
+           "than the function being quantized.");
     if (destTy->isQuantizedType()) {
       return function.createQuantize("quantize", val, destTy);
     }
