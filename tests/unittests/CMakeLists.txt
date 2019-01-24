@@ -311,7 +311,7 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest --gtest_output=xml:MemoryAllocatorTest.xml)
 
-add_executable(PartitionerTest	  
+add_executable(PartitionerTest
                PartitionerTest.cpp) 
 target_link_libraries(PartitionerTest	
                       PRIVATE		
