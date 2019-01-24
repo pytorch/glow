@@ -79,9 +79,10 @@ class BoundInterpreterFunction {
   const std::unordered_map<std::string, Tensor *> &constants_;
 
 public:
-  BoundInterpreterFunction(
+  explicit BoundInterpreterFunction(
       const std::unordered_map<std::string, Tensor *> &constants)
       : constants_(constants) {}
+
   ~BoundInterpreterFunction();
 
   void execute(IRFunction *F, Context *ctx);
