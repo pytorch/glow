@@ -23,11 +23,10 @@ namespace glow {
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
-    void execute(Context *) override{};
-  }
+    void execute(Context *) override {}
+  };
 
-  std::unique_ptr<CompiledFunction>
-  compile(Function *F) const override {
+  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return llvm::make_unique<MockFunction>();
   }
 
