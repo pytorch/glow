@@ -37,4 +37,3 @@ target_link_libraries(DeviceManager
                         Backends
                         Graph
                         ThreadPool)
-

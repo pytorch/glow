@@ -308,7 +308,7 @@ DAGNodeList &Partitioner::Partition() {
   // Find the representive function for running partitioning algrithm.
   F_ = selectRepFunc(module_, memSize_);
 
-  // Possible minimal k devices for a succesful partitioning
+  // Possible minimal k devices for a successful partitioning
   // Note: here 2 is for testing;
   unsigned k = 2; //(memSize_ + MARGIN) / devices[0].availableMemory;
 
