@@ -32,10 +32,10 @@ class Provisioner final {
 public:
   /// Walks \p networks and assigns each function to a DeviceManager in \p
   /// devices. The Provisioner calls the addNetwork method for each
-  /// DeviceManager and uses the returned networkID to populate \p runDAG.
-  /// Returns a ResultCode indicating if the operation was a success.
+  /// DeviceManager. Returns a ResultCode indicating if the operation was a
+  /// success.
   ResultCode
-  provision(std::vector<DAGNode> &networks,
+  provision(std::vector<std::unique_ptr<DAGNode>> &networks,
             std::map<DeviceIDTy, std::unique_ptr<DeviceManager>> &devices,
             Module &module);
 

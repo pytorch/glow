@@ -20,6 +20,8 @@
 
 using namespace glow;
 using namespace glow::runtime;
+using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
+                                std::vector<std::unique_ptr<DAGNode>>>;
 
 class ProvisionerTest : public ::testing::Test {};
 std::unique_ptr<Module> setupModule(uint functionCount) {
@@ -28,42 +30,45 @@ std::unique_ptr<Module> setupModule(uint functionCount) {
     Function *F = module->createFunction("function" + std::to_string(i));
     auto *X = module->createPlaceholder(ElemKind::FloatTy, {3},
                                         "X" + std::to_string(i), false);
-    auto *pow = F->createPow("Pow1", X, 2.0);
-    F->createSave("save", pow);
+    auto *pow = F->createPow("Pow" + std::to_string(i), X, 2.0);
+    F->createSave("save" + std::to_string(i), pow);
   }
   return module;
 }
 
-std::vector<DAGNode> setupDAG(Module *module, uint familyCount,
-                              uint childCount) {
-  std::vector<DAGNode> networks;
+DAGNodePairTy setupDAG(uint rootCount, uint childCount) {
+  std::vector<std::unique_ptr<DAGNode>> networks;
+  std::vector<std::unique_ptr<DAGNode>> children;
   uint currentFunction = 0;
-  for (int family = 0; family < familyCount; family++) {
-    auto familyNode = DAGNode();
-    auto firstNode = new DAGNode();
-    familyNode.name = "family" + std::to_string(family);
-    familyNode.children.push_back(firstNode);
+  for (int root = 0; root < rootCount; root++) {
+    auto rootNode = std::make_unique<DAGNode>();
+    auto firstNode = std::make_unique<DAGNode>();
+    rootNode->name = "root" + std::to_string(root);
+    rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
     currentFunction++;
     for (int child = 0; child < childCount; child++) {
-      auto newChild = new DAGNode();
+      auto newChild = std::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       currentFunction++;
+      firstNode->children.push_back(newChild.get());
+      children.push_back(std::move(newChild));
     }
-    networks.push_back(familyNode);
+    networks.push_back(std::move(rootNode));
+    children.push_back(std::move(firstNode));
   }
-  return networks;
+  return std::make_pair(std::move(networks), std::move(children));
 }
 
 TEST_F(ProvisionerTest, provisionDag) {
   auto mod = setupModule(6);
-  auto networks = setupDAG(mod.get(), 2, 3);
+  auto networks = setupDAG(2, 2);
   auto provisioner = Provisioner();
   std::map<DeviceIDTy, std::unique_ptr<DeviceManager>> devices;
   for (int i = 0; i < 6; i++) {
     std::unique_ptr<DeviceManager> device(new CPUDeviceManager);
     devices.emplace(i, std::move(device));
   }
-  auto result = provisioner.provision(networks, devices, *mod.get());
+  auto result = provisioner.provision(networks.first, devices, *mod.get());
   EXPECT_EQ(result, ResultCode::Ready);
 }
