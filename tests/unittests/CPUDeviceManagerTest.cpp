@@ -24,11 +24,10 @@
 
 using namespace glow;
 using namespace glow::runtime;
-using namespace std::chrono_literals;
 
 std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
-  std::unique_ptr<Module> module = std::make_unique<Module>();
-  std::unique_ptr<Context> ctx = std::make_unique<Context>();
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
 
   Function *F = module->createFunction(functionName);
   auto *input = module->createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3},
@@ -88,10 +87,10 @@ TEST(CPUDeviceManagerTest, Basic) {
                                             ResultCode::Ready);
                            });
 
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  std::unique_ptr<Context> ctx = std::make_unique<Context>();
+  std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
   ctx->allocate(module->getPlaceholders());
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
@@ -109,7 +108,7 @@ TEST(CPUDeviceManagerTest, Basic) {
                                              result, ResultCode::Executed);
                             });
 
-  runFuture.wait_for(2s);
+  runFuture.wait_for(std::chrono::seconds(2));
 
   EXPECT_NE(runFuture.get(), nullptr);
 }
@@ -130,11 +129,11 @@ TEST(CPUDeviceManagerTest, MultiRun) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  std::unique_ptr<Context> ctx1 = std::make_unique<Context>();
-  std::unique_ptr<Context> ctx2 = std::make_unique<Context>();
+  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
   ctx1->allocate(module->getPlaceholders());
   ctx2->allocate(module->getPlaceholders());
 
@@ -176,7 +175,7 @@ TEST(CPUDeviceManagerTest, MultiRun) {
 TEST(CPUDeviceManagerTest, MultiFunction) {
   auto module = makeBasicModule("func1");
 
-  std::unique_ptr<Context> ctx1 = std::make_unique<Context>();
+  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
   ctx1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
@@ -201,14 +200,14 @@ TEST(CPUDeviceManagerTest, MultiFunction) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("input")},
                           {&inputs});
 
-  std::unique_ptr<Context> ctx2 = std::make_unique<Context>(ctx1->clone());
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>(ctx1->clone());
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -253,7 +252,7 @@ TEST(CPUDeviceManagerTest, MultiModule) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module1.get());
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
@@ -262,16 +261,16 @@ TEST(CPUDeviceManagerTest, MultiModule) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
 
-  std::unique_ptr<Context> ctx1 = std::make_unique<Context>();
+  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
   ctx1->allocate(module1->getPlaceholders());
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   updateInputPlaceholders(*ctx1, {module1->getPlaceholderByName("input")},
                           {&inputs});
 
-  std::unique_ptr<Context> ctx2 = std::make_unique<Context>(ctx1->clone());
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>(ctx1->clone());
   ctx2->allocate(module2->getPlaceholders());
   updateInputPlaceholders(*ctx2, {module2->getPlaceholderByName("input")},
                           {&inputs});
@@ -303,7 +302,7 @@ TEST(CPUDeviceManagerTest, MultiModule) {
 TEST(CPUDeviceManagerTest, ReuseModule) {
   auto module = makeBasicModule("func1");
 
-  std::unique_ptr<Context> ctx1 = std::make_unique<Context>();
+  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
   ctx1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
@@ -335,7 +334,7 @@ TEST(CPUDeviceManagerTest, ReuseModule) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
@@ -344,14 +343,14 @@ TEST(CPUDeviceManagerTest, ReuseModule) {
                              callbackHelper(promise, module, result,
                                             ResultCode::Ready);
                            });
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("input")},
                           {&inputs});
 
-  std::unique_ptr<Context> ctx2 = std::make_unique<Context>(ctx1->clone());
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>(ctx1->clone());
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -399,7 +398,7 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });
 
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
@@ -416,7 +415,7 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });
 
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   auto *resultModule = future.get();
   EXPECT_NE(resultModule, module2.get());
   EXPECT_NE(resultModule, module.get());
@@ -436,7 +435,7 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });
 
-  future.wait_for(2s);
+  future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
 
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);

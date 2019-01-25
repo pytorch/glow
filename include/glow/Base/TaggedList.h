@@ -287,22 +287,22 @@ template <typename T>
 class TaggedListNode : public tagged_list_details::NodeBase {
 public:
   // Get an iterator pointing at this node.
-  auto getIterator() {
+  tagged_list_details::Iterator<T, false, false> getIterator() {
     return tagged_list_details::Iterator<T, false, false>(this);
   }
 
   // Get a const iterator pointing at this node.
-  auto getIterator() const {
+  tagged_list_details::Iterator<T, false, true> getIterator() const {
     return tagged_list_details::Iterator<T, false, true>(this);
   }
 
   // Get a reverse iterator pointing at this node.
-  auto getReverseIterator() {
+  tagged_list_details::Iterator<T, true, false> getReverseIterator() {
     return tagged_list_details::Iterator<T, true, false>(this);
   }
 
   // Get a const reverse iterator pointing at this node.
-  auto getReverseIterator() const {
+  tagged_list_details::Iterator<T, true, true> getReverseIterator() const {
     return tagged_list_details::Iterator<T, true, true>(this);
   }
 };
