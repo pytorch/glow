@@ -122,8 +122,8 @@ void createAndDestroyManagerObjects() {
 }
 
 TEST(GlowOnnxifiManagerTest, Concurrency) {
-  constexpr auto numThreads = 24;
-  constexpr auto numItersPerThread = 1000;
+  constexpr auto numThreads = 12;
+  constexpr auto numItersPerThread = 100;
 
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
