@@ -65,25 +65,48 @@ static void executeDAG(DAGNode *G, Module &mod, Context &ctx,
   }
 }
 
-TEST_F(PartitionerTest, test1) {
+/// This one tests the model with this feature: after BFS, the memory
+/// comsumption of all the nodes in each level won't exceed the device memory
+/// constraints.
+TEST_F(PartitionerTest, Basic1) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+  auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+  auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
   ctx_.allocate(input);
+  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
 
   // Initial FC.
-  Node *I = F_->createFullyConnected(ctx_, "initial_fc", input, 16);
+  Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
   I = F_->createSigmoid("initial_sigmoid", I);
 
   // Left branch.
-  Node *L = F_->createFullyConnected(ctx_, "left_fc1", I, 16);
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
-  L = F_->createFullyConnected(ctx_, "left_fc2", L, 8);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
-  Node *R = F_->createFullyConnected(ctx_, "right_fc1", I, 16);
+  auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
-  R = F_->createFullyConnected(ctx_, "right_fc2", R, 8);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
   // Join branches.
@@ -100,7 +123,76 @@ TEST_F(PartitionerTest, test1) {
   EE.run(ctx_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices;
+  std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
+  Partitioner myPartitioner(&mod_, devices);
+
+  DAGNodeList myList = std::move(myPartitioner.Partition());
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(myList.roots.size(), 1);
+
+  // Run the paritioned graph and compare the results.
+  ctx_.allocate(mod_.getPlaceholders());
+  for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
+    ctx_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).get(), mod_, ctx_, {input}, {&in});
+    Tensor test = res.clone();
+    EXPECT_TRUE(ref.isEqual(test));
+  }
+}
+
+/// This one tests the model with this feature: after BFS, there is one level,
+/// the  memory comsumption of all the nodes in which exceeds the device memory
+/// constraints.
+TEST_F(PartitionerTest, Basic2) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input1", false);
+  ctx_.allocate(input);
+  ctx_.allocate(input1);
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  L = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
+  L = F_->createSigmoid("left_sigmoid2", L);
+
+  // Right branch.
+  auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
+  R = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
+  R = F_->createSigmoid("right_sigmoid2", R);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L, R);
+  auto *save = F_->createSave("ret", mul);
+  auto &res = *ctx_.allocate(save->getPlaceholder());
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 16});
+  ExecutionEngine EE;
+
+  EE.compile(CompilationMode::Infer, F_);
+  updateInputPlaceholders(ctx_, {input, input1}, {&in, &in});
+  EE.run(ctx_);
+  Tensor ref = res.clone();
+
+  std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
   Partitioner myPartitioner(&mod_, devices);
 
   DAGNodeList myList = std::move(myPartitioner.Partition());
