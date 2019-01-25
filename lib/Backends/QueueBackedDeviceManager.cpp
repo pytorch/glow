@@ -19,8 +19,9 @@
 using namespace glow;
 using namespace glow::runtime;
 
-QueueBackedDeviceManager::QueueBackedDeviceManager(BackendKind backend)
-    : DeviceManager(backend), workThread_(1) {}
+QueueBackedDeviceManager::QueueBackedDeviceManager(BackendKind backend,
+                                                   llvm::StringRef name)
+    : DeviceManager(backend, name), workThread_(1) {}
 
 QueueBackedDeviceManager::~QueueBackedDeviceManager() {
   stop(true); // will join workThread_
@@ -37,8 +38,8 @@ void QueueBackedDeviceManager::addNetwork(const Module *module,
   });
 }
 
-void QueueBackedDeviceManager::evictNetwork(const Module *module) {
-  workThread_.submit([this, module] { evictNetworkImpl(module); });
+void QueueBackedDeviceManager::evictNetwork(llvm::StringRef functionName) {
+  workThread_.submit([this, functionName] { evictNetworkImpl(functionName); });
 }
 
 RunIdentifierTy

@@ -21,23 +21,24 @@
 namespace glow {
 
 class CPUDeviceManager : public QueueBackedDeviceManager {
-  /// Loaded module list.
-  std::map<const Module *, std::set<std::string>> modules_;
-
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
   /// Maximum available memory on the device, for CPU devices fix to some
   /// constant.
-  uint64_t maxMemoryBytes{0};
+  uint64_t maxMemoryBytes_{0};
 
   /// Amount of memory used by all models.
-  uint64_t usedMemoryBytes{0};
+  uint64_t usedMemoryBytes_{0};
+
+  /// Static memory cost of the CPU Function.
+  /// This is very arbitrary for the CPU backend.
+  const u_int64_t functionCost_{1};
 
 public:
-  CPUDeviceManager(size_t MBsPerCore = 16000)
-      : QueueBackedDeviceManager(BackendKind::CPU),
-        maxMemoryBytes(MBsPerCore * 1024 * 1024) {}
+  CPUDeviceManager(llvm::StringRef name = "unnamed", size_t maxMemory = 1000)
+      : QueueBackedDeviceManager(BackendKind::CPU, name),
+        maxMemoryBytes_(maxMemory) {}
 
   uint64_t getMaximumMemory() override;
   uint64_t getAvailableMemory() override;
@@ -46,7 +47,7 @@ public:
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,
                       ReadyCBTy cb) override;
-  void evictNetworkImpl(const Module *module) override;
+  void evictNetworkImpl(llvm::StringRef functionName) override;
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
                        std::unique_ptr<Context> ctx, ResultCBTy cb) override;
 };

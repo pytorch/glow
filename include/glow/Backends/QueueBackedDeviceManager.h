@@ -32,7 +32,7 @@ protected:
   std::atomic<runtime::RunIdentifierTy> nextIdentifier_{1};
 
 public:
-  QueueBackedDeviceManager(BackendKind backend);
+  QueueBackedDeviceManager(BackendKind backend, llvm::StringRef name);
   virtual ~QueueBackedDeviceManager();
 
   /// Initialize the device.
@@ -45,7 +45,7 @@ public:
 
   /// Remove (and delete) the provided network and all it's functions, freeing
   /// up space on the device.
-  void evictNetwork(const Module *module) override;
+  void evictNetwork(llvm::StringRef functionName) override;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
@@ -66,7 +66,7 @@ protected:
   virtual void addNetworkImpl(const Module *, FunctionMapTy, ReadyCBTy) = 0;
 
   /// Remove the module and reclaim it's memory
-  virtual void evictNetworkImpl(const Module *) = 0;
+  virtual void evictNetworkImpl(llvm::StringRef functionName) = 0;
 
   /// Execute provided Function.
   virtual void runFunctionImpl(runtime::RunIdentifierTy, std::string,
