@@ -171,8 +171,8 @@ private:
 // TODO: extend this to work with llvm::Expected as well.
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
-    if (auto errV = std::forward<llvm::Error>(err)) {                          \
-      static_assert(IsLLVMError<decltype(errV)>(),                             \
+    if (auto errV = std::forward<llvm::Error>(err)) {                   \
+      static_assert(IsLLVMError<decltype(errV)>::value,                 \
                     "Expected value to be a llvm::Error");                     \
       return std::forward<llvm::Error>(errV);                                  \
     }                                                                          \

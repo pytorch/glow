@@ -16,6 +16,8 @@
 #include "glow/Support/ThreadPool.h"
 #include "gtest/gtest.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 #include <future>
 #include <vector>
 
@@ -53,7 +55,7 @@ TEST(ThreadPool, BasicTest) {
 TEST(ThreadPool, moveCaptureTest) {
   ThreadPool tp(1);
 
-  std::unique_ptr<int> input = std::make_unique<int>(42);
+  std::unique_ptr<int> input = llvm::make_unique<int>(42);
   int output = 0;
   auto func = [input = std::move(input), &output]() { output = (*input) * 2; };
 

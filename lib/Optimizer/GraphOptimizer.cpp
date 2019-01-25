@@ -2135,10 +2135,10 @@ static void optimizeQuantization(Function *F) {
 }
 
 template <class T, class U>
-using enable_if_same_t = std::enable_if_t<std::is_same<T, U>::value, U>;
+using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
 #define FUNCTION_ENABLE_IF_TEMPLATE(NODE_NAME_)                                \
   template <class T, typename... Args>                                         \
-  enable_if_same_t<T, NODE_NAME_##Node> static
+  typename enable_if_same_t<T, NODE_NAME_##Node>::type static
 
 FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) * createNode(Function &F, Args... args) {
   return F.createAvgPool(args...);

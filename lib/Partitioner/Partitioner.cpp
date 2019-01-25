@@ -203,7 +203,7 @@ void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
 /// Current only partition the representive function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
-  std::unique_ptr<DAGNode> DAG = std::make_unique<DAGNode>();
+  std::unique_ptr<DAGNode> DAG = llvm::make_unique<DAGNode>();
   DAG->logicalDevice = 0;
   DAG->name = F->getName();
   DAG->deviceID = 0;
@@ -226,7 +226,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
-      std::unique_ptr<DAGNode> subDAG = std::make_unique<DAGNode>();
+      std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
       subDAG->logicalDevice = logicalID++;
       funcDAG[subF] = subDAG.get();
@@ -247,7 +247,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         // Check if a DAGNode for subF's parent is created or not. If not,
         // create one.
         if (funcDAG.find(inputF) == funcDAG.end()) {
-          std::unique_ptr<DAGNode> subDAG = std::make_unique<DAGNode>();
+          std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
           subDAG->logicalDevice = logicalID++;
           funcDAG[inputF] = subDAG.get();
@@ -316,10 +316,10 @@ DAGNodeList &Partitioner::Partition() {
     // No partition is needed. Create DAGNode and return. This root is alway a
     // dummy function.
     for (auto F : module_->getFunctions()) {
-      std::unique_ptr<DAGNode> DAG = std::make_unique<DAGNode>();
+      std::unique_ptr<DAGNode> DAG = llvm::make_unique<DAGNode>();
       DAG->logicalDevice = 0;
       DAG->name = F->getName();
-      std::unique_ptr<DAGNode> DAG1 = std::make_unique<DAGNode>();
+      std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
       DAG1->logicalDevice = 0;
       DAG1->name = F->getName();
       DAG1->parents.push_back(DAG.get());

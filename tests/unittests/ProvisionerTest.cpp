@@ -25,7 +25,7 @@ using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
 
 class ProvisionerTest : public ::testing::Test {};
 std::unique_ptr<Module> setupModule(uint functionCount) {
-  std::unique_ptr<Module> module = std::make_unique<Module>();
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
     Function *F = module->createFunction("function" + std::to_string(i));
     auto *X = module->createPlaceholder(ElemKind::FloatTy, {3},
@@ -41,14 +41,14 @@ DAGNodePairTy setupDAG(uint rootCount, uint childCount) {
   std::vector<std::unique_ptr<DAGNode>> children;
   uint currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
-    auto rootNode = std::make_unique<DAGNode>();
-    auto firstNode = std::make_unique<DAGNode>();
+    auto rootNode = llvm::make_unique<DAGNode>();
+    auto firstNode = llvm::make_unique<DAGNode>();
     rootNode->name = "root" + std::to_string(root);
     rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
-      auto newChild = std::make_unique<DAGNode>();
+      auto newChild = llvm::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       currentFunction++;
       firstNode->children.push_back(newChild.get());
