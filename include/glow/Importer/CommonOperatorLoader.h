@@ -104,9 +104,15 @@ protected:
   /// for multidirectional broadcasting.
   virtual bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) = 0;
 
-  void addNodeAsOutput(const OpType &op, Node *R) {
-    for (int i = 0, e = op.output_size(); i < e; i++) {
-      nodeValueByName_[op.output(i)] = NodeValue(R, i);
+  /// Associate the name of operation outputs to a NodeValues corresponding to
+  /// node \p node. If \p numOutputs is lower than 0, then all outputs are
+  /// associated. Otherwise, the first \p numOutputs outputs are associated.
+  void addNodeAsOutput(const OpType &op, Node *node, int numOutputs = -1) {
+    numOutputs = ((numOutputs < 0) || numOutputs > op.output_size())
+                     ? op.output_size()
+                     : numOutputs;
+    for (int i = 0; i < numOutputs; i++) {
+      nodeValueByName_[op.output(i)] = NodeValue(node, i);
     }
   }
 
