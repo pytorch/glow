@@ -32,12 +32,12 @@ bool CPUDeviceManager::isMemoryAvailable(uint64_t estimate) {
 void CPUDeviceManager::addNetworkImpl(const Module *module,
                                       FunctionMapTy functions,
                                       ReadyCBTy readyCB) {
-  auto modIt = modules_.find(module);
-  if (modIt != modules_.end()) {
-    // Already have a module with this ID.
-    // TODO: should we replace it?
-    readyCB(module, ResultCode::Failed);
-    return;
+  // First check for uniqueness of the function name.
+  for (const auto &func : functions) {
+    if (functions_.count(func.first) != 0) {
+      readyCB(module, ResultCode::Failed);
+      return;
+    }
   }
 
   // TODO: we should update usedMemory but we don't currently have a nice way
@@ -50,13 +50,15 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
     return;
   }
 
+  std::set<std::string> &moduleFuncs = modules_[module];
+
   // Add to the function name lookup map.
   for (const auto &func : functions) {
     func.second->getRuntimeBundle().collectConstants(module);
     functions_.emplace(func.first, func.second);
+    moduleFuncs.insert(func.first);
   }
 
-  modules_.emplace_hint(modIt, module, std::move(functions));
   usedMemoryBytes += moduleSize;
 
   // Fire the ready CB.
@@ -70,9 +72,9 @@ void CPUDeviceManager::evictNetworkImpl(const Module *module) {
     return;
   }
 
-  FunctionMapTy moduleFuncs = std::move(modIt->second);
-  for (const auto &func : moduleFuncs) {
-    functions_.erase(func.first);
+  const std::set<std::string> &moduleFuncs = modIt->second;
+  for (const auto &funcName : moduleFuncs) {
+    functions_.erase(funcName);
   }
 
   modules_.erase(modIt);
