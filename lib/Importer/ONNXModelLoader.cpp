@@ -647,7 +647,14 @@ ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
   auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                            varV, 1, epsilon);
 
-  addNodeAsOutput(op, node);
+  // BatchNormalization has 4 optional outputs that are not supported by glow.
+  // Then: 1/ In case the optional outputs are present and used by other
+  // operations of the model, then the import should fail. 2/ In case the
+  // optional outputs are declared but not used, the import should succeed. By
+  // registering only the mandatory output, we make sure the import will fail if
+  // the non supported features are actually requested by the ONNX model.
+  addNodeAsOutput(op, node, 1);
+
   return llvm::Error::success();
 }
 
