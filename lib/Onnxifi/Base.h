@@ -32,6 +32,15 @@
 namespace glow {
 namespace onnxifi {
 
+// TODO get rid of this once HostManager is landed.
+struct HostManager {
+  bool addNetwork(Module *M) { return true; }
+};
+
+// TODO use the actual type here once available.
+using ResultCBTy =
+    std::function<void(int, int, std::unique_ptr<glow::Context>)>;
+
 /// BackendId associated with the Glow backend.
 class BackendId {
 public:
@@ -39,9 +48,9 @@ public:
   /// given Glow backend \p kind, \p id, \p concurrency and whether to use onnx
   /// or caffe2 for models (\p use_onnx).
   explicit BackendId(glow::BackendKind kind, int id, int concurrency,
-                     bool use_onnx)
-      : id_(id), use_onnx_(use_onnx), concurrency_(concurrency),
-        executionEngine_(kind) {}
+                     bool useOnnx, bool useHostManager)
+      : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
+        executionEngine_(kind), useHostManager_(useHostManager) {}
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
 
@@ -55,8 +64,14 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return executionEngine_; }
 
-  /// \returns the whether use onnx or not
-  bool getUseOnnx() const { return use_onnx_; }
+  /// \returns the whether use onnx or not.
+  bool getUseOnnx() const { return useOnnx_; }
+
+  /// \returns the whether use HostManager for inference or not.
+  bool getUseHostManager() const { return useHostManager_; }
+
+  /// \returns HostManager associated with the BackendId.
+  HostManager &getHostManager() { return hostManager_; }
 
   /// \returns the backend id.
   int getID() const { return id_; }
@@ -64,11 +79,21 @@ public:
   /// \returns concurrency for the backend.
   int getConcurrency() const { return concurrency_; }
 
+  /// Run the network named by \p networkName using HostManager with context \p
+  /// ctx afterwhich the result callback \p cb will be called.
+  void runOnHostManager(llvm::StringRef networkName,
+                        std::unique_ptr<Context> ctx, ResultCBTy cb) {
+    // TODO enable once HostManager is landed.
+    // hostManager_->runNetwork(networkName, std::move(ctx), std::move(cb));
+  }
+
 private:
   int id_;
-  bool use_onnx_;
+  bool useOnnx_;
   int concurrency_;
   glow::ExecutionEngine executionEngine_;
+  bool useHostManager_;
+  HostManager hostManager_; // TODO use real HostManager once landed.
 };
 
 typedef BackendId *BackendIdPtr;
@@ -85,8 +110,20 @@ public:
   /// \returns Execution Engine associated with the Backend.
   glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
 
+  /// \returns the whether use HostManager for inference or not.
+  bool getUseHostManager() const { return backendIdPtr_->getUseHostManager(); }
+
+  /// \returns HostManager for the associated BackendId.
+  HostManager &getHostManager() { return backendIdPtr_->getHostManager(); }
+
   /// Run inference async using backend thread pool.
   void runAsync(const std::function<void(void)> &fn);
+
+  // Call BackendId::runOnHostManager
+  void runOnHostManager(llvm::StringRef networkName,
+                        std::unique_ptr<Context> ctx, ResultCBTy cb) {
+    backendIdPtr_->runOnHostManager(networkName, std::move(ctx), std::move(cb));
+  }
 
 private:
   BackendIdPtr backendIdPtr_;
@@ -155,11 +192,6 @@ public:
 private:
   BackendPtr backendPtr_;
   Function *function_;
-
-  /// This is the compilation context that represents a single thread.
-  /// TODO: Once we finish the migration to placeholders we'll need to manage
-  /// the state properly.
-  Context ctx_;
 
   /// Mapping between ONNX name for the input variable and Glow
   /// placeholder for input.

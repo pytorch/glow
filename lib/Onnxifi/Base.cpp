@@ -22,17 +22,22 @@
 
 namespace glow {
 namespace onnxifi {
+namespace {
+const std::string inferenceFunctionName = "inference";
+const std::string compatibilityFunctionName = "check";
+} // namespace
+
 onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
                                               size_t onnxModelSize) {
   Module module;
 
-  auto function = module.createFunction("check");
+  auto function = module.createFunction(compatibilityFunctionName);
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
-  auto loaderOrErr =
-      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
-                                nullptr /*weightDescriptors*/, *function,
-                                false /*loadInputsAsPlaceholders*/, use_onnx_);
+  auto loaderOrErr = ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, 0 /*weightCount*/,
+      nullptr /*weightDescriptors*/, *function,
+      false /*loadInputsAsPlaceholders*/, getUseOnnx());
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -91,7 +96,8 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             uint32_t weightCount,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
   // TODO: support multiple functions here.
-  function_ = backendPtr_->getEE().getModule().createFunction("inference");
+  function_ =
+      backendPtr_->getEE().getModule().createFunction(inferenceFunctionName);
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
@@ -103,7 +109,11 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
   // Emit IR for the graph and compile it.
-  backendPtr_->getEE().compile(CompilationMode::Infer, function_);
+  if (backendPtr_->getUseHostManager()) {
+    backendPtr_->getHostManager().addNetwork(&backendPtr_->getEE().getModule());
+  } else {
+    backendPtr_->getEE().compile(CompilationMode::Infer, function_);
+  }
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -146,26 +156,42 @@ void Graph::run(
     phs.push_back(var);
   }
 
+  auto ctx = std::make_unique<Context>();
+
   // Run inference.
   auto &EE = backendPtr_->getEE();
   auto &mod = EE.getModule();
-  ctx_.allocate(mod.getPlaceholders());
-  updateInputPlaceholders(ctx_, phs, tensors);
-  EE.run(ctx_);
+  ctx->allocate(mod.getPlaceholders());
+  updateInputPlaceholders(*ctx, phs, tensors);
 
-  // Tensors do not own underlying memory for input buffer,
-  // just delete memory allocated for the tensor object itself.
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    delete tensors[i];
-  }
+  // Lambda capturing work to do after the graph has finished running.
+  auto afterRun = [tensors = std::move(tensors), outputPlaceholderToBuffer](
+                      std::unique_ptr<glow::Context> ctx) {
+    // Tensors do not own underlying memory for input buffer,
+    // just delete memory allocated for the tensor object itself.
+    for (size_t i = 0; i < tensors.size(); ++i) {
+      delete tensors[i];
+    }
 
-  // Copy outputs to the addresses specified in the outputPlaceholderToBuffer.
-  for (auto outputVar : outputPlaceholderToBuffer) {
-    void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-    const Tensor *res = ctx_.get(outputVar.first);
+    // Copy output data from the graph to the onnxifi outputs.
+    for (auto &outputVar : outputPlaceholderToBuffer) {
+      void *outputAddress = reinterpret_cast<void *>(outputVar.second);
+      Tensor *res = ctx->get(outputVar.first);
+      memcpy(outputAddress, res->getUnsafePtr(),
+             res->size() * res->getType().getElementSize());
+    }
+  };
 
-    memcpy(outputAddress, res->getUnsafePtr(),
-           res->size() * res->getType().getElementSize());
+  if (backendPtr_->getUseHostManager()) {
+    backendPtr_->runOnHostManager(
+        inferenceFunctionName, std::move(ctx),
+        [afterRun = std::move(afterRun)](int runIdentifier, int resultCode,
+                                         std::unique_ptr<glow::Context> ctx) {
+          afterRun(std::move(ctx));
+        });
+  } else {
+    EE.run(*ctx);
+    afterRun(std::move(ctx));
   }
 }
 
