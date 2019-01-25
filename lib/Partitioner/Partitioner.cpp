@@ -145,8 +145,8 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   unsigned level = bfs.levels.size();
-  // A list of cut. The graph can be partitioned by levels [level - 1,
-  // cut[0]), [cut[0] - 1, cut[1]), ..., [cut[n], -1).
+  // A list of cut. The graph can be partitioned by levels (cut[0], level - 1],
+  // (cut[1], cut[0] - 1], ..., (-1, cut[n] - 1].
   std::vector<int> cut;
 
   // Step 1 : get the initial cut based on BFS levels and avaiableMemory.
@@ -159,10 +159,11 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       tmp += memUsage_[N];
     }
     if (mem + tmp > availableMemory) {
+      // mem == 0 means the mem usage for one level exceeds the availableMem,
+      // accept it now and will do adjustment later. Otherwise, leave tmp to
+      // next stage by assigning it to mem.
       if (mem == 0) {
-        // This means the mem usage for one level exceeds the availableMem,
-        // accept it now and will do adjustment later.
-        cut.push_back(i + 1);
+        cut.push_back(i - 1);
       } else {
         cut.push_back(i);
         mem = tmp;
@@ -176,13 +177,24 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   cut.push_back(-1);
 
   // Step 2 : Create the initial mapping between node and functions.
+  int color = 0;
+  Function *newF;
   for (int k = 0, e = cut.size(); k < e; k++) {
-    auto *newF = F->getParent()->createFunction(std::string(F->getName()) +
-                                                "_part" + std::to_string(k));
+    newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
+                                          std::to_string(++color));
     mapping.createPartition(newF);
+    unsigned mem = 0;
     for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
       for (int j = 0, e1 = bfs.levels[i].second.size(); j < e1; j++) {
         Node *N = bfs.levels[i].second[j];
+        if (mem + memUsage_[N] > availableMemory) {
+          newF = F->getParent()->createFunction(
+              std::string(F->getName()) + "_part" + std::to_string(++color));
+          mapping.createPartition(newF);
+          mem = memUsage_[N];
+        } else {
+          mem += memUsage_[N];
+        }
         mapping.add(N, newF);
       }
     }
@@ -308,11 +320,9 @@ DAGNodeList &Partitioner::Partition() {
   // Find the representive function for running partitioning algrithm.
   F_ = selectRepFunc(module_, memSize_);
 
-  // Possible minimal k devices for a successful partitioning
-  // Note: here 2 is for testing;
-  unsigned k = 2; //(memSize_ + MARGIN) / devices[0].availableMemory;
+  unsigned availMem = deviceInfo_[0].availableMemory;
 
-  if (k == 1) {
+  if (memSize_ < availMem) {
     // No partition is needed. Create DAGNode and return. This root is alway a
     // dummy function.
     for (auto F : module_->getFunctions()) {
@@ -340,9 +350,7 @@ DAGNodeList &Partitioner::Partition() {
   // Partition
   // Use BFS to do the initial partitioning. Starting from the final node, BFS
   // until the memory limitation reached one by one.
-  unsigned unitMem = memSize_ / k; // used for testing
-
-  NodeToFunctionMap partitionMap = selectPartitions(F_, unitMem);
+  NodeToFunctionMap partitionMap = selectPartitions(F_, availMem);
 
   doPartitioning(F_, partitionMap);
 
