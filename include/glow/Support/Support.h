@@ -113,7 +113,10 @@ inline void report(llvm::StringRef str) { report(str.data()); }
 
 /// Printf-like formatting for std::string.
 const std::string strFormat(const char *format, ...)
+#ifndef _MSC_VER
     __attribute__((__format__(__printf__, 1, 2)));
+#endif
+;
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H
