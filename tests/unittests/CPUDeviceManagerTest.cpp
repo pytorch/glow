@@ -381,10 +381,10 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
 
-  CPUDeviceManager cpuCoreDevice(200);
+  CPUDeviceManager cpuCoreDevice("AvailableMemoryTest", 1);
   cpuCoreDevice.init();
 
-  uint64_t expectedBytes = 200 * 1024 * 1024;
+  uint64_t expectedBytes = 1;
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), expectedBytes);
   EXPECT_TRUE(cpuCoreDevice.isMemoryAvailable(expectedBytes));
@@ -425,7 +425,7 @@ TEST(CPUDeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 
   // Evict the first network.
-  cpuCoreDevice.evictNetwork(module.get());
+  cpuCoreDevice.evictNetwork("main");
 
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();

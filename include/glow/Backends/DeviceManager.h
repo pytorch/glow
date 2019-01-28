@@ -43,9 +43,18 @@ protected:
   /// Type of Backend for this Device.
   BackendKind backend_;
 
+  /// Name or address of the device.
+  std::string name_;
+
 public:
-  DeviceManager(BackendKind backend) : backend_(backend) {}
+  DeviceManager(BackendKind backend, llvm::StringRef name = "unnamed")
+      : backend_(backend), name_(name) {}
   virtual ~DeviceManager() {}
+
+  /// Create a device of the type /p backend, with the backend specific
+  /// name/addres /p name.
+  static DeviceManager *createDeviceManager(BackendKind backend,
+                                            llvm::StringRef name);
 
   /// Initialize the device.
   virtual void init() {}
@@ -57,9 +66,9 @@ public:
   virtual void addNetwork(const Module *module, FunctionMapTy functions,
                           ReadyCBTy readyCB) = 0;
 
-  /// Remove (and delete) the provided network and all it's functions, freeing
+  /// Remove (and delete) the provided function, freeing
   /// up space on the device.
-  virtual void evictNetwork(const Module *module) = 0;
+  virtual void evictNetwork(llvm::StringRef functionName) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.

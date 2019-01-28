@@ -18,15 +18,21 @@
 using namespace glow;
 using namespace glow::runtime;
 
-uint64_t CPUDeviceManager::getMaximumMemory() { return maxMemoryBytes; }
+namespace glow {
+DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
+  return new CPUDeviceManager(name);
+}
+} // namespace glow
+
+uint64_t CPUDeviceManager::getMaximumMemory() { return maxMemoryBytes_; }
 
 uint64_t CPUDeviceManager::getAvailableMemory() {
-  return maxMemoryBytes - usedMemoryBytes;
+  return maxMemoryBytes_ - usedMemoryBytes_;
 }
 
 bool CPUDeviceManager::isMemoryAvailable(uint64_t estimate) {
   // No fuzz factor for the CPU device.
-  return maxMemoryBytes >= (usedMemoryBytes + estimate);
+  return maxMemoryBytes_ >= (usedMemoryBytes_ + estimate);
 }
 
 void CPUDeviceManager::addNetworkImpl(const Module *module,
@@ -40,46 +46,29 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
     }
   }
 
-  // TODO: we should update usedMemory but we don't currently have a nice way
-  // to determine the memory used by the module. I'll come back to this, but for
-  // now we'll guess (badly).
-  size_t moduleSize = 200 * 1024 * 1024;
-
-  if (usedMemoryBytes + moduleSize > maxMemoryBytes) {
+  if (usedMemoryBytes_ + functionCost_ > maxMemoryBytes_) {
     readyCB(module, ResultCode::Failed);
     return;
   }
-
-  std::set<std::string> &moduleFuncs = modules_[module];
 
   // Add to the function name lookup map.
   for (const auto &func : functions) {
     func.second->getRuntimeBundle().collectConstants(module);
     functions_.emplace(func.first, func.second);
-    moduleFuncs.insert(func.first);
+    usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
   }
 
-  usedMemoryBytes += moduleSize;
+  assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
   // Fire the ready CB.
   readyCB(module, ResultCode::Ready);
 }
 
-void CPUDeviceManager::evictNetworkImpl(const Module *module) {
-  auto modIt = modules_.find(module);
-  if (modIt == modules_.end()) {
-    // Nothing to do.
-    return;
+void CPUDeviceManager::evictNetworkImpl(llvm::StringRef functionName) {
+  if (functions_.erase(functionName)) {
+    usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   }
-
-  const std::set<std::string> &moduleFuncs = modIt->second;
-  for (const auto &funcName : moduleFuncs) {
-    functions_.erase(funcName);
-  }
-
-  modules_.erase(modIt);
-  usedMemoryBytes -= 200 * 1024 * 1024; // TODO: static moduleSize
-  assert(usedMemoryBytes >= 0);
+  assert(usedMemoryBytes_ >= 0);
 }
 
 void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,

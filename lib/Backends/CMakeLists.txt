@@ -30,7 +30,9 @@ target_link_libraries(Backends
                         Base
                         Graph)
 
-add_library(DeviceManager QueueBackedDeviceManager.cpp)
+add_library(DeviceManager
+              DeviceManagers.cpp
+              QueueBackedDeviceManager.cpp)
 
 target_link_libraries(DeviceManager
                       PRIVATE
