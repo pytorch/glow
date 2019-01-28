@@ -1041,3 +1041,29 @@ TEST(onnx, importPadConstantPositive) {
             {1, 2, 3, 4} /* starts */, {0, 3, 1, 2} /* ends */,
             PaddingMode::CONSTANT, 2.55f, true);
 }
+
+/// Test loading BatchNorm with all optional outputs declared, but not used in
+/// the model. Glow supports only the first mandatory output, but declaring
+/// optional outputs while not using them in the model should not make the
+/// import fail.
+TEST(onnx, batchNormPR2304) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename("tests/models/onnxModels/batchNormPR2304.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor inputTensor(ElemKind::FloatTy, {1, 2, 10, 10});
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputTensor.getType()},
+                           *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("output"));
+  }
+
+  // Check the graph structure.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *trNode = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  EXPECT_NE(nullptr, trNode);
+  auto *bnNode =
+      llvm::dyn_cast<BatchNormalizationNode>(trNode->getInput().getNode());
+  EXPECT_NE(nullptr, bnNode);
+}
