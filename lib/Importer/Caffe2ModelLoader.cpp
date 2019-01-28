@@ -335,7 +335,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // Transpose the output back.
       node = G_.createTranspose(opName, node, NHWC2NCHW);
     }
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -360,7 +360,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
                                             yZeroPoint - OFFSETSHIFT);
     auto *node = G_.createAdd(opName, outTy, in0, in1);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -380,7 +380,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
                                             yZeroPoint - OFFSETSHIFT);
     Node *N = G_.createQuantize(opName, in, outTy);
-    addNodeAsOutput(op, N);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
     return llvm::Error::success();
   }
 
@@ -389,7 +389,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createDequantize(opName, in);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -462,7 +462,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // Transpose the output back.
       node = G_.createTranspose(opName, node, NHWC2NCHW);
     }
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -493,7 +493,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
                                              varV, channel, epsilon);
 
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -619,7 +619,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     // Save the outputs:
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -634,7 +634,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(kernel, loadInt(dict["kernel"]));
 
     Node *node = G_.createChannelShuffle(opName, in, group, kernel);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -644,7 +644,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -655,7 +655,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                getNodeValueOrCreateConstantByName(op.input(0)));
     // Create the log:
     auto *R = G_.createLog(opName, in);
-    addNodeAsOutput(op, R);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return llvm::Error::success();
   }
 
@@ -673,7 +673,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     auto *node = G_.createLogit(opName, input, eps);
     // Save the outputs:
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -685,7 +685,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in1,
                                getNodeValueOrCreateConstantByName(op.input(1)));
     auto *node = G_.createCmpEQ(opName, in0, in1);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -699,7 +699,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
 
     auto *node = G_.createTile(opName, in, tiles, axis);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -712,7 +712,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     // Currently Caffe2 importer only supports inference.
-    addNodeAsOutput(op, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, in));
     return llvm::Error::success();
   }
 
@@ -726,7 +726,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createTranspose(opName, in, NCHW2NHWC);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -737,7 +737,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
-    addNodeAsOutput(op, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, in));
     return llvm::Error::success();
   }
 
@@ -769,7 +769,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
-    addNodeAsOutput(op, SN);
+    RETURN_IF_ERR(addNodeAsOutput(op, SN));
     return llvm::Error::success();
   }
 
@@ -801,7 +801,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       RETURN_ERR("Unsupported Cast type.");
     }
 
-    addNodeAsOutput(op, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, in));
     return llvm::Error::success();
   }
 
@@ -817,7 +817,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                getNodeValueOrCreateConstantByName(op.input(2)));
 
     Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
-    addNodeAsOutput(op, SAN);
+    RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return llvm::Error::success();
   }
 
@@ -836,7 +836,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                getNodeValueOrCreateConstantByName(op.input(1)));
     Node *SCEL =
         G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
-    addNodeAsOutput(op, SCEL);
+    RETURN_IF_ERR(addNodeAsOutput(op, SCEL));
     return llvm::Error::success();
   }
 
@@ -845,7 +845,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createBatchedReduceMean(opName, in, 0);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
