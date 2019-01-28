@@ -1,0 +1,94 @@
+ir_version: 3
+producer_name: "onnx-test"
+opset_import { 
+  version: 7
+}
+graph {
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: FLOAT
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+  }
+  initializer {
+    dims: 2
+    data_type: FLOAT
+    name: "conv1/BatchNorm/Const:0"
+    float_data: 0.0
+    float_data: 0.0
+  }
+  initializer {
+    dims: 2
+    data_type: FLOAT
+    name: "conv1/BatchNorm/beta:0"
+    float_data: 1.0
+    float_data: 1.0
+  }
+  initializer {
+    dims: 2
+    data_type: FLOAT
+    name: "conv1/BatchNorm/moving_mean:0"
+    float_data: 2.0
+    float_data: 2.0
+  }
+  initializer {
+    dims: 2
+    data_type: FLOAT
+    name: "conv1/BatchNorm/moving_variance:0"
+    float_data: 2.0
+    float_data: 2.0
+  }
+  node {
+    input: "input"
+    input: "conv1/BatchNorm/Const:0"
+    input: "conv1/BatchNorm/beta:0"
+    input: "conv1/BatchNorm/moving_mean:0"
+    input: "conv1/BatchNorm/moving_variance:0"
+    output: "conv1/BatchNorm/FusedBatchNorm:0"
+    output: "conv1/BatchNorm/FusedBatchNorm:1"
+    output: "conv1/BatchNorm/FusedBatchNorm:2"
+    output: "conv1/BatchNorm/FusedBatchNorm:3"
+    output: "conv1/BatchNorm/FusedBatchNorm:4"
+    name: "conv1/BatchNorm/FusedBatchNorm"
+    op_type: "BatchNormalization"
+    attribute {
+      name: "epsilon"
+      f: 0.0010000000474974513
+      type: FLOAT
+    }
+  }
+  node {
+    input: "conv1/BatchNorm/FusedBatchNorm:0"
+    output: "output"
+    name: "conv1/BatchNorm/FusedBatchNorm__5"
+    op_type: "Transpose"
+    attribute {
+      name: "perm"
+      ints: 0
+      ints: 2
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+  }
+  output {
+    name: "output"
+  }
+}
+
