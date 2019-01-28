@@ -417,7 +417,7 @@ llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create the IR node.
   Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
-  addNodeAsOutput(op, SN);
+  RETURN_IF_ERR(addNodeAsOutput(op, SN));
 
   return llvm::Error::success();
 }
@@ -508,7 +508,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   // Transpose the output back.
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-  addNodeAsOutput(op, N);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return llvm::Error::success();
 }
@@ -560,7 +560,7 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     node = G_.createAvgPool(opName, tr, kernels, strides, pads);
   }
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-  addNodeAsOutput(op, N);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();
 }
 
@@ -588,7 +588,7 @@ ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
   auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
   Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-  addNodeAsOutput(op, N);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();
 }
 
@@ -601,7 +601,7 @@ llvm::Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
                              getNodeValueOrCreateConstantByName(op.input(0)));
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createSqueeze(opName, in, axes);
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -614,7 +614,7 @@ llvm::Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                              getNodeValueOrCreateConstantByName(op.input(0)));
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createExpandDims(opName, in, axes);
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -653,7 +653,7 @@ ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
   // optional outputs are declared but not used, the import should succeed. By
   // registering only the mandatory output, we make sure the import will fail if
   // the non supported features are actually requested by the ONNX model.
-  addNodeAsOutput(op, node, 1);
+  RETURN_IF_ERR(addNodeAsOutput(op, node, 1));
 
   return llvm::Error::success();
 }
@@ -676,7 +676,7 @@ llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
   Node *node = G_.createConcat(opName, inputs, axis);
 
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -718,7 +718,7 @@ ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
   auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
   auto *node = G_.createFullyConnected(opName, in, W, B);
 
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -760,7 +760,7 @@ llvm::Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   Node *node = G_.createAdd(opName, mul, C);
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -776,7 +776,7 @@ llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
                              getNodeValueOrCreateConstantByName(op.input(1)));
 
   Node *node = G_.createMatMul(opName, LHS, RHS);
-  addNodeAsOutput(op, node);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -832,7 +832,7 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create the IR node.
   Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
-  addNodeAsOutput(op, N);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return llvm::Error::success();
 }

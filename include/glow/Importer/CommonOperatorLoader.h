@@ -107,13 +107,15 @@ protected:
   /// Associate the name of operation outputs to a NodeValues corresponding to
   /// node \p node. If \p numOutputs is lower than 0, then all outputs are
   /// associated. Otherwise, the first \p numOutputs outputs are associated.
-  void addNodeAsOutput(const OpType &op, Node *node, int numOutputs = -1) {
-    numOutputs = ((numOutputs < 0) || numOutputs > op.output_size())
-                     ? op.output_size()
-                     : numOutputs;
+  llvm::Error addNodeAsOutput(const OpType &op, Node *node,
+                              int numOutputs = -1) {
+    RETURN_ERR_IF_NOT(numOutputs <= op.output_size(),
+                      "Can't register more than outputs in the operation.");
+    numOutputs = (numOutputs < 0) ? op.output_size() : numOutputs;
     for (int i = 0; i < numOutputs; i++) {
       nodeValueByName_[op.output(i)] = NodeValue(node, i);
     }
+    return llvm::Error::success();
   }
 
   /// Load pre-trained weights from \p weightDescriptors.
@@ -135,7 +137,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createRELU(opName, in);
-    addNodeAsOutput(op, R);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return llvm::Error::success();
   }
 
@@ -145,7 +147,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *S = G_.createSigmoid(opName, in);
-    addNodeAsOutput(op, S);
+    RETURN_IF_ERR(addNodeAsOutput(op, S));
     return llvm::Error::success();
   }
 
@@ -155,7 +157,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *T = G_.createTanh(opName, in);
-    addNodeAsOutput(op, T);
+    RETURN_IF_ERR(addNodeAsOutput(op, T));
     return llvm::Error::success();
   }
 
@@ -187,7 +189,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createPow(opName, in, 0.5f);
-    addNodeAsOutput(op, R);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return llvm::Error::success();
   }
 
@@ -199,7 +201,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *R = G_.createPow(opName, in, -1.0f);
-    addNodeAsOutput(op, R);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return llvm::Error::success();
   }
 
@@ -208,7 +210,7 @@ protected:
       NodeValue in;
       ASSIGN_VALUE_OR_RETURN_ERR(
           in, getNodeValueOrCreateConstantByName(op.input(0)));
-      addNodeAsOutput(op, in);
+      RETURN_IF_ERR(addNodeAsOutput(op, in));
     } else if (op.input_size() == 2) {
       const std::string &opName = loadOperatorName(op);
       NodeValue in0;
@@ -218,7 +220,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(
           in1, getNodeValueOrCreateConstantByName(op.input(1)));
       auto *node = G_.createAdd(opName, in0, in1);
-      addNodeAsOutput(op, node);
+      RETURN_IF_ERR(addNodeAsOutput(op, node));
     } else {
       const std::string &opName = loadOperatorName(op);
       const unsigned numInputs = op.input_size();
@@ -232,7 +234,7 @@ protected:
       }
       ConcatNode *concat = G_.createConcat(opName, inputs, /* axis */ 0);
       Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ 0);
-      addNodeAsOutput(op, node);
+      RETURN_IF_ERR(addNodeAsOutput(op, node));
     }
     return llvm::Error::success();
   }
@@ -264,7 +266,7 @@ protected:
     // The output should have the same shape as the original input.
     auto origInDims = in.getType()->dims();
     auto *RN = G_.createReshape("reshapeOutput", SM, origInDims);
-    addNodeAsOutput(op, RN);
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return llvm::Error::success();
   }
 
@@ -315,7 +317,7 @@ protected:
       RETURN_ERR("Invalid min or max operator");
     }
 
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -378,7 +380,7 @@ protected:
       node = G_.createMatMul(opName, LHS, RHS);
     }
 
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -449,7 +451,7 @@ protected:
       RETURN_ERR("Unsupported arithmetic typeName");
     }
 
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -567,7 +569,7 @@ protected:
 
     auto *T = G_.createTranspose(opName, in, perm);
 
-    addNodeAsOutput(op, T);
+    RETURN_IF_ERR(addNodeAsOutput(op, T));
     return llvm::Error::success();
   }
 
@@ -581,7 +583,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
     auto *node = G_.createFlatten(opName, in, axis);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -614,7 +616,7 @@ protected:
                       "Currently only support axis being last dimension.");
 
     auto *R = G_.createTopK(opName, in, k);
-    addNodeAsOutput(op, R);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
     return llvm::Error::success();
   }
 
@@ -651,7 +653,7 @@ protected:
       node = G_.createReshape(opName, node, shape);
     }
 
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -668,7 +670,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(2)));
 
     auto *node = G_.createBatchOneHot(opName, data, lengths, values);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -683,7 +685,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2,
                                getNodeValueOrCreateConstantByName(op.input(2)));
     auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -702,7 +704,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(3)));
     auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
                                                    in1, in2, in3);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -711,7 +713,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
     auto *node = G_.createLengthsToRanges(loadOperatorName(op), in);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -727,7 +729,7 @@ protected:
                                getNodeValueOrCreateConstantByName(op.input(2)));
     auto *node =
         G_.createBatchBoxCox(loadOperatorName(op), data, lambda1, lambda2);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -739,7 +741,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(Y,
                                getNodeValueOrCreateConstantByName(op.input(1)));
     auto *node = G_.createDotProduct(loadOperatorName(op), X, Y);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -755,7 +757,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(valueIt->second));
     }
     auto *node = G_.createReplaceNaN(loadOperatorName(op), input, value);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -772,7 +774,7 @@ protected:
                       "Lengths must be a 1D vector.");
 
     auto *node = G_.createLengthsSum(opName, data, lengths);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -787,7 +789,7 @@ protected:
     }
     Node *node =
         G_.createExpandDims(loadOperatorName(op), in, getShape(dims->second));
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return llvm::Error::success();
   }
@@ -807,7 +809,7 @@ protected:
     }
 
     auto *node = G_.createClip(loadOperatorName(op), in, cmin, cmax);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -829,7 +831,7 @@ protected:
 
     auto *node = G_.createSparseToDense(loadOperatorName(op), indices, values,
                                         dataToInferDim);
-    addNodeAsOutput(op, node);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
 
@@ -859,7 +861,7 @@ protected:
     }
 
     Node *GN = G_.createGather(loadOperatorName(op), data, indices, batchDims);
-    addNodeAsOutput(op, GN);
+    RETURN_IF_ERR(addNodeAsOutput(op, GN));
     return true;
   }
 
@@ -883,7 +885,7 @@ protected:
 
     Node *GR = G_.createGatherRanges(loadOperatorName(op), data, ranges,
                                      maxOutputSize);
-    addNodeAsOutput(op, GR);
+    RETURN_IF_ERR(addNodeAsOutput(op, GR));
     return llvm::Error::success();
   }
 
