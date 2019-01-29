@@ -189,7 +189,22 @@ add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:Gr
 LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
-  target_sources(BackendCorrectnessTest PUBLIC HyphenTest.cpp)
+  add_executable(HyphenTest
+                 BackendTestUtils.cpp
+                 HyphenTest.cpp)
+  target_link_libraries(HyphenTest
+                        PRIVATE
+                          Backends
+                          Graph
+                          IR
+                          ExecutionEngine
+                          Optimizer
+                          Quantization
+                          Support
+                          gtest
+                          TestMain)
+  add_glow_test(HyphenTest ${GLOW_BINARY_DIR}/tests/HyphenTest --gtest_output=xml:HyphenTest.xml)
+  list(APPEND UNOPT_TESTS ./tests/HyphenTest -optimize-ir=false &&)
 endif()
 
 if(PNG_FOUND)
