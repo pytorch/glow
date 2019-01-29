@@ -485,8 +485,37 @@ public:
 namespace glow {
 namespace quantization {
 
+/// Helper which, given the output name \p currName of some node, looks for
+/// corresponding names in \p loweredMap which represent any names that this
+/// node was lowered from. If any are found then they are inserted into \p
+/// quantizationInfos along with \p TQP.
+static void
+findAndInsertLoweredInfos(llvm::StringRef currName,
+                          const LoweredNamesMap &loweredMap,
+                          std::vector<NodeQuantizationInfo> &quantizationInfos,
+                          const TensorQuantizationParams &TQP) {
+  auto currSetIt = loweredMap.find(currName);
+  if (currSetIt == loweredMap.end()) {
+    return;
+  }
+
+  // Get the set of names corresponding to currName. All names in the set are
+  // names that were originally lowered into currName.
+  auto &currSet = currSetIt->getValue();
+
+  // For each of the names (currOrigName), insert them into quantizationInfos,
+  // and then recursively find and insert other names in case currOrigName was
+  // also lowered from a previous node.
+  for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
+    llvm::StringRef currOrigName = *i;
+    quantizationInfos.emplace_back(currOrigName, TQP);
+    findAndInsertLoweredInfos(currOrigName, loweredMap, quantizationInfos, TQP);
+  }
+}
+
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(Context &ctx, const Function *F, Schema schema,
+generateNodeQuantizationInfos(Context &ctx, const Function *F,
+                              const LoweredNamesMap &loweredMap, Schema schema,
                               ElemKind quantizationPrecision) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
@@ -511,6 +540,12 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F, Schema schema,
           chooseQuantizationParams(min, max, schema, quantizationPrecision);
 
       quantizationInfos.emplace_back(fullOutputName, TQP);
+
+      // If the NodeValue represented by fullOutputName was created via lowering
+      // another original NodeValue, then generate node quantization info for
+      // the original NodeValue using the same quantization parameters.
+      findAndInsertLoweredInfos(fullOutputName, loweredMap, quantizationInfos,
+                                TQP);
     }
   }
 

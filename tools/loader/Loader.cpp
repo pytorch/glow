@@ -240,6 +240,13 @@ void Loader::compile(Context &ctx) {
     // perform CSE, etc.
     ::optimize(F_, glow::CompilationMode::Infer);
 
+    // Lower everything, keeping track of what NodeValues were lowered to other
+    // NodeValues via the loweredMap_. This loweredMap_ is passed to
+    // generateNodeQuantizationInfos() when writing out the profile, allowing
+    // for both lowered and unlowered NodeValues to find their quantization
+    // parameters.
+    ::lower(F_, *EE_.getBackend(), &loweredMap_);
+
     // Instrument the graph to capture profiles for nodes' outputs.
     F_ = ::profileQuantization(ctx, F_);
   }
@@ -260,6 +267,12 @@ void Loader::compile(Context &ctx) {
     // part of the code we repeat the same transformation in order to create
     // the same graph structure.
     ::optimize(F_, glow::CompilationMode::Infer);
+
+    // Lower as the backend prefers. When generating the profile everything was
+    // lowered, however all lowered and unlowered components have a profile, and
+    // so the backend can lower however it prefers and always find all of its
+    // NodeValue's quantization parameters.
+    ::lower(F_, *EE_.getBackend());
 
     auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
@@ -328,8 +341,8 @@ void Loader::generateAndSerializeQuantizationInfos(Context &ctx) {
   assert(!dumpProfileFileOpt.empty() &&
          "Filename to dump serialized profile to must not be empty.");
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, F_, quantizationSchema,
-                                                  quantizationPrecision);
+      quantization::generateNodeQuantizationInfos(
+          ctx, F_, loweredMap_, quantizationSchema, quantizationPrecision);
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 

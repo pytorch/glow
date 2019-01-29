@@ -131,6 +131,7 @@ struct Model {
   Placeholder *seqLength_;
   Placeholder *output_;
   Context ctx;
+  LoweredNamesMap loweredMap_;
 
   void loadLanguages();
   void loadEncoder();
@@ -150,6 +151,10 @@ struct Model {
       // operations perform CSE, etc.
       ::optimize(F_, glow::CompilationMode::Infer);
 
+      // Lower everything for profile and log lowered info in loweredMap_. Used
+      // later when creating quantization infos.
+      ::lower(F_, *EE_.getBackend(), &loweredMap_);
+
       // Instrument the graph to capture profiles for nodes' outputs.
       F_ = glow::profileQuantization(ctx, F_);
     }
@@ -160,6 +165,9 @@ struct Model {
       // part of the code we repeat the same transformation in order to create
       // the same graph structure.
       glow::optimize(F_, CompilationMode::Infer);
+
+      // Lower however the backend prefers.
+      ::lower(F_, *EE_.getBackend());
 
       auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
@@ -410,7 +418,7 @@ void Model::translate(const std::vector<std::string> &batch) {
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(ctx, F_);
+        quantization::generateNodeQuantizationInfos(ctx, F_, loweredMap_);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }

@@ -16,6 +16,8 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
+#include "glow/Quantization/Quantization.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -39,9 +41,14 @@ void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationMode mode);
 
-/// Lower the high-level neural network operators into low-level linear algebra
-/// operators.
-void lower(Function *F, const Backend &B);
+/// Lower the high-level neural network nodes found in \p F into low-level
+/// linear algebra operators. \p B can prevent lowering of a node via \ref
+/// Backend::shouldLower(). If \p loweredMap is not a nullptr, then everything
+/// is lowered regardless of the preferences of \p B, and \p loweredMap will
+/// contain a mapping from output names of the nodes found and lowered in \p F
+/// to the output names of the nodes they were lowered from from.
+void lower(Function *F, const Backend &B,
+           LoweredNamesMap *loweredMap = nullptr);
 
 /// Dead code elimination.
 void DCE(Function *F);
