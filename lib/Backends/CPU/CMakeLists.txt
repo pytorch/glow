@@ -124,7 +124,7 @@ target_link_libraries(CPUDeviceManager
                       Base
                       CodeGen
                       CPUBackend
-                      DeviceManager
                       Graph
                       IR
-                      Optimizer)
+                      Optimizer
+                      QueueBackedDeviceManager)

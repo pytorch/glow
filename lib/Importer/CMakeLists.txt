@@ -45,6 +45,7 @@ target_link_libraries(Importer
                       PRIVATE
                         Base
                         Graph
+                        LLVMSupport
                         Support)
 target_link_libraries(Importer PUBLIC onnx_proto ${PROTOBUF_LIBRARY})
 
