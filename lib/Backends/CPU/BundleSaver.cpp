@@ -134,7 +134,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   auto bundleName = irgen_.getMainEntryName();
   auto bundleCodeOutput = (outputDir + "/" + bundleName + ".o").str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
-  DEBUG_GLOW(llvm::outs() << "Producing a bundle:\n"
+  DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
                           << "bundle weights:" << bundleWeightsOutput << "\n");

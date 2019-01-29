@@ -43,7 +43,7 @@ void ChildMemSizeBasedScheduler::computeNodeResultsMemorySize() {
       resultSize += N.getType(idx)->getSizeInBytes();
     }
     resultMemSize_[&N] = resultSize;
-    DEBUG_GLOW(llvm::outs()
+    DEBUG_GLOW(llvm::dbgs()
                << "ResultSize of " << N.getName() << ":" << resultSize << "\n");
   }
 }
@@ -72,7 +72,7 @@ void ChildMemSizeBasedScheduler::computeNodeComputationMaxMemorySize() {
         maxSize = maxMemSize_[input];
     }
     maxMemSize_[N] = maxSize;
-    DEBUG_GLOW(llvm::outs()
+    DEBUG_GLOW(llvm::dbgs()
                << "MaxSize of " << N->getName() << ":" << maxSize << "\n");
   }
 }
@@ -133,12 +133,12 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
     }
   }
 
-  DEBUG_GLOW(llvm::outs() << "\nAbout to schedule children of " << N->getName()
+  DEBUG_GLOW(llvm::dbgs() << "\nAbout to schedule children of " << N->getName()
                           << "\n";
-             llvm::outs() << "Children are:\n");
+             llvm::dbgs() << "Children are:\n");
   DEBUG_GLOW(for (auto child
                   : orderedChildren) {
-    llvm::outs() << "Child " << child->getName() << ": "
+    llvm::dbgs() << "Child " << child->getName() << ": "
                  << maxMemSize_[child] - resultMemSize_[child] << "\n";
   });
 
@@ -148,7 +148,7 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
   }
 
   // Schedule the node after all its children are scheduled.
-  DEBUG_GLOW(llvm::outs() << "Scheduled node: " << N->getName() << "\n");
+  DEBUG_GLOW(llvm::dbgs() << "Scheduled node: " << N->getName() << "\n");
   scheduled_.push_back(N);
 }
 
