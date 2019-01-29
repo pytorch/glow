@@ -183,13 +183,14 @@ protected:
   /// All IRConstraint cases below assume that the input and output index that
   /// they are looking for the type is at idx 0. We statically assert that here
   /// along with the case.
-  static constexpr unsigned IRConstraintInputIdx = 0;
-  static constexpr unsigned IRConstraintResultIdx = 0;
-#define IR_CONSTRAINT_CASE(NODE_NAME_, INPUT_NAME_, OUTPUT_NAME_)              \
-  static_assert(                                                               \
-      (NODE_NAME_##Node::INPUT_NAME_##Idx == IRConstraintInputIdx &&           \
-       NODE_NAME_##Node::OUTPUT_NAME_##Idx == IRConstraintResultIdx),          \
-      #NODE_NAME_ "Node format is unexpected.");                               \
+  static constexpr unsigned SingleMatchingInOutTypeInputIdx = 0;
+  static constexpr unsigned SingleMatchingInOutTypeResultIdx = 0;
+#define CASE_SINGLE_MATCHING_INOUT_TYPE(NODE_NAME_, INPUT_NAME_, OUTPUT_NAME_) \
+  static_assert((NODE_NAME_##Node::INPUT_NAME_##Idx ==                         \
+                     SingleMatchingInOutTypeInputIdx &&                        \
+                 NODE_NAME_##Node::OUTPUT_NAME_##Idx ==                        \
+                     SingleMatchingInOutTypeResultIdx),                        \
+                #NODE_NAME_ "Node format is unexpected.");                     \
   case Kinded::Kind::NODE_NAME_##NodeKind
 
   /// Macro to be put in a switch for all the nodes that have a constraint
@@ -197,13 +198,28 @@ protected:
   /// Note: The last case of the macro doesn't have ':' so we can put it
   /// where the macro is inserted to keep the nice code formatting.
   // clang-format off
-#define casesForNodesWithIRConstraint                                          \
-  IR_CONSTRAINT_CASE(LocalResponseNormalization, Input, Result):               \
-  IR_CONSTRAINT_CASE(Slice, Input, Result):                                    \
-  IR_CONSTRAINT_CASE(Reshape, Input, Result):                                  \
-  IR_CONSTRAINT_CASE(TopK, Input, Values):                                     \
-  IR_CONSTRAINT_CASE(Gather, Data, Result):                                    \
-  IR_CONSTRAINT_CASE(MaxPool, Input, Result)
+#define casesForSingleMatchingInOutType                                        \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(LocalResponseNormalization, Input, Result):  \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Slice, Input, Result):                       \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Reshape, Input, Result):                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values):                        \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result):                       \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result)
+  // clang-format on
+
+  /// All CmpNode IR Constraint cases below require that the output has scale
+  /// 1.0, offset 0.
+  static constexpr unsigned CmpNodeIRConstraintResultIdx = 0;
+#define CASE_CMP_NODE(NODE_NAME_)                                              \
+  static_assert(NODE_NAME_##Node::ResultIdx == CmpNodeIRConstraintResultIdx,   \
+                #NODE_NAME_ "Node format is unexpected.");                     \
+  case Kinded::Kind::NODE_NAME_##NodeKind
+
+  // clang-format off
+#define casesForCmpNodes                                                       \
+  CASE_CMP_NODE(CmpLTE):                                                       \
+  CASE_CMP_NODE(CmpEQ):                                                        \
+  CASE_CMP_NODE(IsNaN)
   // clang-format on
 
   /// \see FunctionConverter::morphNode.
@@ -249,19 +265,27 @@ protected:
     switch (node.getKind()) {
       // Those cases need to be in sync with postProcessing, so we generate them
       // using macros.
-    casesForNodesWithIRConstraint : {
+    casesForSingleMatchingInOutType : {
       // The constraints on the IR says that the input type must
       // be the same as the output type.
-      TypeRef inTy = node.getNthInput(IRConstraintInputIdx).getType();
-      TypeRef fixedTy =
-          mod_.uniqueType(quantizationPrecision_,
-                          node.getNthResult(IRConstraintResultIdx).dims(),
-                          inTy->getScale(), inTy->getOffset());
+      TypeRef inTy =
+          node.getNthInput(SingleMatchingInOutTypeInputIdx).getType();
+      TypeRef fixedTy = mod_.uniqueType(
+          quantizationPrecision_,
+          node.getNthResult(SingleMatchingInOutTypeResultIdx).dims(),
+          inTy->getScale(), inTy->getOffset());
 
-      node.setType(IRConstraintResultIdx, fixedTy);
+      node.setType(SingleMatchingInOutTypeResultIdx, fixedTy);
       assert(!lastMorphedNodeWithTypeChanges &&
              "Missed one node to rescale in postprocessing");
       lastMorphedNodeWithTypeChanges = &node;
+      return node;
+    }
+    casesForCmpNodes : {
+      TypeRef OT =
+          mod_.uniqueType(quantizationPrecision_,
+                          node.dims(CmpNodeIRConstraintResultIdx), 1.0, 0);
+      node.setType(CmpNodeIRConstraintResultIdx, OT);
       return node;
     }
     default:
@@ -295,7 +319,7 @@ protected:
 
       break;
     }
-    casesForNodesWithIRConstraint : {
+    casesForSingleMatchingInOutType : {
       // Check that the main loop hands us the node in the order we expect:
       // morph then postprocessing.
       // If the assert breaks, that means that morphNode and postprocessing
@@ -306,12 +330,12 @@ protected:
       // These nodes do not change {S,O} of the output, they use the same
       // {S,O} as the input. Make sure that rescale is applied to comply with
       // the taken profile from the node.
-      TypeRef outputTy =
-          getTargetTypeForOutputImpl(NodeValue(&node, IRConstraintResultIdx));
+      TypeRef outputTy = getTargetTypeForOutputImpl(
+          NodeValue(&node, SingleMatchingInOutTypeResultIdx));
       assert(outputTy->isQuantizedType() && "Node hasn't been quantized yet?!");
       auto outTy = mod_.uniqueType(quantizationPrecision_, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
-      NodeValue val = node.getNthResult(IRConstraintResultIdx);
+      NodeValue val = node.getNthResult(SingleMatchingInOutTypeResultIdx);
       // "node" should have only one use, the dequantize node.
       // Update this use.
       assert(
