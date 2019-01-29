@@ -29,6 +29,29 @@ namespace glow {
 
 /// Thread pool for asynchronous execution of generic functions.
 class ThreadPool final {
+#ifdef WIN32
+  /// A copyable wrapper for a lambda function that has non-copyable objects in
+  /// its lambda capture.
+  /// This is useful for VS builds where std::packaged_tasks wraps a
+  /// std::function which must be copyable.
+  template <class F> struct shared_function {
+    std::shared_ptr<F> f;
+    shared_function() = delete;
+    shared_function(F &&f_) : f(std::make_shared<F>(std::move(f_))) {}
+    shared_function(shared_function const &) = default;
+    shared_function(shared_function &&) = default;
+    shared_function &operator=(shared_function const &) = default;
+    shared_function &operator=(shared_function &&) = default;
+    template <class... As> auto operator()(As &&... as) const {
+      return (*f)(std::forward<As>(as)...);
+    }
+  };
+  template <class F>
+  shared_function<std::decay_t<F>> make_shared_function(F &&f) {
+    return {std::forward<F>(f)};
+  }
+#endif
+
 public:
   /// Constructor. Initializes a thread pool with \p numWorkers
   /// threads and has them all run ThreadPool::threadPoolWorkerMain.
@@ -43,7 +66,13 @@ public:
   template <typename F> std::future<void> submit(F &&fn) {
     // Add fn to the work queue.
     std::unique_lock<std::mutex> lock(workQueueMtx_);
+
+#ifdef WIN32
+    std::packaged_task<void(void)> task(make_shared_function(std::move(fn)));
+#else
     std::packaged_task<void(void)> task(std::move(fn));
+#endif
+
     auto future = task.get_future();
     workQueue_.push(std::move(task));
     lock.unlock();

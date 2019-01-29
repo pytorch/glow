@@ -86,7 +86,7 @@ public:
   glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
 
   /// Run inference async using backend thread pool.
-  void runAsync(const std::function<void(void)> &fn);
+  void runAsync(std::function<void(void)> &&fn);
 
 private:
   BackendIdPtr backendIdPtr_;
