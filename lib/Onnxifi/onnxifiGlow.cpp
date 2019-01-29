@@ -66,18 +66,18 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   // TODO: change concurrency level to std::thread::hardware_concurrency()
   // when Glow CPU backend can handle concurrent execution.
   // For now, limit concurrent execution to a single worker thread..
-  auto *cpuBackendOnnx =
-      new glow::onnxifi::BackendId(glow::BackendKind::CPU, /*id*/ 1,
-                                   /*concurrency*/ 1, /*use_onnx*/ true);
+  auto *cpuBackendOnnx = new glow::onnxifi::BackendId(
+      glow::BackendKind::CPU, /*id*/ 1,
+      /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
   auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*use_onnx*/ true);
-  auto *cpuBackendC2 =
-      new glow::onnxifi::BackendId(glow::BackendKind::CPU, /*id*/ 3,
-                                   /*concurrency*/ 1, /*use_onnx*/ false);
+      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
+  auto *cpuBackendC2 = new glow::onnxifi::BackendId(
+      glow::BackendKind::CPU, /*id*/ 3,
+      /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
   auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 4, /*concurrency*/ 1, /*use_onnx*/ false);
+      /*id*/ 4, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
   manager.addBackendId(cpuBackendOnnx);
   manager.addBackendId(interpreterBackendOnnx);
   manager.addBackendId(cpuBackendC2);
@@ -88,7 +88,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   backendIDs[2] = cpuBackendC2;
   backendIDs[3] = interpreterBackendC2;
 #else
-  *numBackends = 2;
+  *numBackends = 3;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -98,16 +98,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
   auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 1, /*concurrency*/ 1, /*use_onnx*/ true);
+      /*id*/ 1, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
   auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*use_onnx*/ false);
+      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
+  auto *interpreterBackendC2HostManager = new glow::onnxifi::BackendId(
+      glow::BackendKind::Interpreter,
+      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false,
+      /*useHostManager*/ true);
 
   manager.addBackendId(interpreterBackendOnnx);
   manager.addBackendId(interpreterBackendC2);
+  manager.addBackendId(interpreterBackendC2HostManager);
 
   backendIDs[0] = interpreterBackendOnnx;
   backendIDs[1] = interpreterBackendC2;
+  backendIDs[2] = interpreterBackendC2HostManager;
 #endif
 
   return ONNXIFI_STATUS_SUCCESS;
