@@ -385,7 +385,9 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *TLN = F->createTile("tile", BRAN, 2, 0);
   auto *SN = F->createSplat("splat", TLN->getResult().getType(), 100.0);
   auto *MN = F->createMax("max", SN, TLN);
-  auto *save = F->createSave("save", MN);
+  auto *CLTE = F->createCmpLTE("cmplte", MN, SN);
+  auto *SLN = F->createSelect("select", CLTE, SN, MN);
+  auto *save = F->createSave("save", SLN);
   ctx.allocate(save->getPlaceholder());
   return F;
 }
