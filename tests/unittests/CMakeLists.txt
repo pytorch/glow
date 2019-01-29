@@ -35,6 +35,7 @@ target_link_libraries(BackendTest
                         gtest
                         TestMain)
 add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/BackendTest -optimize-ir=false &&)
 
 add_executable(BasicIRTest
                BasicIRTest.cpp)
@@ -138,6 +139,7 @@ target_link_libraries(GradCheckTest
                         gtest
                         TestMain)
 add_glow_test(GradCheckTest ${GLOW_BINARY_DIR}/tests/GradCheckTest --gtest_output=xml:GradCheckTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/GradCheckTest -optimize-ir=false &&)
 
 add_executable(GraphGradTest
                GraphGradTest.cpp)
@@ -149,6 +151,7 @@ target_link_libraries(GraphGradTest
                         gtest
                         TestMain)
 add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/GraphGradTest -optimize-ir=false &&)
 
 add_executable(GraphOptzTest
                GraphOptzTest.cpp)
@@ -183,6 +186,7 @@ target_link_libraries(GraphTest
                         gtest
                         TestMain)
 add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:GraphTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
   target_sources(BackendCorrectnessTest PUBLIC HyphenTest.cpp)
@@ -246,6 +250,7 @@ target_link_libraries(MLTest
                         gtest
                         TestMain)
 add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest --gtest_output=xml:MLTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/MLTest -optimize-ir=false &&)
 
 if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
@@ -288,6 +293,7 @@ target_link_libraries(OperatorTest
                         gtest
                         TestMain)
 add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/OperatorTest -optimize-ir=false &&)
 
 add_executable(PartitionerTest
                PartitionerTest.cpp)
@@ -331,6 +337,7 @@ target_link_libraries(QuantizationTest
                         gtest
                         TestMain)
 add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/QuantizationTest -optimize-ir=false &&)
 
 add_executable(TensorsTest
                TensorsTest.cpp)
@@ -377,17 +384,6 @@ target_link_libraries(UtilsTest
                         TestMain)
 add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml)
 
-# ------------------------------------------------------------------------------
-# Unopt tests 
-# ------------------------------------------------------------------------------
-LIST(APPEND UNOPT_TESTS
-       ./tests/BackendTest -optimize-ir=false &&
-       ./tests/MLTest -optimize-ir=false &&
-       ./tests/OperatorTest -optimize-ir=false &&
-       ./tests/QuantizationTest -optimize-ir=false &&
-       ./tests/GradCheckTest -optimize-ir=false &&
-       ./tests/GraphTest -optimize-ir=false &&
-       ./tests/GraphGradTest -optimize-ir=false)
-
+LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
