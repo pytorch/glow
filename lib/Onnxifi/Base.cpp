@@ -71,8 +71,8 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-void Backend::runAsync(const std::function<void(void)> &fn) {
-  threadPool_.submit(fn);
+void Backend::runAsync(std::function<void(void)> &&fn) {
+  threadPool_.submit(std::move(fn));
 }
 
 bool Event::signal() {

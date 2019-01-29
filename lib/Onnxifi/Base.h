@@ -122,7 +122,7 @@ public:
   HostManager &getHostManager() { return backendIdPtr_->getHostManager(); }
 
   /// Run inference async using backend thread pool.
-  void runAsync(const std::function<void(void)> &fn);
+  void runAsync(std::function<void(void)> &&fn);
 
   // Call BackendId::runOnHostManager
   void runOnHostManager(llvm::StringRef networkName,
