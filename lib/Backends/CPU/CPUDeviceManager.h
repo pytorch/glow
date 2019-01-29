@@ -33,7 +33,7 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
 
   /// Static memory cost of the CPU Function.
   /// This is very arbitrary for the CPU backend.
-  const u_int64_t functionCost_{1};
+  const uint64_t functionCost_{1};
 
 public:
   CPUDeviceManager(llvm::StringRef name = "unnamed", size_t maxMemory = 1000)

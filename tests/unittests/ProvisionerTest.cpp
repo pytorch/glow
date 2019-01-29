@@ -24,7 +24,7 @@ using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
                                 std::vector<std::unique_ptr<DAGNode>>>;
 
 class ProvisionerTest : public ::testing::Test {};
-std::unique_ptr<Module> setupModule(uint functionCount) {
+std::unique_ptr<Module> setupModule(unsigned functionCount) {
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
     Function *F = module->createFunction("function" + std::to_string(i));
@@ -36,10 +36,10 @@ std::unique_ptr<Module> setupModule(uint functionCount) {
   return module;
 }
 
-DAGNodePairTy setupDAG(uint rootCount, uint childCount) {
+DAGNodePairTy setupDAG(unsigned rootCount, unsigned childCount) {
   std::vector<std::unique_ptr<DAGNode>> networks;
   std::vector<std::unique_ptr<DAGNode>> children;
-  uint currentFunction = 0;
+  unsigned currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
     auto rootNode = llvm::make_unique<DAGNode>();
     auto firstNode = llvm::make_unique<DAGNode>();
