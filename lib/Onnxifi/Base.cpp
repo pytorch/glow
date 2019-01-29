@@ -23,8 +23,8 @@
 namespace glow {
 namespace onnxifi {
 namespace {
-const std::string inferenceFunctionName = "inference";
-const std::string compatibilityFunctionName = "check";
+const char *inferenceFunctionName = "inference";
+const char *compatibilityFunctionName = "check";
 } // namespace
 
 onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
@@ -156,7 +156,7 @@ void Graph::run(
     phs.push_back(var);
   }
 
-  auto ctx = std::make_unique<Context>();
+  auto ctx = llvm::make_unique<Context>();
 
   // Run inference.
   auto &EE = backendPtr_->getEE();

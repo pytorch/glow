@@ -104,7 +104,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
   auto *interpreterBackendC2HostManager = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false, /*useOnnx*/ false,
+      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false,
       /*useHostManager*/ true);
 
   manager.addBackendId(interpreterBackendOnnx);

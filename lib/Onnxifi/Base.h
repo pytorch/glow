@@ -34,7 +34,9 @@ namespace onnxifi {
 
 // TODO get rid of this once HostManager is landed.
 struct HostManager {
-  bool addNetwork(Module *M) { return true; }
+  bool addNetwork(Module *M) {
+    llvm_unreachable("HostManager is not yet implemented.");
+  }
 };
 
 // TODO use the actual type here once available.
@@ -45,8 +47,11 @@ using ResultCBTy =
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind, \p id, \p concurrency and whether to use onnx
-  /// or caffe2 for models (\p use_onnx).
+  /// given Glow backend \p kind, \p id, \p concurrency, whether to use onnx
+  /// or caffe2 for models (\p useInnx), and whether to use HostManager instead
+  /// of ExecutionEngine for running graphs (useHostManager).
+  /// NOTE: useHostManager is not yet supported as HostManager is yet to be
+  /// fully implemented.
   explicit BackendId(glow::BackendKind kind, int id, int concurrency,
                      bool useOnnx, bool useHostManager)
       : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
