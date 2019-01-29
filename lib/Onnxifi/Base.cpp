@@ -48,19 +48,18 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
-  const auto *backend = getEE().getBackend();
-
-  if (!backend) {
+  if (!glowBackend_) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  glow::lower(function, *backend);
+  glow::lower(function, *glowBackend_);
 
   const auto &nodes = function->getNodes();
 
   for (const auto &node : nodes) {
     // TODO: Make is isOpSupported more able to handle different ElemKinds.
-    bool opSupported = getEE().isOpSupported(node.getKind(), ElemKind::FloatTy);
+    bool opSupported =
+        glowBackend_->isOpSupported(node.getKind(), ElemKind::FloatTy);
     if (!opSupported) {
       // TODO: Use a more specific ONNXIFI error code here to denote what about
       // this operator is not supported (shape, type, etc).
@@ -97,7 +96,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
   // TODO: support multiple functions here.
   function_ =
-      backendPtr_->getEE().getModule().createFunction(inferenceFunctionName);
+      executionEngine_.getModule().createFunction(inferenceFunctionName);
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
@@ -110,9 +109,9 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // Emit IR for the graph and compile it.
   if (backendPtr_->getUseHostManager()) {
-    backendPtr_->getHostManager().addNetwork(&backendPtr_->getEE().getModule());
+    backendPtr_->getHostManager().addNetwork(&executionEngine_.getModule());
   } else {
-    backendPtr_->getEE().compile(CompilationMode::Infer, function_);
+    executionEngine_.compile(CompilationMode::Infer, function_);
   }
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -159,8 +158,7 @@ void Graph::run(
   auto ctx = llvm::make_unique<Context>();
 
   // Run inference.
-  auto &EE = backendPtr_->getEE();
-  auto &mod = EE.getModule();
+  auto &mod = executionEngine_.getModule();
   ctx->allocate(mod.getPlaceholders());
   updateInputPlaceholders(*ctx, phs, tensors);
 
@@ -190,7 +188,7 @@ void Graph::run(
           afterRun(std::move(ctx));
         });
   } else {
-    EE.run(*ctx);
+    executionEngine_.run(*ctx);
     afterRun(std::move(ctx));
   }
 }

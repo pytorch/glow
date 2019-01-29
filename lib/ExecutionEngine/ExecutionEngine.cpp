@@ -33,7 +33,7 @@ void ExecutionEngine::setBackend(BackendKind backendKind) {
   function_.reset();
 }
 
-/// Set the code generator kind to \p backend.
+/// Set the code generator to the given \p backend.
 void ExecutionEngine::setBackend(Backend *backend) {
   backend_.reset(backend);
   function_.reset();

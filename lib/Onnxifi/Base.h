@@ -16,6 +16,7 @@
 #ifndef GLOW_ONNXIFI_BASE_H
 #define GLOW_ONNXIFI_BASE_H
 
+#include "glow/Backends/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Support/ThreadPool.h"
@@ -55,9 +56,8 @@ public:
   explicit BackendId(glow::BackendKind kind, int id, int concurrency,
                      bool useOnnx, bool useHostManager)
       : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
-        executionEngine_(kind), useHostManager_(useHostManager) {}
-
-  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy);
+        glowBackendKind_(kind), glowBackend_(createBackend(kind)),
+        useHostManager_(useHostManager) {}
 
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
@@ -65,9 +65,6 @@ public:
   /// compatible with the glow backend.
   onnxStatus checkGraphCompatibility(const void *onnxModel,
                                      size_t onnxModelSize);
-
-  /// \returns Execution Engine associated with the Backend.
-  glow::ExecutionEngine &getEE() { return executionEngine_; }
 
   /// \returns the whether use onnx or not.
   bool getUseOnnx() const { return useOnnx_; }
@@ -84,6 +81,9 @@ public:
   /// \returns concurrency for the backend.
   int getConcurrency() const { return concurrency_; }
 
+  /// \returns the glow BackendKind of this BackendId.
+  BackendKind getGlowBackendKind() const { return glowBackendKind_; }
+
   /// Run the network named by \p networkName using HostManager with context \p
   /// ctx afterwhich the result callback \p cb will be called.
   void runOnHostManager(llvm::StringRef networkName,
@@ -96,7 +96,8 @@ private:
   int id_;
   bool useOnnx_;
   int concurrency_;
-  glow::ExecutionEngine executionEngine_;
+  BackendKind glowBackendKind_;
+  std::unique_ptr<Backend> glowBackend_;
   bool useHostManager_;
   HostManager hostManager_; // TODO use real HostManager once landed.
 };
@@ -112,9 +113,6 @@ public:
   /// Whether this backend uses ONNX proto or Caffe2 proto.
   bool getUseOnnx() const { return backendIdPtr_->getUseOnnx(); }
 
-  /// \returns Execution Engine associated with the Backend.
-  glow::ExecutionEngine &getEE() { return backendIdPtr_->getEE(); }
-
   /// \returns the whether use HostManager for inference or not.
   bool getUseHostManager() const { return backendIdPtr_->getUseHostManager(); }
 
@@ -123,6 +121,11 @@ public:
 
   /// Run inference async using backend thread pool.
   void runAsync(const std::function<void(void)> &fn);
+
+  /// \returns the glow BackendKind of the associated BackendId.
+  BackendKind getGlowBackendKind() const {
+    return backendIdPtr_->getGlowBackendKind();
+  }
 
   // Call BackendId::runOnHostManager
   void runOnHostManager(llvm::StringRef networkName,
@@ -160,7 +163,9 @@ typedef Event *EventPtr;
 
 class Graph {
 public:
-  explicit Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
+  explicit Graph(BackendPtr backendPtr)
+      : executionEngine_(backendPtr->getGlowBackendKind()),
+        backendPtr_(backendPtr) {}
 
   BackendPtr backend() { return backendPtr_; }
 
@@ -195,6 +200,8 @@ public:
   void runAsync(EventPtr inputEvent, EventPtr outputEvent);
 
 private:
+  /// Execution engine to use to run this graph.
+  glow::ExecutionEngine executionEngine_;
   BackendPtr backendPtr_;
   Function *function_;
 
