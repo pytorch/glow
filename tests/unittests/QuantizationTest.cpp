@@ -406,6 +406,9 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   Function *F1 = createSimpleGraphForQuantization(mod, ctx, A, B, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
+
+  LoweredNamesMap loweredMap;
+  lower(F1, *profileEE.getBackend(), &loweredMap);
   F1 = glow::profileQuantization(ctx, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
@@ -415,11 +418,13 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          ctx, F1, quantization::Schema::Asymmetric, quantizationPrecision);
+          ctx, F1, loweredMap, quantization::Schema::Asymmetric,
+          quantizationPrecision);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
+  lower(F2, *backendSpecificEE.getBackend());
   F2 = quantization::quantizeFunction(backendSpecificEE, QI,
                                       quantizationPrecision, F2);
   backendSpecificEE.compile(CompilationMode::Infer, F2);

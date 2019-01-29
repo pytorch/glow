@@ -1051,14 +1051,21 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Training:
   runBatch(EE, ctx, 500, sampleCounter, {input, ex}, {&images, &labels});
 
+  // Lower everything before profiling. The loweredMap will be used when
+  // generating the profile to ensure all lowered components' profiles are
+  // contained.
+  LoweredNamesMap loweredMap;
+  Function *PF = F->clone("profile");
+  lower(PF, *EE.getBackend(), &loweredMap);
+
   // Profiling:
-  Function *PF = glow::profileQuantization(ctx, F);
+  PF = glow::profileQuantization(ctx, PF);
   EE.compile(CompilationMode::Infer, PF);
   runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF);
+      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
   Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
   // Evaluate on the quantized function:
@@ -1153,8 +1160,15 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // -- STEP2 - Profile and quantize the network. --
 
-  // Profiled 'F'.
-  Function *PF = glow::profileQuantization(ctx, F);
+  // Lower everything before profiling. The loweredMap will be used when
+  // generating the profile to ensure all lowered components' profiles are
+  // contained.
+  LoweredNamesMap loweredMap;
+  Function *PF = F->clone("profile");
+  lower(PF, *EE.getBackend(), &loweredMap);
+
+  // Profile the fully lowered 'F', 'PF'.
+  PF = glow::profileQuantization(ctx, PF);
   EE.compile(CompilationMode::Infer, PF);
 
   // Run the graph to capture the profile.
@@ -1162,7 +1176,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF);
+      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
 
   Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 

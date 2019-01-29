@@ -28,6 +28,12 @@ namespace glow {
 
 class ExecutionEngine;
 
+/// Used to keep track of the origin of lowered Nodes via output names as
+/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
+/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
+/// is a key which maps to a set of names which contains the output name of Y.
+using LoweredNamesMap = llvm::StringMap<std::set<std::string>>;
+
 /// Tensor quantization parameters for a given node.
 struct NodeQuantizationInfo {
   std::string nodeOutputName_;
@@ -53,11 +59,15 @@ struct NodeQuantizationInfo {
 namespace quantization {
 
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
-/// using the method specified by \p schema and target quantization
-/// precision \p quantizationPrecision. Profiling values will be written into
-/// context \p ctx.
+/// using the method specified by \p schema and target quantization precision \p
+/// quantizationPrecision. Profiling values will be written into context \p
+/// ctx. \p loweredMap maps from the NodeOutputName of a NodeValue which was
+/// lowered to a vector of the original NodeOutputNames which it replaced; this
+/// map is used to generate infos for the original unlowered NodeValues which no
+/// longer exist in \p F.
 std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    Context &ctx, const Function *F, Schema schema = Schema::Asymmetric,
+    Context &ctx, const Function *F, const LoweredNamesMap &loweredMap = {},
+    Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
 /// Quantizes the function \p F into a new unoptimized partially quantized

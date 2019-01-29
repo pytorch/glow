@@ -41,6 +41,10 @@ class Loader {
   ExecutionEngine EE_{};
   /// Function containing the model.
   Function *F_{nullptr};
+  /// A map between quantization profiling names of NodeValues that were lowered
+  /// from each other. Maps to a set of NodeValues that were replaced by the
+  /// NodeValue (key) that replaced them.
+  LoweredNamesMap loweredMap_;
 
 public:
   /// Getter for the Function.
