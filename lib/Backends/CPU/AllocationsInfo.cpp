@@ -73,7 +73,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
         valueNumbers_[A.first].first == ValueKind::ConstantWeight
             ? "constant weight"
             : "mutable weight";
-    llvm::errs() << "Allocated " << kind << " " << A.first->getName()
+    llvm::dbgs() << "Allocated " << kind << " " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
                  << "  address range:  [" << allocatedAddress_[A.first] << ", "
                  << allocatedAddress_[A.first] + A.first->getSizeInBytes()
@@ -115,7 +115,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   }
   DEBUG_GLOW(for (auto &A
                   : allocatedAddress_) {
-    llvm::errs() << "Allocated activation " << A.first->getName()
+    llvm::dbgs() << "Allocated activation " << A.first->getName()
                  << " size: " << A.first->getSizeInBytes()
                  << "  address range:  [" << allocatedAddress_[A.first] << ", "
                  << allocatedAddress_[A.first] + A.first->getSizeInBytes()
