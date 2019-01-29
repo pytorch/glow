@@ -13,6 +13,7 @@ add_library(onnxifi-glow-lib
 
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
+                        Backends
                         ExecutionEngine
                         Graph
                         Importer
@@ -21,6 +22,7 @@ target_link_libraries(onnxifi-glow-lib
 
 target_link_libraries(onnxifi-glow
                       PUBLIC
+                        Backends
                         ExecutionEngine
                         Graph
                         Importer

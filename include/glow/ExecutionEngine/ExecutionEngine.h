@@ -39,7 +39,11 @@ class ExecutionEngine final {
   /// The Module that represents the high-level program.
   Module M_;
   /// The network execution backend.
-  std::unique_ptr<Backend> backend_;
+  Backend *backend_ = nullptr;
+  /// Whether or not the ExecutionEngine owns the backend or is just using
+  /// a backend provided from elsewhere. If ownsBackend is true,
+  /// ~ExecutionEngine will delete the backend_.
+  bool ownsBackend_ = false;
   /// A glow function compiled for this ExecutionEngine's backend.
   std::unique_ptr<CompiledFunction> function_;
 
@@ -52,8 +56,10 @@ public:
   /// using this backend.
   void setBackend(BackendKind backendKind);
 
-  /// Set the code generator to a custom \p backend.
-  void setBackend(Backend *backend);
+  /// Set the code generator to a custom \p backend. If \p ownsBackend is false
+  /// then ExecutionEngine will use the given backend without owning it which
+  /// means that ~ExecutionEngine will not delete it.
+  void setBackend(Backend *backend, bool ownsBackend = true);
 
   /// Get a pointer to the backend.
   const Backend *getBackend() const;
