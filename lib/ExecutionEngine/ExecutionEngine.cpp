@@ -24,24 +24,31 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine(BackendKind backendKind)
-    : backend_(createBackend(backendKind)) {}
+ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
+  setBackend(backendKind);
+}
 
 /// Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
-  backend_.reset(createBackend(backendKind));
-  function_.reset();
+  setBackend(createBackend(backendKind));
 }
 
 /// Set the code generator to the given \p backend.
-void ExecutionEngine::setBackend(Backend *backend) {
-  backend_.reset(backend);
+void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
+  if (ownsBackend_) {
+    delete backend_;
+  }
+  backend_ = backend;
+  ownsBackend_ = ownsBackend;
   function_.reset();
 }
 
-const Backend *ExecutionEngine::getBackend() const { return backend_.get(); }
+const Backend *ExecutionEngine::getBackend() const { return backend_; }
 
-ExecutionEngine::~ExecutionEngine() = default;
+ExecutionEngine::~ExecutionEngine() {
+  // Call setBackend to make sure that backend_ is deleted if it's owned.
+  setBackend(nullptr, /*ownsBackend*/ false);
+}
 
 void glow::updateInputPlaceholders(Context &ctx,
                                    llvm::ArrayRef<Placeholder *> ph,

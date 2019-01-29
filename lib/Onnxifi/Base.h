@@ -56,8 +56,7 @@ public:
   explicit BackendId(glow::BackendKind kind, int id, int concurrency,
                      bool useOnnx, bool useHostManager)
       : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
-        glowBackendKind_(kind), glowBackend_(createBackend(kind)),
-        useHostManager_(useHostManager) {}
+        glowBackend_(createBackend(kind)), useHostManager_(useHostManager) {}
 
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
@@ -81,8 +80,8 @@ public:
   /// \returns concurrency for the backend.
   int getConcurrency() const { return concurrency_; }
 
-  /// \returns the glow BackendKind of this BackendId.
-  BackendKind getGlowBackendKind() const { return glowBackendKind_; }
+  /// \returns the glow Backend of this BackendId.
+  glow::Backend *getGlowBackend() { return glowBackend_.get(); }
 
   /// Run the network named by \p networkName using HostManager with context \p
   /// ctx afterwhich the result callback \p cb will be called.
@@ -96,8 +95,7 @@ private:
   int id_;
   bool useOnnx_;
   int concurrency_;
-  BackendKind glowBackendKind_;
-  std::unique_ptr<Backend> glowBackend_;
+  std::unique_ptr<glow::Backend> glowBackend_;
   bool useHostManager_;
   HostManager hostManager_; // TODO use real HostManager once landed.
 };
@@ -122,10 +120,8 @@ public:
   /// Run inference async using backend thread pool.
   void runAsync(const std::function<void(void)> &fn);
 
-  /// \returns the glow BackendKind of the associated BackendId.
-  BackendKind getGlowBackendKind() const {
-    return backendIdPtr_->getGlowBackendKind();
-  }
+  /// \returns the glow Backend of the associated BackendId.
+  glow::Backend *getGlowBackend() { return backendIdPtr_->getGlowBackend(); }
 
   // Call BackendId::runOnHostManager
   void runOnHostManager(llvm::StringRef networkName,
@@ -163,9 +159,10 @@ typedef Event *EventPtr;
 
 class Graph {
 public:
-  explicit Graph(BackendPtr backendPtr)
-      : executionEngine_(backendPtr->getGlowBackendKind()),
-        backendPtr_(backendPtr) {}
+  explicit Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {
+    executionEngine_.setBackend(backendPtr->getGlowBackend(),
+                                /*ownsBackend*/ false);
+  }
 
   BackendPtr backend() { return backendPtr_; }
 
