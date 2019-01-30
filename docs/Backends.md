@@ -20,14 +20,18 @@ All backends in Glow derive from the [abstract base class
 `Backend`](https://github.com/pytorch/glow/blob/master/include/glow/Backends/Backend.h). There
 are two pure virtual functions all backends must implement:
 
-- `virtual std::unique_ptr<CompiledFunction> compile(Function *F, const Context &ctx) const;`
+- `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
 
-  - This function takes a `Function *F` to compile. `Context &ctx` maps the
-    graph to the concrete execution environment for a specific function. It
-    should return a unique pointer to the
-    [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend
-    uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an
-    optimized `IRFunction`.
+  - This function takes a `Function *F` to compile. It should return a unique pointer to the
+    [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. It also stores the constants used by the function in the `CompiledFunction`'s [RuntimeBundle](#runtimebundle-helper-class). If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
+
+- `virtual std::unique_ptr<CompiledFunction> compileWithoutConstants(Function *F) const;`
+
+  - This function takes a `Function *F` to compile. This function does not store
+    constants in the `RuntimeBundle` this allows for that action to be handled later. It should return
+    a unique pointer to the [`CompiledFunction`](#compiledfunction-abstract-class) of `F`.
+    If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate
+    an optimized `IRFunction`.
 
 - `virtual bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const;`
 
@@ -97,13 +101,24 @@ Additionally, there are virtual functions that backends can override:
 `CompiledFunction` is an abstract class that represents the result of
 compilation of a `Function`. Backends must implement their own derived class
 from `CompiledFunction`, which must be returned as a result of
-`Backend::compile()`. `CompiledFunction` contains a single pure virtual function
+`Backend::compile()` or `Backend::compileWithoutConstants()` .
+ `CompiledFunction` contains a single pure virtual function
 that must be implemented: `virtual void execute();`. This function is
 responsible for copying inputs to the device from all input
 [Placeholders](https://github.com/pytorch/glow/blob/master/docs/IR.md#placeholders),
 executing the function, and copying outputs back from the device to output
-Placeholders. Thus after the function returns, all Placeholders for the outputs
-of the function should have had their backing tensor updated.
+Placeholders. The `CompiledFunction` contains a [RuntimeBundle](#runtimebundle-helper-class)
+which contains the symbol information and mappings of inputs and outputs. Thus after the 
+function returns, all Placeholders for the outputs of the function should have had 
+their backing tensor updated.
+
+### `RuntimeBundle` Helper Class
+
+`RuntimeBundle` is a helper class that contains the symbol information and collection
+of constants needed at runtime. This allows a function to be compiled without being linked
+to a context, and allows the `Function` to be freed after compilation. The symbol information
+is stored in a table where the key is the symbol name and the payload contains symbol information
+including, size, offset, type, and whether it is an input or output of the function. `RuntimeBundle` also  contains a pointer that may point to a block of memory that contains the constants for the `CompiledFunction` if that `Backend` uses it.
 
 ## Backend-Specific Nodes and Instructions Transformations
 
