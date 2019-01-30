@@ -196,7 +196,7 @@ TEST_F(PartitionerTest, Basic2) {
   Partitioner myPartitioner(&mod_, devices);
 
   DAGNodeList myList = std::move(myPartitioner.Partition());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(mod_.getFunctions().size(), 2);
   ASSERT_EQ(myList.roots.size(), 1);
 
   // Run the paritioned graph and compare the results.

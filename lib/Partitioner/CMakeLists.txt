@@ -1,5 +1,6 @@
 add_library(Partitioner
-            Partitioner.cpp)
+	      PartitionerUtils.cpp
+	      Partitioner.cpp)
 
 target_link_libraries(Partitioner
                       PRIVATE
