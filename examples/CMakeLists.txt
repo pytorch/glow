@@ -87,6 +87,17 @@ if(GLOW_WITH_CPU)
   target_include_directories(resnet-concurrent PUBLIC ${CMAKE_SOURCE_DIR}/lib)
 endif()
 
+add_executable(resnet-tracing
+                 resnet-tracing.cpp)
+target_link_libraries(resnet-tracing
+                      PRIVATE
+                        Backends
+                        DeviceManager
+                        ExecutionEngine
+                        Graph
+                        Importer
+                        Optimizer)
+
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()

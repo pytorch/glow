@@ -19,6 +19,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Runtime/TraceLogger.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -141,11 +142,19 @@ void BoundInterpreterFunction::execute(IRFunction *F, Context *ctx) {
     externalTensors_[w] = ph.second;
   }
 
+  runtime::TraceThread *traceLogger = ctx->getTraceEvents();
+
 // Do the forward pass.
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
+    if (traceLogger) {                                                         \
+      traceLogger->beginTraceEvent(#NAME);                                     \
+    }                                                                          \
     fwd##CLASS(llvm::cast<CLASS>(&I));                                         \
+    if (traceLogger) {                                                         \
+      traceLogger->endTraceEvent(#NAME);                                       \
+    }                                                                          \
     break;                                                                     \
   }
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)

@@ -17,6 +17,7 @@
 #include "glow/Graph/Context.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Runtime/TraceLogger.h"
 
 using namespace glow;
 
@@ -98,6 +99,11 @@ uint64_t Context::getDataSize() const {
     size += T->getSizeInBytes();
   }
   return size;
+}
+
+runtime::TraceThread *Context::setTraceLogger(runtime::TraceThread *logger) {
+  std::swap(traceEvents_, logger);
+  return logger;
 }
 
 Context::Context(llvm::ArrayRef<Placeholder *> placeholders,

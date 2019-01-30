@@ -25,6 +25,9 @@ namespace glow {
 
 class Tensor;
 class Placeholder;
+namespace runtime {
+class TraceThread;
+}
 
 /// This class provides a mapping between some graph nodes, which are a symbolic
 /// representation of some computation, and concrete tensors that represent the
@@ -41,6 +44,9 @@ public:
 private:
   /// Maps Placeholders to Tensors.
   PlaceholderMap map_;
+
+  /// Stores trace events for this run. May be nullptr.
+  runtime::TraceThread *traceEvents_{nullptr};
 
 public:
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
@@ -80,6 +86,13 @@ public:
 
   /// \returns the size in bytes of allocated Tensors owned by Context.
   uint64_t getDataSize() const;
+
+  /// Sets the trace logger for this inference run. \returns the previous logger
+  /// set.
+  runtime::TraceThread *setTraceLogger(runtime::TraceThread *logger);
+
+  /// \returns the TraceThread for this run, used for inferance tracing.
+  runtime::TraceThread *getTraceEvents() { return traceEvents_; }
 
   Context() = default;
 
