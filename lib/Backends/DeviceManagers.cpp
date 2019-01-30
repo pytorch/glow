@@ -63,6 +63,8 @@ DeviceManager *DeviceManager::createDeviceManager(BackendKind backendKind,
     return createOCLDeviceManager(name);
   case BackendKind::CPU:
     return createCPUDeviceManager(name);
+  default:
+    GLOW_UNREACHABLE("not supported backend");
   }
 
   // This is to make compiler happy. It can never reach this point as switch
