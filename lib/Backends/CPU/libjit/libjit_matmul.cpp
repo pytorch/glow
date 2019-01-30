@@ -56,7 +56,7 @@ constexpr int nc = 4096;
 /// Only pack matrices if dimension is above this threshold.  Packing is
 /// primarily helpful for avoiding TLB pressure and cache set conflicts, so this
 /// can be fairly large.
-constexpr size_t pack_threshold = 1024;
+constexpr int pack_threshold = 1024;
 
 /// Compute a RAxRB block of C using a vectorized dot product, where RA is the
 /// number of registers to load from matrix A, and RB is the number of registers

@@ -1546,7 +1546,7 @@ static void find_min_max_f(float *tensor, size_t size, float &min, float &max) {
 }
 
 static int check_all_zeros(float *arrayToCheck, size_t size) {
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     if (arrayToCheck[i] != 0) {
       return 0;
     }
