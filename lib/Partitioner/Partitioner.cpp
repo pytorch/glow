@@ -139,6 +139,148 @@ static BFSLevel getBFSLevel(Function *F) {
   return bfs;
 }
 
+// Combine the partitions if necessary : if all outside uses of the nodes in
+// partition1 is in partition2, and the sum of memory consumption of partition1
+// and partition2 is less than availableMemory, combine partition1 and
+// partition2.
+void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
+                                    FunctionToNodesMapTy &nodesSet,
+                                    uint64_t availableMemory) {
+
+  for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+       it != nodesSet.end(); ++it) {
+    std::vector<Node *> outUsers = getOutUsers((*it).second);
+    if (outUsers.empty()) {
+      continue;
+    }
+
+    bool flag = true;
+    for (int i = 1, e = outUsers.size(); i < e; i++) {
+      if (partitions[outUsers[i]] != partitions[outUsers[i - 1]]) {
+        flag = false;
+        break;
+      }
+    }
+    if (flag) {
+      // This partition only has one successor.
+      Function *cur = (*it).first;
+      Function *suc = partitions[outUsers[0]];
+      NodesSetTy tmp = nodesSet.lookup(suc);
+      GraphMemInfo cost1 = partitions.getGraphMemInfo(cur);
+      GraphMemInfo cost2 = partitions.getGraphMemInfo(suc);
+      if (cost1.constMemSize + cost1.inMemSize + cost2.constMemSize +
+              cost2.inMemSize - cost1.outMemSize <
+          availableMemory) {
+        // We can combine the two partitions to fit one device.
+        for (NodesSetTy::iterator it2 = tmp.begin(); it2 != tmp.end(); ++it2) {
+          partitions.add(*it2, cur);
+        }
+        (*it).second.insert(tmp.begin(), tmp.end());
+        partitions.deletePartition(suc);
+        nodesSet.erase(suc);
+        module_->eraseFunction(suc);
+      }
+    }
+  }
+}
+
+void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
+                                   uint64_t availableMemory) {
+  // For each partitioin, create a node set.
+  FunctionToNodesMapTy nodesSet;
+  for (NodeToFunctionMapTy::iterator it = partitions.begin();
+       it != partitions.end(); ++it) {
+    nodesSet[(*it).second].insert((*it).first);
+  }
+
+  // Initial the memory cost for each partition. Now we use the output size to
+  // represent the communication cost.
+  for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+       it != nodesSet.end(); ++it) {
+    GraphMemInfo cost = getGraphMemInfo((*it).second);
+    partitions.setGraphMemInfo((*it).first, cost);
+  }
+
+  // Move/Exchange nodes between any two connected partitions, until no gain is
+  // get.
+  // Step1 Move: Assume Partition1 -> Partition2, try to move nodes from
+  // Partition2 to Partition1 if those nodes only use the nodes in
+  // Partition1(recursively) and the move won't make Partition1's memory exceeds
+  // the memory constraint, and the communication cost is minimized.
+  bool gain = true;
+  while (gain) {
+    // gain is initialized as false, it will be set to be true if there is at
+    // least one node can be moved from one set to antoher set.
+    gain = false;
+    for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+         it != nodesSet.end(); ++it) {
+      NodesSetTy nSet = (*it).second;
+      std::vector<Node *> outUsers = getOutUsersWithOnePredecessor(nSet);
+      if (outUsers.empty()) {
+        continue;
+      }
+      Function *cur = (*it).first;
+      uint64_t memSize = partitions.getGraphMemInfo(cur).constMemSize +
+                         partitions.getGraphMemInfo(cur).inMemSize;
+      uint64_t communicationCost = partitions.getGraphMemInfo(cur).outMemSize;
+      // Check if a node can be moved to current node set (i.e nSet).
+      for (int i = 0, e = outUsers.size(); i < e; i++) {
+        // Rule 1: this move won't break memory constraint.
+        if (memUsage_[outUsers[i]] + memSize > availableMemory) {
+          continue;
+        }
+        // Rule 2: this move won't cause constant duplication.
+        bool cont = false;
+        for (int j = 0, e1 = outUsers[i]->getNumInputs(); j < e1; j++) {
+          auto in = outUsers[i]->getNthInput(j);
+          if (isa<Storage>(in.getNode()) && !in.hasOneUse()) {
+            cont = true;
+            break;
+          }
+        }
+        if (cont) {
+          continue;
+        }
+        // Rule 3: this move won't increase communication cost. Even if this
+        // move won't change communication cost, according to rule 1 and rule 2,
+        // the memory consumption of the partition where this node (i.e
+        // outUsers[i]) belongs can be reduced. Therefore, it may trigger later
+        // node movement or paritionCombine.
+        nSet.insert(outUsers[i]);
+        GraphMemInfo cost = getGraphMemInfo(nSet);
+        if (cost.outMemSize <= communicationCost) {
+          // Move this node to current node set.
+          nSet.insert(outUsers[i]);
+          nodesSet[cur].insert(outUsers[i]);
+          Function *suc = partitions[outUsers[i]];
+          nodesSet[suc].erase(outUsers[i]);
+          // Update the partitions.
+          partitions.add(outUsers[i], cur);
+          partitions.setGraphMemInfo(cur, cost);
+          if (nodesSet[suc].empty()) {
+            // It is possible that after moving a node from Partition2 to
+            // Partition1, Partition2 become empty. Remove the empty partition.
+            partitions.deletePartition(suc);
+            module_->eraseFunction(suc);
+          } else {
+            cost = getGraphMemInfo(nodesSet[suc]);
+            partitions.setGraphMemInfo(suc, cost);
+          }
+          gain = true;
+          communicationCost = cost.outMemSize;
+          memSize += memUsage_[outUsers[i]];
+        }
+      }
+    }
+  }
+
+  // TODO... :Step 2: exchange two nodes from two partitions to minimize
+  // communication cost.
+
+  // Combine the current partitions if necessary.
+  partitionsCombine(partitions, nodesSet, availableMemory);
+}
+
 /// Assign nodes to partitions and return the mapping.
 NodeToFunctionMap Partitioner::selectPartitions(Function *F,
                                                 unsigned availableMemory) {
@@ -149,7 +291,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   // (cut[1], cut[0] - 1], ..., (-1, cut[n] - 1].
   std::vector<int> cut;
 
-  // Step 1 : get the initial cut based on BFS levels and avaiableMemory.
+  // Step 1 : get the initial cut based on BFS levels and availableMemory.
   // TODO .. need to remove the duplicated memory usage.
   unsigned mem = 0;
   for (int i = level - 1; i >= 0; i--) {
@@ -199,9 +341,9 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       }
     }
   }
-  // Step 3 : adjust the partition based on performance (Advanced Graph
-  // Paritioning algrithm will be applied here).
-  // --- TODO
+
+  // Step 3 : adjust the partition based on performance.
+  partitionsAdjust(mapping, availableMemory);
 
   return mapping;
 }

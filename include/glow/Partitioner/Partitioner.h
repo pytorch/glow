@@ -17,6 +17,7 @@
 #define GLOW_PARTITIONER_PARTITIONER_H
 
 #include "glow/Graph/Graph.h"
+#include "glow/Partitioner/PartitionerUtils.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -29,19 +30,27 @@ namespace glow {
 
 using namespace runtime;
 
-using MemUsageMap = std::unordered_map<Node *, unsigned>;
+using MemUsageMapTy = std::unordered_map<Node *, unsigned>;
+using NodesSetTy = std::set<Node *>;
+using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
-/// Helper structure for building a partition. Records a mapping of nodes in the
-/// original function to destination partitions, along with a list of the
-/// newly-created functions.
+/// Helper structure for building a partition. Records 1) a mapping of nodes in
+/// the original function to destination partitions, along with a list of the
+/// newly-created functions; 2) a mapping of newly-created functions aalong with
+/// a set of nodes sets.
+using NodeToFunctionMapTy = llvm::DenseMap<Node *, Function *>;
+using FunctionToNodesMapTy = llvm::DenseMap<Function *, NodesSetTy>;
+
 class NodeToFunctionMap {
-  using Map = llvm::DenseMap<Node *, Function *>;
 
   /// Newly-created partitions.
   FunctionList functions_;
 
   /// Map of nodes in the original function to their target partition.
-  Map nodeToFunction_;
+  NodeToFunctionMapTy nodeToFunction_;
+
+  /// Map of sub-fuctions to their memory consumption.
+  PartitionCostMapTy partitionCost_;
 
 public:
   /// Create a new partition \p F.
@@ -54,10 +63,22 @@ public:
   const FunctionList &getPartitions() const { return functions_; }
 
   /// Map API.
-  Map::iterator find(Node *N) { return nodeToFunction_.find(N); }
-  Map::iterator begin() { return nodeToFunction_.begin(); }
-  Map::iterator end() { return nodeToFunction_.end(); }
+  NodeToFunctionMapTy::iterator find(Node *N) {
+    return nodeToFunction_.find(N);
+  }
+  NodeToFunctionMapTy::iterator begin() { return nodeToFunction_.begin(); }
+  NodeToFunctionMapTy::iterator end() { return nodeToFunction_.end(); }
+
   Function *operator[](Node *n) { return nodeToFunction_[n]; }
+  void deletePartition(Function *func) { functions_.remove(func); }
+
+  /// Set the memory consumption \p cost for a partition \p func.
+  void setGraphMemInfo(Function *func, GraphMemInfo cost) {
+    partitionCost_[func] = cost;
+  }
+
+  /// Get the memory consumption for a partition \p func.
+  GraphMemInfo getGraphMemInfo(Function *func) { return partitionCost_[func]; }
 };
 
 /// The struct contains all the created DAGNodes. This DAGNodeList owns all the
@@ -92,7 +113,7 @@ class Partitioner {
   size_t memSize_;
 
   /// The map of each operator and the corresponding memory size.
-  MemUsageMap memUsage_;
+  MemUsageMapTy memUsage_;
 
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
@@ -101,6 +122,19 @@ class Partitioner {
   /// Get the minimal memory requirement for each op in the representive
   /// function.
   void initOpMemUsage();
+
+  /// Combine the partitions if necessary : if all outside uses of the nodes in
+  /// /// partition1 is in partition2, and the sum of memory consumption of
+  /// partition1 and partition2 is less than availableMemory, combine partition1
+  /// and partition2.
+  void partitionsCombine(NodeToFunctionMap &partitions,
+                         FunctionToNodesMapTy &nodesSet,
+                         uint64_t availableMemory);
+
+  /// After getting the intial partitions, ajust the partitions to miminize
+  /// communication and computation cost.
+  void partitionsAdjust(NodeToFunctionMap &partitions,
+                        uint64_t availableMemory);
 
   /// Assign nodes to partitions and return the mapping.
   NodeToFunctionMap selectPartitions(Function *F, unsigned availableMemory);
