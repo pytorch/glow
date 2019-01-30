@@ -13,34 +13,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_CPU_CPUDEVICEMANAGER_H
-#define GLOW_BACKENDS_CPU_CPUDEVICEMANAGER_H
+#ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
+#define GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
 
 namespace glow {
 
-/// A class controlling a single CPU thread of execution driving the JIT
-/// backend. Many CPUFunctions may be added, but only one inference is executed
-/// at a time.
-class CPUDeviceManager : public QueueBackedDeviceManager {
+/// A class controlling a single "Interpreter Device", a thread of execution in
+/// the IR-Interpreter. Many InterpreterFunctions may be added, but only one
+/// inference is executed at a time.
+class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Maximum available memory on the device, for CPU devices fix to some
+  /// Maximum available memory on the device, for local devices fix to some
   /// constant.
   uint64_t maxMemoryBytes_{0};
 
   /// Amount of memory used by all models.
   uint64_t usedMemoryBytes_{0};
 
-  /// Static memory cost of the CPU Function.
-  /// This is very arbitrary for the CPU backend.
-  const uint64_t functionCost_{1};
+  /// Static memory cost of the InterpreterFunction.
+  /// This is very arbitrary for the Interpreter backend.
+  const u_int64_t functionCost_{1};
 
 public:
-  CPUDeviceManager(llvm::StringRef name = "unnamed", size_t maxMemory = 1000)
-      : QueueBackedDeviceManager(BackendKind::CPU, name),
+  InterpreterDeviceManager(llvm::StringRef name = "unnamed",
+                           size_t maxMemory = 1000)
+      : QueueBackedDeviceManager(BackendKind::Interpreter, name),
         maxMemoryBytes_(maxMemory) {}
 
   /// Returns the amount of memory in bytes available on the device when no
@@ -65,4 +66,4 @@ protected:
 
 } // namespace glow
 
-#endif // GLOW_BACKENDS_CPU_CPUDEVICEMANAGER_H
+#endif // GLOW_BACKENBDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H

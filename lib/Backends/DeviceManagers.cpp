@@ -25,10 +25,7 @@ namespace glow {
 /// when you define a new DeviceManager.
 
 /// Create a new instance of the interpreter Device.
-DeviceManager *createInterpreterDeviceManager(llvm::StringRef name) {
-  (void)name;
-  GLOW_UNREACHABLE("Unimplemented");
-}
+DeviceManager *createInterpreterDeviceManager(llvm::StringRef name);
 
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend DeviceManager.

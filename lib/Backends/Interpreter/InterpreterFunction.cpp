@@ -133,7 +133,11 @@ void BoundInterpreterFunction::execute(IRFunction *F, Context *ctx) {
   // Register the concrete tensors that back the placeholder tensors.
   for (auto &ph : ctx->pairs()) {
     auto *w = F->getWeightForNode(ph.first);
-    assert(!externalTensors_.count(w) && "The tensor is already registered");
+    // If the Placeholder has been aliased to the same Weight, just skip it.
+    if (externalTensors_.count(w)) {
+      continue;
+    }
+
     externalTensors_[w] = ph.second;
   }
 

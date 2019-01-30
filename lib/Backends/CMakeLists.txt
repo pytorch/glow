@@ -1,5 +1,7 @@
 add_subdirectory(Interpreter)
 
+LIST(APPEND linked_device_managers InterpreterDeviceManager)
+
 if(GLOW_WITH_OPENCL)
   add_subdirectory(OpenCL)
   LIST(APPEND linked_backends OpenCL)
@@ -34,11 +36,12 @@ add_library(DeviceManager
               DeviceManagers.cpp
               QueueBackedDeviceManager.cpp)
 target_link_libraries(DeviceManager
+                      PUBLIC
+                        ${linked_device_managers}
                       PRIVATE
                         Backends
                         Graph
-                        ThreadPool
-                        ${linked_device_managers})
+                        ThreadPool)
 
 add_library(QueueBackedDeviceManager
             QueueBackedDeviceManager.cpp)

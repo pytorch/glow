@@ -119,12 +119,12 @@ add_library(CPUDeviceManager
             CPUDeviceManager.cpp)
 target_link_libraries(CPUDeviceManager
                       PRIVATE
-                      Backends
-                      BackendUtils
-                      Base
-                      CodeGen
-                      CPUBackend
-                      Graph
-                      IR
-                      Optimizer
-                      QueueBackedDeviceManager)
+                        Backends
+                        BackendUtils
+                        Base
+                        CodeGen
+                        CPUBackend
+                        Graph
+                        IR
+                        Optimizer
+                        QueueBackedDeviceManager)
