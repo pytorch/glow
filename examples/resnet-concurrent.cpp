@@ -32,7 +32,6 @@
 
 using namespace glow;
 using namespace glow::runtime;
-using namespace std::chrono_literals;
 
 namespace {
 llvm::cl::OptionCategory category("resnet-concurrent Options");
@@ -132,7 +131,7 @@ int main(int argc, char **argv) {
   llvm::outs() << "Initializing " << numDevices << " CPU Devices.\n";
   std::vector<std::unique_ptr<CPUDeviceManager>> devices;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    devices.emplace_back(std::make_unique<CPUDeviceManager>());
+    devices.emplace_back(llvm::make_unique<CPUDeviceManager>());
     devices[i]->init();
   }
 
@@ -156,7 +155,7 @@ int main(int argc, char **argv) {
   }
 
   for (auto &f : compiles) {
-    f.wait_for(/* timeout_duration */ 30s);
+    f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
     ResultCode code = f.get();
     if (code != ResultCode::Ready) {
       return 1;
@@ -197,7 +196,7 @@ int main(int argc, char **argv) {
                                   ImageChannelOrder::BGR, ImageLayout::NCHW,
                                   /* useImagenetNormalization */ true);
 
-    auto ctx = std::make_unique<Context>();
+    auto ctx = llvm::make_unique<Context>();
     ctx->allocate(module.getPlaceholders());
     updateInputPlaceholders(*ctx, {input}, {&image});
 
