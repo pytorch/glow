@@ -4,10 +4,8 @@ add_library(Support
               Random.cpp
               Support.cpp)
 target_link_libraries(Support
-                      PRIVATE
+                      PUBLIC
                         LLVMSupport)
 
 add_library(ThreadPool
               ThreadPool.cpp)
-
-

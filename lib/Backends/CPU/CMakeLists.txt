@@ -18,7 +18,7 @@ set(CPURunttimeCompileOptions
       -ffast-math
       -fno-finite-math-only
       -g0
-      -emit-llvm 
+      -emit-llvm
       -O0)
 
 set(libjit_files "libjit;libjit_conv;libjit_matmul")
@@ -82,7 +82,7 @@ add_library(CPUBackend
 
 llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
-                      PRIVATE
+                      PUBLIC
                         Base
                         CodeGen
                         BackendUtils
