@@ -43,6 +43,9 @@ void optimize(Function *F, CompilationMode mode);
 /// operators.
 void lower(Function *F, const Backend &B);
 
+/// Dead code elimination.
+void DCE(Function *F);
+
 /// Convert placeholders in Module \p M to constants based on the values in \p
 /// ctx.  Do not convert any placeholders explicitly listed in \p vars.
 void convertPlaceholdersToConstants(Function *F, const Context &ctx,

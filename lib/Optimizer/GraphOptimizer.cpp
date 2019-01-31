@@ -57,7 +57,7 @@ static bool shouldDeleteNode(Node *N) {
 }
 
 /// Dead code elimination.
-static void DCE(Function *F) {
+void glow::DCE(Function *F) {
   auto &nodes = F->getNodes();
   auto &consts = F->getParent()->getConstants();
 
