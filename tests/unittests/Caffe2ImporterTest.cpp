@@ -19,6 +19,10 @@
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "gtest/gtest.h"
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 /// Test loading conv op from a Caffe2 model.
