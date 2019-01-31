@@ -101,6 +101,7 @@ TEST(Graph, float16Conv) {
   Node *K = MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
 
   auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
   EXPECT_TRUE(conv->verify());
   EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
