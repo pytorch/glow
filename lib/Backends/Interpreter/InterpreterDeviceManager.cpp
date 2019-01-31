@@ -13,33 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "CPUDeviceManager.h"
+#include "InterpreterDeviceManager.h"
 
 #include "llvm/Support/raw_ostream.h"
 
-using namespace glow;
 using namespace glow::runtime;
 
 namespace glow {
-DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
-  return new CPUDeviceManager(name);
+
+DeviceManager *createInterpreterDeviceManager(llvm::StringRef name) {
+  return new InterpreterDeviceManager(name);
 }
-} // namespace glow
 
-uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
+uint64_t InterpreterDeviceManager::getMaximumMemory() const {
+  return maxMemoryBytes_;
+}
 
-uint64_t CPUDeviceManager::getAvailableMemory() const {
+uint64_t InterpreterDeviceManager::getAvailableMemory() const {
   return maxMemoryBytes_ - usedMemoryBytes_;
 }
 
-bool CPUDeviceManager::isMemoryAvailable(uint64_t estimate) const {
-  // No fuzz factor for the CPU device.
+bool InterpreterDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return maxMemoryBytes_ >= (usedMemoryBytes_ + estimate);
 }
 
-void CPUDeviceManager::addNetworkImpl(const Module *module,
-                                      FunctionMapTy functions,
-                                      ReadyCBTy readyCB) {
+void InterpreterDeviceManager::addNetworkImpl(const Module *module,
+                                              FunctionMapTy functions,
+                                              ReadyCBTy readyCB) {
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -69,15 +69,16 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   readyCB(module, ResultCode::Ready);
 }
 
-void CPUDeviceManager::evictNetworkImpl(llvm::StringRef functionName) {
+void InterpreterDeviceManager::evictNetworkImpl(llvm::StringRef functionName) {
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   }
 }
 
-void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,
-                                       std::unique_ptr<Context> ctx,
-                                       ResultCBTy resultCB) {
+void InterpreterDeviceManager::runFunctionImpl(RunIdentifierTy id,
+                                               std::string function,
+                                               std::unique_ptr<Context> ctx,
+                                               ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     llvm::errs() << "Failed to run function: name " << function
@@ -94,3 +95,5 @@ void CPUDeviceManager::runFunctionImpl(RunIdentifierTy id, std::string function,
   // Fire the resultCB.
   resultCB(id, ResultCode::Executed, std::move(ctx));
 }
+
+} // namespace glow

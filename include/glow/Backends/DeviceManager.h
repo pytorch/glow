@@ -85,15 +85,15 @@ public:
   BackendKind getBackendKind() { return backend_; }
 
   /// \returns the maximum memory (in bytes) available on the device.
-  virtual uint64_t getMaximumMemory() = 0;
+  virtual uint64_t getMaximumMemory() const = 0;
 
   /// \returns the currently available memory (in bytes) available on the
   /// device, for provisioning new networks.
-  virtual uint64_t getAvailableMemory() = 0;
+  virtual uint64_t getAvailableMemory() const = 0;
 
   /// \returns true if we expect a Module with the estimated constant size will
   /// fit on the device.
-  virtual bool isMemoryAvailable(uint64_t estimate) = 0;
+  virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
 };
 
 } // namespace glow

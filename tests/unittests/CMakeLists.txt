@@ -75,22 +75,19 @@ add_glow_test(ConvTest
               ${GLOW_BINARY_DIR}/tests/ConvTest)
 LIST(APPEND UNOPT_TESTS ./tests/ConvTest -optimize-ir=false &&)
 
-if(GLOW_WITH_CPU)
-  add_executable(CPUDeviceManagerTest
-                 CPUDeviceManagerTest.cpp)
-  target_link_libraries(CPUDeviceManagerTest
-                        PRIVATE
-                          Backends
-                          DeviceManager
-                          CPUDeviceManager
-                          Graph
-                          IR
-                          ExecutionEngine
-                          Optimizer
-                          gtest
-                          TestMain)
-  add_glow_test(CPUDeviceManagerTest ${GLOW_BINARY_DIR}/tests/CPUDeviceManagerTest --gtest_output=xml:CPUDeviceManagerTest.xml)
-endif()
+add_executable(DeviceManagerTest
+               DeviceManagerTest.cpp)
+target_link_libraries(DeviceManagerTest
+                      PRIVATE
+                        Backends
+                        DeviceManager
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Optimizer
+                        gtest
+                        TestMain)
+add_glow_test(DeviceManagerTest ${GLOW_BINARY_DIR}/tests/DeviceManagerTest --gtest_output=xml:DeviceManagerTest.xml)
 
 add_executable(Float16Test
                Float16Test.cpp)
