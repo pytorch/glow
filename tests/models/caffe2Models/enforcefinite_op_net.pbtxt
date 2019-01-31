@@ -1,0 +1,9 @@
+name: "EnforceFinite"
+op {
+  input: "X"
+  output: "Y"
+  name: ""
+  type: "EnforceFinite"
+}
+external_input: "X"
+external_output: "Y"

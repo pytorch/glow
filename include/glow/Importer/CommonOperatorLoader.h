@@ -960,7 +960,13 @@ protected:
       RETURN_IF_ERR(loadIdentity(op, dict));
       return true;
     }
-    if (typeName == "Identity") {
+    if (typeName == "EnforceFinite") {
+      // Load as Identity operation, because in Caffe2 this op does not change
+      // any data. It only raises error if some tensor element is Inf or NaN.
+      RETURN_IF_ERR(loadIdentity(op, dict));
+      return true;
+    }
+    if (typeName == "Identity" || typeName == "Alias") {
       RETURN_IF_ERR(loadIdentity(op, dict));
       return true;
     }

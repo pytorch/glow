@@ -1573,3 +1573,46 @@ TEST(caffe2, tensorFillsTest) {
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);
   }
 }
+
+void verifyNoOp(llvm::StringRef NetDescFilename) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor input(ElemKind::FloatTy, {1, 2, 3, 4});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    // Loaded protos must have at least one external output, so load an unused
+    // output and type to satisfy it. It is named unused_output in
+    // empty_predict_net.pbtxt.
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(output);
+
+  // The only node is Save.
+  EXPECT_EQ(F->getNodes().size(), 1);
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *N = llvm::dyn_cast<Placeholder>(saveNode->getInput());
+  EXPECT_TRUE(N);
+}
+
+TEST(caffe2, Alias) {
+  verifyNoOp(GLOW_DATA_PATH "tests/models/caffe2Models/alias_op_net.pbtxt");
+}
+
+TEST(caffe2, EnforceFinite) {
+  verifyNoOp(GLOW_DATA_PATH
+             "tests/models/caffe2Models/enforcefinite_op_net.pbtxt");
+}
