@@ -21,6 +21,10 @@
 #include "glow/Importer/ONNXModelLoader.h"
 #include "gtest/gtest.h"
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 template <class OpType>
@@ -33,7 +37,8 @@ importArithMultiBroadcastTest(std::string fileName,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename = std::string("tests/models/onnxModels/") + fileName;
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
   Context ctx;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
@@ -187,8 +192,8 @@ TEST(onnx, importUniBroadcastMultiOutput) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename =
-      std::string("tests/models/onnxModels/UniBroadcastIssue2135.onnxtxt");
+  std::string NetFilename = std::string(
+      GLOW_DATA_PATH "tests/models/onnxModels/UniBroadcastIssue2135.onnxtxt");
   Tensor data(ElemKind::FloatTy, {20});
   ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
   (void)onnxLD;
@@ -202,7 +207,8 @@ TEST(onnx, importConv) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename("tests/models/onnxModels/simpleConv.onnxtxt");
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/simpleConv.onnxtxt");
 
   Context ctx;
   Placeholder *graphOutputVar;
@@ -259,7 +265,8 @@ TEST(onnx, importAveragePool3D) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename("tests/models/onnxModels/averagePool3D.onnxtxt");
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/averagePool3D.onnxtxt");
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -277,7 +284,8 @@ TEST(onnx, importClip) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/clip.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/clip.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -310,7 +318,8 @@ TEST(onnx, importBatchMatMul) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/batch_matmul.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/batch_matmul.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -369,7 +378,8 @@ TEST(onnx, importBatchBoxCox) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/batchBoxCox.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/batchBoxCox.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -443,7 +453,8 @@ TEST(onnx, importDotProduct) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/dot_product.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/dot_product.onnxtxt");
 
   Placeholder *output;
   {
@@ -471,7 +482,8 @@ TEST(onnx, importSumN) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/sumN.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/sumN.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -527,7 +539,8 @@ TEST(onnx, importSum1) {
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/sum1.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/sum1.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -566,7 +579,8 @@ TEST(onnx, importLengthsToRanges) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/lengths_to_ranges.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/lengths_to_ranges.onnxtxt");
   Placeholder *output;
   {
     Tensor lengths(ElemKind::Int32ITy, {4});
@@ -589,7 +603,8 @@ TEST(onnx, importReplaceNaN) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/replaceNaN.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/replaceNaN.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -622,7 +637,8 @@ TEST(onnx, importSparseToDense) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/sparseToDense.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/sparseToDense.onnxtxt");
 
   Context ctx;
   Placeholder *output;
@@ -665,7 +681,8 @@ TEST(onnx, importSparseLengthsSum) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/sparseLengthsSum.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/sparseLengthsSum.onnxtxt");
   Placeholder *output;
   {
     Tensor data(ElemKind::FloatTy, {2, 1});
@@ -695,7 +712,8 @@ TEST(onnx, importLengthsSum) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/lengths_sum.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/lengths_sum.onnxtxt");
   Placeholder *output;
   {
     Tensor data(ElemKind::FloatTy, {10, 2, 3});
@@ -720,7 +738,8 @@ TEST(onnx, FCTransposedWithFlatten) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/FCTransposed.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/FCTransposed.onnxtxt");
 
   Placeholder *output;
 
@@ -747,7 +766,8 @@ TEST(onnx, constant) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/constant.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/constant.onnxtxt");
   Placeholder *output;
   {
     ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
@@ -764,7 +784,8 @@ TEST(onnx, expandDims) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename("tests/models/onnxModels/expandDims.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/expandDims.onnxtxt");
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2});
@@ -785,7 +806,8 @@ TEST(onnx, expandDims) {
 TEST(onnx, gather) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  std::string netFilename("tests/models/onnxModels/gather.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/gather.onnxtxt");
   auto *F = mod.createFunction("main");
   Placeholder *output;
   Tensor data(ElemKind::FloatTy, {3, 2});
@@ -810,7 +832,8 @@ TEST(onnx, gather) {
 TEST(onnx, gatherRanges) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  std::string netFilename("tests/models/onnxModels/gatherranges.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/gatherranges.onnxtxt");
   auto *F = mod.createFunction("main");
   Placeholder *output;
   Tensor data(ElemKind::FloatTy, {6});
@@ -841,7 +864,8 @@ static void importSliceTest(std::string fileName, const char *inputName,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename = std::string("tests/models/onnxModels/") + fileName;
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
   Context ctx;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
@@ -929,7 +953,8 @@ static void importPad(std::string fileName, const char *inputName,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename = std::string("tests/models/onnxModels/") + fileName;
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
   Context ctx;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
@@ -1049,7 +1074,8 @@ TEST(onnx, importPadConstantPositive) {
 TEST(onnx, batchNormPR2304) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
-  std::string netFilename("tests/models/onnxModels/batchNormPR2304.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/batchNormPR2304.onnxtxt");
   auto *F = mod.createFunction("main");
   Placeholder *output;
   Tensor inputTensor(ElemKind::FloatTy, {1, 2, 10, 10});
