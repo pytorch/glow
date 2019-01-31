@@ -282,8 +282,8 @@ public:
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group);
+                              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
+                              unsigned_t dilation = 1);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input with \p filter and \bias. \p kernel defines the size of the
@@ -295,7 +295,8 @@ public:
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               unsigned_t kernel, unsigned_t stride,
-                              unsigned_t pad, unsigned_t group);
+                              unsigned_t pad, unsigned_t group,
+                              unsigned_t dilation = 1);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input with \p filter and \bias. \p kernels defines the size of the
@@ -933,8 +934,8 @@ public:
                               size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group);
+                              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
+                              unsigned_t dilation = 1);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernel defines the size of the height and width dimensions of
@@ -947,7 +948,7 @@ public:
                               llvm::StringRef name, NodeValue input,
                               size_t outChannels, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
-                              unsigned_t group);
+                              unsigned_t group, unsigned_t dilation = 1);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input. \p kernels defines the size of the height, width, and depth

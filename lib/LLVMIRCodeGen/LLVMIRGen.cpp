@@ -1640,6 +1640,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstSizeTArray(builder, CI->getStrides());
     auto *pads = emitConstSizeTArray(builder, CI->getPads());
     auto *group = emitConstSizeT(builder, CI->getGroup());
+    auto *dilation = emitConstSizeT(builder, CI->getDilation());
 
     const char *kernelName = "convolution";
 
@@ -1696,12 +1697,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   srcDims,    filterDims, biasDims,   kernels,   strides,
                   pads,       group,      destOffset, srcOffset, filterOffset,
                   biasOffset, biasPre,    biasPost,   biasScale, outPre,
-                  outPost,    outScale,   unrollD});
+                  outPost,    outScale,   unrollD,    dilation});
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                  filterDims, biasDims, kernels, strides, pads, group,
-                  unrollD});
+                  filterDims, biasDims, kernels, strides, pads, group, unrollD,
+                  dilation});
     }
     break;
   }

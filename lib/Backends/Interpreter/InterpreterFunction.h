@@ -135,7 +135,7 @@ private:
                                        llvm::ArrayRef<unsigned_t> kernelSizes,
                                        llvm::ArrayRef<unsigned_t> strides,
                                        llvm::ArrayRef<unsigned_t> pads,
-                                       size_t group);
+                                       size_t group, size_t dilation);
 
   template <typename ElemTy = float>
   void fwdConvolutionInstFloatImpl(Value *inV, Value *outV, Value *filterV,
@@ -143,7 +143,7 @@ private:
                                    llvm::ArrayRef<unsigned_t> kernelSizes,
                                    llvm::ArrayRef<unsigned_t> strides,
                                    llvm::ArrayRef<unsigned_t> pads,
-                                   size_t group);
+                                   size_t group, size_t dilation);
 
   template <typename ElemTy, typename AccumulatorTy>
   void fwdConvolution3DInstQuantizedImpl(Value *inV, Value *outV,

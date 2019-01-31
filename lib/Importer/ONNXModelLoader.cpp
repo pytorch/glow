@@ -486,6 +486,11 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  }
+
   // Load the inputs
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -553,13 +558,13 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   Pads pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
+                                           pads, dilation);
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
-                             kernelShape, strides, pads, group);
+                             kernelShape, strides, pads, group, dilation);
 
   // Transpose the output back.
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);

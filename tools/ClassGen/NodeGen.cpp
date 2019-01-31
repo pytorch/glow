@@ -81,6 +81,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
