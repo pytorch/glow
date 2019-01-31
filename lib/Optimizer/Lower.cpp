@@ -763,4 +763,7 @@ void glow::lower(Function *F, const Backend &B) {
     if (dyn_cast<SGDNode>(cur))
       F->eraseNode(cur);
   }
+
+  // Remove nodes that were lowered.
+  DCE(F);
 }
