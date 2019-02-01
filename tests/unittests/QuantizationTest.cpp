@@ -383,7 +383,9 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *MMN = F->createMatMul("batchedreduceadd", O, TN);
   auto *BRAN = F->createBatchedReduceAdd("batchedreduceadd", MMN, 0);
   auto *TLN = F->createTile("tile", BRAN, 2, 0);
-  auto *save = F->createSave("save", TLN);
+  auto *SN = F->createSplat("splat", TLN->getResult().getType(), 100.0);
+  auto *MN = F->createMax("max", SN, TLN);
+  auto *save = F->createSave("save", MN);
   ctx.allocate(save->getPlaceholder());
   return F;
 }

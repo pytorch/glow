@@ -106,8 +106,9 @@ static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
     input = RS->getResult();
   }
 
-  assert(input.getType() == splat->getResult().getType() &&
-         "Both inputs of Max node must have the same type");
+  assert(input.dims() == splat->getResult().dims() &&
+         input.getElementType() == splat->getResult().getElementType() &&
+         "Element type and dimensions of the max inputs must match.");
 
   return F->addNode(
       new CPUMaxSplatNode(MN->getName(), input, splat->getValue()));
