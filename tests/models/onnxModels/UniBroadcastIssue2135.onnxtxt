@@ -41,7 +41,7 @@ node {
   
   initializer {
     dims: 1
-    data_type: FLOAT
+    data_type: 1
     float_data: 2.0
     name: "scalar"
   }
@@ -50,7 +50,7 @@ node {
     name: "data"
     type {
       tensor_type {
-        elem_type: FLOAT
+        elem_type: 1
         shape {
           dim {
             dim_value: 20
