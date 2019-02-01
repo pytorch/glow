@@ -19,6 +19,10 @@
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "gtest/gtest.h"
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 /// Test loading conv op from a Caffe2 model.
@@ -29,8 +33,10 @@ TEST(caffe2, importConv) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/predict_net.pbtxt");
-  std::string NetWeightFilename("tests/models/caffe2Models/init_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/predict_net.pbtxt");
+  std::string NetWeightFilename(GLOW_DATA_PATH
+                                "tests/models/caffe2Models/init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -70,9 +76,9 @@ TEST(caffe2, convNHWC) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/conv_nhwc_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/conv_nhwc_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/conv_nhwc_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/conv_nhwc_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -107,9 +113,10 @@ TEST(caffe2, maxPoolNHWC) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/maxpool_nhwc_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -144,9 +151,9 @@ TEST(caffe2, maxPool) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/maxpool_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/maxpool_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -188,9 +195,10 @@ TEST(caffe2, avgPoolNHWC) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/avgpool_nhwc_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -225,9 +233,9 @@ TEST(caffe2, avgPool) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/avgpool_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/avgpool_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -278,9 +286,10 @@ TEST(caffe2, concatAddAxis) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/concat_add_axis_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
 
@@ -355,9 +364,9 @@ TEST(caffe2, concat) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/concat_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/concat_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -432,9 +441,10 @@ TEST(caffe2, batchedMatmulRHS) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/matmul_trans_RHS_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
@@ -492,9 +502,10 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/parallel_matmul_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
@@ -571,8 +582,10 @@ TEST(caffe2, FC) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/fc_predict_net.pbtxt");
-  std::string NetWeightFilename("tests/models/caffe2Models/fc_init_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/fc_predict_net.pbtxt");
+  std::string NetWeightFilename(GLOW_DATA_PATH
+                                "tests/models/caffe2Models/fc_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -611,8 +624,10 @@ TEST(caffe2, FCWithFlatten) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/fc_predict_net.pbtxt");
-  std::string NetWeightFilename("tests/models/caffe2Models/fc_init_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/fc_predict_net.pbtxt");
+  std::string NetWeightFilename(GLOW_DATA_PATH
+                                "tests/models/caffe2Models/fc_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -660,9 +675,10 @@ TEST(caffe2, FCTransposed) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/fcTransposed_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -709,9 +725,10 @@ TEST(caffe2, FCTransposedWithFlatten) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/fcTransposed_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -759,9 +776,10 @@ TEST(caffe2, importClip) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/clip_op_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/clip_op_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -805,9 +823,9 @@ TEST(caffe2, importClipDefault) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/clip_op_default_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/clip_op_default_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -846,9 +864,9 @@ TEST(caffe2, replaceNaN) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/replace_nan_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/replace_nan_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -909,9 +927,9 @@ TEST(caffe2, dotProduct1D) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -981,9 +999,9 @@ TEST(caffe2, dotProduct2D) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/dot_product_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -1065,9 +1083,10 @@ TEST(caffe2, batchBoxCox) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/batch_box_cox_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Context ctx;
   Placeholder *output;
@@ -1223,9 +1242,10 @@ TEST(caffe2, EQ1D) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/eq_op_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/eq_op_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -1263,8 +1283,9 @@ TEST(caffe2, LengthsToRanges) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/lengths_to_ranges.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/lengths_to_ranges.pbtxt");
   std::string NetWeightFilename(
+      GLOW_DATA_PATH
       "tests/models/caffe2Models/lengths_to_ranges_init_net.pbtxt");
 
   Placeholder *output;
@@ -1295,9 +1316,10 @@ TEST(caffe2, Logit) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/logit_op_net.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/logit_op_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
 
@@ -1332,9 +1354,9 @@ TEST(caffe2, sparseToDense) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/sparse_to_dense.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/sparse_to_dense.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -1385,9 +1407,9 @@ TEST(caffe2, testNCHW2NHWC) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/NCHW2NHWC_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/NCHW2NHWC_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -1428,9 +1450,10 @@ TEST(caffe2, lengthsSum) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/lengths_sum.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/lengths_sum.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Context ctx;
@@ -1472,9 +1495,10 @@ TEST(caffe2, gatherRanges) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  std::string NetDescFilename("tests/models/caffe2Models/gather_ranges.pbtxt");
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/gather_ranges.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/empty_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
   Tensor data(ElemKind::FloatTy, {6});
@@ -1505,9 +1529,9 @@ TEST(caffe2, tensorFillsTest) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      "tests/models/caffe2Models/empty_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_predict_net.pbtxt");
   std::string NetWeightFilename(
-      "tests/models/caffe2Models/fill_test_init_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
   Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill;
 
