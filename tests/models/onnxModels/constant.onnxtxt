@@ -8,7 +8,7 @@ graph {
       name: "value"
       t {
         dims: 3
-        data_type: INT32
+        data_type: 6
         name: "split_info"
         raw_data: "\001\000\000\000\001\000\000\000\001\000\000\000"
       }
@@ -19,7 +19,7 @@ graph {
     name: "output"
     type {
       tensor_type {
-        elem_type: INT32
+        elem_type: 6
         shape {
           dim {
             dim_value: 3

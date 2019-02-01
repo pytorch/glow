@@ -35,7 +35,7 @@ graph {
     dims: 1
     dims: 2
     dims: 2
-    data_type: FLOAT
+    data_type: 1
     float_data: 1.0
     float_data: 1.0
     float_data: 1.0
@@ -44,7 +44,7 @@ graph {
   }
   initializer {
     dims: 1
-    data_type: FLOAT
+    data_type: 1
     float_data: 2.0
     name: "B"
   }
@@ -52,7 +52,7 @@ graph {
     name: "data"
     type {
       tensor_type {
-        elem_type: FLOAT
+        elem_type: 1
         shape {
           dim {
             dim_value: 1
@@ -74,7 +74,7 @@ graph {
     name: "W"
     type {
       tensor_type {
-        elem_type: FLOAT
+        elem_type: 1
         shape {
           dim {
             dim_value: 1
@@ -96,7 +96,7 @@ graph {
     name: "B"
     type {
       tensor_type {
-        elem_type: FLOAT
+        elem_type: 1
         shape {
           dim {
             dim_value: 1
@@ -109,7 +109,7 @@ graph {
     name: "y"
     type {
       tensor_type {
-        elem_type: FLOAT
+        elem_type: 1
         shape {
           dim {
             dim_value: 1
