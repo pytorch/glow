@@ -806,30 +806,27 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   EXPECT_EQ(A->dims(), llvm::makeArrayRef(origDims));
 }
 
-TEST_F(GraphOptz, dontCancelTwoTransposesIfNotMatching) {
+TEST_F(GraphOptz, mergeNonInverseTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  const size_t afterFirstTransposeDims[] = {1, 10, 15, 5};
-  const size_t afterSecondTransposeDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
-  TransposeNode *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
-  TransposeNode *T2 = F_->createTranspose("transpose", T1, NCHW2NHWC);
-  SaveNode *save = F_->createSave("ret", T2);
+  const size_t finalDims[] = {5, 1, 15, 10};
 
-  EXPECT_EQ(F_->getNodes().size(), 3);
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  TransposeNode *T1 = F_->createTranspose("transpose", A, {0, 3, 2, 1});
+  TransposeNode *T2 = F_->createTranspose("transpose", T1, {0, 2, 3, 1});
+  TransposeNode *T3 = F_->createTranspose("transpose", T2, {1, 0, 3, 2});
+  TransposeNode *T4 = F_->createTranspose("transpose", T3, {3, 1, 2, 0});
+  SaveNode *save = F_->createSave("ret", T4);
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F_->getNodes().size(), 3);
-  // Make sure the structure of the graph did not change.
-  Node *secondTranspose = save->getInput();
-  EXPECT_EQ(secondTranspose->dims(0),
-            llvm::makeArrayRef(afterSecondTransposeDims));
-  EXPECT_EQ(secondTranspose, T2);
-  Node *firstTranspose = T2->getInput();
-  EXPECT_EQ(firstTranspose, T1);
-  EXPECT_EQ(T1->dims(0), llvm::makeArrayRef(afterFirstTransposeDims));
-  EXPECT_EQ(T1->getInput().getNode(), A);
+  auto *TR = llvm::dyn_cast<TransposeNode>(save->getInput());
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_NE(TR, nullptr);
+  EXPECT_EQ(TR->dims(0), llvm::makeArrayRef(finalDims));
   EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(TR->getInput().getNode(), A);
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {

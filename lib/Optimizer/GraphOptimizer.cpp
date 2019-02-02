@@ -455,6 +455,18 @@ static bool sinkCode(Function *F) {
         changed = true;
         continue;
       }
+
+      // The two non-inverse transposes can be combined into a single transpose.
+      llvm::SmallVector<unsigned_t, max_tensor_dimensions> newMask;
+      newMask.resize(mask2.size());
+
+      for (unsigned i = 0; i < mask2.size(); i++)
+        newMask[i] = mask2[mask1[i]];
+
+      auto *newTR = F->createTranspose("tranpose", TR2->getInput(), newMask);
+      TR1->getResult().replaceAllUsesOfWith(newTR->getResult());
+      changed = true;
+      continue;
     }
 
     if (auto *RN = dyn_cast<ReshapeNode>(node)) {
