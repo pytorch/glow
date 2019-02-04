@@ -4899,6 +4899,62 @@ TEST_P(InterpOnly, BatchOneHot) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+/// Check that modulo works.
+TEST_P(InterpOnly, Modulo1) {
+  auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
+  auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
+
+  srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
+
+  int64_t divisor = 3;
+  bool signFollowDivisor = false;
+
+  auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
+  auto *result = F_->createSave("save", modulo);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 5; j++) {
+      EXPECT_EQ(srcH.at({i, j}) % divisor, resultH.at({i, j}));
+    }
+  }
+}
+
+// Test signFollowDivisor works in modulo.
+TEST_P(InterpOnly, Modulo2) {
+  auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
+  auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
+
+  srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
+
+  int64_t divisor = 3;
+  bool signFollowDivisor = true;
+
+  auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
+  auto *result = F_->createSave("save", modulo);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+
+  for (size_t i = 0; i < 3; i++) {
+    for (size_t j = 0; j < 5; j++) {
+      auto expectedResult = srcH.at({i, j}) % divisor;
+      if ((expectedResult > 0) != (divisor > 0)) {
+        expectedResult += divisor;
+      }
+      EXPECT_EQ(expectedResult, resultH.at({i, j}));
+    }
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 

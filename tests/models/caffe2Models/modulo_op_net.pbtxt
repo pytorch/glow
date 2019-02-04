@@ -1,0 +1,16 @@
+name: "modulo_test"
+op {
+  input: "data"
+  arg {
+    name: "divisor"
+    i: 2
+  }
+  arg {
+    name: "sign_follow_divisor"
+    i: 0
+  }
+  output: "output"
+  type: "Mod"
+}
+external_input: "data"
+external_output: "output"

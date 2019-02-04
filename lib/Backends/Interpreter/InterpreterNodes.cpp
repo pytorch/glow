@@ -1652,6 +1652,21 @@ void BoundInterpreterFunction::fwdElementSelectInst(
                             I->getLHS()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
+  auto srcH = getTensor(I->getSrc())->getHandle<int64_t>();
+  auto destH = getTensor(I->getDest())->getHandle<int64_t>();
+  int64_t divisor = I->getDivisor();
+  bool signFollowDivisor = I->getSignFollowDivisor();
+
+  for (size_t i = 0, e = srcH.size(); i < e; i++) {
+    auto res = srcH.raw(i) % divisor;
+    if (signFollowDivisor && res <= 0) {
+      res += divisor;
+    }
+    destH.raw(i) = res;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//

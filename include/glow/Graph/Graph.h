@@ -445,6 +445,14 @@ public:
       llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
+  /// Create a ModuloNode which performs the modulo operation elementwise on the
+  /// \p input such that each element in the output is equal to the
+  /// corresponding element in the input modulo \p divisor. If \p
+  /// signFollowDivisor is true then any negative elements in the output will
+  /// have divisor added to their final values.
+  ModuloNode *createModulo(llvm::StringRef name, NodeValue input,
+                           unsigned_t divisor, bool signFollowDivisor = false);
+
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue LHS,    \
                                        NodeValue RHS);                         \
