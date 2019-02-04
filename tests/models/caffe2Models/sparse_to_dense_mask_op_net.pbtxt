@@ -1,0 +1,21 @@
+name: "sparse_to_dense_mask"
+op {
+  input: "indices"
+  input: "values"
+  input: "defaultValue"
+  arg {
+    name: "mask"
+    ints: 42
+    ints: 100
+    ints: 300
+    ints: 1
+    ints: 0
+    ints: 312
+  }
+  output: "output"
+  type: "SparseToDenseMask"
+}
+external_input: "indices"
+external_input: "values"
+external_input: "defaultValue"
+external_output: "output"

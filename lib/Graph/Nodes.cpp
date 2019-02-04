@@ -773,6 +773,24 @@ bool SparseToDenseNode::verify() const {
   return isValid;
 }
 
+bool SparseToDenseMaskNode::verify() const {
+  bool isValid = checkType(getResult(), getValues().getElementType(), this);
+  isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Lengths must be a scalar or 1D vector",
+                               getLengths().dims().size(), {0, 1}, this);
+  isValid &=
+      expectCompareTrue("Indices and Values must have the same first dimension",
+                        getIndices().dims()[0], getValues().dims()[0], this);
+  isValid &= expectCompareTrue(
+      "Values[i] must have the same dimensions as DefaultValue",
+      getValues().dims().slice(1), getDefaultValue().dims(), this);
+  return isValid;
+}
+
 bool SGDNode::verify() const {
   return checkSameType(getGradient(), getWeight(), this);
 }

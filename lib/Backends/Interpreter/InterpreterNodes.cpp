@@ -2235,6 +2235,62 @@ void BoundInterpreterFunction::fwdSparseToDenseInst(
                             I->getDest()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
+    const SparseToDenseMaskInst *I) {
+  auto out = getTensor(I->getDest());
+  auto values = getTensor(I->getValues());
+  auto defaultValue = getTensor(I->getDefaultValue());
+
+  auto indicesH = getTensor(I->getIndices())->getHandle<int64_t>();
+  auto lengthsH = getTensor(I->getLengths())->getHandle<int32_t>();
+
+  const std::vector<int64_t> &mask = I->getMask();
+  size_t maskSize = mask.size();
+  // Create a reverse map from ID to its position in the mask.
+  std::unordered_map<int64_t, size_t> reverseMap;
+  for (size_t i = 0; i < maskSize; i++) {
+    assert(reverseMap.find(mask[i]) == reverseMap.end() &&
+           "duplicate IDs in the mask");
+    reverseMap[mask[i]] = i;
+  }
+
+  auto valueSize = defaultValue->getSizeInBytes();
+
+  // First un-processed index-value pair.
+  size_t posIn = 0;
+  // Beginning of output block for first unprocessed batch.
+  size_t byteOffsetOut = 0;
+  // Lengths can be scalar, which means that all pairs belong to one batch.
+  size_t numBatches = lengthsH.dims().empty() ? 1 : lengthsH.dims()[0];
+  for (size_t batch = 0; batch < numBatches; batch++) {
+    // Fill everything with maskSize copies of defaultValue.
+    for (size_t i = 0; i < maskSize; i++) {
+      std::copy(defaultValue->getUnsafePtr(),
+                &defaultValue->getUnsafePtr()[valueSize],
+                &out->getUnsafePtr()[byteOffsetOut + valueSize * i]);
+    }
+    // Go through input pairs and find matches.
+    for (size_t i = 0, batchLen = lengthsH.raw(batch); i < batchLen;
+         i++, posIn++) {
+      int64_t idx = indicesH.raw(posIn);
+      auto it = reverseMap.find(idx);
+      // Skip if ID is not present in the mask.
+      if (it == reverseMap.end())
+        continue;
+      size_t to = it->second;
+
+      std::copy(&values->getUnsafePtr()[posIn * valueSize],
+                &values->getUnsafePtr()[(posIn + 1) * valueSize],
+                &out->getUnsafePtr()[byteOffsetOut + valueSize * to]);
+    }
+
+    byteOffsetOut += maskSize * valueSize;
+  }
+
+  assert(posIn == indicesH.dims()[0] &&
+         "Sum of Lengths must be equal to size of indices.");
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//

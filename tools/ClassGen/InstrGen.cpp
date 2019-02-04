@@ -266,6 +266,21 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Values"})
       .autoIRGen();
 
+  BB.newInstr("SparseToDenseMask")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addOperand("DefaultValue", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::VectorInt64, "Mask")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Values", "DefaultValue"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int32ITy"})
+      .autoIRGen();
+
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
       .addOperand("Dest", OperandKind::Out)

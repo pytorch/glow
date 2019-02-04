@@ -376,6 +376,22 @@ int main(int argc, char **argv) {
           "and in this case, all of the corresponding values in Values "
           "are added together.");
 
+  BB.newNode("SparseToDenseMask")
+      .addInput("Indices")
+      .addInput("Values")
+      .addInput("DefaultValue")
+      .addInput("Lengths")
+      .addMember(MemberType::VectorInt64, "Mask")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Converts the sparse representation specified by the pair "
+          "(Indices, Values) into a dense one, where compacted tensor only "
+          "contains IDs from given Mask. Indices cannot contain duplicate "
+          "values. Lengths is used to distinguish elements from different "
+          "examples of one batch. That is, first Lengths[0] index-value pairs "
+          "belong to batch's example 0, next Lengths[1] pairs belong to "
+          "example 1, and so on.");
+
   // clang-format off
   BB.newNode("IsNaN")
     .addInput("Input")

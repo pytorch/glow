@@ -29,6 +29,9 @@ MemberTypeInfo kVectorFloatTypeInfo{MemberType::VectorFloat,
 MemberTypeInfo kVectorUnsignedTypeInfo{
     MemberType::VectorUnsigned, "llvm::ArrayRef<unsigned_t>",
     "std::vector<unsigned_t>", "std::vector<unsigned_t>"};
+MemberTypeInfo kVectorInt64TypeInfo{
+    MemberType::VectorInt64, "llvm::ArrayRef<int64_t>", "std::vector<int64_t>",
+    "std::vector<int64_t>"};
 MemberTypeInfo kVectorSignedTypeInfo{MemberType::VectorSigned,
                                      "llvm::ArrayRef<int>", "std::vector<int>",
                                      "std::vector<int>"};

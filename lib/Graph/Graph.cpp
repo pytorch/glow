@@ -1442,6 +1442,22 @@ SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
   return addNode(new SparseToDenseNode(name, outTy, indices, values));
 }
 
+SparseToDenseMaskNode *Function::createSparseToDenseMask(
+    llvm::StringRef name, NodeValue indices, NodeValue values,
+    NodeValue defaultValue, NodeValue lengths, llvm::ArrayRef<int64_t> mask) {
+  auto lengthsDims = lengths.dims();
+  auto valueDims = defaultValue.dims();
+  ShapeVector outDims = {mask.size()};
+  // If lengths is 0-dimensional tensor, then there is no batch dimension.
+  if (lengthsDims.size() > 0) {
+    outDims.insert(outDims.begin(), lengthsDims[0]);
+  }
+  outDims.insert(outDims.end(), valueDims.begin(), valueDims.end());
+  auto outTy = getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
+  return addNode(new SparseToDenseMaskNode(name, outTy, indices, values,
+                                           defaultValue, lengths, mask));
+}
+
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
 

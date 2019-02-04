@@ -603,6 +603,18 @@ public:
                                          NodeValue indices, NodeValue values,
                                          NodeValue dataToInferDim);
 
+  /// Implements an operation that converts the sparse representation given by
+  /// the pair of \p indices and \p values into a dense representation, which
+  /// only contains IDs from given \p mask. Indices cannot contain duplicates.
+  /// \p lengths is used to distinguish elements that belong to different
+  /// examples of one batch. That is, first \p lengths[0] index-value pairs
+  /// belong to batch's example 0, next \p lengths[1] pairs belong to example 1
+  /// and so on.
+  SparseToDenseMaskNode *
+  createSparseToDenseMask(llvm::StringRef name, NodeValue indices,
+                          NodeValue values, NodeValue defaultValue,
+                          NodeValue lengths, llvm::ArrayRef<int64_t> mask);
+
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
                        Placeholder *output);

@@ -835,6 +835,45 @@ protected:
     return llvm::Error::success();
   }
 
+  llvm::Error loadSparseToDenseMask(const OpType &op,
+                                    const ArgumentDictionaryTy &dict) {
+    size_t inputSize = op.input_size();
+    if (inputSize != 3 && inputSize != 4) {
+      RETURN_ERR("SparseToDenseMask operator must have 3 or 4 inputs.");
+    }
+
+    NodeValue indices;
+    ASSIGN_VALUE_OR_RETURN_ERR(indices,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue values;
+    ASSIGN_VALUE_OR_RETURN_ERR(values,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
+    NodeValue defaultValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(defaultValue,
+                               getNodeValueOrCreateConstantByName(op.input(2)));
+
+    NodeValue lengths;
+    if (inputSize == 4) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          lengths, getNodeValueOrCreateConstantByName(op.input(3)));
+    } else {
+      // If Lengths input is not present, create scalar containing number of
+      // index-value pairs.
+      auto *lengthsConstant = G_.getParent()->createConstant(
+          ElemKind::Int32ITy, {}, "lengthsConstant");
+      lengthsConstant->getPayload().template getHandle<int32_t>().raw(0) =
+          indices.dims()[0];
+      lengths = lengthsConstant->getOutput();
+    }
+
+    auto mask = getShape<int64_t>(dict.find("mask")->second);
+
+    auto *node = G_.createSparseToDenseMask(
+        loadOperatorName(op), indices, values, defaultValue, lengths, mask);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return llvm::Error::success();
+  }
+
   llvm::Expected<bool> loadGatherOps(const std::string &typeName,
                                      const OpType &op,
                                      const ArgumentDictionaryTy &dict) {
@@ -1020,6 +1059,11 @@ protected:
 
     if (typeName == "SparseToDense") {
       RETURN_IF_ERR(loadSparseToDense(op, dict));
+      return true;
+    }
+
+    if (typeName == "SparseToDenseMask") {
+      RETURN_IF_ERR(loadSparseToDenseMask(op, dict));
       return true;
     }
 
