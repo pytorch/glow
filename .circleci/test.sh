@@ -39,7 +39,10 @@ case ${CIRCLE_JOB} in
         # TODO: Enable ASAN test.
         run_unit_tests test
         ;;
-
+    TSAN)
+        # Run only Glow tests.
+        run_unit_tests test
+        ;;
     DEBUG)
         run_unit_tests test
         run_unit_tests test_unopt

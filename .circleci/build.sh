@@ -70,6 +70,9 @@ if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+elif [[ "${CIRCLE_JOB}" == "TSAN" ]]; then
+    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Thread'")
+    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
 elif [[ "$CIRCLE_JOB" == RELEASE_WITH_LIT ]]; then
     # Setup the LLVM Integrated Tester if requested.
     install_lit_env
