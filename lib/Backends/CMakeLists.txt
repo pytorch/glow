@@ -36,6 +36,7 @@ add_library(DeviceManager
               DeviceManagers.cpp)
 target_link_libraries(DeviceManager
                       PUBLIC
+                        ThreadPool
                         ${linked_device_managers}
                       PRIVATE
                         Backends
