@@ -960,7 +960,7 @@ protected:
       RETURN_IF_ERR(loadIdentity(op, dict));
       return true;
     }
-    if (typeName == "Identity") {
+    if (typeName == "Identity" || typeName == "Alias") {
       RETURN_IF_ERR(loadIdentity(op, dict));
       return true;
     }
