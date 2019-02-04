@@ -806,6 +806,8 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
   EXPECT_EQ(A->dims(), llvm::makeArrayRef(origDims));
 }
 
+/// Check that consecutive non-inverse transposes are merged
+/// into an equivalent single transpose node
 TEST_F(GraphOptz, mergeNonInverseTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t finalDims[] = {5, 1, 15, 10};
@@ -815,6 +817,14 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
   TransposeNode *T2 = F_->createTranspose("transpose", T1, {0, 2, 3, 1});
   TransposeNode *T3 = F_->createTranspose("transpose", T2, {1, 0, 3, 2});
   TransposeNode *T4 = F_->createTranspose("transpose", T3, {3, 1, 2, 0});
+
+  // Intermediate dims after each tranpose
+  // Initial : {1, 5, 10, 15}
+  // After T1: {1, 15, 10, 5}
+  // After T2: {1, 10, 5, 15}
+  // After T3: {10, 1, 15, 5}
+  // After T4: {5, 1, 15, 10}
+
   SaveNode *save = F_->createSave("ret", T4);
 
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -822,10 +832,11 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
   ::glow::optimize(F_, CompilationMode::Infer);
 
   auto *TR = llvm::dyn_cast<TransposeNode>(save->getInput());
+  ASSERT_NE(TR, nullptr);
+
   EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_NE(TR, nullptr);
-  EXPECT_EQ(TR->dims(0), llvm::makeArrayRef(finalDims));
-  EXPECT_EQ(A->dims(0), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(TR->getResult().dims(), llvm::makeArrayRef(finalDims));
+  EXPECT_EQ(A->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(TR->getInput().getNode(), A);
 }
 

@@ -448,20 +448,12 @@ static bool sinkCode(Function *F) {
       auto mask2 = TR2->getShuffle();
       assert(mask1.size() == mask2.size() && "Invalid mask size");
 
-      // The two transposes are reversing one another. We can skip both of
-      // them alltogether.
-      if (isIdentityShuffle(mask1, mask2)) {
-        TR1->getResult().replaceAllUsesOfWith(TR2->getInput());
-        changed = true;
-        continue;
-      }
-
-      // The two non-inverse transposes can be combined into a single transpose.
       llvm::SmallVector<unsigned_t, max_tensor_dimensions> newMask;
       newMask.resize(mask2.size());
 
-      for (unsigned i = 0; i < mask2.size(); i++)
+      for (size_t i = 0, end = mask2.size(); i < end; i++) {
         newMask[i] = mask2[mask1[i]];
+      }
 
       auto *newTR = F->createTranspose("tranpose", TR2->getInput(), newMask);
       TR1->getResult().replaceAllUsesOfWith(newTR->getResult());
