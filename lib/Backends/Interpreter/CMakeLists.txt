@@ -23,5 +23,4 @@ target_link_libraries(InterpreterDeviceManager
                         Graph
                         Interpreter
                         IR
-                        Optimizer
-                        QueueBackedDeviceManager)
+                        Optimizer)

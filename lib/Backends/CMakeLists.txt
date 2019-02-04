@@ -33,19 +33,11 @@ target_link_libraries(BackendUtils
                       IR)
 
 add_library(DeviceManager
-              DeviceManagers.cpp
-              QueueBackedDeviceManager.cpp)
+              DeviceManagers.cpp)
 target_link_libraries(DeviceManager
                       PUBLIC
+                        ThreadPool
                         ${linked_device_managers}
-                      PRIVATE
-                        Backends
-                        Graph
-                        ThreadPool)
-
-add_library(QueueBackedDeviceManager
-            QueueBackedDeviceManager.cpp)
-target_link_libraries(QueueBackedDeviceManager
                       PRIVATE
                         Backends
                         Graph
