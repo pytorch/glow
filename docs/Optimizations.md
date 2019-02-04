@@ -32,7 +32,10 @@ Below you can see the list of currently supported graph optimizations:
     This optimization removes computations whose results or side-effects are
     not used.
 
-  * Elimination of transpose operations reversing each other
+  * Optimization of transpose nodes
+
+    This optimization combines multiple consecutive transpose nodes
+    into a single node, and also eliminates identity transpose nodes.
 
   * Sinking of transpose operations below other operations
 
