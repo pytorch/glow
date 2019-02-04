@@ -116,26 +116,6 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
   return true;
 }
 
-/// \returns true if the masks \p shuffle1 and shuffle2 are
-/// the inverse of on another. Applying both masks should result in the identity
-/// shuffle.
-static bool isIdentityShuffle(llvm::ArrayRef<unsigned_t> shuffle1,
-                              llvm::ArrayRef<unsigned_t> shuffle2) {
-
-  if (shuffle1.size() != shuffle2.size()) {
-    return false;
-  }
-
-  // Check if the combined masks are the identity mask.
-  for (unsigned i = 0, e = shuffle1.size(); i < e; i++) {
-    unsigned_t idx = shuffle2[shuffle1[i]];
-    if (idx != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /// \returns True if the node \p N always evaluates to \p val.
 bool isSplatOfVal(Node *N, float val) {
   SplatNode *Z = dyn_cast<SplatNode>(N);

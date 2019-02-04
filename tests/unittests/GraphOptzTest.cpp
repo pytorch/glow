@@ -807,7 +807,7 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
 }
 
 /// Check that consecutive non-inverse transposes are merged
-/// into an equivalent single transpose node
+/// into an equivalent single transpose node.
 TEST_F(GraphOptz, mergeNonInverseTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t finalDims[] = {5, 1, 15, 10};
