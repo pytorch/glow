@@ -277,7 +277,10 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
     }
   }
 
-  double scale = (max - min) / ((double)qmax - qmin);
+  min = std::max(min, std::numeric_limits<float>::lowest());
+  max = std::min(max, std::numeric_limits<float>::max());
+
+  double scale = ((double)max - min) / ((double)qmax - qmin);
 
   // Dequantization uses the following formula scale * (X - offset), so
   // scale should not be equal to zero.

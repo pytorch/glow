@@ -739,6 +739,18 @@ TEST(Quantization, chooseQuantizationSymmetric) {
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
 
+/// Check quantization symmetry in presence of infinities.
+TEST(Quantization, chooseQuantizationSymmetricInf) {
+  auto sym = quantization::Schema::Symmetric;
+  EXPECT_EQ(chooseQuantizationParams(-INFINITY, INFINITY, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(INFINITY, INFINITY, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(-INFINITY, -INFINITY, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(-INFINITY, 1.0f, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(-INFINITY, -1.0f, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(-1.0f, INFINITY, sym).offset, 0);
+  EXPECT_EQ(chooseQuantizationParams(1.0f, INFINITY, sym).offset, 0);
+}
+
 /// Check that Relu can use our symmetric quantization schema.
 TEST(Quantization, reluCanUseSymmetricSchema) {
   Context ctx;
