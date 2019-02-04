@@ -163,6 +163,8 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kVectorFloatTypeInfo;
   } else if (type == MemberType::VectorUnsigned) {
     typeInfo = &kVectorUnsignedTypeInfo;
+  } else if (type == MemberType::VectorInt64) {
+    typeInfo = &kVectorInt64TypeInfo;
   } else if (type == MemberType::VectorSigned) {
     typeInfo = &kVectorSignedTypeInfo;
   } else if (type == MemberType::VectorSizeT) {
@@ -517,7 +519,7 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
 static bool isVectorType(MemberType ty) {
   return ty == MemberType::VectorFloat || ty == MemberType::VectorNodeValue ||
          ty == MemberType::VectorSizeT || ty == MemberType::VectorUnsigned ||
-         ty == MemberType::VectorSigned;
+         ty == MemberType::VectorInt64 || ty == MemberType::VectorSigned;
 }
 
 void NodeBuilder::emitHasher(std::ostream &os) const {

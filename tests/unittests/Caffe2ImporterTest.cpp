@@ -1400,6 +1400,58 @@ TEST(caffe2, sparseToDense) {
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
 }
 
+TEST(caffe2, SparseToDenseMask) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/sparse_to_dense_mask_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor indices(ElemKind::Int64ITy, {4});
+  Tensor values(ElemKind::FloatTy, {4, 10, 20, 30});
+  Tensor defaultValue(ElemKind::FloatTy, {10, 20, 30});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    // Loaded protos must have at least one external output, so load an unused
+    // output and type to satisfy it. It is named unused_output in
+    // empty_predict_net.pbtxt.
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"indices", "values", "defaultValue"},
+        {&indices.getType(), &values.getType(), &defaultValue.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(output);
+
+  // Graph has 2 nodes: Save and SparseToDenseMask
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // One constant was created for implicit Lengths input
+  EXPECT_EQ(mod.getConstants().size(), 1);
+
+  // Net has 3 inputs.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *N = llvm::dyn_cast<SparseToDenseMaskNode>(saveNode->getInput());
+  ASSERT_TRUE(N);
+
+  // Check that no batch dimension was added because Lengths was not given.
+  EXPECT_TRUE(N->dims(0).equals({6, 10, 20, 30}));
+  // Check that mask was read correctly.
+  EXPECT_TRUE(N->getMask().equals({42, 100, 300, 1, 0, 312}));
+}
+
 /// Test loading NCHW2NHWC op.
 TEST(caffe2, testNCHW2NHWC) {
   ExecutionEngine EE{BackendKind::Interpreter};

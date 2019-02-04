@@ -29,6 +29,7 @@ enum class MemberType : unsigned {
   VectorFloat,
   VectorSigned,
   VectorUnsigned,
+  VectorInt64,
   VectorSizeT,
   VectorNodeValue,
   Enum,
@@ -52,6 +53,7 @@ extern MemberTypeInfo kBooleanTypeInfo;
 extern MemberTypeInfo kStringTypeInfo;
 extern MemberTypeInfo kVectorFloatTypeInfo;
 extern MemberTypeInfo kVectorUnsignedTypeInfo;
+extern MemberTypeInfo kVectorInt64TypeInfo;
 extern MemberTypeInfo kVectorSignedTypeInfo;
 extern MemberTypeInfo kVectorSizeTTypeInfo;
 extern MemberTypeInfo kVectorNodeValueTypeInfo;
@@ -79,6 +81,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "llvm::ArrayRef<float>",
                                "llvm::ArrayRef<int>",
                                "llvm::ArrayRef<unsigned_t>",
+                               "llvm::ArrayRef<int64_t>",
                                "llvm::ArrayRef<size_t>",
                                "NodeValueArrayRef",
                                nullptr};
@@ -94,6 +97,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "std::vector<float>",
                                 "std::vector<int>",
                                 "std::vector<unsigned_t>",
+                                "std::vector<int64_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeHandle>",
                                 nullptr};
@@ -109,6 +113,7 @@ inline const char *getCtorArgTypename(MemberType type) {
                                 "std::vector<float>",
                                 "std::vector<int>",
                                 "std::vector<unsigned_t>",
+                                "std::vector<int64_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeValue>",
                                 nullptr};

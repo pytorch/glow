@@ -4193,6 +4193,91 @@ TEST_P(InterpAndCPU, SparseToDense) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+TEST_P(InterpOnly, SparseToDenseMask1) {
+  /*
+    INDICES = [4, 42, 13, 0, 100, 13]
+    VALUES = [-5.5, 0.7, 11, 1e6, 2, 3.5]
+    DEFAULTVALUE = 1.1
+    LENGTHS = [4, 2]
+    MASK = [2, 1, 0, 13, 42, 43]
+    OUTPUT =  [[1.1, 1.1, 1e6, 11, 0.7, 1.1], [1.1, 1.1, 1.1, 3.5, 1.1, 1.1]]
+  */
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "indices", false);
+  auto *values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
+  auto *defaultValue =
+      mod_.createPlaceholder(ElemKind::FloatTy, {}, "default_value", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
+  std::vector<int64_t> mask{2, 1, 0, 13, 42, 43};
+
+  ctx_.allocate(indices)->getHandle<int64_t>() = {4, 42, 13, 0, 100, 13};
+  ctx_.allocate(values)->getHandle<float>() = {-5.5, 0.7, 11, 1e6, 2, 3.5};
+  ctx_.allocate(defaultValue)->getHandle<float>().raw(0) = 1.1;
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
+
+  auto *R = F_->createSparseToDenseMask("STDM", indices, values, defaultValue,
+                                        lengths, mask);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {2, 6});
+  expected.getHandle<float>() = {
+      1.1, 1.1, 1e6, 11, 0.7, 1.1, 1.1, 1.1, 1.1, 3.5, 1.1, 1.1,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(InterpOnly, SparseToDenseMask2) {
+  /*
+    INDICES = [300, 100, 101, 299]
+    VALUES = [[[-0.1, -0.2], [-0.3, -0.4]], [[2, -2], [2, 9]],
+              [[15, 4.2], [10.3, 30.4]], [[0, 2], [3, 4.4]]]
+    DEFAULTVALUE = [[0.1, 0.2], [0.3, 0.4]]
+    LENGTHS = []
+    MASK = [100, 300, 1]
+    OUTPUT =  [[[2, -2], [2, 9]], [[-0.1, -0.2], [-0.3, -0.4]],
+               [[0.1, 0.2], [0.3, 0.4]]]
+  */
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "indices", false);
+  auto *values =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 2, 2}, "values", false);
+  auto *defaultValue =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "default_value", false);
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {}, "lengths", false);
+  std::vector<int64_t> mask{100, 300, 1};
+
+  ctx_.allocate(indices)->getHandle<int64_t>() = {300, 100, 101, 299};
+  ctx_.allocate(values)->getHandle<float>() = {
+      -0.1, -0.2, -0.3, -0.4, 2, -2, 2, 9, 15, 4.2, 10.3, 30.4, 0, 2, 3, 4.4};
+  ctx_.allocate(defaultValue)->getHandle<float>() = {0.1, 0.2, 0.3, 0.4};
+  ctx_.allocate(lengths)->getHandle<int32_t>() = {4};
+
+  auto *R = F_->createSparseToDenseMask("STDM", indices, values, defaultValue,
+                                        lengths, mask);
+  auto *S = F_->createSave("save", R);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {3, 2, 2});
+  expected.getHandle<float>() = {
+      2, -2, 2, 9, -0.1, -0.2, -0.3, -0.4, 0.1, 0.2, 0.3, 0.4,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 TEST_P(InterpOnly, FP16Reshape) {
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
