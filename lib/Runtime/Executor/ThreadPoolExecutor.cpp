@@ -25,6 +25,38 @@
 namespace glow {
 namespace runtime {
 
+void InflightBarrier::decrement(unsigned decr) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  assert(count_ >= decr && "Barrier decrement cannot be less than count!");
+  count_ -= decr;
+
+  // If count_ has hit zero, wake up all threads that are waiting.
+  if (count_ == 0) {
+    cv_.notify_all();
+  }
+}
+
+void InflightBarrier::increment(unsigned incr) {
+  std::unique_lock<std::mutex> lock(mtx_);
+  count_ += incr;
+}
+
+unsigned InflightBarrier::count() {
+  std::unique_lock<std::mutex> lock(mtx_);
+  return count_;
+}
+
+void InflightBarrier::wait() {
+  std::unique_lock<std::mutex> lock(mtx_);
+  if (count_ != 0) {
+    // If count_ is not 0, wait until a signal is received that it is.
+    // The second argument below is a predicate that returns true when
+    // it is safe to wake up. It preserves correctness in the case of
+    // spurious wakeups.
+    cv_.wait(lock, [&] { return count_ == 0; });
+  }
+}
+
 ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<Context> resultContext,
                                DoneCbTy doneCb)
@@ -173,9 +205,10 @@ void ExecutionState::setResultCode(const ResultCode resultCode) {
 }
 
 ThreadPoolExecutor::~ThreadPoolExecutor() {
-  // Lock executionStatesMutex_ here to satisfy TSAN.
-  std::lock_guard<std::mutex> lock(executionStatesMutex_);
-  (void)lock;
+  // Wait for all inflight DeviceManager::runFunction() calls to return and be
+  // processed before starting to destroy state that is used in
+  // handleDeviceManagerResult().
+  inflightBarrier_.wait();
 }
 
 void ThreadPoolExecutor::run(const DAGNode *root,
@@ -212,7 +245,9 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   // done here instead of inside executeDAGNode() so that a node can be
   // executed while placeholders are being propagated for the next node without
   // the callback for that node deleting the execution state.
-  executionState->incrementInflightNodes((root->children).size());
+  auto numChildren = (root->children).size();
+  executionState->incrementInflightNodes(numChildren);
+  inflightBarrier_.increment(numChildren);
 
   for (auto const &node : root->children) {
     // Propagate placeholders from the given starter Context into the input
@@ -256,6 +291,7 @@ void ThreadPoolExecutor::executeDAGNode(
   if (executionState->getResultCode() == ResultCode::Failed) {
     // Mark the node as no longer executing.
     executionState->decrementInflightNodes();
+    inflightBarrier_.decrement();
     return;
   }
 
@@ -264,8 +300,9 @@ void ThreadPoolExecutor::executeDAGNode(
 
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
-    executionState->decrementInflightNodes();
     executionState->setResultCode(ResultCode::Failed);
+    executionState->decrementInflightNodes();
+    inflightBarrier_.decrement();
     return;
   }
 
@@ -330,6 +367,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
         if (childReadyToExecute) {
           // Mark the node as "inflight" (i.e. currently executing).
           executionState->incrementInflightNodes();
+          inflightBarrier_.increment();
           executeDAGNode(executionState, child);
         }
       }
@@ -351,6 +389,14 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     std::lock_guard<std::mutex> lock(executionStatesMutex_);
     executionStates_.erase(executionState->getRunId());
   }
+
+  // Decrement the inflight barrier for the executor keeping track of all
+  // outstanding DeviceManager::runFunction() calls. This must be done here
+  // instead of right after executionState->decrementInflightNodes() so that
+  // ~ThreadPoolExecutor does not delete executor state before this function
+  // is done using it (e.g. when erasing the ExecutionState object for a
+  // run).
+  inflightBarrier_.decrement();
 }
 
 } // namespace runtime
