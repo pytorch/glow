@@ -196,9 +196,11 @@ int main(int argc, char **argv) {
                                   ImageChannelOrder::BGR, ImageLayout::NCHW,
                                   /* useImagenetNormalization */ true);
 
+    Tensor batch = image.getUnowned(inputType->dims());
+
     auto ctx = llvm::make_unique<Context>();
     ctx->allocate(module.getPlaceholders());
-    updateInputPlaceholders(*ctx, {input}, {&image});
+    updateInputPlaceholders(*ctx, {input}, {&batch});
 
     dispatchClassify(started, devices[started % numDevices].get(),
                      std::move(path), output, std::move(ctx), returned,
