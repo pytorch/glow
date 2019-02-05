@@ -25,13 +25,13 @@
 
 using namespace glow;
 std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIR(std::move(IR));
 }
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileWithoutConstants(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIRWithoutConstants(std::move(IR));
 }
 
