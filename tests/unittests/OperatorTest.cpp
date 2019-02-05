@@ -4946,8 +4946,8 @@ TEST_P(InterpOnly, Modulo2) {
 
   auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
 
-  std::vector<int64_t> expectedResults = {2, 3, 1, 2, 3, 1, 2, 3,
-                                          1, 2, 3, 1, 2, 3, 1};
+  std::vector<int64_t> expectedResults = {2, 0, 1, 2, 0, 1, 2, 0,
+                                          1, 2, 0, 1, 2, 0, 1};
   ASSERT_EQ(expectedResults.size(), resultH.size());
 
   for (size_t i = 0, end = expectedResults.size(); i < end; ++i) {

@@ -224,6 +224,8 @@ private:
   void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,
                                    TensorQuantizationParams &srcQ,
                                    TensorQuantizationParams &destQ);
+
+  template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
   ///@}
 };
 

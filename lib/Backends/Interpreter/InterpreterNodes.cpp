@@ -38,6 +38,18 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchIndexTypeImpl(functionName, elemTy, ...)                       \
+  switch (elemTy) {                                                            \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int8QTy:                                                      \
@@ -1652,19 +1664,25 @@ void BoundInterpreterFunction::fwdElementSelectInst(
                             I->getLHS()->getElementType(), I);
 }
 
-void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
-  auto srcH = getTensor(I->getSrc())->getHandle<int64_t>();
-  auto destH = getTensor(I->getDest())->getHandle<int64_t>();
-  int64_t divisor = I->getDivisor();
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdModuloInstImpl(glow::ModuloInst const *I) {
+  auto srcH = getTensor(I->getSrc())->getHandle<ElemTy>();
+  auto destH = getTensor(I->getDest())->getHandle<ElemTy>();
+
+  unsigned_t divisor = I->getDivisor();
   bool signFollowDivisor = I->getSignFollowDivisor();
 
   for (size_t i = 0, e = srcH.size(); i < e; i++) {
     auto res = srcH.raw(i) % divisor;
-    if (signFollowDivisor && res <= 0) {
+    if (signFollowDivisor && res < 0) {
       res += divisor;
     }
     destH.raw(i) = res;
   }
+}
+
+void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
+  dispatchIndexTypeImpl(fwdModuloInstImpl, I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
