@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-#include "glow/Quantization/Quantization.h"
+#include "BackendTestUtils.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "gtest/gtest.h"
@@ -1441,6 +1443,188 @@ TEST(Quantization, quantizeReshape) {
   EE.compile(CompilationMode::Infer, F);
 
   EE.run(ctx);
+}
+
+/// Mock backend that does not lower FC nodes.
+class MockBackendUnloweredFC : public MockBackend {
+  bool shouldLower(const Node *N) const override {
+    if (N->getKind() == Kinded::Kind::FullyConnectedNodeKind) {
+      return false;
+    }
+    return true;
+  }
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    return true;
+  }
+};
+
+/// Mock backend that does lower FC nodes.
+class MockBackendLoweredFC : public MockBackend {
+  bool shouldLower(const Node *N) const override { return true; }
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    return true;
+  }
+};
+
+/// Create a simple network with an FC given \p ctx, \p EE, and \p F.
+/// \returns the FC node.
+static FullyConnectedNode *createSimpleFCNet(Context &ctx, ExecutionEngine &EE,
+                                             Function &F) {
+  auto &mod = EE.getModule();
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
+  auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
+
+  ctx.allocate(input);
+  ctx.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+
+  auto *FC = F.createFullyConnected("FC", input, W, B);
+  auto *S = F.createSave("ret", FC);
+  ctx.allocate(S->getPlaceholder());
+
+  return FC;
+}
+
+/// Helper to look for a node with kind \p NodeClass in \p F. If found, \returns
+/// a pointer to the node. Otherwise \returns a nullptr.
+template <class NodeClass>
+static NodeClass *findNodeKindOrReturnNull(Function *F) {
+  auto it = std::find_if(
+      F->getNodes().begin(), F->getNodes().end(),
+      [](const Node &node) -> bool { return llvm::isa<NodeClass>(&node); });
+  if (it == F->getNodes().end()) {
+    return nullptr;
+  }
+  return &llvm::cast<NodeClass>(*it);
+}
+
+/// Profile and quantize a graph with an FC, and make sure that we find the
+/// correct quantization parameters, whether the \p BackendClass does or does
+/// not lower the FC given \p expectLoweredFC.
+template <class BackendClass>
+static void testProfileQuantizationOfFC(bool expectLoweredFC) {
+  ExecutionEngine profileEE(BackendKind::Interpreter);
+  Function *profileF = profileEE.getModule().createFunction("profile");
+  Context profileCtx;
+  FullyConnectedNode *FC = createSimpleFCNet(profileCtx, profileEE, *profileF);
+  auto outputNameFC = NodeQuantizationInfo::generateNodeOutputName(
+      FC->getName(), FullyConnectedNode::ResultIdx);
+
+  // Lower everything and keep track of the lowered components source nodes via
+  // the loweredMap.
+  LoweredNamesMap loweredMap;
+  lower(profileF, *profileEE.getBackend(), &loweredMap);
+
+  // Check that the lowered graph only containts the lowered components of the
+  // FC (MM and BA) and not the FC itself.
+  auto *loweredFC = findNodeKindOrReturnNull<FullyConnectedNode>(profileF);
+  auto *loweredMM = findNodeKindOrReturnNull<MatMulNode>(profileF);
+  auto *loweredBA = findNodeKindOrReturnNull<BatchedAddNode>(profileF);
+  ASSERT_FALSE(loweredFC);
+  ASSERT_TRUE(loweredMM);
+  ASSERT_TRUE(loweredBA);
+  auto outputNameMM = NodeQuantizationInfo::generateNodeOutputName(
+      loweredMM->getName(), MatMulNode::ResultIdx);
+  auto outputNameBA = NodeQuantizationInfo::generateNodeOutputName(
+      loweredBA->getName(), BatchedAddNode::ResultIdx);
+
+  // Now profile the fully lowered graph.
+  profileF = glow::profileQuantization(profileCtx, profileF);
+
+  // Compile/run to capture profile.
+  profileEE.compile(CompilationMode::Infer, profileF);
+  profileEE.run(profileCtx);
+
+  // Get quantization infos and build new quantized graph, passing in the
+  // loweredMap to include the unlowered components in QI.
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(
+          profileCtx, profileF, loweredMap, quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy);
+
+  // Verify that we have node quantization infos for the FC and the lowered
+  // components of the FC (MM and BA).
+  NodeQuantizationInfo *FCQI = nullptr, *MMQI = nullptr, *BAQI = nullptr;
+  for (NodeQuantizationInfo &NQI : QI) {
+    if (NQI.nodeOutputName_ == outputNameFC) {
+      FCQI = &NQI;
+    } else if (NQI.nodeOutputName_ == outputNameMM) {
+      MMQI = &NQI;
+    } else if (NQI.nodeOutputName_ == outputNameBA) {
+      BAQI = &NQI;
+    }
+  }
+  ASSERT_TRUE(FCQI);
+  ASSERT_TRUE(MMQI);
+  ASSERT_TRUE(BAQI);
+
+  // Now create the same original function in the backend we're testing.
+  ExecutionEngine backendEE;
+  BackendClass backend;
+  backendEE.setBackend(&backend, /* ownsBackend */ false);
+  Function *backendF = backendEE.getModule().createFunction("quantized");
+  Context backendCtx;
+  createSimpleFCNet(backendCtx, backendEE, *backendF);
+
+  // Lower the function given the backend's preferences for lowering.
+  lower(backendF, *backendEE.getBackend());
+
+  // Check that the backend lowered the function as expected.
+  auto *floatFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
+  auto *floatMM = findNodeKindOrReturnNull<MatMulNode>(backendF);
+  auto *floatBA = findNodeKindOrReturnNull<BatchedAddNode>(backendF);
+  if (expectLoweredFC) {
+    ASSERT_FALSE(floatFC);
+    ASSERT_TRUE(floatMM);
+    ASSERT_TRUE(floatBA);
+  } else {
+    ASSERT_TRUE(floatFC);
+    ASSERT_FALSE(floatMM);
+    ASSERT_FALSE(floatBA);
+  }
+
+  // Quantize the function given the current backend we're testing along with
+  // the quantization infos gathered.
+  backendF = quantization::quantizeFunction(backendEE, QI, ElemKind::Int8QTy,
+                                            backendF);
+
+  // Check that the graph is still structured as expected, and that the
+  // scales/offsets are set as found in QI.
+  auto *quantFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
+  auto *quantMM = findNodeKindOrReturnNull<MatMulNode>(backendF);
+  auto *quantBA = findNodeKindOrReturnNull<BatchedAddNode>(backendF);
+  if (expectLoweredFC) {
+    ASSERT_FALSE(quantFC);
+
+    ASSERT_TRUE(quantMM);
+    EXPECT_EQ(quantMM->getResult().getType()->getScale(), MMQI->Scale());
+    EXPECT_EQ(quantMM->getResult().getType()->getOffset(), MMQI->Offset());
+
+    ASSERT_TRUE(quantBA);
+    EXPECT_EQ(quantBA->getResult().getType()->getScale(), BAQI->Scale());
+    EXPECT_EQ(quantBA->getResult().getType()->getOffset(), BAQI->Offset());
+  } else {
+    ASSERT_TRUE(quantFC);
+    EXPECT_EQ(quantFC->getResult().getType()->getScale(), FCQI->Scale());
+    EXPECT_EQ(quantFC->getResult().getType()->getOffset(), FCQI->Offset());
+
+    ASSERT_FALSE(quantMM);
+    ASSERT_FALSE(quantBA);
+  }
+}
+
+/// Test that backends that do not lower FCs can find the quantization
+/// parameters of their nodes.
+TEST(Quantization, TestProfileQuantizationOfUnloweredFC) {
+  testProfileQuantizationOfFC<MockBackendUnloweredFC>(
+      /* expectLoweredFC */ false);
+}
+
+/// Test that backends that do lower FCs can find the quantization parameters of
+/// their nodes.
+TEST(Quantization, TestProfileQuantizationOfLoweredFC) {
+  testProfileQuantizationOfFC<MockBackendLoweredFC>(/* expectLoweredFC */ true);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
