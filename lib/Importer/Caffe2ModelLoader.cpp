@@ -853,11 +853,16 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
-    unsigned_t divisor;
+    int64_t divisor;
     ASSIGN_VALUE_OR_RETURN_ERR(divisor, loadInt(dict["divisor"]));
-    bool signFollowDivisor;
-    ASSIGN_VALUE_OR_RETURN_ERR(signFollowDivisor,
-                               loadInt(dict["sign_follow_divisor"]));
+
+    RETURN_ERR_IF_NOT(divisor >= 1, "Divisor must be positive.");
+
+    bool signFollowDivisor = false;
+    if (dict.count("sign_follow_divisor")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(signFollowDivisor,
+                                 loadInt(dict["sign_follow_divisor"]));
+    }
 
     auto *node = G_.createModulo(opName, in, divisor, signFollowDivisor);
     RETURN_IF_ERR(addNodeAsOutput(op, node));

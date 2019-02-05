@@ -4918,10 +4918,12 @@ TEST_P(InterpOnly, Modulo1) {
 
   auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
 
-  for (size_t i = 0; i < 3; i++) {
-    for (size_t j = 0; j < 5; j++) {
-      EXPECT_EQ(srcH.at({i, j}) % divisor, resultH.at({i, j}));
-    }
+  std::vector<int64_t> expectedResults = {-1, 0, -2, -1, 0, -2, -1, 0,
+                                          1,  2, 0,  1,  2, 0,  1};
+  ASSERT_EQ(expectedResults.size(), resultH.size());
+
+  for (size_t i = 0, end = expectedResults.size(); i < end; ++i) {
+    EXPECT_EQ(resultH.raw(i), expectedResults.at(i));
   }
 }
 
@@ -4944,14 +4946,12 @@ TEST_P(InterpOnly, Modulo2) {
 
   auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
 
-  for (size_t i = 0; i < 3; i++) {
-    for (size_t j = 0; j < 5; j++) {
-      auto expectedResult = srcH.at({i, j}) % divisor;
-      if ((expectedResult > 0) != (divisor > 0)) {
-        expectedResult += divisor;
-      }
-      EXPECT_EQ(expectedResult, resultH.at({i, j}));
-    }
+  std::vector<int64_t> expectedResults = {2, 3, 1, 2, 3, 1, 2, 3,
+                                          1, 2, 3, 1, 2, 3, 1};
+  ASSERT_EQ(expectedResults.size(), resultH.size());
+
+  for (size_t i = 0, end = expectedResults.size(); i < end; ++i) {
+    EXPECT_EQ(resultH.raw(i), expectedResults.at(i));
   }
 }
 

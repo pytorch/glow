@@ -1104,10 +1104,7 @@ bool ConcatNode::verify() const {
   return isValid;
 }
 
-bool ModuloNode::verify() const {
-  // Divisor can't be 0.
-  return getDivisor() >= 1;
-}
+bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
