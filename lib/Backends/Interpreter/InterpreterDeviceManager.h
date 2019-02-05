@@ -36,7 +36,7 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
 
   /// Static memory cost of the InterpreterFunction.
   /// This is very arbitrary for the Interpreter backend.
-  const u_int64_t functionCost_{1};
+  const uint64_t functionCost_{1};
 
 public:
   InterpreterDeviceManager(llvm::StringRef name = "unnamed",
