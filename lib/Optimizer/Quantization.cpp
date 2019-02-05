@@ -65,8 +65,9 @@ Function *glow::profileQuantization(Context &ctx, Function *F,
     nodesToInstrument.insert(PH->getOutput());
   }
 
-  for (const auto &node : nodesToInstrument) {
-    G->createQuantizationProfile(ctx, "QuantizationProfile", node);
+  for (const auto &NV : nodesToInstrument) {
+    G->createQuantizationProfile(ctx, "QP_" + NV.getNode()->getName().str(),
+                                 NV);
   }
 
   return G;
