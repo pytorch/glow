@@ -44,8 +44,12 @@ class ExecutionEngine final {
   /// a backend provided from elsewhere. If ownsBackend is true,
   /// ~ExecutionEngine will delete the backend_.
   bool ownsBackend_ = false;
-  /// A glow function compiled for this ExecutionEngine's backend.
-  std::unique_ptr<CompiledFunction> function_;
+  /// Glow functions compiled for this ExecutionEngine's backend.
+  llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions_;
+
+  /// Single execution of the given \compiledFunction with the given context
+  /// \ctx.
+  void runInternal(Context &ctx, CompiledFunction &compiledFunction);
 
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
@@ -67,17 +71,26 @@ public:
   /// \returns the internal graph.
   Module &getModule() { return M_; }
 
-  /// \returns the compiled function.
-  CompiledFunction &getCompiledFunction() { return *function_; }
+  /// \returns the compiled function. If more than one function
+  /// has been compiled by this ExecutionEngine then a name must be supplied
+  /// to specify which function to return.
+  CompiledFunction &getCompiledFunction();
+
+  /// \returns the compiled function with the given \p name.
+  CompiledFunction &getCompiledFunction(llvm::StringRef name);
 
   /// \returns whether operation is supported by the underlying backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     return backend_->isOpSupported(opKind, elementTy);
   }
 
-  /// Optimize the graph and pass it to the backend to compile it for a specific
-  /// target. This method should be invoked before the run method.
-  void compile(CompilationMode mode, Function *F);
+  /// Optimize the Function \p f and pass it to the backend to compile it for a
+  /// specific target. If \p clearOtherFunctions is false then the function will
+  /// be added to the collection of previously compiled functions otherwise any
+  /// previously compiled functions will be removed first. This method should be
+  /// invoked before the run method.
+  void compile(CompilationMode mode, Function *F,
+               bool clearOtherFunctions = true);
 
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to
@@ -88,8 +101,13 @@ public:
   void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName);
 
-  /// Context aware single execution of the function.
+  /// Context aware single execution of a function. If more than one function
+  /// has been compiled by this ExecutionEngine then a name must be supplied
+  /// to specify which function to run.
   void run(Context &ctx);
+
+  /// Context aware single execution of a function with the given \p name.
+  void run(Context &ctx, llvm::StringRef name);
 };
 
 //===----------------------------------------------------------------------===//

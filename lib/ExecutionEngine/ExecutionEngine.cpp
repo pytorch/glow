@@ -40,7 +40,7 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
   }
   backend_ = backend;
   ownsBackend_ = ownsBackend;
-  function_.reset();
+  compiledFunctions_.clear();
 }
 
 const Backend *ExecutionEngine::getBackend() const { return backend_; }
@@ -83,14 +83,35 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
   }
 }
 
-void ExecutionEngine::run(Context &ctx) {
-  assert(function_ && "No function has been compiled");
+void ExecutionEngine::runInternal(Context &ctx,
+                                  CompiledFunction &compiledFunction) {
   // Make sure that the context has backing tensors for all placeholders.
   ctx.allocate(M_.getPlaceholders());
-  function_->setupRuns();
-  function_->beforeRun(ctx);
-  function_->execute(&ctx);
-  function_->afterRun(ctx);
+  compiledFunction.setupRuns();
+  compiledFunction.beforeRun(ctx);
+  compiledFunction.execute(&ctx);
+  compiledFunction.afterRun(ctx);
+}
+
+void ExecutionEngine::run(Context &ctx) {
+  runInternal(ctx, getCompiledFunction());
+}
+
+void ExecutionEngine::run(Context &ctx, llvm::StringRef name) {
+  runInternal(ctx, getCompiledFunction(name));
+}
+
+CompiledFunction &ExecutionEngine::getCompiledFunction() {
+  assert(compiledFunctions_.size() == 1 &&
+         "Expected exactly one compiled function.");
+  return *compiledFunctions_.begin()->second;
+}
+
+CompiledFunction &ExecutionEngine::getCompiledFunction(llvm::StringRef name) {
+  auto functionIt = compiledFunctions_.find(name);
+  assert(functionIt != compiledFunctions_.end() &&
+         "Could not find a compiled function with the given name.");
+  return *functionIt->second;
 }
 
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
@@ -128,9 +149,19 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
   }
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Function *F) {
+void ExecutionEngine::compile(CompilationMode mode, Function *F,
+                              bool clearOtherFunctions) {
+  llvm::StringRef name = F->getName();
+
+  if (clearOtherFunctions) {
+    compiledFunctions_.clear();
+  }
+
+  assert(!compiledFunctions_.count(name) &&
+         "A function with this name has already been compiled.");
+
   backend_->optimizeFunction(mode, F);
-  function_ = backend_->compile(F);
+  compiledFunctions_[name] = backend_->compile(F);
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,
