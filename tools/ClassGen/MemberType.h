@@ -25,6 +25,7 @@ enum class MemberType : unsigned {
   Float,
   Unsigned,
   Boolean,
+  Int64,
   String,
   VectorFloat,
   VectorSigned,
@@ -50,6 +51,7 @@ extern MemberTypeInfo kTypeRefTypeInfo;
 extern MemberTypeInfo kFloatTypeInfo;
 extern MemberTypeInfo kUnsignedTypeInfo;
 extern MemberTypeInfo kBooleanTypeInfo;
+extern MemberTypeInfo kInt64TypeInfo;
 extern MemberTypeInfo kStringTypeInfo;
 extern MemberTypeInfo kVectorFloatTypeInfo;
 extern MemberTypeInfo kVectorUnsignedTypeInfo;
@@ -77,6 +79,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "float",
                                "unsigned_t",
                                "bool",
+                               "int64_t",
                                "llvm::StringRef",
                                "llvm::ArrayRef<float>",
                                "llvm::ArrayRef<int>",
@@ -93,6 +96,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "float",
                                 "unsigned_t",
                                 "bool",
+                                "int64_t",
                                 "std::string",
                                 "std::vector<float>",
                                 "std::vector<int>",
@@ -109,6 +113,7 @@ inline const char *getCtorArgTypename(MemberType type) {
                                 "float",
                                 "unsigned_t",
                                 "bool",
+                                "int64_t",
                                 "std::string",
                                 "std::vector<float>",
                                 "std::vector<int>",

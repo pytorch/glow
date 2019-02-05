@@ -1669,8 +1669,8 @@ void BoundInterpreterFunction::fwdModuloInstImpl(glow::ModuloInst const *I) {
   auto srcH = getTensor(I->getSrc())->getHandle<ElemTy>();
   auto destH = getTensor(I->getDest())->getHandle<ElemTy>();
 
-  unsigned_t divisor = I->getDivisor();
-  bool signFollowDivisor = I->getSignFollowDivisor();
+  auto divisor = I->getDivisor();
+  auto signFollowDivisor = I->getSignFollowDivisor();
 
   for (size_t i = 0, e = srcH.size(); i < e; i++) {
     auto res = srcH.raw(i) % divisor;

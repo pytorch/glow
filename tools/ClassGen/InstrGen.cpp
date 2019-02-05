@@ -406,7 +406,7 @@ int main(int argc, char **argv) {
   BB.newInstr("Modulo")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::Unsigned, "Divisor")
+      .addMember(MemberType::Int64, "Divisor")
       .addMember(MemberType::Boolean, "SignFollowDivisor")
       .inplaceOperand({
           "Dest",

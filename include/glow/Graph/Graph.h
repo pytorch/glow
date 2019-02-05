@@ -451,7 +451,7 @@ public:
   /// signFollowDivisor is true then any negative elements in the output will
   /// have divisor added to their final values.
   ModuloNode *createModulo(llvm::StringRef name, NodeValue input,
-                           unsigned_t divisor, bool signFollowDivisor = false);
+                           int64_t divisor, bool signFollowDivisor = false);
 
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue LHS,    \

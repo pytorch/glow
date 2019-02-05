@@ -21,6 +21,8 @@ MemberTypeInfo kFloatTypeInfo{MemberType::Float, "float", "float", "float"};
 MemberTypeInfo kUnsignedTypeInfo{MemberType::Unsigned, "unsigned_t",
                                  "unsigned_t", "unsigned_t"};
 MemberTypeInfo kBooleanTypeInfo{MemberType::Boolean, "bool", "bool", "bool"};
+MemberTypeInfo kInt64TypeInfo{MemberType::Int64, "int64_t", "int64_t",
+                              "int64_t"};
 MemberTypeInfo kStringTypeInfo{MemberType::String, "std::string", "std::string",
                                "std::string"};
 MemberTypeInfo kVectorFloatTypeInfo{MemberType::VectorFloat,

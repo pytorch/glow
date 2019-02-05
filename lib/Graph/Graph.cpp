@@ -1051,7 +1051,7 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
 }
 
 ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
-                                   unsigned_t divisor, bool signFollowDivisor) {
+                                   int64_t divisor, bool signFollowDivisor) {
   // The output tensor is of the same shape as the input tensor.
   auto OT = getParent()->uniqueType(*input.getType());
   return addNode(new ModuloNode(name, OT, input, divisor, signFollowDivisor));

@@ -402,7 +402,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Modulo")
       .addInput("Input")
-      .addMember(MemberType::Unsigned, "Divisor")
+      .addMember(MemberType::Int64, "Divisor")
       .addMember(MemberType::Boolean, "SignFollowDivisor")
       .addResultFromCtorArg()
       .setDocstring("Performs elementwise modulo operation on the input where "
