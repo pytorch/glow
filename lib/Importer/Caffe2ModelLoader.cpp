@@ -856,7 +856,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int64_t divisor;
     ASSIGN_VALUE_OR_RETURN_ERR(divisor, loadInt(dict["divisor"]));
 
-    RETURN_ERR_IF_NOT(divisor >= 1, "Divisor must be positive.");
+    RETURN_ERR_IF_NOT(divisor >= 1, "Divisor must not be less than 1.");
 
     bool signFollowDivisor = false;
     if (dict.count("sign_follow_divisor")) {
