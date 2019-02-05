@@ -84,14 +84,13 @@ public:
     return backend_->isOpSupported(opKind, elementTy);
   }
 
-  /// Optimize the graph and pass it to the backend to compile it for a specific
-  /// target. This method should be invoked before the run method.
-  void compile(CompilationMode mode, Function *F);
-
-  /// Optimize the graph and pass it to the backend to compile it for a specific
-  /// target. This method should be invoked before the run method by passing the
-  /// same \p name to run.
-  void compile(CompilationMode mode, Function *F, llvm::StringRef name);
+  /// Optimize the Function \p f and pass it to the backend to compile it for a
+  /// specific target. If \p clearOtherFunctions is false then the function will
+  /// be added to the collection of previously compiled functions otherwise any
+  /// previously compiled functions will be removed first. This method should be
+  /// invoked before the run method.
+  void compile(CompilationMode mode, Function *F,
+               bool clearOtherFunctions = true);
 
   /// Save a bundle for a standalone execution. This method takes care of
   /// everything when preparing the bundle for saving. There is no need to

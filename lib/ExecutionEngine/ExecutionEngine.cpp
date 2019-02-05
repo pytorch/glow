@@ -149,16 +149,18 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
   }
 }
 
-void ExecutionEngine::compile(CompilationMode mode, Function *F) {
-  backend_->optimizeFunction(mode, F);
-  compiledFunctions_.clear();
-  compiledFunctions_[F->getName()] = backend_->compile(F);
-}
-
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
-                              llvm::StringRef name) {
+                              bool clearOtherFunctions) {
+  llvm::StringRef name = F->getName();
+
+  if (clearOtherFunctions) {
+    compiledFunctions_.clear();
+  }
+
   assert(!compiledFunctions_.count(name) &&
          "A function with this name has already been compiled.");
+
+  backend_->optimizeFunction(mode, F);
   compiledFunctions_[name] = backend_->compile(F);
 }
 
