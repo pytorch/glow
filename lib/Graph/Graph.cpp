@@ -1482,17 +1482,17 @@ Function::createQuantizationProfile(Context &ctx, llvm::StringRef name,
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
   auto *histogram = getParent()->createPlaceholder(
-      ElemKind::FloatTy, {numberOfBuckets}, "histogram", false);
+      ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
   ctx.allocate(histogram);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
   auto *computationInfo = getParent()->createPlaceholder(
-      ElemKind::FloatTy, {2}, "computationInfo", false);
+      ElemKind::FloatTy, {2}, "CI_" + name.str(), false);
   ctx.allocate(computationInfo);
   return addNode(new QuantizationProfileNode(
-      name, input, histogram, computationInfo, input.getNode()->getName().str(),
-      input.getResNo()));
+      "QI_" + name.str(), input, histogram, computationInfo,
+      input.getNode()->getName().str(), input.getResNo()));
 }
 
 IntLookupTableNode *
