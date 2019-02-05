@@ -48,6 +48,17 @@ using ResultCBTy = std::function<void(
 struct DeviceInfo {
   /// Available memory on device in bytes.
   size_t availableMemory;
+  /// Available SRAM capacity in bytes.
+  size_t sramCapacity;
+  /// Peak compute on device in ops/second. Assumes all ops are in int8.
+  /// TODO: distinguish between data types with different peak flops.
+  float peakCompute;
+  /// Peak memory bandwidth from DRAM on device in bytes/second.
+  float peakDramBw;
+  /// Peak memory bandwidth from SRAM on device in bytes/second.
+  float peakSramBw;
+  /// Peak ingress/egress PCI-E bandwidth from device in bytes/second.
+  float peakPCIeBw;
 };
 
 /// Individual Node in the DAG for a given network. This contains all the
