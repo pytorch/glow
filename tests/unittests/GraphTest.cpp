@@ -88,9 +88,41 @@ TEST(Graph, simpleTestConv) {
   F->dumpDAG();
   lower(F, MockBackend());
   ::optimize(F, CompilationMode::Train);
-  M.generateIR();
+  M.generateIR(MockBackend());
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+}
+
+/// Tests custom lowering from Node to Instruction IR
+TEST(Graph, simpleTestConvCustomLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Context ctx;
+  Node *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
+
+  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
+  F->dump();
+  F->dumpDAG();
+  lower(F, MockBackendCustomIRGen());
+  ::optimize(F, CompilationMode::Train);
+  M.generateIR(MockBackendCustomIRGen());
+  M.dump();
+  auto &instrList = M.getInstrs();
+  bool customHappened = false;
+  for (auto begin = instrList.begin(); begin != instrList.end(); ++begin) {
+    if (begin->getName().equals("CustomConvolutionInstruction")) {
+      customHappened = true;
+      break;
+    }
+  }
+
+  EXPECT_EQ(customHappened, true);
 }
 
 /// Check that we can create convolution with float16.
@@ -111,7 +143,7 @@ TEST(Graph, float16Conv) {
 
   IRFunction M(F);
 
-  M.generateIR();
+  M.generateIR(MockBackend());
   EXPECT_GT(M.getInstrs().size(), 0);
   auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
                              [](const Instruction &inst) -> bool {
@@ -280,7 +312,7 @@ TEST(Graph, simpleTestFC) {
   F->dumpDAG();
   lower(F, MockBackend());
   ::optimize(F, CompilationMode::Train);
-  M.generateIR();
+  M.generateIR(MockBackend());
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }

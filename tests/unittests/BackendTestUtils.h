@@ -18,6 +18,13 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 
+#include "llvm/Support/Casting.h"
+
+#include "glow/Backends/Backend.h"
+#include "glow/Graph/Node.h"
+#include "glow/IR/IRBuilder.h"
+#include "glow/IR/IRGen.h"
+
 namespace glow {
 
 /// MockBackend used only for unit testing.
@@ -37,6 +44,61 @@ class MockBackend : public Backend {
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     return false;
+  }
+
+  bool generateInst(Node *N, IRGenVisitor &irgen) const override {
+    return false;
+  }
+};
+
+/// MockBackendCustomIRGen used only for unit testing to test custom lowering
+/// from Node to Instruction IR.
+class MockBackendCustomIRGen : public Backend {
+  class MockFunction : public CompiledFunction {
+    void execute(Context *) override {}
+  };
+
+  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
+    return llvm::make_unique<MockFunction>();
+  }
+
+  std::unique_ptr<CompiledFunction>
+  compileWithoutConstants(Function *F) const override {
+    return llvm::make_unique<MockFunction>();
+  }
+
+  bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
+    return false;
+  }
+
+  bool generateInst(Node *N, IRGenVisitor &irgen) const override {
+    bool hasChanged = false;
+    auto builder_ = irgen.getBuilder();
+    switch (N->getKind()) {
+    case glow::Kinded::Kind::ConvolutionNodeKind: {
+      auto *CN__ = llvm::cast<ConvolutionNode>(N);
+      auto *Src = irgen.valueForNode(CN__->getInput());
+      auto *Filter = irgen.valueForNode(CN__->getFilter());
+      auto *Bias = irgen.valueForNode(CN__->getBias());
+      std::string allocName = std::string(N->getName()) + ".res";
+      auto *Dest__ = builder_->createAllocActivationInst(
+          allocName, CN__->getResult().getType());
+      auto *V = builder_->createConvolutionInst(
+          "CustomConvolutionInstruction", Dest__, Src, Filter, Bias,
+          CN__->getKernels(), CN__->getStrides(), CN__->getPads(),
+          CN__->getGroup());
+      if (N->hasPredicate()) {
+        V->setPredicate(irgen.valueForNode(N->getPredicate()));
+      }
+      irgen.registerIR(CN__->getResult(), V->getDest());
+      irgen.setNodeToIR(N, V);
+      hasChanged = true;
+      break;
+    }
+    default:
+      break;
+    }
+    return hasChanged;
   }
 };
 

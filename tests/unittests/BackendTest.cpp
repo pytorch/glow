@@ -154,12 +154,12 @@ TEST_P(BackendTest, debugPrint) {
   auto *IVTensor = ctx.allocate(IV);
   IVTensor->assign(&input);
 
-  auto IR = llvm::make_unique<IRFunction>(F);
-  IR->generateIR();
-  IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
-
   std::unique_ptr<BackendUsingGlowIR> backend(
       static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
+  auto IR = llvm::make_unique<IRFunction>(F);
+  IR->generateIR(*backend.get());
+  IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
+
   auto function = backend->compileIR(std::move(IR));
   function->setupRuns();
   function->beforeRun(ctx);
