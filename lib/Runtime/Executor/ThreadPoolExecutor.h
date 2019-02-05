@@ -16,6 +16,7 @@
 #ifndef GLOW_RUNTIME_THREAD_POOL_EXECUTOR_H
 #define GLOW_RUNTIME_THREAD_POOL_EXECUTOR_H
 
+#include <condition_variable>
 #include <mutex>
 #include <unordered_map>
 
@@ -24,6 +25,32 @@
 
 namespace glow {
 namespace runtime {
+
+/// This class implements a simple barrier with which to wait for all threads
+/// to exit a certain section of code before proceeding.
+class InflightBarrier final {
+public:
+  /// Decrement the count of threads in the barrier by \p decr.
+  void decrement(unsigned decr = 1);
+
+  /// Increment the count of threads in the barrier by \p incr.
+  void increment(unsigned incr = 1);
+
+  /// \returns the current count of the barrier.
+  unsigned count();
+
+  /// Wait for the barrier count to hit zero before continuing. This is
+  /// potentially a blocking call.
+  void wait();
+
+private:
+  /// Count of threads inside the barrier.
+  unsigned count_{0};
+  /// Mutex for accesing count_;
+  std::mutex mtx_;
+  /// Condition variable for implementing wait().
+  std::condition_variable cv_;
+};
 
 /// This class keeps track of the state of execution for a run (identified
 /// by the runId).
@@ -171,6 +198,9 @@ private:
   /// executionStateLocks_ so that multiple threads and can perform insertion
   /// and lookup concurrently.
   std::mutex executionStatesMutex_;
+  /// Barrier for making sure all asynchronous requests made to the
+  /// DeviceManager return before allowing destruction of the executor.
+  InflightBarrier inflightBarrier_;
 };
 
 } // namespace runtime

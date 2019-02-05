@@ -702,7 +702,8 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   // If threadsReady != numConcurrentRuns, not all threads are ready to run
   // their tests. Wait until they are.
   if (threadsReady != numConcurrentRuns) {
-    driverCV.wait(lock);
+    driverCV.wait(
+        lock, [&threadsReady] { return threadsReady == numConcurrentRuns; });
   }
   // Wake up all test runners.
   threadCV.notify_all();
@@ -1047,7 +1048,8 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   // If threadsReady != numConcurrentRuns, not all threads are ready to run
   // their tests. Wait until they are.
   if (threadsReady != numConcurrentRuns) {
-    driverCV.wait(lock);
+    driverCV.wait(
+        lock, [&threadsReady] { return threadsReady == numConcurrentRuns; });
   }
   // Wake up all test runners.
   threadCV.notify_all();
