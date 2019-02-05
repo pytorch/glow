@@ -400,6 +400,15 @@ int main(int argc, char **argv) {
                   "generates a mask that can be consumed by a Select node.");
   // clang-format on
 
+  BB.newNode("Modulo")
+      .addInput("Input")
+      .addMember(MemberType::Int64, "Divisor")
+      .addMember(MemberType::Boolean, "SignFollowDivisor")
+      .addResultFromCtorArg()
+      .setDocstring("Performs elementwise modulo operation on the input where "
+                    "each element in the output is the corresponding element "
+                    "in the input data modulo Divisor.");
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//

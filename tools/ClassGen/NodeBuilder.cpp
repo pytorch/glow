@@ -157,6 +157,8 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kUnsignedTypeInfo;
   } else if (type == MemberType::Boolean) {
     typeInfo = &kBooleanTypeInfo;
+  } else if (type == MemberType::Int64) {
+    typeInfo = &kInt64TypeInfo;
   } else if (type == MemberType::String) {
     typeInfo = &kStringTypeInfo;
   } else if (type == MemberType::VectorFloat) {

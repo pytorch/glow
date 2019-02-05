@@ -1661,3 +1661,43 @@ TEST(caffe2, Alias) {
   auto *N = llvm::dyn_cast<Placeholder>(saveNode->getInput());
   EXPECT_TRUE(N);
 }
+
+TEST(caffe2, Modulo) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/modulo_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
+
+  Placeholder *output;
+  Context ctx;
+
+  Tensor data(ElemKind::Int64ITy, {7});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    // Loaded protos must have at least one external output, so load an unused
+    // output and type to satisfy it. It is named unused_output in
+    // empty_predict_net.pbtxt.
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(output);
+
+  // Graph has 2 nodes: Save and Modulo.
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Net has 1 inputs.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+
+  // Input to save node is ModuloNode.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *N = llvm::dyn_cast<ModuloNode>(saveNode->getInput());
+  ASSERT_TRUE(N);
+}

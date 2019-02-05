@@ -1050,6 +1050,13 @@ LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
                                                     alpha, beta, k));
 }
 
+ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
+                                   int64_t divisor, bool signFollowDivisor) {
+  // The output tensor is of the same shape as the input tensor.
+  auto OT = getParent()->uniqueType(*input.getType());
+  return addNode(new ModuloNode(name, OT, input, divisor, signFollowDivisor));
+}
+
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, NodeValue LHS, NodeValue RHS) {                    \
