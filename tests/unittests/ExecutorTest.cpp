@@ -49,7 +49,7 @@ public:
   void addNetwork(const Module *module, FunctionMapTy functions,
                   ReadyCBTy readyCB) override {}
 
-  void evictNetwork(llvm::StringRef functionName) override {
+  void evictNetwork(std::string functionName) override {
     // Erase the entry so that the same function name can be used to register
     // another result.
     resultMap_.erase(functionName);

@@ -58,7 +58,7 @@ public:
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,
                       ReadyCBTy cb) override;
-  void evictNetworkImpl(llvm::StringRef functionName) override;
+  void evictNetworkImpl(std::string functionName) override;
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
                        std::unique_ptr<Context> ctx, ResultCBTy cb) override;
 };

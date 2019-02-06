@@ -69,7 +69,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
   readyCB(module, ResultCode::Ready);
 }
 
-void InterpreterDeviceManager::evictNetworkImpl(llvm::StringRef functionName) {
+void InterpreterDeviceManager::evictNetworkImpl(std::string functionName) {
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   }

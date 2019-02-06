@@ -68,7 +68,7 @@ public:
 
   /// Remove (and delete) the provided function, freeing
   /// up space on the device.
-  virtual void evictNetwork(llvm::StringRef functionName) = 0;
+  virtual void evictNetwork(std::string functionName) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.

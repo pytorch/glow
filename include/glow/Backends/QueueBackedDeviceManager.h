@@ -55,7 +55,7 @@ public:
 
   /// Remove (and delete) the provided network and all it's functions, freeing
   /// up space on the device.
-  void evictNetwork(llvm::StringRef functionName) override {
+  void evictNetwork(std::string functionName) override {
     workThread_.submit(
         [this, functionName] { evictNetworkImpl(functionName); });
   }
@@ -89,7 +89,7 @@ protected:
   virtual void addNetworkImpl(const Module *, FunctionMapTy, ReadyCBTy) = 0;
 
   /// Remove the module and reclaim it's memory
-  virtual void evictNetworkImpl(llvm::StringRef functionName) = 0;
+  virtual void evictNetworkImpl(std::string functionName) = 0;
 
   /// Execute provided Function.
   virtual void runFunctionImpl(runtime::RunIdentifierTy, std::string,

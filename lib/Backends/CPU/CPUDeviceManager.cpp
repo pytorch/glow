@@ -69,7 +69,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   readyCB(module, ResultCode::Ready);
 }
 
-void CPUDeviceManager::evictNetworkImpl(llvm::StringRef functionName) {
+void CPUDeviceManager::evictNetworkImpl(std::string functionName) {
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   }
