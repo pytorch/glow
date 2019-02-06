@@ -132,7 +132,9 @@ void Graph::runAsync(EventPtr inputEvent, EventPtr outputEvent) {
   backend()->runAsync([inputEvent, outputEvent, inputPlaceholderToBuffer,
                        outputPlaceholderToBuffer, this]() {
     // Wait for all inputs to be ready.
-    inputEvent->wait();
+    if (inputEvent) {
+      inputEvent->wait();
+    }
     // Run inference.
     this->run(inputPlaceholderToBuffer, outputPlaceholderToBuffer);
     // Signal that the outputs are ready.

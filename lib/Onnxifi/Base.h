@@ -22,6 +22,7 @@
 #include "glow/Support/ThreadPool.h"
 
 #include "onnx/onnxifi.h"
+#include "onnx/onnxifi_ext.h"
 
 #include <atomic>
 #include <condition_variable>
