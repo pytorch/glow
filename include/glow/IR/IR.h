@@ -232,6 +232,7 @@ private:
   void createNode(const Instruction &);
 };
 
+class Backend;
 class WeightVar;
 class Value;
 class Node;
@@ -276,7 +277,8 @@ public:
 
   /// Generate IR from the graph nodes. If the compilation mode is 'training'
   /// then this procedure will also generate the code for the backward pass.
-  void generateIR();
+  /// It allows Backend /p B to custom translate from a Node to Instruction IR.
+  void generateIR(const Backend &B);
 
   /// Wipe out the content of the function. This allows the function to be used
   /// again for another round of code generation.

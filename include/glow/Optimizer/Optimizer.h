@@ -61,7 +61,9 @@ Function *profileQuantization(Context &ctx, Function *F,
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.
-std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F,
+/// Backend /p B is used to allow for custom lowering from Node to
+/// Instruction IR.
+std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
                                                   bool shouldShareBuffers);
 
 } // namespace glow

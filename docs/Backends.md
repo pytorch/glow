@@ -96,6 +96,11 @@ Additionally, there are virtual functions that backends can override:
     provided `Function *F` is compiled and then saved to `outputDir` with main
     entry name `networkName`.
 
+- `virtual bool generateInst(Node *N, IRGenVisitor &irgen) const;`
+
+  - Allow the backend to custom lower from Node to Instruction IR. 
+    Returns true if lowering is performed, false otherwise.
+
 ### `CompiledFunction` Abstract Class
 
 `CompiledFunction` is an abstract class that represents the result of

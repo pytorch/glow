@@ -1547,12 +1547,12 @@ OCLBackend::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
 std::unique_ptr<CompiledFunction> OCLBackend::compile(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIR(std::move(IR));
 }
 
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileWithoutConstants(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIRWithoutConstants(std::move(IR));
 }

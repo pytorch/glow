@@ -14,23 +14,17 @@
  * limitations under the License.
  */
 
-#include "glow/Graph/Graph.h"
-#include "glow/Graph/Nodes.h"
-#include "glow/IR/IR.h"
-#include "glow/IR/IRBuilder.h"
-
+#include "glow/IR/IRGen.h"
 #include "llvm/Support/Casting.h"
 
 #include <unordered_map>
 #include <unordered_set>
 
-using namespace glow;
-
 //===----------------------------------------------------------------------===//
 //              IRGen visitor - the code that generates the IR.
 //===----------------------------------------------------------------------===//
 
-namespace {
+using namespace glow;
 
 using llvm::cast;
 using llvm::dyn_cast;
@@ -49,363 +43,352 @@ static size_t getConsecutiveSameNodeCount(NodeValueArrayRef inputs,
   return inputs.size() - i;
 }
 
-/// A helper class for visiting and generating the dotty file from the graph.
-struct IRGenVisitor : NodeWalker {
-  using NodeValueToDestTy = std::unordered_map<NodeValue, Value *>;
-  using NodeToInstrTy = std::unordered_map<Node *, Instruction *>;
+bool IRGenVisitor::shouldVisit(Node *parent, Node *N) {
+  // Don't revisit nodes that we've already processed.
+  return !visited_.count(N);
+}
 
-  /// A set of visited nodes.
-  std::unordered_set<Node *> visited_;
-  /// Holds the mapping between graph nodes to the destination buffers.
-  NodeValueToDestTy generatedNodeDest_;
-  /// Holds the mapping between graph nodes and the lowered instructions. This
-  /// map is used by instructions that want to inspect the generated
-  /// instructions. For example, gradient instructions that look at operands
-  /// that do not exist at the graph level. Not all variables are representible.
-  NodeToInstrTy nodeToInstr_;
+/// \returns the generated instruction for the node \p N.
+Value *IRGenVisitor::valueForNode(NodeValue N) {
+  if (auto *V = dyn_cast<Storage>(N)) {
+    auto &map = F_->getVariableMap();
+    return map[V];
+  }
+  auto it = generatedNodeDest_.find(N);
+  assert(it != generatedNodeDest_.end() && "IR was not generated for the node");
+  return it->second;
+}
+/// Saves the generated IR in \p v for the node \p N.
+void IRGenVisitor::registerIR(NodeValue N, Value *v) {
+  if (auto *V = dyn_cast<Storage>(N)) {
+    auto &map = F_->getVariableMap();
+    map[V] = v;
+    return;
+  }
+  assert(!generatedNodeDest_.count(N) &&
+         "Already generated code for this node");
+  assert(isa<AllocActivationInst>(v) && "The value must be an activation");
+  generatedNodeDest_[N] = v;
+}
 
-  /// The function that we are building.
-  IRFunction *F_;
-  /// The builder that adds instructions into the function.
-  IRBuilder builder_;
+/// Adds to Node \p N --> Instruction \p inst map.
+void IRGenVisitor::setNodeToIR(Node *N, Instruction *inst) {
+  nodeToInstr_[N] = inst;
+}
 
-public:
-  bool shouldVisit(Node *parent, Node *N) override {
-    // Don't revisit nodes that we've already processed.
-    return !visited_.count(N);
+/// Return Instruction that is mapped to Node \p N.
+/// If mapping doesn't exists returns nullptr.
+Instruction *IRGenVisitor::getNodeToIR(Node *N) {
+  Instruction *retNode = nullptr;
+  auto iterInst = nodeToInstr_.find(N);
+  if (iterInst != nodeToInstr_.end())
+    retNode = iterInst->second;
+
+  return retNode;
+}
+
+void IRGenVisitor::post(Node *parent, Node *N) {
+  visited_.insert(N);
+
+  // Allows backend to generate their custom instrution IR.
+  if (B_.generateInst(N, *this)) {
+    return;
   }
 
-  explicit IRGenVisitor(IRFunction *M) : F_(M), builder_(F_) {}
+  switch (N->getKind()) {
+  default:
+    llvm_unreachable("Unhandled node; perhaps the node should have been "
+                     "lowered, or the backend should have specified an IRGen "
+                     "case for this node to a backend-specific Instr.");
+    break;
 
-  /// \returns the generated instruction for the node \p N.
-  Value *valueForNode(NodeValue N) {
-    if (auto *V = dyn_cast<Storage>(N)) {
-      auto &map = F_->getVariableMap();
-      return map[V];
-    }
-    auto it = generatedNodeDest_.find(N);
-    assert(it != generatedNodeDest_.end() &&
-           "IR was not generated for the node");
-    return it->second;
-  }
-  /// Saves the generated IR in \p v for the node \p N.
-  void registerIR(NodeValue N, Value *v) {
-    if (auto *V = dyn_cast<Storage>(N)) {
-      auto &map = F_->getVariableMap();
-      map[V] = v;
-      return;
-    }
-    assert(!generatedNodeDest_.count(N) &&
-           "Already generated code for this node");
-    assert(isa<AllocActivationInst>(v) && "The value must be an activation");
-    generatedNodeDest_[N] = v;
-  }
-
-  void post(Node *parent, Node *N) override {
-    visited_.insert(N);
-
-    switch (N->getKind()) {
-    default:
-      llvm_unreachable("Unhandled node; perhaps the node should have been "
-                       "lowered, or the backend should have specified an IRGen "
-                       "case for this node to a backend-specific Instr.");
-      break;
-
-      // Include all automatically generated cases:
+    // Include all automatically generated cases:
 #include "glow/AutoGenIRGen.h"
 
-    case glow::Kinded::Kind::ReshapeNodeKind: {
-      auto *RN = cast<ReshapeNode>(N);
+  case glow::Kinded::Kind::ReshapeNodeKind: {
+    auto *RN = cast<ReshapeNode>(N);
 
-      auto *inVal = valueForNode(RN->getInput());
-      std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
-      auto *TVI = builder_.createTensorViewInst(
-          "tensorview.reshape", inVal, RN->getResult().getType(), offsets);
-      auto *dest = builder_.createAllocActivationInst(
-          "copy.reshape.res", RN->getResult().getType());
-      builder_.createCopyInst("copy.reshape", dest, TVI);
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::ConvolutionGradNodeKind: {
-      auto *CG = cast<ConvolutionGradNode>(N);
-
-      auto *input = valueForNode(CG->getInput());
-      auto *filter = valueForNode(CG->getFilter());
-      auto *bias = valueForNode(CG->getBias());
-
-      auto *outGrad = valueForNode(CG->getGradOfOriginalOutputNamedResult());
-
-      auto *inG =
-          builder_.createAllocActivationInst("conv.input.G", input->getType());
-      auto *biasG =
-          builder_.createAllocActivationInst("conv.bias.G", bias->getType());
-      auto *filterG = builder_.createAllocActivationInst("conv.filter.G",
-                                                         filter->getType());
-
-      builder_.createConvolutionGradInst(
-          N->getName(), input, filter, outGrad, inG, filterG, biasG,
-          CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup());
-
-      registerIR(CG->getGradOfInputNamedInput(), inG);
-      registerIR(CG->getGradOfInputNamedFilter(), filterG);
-      registerIR(CG->getGradOfInputNamedBias(), biasG);
-      break;
-    }
-    case glow::Kinded::Kind::MaxPoolNodeKind: {
-      auto *P = cast<MaxPoolNode>(N);
-      auto *in = valueForNode(P->getInput());
-      auto *V = builder_.createMaxPoolWithXYOp(
-          N->getName(), in, P->getKernels(), P->getStrides(), P->getPads());
-      Value *dest = V->getDest();
-      nodeToInstr_[N] = V;
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::MaxPoolGradNodeKind: {
-      auto *PG = cast<MaxPoolGradNode>(N);
-
-      auto poolOut = PG->getOriginalOutputForResult();
-      auto *outW = valueForNode(poolOut);
-      auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
-
-      auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                     PG->getInput().getType());
-
-      // Find the original pool instruction.
-      assert(nodeToInstr_.count(poolOut) &&
-             "Pool IRgen did not register itself");
-      auto *PI = cast<MaxPoolWithXYInst>(nodeToInstr_[poolOut.getNode()]);
-
-      builder_.createMaxPoolWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
-                                           outG, inG, PG->getKernels(),
-                                           PG->getStrides(), PG->getPads());
-      registerIR(PG->getGradOfInputNamedInput(), inG);
-      break;
-    }
-    case glow::Kinded::Kind::AvgPoolGradNodeKind: {
-      auto *PG = cast<AvgPoolGradNode>(N);
-
-      auto poolOut = PG->getOriginalOutputForResult();
-      auto *outW = valueForNode(poolOut);
-      auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
-
-      auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                     PG->getInput().getType());
-
-      builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
-                                     PG->getKernels(), PG->getStrides(),
-                                     PG->getPads());
-      registerIR(PG->getGradOfInputNamedInput(), inG);
-      break;
-    }
-    case glow::Kinded::Kind::SoftMaxGradNodeKind: {
-      auto *SMG = cast<SoftMaxGradNode>(N);
-      // Original inputs:
-      auto *origIn = valueForNode(SMG->getInput());
-      auto *origSelect = valueForNode(SMG->getSelected());
-      // Values related to the output of the node.
-      auto *outGrad = valueForNode(SMG->getGradOfOriginalOutputNamedResult());
-      auto originalNodeResult = SMG->getOriginalOutputForResult();
-      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
-             "Unknown original node");
-      auto *origOut = valueForNode(originalNodeResult);
-      auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
-                                                         outGrad->getType());
-      auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
-                                                  origSelect, srcGrad);
-      registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
-      break;
-    }
-    case glow::Kinded::Kind::CrossEntropyLossNodeKind: {
-      auto *CELoss = cast<CrossEntropyLossNode>(N);
-      auto *P = valueForNode(CELoss->getP());
-      auto *Labels = valueForNode(CELoss->getLabels());
-      auto *V = builder_.createCrossEntropyLossOp(N->getName(), P, Labels);
-      registerIR(N, V->getCE());
-      nodeToInstr_[N] = V;
-      break;
-    }
-    case glow::Kinded::Kind::CrossEntropyLossGradNodeKind: {
-      auto *CELossG = cast<CrossEntropyLossGradNode>(N);
-      // Forward pass inputs.
-      auto *P = valueForNode(CELossG->getP());
-      auto *Y = valueForNode(CELossG->getLabels());
-      // Backward pass gradient dL/dY.
-      auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedCE());
-      auto *pGrad =
-          builder_.createAllocActivationInst("celoss.p.grad", P->getType());
-      auto *yGrad = builder_.createAllocActivationInst("celoss.labels.grad",
-                                                       Y->getType());
-      auto *CELossGI = builder_.createCrossEntropyLossGradInst(
-          N->getName(), dY, P, Y, pGrad, yGrad);
-      registerIR(CELossG->getGradOfInputNamedP(), CELossGI->getPgrad());
-      registerIR(CELossG->getGradOfInputNamedLabels(),
-                 CELossGI->getLabelsgrad());
-      break;
-    }
-    case glow::Kinded::Kind::ConcatNodeKind: {
-      auto *CC = cast<ConcatNode>(N);
-
-      auto *dest = builder_.createAllocActivationInst(
-          CC->getName(), CC->getResult().getType());
-      builder_.createSplatInst(CC->getName(), dest, 0);
-      auto inputs = CC->getInputs();
-
-      // We start inserting to the shape at (0,0, ... ).
-      std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
-      unsigned dim = CC->getDim();
-
-      for (size_t i = 0, e = inputs.size(); i < e;) {
-        // Look for a series of the same Node being concated consecutively many
-        // times. We can wrap n such consecutive repeats into a single insert
-        // with count n along the dim axis.
-        const size_t consecutiveCount = getConsecutiveSameNodeCount(inputs, i);
-
-        // Create the new InsertTensor instruction given the input node, along
-        // with the number of times to insert the node and the axis (dim) we are
-        // inserting in.
-        builder_.createInsertTensorInst(CC->getName(), dest,
-                                        valueForNode(inputs[i]), offsets,
-                                        consecutiveCount, dim);
-
-        // We are stacking the tensors along a specific dimension. This means
-        // that we increase the size of the tensor along this dimension, count
-        // times.
-        offsets[dim] += inputs[i].dims()[dim] * consecutiveCount;
-
-        // Increment i by the number of the same nodes that were found in a row,
-        // which were all wrapped into a single InsertTensorInst.
-        i += consecutiveCount;
-      }
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::SliceNodeKind: {
-      auto *SL = cast<SliceNode>(N);
-      auto start = SL->getStart();
-      auto *in = valueForNode(SL->getInput());
-      auto *dest = builder_.createAllocActivationInst(
-          SL->getName(), SL->getResult().getType());
-      builder_.createExtractTensorInst(SL->getName(), dest, in, start);
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::InsertTensorNodeKind: {
-      auto *IT = cast<InsertTensorNode>(N);
-      auto start = IT->getStart();
-      auto count = IT->getCount();
-      auto axis = IT->getAxis();
-      auto *big = valueForNode(IT->getBig());
-      auto *small = valueForNode(IT->getSmall());
-      auto *dest = builder_.createAllocActivationInst(
-          IT->getName(), IT->getResult().getType());
-      builder_.createCopyInst("copy.insert", dest, big);
-      builder_.createInsertTensorInst("insert", dest, small, start, count,
-                                      axis);
-
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::ScatterAssignNodeKind: {
-      auto *SAI = cast<ScatterAssignNode>(N);
-      auto *dataTensor = valueForNode(SAI->getData());
-      auto *indicesTensor = valueForNode(SAI->getIndices());
-      auto *slicesTensor = valueForNode(SAI->getSlices());
-      auto *dest = builder_.createAllocActivationInst(
-          SAI->getName(), SAI->getResult().getType());
-      builder_.createCopyInst("copy.scatterassign", dest, dataTensor);
-      builder_.createScatterAssignInst("scatterassign", dest, indicesTensor,
-                                       slicesTensor);
-      registerIR(N, dest);
-      break;
-    }
-    case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
-      auto *LR = cast<LocalResponseNormalizationNode>(N);
-      auto *in = valueForNode(LR->getInput());
-      auto *V = builder_.createLocalResponseNormalizationOp(
-          N->getName(), in, LR->getHalfWindowSize(), LR->getAlpha(),
-          LR->getBeta(), LR->getK());
-      nodeToInstr_[N] = V;
-      registerIR(N, V->getDest());
-      break;
-    }
-
-    case glow::Kinded::Kind::LocalResponseNormalizationGradNodeKind: {
-      auto *LRG = cast<LocalResponseNormalizationGradNode>(N);
-      auto *origIn = valueForNode(LRG->getInput());
-
-      auto originalNodeResult = LRG->getOriginalOutputForResult();
-      assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
-             "Unknown original node");
-      auto *LRI = cast<LocalResponseNormalizationInst>(
-          nodeToInstr_[originalNodeResult]);
-
-      auto *srcGrad =
-          builder_.createAllocActivationInst("lrn.res.grad", origIn->getType());
-
-      builder_.createLocalResponseNormalizationGradInst(
-          N->getName(), valueForNode(LRG->getOriginalOutputForResult()),
-          valueForNode(LRG->getInput()), LRI->getScale(),
-          valueForNode(LRG->getGradOfOriginalOutputNamedResult()), srcGrad,
-          LRG->getHalfWindowSize(), LRG->getAlpha(), LRG->getBeta(),
-          LRG->getK());
-
-      registerIR(LRG->getGradOfInputNamedInput(), srcGrad);
-      break;
-    }
-    case glow::Kinded::Kind::SaveNodeKind: {
-      auto *R = cast<SaveNode>(N);
-      auto *src = valueForNode(R->getInput());
-      auto *dest = valueForNode(R->getOutput());
-      builder_.createCopyInst(N->getName(), dest, src);
-      break;
-    }
-    case glow::Kinded::Kind::ConstantKind: {
-      auto *V = cast<Constant>(N);
-      auto *W = builder_.createWeightVar(V->getType(), V->getName(),
-                                         WeightVar::MutabilityKind::Constant);
-      registerIR(N, W);
-      break;
-    }
-    case glow::Kinded::Kind::PlaceholderKind: {
-      auto *P = cast<Placeholder>(N);
-      auto *W = builder_.createWeightVar(P->getType(), P->getName(),
-                                         WeightVar::MutabilityKind::Mutable);
-      registerIR(N, W);
-      break;
-    }
-    case glow::Kinded::Kind::QuantizationProfileNodeKind: {
-      auto *QPN = cast<QuantizationProfileNode>(N);
-      auto *inputTensor = valueForNode(QPN->getInput());
-      auto *histogram = valueForNode(QPN->getHistogramPlaceholder());
-      auto *computationInfo =
-          valueForNode(QPN->getComputationInfoPlaceholder());
-      builder_.createQuantizationProfileInst(QPN->getName(), inputTensor,
-                                             histogram, computationInfo);
-      break;
-    }
-    case glow::Kinded::Kind::TopKNodeKind: {
-      auto *TKN = cast<TopKNode>(N);
-      auto *inputTensor = valueForNode(TKN->getInput());
-      auto k = TKN->getK();
-      auto *V = builder_.createTopKOp(N->getName(), inputTensor, k);
-      registerIR(TKN->getValues(), V->getValues());
-      registerIR(TKN->getIndices(), V->getIndices());
-      break;
-    }
-    }
+    auto *inVal = valueForNode(RN->getInput());
+    std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
+    auto *TVI = builder_.createTensorViewInst(
+        "tensorview.reshape", inVal, RN->getResult().getType(), offsets);
+    auto *dest = builder_.createAllocActivationInst("copy.reshape.res",
+                                                    RN->getResult().getType());
+    builder_.createCopyInst("copy.reshape", dest, TVI);
+    registerIR(N, dest);
+    break;
   }
-};
+  case glow::Kinded::Kind::ConvolutionGradNodeKind: {
+    auto *CG = cast<ConvolutionGradNode>(N);
 
-} // namespace
+    auto *input = valueForNode(CG->getInput());
+    auto *filter = valueForNode(CG->getFilter());
+    auto *bias = valueForNode(CG->getBias());
 
-void IRFunction::generateIR() {
+    auto *outGrad = valueForNode(CG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG =
+        builder_.createAllocActivationInst("conv.input.G", input->getType());
+    auto *biasG =
+        builder_.createAllocActivationInst("conv.bias.G", bias->getType());
+    auto *filterG =
+        builder_.createAllocActivationInst("conv.filter.G", filter->getType());
+
+    builder_.createConvolutionGradInst(
+        N->getName(), input, filter, outGrad, inG, filterG, biasG,
+        CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup());
+
+    registerIR(CG->getGradOfInputNamedInput(), inG);
+    registerIR(CG->getGradOfInputNamedFilter(), filterG);
+    registerIR(CG->getGradOfInputNamedBias(), biasG);
+    break;
+  }
+  case glow::Kinded::Kind::MaxPoolNodeKind: {
+    auto *P = cast<MaxPoolNode>(N);
+    auto *in = valueForNode(P->getInput());
+    auto *V = builder_.createMaxPoolWithXYOp(N->getName(), in, P->getKernels(),
+                                             P->getStrides(), P->getPads());
+    Value *dest = V->getDest();
+    nodeToInstr_[N] = V;
+    registerIR(N, dest);
+    break;
+  }
+  case glow::Kinded::Kind::MaxPoolGradNodeKind: {
+    auto *PG = cast<MaxPoolGradNode>(N);
+
+    auto poolOut = PG->getOriginalOutputForResult();
+    auto *outW = valueForNode(poolOut);
+    auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                   PG->getInput().getType());
+
+    // Find the original pool instruction.
+    assert(nodeToInstr_.count(poolOut) && "Pool IRgen did not register itself");
+    auto *PI = cast<MaxPoolWithXYInst>(nodeToInstr_[poolOut.getNode()]);
+
+    builder_.createMaxPoolWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
+                                         outG, inG, PG->getKernels(),
+                                         PG->getStrides(), PG->getPads());
+    registerIR(PG->getGradOfInputNamedInput(), inG);
+    break;
+  }
+  case glow::Kinded::Kind::AvgPoolGradNodeKind: {
+    auto *PG = cast<AvgPoolGradNode>(N);
+
+    auto poolOut = PG->getOriginalOutputForResult();
+    auto *outW = valueForNode(poolOut);
+    auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                   PG->getInput().getType());
+
+    builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
+                                   PG->getKernels(), PG->getStrides(),
+                                   PG->getPads());
+    registerIR(PG->getGradOfInputNamedInput(), inG);
+    break;
+  }
+  case glow::Kinded::Kind::SoftMaxGradNodeKind: {
+    auto *SMG = cast<SoftMaxGradNode>(N);
+    // Original inputs:
+    auto *origIn = valueForNode(SMG->getInput());
+    auto *origSelect = valueForNode(SMG->getSelected());
+    // Values related to the output of the node.
+    auto *outGrad = valueForNode(SMG->getGradOfOriginalOutputNamedResult());
+    auto originalNodeResult = SMG->getOriginalOutputForResult();
+    assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
+           "Unknown original node");
+    auto *origOut = valueForNode(originalNodeResult);
+    auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
+                                                       outGrad->getType());
+    auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
+                                                origSelect, srcGrad);
+    registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
+    break;
+  }
+  case glow::Kinded::Kind::CrossEntropyLossNodeKind: {
+    auto *CELoss = cast<CrossEntropyLossNode>(N);
+    auto *P = valueForNode(CELoss->getP());
+    auto *Labels = valueForNode(CELoss->getLabels());
+    auto *V = builder_.createCrossEntropyLossOp(N->getName(), P, Labels);
+    registerIR(N, V->getCE());
+    nodeToInstr_[N] = V;
+    break;
+  }
+  case glow::Kinded::Kind::CrossEntropyLossGradNodeKind: {
+    auto *CELossG = cast<CrossEntropyLossGradNode>(N);
+    // Forward pass inputs.
+    auto *P = valueForNode(CELossG->getP());
+    auto *Y = valueForNode(CELossG->getLabels());
+    // Backward pass gradient dL/dY.
+    auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedCE());
+    auto *pGrad =
+        builder_.createAllocActivationInst("celoss.p.grad", P->getType());
+    auto *yGrad =
+        builder_.createAllocActivationInst("celoss.labels.grad", Y->getType());
+    auto *CELossGI = builder_.createCrossEntropyLossGradInst(
+        N->getName(), dY, P, Y, pGrad, yGrad);
+    registerIR(CELossG->getGradOfInputNamedP(), CELossGI->getPgrad());
+    registerIR(CELossG->getGradOfInputNamedLabels(), CELossGI->getLabelsgrad());
+    break;
+  }
+  case glow::Kinded::Kind::ConcatNodeKind: {
+    auto *CC = cast<ConcatNode>(N);
+
+    auto *dest = builder_.createAllocActivationInst(CC->getName(),
+                                                    CC->getResult().getType());
+    builder_.createSplatInst(CC->getName(), dest, 0);
+    auto inputs = CC->getInputs();
+
+    // We start inserting to the shape at (0,0, ... ).
+    std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
+    unsigned dim = CC->getDim();
+
+    for (size_t i = 0, e = inputs.size(); i < e;) {
+      // Look for a series of the same Node being concated consecutively many
+      // times. We can wrap n such consecutive repeats into a single insert
+      // with count n along the dim axis.
+      const size_t consecutiveCount = getConsecutiveSameNodeCount(inputs, i);
+
+      // Create the new InsertTensor instruction given the input node, along
+      // with the number of times to insert the node and the axis (dim) we are
+      // inserting in.
+      builder_.createInsertTensorInst(CC->getName(), dest,
+                                      valueForNode(inputs[i]), offsets,
+                                      consecutiveCount, dim);
+
+      // We are stacking the tensors along a specific dimension. This means
+      // that we increase the size of the tensor along this dimension, count
+      // times.
+      offsets[dim] += inputs[i].dims()[dim] * consecutiveCount;
+
+      // Increment i by the number of the same nodes that were found in a row,
+      // which were all wrapped into a single InsertTensorInst.
+      i += consecutiveCount;
+    }
+    registerIR(N, dest);
+    break;
+  }
+  case glow::Kinded::Kind::SliceNodeKind: {
+    auto *SL = cast<SliceNode>(N);
+    auto start = SL->getStart();
+    auto *in = valueForNode(SL->getInput());
+    auto *dest = builder_.createAllocActivationInst(SL->getName(),
+                                                    SL->getResult().getType());
+    builder_.createExtractTensorInst(SL->getName(), dest, in, start);
+    registerIR(N, dest);
+    break;
+  }
+  case glow::Kinded::Kind::InsertTensorNodeKind: {
+    auto *IT = cast<InsertTensorNode>(N);
+    auto start = IT->getStart();
+    auto count = IT->getCount();
+    auto axis = IT->getAxis();
+    auto *big = valueForNode(IT->getBig());
+    auto *small = valueForNode(IT->getSmall());
+    auto *dest = builder_.createAllocActivationInst(IT->getName(),
+                                                    IT->getResult().getType());
+    builder_.createCopyInst("copy.insert", dest, big);
+    builder_.createInsertTensorInst("insert", dest, small, start, count, axis);
+
+    registerIR(N, dest);
+    break;
+  }
+  case glow::Kinded::Kind::ScatterAssignNodeKind: {
+    auto *SAI = cast<ScatterAssignNode>(N);
+    auto *dataTensor = valueForNode(SAI->getData());
+    auto *indicesTensor = valueForNode(SAI->getIndices());
+    auto *slicesTensor = valueForNode(SAI->getSlices());
+    auto *dest = builder_.createAllocActivationInst(SAI->getName(),
+                                                    SAI->getResult().getType());
+    builder_.createCopyInst("copy.scatterassign", dest, dataTensor);
+    builder_.createScatterAssignInst("scatterassign", dest, indicesTensor,
+                                     slicesTensor);
+    registerIR(N, dest);
+    break;
+  }
+  case glow::Kinded::Kind::LocalResponseNormalizationNodeKind: {
+    auto *LR = cast<LocalResponseNormalizationNode>(N);
+    auto *in = valueForNode(LR->getInput());
+    auto *V = builder_.createLocalResponseNormalizationOp(
+        N->getName(), in, LR->getHalfWindowSize(), LR->getAlpha(),
+        LR->getBeta(), LR->getK());
+    nodeToInstr_[N] = V;
+    registerIR(N, V->getDest());
+    break;
+  }
+
+  case glow::Kinded::Kind::LocalResponseNormalizationGradNodeKind: {
+    auto *LRG = cast<LocalResponseNormalizationGradNode>(N);
+    auto *origIn = valueForNode(LRG->getInput());
+
+    auto originalNodeResult = LRG->getOriginalOutputForResult();
+    assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
+           "Unknown original node");
+    auto *LRI =
+        cast<LocalResponseNormalizationInst>(nodeToInstr_[originalNodeResult]);
+
+    auto *srcGrad =
+        builder_.createAllocActivationInst("lrn.res.grad", origIn->getType());
+
+    builder_.createLocalResponseNormalizationGradInst(
+        N->getName(), valueForNode(LRG->getOriginalOutputForResult()),
+        valueForNode(LRG->getInput()), LRI->getScale(),
+        valueForNode(LRG->getGradOfOriginalOutputNamedResult()), srcGrad,
+        LRG->getHalfWindowSize(), LRG->getAlpha(), LRG->getBeta(), LRG->getK());
+
+    registerIR(LRG->getGradOfInputNamedInput(), srcGrad);
+    break;
+  }
+  case glow::Kinded::Kind::SaveNodeKind: {
+    auto *R = cast<SaveNode>(N);
+    auto *src = valueForNode(R->getInput());
+    auto *dest = valueForNode(R->getOutput());
+    builder_.createCopyInst(N->getName(), dest, src);
+    break;
+  }
+  case glow::Kinded::Kind::ConstantKind: {
+    auto *V = cast<Constant>(N);
+    auto *W = builder_.createWeightVar(V->getType(), V->getName(),
+                                       WeightVar::MutabilityKind::Constant);
+    registerIR(N, W);
+    break;
+  }
+  case glow::Kinded::Kind::PlaceholderKind: {
+    auto *P = cast<Placeholder>(N);
+    auto *W = builder_.createWeightVar(P->getType(), P->getName(),
+                                       WeightVar::MutabilityKind::Mutable);
+    registerIR(N, W);
+    break;
+  }
+  case glow::Kinded::Kind::QuantizationProfileNodeKind: {
+    auto *QPN = cast<QuantizationProfileNode>(N);
+    auto *inputTensor = valueForNode(QPN->getInput());
+    auto *histogram = valueForNode(QPN->getHistogramPlaceholder());
+    auto *computationInfo = valueForNode(QPN->getComputationInfoPlaceholder());
+    builder_.createQuantizationProfileInst(QPN->getName(), inputTensor,
+                                           histogram, computationInfo);
+    break;
+  }
+  case glow::Kinded::Kind::TopKNodeKind: {
+    auto *TKN = cast<TopKNode>(N);
+    auto *inputTensor = valueForNode(TKN->getInput());
+    auto k = TKN->getK();
+    auto *V = builder_.createTopKOp(N->getName(), inputTensor, k);
+    registerIR(TKN->getValues(), V->getValues());
+    registerIR(TKN->getIndices(), V->getIndices());
+    break;
+  }
+  }
+}
+
+void IRFunction::generateIR(const Backend &B) {
   assert(G_->verify() && "Invalid function");
   // Schedule the nodes.
   NodesPtrList ScheduledNodes;
   scheduleGraph(ScheduledNodes);
-  IRGenVisitor irgen(this);
+  IRGenVisitor irgen(this, B);
 
   for (auto &N : ScheduledNodes) {
     N->visit(nullptr, &irgen);

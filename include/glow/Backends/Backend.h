@@ -27,6 +27,7 @@ namespace glow {
 class IRFunction;
 class Node;
 class Context;
+class IRGenVisitor;
 
 enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
@@ -85,6 +86,12 @@ public:
 
   /// Optimize the Function \p F given compilation mode \p mode.
   void optimizeFunction(CompilationMode mode, Function *F);
+
+  /// \returns true if Backend generated Instruction for Node \p N,
+  /// using IRGenVisitor \p irgen.
+  virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
+    return false;
+  }
 };
 
 /// Create a backend of kind \p kind.

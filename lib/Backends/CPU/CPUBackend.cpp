@@ -133,20 +133,20 @@ CPUBackend::compileIRWithoutConstants(IRFunction *IR) const {
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::compile(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIR(std::move(IR));
 }
 
 std::unique_ptr<CompiledFunction>
 CPUBackend::compileWithoutConstants(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIRWithoutConstants(IR.get());
 }
 
 void CPUBackend::save(Function *F, llvm::StringRef outputDir,
                       llvm::StringRef networkName) const {
   std::string tgt = target.empty() ? "" : target.getValue();
-  auto IR = generateAndOptimizeIR(F, shouldShareBuffers());
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   BundleSaver(IR.get()).save(tgt, outputDir, networkName);
 }
 
