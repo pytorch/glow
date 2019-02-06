@@ -509,8 +509,6 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     return outputEventInitStatus;
   }
 
-  auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
-
   // Verify inputs.
   auto inputStatus = verifyDescriptors(inputsCount, inputDescriptors);
   if (inputStatus != ONNXIFI_STATUS_SUCCESS) {
@@ -523,11 +521,13 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     return outputStatus;
   }
 
+  auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
+
   // Set graph IO and run asynchronous.
   glowGraph->setIO(inputsCount, inputDescriptors, outputsCount,
                    outputDescriptors);
-
   glowGraph->runAsync(/*inputEvent*/ nullptr, outputEvent);
+
   return ONNXIFI_STATUS_SUCCESS;
 }
 
@@ -547,7 +547,6 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseGraph)(onnxGraph graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-// TODO do we need to have one onnxExtensionFunctionPointer per backendId?
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 onnxGetExtensionFunctionAddress(onnxBackendID backendID, const char *name,
                                 onnxExtensionFunctionPointer *function) {
