@@ -44,19 +44,6 @@ are two pure virtual functions all backends must implement:
 
 Additionally, there are virtual functions that backends can override:
 
-- `virtual bool transformPreLowering(Function *F, CompilationMode mode) const;`
-
-  - Allow the backend to transform the `Function *F` before [node
-    lowering](https://github.com/pytorch/glow/blob/master/docs/IR.md#node-lowering)
-    occurs, given some `CompilationMode mode`. For example, a backend may prefer
-    to replace a ConvolutionNode followed by a ReluNode with a
-    [backend-specific](https://github.com/pytorch/glow/blob/master/docs/NewBackendSpecificNode.md)
-    fused ConvReluNode. This should be done prior to node lowering, as otherwise
-    the ReluNode will already be lowered to a MaxNode and may be transformed by
-    other optimization passes. Returns true if the Function was modified at
-    all. See [below](#backend-specific-nodes-and-instructions-transformations)
-    for more information.
-
 - `virtual bool transformPostLowering(Function *F, CompilationMode mode) const;`
 
   - Allow the backend to transform the `Function *F` after [node
@@ -73,9 +60,13 @@ Additionally, there are virtual functions that backends can override:
 - `virtual bool shouldLower(const Node *N) const;`
 
   - Allow the backend to prevent lowering for some `Node *N`. For example, if a
-    backend supports executing a FullyConnected operator, it would want to
-    prevent lowering for it and provide a backend-specific Instruction for the
-    FullyConnectedNode to be
+    backend wants to fuse a `ReluNode` into a `ConvNode` to create some
+    backend-specific node `ConvReluNode`, then it may prevent lowering for
+    `ReluNode`. Then during `transformPostLowering()` it can look for patterns
+    of `ConvNode` followed by `ReluNode` to swap out for `ConvReluNode`. Another
+    example is if a backend supports executing a FullyConnected operator, it
+    would want to prevent lowering for it and provide a backend-specific
+    Instruction for the FullyConnectedNode to be
     [IRGen'd](https://github.com/pytorch/glow/blob/master/docs/IR.md#low-level-ir)
     into. Note that IRGen for a Node can be specified via the
     [ClassGen](https://github.com/pytorch/glow/blob/master/docs/ClassGen.md)
@@ -98,7 +89,7 @@ Additionally, there are virtual functions that backends can override:
 
 - `virtual bool generateInst(Node *N, IRGenVisitor &irgen) const;`
 
-  - Allow the backend to custom lower from Node to Instruction IR. 
+  - Allow the backend to custom lower from Node to Instruction IR.
     Returns true if lowering is performed, false otherwise.
 
 ### `CompiledFunction` Abstract Class
@@ -113,8 +104,8 @@ responsible for copying inputs to the device from all input
 [Placeholders](https://github.com/pytorch/glow/blob/master/docs/IR.md#placeholders),
 executing the function, and copying outputs back from the device to output
 Placeholders. The `CompiledFunction` contains a [RuntimeBundle](#runtimebundle-helper-class)
-which contains the symbol information and mappings of inputs and outputs. Thus after the 
-function returns, all Placeholders for the outputs of the function should have had 
+which contains the symbol information and mappings of inputs and outputs. Thus after the
+function returns, all Placeholders for the outputs of the function should have had
 their backing tensor updated.
 
 ### `RuntimeBundle` Helper Class
@@ -138,11 +129,10 @@ entire Splat tensor.
 ### Backend-Specific Transformation
 
 Backends have the opportunity to perform their own analysis and transformations
-before or after lowering depending on their requirements. This is exposed via
-`transformPreLowering()` and `transformPostLowering()` hooks, during which a
-backend can transform the graph however it desires. For example, the backend
-could use `transformPostLowering()` to search the graph looking for the above
-`CPUMaxSplat` pattern.
+after lowering. This is exposed via the `transformPostLowering()` hook, during
+which a backend can transform the graph however it desires. For example, the
+backend could use `transformPostLowering()` to search the graph looking for the
+above `CPUMaxSplat` pattern.
 
 #### Backend-Specific Nodes and Instructions
 

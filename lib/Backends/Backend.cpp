@@ -27,13 +27,6 @@ void Backend::optimizeFunction(CompilationMode mode, Function *F) {
   // Optimize the graph.
   ::glow::optimize(F, mode);
 
-  // Allow the backend to transform the graph prior to lowering.
-  if (transformPreLowering(F, mode)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, mode);
-  }
-
   // Lower the graph into a sequence of low-level linear algebra operations.
   ::glow::lower(F, *this);
 
