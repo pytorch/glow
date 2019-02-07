@@ -635,7 +635,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   constexpr RunIdentifierTy baseTestRunId = 10;
   constexpr DeviceIDTy testDeviceId = 111;
   constexpr unsigned deviceManagerThreads = 3;
-  constexpr unsigned numConcurrentRuns = 1000;
+  unsigned numConcurrentRuns = 1000;
 
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
@@ -674,7 +674,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
     ExecutorTest t = testBuilder_.emitTest();
 
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,
-                    test = std::move(t)]() mutable {
+                    test = std::move(t), numConcurrentRuns]() mutable {
       std::unique_lock<std::mutex> lock(mtx);
       // Increment threadsReady to mark this thread as ready to run the test.
       threadsReady++;
@@ -702,8 +702,9 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   // If threadsReady != numConcurrentRuns, not all threads are ready to run
   // their tests. Wait until they are.
   if (threadsReady != numConcurrentRuns) {
-    driverCV.wait(
-        lock, [&threadsReady] { return threadsReady == numConcurrentRuns; });
+    driverCV.wait(lock, [&threadsReady, numConcurrentRuns] {
+      return threadsReady == numConcurrentRuns;
+    });
   }
   // Wake up all test runners.
   threadCV.notify_all();
@@ -949,7 +950,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   constexpr RunIdentifierTy baseTestRunId = 10;
   constexpr DeviceIDTy testDeviceId = 111;
   constexpr unsigned deviceManagerThreads = 3;
-  constexpr unsigned numConcurrentRuns = 1000;
+  unsigned numConcurrentRuns = 1000;
 
   // Make a TestDeviceManager and insert it into the DeviceManagerMap map
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
@@ -1020,7 +1021,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
 
     ExecutorTest t = testBuilder_.emitTest();
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,
-                    test = std::move(t)]() mutable {
+                    test = std::move(t), numConcurrentRuns]() mutable {
       std::unique_lock<std::mutex> lock(mtx);
       // Increment threadsReady to mark this thread as ready to run the test.
       threadsReady++;
@@ -1048,8 +1049,9 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   // If threadsReady != numConcurrentRuns, not all threads are ready to run
   // their tests. Wait until they are.
   if (threadsReady != numConcurrentRuns) {
-    driverCV.wait(
-        lock, [&threadsReady] { return threadsReady == numConcurrentRuns; });
+    driverCV.wait(lock, [&threadsReady, numConcurrentRuns] {
+      return threadsReady == numConcurrentRuns;
+    });
   }
   // Wake up all test runners.
   threadCV.notify_all();
