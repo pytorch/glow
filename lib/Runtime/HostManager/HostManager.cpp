@@ -30,7 +30,7 @@ using namespace runtime;
 
 HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
   DeviceIDTy deviceCount = 0;
-  provisioner_.reset(new Provisioner());
+
   if (configs.size() > 0) {
     backend_.reset(createBackend(configs[0].backendKind));
   }
@@ -41,7 +41,7 @@ HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
     devices_.emplace(deviceCount, std::move(newDevice));
     deviceCount++;
   }
-
+  provisioner_.reset(new Provisioner(devices_));
   executor_.reset(createExecutor(devices_));
 }
 
@@ -64,7 +64,7 @@ ResultCode HostManager::addNetwork(Module *M) {
   }
   auto partitioner = Partitioner(M, deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
-  auto result = provisioner_->provision(nodeList.roots, devices_, *M);
+  auto result = provisioner_->provision(nodeList.roots, *M);
 
   for (auto &node : nodeList.roots) {
     roots_.emplace(node->name, std::move(node));

@@ -32,12 +32,14 @@ using DeviceIDtoManagerMapTy =
 /// device.
 class Provisioner final {
 public:
+  Provisioner(DeviceIDtoManagerMapTy &devices);
+
   /// Walks \p networks and assigns each function to a DeviceManager in \p
   /// devices. The Provisioner calls the addNetwork method for each
   /// DeviceManager. Returns a ResultCode indicating if the operation was a
   /// success.
   ResultCode provision(std::vector<std::unique_ptr<DAGNode>> &networks,
-                       DeviceIDtoManagerMapTy &devices, Module &module);
+                       Module &module);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
@@ -51,6 +53,13 @@ private:
   /// Padding factor to account for generated code size. Should be greater
   /// than 1.0.
   const float NETWORK_PADDING_FACTOR = 1.1;
+
+  /// List of available DeviceManagers added during initialization.
+  std::vector<std::shared_ptr<DeviceManager>> devices_;
+
+  /// Index of current deviceManager. This allows a round robin loading of
+  /// deviceManagers.
+  unsigned int nextDevice_{0};
 };
 } // namespace runtime
 } // namespace glow

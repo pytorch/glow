@@ -25,9 +25,15 @@
 using namespace glow;
 using namespace runtime;
 
+Provisioner::Provisioner(DeviceIDtoManagerMapTy &devices) {
+  for (auto &device : devices) {
+    devices_.push_back(device.second);
+  }
+}
+
 ResultCode
 Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
-                       DeviceIDtoManagerMapTy &devices, Module &module) {
+                       Module &module) {
   // For the first pass we will just assign and load devices in order and update
   // the deviceID field of the node.
   std::queue<std::vector<DAGNode *>> nextNode;
@@ -42,7 +48,6 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
     }
     nextNode.push(newSet);
   }
-  auto currDevice = devices.begin();
   while (!nextNode.empty()) {
     FunctionMapTy compiledFunctions;
     auto nodes = nextNode.front();
@@ -62,12 +67,14 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
     // TODO Add ability to try against another device when currDevice has
     // insufficient space.
 
+    // Get the next Device to be loaded.
+    auto &device = devices_[nextDevice_];
     // Set backend to match the device.
-    backend_.reset(createBackend(currDevice->second->getBackendKind()));
+    backend_.reset(createBackend(device->getBackendKind()));
 
     // Iterate over the nodes, compile them and add them to compiledFunctions.
     for (auto node : nodes) {
-      node->deviceID = currDevice->first;
+      node->deviceID = nextDevice_;
       Function *function = module.getFunction(node->name);
       auto compiled = backend_->compile(function);
       node->runtimeBundle = compiled->getRuntimeBundle();
@@ -78,7 +85,7 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
 
     // Check if sufficient space on device. Currently requiring a buffer
     // over the size of constants determined by NETWORK_PADDING_FACTOR.
-    auto availableMemory = currDevice->second->getAvailableMemory();
+    auto availableMemory = device->getAvailableMemory();
     auto requiredMemory = NETWORK_PADDING_FACTOR *
                           nodes[0]->runtimeBundle.getConstantWeightSize();
     if (availableMemory < requiredMemory) {
@@ -91,21 +98,16 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
     // results.
     std::promise<bool> addNetwork;
     auto ready = addNetwork.get_future();
-    currDevice->second->addNetwork(
-        &module, compiledFunctions,
-        [&addNetwork](const Module *, ResultCode result) {
-          addNetwork.set_value(result == ResultCode::Ready);
-        });
+    device->addNetwork(&module, compiledFunctions,
+                       [&addNetwork](const Module *, ResultCode result) {
+                         addNetwork.set_value(result == ResultCode::Ready);
+                       });
     auto result = ready.get();
     if (!result) {
       return ResultCode::Failed;
     }
 
-    currDevice++;
-    // Handle wrapping around to start of devices again.
-    if (currDevice == devices.end()) {
-      currDevice = devices.begin();
-    }
+    nextDevice_ = (nextDevice_ + 1) % devices_.size();
   }
   return ResultCode::Ready;
 };
