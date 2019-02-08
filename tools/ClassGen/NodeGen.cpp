@@ -355,6 +355,25 @@ int main(int argc, char **argv) {
                     "data is rowwise-quantized, where the Scales and Offsets "
                     "are 1D tensors of length equal to the first dim of Data.");
 
+  BB.newNode("FusedRowwiseQuantizedSparseLengthsWeightedSum")
+      .addInput("Data")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Data "
+                    "indexed by Indices vector, and then accumulates them into "
+                    "len(Lengths) entries: first Lengths[0] slices are "
+                    "aggregated to Result[0], next Lengths[1] slices are "
+                    "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
+                    "equal to len(Indices). Before doing aggregation, each "
+                    "individual slice is scaled by its weight: Result[0] = "
+                    "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
+                    "It implies that len(Weights) == len(Indices). The input "
+                    "data is fused rowwise-quantized, where the Scales and "
+                    "Offsets are appended to the end of each row. Thus, Data "
+                    "must be a two-dimensional tensor.");
+
   BB.newNode("LengthsToRanges")
       .addInput("Lengths")
       .addResultFromCtorArg()

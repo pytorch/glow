@@ -2200,6 +2200,60 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
   }
 }
 
+void BoundInterpreterFunction::
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
+        const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  auto *out = getTensor(I->getDest());
+  auto *data = getTensor(I->getData());
+  auto *weights = getTensor(I->getWeights());
+  auto *indices = getTensor(I->getIndices());
+  auto *lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength == indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  const size_t inLineSize = data->size() / data->dims()[0];
+  const size_t outLineSize = out->size() / out->dims()[0];
+
+  auto DH = data->getHandle<int8_t>();
+  auto WH = weights->getHandle<float>();
+  auto OH = out->getHandle<float>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      const float weight = WH.raw(curIdx);
+      const size_t rowIdx = IH.raw(curIdx++);
+      size_t offsetIn = rowIdx * inLineSize;
+      size_t offsetOut = i * outLineSize;
+      // Get the scale and offset from the row; go to the current row and offset
+      // into it up until the last 8 bytes. Use memcpy to get the values out to
+      // avoid alignment issues of accessing 4-byte values.
+      const char *currRowScaleOffsetPtr =
+          data->getUnsafePtr() + offsetIn + inLineSize - 8;
+      float scale;
+      int32_t offset;
+      memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
+      memcpy(&offset, currRowScaleOffsetPtr + 4, sizeof(int32_t));
+      for (size_t k = 0; k < outLineSize; k++) {
+        float d = quantization::dequantize(
+            DH.raw(offsetIn++), TensorQuantizationParams{scale, offset});
+        OH.raw(offsetOut++) += d * weight;
+      }
+    }
+  }
+}
+
 void BoundInterpreterFunction::fwdLengthsToRangesInst(
     const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int32_t>();
