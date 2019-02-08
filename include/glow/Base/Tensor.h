@@ -288,6 +288,17 @@ public:
       return false;
     }
 
+    // For now, make sure that either both or neither of the tensors have
+    // Int8FusedQTy. While it is possible for an Int8QTy tensor to equal a
+    // Int8FusedQTy tensor if the Int8FusedQTy tensor has the same scale/offset
+    // on all of its rows, and that scale/offset match that of the Int8QTy, we
+    // do not support checking this for now.
+    assert(((getElementType() == ElemKind::Int8FusedQTy &&
+             other.getElementType() == ElemKind::Int8FusedQTy) ||
+            (getElementType() != ElemKind::Int8FusedQTy &&
+             other.getElementType() != ElemKind::Int8FusedQTy)) &&
+           "Int8FusedQTy only supports comparing against same ElemKind.");
+
     switch (getElementType()) {
     case ElemKind::FloatTy:
       return isEqualImpl<float>(other, allowedError);
@@ -315,6 +326,11 @@ public:
       return isEqualImpl<int32_t>(other, allowedError);
     case ElemKind::Int64ITy:
       return isEqualImpl<int64_t>(other, allowedError);
+      // Note: We can use isEqualImpl() here because the scales/offsets will be
+      // compared as if they were data, so we will return false if any rowwise
+      // scale/offset do not match.
+    case ElemKind::Int8FusedQTy:
+      return isEqualImpl<int8_t>(other, allowedError);
     }
 
     // This is to make compiler happy. It can never reach this point as switch

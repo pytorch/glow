@@ -237,6 +237,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int32ITy:
     return builder.getInt32Ty();
+  case ElemKind::Int8FusedQTy:
+    return builder.getInt8Ty();
   }
   return nullptr;
 }
@@ -469,6 +471,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
+  case ElemKind::Int8FusedQTy:
+    return builder.getInt8(static_cast<int8_t>(val));
   }
   llvm_unreachable("Unknown element type");
 }
