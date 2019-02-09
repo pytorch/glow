@@ -33,7 +33,9 @@ Here are mainly three steps to add a new backend-specific node in Glow:
 
 1. Add a backend-specific Node `FusedAB` to `XSpecificNodes.h`, and a corresponding backend-specific Instruction `FusedAB` to `XSpecificInstrs.h`. Note that the `FusedABInst` needs to be marked with `autoIRGen()` so that the node is automatically IRGen'd to the instruction, as we currently do not support backend-specific IRGen.
 
-2. Add logic to `XBackend::transformPreLowering()` or `XBackend::transformPostLowering()` (or both) depending on when you want to do the transformation. This logic would look for the pattern of nodes you want to fuse (`A` with a single use by `B`), and replaces all uses of the result of B with the new backend-specific `FusedABNode`.
+2. Add logic to `XBackend::transformPostLowering()` that looks for the pattern
+of nodes you want to fuse (`A` with a single use by `B`), and replaces all uses
+of the result of B with the new backend-specific `FusedABNode`.
 
 3. Have your backend `X` implement `FusedABInst`. For example, for the OpenCL backend, this would mean adding a case to enqueue a kernel for the `FusedABInst` to `OpenCLFunction::execute()`, and then adding the corresponding kernel in `kernels.cl`.
 

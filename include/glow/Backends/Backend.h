@@ -57,20 +57,14 @@ public:
     GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
   }
 
-  /// @name Backend transform methods for different phases.
-  /// These methods are called by the compiler before code generation and gives
-  /// the backend an opportunity to transform the graph before IRGen. The
-  /// backend may insert target specific nodes. The backend is responsible for
+  /// Used by the compiler during graph optimization and before code generation,
+  /// giving the backend an opportunity to transform the graph before IRGen. The
+  /// backend may insert backend-specific nodes. The backend is responsible for
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
-  ///@{
-  virtual bool transformPreLowering(Function *F, CompilationMode mode) const {
-    return false;
-  }
   virtual bool transformPostLowering(Function *F, CompilationMode mode) const {
     return false;
   }
-  /// @}
 
   /// \returns true if backend supports given kind of operation with
   /// the given \p elementTy element type.
