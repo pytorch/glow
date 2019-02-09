@@ -212,3 +212,16 @@ Row-wise quantized SparseLengthsWeightedSum is also supported. Similar to the
 above, we compute scales and offsets per row, to be used with the `Data` input
 for the `RowwiseQuantizedSparseLengthsSumNode`. Scales and Offsets are inputs to
 the node. Output of this node is float, matching the Caffe2 implementation.
+
+### Fused Row-wise Quantization
+
+For some backends it may be beneficial to keep each row's scales and offsets
+fused inline with the data. Caffe2 implements nodes with fused storage, such as
+[SparseLengthsWeightedSum](https://caffe2.ai/docs/operators-catalogue.html#sparselengthsweightedsumfused8bitrowwise). Glow
+supports such fused Nodes/Instructions, for example
+`FusedRowwiseQuantizedSparseLengthsWeightedSum`. The `ElemKind` of fused tensors
+is `Int8FusedQTy`. Tensors with `Int8FusedQTy` are 2-dimensional, and have an
+extra 8 columns for each row. The first extra 4 bytes are the float scale of the
+row, and the second extra 4 bytes are the in32_t offset. Note that similar to
+normal row-wise quantized tensors, they use a dummy scale and offset in the
+Type.
