@@ -242,6 +242,20 @@ public:
                               unsigned_t kernel, unsigned_t stride,
                               unsigned_t pad, unsigned_t group);
 
+  Convolution3DNode *createConv3D(llvm::StringRef name, NodeValue input,
+                                  NodeValue filter, NodeValue bias,
+                                  TypeRef outTy,
+                                  llvm::ArrayRef<unsigned_t> kernels,
+                                  llvm::ArrayRef<unsigned_t> strides,
+                                  llvm::ArrayRef<unsigned_t> pads,
+                                  unsigned_t group);
+
+  Convolution3DNode *createConv3D(llvm::StringRef name, NodeValue input,
+                                  NodeValue filter, NodeValue bias,
+                                  TypeRef outTy, unsigned_t kernel,
+                                  unsigned_t stride, unsigned_t pad,
+                                  unsigned_t group);
+
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
                                  TypeRef outTy);
 
@@ -811,16 +825,28 @@ public:
                            float momentum = 0.9);
 
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t depth,
+                              NodeValue input, size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group);
 
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t depth, unsigned_t kernel,
-                              unsigned_t stride, unsigned_t pad,
-                              unsigned_t group);
+                              NodeValue input, size_t outChannels,
+                              unsigned_t kernel, unsigned_t stride,
+                              unsigned_t pad, unsigned_t group);
+
+  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
+                                  NodeValue input, size_t outChannels,
+                                  llvm::ArrayRef<unsigned_t> kernels,
+                                  llvm::ArrayRef<unsigned_t> strides,
+                                  llvm::ArrayRef<unsigned_t> pads,
+                                  unsigned_t group);
+
+  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
+                                  NodeValue input, size_t outChannels,
+                                  unsigned_t kernel, unsigned_t stride,
+                                  unsigned_t pad, unsigned_t group);
 
   /// Create a fully connected node with the given \p name, \p input and \p
   /// output depth. Trainable weight and bias variables are created implicitly.

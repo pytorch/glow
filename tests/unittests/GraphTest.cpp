@@ -93,6 +93,27 @@ TEST(Graph, simpleTestConv) {
   EXPECT_GT(M.getInstrs().size(), 0);
 }
 
+TEST(Graph, simpleTestConv3D) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Context ctx;
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3, 100},
+                                 "input", true);
+  K = F->createConv3D(ctx, /* name */ "Conv3D", /* input */ K,
+                      /* outChannels */ 16, /* kernel */ 3, /* stride */ 2,
+                      /* pad */ 3, /* group */ 1);
+  K = F->createRELU("Relu", K);
+  F->createSave("Save", K);
+  F->dump();
+  F->dumpDAG();
+  lower(F, MockBackend());
+  ::optimize(F, CompilationMode::Train);
+  M.generateIR(MockBackend());
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
+}
+
 /// Tests custom lowering from Node to Instruction IR
 TEST(Graph, simpleTestConvCustomLower) {
   Module MD;
