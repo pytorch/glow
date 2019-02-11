@@ -5,6 +5,7 @@ LIST(APPEND linked_device_managers InterpreterDeviceManager)
 if(GLOW_WITH_OPENCL)
   add_subdirectory(OpenCL)
   LIST(APPEND linked_backends OpenCL)
+  LIST(APPEND linked_device_managers OpenCLDeviceManager)
 endif()
 
 

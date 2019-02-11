@@ -41,3 +41,16 @@ target_link_libraries(OpenCL
 target_link_libraries(OpenCL
                       PRIVATE
                       OpenCL::OpenCL)
+
+add_library(OpenCLDeviceManager
+            OpenCLDeviceManager.cpp)
+target_link_libraries(OpenCLDeviceManager
+                      PRIVATE
+                        Backends
+                        BackendUtils
+                        Base
+                        CodeGen
+                        OpenCL
+                        Graph
+                        IR
+                        Optimizer)

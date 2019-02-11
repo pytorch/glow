@@ -75,6 +75,8 @@ public:
   /// by offsets contained in symbolTable_.
   void collectConstants(const IRFunction *F);
   void collectConstants(const Module *M);
+  /// Free constants.
+  void freeConstants();
 
   /// Sets the input and output flags for each symbol in the symbolBundle.
   void setInputsandOutputs();

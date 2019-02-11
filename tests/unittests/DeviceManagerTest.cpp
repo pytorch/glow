@@ -465,3 +465,8 @@ INSTANTIATE_TEST_CASE_P(Interpreter, DeviceManagerTest,
 INSTANTIATE_TEST_CASE_P(CPU, DeviceManagerTest,
                         ::testing::Values(BackendKind::CPU));
 #endif // GLOW_WITH_CPU
+
+#ifdef GLOW_WITH_OPENCL
+INSTANTIATE_TEST_CASE_P(OpenCL, DeviceManagerTest,
+                        ::testing::Values(BackendKind::OpenCL));
+#endif
