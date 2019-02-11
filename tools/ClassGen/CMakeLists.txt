@@ -30,3 +30,6 @@ endif()
 if(GLOW_WITH_HABANA)
   add_subdirectory(Backends/Habana)
 endif()
+
+# External backends
+ExternalBackendsClassGen()
