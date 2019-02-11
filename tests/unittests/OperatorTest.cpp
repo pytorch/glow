@@ -1842,6 +1842,62 @@ TEST_P(InterpAndCPU, IntConcat) {
   }
 }
 
+TEST_P(Operator, FC) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "weights", true);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "bias", true);
+
+  ctx_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  ctx_.allocate(weights)->getHandle() = {1.0f, 4.0f,  7.0f, 10.0f, 2.0f, 5.0f,
+                                         8.0f, 11.0f, 3.0f, 6.0f,  9.0f, 12.0f};
+  ctx_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *S = F_->createSave("save", FC);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  std::vector<size_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
+TEST_P(Operator, FCWithFlatten) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "weights", true);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "bias", true);
+
+  ctx_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  ctx_.allocate(weights)->getHandle() = {1.0f, 4.0f,  7.0f, 10.0f, 2.0f, 5.0f,
+                                         8.0f, 11.0f, 3.0f, 6.0f,  9.0f, 12.0f};
+  ctx_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *S = F_->createSave("save", FC);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  std::vector<size_t> expectedDimensions = {2, 4};
+  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
+                                       32.1f, 77.2f, 122.3f, 167.4f};
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  for (size_t i = 0; i < 2 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 TEST_P(Operator, IntFC) {
   // In this test we subtract the outputs of a quantized FC and a floating-point
   // FC and ensure that the error is below some low value.
