@@ -26,6 +26,8 @@
 
 namespace glow {
 
+class Context;
+
 /// Helper function to create a new CallInst, with the specified \p builder, \p
 /// callee, and \p args. Verifies that the function signature is correct,
 /// and then creates and \returns the CallInst.
@@ -34,7 +36,6 @@ llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
 
 class CPUBackend : public BackendUsingGlowIR {
 public:
-  /// Ctor.
   CPUBackend() = default;
 
   /// @name Backend methods.
@@ -51,6 +52,9 @@ public:
   std::unique_ptr<CompiledFunction> compile(Function *F) const override;
 
   std::unique_ptr<CompiledFunction>
+  instrumentAndCompile(Function *F) const override;
+
+  std::unique_ptr<CompiledFunction>
   compileWithoutConstants(Function *F) const override;
 
   void save(Function *F, llvm::StringRef outputDir,
@@ -62,6 +66,9 @@ public:
 
   bool shouldLower(const Node *N) const override;
   /// @}
+
+  /// \returns the size of metrics collected for a single TraceEvent.
+  static size_t getTraceEventDataSize() { return sizeof(uint64_t); }
 
 protected:
   /// Method that creates the LLVM IR generator. This gives the possibility to

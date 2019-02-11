@@ -83,6 +83,7 @@ add_library(CPUBackend
 llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
                       PUBLIC
+                        Backend
                         Base
                         CodeGen
                         BackendUtils

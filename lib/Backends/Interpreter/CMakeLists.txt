@@ -4,6 +4,7 @@ add_library(Interpreter
               InterpreterNodes.cpp)
 target_link_libraries(Interpreter
                       PRIVATE
+                        Backend
                         Base
                         Graph
                         CodeGen

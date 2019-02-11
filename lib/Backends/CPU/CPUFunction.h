@@ -29,7 +29,6 @@ class CPUFunction final : public CompiledFunction {
   std::unique_ptr<llvm::orc::GlowJIT> JIT_;
 
 public:
-  /// Ctor.
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
               const runtime::RuntimeBundle &runtimeBundle);
 
@@ -39,7 +38,12 @@ public:
   void execute(Context *ctx) override;
 
   void collectConstants(Module *module) override;
+
+  /// Read trace events out of this func and write them into /p ctx
+  void translateTraceEvents(Context *ctx) const override;
   ///@}
+  //
+
 private:
   /// Load constant tensors from \p ctx into \p weightsAddress, as defined by
   /// the RuntimeBundle (pre-run).

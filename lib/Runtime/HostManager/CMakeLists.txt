@@ -3,6 +3,7 @@ add_library(HostManager
 
 target_link_libraries(HostManager
                       PRIVATE
+                        Backend
                         Backends
                         Base
                         Graph

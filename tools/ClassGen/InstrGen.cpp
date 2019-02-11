@@ -547,6 +547,11 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .autoVerify(VerifyKind::NoVerify);
 
+  BB.newInstr("TraceEvent")
+      .addOperand("Data", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Index")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for quantization
   //===--------------------------------------------------------------------===//

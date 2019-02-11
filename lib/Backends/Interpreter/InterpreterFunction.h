@@ -64,6 +64,9 @@ public:
 
   /// Get reference to IR function.
   IRFunction *getIR() { return F_.get(); }
+
+  /// Read trace events out of this func and write them into /p ctx
+  void translateTraceEvents(Context *ctx) const override;
   ///@}
 };
 

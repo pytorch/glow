@@ -30,6 +30,7 @@ add_library(OpenCL
 
 target_link_libraries(OpenCL
                       PRIVATE
+                      Backend
                       BackendUtils
                       Base
                       Graph

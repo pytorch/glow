@@ -43,12 +43,19 @@ public:
   std::unique_ptr<CompiledFunction> compile(Function *F) const override;
 
   std::unique_ptr<CompiledFunction>
+  instrumentAndCompile(Function *F) const override;
+
+  std::unique_ptr<CompiledFunction>
   compileWithoutConstants(Function *F) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 
   bool shouldLower(const Node *N) const override;
+
   /// @}
+  //
+  /// \returns the size of metrics collected for a single TraceEvent.
+  static size_t getTraceEventDataSize() { return sizeof(uint64_t); }
 };
 
 } // namespace glow

@@ -44,6 +44,15 @@ public:
   /// Generate code for input function \param F.
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const = 0;
 
+  /// Generate instrumented (for tracing) code for input function \param F.
+  /// When writing a new backend you must override this function to support auto
+  /// instrumentation.
+  virtual std::unique_ptr<CompiledFunction>
+  instrumentAndCompile(Function *F) const {
+    GLOW_UNREACHABLE("Auto instrumentation is not supported by the backend");
+    return compile(F);
+  }
+
   /// Generate code for input function \param F but do not collect constants.
   virtual std::unique_ptr<CompiledFunction>
   compileWithoutConstants(Function *F) const = 0;
@@ -86,6 +95,16 @@ public:
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
     return false;
   }
+
+protected:
+  /// Inserts a TraceEventInst between every instruction, the most basic form of
+  /// auto instrumentation. Necessary only if the Backend doesn't provide
+  /// profiling/tracing in another way.
+  /// Modifies \p IR and returns a new TraceInfo map.
+  /// \p traceEventDataSize is the size of metrics collected for  a single
+  /// TraceEvent, and should be equal to the Backend's getTraceEventDataSize()
+  /// method.
+  TraceInfo autoInstrument(IRFunction *IR, size_t traceEventDataSize) const;
 };
 
 /// Create a backend of kind \p kind.

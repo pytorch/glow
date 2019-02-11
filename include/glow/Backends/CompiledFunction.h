@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
 #include "glow/Backends/BackendUtils.h"
+#include "glow/Backends/TraceEvents.h"
 #include "glow/Graph/Nodes.h"
 
 #include <unordered_map>
@@ -60,11 +61,25 @@ public:
   /// Collects constants for runtime.
   virtual void collectConstants(Module *){};
 
+  /// Setter for TraceEvent lookup. Note: does not enable tracing automatically.
+  void setTraceInfo(TraceInfo &&info) { traceInfo_ = std::move(info); }
+
+  /// Getter for the TraceEvent lookup.
+  TraceInfo &getTraceInfo() { return traceInfo_; }
+  const TraceInfo &getTraceInfo() const { return traceInfo_; }
+
+  /// Read trace events out of this func and write them into /p ctx
+  virtual void translateTraceEvents(Context *ctx) const {}
+
 protected:
   /// Flag to ensure setupRuns is only called once.
   bool runsSetup_{false};
   /// Contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;
+
+  /// Information regarding runtime trace instrumentation present in this
+  /// function.
+  TraceInfo traceInfo_;
 };
 } // end namespace glow
 

@@ -55,6 +55,15 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
 }
 
+std::unique_ptr<CompiledFunction>
+Interpreter::instrumentAndCompile(Function *F) const {
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
+  auto traceInfo = autoInstrument(IR.get(), getTraceEventDataSize());
+  auto compiledFunc = compileIR(std::move(IR));
+  compiledFunc->setTraceInfo(std::move(traceInfo));
+  return compiledFunc;
+}
+
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
   // Check quantization support.
   if (elementTy == ElemKind::Int8QTy) {
