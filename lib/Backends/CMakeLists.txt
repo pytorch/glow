@@ -16,6 +16,9 @@ foreach(object ${subdirs})
   endif()
 endforeach()
 
+# External backends
+ExternalBackendsRegister()
+
 add_library(ExecutionContext
               TraceEvents.cpp)
 target_link_libraries(ExecutionContext
@@ -38,6 +41,7 @@ target_link_libraries(Backend
                         Optimizer)
 add_library(Backends
               Backends.cpp)
+
 target_link_libraries(Backends
                       PRIVATE
                         Base

@@ -30,6 +30,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GlowDefaults)
 include(GlowTestSupport)
+include(GlowExternalBackends)
 include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
@@ -51,6 +52,7 @@ include_directories(BEFORE
 
 include_directories(${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${GLOW_SOURCE_DIR})
 
 file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
@@ -82,6 +84,9 @@ if (GLOW_WITH_HABANA)
   find_library(SYNAPSE_LIB Synapse)
   add_definitions(-DGLOW_WITH_HABANA=1)
 endif ()
+
+# Top level setup for external backends
+ExternalBackendsInit()
 
 # Prefer LLVM 7.
 find_package(LLVM 7 CONFIG)
