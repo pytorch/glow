@@ -55,6 +55,9 @@ namespace {
 llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.dims()) {
+    if (d == 0) {
+      RETURN_ERR("0 dimemsion is not supported");
+    }
     dim.push_back(d);
   }
 
