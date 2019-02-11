@@ -19,6 +19,7 @@
 #include "glow/Backends/QueueBackedDeviceManager.h"
 
 namespace glow {
+namespace runtime {
 
 /// A class controlling a single CPU thread of execution driving the JIT
 /// backend. Many CPUFunctions may be added, but only one inference is executed
@@ -64,6 +65,7 @@ protected:
                        std::unique_ptr<Context> ctx, ResultCBTy cb) override;
 };
 
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENDS_CPU_CPUDEVICEMANAGER_H

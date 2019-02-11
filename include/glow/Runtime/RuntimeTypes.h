@@ -19,6 +19,7 @@
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -26,12 +27,16 @@
 namespace glow {
 namespace runtime {
 
+class DeviceManager;
 using DeviceIDTy = size_t;
 using RunIdentifierTy = size_t;
 
+/// Map of DeviceIDTy -> DeviceManager.
+using DeviceManagerMapTy = std::map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
+
 /// Enum to communicate results when communicating with device at initialization
 /// and runtime.
-enum class ResultCode { Ready, Executed, Failed, Cancelled };
+enum class ResultCode { Ready, Executed, Failed, Canceled };
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
@@ -65,6 +70,15 @@ struct DAGNode {
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
   RuntimeBundle runtimeBundle;
+};
+
+/// This struct contains all the created DAGNodes from the Partitioner. The
+/// contained DAGNodes can only refer to the DAGNodes from the same DAGNodeList.
+struct DAGNodeList {
+  /// The root DAGNode pointer of each graph/function.
+  std::vector<std::unique_ptr<DAGNode>> roots;
+  /// The non-root DAGNode pointers.
+  std::vector<std::unique_ptr<DAGNode>> nodes;
 };
 
 } // namespace runtime

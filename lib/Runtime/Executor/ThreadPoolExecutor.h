@@ -56,12 +56,10 @@ private:
 /// by the runId).
 class ExecutionState final {
 public:
-  using DoneCbTy = Executor::DoneCbTy;
-
   /// Constructor.
   explicit ExecutionState(RunIdentifierTy id, const DAGNode *root,
                           std::unique_ptr<Context> resultContext,
-                          DoneCbTy doneCb);
+                          ResultCBTy doneCb);
 
   /// Insert the placeholder-tensor pair (\p P, \p T) into the input context
   /// for \p node. This should not be called at the same time as
@@ -99,7 +97,7 @@ public:
   Context *getRawResultContextPtr() const;
 
   /// \returns the callback for this execution.
-  DoneCbTy getCallback() { return cb_; }
+  ResultCBTy getCallback() { return cb_; }
 
   /// \returns the result code for the execution.
   ResultCode getResultCode() const { return resultCode_; }
@@ -114,7 +112,7 @@ private:
   /// The run identifier for this execution of a DAG.
   RunIdentifierTy runId_;
   /// The callback that should be called when execution is done.
-  DoneCbTy cb_;
+  ResultCBTy cb_;
   /// The Context object containing the results of the execution (i.e. the
   /// outputs of the DAGNodes that have no children).
   std::unique_ptr<Context> resultCtx_;
@@ -138,9 +136,6 @@ private:
 /// handle and process multiple concurrent execution runs.
 class ThreadPoolExecutor final : public Executor {
 public:
-  using DeviceManagerMapTy = Executor::DeviceManagerMapTy;
-  using DoneCbTy = Executor::DoneCbTy;
-
   /// Constructor.
   explicit ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
                               unsigned numWorkers = kNumWorkers)
@@ -152,7 +147,7 @@ public:
   /// See Executor::run. A particular invocation is specified completely by
   /// the triple (roots, context, runId).
   void run(const DAGNode *root, std::unique_ptr<Context> context,
-           RunIdentifierTy runId, DoneCbTy cb) override;
+           RunIdentifierTy runId, ResultCBTy cb) override;
 
 private:
   /// Propagate Placeholders from \p ctx into the final output Context for the

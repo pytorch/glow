@@ -17,9 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-using namespace glow::runtime;
-
 namespace glow {
+namespace runtime {
 
 DeviceManager *createInterpreterDeviceManager(llvm::StringRef name) {
   return new InterpreterDeviceManager(name);
@@ -96,4 +95,5 @@ void InterpreterDeviceManager::runFunctionImpl(RunIdentifierTy id,
   resultCB(id, ResultCode::Executed, std::move(ctx));
 }
 
+} // namespace runtime
 } // namespace glow

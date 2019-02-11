@@ -59,7 +59,7 @@ void InflightBarrier::wait() {
 
 ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<Context> resultContext,
-                               DoneCbTy doneCb)
+                               ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
       inflightNodes_(0), resultCode_(ResultCode::Ready) {
   // Create a queue for the breadth-first traversal through the graph.
@@ -213,7 +213,7 @@ ThreadPoolExecutor::~ThreadPoolExecutor() {
 
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<Context> context,
-                             RunIdentifierTy runId, DoneCbTy cb) {
+                             RunIdentifierTy runId, ResultCBTy cb) {
   // If list of roots is empty, there is nothing to do. Give back the
   // context so the caller can reuse it.
   if (!root) {
@@ -381,7 +381,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   if (noNodesInflight) {
     // If there are no nodes inflight, that means all nodes are done. Call
     // the callback and erase the state information.
-    DoneCbTy cb = executionState->getCallback();
+    ResultCBTy cb = executionState->getCallback();
     cb(executionState->getRunId(), executionState->getResultCode(),
        executionState->getUniqueResultContextPtr());
 

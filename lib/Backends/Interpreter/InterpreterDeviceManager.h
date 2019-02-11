@@ -19,6 +19,7 @@
 #include "glow/Backends/QueueBackedDeviceManager.h"
 
 namespace glow {
+namespace runtime {
 
 /// A class controlling a single "Interpreter Device", a thread of execution in
 /// the IR-Interpreter. Many InterpreterFunctions may be added, but only one
@@ -64,6 +65,7 @@ protected:
                        std::unique_ptr<Context> ctx, ResultCBTy cb) override;
 };
 
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENBDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H

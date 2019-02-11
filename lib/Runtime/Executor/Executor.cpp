@@ -21,7 +21,7 @@
 namespace glow {
 namespace runtime {
 
-Executor *createExecutor(const Executor::DeviceManagerMapTy &deviceManagers,
+Executor *createExecutor(const DeviceManagerMapTy &deviceManagers,
                          ExecutorKind executorKind) {
   switch (executorKind) {
   case ExecutorKind::ThreadPool:

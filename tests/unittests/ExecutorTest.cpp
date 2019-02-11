@@ -35,7 +35,7 @@ using namespace glow::runtime;
 /// registerResult() should be called before calling Executor::run() in each
 /// test. The rest of the implementation of the DeviceManager interface exists
 /// to satisfy the compiler.
-class TestDeviceManager final : public DeviceManager {
+class TestDeviceManager final : public runtime::DeviceManager {
 public:
   TestDeviceManager(unsigned numWorkers)
       : DeviceManager(BackendKind::Interpreter), threadPool_(numWorkers) {}
@@ -551,7 +551,7 @@ protected:
   /// An ExecutorTestBuilder instance for creating tests.
   ExecutorTestBuilder testBuilder_;
   /// DeviceManager map for initializing executor_.
-  Executor::DeviceManagerMapTy deviceManagerMap_;
+  DeviceManagerMapTy deviceManagerMap_;
   /// TestDeviceManager map for initializing testBuilder_.
   TestDeviceManagerMapTy testDeviceManagerMap_;
 };

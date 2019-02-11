@@ -24,15 +24,13 @@
 
 namespace glow {
 namespace runtime {
-using DeviceIDtoManagerMapTy =
-    std::map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
 
 /// The Provisioner is responsible for assigning networks to an actual device.
 /// It also compiles the networks before passing the compiled functions to the
 /// device.
 class Provisioner final {
 public:
-  Provisioner(DeviceIDtoManagerMapTy &devices);
+  Provisioner(DeviceManagerMapTy &devices);
 
   /// Walks \p networks and assigns each function to a DeviceManager in \p
   /// devices. The Provisioner calls the addNetwork method for each

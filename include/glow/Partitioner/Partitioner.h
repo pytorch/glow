@@ -81,18 +81,6 @@ public:
   GraphMemInfo getGraphMemInfo(Function *func) { return partitionCost_[func]; }
 };
 
-/// The struct contains all the created DAGNodes. This DAGNodeList owns all the
-/// DAGNodes, which cannot outlive the DAGNodeList. In addition, the DAGNodes
-/// can only refer to the DAGNodes from the same DAGNodeList, and they can use
-/// the raw pointers to refer to each other since they are in the same
-/// DAGNodeList.
-struct DAGNodeList {
-  /// The root DAGNode pointer of each graph/function.
-  std::vector<std::unique_ptr<DAGNode>> roots;
-  /// The non-root DAGNode pointers.
-  std::vector<std::unique_ptr<DAGNode>> nodes;
-};
-
 /// Given a module, partitions each of the its functions into multiple ones
 /// based on memory constraints and minimizes the communication cost.
 class Partitioner {
