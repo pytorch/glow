@@ -41,10 +41,7 @@ DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
-DeviceManager *createOCLDeviceManager(llvm::StringRef name) {
-  (void)name;
-  GLOW_UNREACHABLE("Unimplemented");
-}
+DeviceManager *createOCLDeviceManager(llvm::StringRef name);
 #else
 DeviceManager *createOCLDeviceManager(llvm::StringRef name) {
   (void)name;

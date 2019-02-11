@@ -31,6 +31,11 @@ void glow::runtime::RuntimeBundle::setInputsandOutputs() {
   }
 }
 
+void glow::runtime::RuntimeBundle::freeConstants() {
+  if (constants_) {
+    glow::alignedFree(constants_);
+  }
+}
 void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
