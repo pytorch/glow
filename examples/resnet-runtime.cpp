@@ -76,7 +76,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
       "resnet50" + std::to_string(id), std::move(ctx),
       [id, path, &returned, &finished](RunIdentifierTy, ResultCode r,
                                        std::unique_ptr<Context> ctx) {
-        if (r == ResultCode::Cancelled) {
+        if (r == ResultCode::Canceled) {
           llvm::outs() << "(" << id << ") "
                        << "Too Many Active Requests.\n";
         } else {

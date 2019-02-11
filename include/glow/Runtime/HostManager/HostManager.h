@@ -29,7 +29,6 @@
 namespace glow {
 namespace runtime {
 
-/// Callback signalling the result of running a function.
 struct DeviceConfig {
   std::string deviceName;
   BackendKind backendKind;
@@ -69,7 +68,7 @@ class HostManager final {
 
   /// A map of DeviceManagers by deviceID. An ordered map is used here to allow
   /// a stable iteration order over devices.
-  std::map<DeviceIDTy, std::shared_ptr<DeviceManager>> devices_;
+  DeviceManagerMapTy devices_;
 
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.

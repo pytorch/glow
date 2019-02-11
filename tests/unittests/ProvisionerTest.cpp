@@ -64,7 +64,7 @@ TEST_F(ProvisionerTest, provisionDag) {
   auto mod = setupModule(6);
   auto networks = setupDAG(2, 0);
 
-  std::map<DeviceIDTy, std::shared_ptr<DeviceManager>> devices;
+  DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
     std::unique_ptr<DeviceManager> device(new CPUDeviceManager);
     devices.emplace(i, std::move(device));

@@ -23,14 +23,14 @@
 #include <atomic>
 
 namespace glow {
-
+namespace runtime {
 class QueueBackedDeviceManager : public DeviceManager {
 protected:
   /// Thread which interfaces with the device.
   ThreadPool workThread_;
 
   /// Identifier for next run.
-  std::atomic<runtime::RunIdentifierTy> nextIdentifier_{1};
+  std::atomic<RunIdentifierTy> nextIdentifier_{1};
 
 public:
   QueueBackedDeviceManager(BackendKind backend, llvm::StringRef name)
@@ -64,11 +64,11 @@ public:
   /// functionName must match the name of a function already added.
   /// Context should have all Placeholders allocated. resultCB will be called
   /// with the Context results filled.
-  runtime::RunIdentifierTy runFunction(std::string functionName,
-                                       std::unique_ptr<Context> ctx,
-                                       ResultCBTy callback) override {
+  RunIdentifierTy runFunction(std::string functionName,
+                              std::unique_ptr<Context> ctx,
+                              ResultCBTy callback) override {
 
-    runtime::RunIdentifierTy id = nextIdentifier_++;
+    RunIdentifierTy id = nextIdentifier_++;
     workThread_.submit([this, id, functionName = std::move(functionName),
                         ctx = std::move(ctx),
                         callback = std::move(callback)]() mutable {
@@ -92,10 +92,10 @@ protected:
   virtual void evictNetworkImpl(std::string functionName) = 0;
 
   /// Execute provided Function.
-  virtual void runFunctionImpl(runtime::RunIdentifierTy, std::string,
+  virtual void runFunctionImpl(RunIdentifierTy, std::string,
                                std::unique_ptr<Context>, ResultCBTy) = 0;
 };
-
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENDS_QUEUEBACKEDDEVICEMANAGER_H

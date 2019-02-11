@@ -27,12 +27,11 @@
 #include <string>
 
 namespace glow {
+namespace runtime {
 
 /// Callback signalling success/failure of loading a Module onto a device.
 using ReadyCBTy = std::function<void(const Module *, runtime::ResultCode)>;
-/// Callback signalling the result of running a function.
-using ResultCBTy = std::function<void(
-    runtime::RunIdentifierTy, runtime::ResultCode, std::unique_ptr<Context>)>;
+
 /// Map of Function name -> CompiledFunction, used when loading a network onto a
 /// device.
 using FunctionMapTy = std::map<std::string, CompiledFunction *>;
@@ -74,9 +73,9 @@ public:
   /// functionName must match the name of a function already added.
   /// Context should have all Placeholders allocated. resultCB will be called
   /// with the Context results filled.
-  virtual runtime::RunIdentifierTy runFunction(std::string functionName,
-                                               std::unique_ptr<Context> ctx,
-                                               ResultCBTy resultCB) = 0;
+  virtual runtime::RunIdentifierTy
+  runFunction(std::string functionName, std::unique_ptr<Context> ctx,
+              runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.
   virtual void stop(bool block = true) {}
@@ -96,6 +95,7 @@ public:
   virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
 };
 
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENDS_DEVICEMANAGER_H

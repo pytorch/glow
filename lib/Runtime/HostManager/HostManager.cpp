@@ -143,7 +143,7 @@ RunIdentifierTy HostManager::runNetwork(llvm::StringRef networkName,
     return currentRun;
   }
   if (activeRequestCount_ >= activeRequestLimit_) {
-    callback(currentRun, ResultCode::Cancelled, std::move(context));
+    callback(currentRun, ResultCode::Canceled, std::move(context));
     return currentRun;
   }
   activeRequestCount_++;

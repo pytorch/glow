@@ -25,7 +25,7 @@
 using namespace glow;
 using namespace runtime;
 
-Provisioner::Provisioner(DeviceIDtoManagerMapTy &devices) {
+Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
     devices_.push_back(device.second);
   }

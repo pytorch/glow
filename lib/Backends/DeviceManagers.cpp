@@ -19,8 +19,10 @@
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
+using namespace glow::runtime;
 
 namespace glow {
+namespace runtime {
 /// NOTE: Please add a declaration of a device-specific `create` method here
 /// when you define a new DeviceManager.
 
@@ -49,6 +51,7 @@ DeviceManager *createOCLDeviceManager(llvm::StringRef name) {
   GLOW_UNREACHABLE("Must compile with OpenCL support");
 }
 #endif
+} // namespace runtime
 } // namespace glow
 
 DeviceManager *DeviceManager::createDeviceManager(BackendKind backendKind,

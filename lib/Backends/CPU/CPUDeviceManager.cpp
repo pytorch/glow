@@ -21,9 +21,11 @@ using namespace glow;
 using namespace glow::runtime;
 
 namespace glow {
+namespace runtime {
 DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
   return new CPUDeviceManager(name);
 }
+} // namespace runtime
 } // namespace glow
 
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
