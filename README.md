@@ -73,17 +73,44 @@ To get them, from the glow directory, run:
 
 #### macOS
 
-Install the required dependencies using [Homebrew](https://brew.sh/):
+Install the required dependencies using either [Homebrew](https://brew.sh/) or
+[MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
   brew install cmake graphviz libpng ninja protobuf wget
   brew install --with-toolchain llvm@7
   ```
 
-Note that LLVM is installed in a non-default location (`/usr/local/opt/llvm`) to
-avoid conflicts with the system's LLVM. This means CMake will need to be told
-where to find LLVM when building, instructions on that can be found
-[here](#building-with-dependencies-llvm).
+If using MacPorts, run:
+
+  ```bash
+  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0
+  ```
+
+Note that LLVM is installed in a non-default location to avoid conflicts with
+the system's LLVM --Homebrew usually installs LLVM in `/usr/local/opt/llvm/`,
+whereas MacPorts installs it in `/opt/local/libexec/llvm-7.0/`. This means that
+CMake will need to be told where to find LLVM when building; instructions on
+that can be found [here](#building-with-dependencies-llvm).
+
+Finally, create a symbolic link to the Homebrew- or MacPorts-installed
+`clang-*` tools so that the `utils/format.sh` script is able to find them later
+on. For a Homebrew-managed installation, run:
+  ```
+  ln -s "/usr/local/opt/llvm/bin/clang-format" "/usr/local/bin/clang-format"
+  ln -s "/usr/local/opt/llvm/bin/clang-tidy" "/usr/local/bin/clang-tidy"
+  ```
+For MacPorts, run:
+  ```
+  ln -s "/opt/local/libexec/llvm-7.0/bin/clang-format" "/usr/local/bin/clang-format"
+  ln -s "/opt/local/libexec/llvm-7.0/bin/clang-tidy" "/usr/local/bin/clang-tidy"
+```
+
+> **Note:** On newer versions of macOS, Xcode's command line tools come with a
+> non-traditional header layout. In order for Glow to build on newer macOS
+> versions, you might need to install `macOS_SDK_headers_for_macOS_10.14.pkg`
+> manually. For example, on Mojave this package is located in
+> `/Library/Developer/CommandLineTools/Packages/`.
 
 #### Ubuntu
 
