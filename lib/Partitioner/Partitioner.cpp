@@ -15,22 +15,9 @@
  */
 
 #include "glow/Partitioner/Partitioner.h"
-#include "glow/Graph/Context.h"
-#include "glow/Graph/Utils.h"
-
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 using llvm::isa;
-
-/// A graph with BFS oder.
-struct BFSLevel {
-  /// A list of <level, nodelist> with BFS order.
-  std::vector<std::pair<int, std::vector<Node *>>> levels;
-  /// A set of visited nodes.
-  std::unordered_set<const Node *> visited;
-};
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices)
     : module_(parent), deviceInfo_(devices) {
@@ -92,51 +79,6 @@ void Partitioner::initOpMemUsage() {
     }
     memUsage_[&node] = size;
   }
-}
-
-static BFSLevel getBFSLevel(Function *F) {
-  // Visit graph nodes in BFS order. For each non-storage node, get its level.
-  // Use the preorder to get the roots. Now assume there is only one output op
-  // (i.e. root) now.
-  GraphPreOrderVisitor visitor(*F);
-  Node *node = nullptr;
-  for (auto &N : visitor.getPreOrder()) {
-    if (isa<Storage>(N)) {
-      continue;
-    }
-    node = N;
-    break;
-  }
-
-  BFSLevel bfs;
-  int level = 0;
-  int current = 0;
-  bfs.levels.push_back({level, {node}});
-  bfs.visited.insert(node);
-  level++;
-  while (current < level) {
-    std::vector<Node *> nodes;
-    for (int i = 0, e = bfs.levels[current].second.size(); i < e; i++) {
-      Node *N = bfs.levels[current].second[i];
-
-      for (int j = 0, e = N->getNumInputs(); j < e; ++j) {
-        Node *in = N->getNthInput(j).getNode();
-        if (isa<Storage>(in) || bfs.visited.count(in)) {
-          continue;
-        }
-        nodes.push_back(in);
-        bfs.visited.insert(in);
-      }
-    }
-    if (nodes.size() > 0) {
-      auto newPair = std::make_pair(level, nodes);
-      bfs.levels.push_back(newPair);
-      level++;
-    }
-    current++;
-  }
-
-  return bfs;
 }
 
 // Combine the partitions if necessary : if all outside uses of the nodes in
@@ -286,7 +228,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
                                                 unsigned availableMemory) {
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
-  unsigned level = bfs.levels.size();
+  size_t level = bfs.size();
   // A list of cut. The graph can be partitioned by levels (cut[0], level - 1],
   // (cut[1], cut[0] - 1], ..., (-1, cut[n] - 1].
   std::vector<int> cut;
@@ -296,8 +238,8 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   unsigned mem = 0;
   for (int i = level - 1; i >= 0; i--) {
     unsigned tmp = 0;
-    for (int j = 0, e = bfs.levels[i].second.size(); j < e; j++) {
-      Node *N = bfs.levels[i].second[j];
+    for (size_t j = 0, e = bfs[i].second.size(); j < e; j++) {
+      Node *N = bfs[i].second[j];
       tmp += memUsage_[N];
     }
     if (mem + tmp > availableMemory) {
@@ -321,14 +263,14 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   // Step 2 : Create the initial mapping between node and functions.
   int color = 0;
   Function *newF;
-  for (int k = 0, e = cut.size(); k < e; k++) {
+  for (size_t k = 0, e = cut.size(); k < e; k++) {
     newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                           std::to_string(++color));
     mapping.createPartition(newF);
     unsigned mem = 0;
     for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
-      for (int j = 0, e1 = bfs.levels[i].second.size(); j < e1; j++) {
-        Node *N = bfs.levels[i].second[j];
+      for (size_t j = 0, e1 = bfs[i].second.size(); j < e1; j++) {
+        Node *N = bfs[i].second[j];
         if (mem + memUsage_[N] > availableMemory) {
           newF = F->getParent()->createFunction(
               std::string(F->getName()) + "_part" + std::to_string(++color));

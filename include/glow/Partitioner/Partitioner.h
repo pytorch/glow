@@ -20,12 +20,6 @@
 #include "glow/Partitioner/PartitionerUtils.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
-#include "llvm/ADT/DenseMap.h"
-
-#include <map>
-#include <set>
-#include <string>
-
 namespace glow {
 
 using namespace runtime;
