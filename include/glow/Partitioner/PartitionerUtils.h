@@ -17,6 +17,7 @@
 #define GLOW_PARTITIONER_PARTITIONUTILS_H
 
 #include "glow/Graph/Graph.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace glow {
 
@@ -24,15 +25,22 @@ namespace glow {
 struct GraphMemInfo {
   // The memory usage of all input nodes (whose predecessors are not included in
   // this subgraph) of this subgraph.
-  uint64_t inMemSize;
+  size_t inMemSize;
   // The memory usage of all output nodes (whose successors are not included in
   // this subgraph) of this subgraph.
-  uint64_t outMemSize;
+  size_t outMemSize;
   // The memory usage of all constants used in this subgraph.
-  uint64_t constMemSize;
+  size_t constMemSize;
 
   GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
 };
+
+/// A list of <level, nodelist> with BFS order.
+using BFSLevel = std::vector<std::pair<int, std::vector<Node *>>>;
+
+/// Visit nodes if Function \p F in BFS order and return the nodes by levels
+/// (the longest distance between one node and the root).
+BFSLevel getBFSLevel(Function *F);
 
 /// Given \p nodes, return a list of nodes who use any node in this set.
 std::vector<Node *> getOutUsers(const std::set<Node *> &nodes);

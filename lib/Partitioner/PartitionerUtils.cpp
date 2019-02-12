@@ -16,9 +16,64 @@
 
 #include "glow/Partitioner/PartitionerUtils.h"
 
-#include <set>
+using llvm::isa;
 
 namespace glow {
+
+/// The nodes in function \p F which be grouped into levels based on how far
+/// (the longest distance) they are from the roots.
+BFSLevel getBFSLevel(Function *F) {
+  // The current list of nodes needs to be visited
+  std::vector<Node *> cur;
+  // A map between a node and its level.
+  llvm::DenseMap<Node *, int> nodeLevel;
+
+  // Get the roots set (i.e. the nodes without users).
+  for (auto &node : F->getNodes()) {
+    if (node.getNumUsers() == 0) {
+      // A root has no users.
+      cur.push_back(&node);
+      nodeLevel[&node] = 0;
+    }
+  }
+
+  // Create the node to level map by traversing the nodes with BFS order.
+  BFSLevel bfs;
+  int level = 0;
+  int current = 0;
+  bfs.push_back({level, std::vector<Node *>()});
+  level++;
+  while (current < level) {
+    std::vector<Node *> nodes;
+    for (size_t i = 0, e = cur.size(); i < e; i++) {
+      Node *N = cur[i];
+      for (size_t j = 0, e = N->getNumInputs(); j < e; ++j) {
+        Node *in = N->getNthInput(j).getNode();
+        if (isa<Storage>(in)) {
+          continue;
+        }
+        nodes.push_back(in);
+        nodeLevel[in] = level;
+      }
+    }
+    if (nodes.size() > 0) {
+      auto newPair = std::make_pair(level, std::vector<Node *>());
+      bfs.push_back(newPair);
+      level++;
+      cur = std::move(nodes);
+    }
+    current++;
+  }
+
+  // Based on the node to level map, group these nodes by levels.
+  for (llvm::DenseMap<Node *, int>::iterator it = nodeLevel.begin();
+       it != nodeLevel.end(); ++it) {
+    Node *in = (*it).first;
+    int level = (*it).second;
+    bfs[level].second.push_back(in);
+  }
+  return bfs;
+}
 
 /// Given \p nodes, return a list of nodes who are not in this set but use any
 /// node in this set.
@@ -49,7 +104,7 @@ getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
         continue;
       }
       bool flag = true;
-      for (int i = 0, e = user->getNumInputs(); i < e; i++) {
+      for (size_t i = 0, e = user->getNumInputs(); i < e; i++) {
         Node *in = user->getNthInput(i).getNode();
         if (llvm::isa<Storage>(in) || nodes.count(in)) {
           continue;
@@ -78,7 +133,7 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
     }
     // Check the inputs of each node in this subgraph and decide if it
     // contributes to the memory usage:
-    for (int i = 0, e = cur->getNumInputs(); i < e; i++) {
+    for (size_t i = 0, e = cur->getNumInputs(); i < e; i++) {
       Node *node = cur->getNthInput(i).getNode();
       if (nodes.count(node) || nSet.count(node)) {
         // This input belongs to this subgraph or it has been considered
@@ -88,7 +143,7 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
       nSet.insert(node);
       Storage *in = llvm::dyn_cast<Storage>(node);
       if (in) {
-        uint64_t size = in->getType()->getSizeInBytes();
+        size_t size = in->getType()->getSizeInBytes();
         if (node->getKind() == Kinded::Kind::ConstantKind) {
           // Constant.
           ret.constMemSize += size;
@@ -112,7 +167,7 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
     // contributes to the memory usage. Although at the stage, the output may
     // not be a storage node, after real partitioning, a Save node will be added
     // to hold the output:
-    for (int i = 0, e = cur->getNumResults(); i < e; i++) {
+    for (size_t i = 0, e = cur->getNumResults(); i < e; i++) {
       for (auto &U : cur->getNthResult(i).getNode()->getUsers()) {
         Node *node = U.getUser();
         if (nodes.count(node) || nSet.count(node)) {
