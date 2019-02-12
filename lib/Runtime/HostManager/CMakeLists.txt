@@ -7,4 +7,4 @@ target_link_libraries(HostManager
                         Provisioner
                         Executor
                         DeviceManager
-                        CPUDeviceManager)                       
+                        CPUDeviceManager)

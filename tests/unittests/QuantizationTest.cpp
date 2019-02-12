@@ -1516,7 +1516,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   LoweredNamesMap loweredMap;
   lower(profileF, *profileEE.getBackend(), &loweredMap);
 
-  // Check that the lowered graph only containts the lowered components of the
+  // Check that the lowered graph only contains the lowered components of the
   // FC (MM and BA) and not the FC itself.
   auto *loweredFC = findNodeKindOrReturnNull<FullyConnectedNode>(profileF);
   auto *loweredMM = findNodeKindOrReturnNull<MatMulNode>(profileF);

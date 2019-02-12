@@ -198,7 +198,7 @@ Context *ExecutionState::getRawResultContextPtr() const {
 void ExecutionState::setResultCode(const ResultCode resultCode) {
   // If resultCode_ is ResultCode::Failed, that should "stick". In other words,
   // once a run has failed due to one node, the fact that the other nodes
-  // executed sucessfully does not change the result code of the run.
+  // executed successfully does not change the result code of the run.
   if (resultCode_ != ResultCode::Failed) {
     resultCode_ = resultCode;
   }

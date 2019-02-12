@@ -46,7 +46,7 @@ public:
 private:
   /// Count of threads inside the barrier.
   unsigned count_{0};
-  /// Mutex for accesing count_;
+  /// Mutex for accessing count_;
   std::mutex mtx_;
   /// Condition variable for implementing wait().
   std::condition_variable cv_;

@@ -336,8 +336,8 @@ if(GLOW_WITH_CPU)
   target_include_directories(ProvisionerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)
   add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest --gtest_output=xml:ProvisionerTest.xml)
 
-add_executable(HostManagerTest	  
-               HostManagerTest.cpp) 
+add_executable(HostManagerTest
+               HostManagerTest.cpp)
 target_link_libraries(HostManagerTest	
                       PRIVATE		
                         Backends
@@ -350,7 +350,7 @@ target_link_libraries(HostManagerTest
                         DeviceManager
                         gtest		
                         TestMain)	
-target_include_directories(HostManagerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends)                        
+target_include_directories(HostManagerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends)
 add_glow_test(HostManagerTest ${GLOW_BINARY_DIR}/tests/HostManagerTest --gtest_output=xml:ProvisionerTest.xml)
 
 endif()

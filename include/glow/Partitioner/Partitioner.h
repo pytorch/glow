@@ -49,7 +49,7 @@ class NodeToFunctionMap {
   /// Map of nodes in the original function to their target partition.
   NodeToFunctionMapTy nodeToFunction_;
 
-  /// Map of sub-fuctions to their memory consumption.
+  /// Map of sub-functions to their memory consumption.
   PartitionCostMapTy partitionCost_;
 
 public:
