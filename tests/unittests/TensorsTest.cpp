@@ -791,3 +791,80 @@ TEST(Tensor, insertSlice) {
                             3.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f};
   EXPECT_TRUE(big.isEqual(expected));
 }
+
+/// Check that after initializing a fused tensor to zero that the scale and
+/// offset are not changed and that the values for each row are set to that
+/// row's offset.
+TEST(Tensor, initZeroFused) {
+  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
+  auto TH = T.getHandle<int8_t>();
+  TH.clear(127);
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 2; j < 10; j++) {
+      // Set 6 due to endianess when loading the int32_t offset.
+      if (j == 6) {
+        TH.at({i, j}) = i + 100;
+      } else {
+        TH.at({i, j}) = 0;
+      }
+    }
+  }
+  PseudoRNG PRNG;
+  T.init(Tensor::InitKind::Zero, 1, PRNG);
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      // Now check that both the offset and the values are correct, and that all
+      // other values are still 0.
+      if (j < 2 || j == 6) {
+        EXPECT_EQ(TH.at({i, j}), i + 100);
+      } else {
+        EXPECT_EQ(TH.at({i, j}), 0);
+      }
+    }
+  }
+}
+
+/// Check that initializing a fused tensor with Xavier that the scale and offset
+/// are not changed.
+TEST(Tensor, initXavierFused) {
+  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
+  PseudoRNG PRNG;
+  auto TH = T.getHandle<int8_t>();
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      TH.at({i, j}) = i * 10 + j;
+    }
+  }
+  T.init(Tensor::InitKind::Xavier, 1, PRNG);
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 2; j < 10; j++) {
+      // Check that the scales/offsets are unchanged.
+      EXPECT_EQ(TH.at({i, j}), i * 10 + j);
+    }
+  }
+}
+
+/// Check that initializing a fused tensor with Broadcast that the scale and
+/// offset are not changed, and broadcast value is set correctly.
+TEST(Tensor, initBroadcastFused) {
+  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
+  auto TH = T.getHandle<int8_t>();
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      TH.at({i, j}) = i * 10 + j;
+    }
+  }
+  PseudoRNG PRNG;
+  T.init(Tensor::InitKind::Broadcast, 5, PRNG);
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      // Check that the scales/offsets are unchanged, and that the broadcast
+      // value is everywhere else.
+      if (j < 2) {
+        EXPECT_EQ(TH.at({i, j}), 5);
+      } else {
+        EXPECT_EQ(TH.at({i, j}), i * 10 + j);
+      }
+    }
+  }
+}

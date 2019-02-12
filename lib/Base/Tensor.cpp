@@ -423,7 +423,14 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       break;
     }
     case ElemKind::Int8FusedQTy: {
-      getHandle<int8_t>().clear(val);
+      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
+      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
+      auto H = getHandle<int8_t>();
+      for (size_t i = 0; i < dims()[0]; i++) {
+        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
+          H.at({i, j}) = val;
+        }
+      }
       break;
     }
     }
