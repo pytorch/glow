@@ -224,6 +224,14 @@ protected:
   /// the debugger's perspective.
   void emitDebugGlobalVariableForValue(const Value *val);
 
+  /// Create LLVM IR for the for loop with a loop count specified by the only
+  /// parameter of the enclosing function.
+  /// \returns a pair of basic blocks. The first BB is the BB of the loop body,
+  /// the second BB is the loop exit BB.
+  std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
+  createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
+             llvm::Value *numElements) const;
+
 public:
   /// Destructor
   virtual ~LLVMIRGen() {}
@@ -295,6 +303,8 @@ public:
   llvm::Value *emitStringConst(llvm::IRBuilder<> &builder, llvm::StringRef str);
   /// Register \p val as an argument that should not be specialized.
   void markArgAsUnspecialized(llvm::Value *val);
+  /// \returns bit-width of the target size_t.
+  virtual unsigned getTargetSizeTWidth() const;
 };
 
 } // namespace glow
