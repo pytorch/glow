@@ -126,4 +126,5 @@ target_link_libraries(CPUDeviceManager
                         CPUBackend
                         Graph
                         IR
-                        Optimizer)
+                        Optimizer
+                        ThreadPool)

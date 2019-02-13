@@ -4,6 +4,9 @@ add_library(HostManager
 target_link_libraries(HostManager
                       PRIVATE
                         Backends
+                        Base
+                        Graph
+                        Partitioner
                         Provisioner
                         Executor
                         DeviceManager
