@@ -24,7 +24,7 @@ namespace glow {
 
 using namespace runtime;
 
-using MemUsageMapTy = std::unordered_map<Node *, unsigned>;
+using MemUsageMapTy = std::unordered_map<Node *, size_t>;
 using NodesSetTy = std::set<Node *>;
 using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
@@ -111,15 +111,14 @@ class Partitioner {
   /// and partition2.
   void partitionsCombine(NodeToFunctionMap &partitions,
                          FunctionToNodesMapTy &nodesSet,
-                         uint64_t availableMemory);
+                         size_t availableMemory);
 
   /// After getting the intial partitions, ajust the partitions to miminize
   /// communication and computation cost.
-  void partitionsAdjust(NodeToFunctionMap &partitions,
-                        uint64_t availableMemory);
+  void partitionsAdjust(NodeToFunctionMap &partitions, size_t availableMemory);
 
   /// Assign nodes to partitions and return the mapping.
-  NodeToFunctionMap selectPartitions(Function *F, unsigned availableMemory);
+  NodeToFunctionMap selectPartitions(Function *F, size_t availableMemory);
 
   /// Adjust a logicalDevice ID to each DAGNode. It is possible that two
   /// sub-functions need to be assigned into 1 device due to the memory
