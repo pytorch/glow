@@ -71,6 +71,7 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
+/// Check that a createConv can be run.
 TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
@@ -83,6 +84,28 @@ TEST(Graph, simpleTestConv) {
   K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
+  F->dump();
+  F->dumpDAG();
+  lower(F, MockBackend());
+  ::optimize(F, CompilationMode::Train);
+  M.generateIR(MockBackend());
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
+}
+
+/// Check that a createConv3D can be run.
+TEST(Graph, simpleTestConv3D) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Context ctx;
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3, 100},
+                                 "input", true);
+  K = F->createConv3D(ctx, /* name */ "Conv3D", /* input */ K,
+                      /* outChannels */ 16, /* kernel */ 3, /* stride */ 2,
+                      /* pad */ 3, /* group */ 1);
+  K = F->createRELU("Relu", K);
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();

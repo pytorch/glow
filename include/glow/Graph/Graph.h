@@ -230,6 +230,13 @@ public:
   PadNode *createPad(llvm::StringRef name, NodeValue input, TypeRef outTy,
                      unsigned_t mode, llvm::ArrayRef<int> pads, float value);
 
+  /// Creates a ConvolutionNode with the given \p name which convolves the 4D
+  /// \p input with \p filter and \bias. \p kernels defines the size of the
+  /// height and width dimensions of the filters. \p strides defines the number
+  /// of steps to take in the input for each output cell. \p pads defines how
+  /// many zero padding cells should be added to the input during convolution.
+  /// \p group defines the number of groups the input and output channels should
+  /// be divided into and convolved separately.
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<unsigned_t> kernels,
@@ -237,10 +244,47 @@ public:
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group);
 
+  /// Creates a ConvolutionNode with the given \p name which convolves the 4D
+  /// \p input with \p filter and \bias. \p kernel defines the size of the
+  /// height and width dimensions of the filters. \p stride defines the number
+  /// of steps to take in the input for each output cell. \p pad defines how
+  /// many zero padding cells should be added to the input during convolution.
+  /// \p group defines the number of groups the input and output channels should
+  /// be divided into and convolved separately.
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               unsigned_t kernel, unsigned_t stride,
                               unsigned_t pad, unsigned_t group);
+
+  /// Creates a Convolution3DNode with the given \p name which convolves the 5D
+  /// \p input with \p filter and \bias. \p kernels defines the size of the
+  /// height, width, and time dimensions of the filters. \p strides defines the
+  /// the number of steps to take in the input for each output cell. \p pads
+  /// defines how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately. \p outTy defines
+  /// the type of the output of the 3d convolution.
+  Convolution3DNode *createConv3D(llvm::StringRef name, NodeValue input,
+                                  NodeValue filter, NodeValue bias,
+                                  TypeRef outTy,
+                                  llvm::ArrayRef<unsigned_t> kernels,
+                                  llvm::ArrayRef<unsigned_t> strides,
+                                  llvm::ArrayRef<unsigned_t> pads,
+                                  unsigned_t group);
+
+  /// Creates a Convolution3DNode with the given \p name which convolves the 5D
+  /// \p input with \p filter and \bias. \p kernel defines the size of the
+  /// height, width, and time dimensions of the filters. \p stride defines the
+  /// the number of steps to take in the input for each output cell. \p pad
+  /// defines how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately. \p outTy defines
+  /// the type of the output of the 3d convolution.
+  Convolution3DNode *createConv3D(llvm::StringRef name, NodeValue input,
+                                  NodeValue filter, NodeValue bias,
+                                  TypeRef outTy, unsigned_t kernel,
+                                  unsigned_t stride, unsigned_t pad,
+                                  unsigned_t group);
 
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
                                  TypeRef outTy);
@@ -810,17 +854,57 @@ public:
                            unsigned_t channelIdx = 0, float epsilon = 1e-5,
                            float momentum = 0.9);
 
+  /// Creates a ConvolutionNode with the given \p name which convolves the 4D
+  /// \p input. \p kernels defines the size of the height and width dimensions
+  /// of the convolutional filters. \p stride defines the the number of steps
+  /// to take in the input for each output cell. \p pads defines how many zero
+  /// padding cells should be added to the input during convolution. \p group
+  /// defines the number of groups the input and output channels should be
+  /// divided into and convolved separately.
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t depth,
+                              NodeValue input, size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
                               unsigned_t group);
 
+  /// Creates a ConvolutionNode with the given \p name which convolves the 4D
+  /// \p input. \p kernel defines the size of the height and width dimensions of
+  /// the convolutional filters. \p stride defines the the number of steps to
+  /// take in the input for each output cell. \p pad defines how many zero
+  /// padding cells should be added to the input during convolution. \p group
+  /// defines the number of groups the input and output channels should be
+  /// divided into and convolved separately.
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t depth, unsigned_t kernel,
-                              unsigned_t stride, unsigned_t pad,
-                              unsigned_t group);
+                              NodeValue input, size_t outChannels,
+                              unsigned_t kernel, unsigned_t stride,
+                              unsigned_t pad, unsigned_t group);
+
+  /// Creates a Convolution3DNode with the given \p name which convolves the 5D
+  /// \p input. \p kernels defines the size of the height, width, and time
+  /// dimensions of the convolutional filters. \p strides defines the the number
+  /// of steps to take in the input for each output cell. \p pads defines how
+  /// many zero padding cells should be added to the input during convolution.
+  /// \p group defines the number of groups the input and output channels should
+  /// be divided into and convolved separately.
+  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
+                                  NodeValue input, size_t outChannels,
+                                  llvm::ArrayRef<unsigned_t> kernels,
+                                  llvm::ArrayRef<unsigned_t> strides,
+                                  llvm::ArrayRef<unsigned_t> pads,
+                                  unsigned_t group);
+
+  /// Creates a Convolution3DNode with the given \p name which convolves the 5D
+  /// \p input. \p kernel defines the size of the height, width, and time
+  /// dimensions of the convolutional filters. \p stride defines the the number
+  /// of steps to take in the input for each output cell. \p pad defines how
+  /// many zero padding cells should be added to the input during convolution.
+  /// \p group defines the number of groups the input and output channels should
+  /// be divided into and convolved separately.
+  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
+                                  NodeValue input, size_t outChannels,
+                                  unsigned_t kernel, unsigned_t stride,
+                                  unsigned_t pad, unsigned_t group);
 
   /// Create a fully connected node with the given \p name, \p input and \p
   /// output depth. Trainable weight and bias variables are created implicitly.

@@ -157,6 +157,65 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   return isValid;
 }
 
+static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
+                                NodeValue bias,
+                                llvm::ArrayRef<unsigned_t> kernels,
+                                llvm::ArrayRef<unsigned_t> strides,
+                                llvm::ArrayRef<unsigned_t> pads,
+                                unsigned_t group) {
+
+  const Node *parent = dest.getNode();
+  bool isValid = checkType(src, dest.getElementType(), parent);
+  isValid &= checkType(src, filter.getElementType(), parent);
+  // Non quantization type check.
+  if (src.getElementType() == ElemKind::FloatTy) {
+    isValid &= checkType(bias, ElemKind::FloatTy, parent);
+  }
+  // Quantization type check.
+  if (src.getElementType() == ElemKind::Int8QTy) {
+    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+  }
+  ShapeNHWCT idim(src.getType()->dims());
+  ShapeNHWCT odim(dest.getType()->dims());
+  PaddingTLBRNF pdim(pads);
+  ShapeHWT kdim(kernels);
+  isValid &= expectCompareTrue("buffer height too small for selected stride",
+                               idim.h + pdim.top + pdim.bottom, kdim.height,
+                               parent, CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("buffer width too small for selected stride",
+                               idim.w + pdim.left + pdim.right, kdim.width,
+                               parent, CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("buffer time too small for selected stride",
+                               idim.t + pdim.near + pdim.far, kdim.time, parent,
+                               CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, size_t(0), parent);
+
+  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.t, kernels,
+                                             strides, pads);
+  isValid &=
+      expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+  isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
+                               outSz.height, parent);
+  isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
+                               outSz.width, parent);
+  isValid &= expectCompareTrue("Invalid output dimension T", odim.t, outSz.time,
+                               parent);
+  isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
+                               size_t(0), parent);
+
+  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                               idim.c / (size_t)group, kdim.time};
+  isValid &=
+      expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
+                        llvm::makeArrayRef(filterDims), parent);
+  const size_t biasDims[] = {odim.c};
+  isValid &=
+      expectCompareTrue("Invalid bias dimensions", bias.getType()->dims(),
+                        llvm::makeArrayRef(biasDims), parent);
+  return isValid;
+}
+
 static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                  NodeValue bias, NodeValue dest) {
   const Node *parent = dest.getNode();
@@ -312,6 +371,11 @@ bool ConvolutionNode::verify() const {
                            Kernels_, Strides_, Pads_, Group_);
 }
 
+bool Convolution3DNode::verify() const {
+  return verifyConvolution3D(getInput(), getResult(), getFilter(), getBias(),
+                             Kernels_, Strides_, Pads_, Group_);
+}
+
 /// Verify that types of an input and its gradient are the same.
 static bool verifyInputAndGradInputTypes(NodeValue input, NodeValue gradInput,
                                          const Node *parent) {
@@ -340,6 +404,22 @@ bool ConvolutionGradNode::verify() const {
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
   isValid &= verifyConvolution(
+      getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+      getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
+      Strides_, Pads_, Group_);
+  return isValid;
+}
+
+bool Convolution3DGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyInputAndGradInputTypes(getFilter(),
+                                          getGradOfInputNamedFilter(), this);
+  isValid &=
+      verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+  isValid &= verifyConvolution3D(
       getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
       getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
       Strides_, Pads_, Group_);

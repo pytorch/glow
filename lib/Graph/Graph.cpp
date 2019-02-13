@@ -467,6 +467,20 @@ static void checkKernelSize(ShapeNHWC idim, llvm::ArrayRef<unsigned_t> kernels,
          "Kernel size is too large");
 }
 
+/// Check the kernel size for 3D Conv/Pooling ops.
+static void check3DKernelSize(ShapeNHWCT idim,
+                              llvm::ArrayRef<unsigned_t> kernels,
+                              llvm::ArrayRef<unsigned_t> pads) {
+  PaddingTLBRNF pdim(pads);
+  (void)pdim;
+  ShapeHWT kdim(kernels);
+  (void)kdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
+         (idim.t + pdim.near + pdim.far) >= kdim.time &&
+         "Kernel size is too large");
+}
+
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
@@ -479,13 +493,46 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   checkKernelSize(idim, kernels, pads);
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
-  auto filterDims = filter.dims();
-  assert(filterDims[0] % group == 0 && filterDims[1] == kdim.height &&
-         filterDims[2] == kdim.width && filterDims[3] == idim.c / group &&
-         "Invalid filter dims");
+  // NOTE: here the N in NHWC is abnormal because it is the number of filters
+  // (and therefore the number of output channels of the conv) and not the
+  // batch size. The rest of the dimensions are representative of the input
+  // dimensions to the convolution.
+  ShapeNHWC filterDims(filter.dims());
   (void)filterDims;
 
-  assert(bias.getType()->size() == filterDims[0] && "Invalid bias size");
+  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
+         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
+         "Invalid filter dims");
+
+  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
+}
+
+/// Check that the dimensions that are passed in when the 3D convolution is
+/// constructed are correct.
+static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
+                             llvm::ArrayRef<unsigned_t> kernels,
+                             llvm::ArrayRef<unsigned_t> strides,
+                             llvm::ArrayRef<unsigned_t> pads,
+                             unsigned_t group) {
+
+  ShapeNHWCT idim(input.dims());
+  ShapeHWT kdim(kernels);
+  (void)kdim;
+  check3DKernelSize(idim, kernels, pads);
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+
+  // NOTE: here the N in NHWCT is abnormal because it is the number of filters
+  // (and therefore the number of output channels of the 3d conv) and not the
+  // batch size. The rest of the dimensions are representative of the input
+  // dimensions to the convolution.
+  ShapeNHWCT filterDims(filter.dims());
+  (void)filterDims;
+
+  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
+         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
+         filterDims.t == kdim.time && "Invalid filter dims");
+
+  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
@@ -511,6 +558,31 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
                     group);
+}
+
+Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
+                                          NodeValue filter, NodeValue bias,
+                                          TypeRef outTy,
+                                          llvm::ArrayRef<unsigned_t> kernels,
+                                          llvm::ArrayRef<unsigned_t> strides,
+                                          llvm::ArrayRef<unsigned_t> pads,
+                                          unsigned_t group) {
+  assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new Convolution3DNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group));
+}
+
+Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
+                                          NodeValue filter, NodeValue bias,
+                                          TypeRef outTy, unsigned_t kernel,
+                                          unsigned_t stride, unsigned_t pad,
+                                          unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 6> pads = {pad, pad, pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
+  llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
+  return createConv3D(name, input, filter, bias, outTy, kernels, strides, pads,
+                      group);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
@@ -1902,7 +1974,7 @@ Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
 }
 
 ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
-                                      NodeValue input, size_t depth,
+                                      NodeValue input, size_t outChannels,
                                       llvm::ArrayRef<unsigned_t> kernels,
                                       llvm::ArrayRef<unsigned_t> strides,
                                       llvm::ArrayRef<unsigned_t> pads,
@@ -1917,17 +1989,18 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
 
   assert(group > 0 && "group should be larger than 0");
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
-  assert(depth % group == 0 && "depth must be divisible by groups");
+  assert(outChannels % group == 0 && "outChannels must be divisible by groups");
 
   // Calculate the size and allocate the output buffer.
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
 
-  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  std::array<size_t, 4> outDims = {
+      {idim.n, outSz.first, outSz.second, outChannels}};
 
   // Allocate the Filter and Bias tensors.
   std::array<size_t, 4> filterDim = {
-      {depth, kdim.height, kdim.width, idim.c / group}};
+      {outChannels, kdim.height, kdim.width, idim.c / group}};
   size_t fanIn = kdim.height * kdim.width * idim.c;
   ElemKind inputTy = input.getType()->getElementType();
   assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
@@ -1936,7 +2009,8 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
       getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
   ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
-  auto *bias = getParent()->createPlaceholder(inputTy, {depth}, "bias", true);
+  auto *bias =
+      getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
   ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
   auto OT = getParent()->uniqueType(inputTy, outDims);
@@ -1946,13 +2020,69 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
 }
 
 ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
-                                      NodeValue input, size_t depth,
+                                      NodeValue input, size_t outChannels,
                                       unsigned_t kernel, unsigned_t stride,
                                       unsigned_t pad, unsigned_t group) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createConv(ctx, name, input, depth, kernels, strides, pads, group);
+  return createConv(ctx, name, input, outChannels, kernels, strides, pads,
+                    group);
+}
+
+Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
+                                          NodeValue input, size_t outChannels,
+                                          llvm::ArrayRef<unsigned_t> kernels,
+                                          llvm::ArrayRef<unsigned_t> strides,
+                                          llvm::ArrayRef<unsigned_t> pads,
+                                          unsigned_t group) {
+  ShapeNHWCT idim(input.dims());
+  ShapeHWT kdim(kernels);
+
+  assert(group > 0 && "group should be larger than 0");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  assert(outChannels % group == 0 && "outChannels must be divisible by groups");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.t, kernels,
+                                             strides, pads);
+
+  std::array<size_t, 5> outDims = {
+      {idim.n, outSz.height, outSz.width, outChannels, outSz.time}};
+
+  // Allocate the Filter and Bias tensors.
+  std::array<size_t, 5> filterDim = {
+      {outChannels, kdim.height, kdim.width, idim.c / group, kdim.time}};
+
+  size_t fanIn = kdim.height * kdim.width * kdim.time * idim.c;
+  ElemKind inputTy = input.getType()->getElementType();
+  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+         "Convolution3D on non-floating point type?");
+  auto *filter =
+      getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
+  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+
+  auto *bias =
+      getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
+  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+
+  auto OT = getParent()->uniqueType(inputTy, outDims);
+
+  assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
+
+  return addNode(new Convolution3DNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group));
+}
+
+Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
+                                          NodeValue input, size_t outChannels,
+                                          unsigned_t kernel, unsigned_t stride,
+                                          unsigned_t pad, unsigned_t group) {
+  llvm::SmallVector<unsigned_t, 6> pads = {pad, pad, pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
+  llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
+  return createConv3D(ctx, name, input, outChannels, kernels, strides, pads,
+                      group);
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,

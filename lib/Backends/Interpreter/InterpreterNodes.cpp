@@ -348,6 +348,20 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   }         // N
 }
 
+void BoundInterpreterFunction::fwdConvolution3DInst(
+    const Convolution3DInst *I) {
+  (void)I;
+  // TODO
+  llvm_unreachable("not yet implemented");
+}
+
+void BoundInterpreterFunction::fwdConvolution3DGradInst(
+    const Convolution3DGradInst *I) {
+  (void)I;
+  // TODO
+  llvm_unreachable("not yet implemented");
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//

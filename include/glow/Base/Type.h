@@ -90,6 +90,34 @@ struct ShapeNHWC {
   }
 };
 
+struct ShapeNHWCT {
+  size_t n; // Number of samples
+  size_t h; // Height
+  size_t w; // Width
+  size_t c; // Number of Channels
+  size_t t; // Time
+
+  template <typename T> explicit ShapeNHWCT(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 5 && "Invalid shape");
+    n = shape[0];
+    h = shape[1];
+    w = shape[2];
+    c = shape[3];
+    t = shape[4];
+  }
+
+  static ShapeNHWCT empty() { return ShapeNHWCT(0, 0, 0, 0, 0); }
+
+  explicit ShapeNHWCT(size_t samples, size_t height, size_t width,
+                      size_t channels, size_t time)
+      : n(samples), h(height), w(width), c(channels), t(time) {}
+
+  bool equals(const ShapeNHWCT &other) const {
+    return n == other.n && h == other.h && w == other.w && c == other.c &&
+           t == other.t;
+  }
+};
+
 struct ShapeNCHW {
   size_t n; // Number of samples
   size_t c; // Number of Channels
@@ -144,6 +172,30 @@ struct PaddingTLBR {
   }
 };
 
+struct PaddingTLBRNF {
+  size_t top;
+  size_t left;
+  size_t bottom;
+  size_t right;
+  size_t near;
+  size_t far;
+
+  template <typename T> explicit PaddingTLBRNF(llvm::ArrayRef<T> pads) {
+    assert(pads.size() == 6 && "Invalid padding");
+    top = pads[0];
+    left = pads[1];
+    bottom = pads[2];
+    right = pads[3];
+    near = pads[4];
+    far = pads[5];
+  }
+
+  bool equalPadding() const {
+    return top == left && top == bottom && top == right && top == near &&
+           top == far;
+  }
+};
+
 struct ShapeHW {
   size_t height;
   size_t width;
@@ -155,6 +207,21 @@ struct ShapeHW {
   }
 
   bool isSquare() const { return height == width; }
+};
+
+struct ShapeHWT {
+  size_t height;
+  size_t width;
+  size_t time;
+
+  template <typename T> explicit ShapeHWT(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 3 && "Invalid shape");
+    height = shape[0];
+    width = shape[1];
+    time = shape[2];
+  }
+
+  bool isCube() const { return height == width && height == time; }
 };
 
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
@@ -179,6 +246,10 @@ inline bool operator==(const ShapeNHWC &LHS, const ShapeNHWC &RHS) {
 }
 
 inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
+  return LHS.equals(RHS);
+}
+
+inline bool operator==(const ShapeNHWCT &LHS, const ShapeNHWCT &RHS) {
   return LHS.equals(RHS);
 }
 

@@ -89,6 +89,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
+  BB.newInstr("Convolution3D")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
+      .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
+
   // MaxPool version caching XY coordinates to speedup gradient-based
   // computations.
   BB.newInstr("MaxPoolWithXY")
