@@ -393,5 +393,40 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
   }
 }
 
+void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
+  // We are fusing the float scale and int32_t offset onto the end of each
+  // row. Thus input and output must both be 2 dimensional, with output having 8
+  // extra columns for 4 bytes for float scale, and 4 bytes for int32_t offset.
+  assert(input.dims().size() == 2 && output.dims().size() == 2 &&
+         "Input and output must be 2 dimensional.");
+  assert(input.dims()[1] + 8 == output.dims()[1] &&
+         "Output must have 8 more columns than input.");
+
+  const size_t outWidth = output.dims()[1];
+  char *dataBasePtr = output.getUnsafePtr();
+
+  auto srcH = input.getHandle<float>();
+  auto destH = output.getHandle<int8_t>();
+  for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
+    auto slice = srcH.extractSlice(i);
+    auto rSrc = slice.getHandle<float>();
+    auto res = rSrc.minMaxArg();
+    float min = rSrc.raw(res.first);
+    float max = rSrc.raw(res.second);
+
+    // Set the dest's actual data based on the calculated scale/offset.
+    TensorQuantizationParams qParams =
+        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+    for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
+      destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
+    }
+
+    // Now set the scale/offset at the end of each row.
+    char *currRowScaleOffsetPtr = dataBasePtr + (i + 1) * outWidth - 8;
+    memcpy(currRowScaleOffsetPtr, &qParams.scale, 4);
+    memcpy(currRowScaleOffsetPtr + 4, &qParams.offset, 4);
+  }
+}
+
 } // namespace quantization
 } // namespace glow

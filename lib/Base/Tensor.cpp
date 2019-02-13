@@ -283,6 +283,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
     return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
+  case ElemKind::Int8FusedQTy:
+    return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
   }
 }
 
@@ -304,6 +306,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpGenericImpl(T->getHandle<int32_t>(), os);
   case ElemKind::Int64ITy:
     return dumpGenericImpl(T->getHandle<int64_t>(), os);
+  case ElemKind::Int8FusedQTy:
+    return dumpGenericImpl(T->getHandle<int8_t>(), os);
   }
 }
 
@@ -368,6 +372,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
+  case ElemKind::Int8FusedQTy: {
+    llvm_unreachable("Transposing Int8FusedQTy is unsupported.");
+  }
   }
 }
 
@@ -415,6 +422,17 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<int64_t>().clear(val);
       break;
     }
+    case ElemKind::Int8FusedQTy: {
+      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
+      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
+      auto H = getHandle<int8_t>();
+      for (size_t i = 0; i < dims()[0]; i++) {
+        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
+          H.at({i, j}) = val;
+        }
+      }
+      break;
+    }
     }
     break;
   }
@@ -447,6 +465,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     }
     case ElemKind::Int64ITy: {
       getHandle<int64_t>().initXavier(val, PRNG);
+      break;
+    }
+    case ElemKind::Int8FusedQTy: {
+      getHandle<int8_t>().initXavier(val, PRNG);
       break;
     }
     }

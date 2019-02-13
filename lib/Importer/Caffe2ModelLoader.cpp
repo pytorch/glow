@@ -874,13 +874,21 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
-      typeName == "SparseLengthsSum8BitsRowwise") {
-    // If SparseLengthsWeightedSum8BitsRowwise, then the weights are the second
-    // input and so we need to shift indices/lengths/scalesBiases.
+      typeName == "SparseLengthsSum8BitsRowwise" ||
+      typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
+      typeName == "SparseLengthsSumFused8BitRowwise") {
+    const bool isWeighted =
+        typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
+        typeName == "SparseLengthsWeightedSumFused8BitRowwise";
+    const bool isFused =
+        typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
+        typeName == "SparseLengthsSumFused8BitRowwise";
+    // If weighted, then the weights are the second input and so we need to
+    // shift indices/lengths/scalesBiases.
     size_t indicesIdx = 1;
     size_t lengthsIdx = 2;
     size_t scalesBiasesIdx = 3;
-    if (typeName == "SparseLengthsWeightedSum8BitsRowwise") {
+    if (isWeighted) {
       indicesIdx++;
       lengthsIdx++;
       scalesBiasesIdx++;
@@ -889,60 +897,103 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data,
                                getNodeValueOrCreateConstantByName(op.input(0)));
+    NodeValue weights;
+    if (isWeighted) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          weights, getNodeValueOrCreateConstantByName(op.input(1)));
+    }
     NodeValue indices;
     ASSIGN_VALUE_OR_RETURN_ERR(
         indices, getNodeValueOrCreateConstantByName(op.input(indicesIdx)));
     NodeValue lengths;
     ASSIGN_VALUE_OR_RETURN_ERR(
         lengths, getNodeValueOrCreateConstantByName(op.input(lengthsIdx)));
-    NodeValue scalesBiases;
-    ASSIGN_VALUE_OR_RETURN_ERR(scalesBiases, getNodeValueOrCreateConstantByName(
-                                                 op.input(scalesBiasesIdx)));
-
-    Constant *scalesBiasesC = llvm::dyn_cast<Constant>(scalesBiases);
-    RETURN_ERR_IF_NOT(scalesBiasesC, "scales_biases must be Constant.");
     Constant *dataC = llvm::dyn_cast<Constant>(data);
-    RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::Int8QTy,
-                      "Data must be Int8QTy.");
 
     const size_t numRows = data.dims()[0];
 
     // Make sure all the shapes make sense.
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
     RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
-    RETURN_ERR_IF_NOT(scalesBiases.dims().size() == 2,
-                      "scale_bias has to be a matrix.");
-    RETURN_ERR_IF_NOT(scalesBiases.dims()[0] == numRows,
-                      "scale_bias must have the same number of rows as data.");
-    RETURN_ERR_IF_NOT(scalesBiases.dims()[1] == 2,
-                      "Second dim of scale_bias has to be equal to 2.");
-
-    // Now strip out the scales and biases into their own tensors.
-    Constant *dataScales = G_.getParent()->createConstant(
-        ElemKind::FloatTy, {numRows}, "dataScales");
-    Constant *dataOffsets = G_.getParent()->createConstant(
-        ElemKind::Int32ITy, {numRows}, "dataOffsets");
-
-    auto dataScalesH = dataScales->getHandle<float>();
-    auto dataOffsetsH = dataOffsets->getHandle<int32_t>();
-    auto scalesBiasesH = scalesBiasesC->getHandle<float>();
-    for (size_t i = 0, e = numRows; i < e; i++) {
-      dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
-      // Caffe2 represents offsets (bias) using float, while Glow uses int32_t.
-      dataOffsetsH.at({i}) = static_cast<int32_t>(scalesBiasesH.at({i, 1}));
-    }
 
     Node *node;
-    if (typeName == "SparseLengthsWeightedSum8BitsRowwise") {
-      NodeValue weights;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          weights, getNodeValueOrCreateConstantByName(op.input(1)));
-      node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-          opName, dataC, dataScales, dataOffsets, weights, indices, lengths);
+    if (isFused) {
+      // There is no specific fused quantized type in Caffe2, so we will load
+      // Int8QTy. We then change it from Int8QTy to Int8FusedQTy here if
+      // necessary -- another user could have already changed it.
+      if (dataC->getElementType() != ElemKind::Int8FusedQTy) {
+        RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::Int8QTy,
+                          "Data must be Int8QTy.");
+        // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets are
+        // fused inline with the data.
+        TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::Int8FusedQTy,
+                                                     dataC->dims(), 0.0, 0);
+        dataC->setType(Storage::OutputIdx, fusedTy);
+      }
+
+      // Caffe2 stores offsets as floats, whereas we want to use int32_t.
+      char *dataBasePtr = dataC->getPayload().getUnsafePtr();
+      const size_t width = dataC->dims()[1];
+      for (size_t i = 0, e = dataC->dims()[0]; i < e; ++i) {
+        // Must memcpy to the stack and back to avoid misaligned addresses.
+        char *currRowOffsetPtr = dataBasePtr + (i + 1) * width - 4;
+        float fOffset;
+        memcpy(&fOffset, currRowOffsetPtr, 4);
+        int32_t iOffset = static_cast<int32_t>(fOffset);
+        memcpy(currRowOffsetPtr, &iOffset, 4);
+      }
+
+      // No other work to do, since the data is already loaded fused, so just
+      // create the new node with its inputs.
+      if (isWeighted) {
+        node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            opName, dataC, weights, indices, lengths);
+      } else {
+        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataC,
+                                                              indices, lengths);
+      }
     } else {
-      node = G_.createRowwiseQuantizedSparseLengthsSum(
-          opName, dataC, dataScales, dataOffsets, indices, lengths);
+      NodeValue scalesBiases;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          scalesBiases,
+          getNodeValueOrCreateConstantByName(op.input(scalesBiasesIdx)));
+
+      Constant *scalesBiasesC = llvm::dyn_cast<Constant>(scalesBiases);
+      RETURN_ERR_IF_NOT(scalesBiasesC, "scales_biases must be Constant.");
+      RETURN_ERR_IF_NOT(scalesBiases.dims().size() == 2,
+                        "scale_bias has to be a matrix.");
+      RETURN_ERR_IF_NOT(
+          scalesBiases.dims()[0] == numRows,
+          "scale_bias must have the same number of rows as data.");
+      RETURN_ERR_IF_NOT(scalesBiases.dims()[1] == 2,
+                        "Second dim of scale_bias has to be equal to 2.");
+
+      // Now strip out the scales and biases into their own tensors.
+      Constant *dataScales = G_.getParent()->createConstant(
+          ElemKind::FloatTy, {numRows}, "dataScales");
+      Constant *dataOffsets = G_.getParent()->createConstant(
+          ElemKind::Int32ITy, {numRows}, "dataOffsets");
+
+      auto dataScalesH = dataScales->getHandle<float>();
+      auto dataOffsetsH = dataOffsets->getHandle<int32_t>();
+      auto scalesBiasesH = scalesBiasesC->getHandle<float>();
+      for (size_t i = 0, e = numRows; i < e; i++) {
+        dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
+        // Caffe2 represents offsets (bias) using float, while Glow uses
+        // int32_t.
+        dataOffsetsH.at({i}) = static_cast<int32_t>(scalesBiasesH.at({i, 1}));
+      }
+
+      // Now create the actual node.
+      if (isWeighted) {
+        node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
+            opName, dataC, dataScales, dataOffsets, weights, indices, lengths);
+      } else {
+        node = G_.createRowwiseQuantizedSparseLengthsSum(
+            opName, dataC, dataScales, dataOffsets, indices, lengths);
+      }
     }
+
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }

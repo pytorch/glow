@@ -237,6 +237,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int32ITy:
     return builder.getInt32Ty();
+  case ElemKind::Int8FusedQTy:
+    return builder.getInt8Ty();
   }
   return nullptr;
 }
@@ -323,6 +325,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     break;
   case ElemKind::Int32ITy:
     T = llvm::Type::getInt32PtrTy(ctx_);
+    break;
+  case ElemKind::Int8FusedQTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   default:
     llvm_unreachable("Unimplemented");
@@ -469,6 +474,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
+  case ElemKind::Int8FusedQTy:
+    return builder.getInt8(static_cast<int8_t>(val));
   }
   llvm_unreachable("Unknown element type");
 }
@@ -2315,6 +2322,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {destPtr, dataPtr, scalesPtr, offsetsPtr, weightsPtr, indicesPtr,
                 lengthsPtr, segments, lineSize});
+    break;
+  }
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumInstKind: {
+    auto *N = cast<FusedRowwiseQuantizedSparseLengthsWeightedSumInst>(I);
+    auto *dest = N->getDest();
+    auto *data = N->getData();
+    auto *weights = N->getWeights();
+    auto *indices = N->getIndices();
+    auto *lengths = N->getLengths();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *inLineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *outLineSize = emitConstSizeT(builder, dest->size() / dest->dims()[0]);
+    auto *F = getFunction("fused_rowwise_quantized_sparse_lengths_weighted_sum",
+                          dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, lengthsPtr, segments,
+                inLineSize, outLineSize});
     break;
   }
 

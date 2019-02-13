@@ -250,6 +250,23 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
+  BB.newInstr("FusedRowwiseQuantizedSparseLengthsWeightedSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Data", "ElemKind::Int8FusedQTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
+
   BB.newInstr("LengthsToRanges")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Lengths", OperandKind::In)

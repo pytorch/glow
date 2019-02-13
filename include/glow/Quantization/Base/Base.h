@@ -136,6 +136,15 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
                                Tensor &scales, Tensor &offsets);
 
+/// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
+/// from each row of \p input. \p output is tensor of the same shape as input
+/// but with 8 extra columns for storing fused scales (4 bytes (columns) for
+/// float) and offset (4 bytes (columns) for int32_t).
+/// \pre input.dims().size() == 2
+/// \pre output.dims().size() == 2
+/// \pre input.dims()[1] + 8 == output.dims()[1]
+void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output);
+
 } // namespace quantization
 } // namespace glow
 

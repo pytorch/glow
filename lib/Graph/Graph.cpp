@@ -1447,6 +1447,79 @@ Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
       this, name, data, ones, indices, lengths);
 }
 
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, Constant *data, NodeValue weights, NodeValue indices,
+    NodeValue lengths) {
+  auto inDims = data->dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  // The output column count is the same as the input column count, but without
+  // the extra 8 bytes for the fused scale/offset, as the output is not
+  // Int8FusedQTy.
+  outDims[1] -= 8;
+  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
+      name, outTy, data, weights, indices, lengths));
+}
+
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
+                                                      Constant *data,
+                                                      NodeValue indices,
+                                                      NodeValue lengths) {
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return createFusedRowwiseQuantizedSparseLengthsWeightedSum(name, data, ones,
+                                                             indices, lengths);
+}
+
+/// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
+/// Function \p F with \p name, using \ data, \p weights, \p indices, and \p
+/// lengths as inputs. The provided float data in \p Tensor is rowwise
+/// quantized, creating Constants for the rowwise quantized data as well as
+/// Scales and Offsets, in the Module containing \p F.
+static FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
+    NodeValue indices, NodeValue lengths) {
+  // For fused rowwise quantization, we must have a two-dimensional input. If
+  // passed in a single dimensional data Tensor then add an extra dimension.
+  const auto fDims = flattenCdr(data.dims());
+  Tensor fData = data.getUnowned({fDims.first, fDims.second});
+
+  // Note: In rwqData, we are using a quantized type, however the scale/offset
+  // are set to dummy values 0.0/0. This is because the actually used
+  // scale/offset are fused inline with each row. Also, we expand the second
+  // dimension to include space for the scale/offset, each 4 bytes
+  // (float/int32_t).
+  Constant *rwqData = F->getParent()->createConstant(
+      ElemKind::Int8FusedQTy, {fDims.first, fDims.second + 8}, 0.0, 0, "data");
+
+  quantization::tensorFusedRowwiseQuantization(fData, rwqData->getPayload());
+  return F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      name, rwqData, weights, indices, lengths);
+}
+
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+    NodeValue lengths) {
+  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      this, name, data, weights, indices, lengths);
+}
+
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
+                                                      Tensor &data,
+                                                      NodeValue indices,
+                                                      NodeValue lengths) {
+  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
+  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      this, name, data, ones, indices, lengths);
+}
+
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
                                                      NodeValue lengths) {
   ShapeVector outDims({lengths.dims()[0], 2});

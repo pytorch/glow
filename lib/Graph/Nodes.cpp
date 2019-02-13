@@ -747,6 +747,38 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   return isValid;
 }
 
+bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
+  bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
+  isValid &= checkType(getData(), ElemKind::Int8FusedQTy, this);
+  isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Weights must be a 1D vector",
+                               getWeights().dims().size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        getWeights().dims()[0], getIndices().dims()[0], this);
+  isValid &= expectCompareTrue("Data must be 2 dimensional.",
+                               getData().dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Data must have more than 8 columns.",
+                               getData().dims()[1], size_t(8), this,
+                               CompareOperatorGreaterEqual<size_t>());
+  isValid &= expectCompareTrue("Result must be 2 dimensional.",
+                               getResult().dims().size(), size_t(2), this);
+  // Wrap this in isValid to prevent potential segfault if the result is
+  // incorrectly shaped.
+  if (isValid) {
+    isValid &= expectCompareTrue(
+        "Result output shape should have second dim as 8 less than Data.",
+        getResult().dims()[1] + 8, getData().dims()[1], this);
+  }
+  return isValid;
+}
+
 bool LengthsToRangesNode::verify() const {
   bool isValid = checkType(getResult(), getLengths().getElementType(), this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
