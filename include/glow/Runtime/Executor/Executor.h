@@ -50,6 +50,10 @@ public:
   /// present in \p context.
   virtual void run(const DAGNode *root, std::unique_ptr<Context> context,
                    RunIdentifierTy runId, ResultCBTy cb) = 0;
+
+  /// Shutdown the Executor. Should block until all active requests are complete
+  /// and prevent new requests from being initiated.
+  virtual void shutdown() = 0;
 };
 
 /// Create an executor of kind \p kind that will call into the DeviceManager

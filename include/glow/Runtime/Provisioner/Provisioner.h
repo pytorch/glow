@@ -53,7 +53,7 @@ private:
   const float NETWORK_PADDING_FACTOR = 1.1;
 
   /// List of available DeviceManagers added during initialization.
-  std::vector<std::shared_ptr<DeviceManager>> devices_;
+  std::vector<DeviceManager *> devices_;
 
   /// Index of current deviceManager. This allows a round robin loading of
   /// deviceManagers.
