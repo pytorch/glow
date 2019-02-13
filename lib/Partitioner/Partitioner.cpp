@@ -65,7 +65,7 @@ void Partitioner::initOpMemUsage() {
   memUsage_.clear();
   for (auto &node : F_->getNodes()) {
     int n = node.getNumInputs();
-    unsigned size = 0;
+    size_t size = 0;
     if (node.getKind() == Kinded::Kind::SaveNodeKind) {
       memUsage_[&node] = size;
       continue;
@@ -87,7 +87,7 @@ void Partitioner::initOpMemUsage() {
 // partition2.
 void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
                                     FunctionToNodesMapTy &nodesSet,
-                                    uint64_t availableMemory) {
+                                    size_t availableMemory) {
 
   for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
        it != nodesSet.end(); ++it) {
@@ -127,7 +127,7 @@ void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
 }
 
 void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
-                                   uint64_t availableMemory) {
+                                   size_t availableMemory) {
   // For each partitioin, create a node set.
   FunctionToNodesMapTy nodesSet;
   for (NodeToFunctionMapTy::iterator it = partitions.begin();
@@ -162,9 +162,9 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
         continue;
       }
       Function *cur = (*it).first;
-      uint64_t memSize = partitions.getGraphMemInfo(cur).constMemSize +
-                         partitions.getGraphMemInfo(cur).inMemSize;
-      uint64_t communicationCost = partitions.getGraphMemInfo(cur).outMemSize;
+      size_t memSize = partitions.getGraphMemInfo(cur).constMemSize +
+                       partitions.getGraphMemInfo(cur).inMemSize;
+      size_t communicationCost = partitions.getGraphMemInfo(cur).outMemSize;
       // Check if a node can be moved to current node set (i.e nSet).
       for (int i = 0, e = outUsers.size(); i < e; i++) {
         // Rule 1: this move won't break memory constraint.
@@ -225,7 +225,7 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
 
 /// Assign nodes to partitions and return the mapping.
 NodeToFunctionMap Partitioner::selectPartitions(Function *F,
-                                                unsigned availableMemory) {
+                                                size_t availableMemory) {
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   size_t level = bfs.size();
@@ -235,9 +235,9 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 
   // Step 1 : get the initial cut based on BFS levels and availableMemory.
   // TODO .. need to remove the duplicated memory usage.
-  unsigned mem = 0;
+  size_t mem = 0;
   for (int i = level - 1; i >= 0; i--) {
-    unsigned tmp = 0;
+    size_t tmp = 0;
     for (size_t j = 0, e = bfs[i].second.size(); j < e; j++) {
       Node *N = bfs[i].second[j];
       tmp += memUsage_[N];
@@ -267,7 +267,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
     newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                           std::to_string(++color));
     mapping.createPartition(newF);
-    unsigned mem = 0;
+    size_t mem = 0;
     for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
       for (size_t j = 0, e1 = bfs[i].second.size(); j < e1; j++) {
         Node *N = bfs[i].second[j];
@@ -404,7 +404,7 @@ DAGNodeList &Partitioner::Partition() {
   // Find the representive function for running partitioning algrithm.
   F_ = selectRepFunc(module_, memSize_);
 
-  unsigned availMem = deviceInfo_[0].availableMemory;
+  size_t availMem = deviceInfo_[0].availableMemory;
 
   if (memSize_ < availMem) {
     // No partition is needed. Create DAGNode and return. This root is alway a

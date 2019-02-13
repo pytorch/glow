@@ -47,7 +47,7 @@ using ResultCBTy = std::function<void(
 /// Used to communicate memory constraints and later costs to the Partitioner.
 struct DeviceInfo {
   /// Available memory on device in bytes.
-  uint64_t availableMemory;
+  size_t availableMemory;
 };
 
 /// Individual Node in the DAG for a given network. This contains all the
