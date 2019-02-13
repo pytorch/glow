@@ -71,6 +71,7 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
+/// Check that a createConv can be run.
 TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
@@ -93,6 +94,7 @@ TEST(Graph, simpleTestConv) {
   EXPECT_GT(M.getInstrs().size(), 0);
 }
 
+/// Check that a createConv3D can be run.
 TEST(Graph, simpleTestConv3D) {
   Module MD;
   Function *F = MD.createFunction("F");

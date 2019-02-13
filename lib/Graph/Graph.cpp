@@ -2031,12 +2031,6 @@ Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
                                           unsigned_t group) {
   ShapeNHWCT idim(input.dims());
   ShapeHWT kdim(kernels);
-  PaddingTLBRNF pdim(pads);
-  (void)pdim;
-  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
-         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
-         (idim.t + pdim.near + pdim.far) >= kdim.time &&
-         "buffer too small for selected stride");
 
   assert(group > 0 && "group should be larger than 0");
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
@@ -2066,6 +2060,8 @@ Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
   ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
   auto OT = getParent()->uniqueType(inputTy, outDims);
+
+  assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
 
   return addNode(new Convolution3DNode(name, OT, input, filter, bias, kernels,
                                        strides, pads, group));
