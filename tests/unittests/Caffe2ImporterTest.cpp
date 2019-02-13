@@ -871,15 +871,6 @@ TEST(caffe2, replaceNaN) {
   Context ctx;
   Placeholder *output;
   Tensor input(ElemKind::FloatTy, {10, 10});
-  auto inputHandle = input.getHandle();
-
-  // Fill input by alternating between NAN and random values.
-  inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
-  for (size_t i = 0; i < inputHandle.size(); ++i) {
-    if (i & 0x1) {
-      inputHandle.raw(i) = NAN;
-    }
-  }
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -895,29 +886,21 @@ TEST(caffe2, replaceNaN) {
   std::vector<size_t> expectedDims = {10, 10};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
-  // Compile and run the model.
-  auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-
-  auto result = res->getHandle();
-
   // High level checks on the content of the graph.
   // We have 1 IsNaN, 1 Splat, 1 Select and 1 Output.
   EXPECT_EQ(F->getNodes().size(), 4);
-  // With have one input and one output.
-  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *selectNode = llvm::dyn_cast<SelectNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(selectNode);
+  auto *isNaNNode = llvm::dyn_cast<IsNaNNode>(selectNode->getCond().getNode());
+  ASSERT_TRUE(isNaNNode);
+  auto *splatNode = llvm::dyn_cast<SplatNode>(selectNode->getLHS().getNode());
+  ASSERT_TRUE(splatNode);
+  auto *inputNode = llvm::dyn_cast<Placeholder>(selectNode->getRHS().getNode());
+  ASSERT_EQ(inputNode, mod.getPlaceholderByName("input"));
 
-  // Check that the output tensor is the same as the input tensor except for
-  // NaNs, which should have been replaced with 1 (the value specified in
-  // replace_nan_predict_net.pbtxt).
-  for (size_t i = 0; i < result.size(); ++i) {
-    if (std::isnan(inputHandle.raw(i)))
-      EXPECT_EQ(result.raw(i), 1);
-    else {
-      EXPECT_EQ(result.raw(i), inputHandle.raw(i));
-    }
-  }
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
 /// Test loading a DotProduct operator with 1D inputs.
