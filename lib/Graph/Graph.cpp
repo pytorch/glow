@@ -493,15 +493,22 @@ static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
   checkKernelSize(idim, kernels, pads);
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
-  auto filterDims = filter.dims();
-  assert(filterDims[0] % group == 0 && filterDims[1] == kdim.height &&
-         filterDims[2] == kdim.width && filterDims[3] == idim.c / group &&
-         "Invalid filter dims");
+  // NOTE: here the N in NHWC is abnormal because it is the number of filters
+  // (and therefore the number of output channels of the conv) and not the
+  // batch size. The rest of the dimensions are representative of the input
+  // dimensions to the convolution.
+  ShapeNHWC filterDims(filter.dims());
   (void)filterDims;
 
-  assert(bias.getType()->size() == filterDims[0] && "Invalid bias size");
+  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
+         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
+         "Invalid filter dims");
+
+  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
 }
 
+/// Check that the dimensions that are passed in when the 3D convolution is
+/// constructed are correct.
 static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
@@ -519,11 +526,11 @@ static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
   // batch size. The rest of the dimensions are representative of the input
   // dimensions to the convolution.
   ShapeNHWCT filterDims(filter.dims());
+  (void)filterDims;
 
   assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
          filterDims.w == kdim.width && filterDims.c == idim.c / group &&
          filterDims.t == kdim.time && "Invalid filter dims");
-  (void)filterDims;
 
   assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
 }
