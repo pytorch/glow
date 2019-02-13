@@ -28,7 +28,7 @@ using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
                                 std::vector<std::unique_ptr<DAGNode>>>;
 
 class HostManagerTest : public ::testing::Test {};
-std::unique_ptr<Module> setupModule(uint functionCount) {
+std::unique_ptr<Module> setupModule(unsigned functionCount) {
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
     Function *F = module->createFunction("function" + std::to_string(i));
