@@ -1727,6 +1727,22 @@ static void optimizeSliceOfSplat(Function *F) {
   }
 }
 
+/// Replace SliceNode when the input is Constant with another constant node
+/// Slice(constant1) -> constant2
+static void optimizeSliceOfConstant(Function *F) {
+  for (auto &node : F->getNodes()) {
+    auto *sliceNode = dyn_cast<SliceNode>(&node);
+    if (!sliceNode)
+      continue;
+    auto *constantNode = dyn_cast<Constant>(sliceNode->getInput());
+    if (!constantNode)
+      continue;
+    auto *newConstantNode = F->getParent()->createConstant(
+          sliceNode->getResult().getType(), constantNode->getName());
+    sliceNode->getResult().replaceAllUsesOfWith(newConstantNode);
+  }
+}
+
 /// Optimize reshape nodes.
 static void optimizeReshape(Function *F) {
   for (auto &node : F->getNodes()) {
@@ -2426,6 +2442,9 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Optimize Tensor shape transformations.
   optimizeSliceOfSplat(F);
+
+  // Optimize constants
+  optimizeSliceOfConstant(F);
 
   // Merge Transpose into MatMul/FC.
   // Run DCE to ensure correct number of node users.
