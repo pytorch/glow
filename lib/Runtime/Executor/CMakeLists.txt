@@ -3,7 +3,7 @@ add_library(Executor
               ThreadPoolExecutor.cpp)
 
 target_link_libraries(Executor
-            PUBLIC
-            ThreadPool
+                      PUBLIC
+                        ThreadPool
 	              PRIVATE
 		        Graph)
