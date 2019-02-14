@@ -141,13 +141,14 @@ public:
                               unsigned numWorkers = kNumWorkers)
       : threadPool_(numWorkers), deviceManagers_(deviceManagers) {}
 
-  /// Destructor.
-  virtual ~ThreadPoolExecutor();
-
   /// See Executor::run. A particular invocation is specified completely by
   /// the triple (roots, context, runId).
   void run(const DAGNode *root, std::unique_ptr<Context> context,
            RunIdentifierTy runId, ResultCBTy cb) override;
+
+  ~ThreadPoolExecutor() override { shutdown(); }
+
+  void shutdown() override;
 
 private:
   /// Propagate Placeholders from \p ctx into the final output Context for the
@@ -196,6 +197,8 @@ private:
   /// Barrier for making sure all asynchronous requests made to the
   /// DeviceManager return before allowing destruction of the executor.
   InflightBarrier inflightBarrier_;
+  /// Whether the executor is currently shutting down or not.
+  std::atomic<bool> shuttingDown_{false};
 };
 
 } // namespace runtime

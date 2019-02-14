@@ -48,13 +48,11 @@ unsigned InflightBarrier::count() {
 
 void InflightBarrier::wait() {
   std::unique_lock<std::mutex> lock(mtx_);
-  if (count_ != 0) {
-    // If count_ is not 0, wait until a signal is received that it is.
-    // The second argument below is a predicate that returns true when
-    // it is safe to wake up. It preserves correctness in the case of
-    // spurious wakeups.
-    cv_.wait(lock, [&] { return count_ == 0; });
-  }
+  // If count_ is not 0, wait until a signal is received that it is.
+  // The second argument below is a predicate that returns true when
+  // it is safe to wake up. It preserves correctness in the case of
+  // spurious wakeups.
+  cv_.wait(lock, [&] { return count_ == 0; });
 }
 
 ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
@@ -204,7 +202,10 @@ void ExecutionState::setResultCode(const ResultCode resultCode) {
   }
 }
 
-ThreadPoolExecutor::~ThreadPoolExecutor() {
+void ThreadPoolExecutor::shutdown() {
+  // Prevent more requests from being processed.
+  shuttingDown_ = true;
+
   // Wait for all inflight DeviceManager::runFunction() calls to return and be
   // processed before starting to destroy state that is used in
   // handleDeviceManagerResult().
@@ -214,6 +215,12 @@ ThreadPoolExecutor::~ThreadPoolExecutor() {
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<Context> context,
                              RunIdentifierTy runId, ResultCBTy cb) {
+  // Don't process new requests if the executor is shutting down.
+  if (shuttingDown_) {
+    cb(runId, ResultCode::Canceled, std::move(context));
+    return;
+  }
+
   // If list of roots is empty, there is nothing to do. Give back the
   // context so the caller can reuse it.
   if (!root) {
@@ -306,7 +313,7 @@ void ThreadPoolExecutor::executeDAGNode(
     return;
   }
 
-  std::shared_ptr<DeviceManager> deviceManager = deviceManagerIt->second;
+  auto &deviceManager = deviceManagerIt->second;
 
   // Get the Context containing all of the inputs for the node.
   std::unique_ptr<Context> nodeCtx =

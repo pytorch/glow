@@ -27,7 +27,7 @@ using namespace runtime;
 
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
-    devices_.push_back(device.second);
+    devices_.push_back(device.second.get());
   }
 }
 

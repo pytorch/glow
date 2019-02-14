@@ -35,10 +35,9 @@ HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
     backend_.reset(createBackend(configs[0].backendKind));
   }
   for (auto &config : configs) {
-    auto newDevice =
-        std::shared_ptr<DeviceManager>(DeviceManager::createDeviceManager(
+    devices_[deviceCount] =
+        std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
             config.backendKind, config.deviceName));
-    devices_.emplace(deviceCount, std::move(newDevice));
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
@@ -119,6 +118,12 @@ bool HostManager::networkAdded(llvm::StringRef networkName) {
 }
 
 void HostManager::clearHost() {
+  // shutdown the executor, blocking on any current inflight and prevent new
+  // requests from being serviced.
+  executor_->shutdown();
+  assert(activeRequestCount_ == 0 &&
+         "All requests should be finished when shutting down HostManager.");
+
   std::lock_guard<std::mutex> networkLock(networkLock_);
   for (auto &it : devices_) {
     it.second->stop();
@@ -128,8 +133,6 @@ void HostManager::clearHost() {
   }
   networks_.clear();
   roots_.clear();
-
-  activeRequestCount_ = 0;
 }
 
 RunIdentifierTy HostManager::runNetwork(llvm::StringRef networkName,

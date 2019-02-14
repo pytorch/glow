@@ -32,7 +32,7 @@ using DeviceIDTy = size_t;
 using RunIdentifierTy = size_t;
 
 /// Map of DeviceIDTy -> DeviceManager.
-using DeviceManagerMapTy = std::map<DeviceIDTy, std::shared_ptr<DeviceManager>>;
+using DeviceManagerMapTy = std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
 
 /// Enum to communicate results when communicating with device at initialization
 /// and runtime.
