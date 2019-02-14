@@ -122,7 +122,7 @@ void HostManager::clearHost() {
   // requests from being serviced.
   executor_->shutdown();
   assert(activeRequestCount_ == 0 &&
-         "All requests should be finished when shutting downt HostManager.");
+         "All requests should be finished when shutting down HostManager.");
 
   std::lock_guard<std::mutex> networkLock(networkLock_);
   for (auto &it : devices_) {
