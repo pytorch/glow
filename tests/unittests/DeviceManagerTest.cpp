@@ -29,7 +29,7 @@ using namespace glow::runtime;
 
 class DeviceManagerTest : public ::testing::TestWithParam<BackendKind> {
 public:
-  void SetUp() { backendKind = GetParam(); }
+  void SetUp() override { backendKind = GetParam(); }
 
   BackendKind backendKind;
 };
