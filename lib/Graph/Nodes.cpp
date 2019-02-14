@@ -573,6 +573,8 @@ bool TransposeNode::verify() const {
 
 bool SplatNode::verify() const { return true; }
 
+bool TraceEventNode::verify() const { return true; }
+
 bool InsertTensorNode::verify() const {
   auto dest = getBig();
   auto src = getSmall();

@@ -88,7 +88,7 @@ public:
   virtual bool shouldShareBuffers() const { return true; }
 
   /// Optimize the Function \p F given compilation mode \p mode.
-  void optimizeFunction(CompilationMode mode, Function *F);
+  void optimizeFunction(CompilationMode mode, Function *F) const;
 
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
@@ -96,15 +96,18 @@ public:
     return false;
   }
 
+  virtual size_t getTraceEventDataSize() const { return 0; }
+
 protected:
+  /// Parses the graph \F and builds a TraceInfo structure from any found
+  /// TraceEventNodes.
+  TraceInfo buildManualTraceInfo(Function *F) const;
+
   /// Inserts a TraceEventInst between every instruction, the most basic form of
   /// auto instrumentation. Necessary only if the Backend doesn't provide
   /// profiling/tracing in another way.
-  /// Modifies \p IR and returns a new TraceInfo map.
-  /// \p traceEventDataSize is the size of metrics collected for  a single
-  /// TraceEvent, and should be equal to the Backend's getTraceEventDataSize()
-  /// method.
-  TraceInfo autoInstrument(IRFunction *IR, size_t traceEventDataSize) const;
+  /// Modifies \p IR and updates \p traceInfo.
+  void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
 };
 
 /// Create a backend of kind \p kind.

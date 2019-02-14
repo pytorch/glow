@@ -951,6 +951,12 @@ public:
                   std::vector<NodeValue> &outputs);
   /// @}
 
+  /// Create a TraceEvent in the runtime profile, which triggers collection of
+  /// runtime statistics.
+  TraceEventNode *createTraceEvent(llvm::StringRef eventName,
+                                   llvm::StringRef eventType, Node *data,
+                                   unsigned index);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

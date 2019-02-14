@@ -403,6 +403,21 @@ target_link_libraries(ThreadPoolTest
                         TestMain)
 add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest --gtest_output=xml:ThreadPoolTest.xml)
 
+add_executable(TraceEventsTest
+               TraceEventsTest.cpp)
+target_link_libraries(TraceEventsTest
+                      PRIVATE
+                        Backend
+                        Backends
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Optimizer
+                        gtest
+                        TestMain)
+add_glow_test(TraceEventsTest ${GLOW_BINARY_DIR}/tests/TraceEventsTest --gtest_output=xml:TraceEventsTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/TraceEventsTest -optimize-ir=false &&)
+
 add_executable(TypeAToTypeBFunctionConverterTest
                TypeAToTypeBFunctionConverterTest.cpp)
 target_link_libraries(TypeAToTypeBFunctionConverterTest

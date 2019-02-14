@@ -22,7 +22,7 @@
 
 using namespace glow;
 
-void Backend::optimizeFunction(CompilationMode mode, Function *F) {
+void Backend::optimizeFunction(CompilationMode mode, Function *F) const {
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
@@ -43,10 +43,27 @@ void Backend::optimizeFunction(CompilationMode mode, Function *F) {
   }
 }
 
-TraceInfo Backend::autoInstrument(IRFunction *IR,
-                                  size_t traceEventDataSize) const {
-  if (traceEventDataSize == 0) {
-    return TraceInfo(false, traceEventDataSize);
+TraceInfo Backend::buildManualTraceInfo(Function *F) const {
+  TraceInfo info(false, getTraceEventDataSize());
+  const auto &nodes = F->getNodes();
+  for (const auto &node : nodes) {
+    if (const TraceEventNode *TEN = llvm::dyn_cast<TraceEventNode>(&node)) {
+      Placeholder *backing =
+          llvm::dyn_cast<Placeholder>(TEN->getData().getNode());
+      assert(backing);
+      info.add(backing, TEN->getIndex(), TEN->getEventName(),
+               TEN->getEventType());
+      info.enabled = true;
+    }
+  }
+
+  return info;
+}
+
+void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
+  if (getTraceEventDataSize() == 0) {
+    GLOW_UNREACHABLE("Auto instrumentation not supported on this backend");
+    return;
   }
 
   Function *F = IR->getGraph();
@@ -57,7 +74,7 @@ TraceInfo Backend::autoInstrument(IRFunction *IR,
   auto *backingPH = F->getParent()->createPlaceholder(
       ElemKind::Int64ITy,
       {instructions.size() + 1,
-       traceEventDataSize / Type::getElementSize(ElemKind::Int64ITy)},
+       getTraceEventDataSize() / Type::getElementSize(ElemKind::Int64ITy)},
       F->getName().str() + "_instrumentation", false);
 
   // Create an associated weight and add it to the IR.
@@ -67,7 +84,7 @@ TraceInfo Backend::autoInstrument(IRFunction *IR,
   IR->getWeights().push_back(backingWeight);
   IR->getVariableMap()[backingPH] = backingWeight;
 
-  TraceInfo traceInfo(true, traceEventDataSize);
+  traceInfo.enabled = true;
   std::string lastName = "";
   size_t index = 0;
 
@@ -79,9 +96,7 @@ TraceInfo Backend::autoInstrument(IRFunction *IR,
     auto &I = *it;
     if (llvm::isa<TraceEventInst>(&I)) {
       // Don't instrument instrumentation.
-      // But this should should not be possible yet as we don't have a
-      // TraceEventNode.
-      assert(!"Function already instrumented");
+      it++;
       continue;
     }
 
@@ -106,5 +121,4 @@ TraceInfo Backend::autoInstrument(IRFunction *IR,
   // Add one more for the end of the function.
   traceInfo.add(backingPH, index, lastName, "E");
   IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
-  return traceInfo;
 }

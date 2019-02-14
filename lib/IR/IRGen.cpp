@@ -380,6 +380,13 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(TKN->getIndices(), V->getIndices());
     break;
   }
+
+  case glow::Kinded::Kind::TraceEventNodeKind: {
+    auto *TEN = cast<TraceEventNode>(N);
+    auto *dataTensor = valueForNode(TEN->getData());
+    builder_.createTraceEventInst(TEN->getName(), dataTensor, TEN->getIndex());
+    break;
+  }
   }
 }
 

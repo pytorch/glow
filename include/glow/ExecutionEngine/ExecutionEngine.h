@@ -79,6 +79,10 @@ public:
   /// \returns the compiled function with the given \p name.
   CompiledFunction &getCompiledFunction(llvm::StringRef name);
 
+  /// Stores \p func in the CompiledFunction map, enabling it to be run.
+  void insertCompiledFunction(llvm::StringRef name,
+                              std::unique_ptr<CompiledFunction> func);
+
   /// \returns whether operation is supported by the underlying backend.
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {
     return backend_->isOpSupported(opKind, elementTy);

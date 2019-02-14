@@ -55,7 +55,10 @@ public:
   /// @}
   //
   /// \returns the size of metrics collected for a single TraceEvent.
-  static size_t getTraceEventDataSize() { return sizeof(uint64_t); }
+  static size_t getTraceEventDataSizeStatic() { return sizeof(uint64_t); }
+  size_t getTraceEventDataSize() const override {
+    return Interpreter::getTraceEventDataSizeStatic();
+  }
 };
 
 } // namespace glow
