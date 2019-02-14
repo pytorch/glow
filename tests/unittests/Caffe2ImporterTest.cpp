@@ -937,13 +937,16 @@ TEST(caffe2, dotProduct1D) {
   constexpr std::size_t kDataSize = 10;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kDataSize});
 
-  // Destroy the loader after the graph is loaded, since it's not used in
-  // the remainder of the test.
+  // Destroy the loader after the graph is loaded to ensure the function F
+  // does not depend on anything stored in it.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {type, type}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(output->dims().equals({kDataSize}));
 
   // High level checks on the content of the graph.
   // We have 1 Mul and 1 Output.
@@ -977,13 +980,16 @@ TEST(caffe2, dotProduct2D) {
   constexpr std::size_t kCols = 20;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kRows, kCols});
 
-  // Destroy the loader after the graph is loaded, since it's not used in
-  // the remainder of the test.
+  // Destroy the loader after the graph is loaded to ensure the function F
+  // does not depend on anything stored in it.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X", "Y"},
                                {type, type}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
+
+  // Check that the shape of the output matches that of the expected output.
+  EXPECT_TRUE(output->dims().equals({kRows}));
 
   // High level checks on the content of the graph.
   // We have 1 Mul, 1 BatchedReduceAdd and 1 Output.

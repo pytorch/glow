@@ -5064,7 +5064,7 @@ TEST_P(InterpOnly, Modulo2) {
 }
 
 /// Test a DotProduct operator with 1D inputs.
-TEST_P(InterpAndCPU, dotProduct1D) {
+TEST_P(Operator, dotProduct1D) {
   // Input tensors.
   constexpr std::size_t kDataSize = 10;
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "X", false);
