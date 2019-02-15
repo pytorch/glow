@@ -5063,6 +5063,94 @@ TEST_P(InterpOnly, Modulo2) {
   }
 }
 
+/// Test a DotProduct operator with 1D inputs.
+TEST_P(Operator, dotProduct1D) {
+  // Input tensors.
+  constexpr std::size_t kDataSize = 10;
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "X", false);
+  auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "Y", false);
+  auto XH = ctx_.allocate(X)->getHandle();
+  auto YH = ctx_.allocate(Y)->getHandle();
+
+  // Fill inputs with random values.
+  XH.randomize(-3.0, 3.0, mod_.getPRNG());
+  YH.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  // Compute expected output.
+  auto *expected =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "expected", false);
+  auto expectedH = ctx_.allocate(expected)->getHandle();
+
+  for (std::size_t i = 0; i < kDataSize; ++i) {
+    expectedH.at({i}) = XH.at({i}) * YH.at({i});
+  }
+
+  // Compile and run the model.
+  auto *dotProduct = F_->createDotProduct("prod", X, Y);
+  auto *result = F_->createSave("save", dotProduct);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto actualH = ctx_.get(result->getPlaceholder())->getHandle();
+
+  // Check that the output tensor is the same as the expected output.
+  EXPECT_EQ(actualH.size(), expectedH.size());
+  for (std::size_t i = 0; i < actualH.size(); ++i) {
+    EXPECT_NEAR(actualH.raw(i), expectedH.raw(i), 0.00001);
+  }
+}
+
+// Test a DotProduct operator with 2D inputs.
+TEST_P(InterpAndCPU, dotProduct2D) {
+  // Input tensors.
+  constexpr std::size_t kRows = 10;
+  constexpr std::size_t kCols = 20;
+  auto *X =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "X", false);
+  auto *Y =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "Y", false);
+  auto XH = ctx_.allocate(X)->getHandle();
+  auto YH = ctx_.allocate(Y)->getHandle();
+
+  // Fill inputs with random values.
+  XH.randomize(-3.0, 3.0, mod_.getPRNG());
+  YH.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  // Compute expected output.
+  auto *expected =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kRows}, "expected", false);
+  auto expectedH = ctx_.allocate(expected)->getHandle();
+
+  for (std::size_t i = 0; i < kRows; ++i) {
+    auto dotProduct = 0.0f;
+
+    // Compute dot product of the i-th row of X and Y.
+    for (std::size_t j = 0; j < kCols; ++j) {
+      dotProduct += (XH.at({i, j}) * YH.at({i, j}));
+    }
+
+    expectedH.at({i}) = dotProduct;
+  }
+
+  // Compile and run the model.
+  auto *dotProduct = F_->createDotProduct("prod", X, Y);
+  auto *result = F_->createSave("save", dotProduct);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto actualH = ctx_.get(result->getPlaceholder())->getHandle();
+
+  // Check that the output tensor is the same as the expected output.
+  EXPECT_EQ(actualH.size(), expectedH.size());
+  for (std::size_t i = 0; i < actualH.size(); ++i) {
+    EXPECT_NEAR(actualH.raw(i), expectedH.raw(i), 0.00001);
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
                         ::testing::Values(BackendKind::Interpreter));
 
