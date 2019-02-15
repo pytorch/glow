@@ -14,8 +14,17 @@ if(GLOW_WITH_CPU)
   LIST(APPEND linked_device_managers CPUDeviceManager)
 endif()
 
-add_library(Backends
+add_library(Backend
               Backend.cpp
+              TraceEvents.cpp)
+target_link_libraries(Backend
+                      PRIVATE
+                        Base
+                        Graph
+                        IR
+                        Optimizer)
+
+add_library(Backends
               Backends.cpp)
 target_link_libraries(Backends
                       PRIVATE

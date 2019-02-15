@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <assert.h>
+#include <chrono>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -1553,6 +1554,16 @@ libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
     printf("Dumping this type of payload is not supported: %zu\n", elemKind);
     break;
   }
+}
+
+void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
+  // We are using C++ timer here to a avoid issues with gettimeofday
+  // Issue #2397 covers migrating this to a libc approach but if you have issues
+  // with a lack of C++ symbols at runtime check there first.
+  uint64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count();
+  memcpy(tensor + offset, &ts, sizeof(uint64_t));
 }
 
 static void find_min_max_f(float *tensor, size_t size, float &min, float &max) {

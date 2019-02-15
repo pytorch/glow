@@ -19,6 +19,7 @@
 #include "CPUFunction.h"
 
 #include "glow/Backends/BackendUtils.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
@@ -135,6 +136,15 @@ CPUBackend::compileIRWithoutConstants(IRFunction *IR) const {
 std::unique_ptr<CompiledFunction> CPUBackend::compile(Function *F) const {
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   return compileIR(std::move(IR));
+}
+
+std::unique_ptr<CompiledFunction>
+CPUBackend::instrumentAndCompile(Function *F) const {
+  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
+  auto traceInfo = autoInstrument(IR.get(), getTraceEventDataSize());
+  auto compiledFunc = compileIR(std::move(IR));
+  compiledFunc->setTraceInfo(std::move(traceInfo));
+  return compiledFunc;
 }
 
 std::unique_ptr<CompiledFunction>

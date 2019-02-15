@@ -16,6 +16,7 @@
 #ifndef GLOW_BASE_CONTEXT_H
 #define GLOW_BASE_CONTEXT_H
 
+#include "glow/Backends/TraceEvents.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <list>
@@ -47,6 +48,9 @@ private:
 
   /// Maps Placeholder names to Placeholders.
   PlaceholderNameMap nameMap_;
+
+  /// Trace Events recorded during this run.
+  std::vector<TraceEvent> traceEvents_;
 
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
@@ -94,6 +98,9 @@ public:
 
   /// \returns the size in bytes of allocated Tensors owned by Context.
   uint64_t getDataSize() const;
+
+  /// \returns TraceEvents for the last run.
+  std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
   Context() = default;
 

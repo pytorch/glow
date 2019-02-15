@@ -1298,6 +1298,11 @@ void OpenCLFunction::execute(Context *ctx) {
       continue;
     }
 
+    if (auto *TE = dyn_cast<TraceEventInst>(&I)) {
+      llvm::outs() << "skipping TraceEvent on OpenCL: unimplemented\n";
+      continue;
+    }
+
     // For TopKInst, we perform the computation on the host side, as sorting on
     // GPU is complex and we may not get too much benefit from it. We copy the
     // tensor from GPU memory to host memory, perform the computation, and then

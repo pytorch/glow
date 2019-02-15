@@ -55,6 +55,30 @@ void InterpreterFunction::collectConstants(Module *module) {
 void InterpreterFunction::execute(Context *ctx) {
   BoundInterpreterFunction boundFunc(constants_);
   boundFunc.execute(F_.get(), ctx);
+  translateTraceEvents(ctx);
+}
+
+void InterpreterFunction::translateTraceEvents(Context *ctx) const {
+  auto &traceInfo = getTraceInfo();
+  if (!traceInfo.enabled) {
+    return;
+  }
+
+  int tid = 0;
+  for (auto &backing : traceInfo.events) {
+    tid++;
+    Tensor *backingTensor = ctx->get(backing.first);
+    assert(backingTensor);
+
+    auto &traceEvents = ctx->getTraceEvents();
+    for (const TraceInfo::Event &event : backing.second) {
+      uint64_t ts{0};
+      memcpy(&ts,
+             backingTensor->getUnsafePtr() + (event.index * traceInfo.dataSize),
+             traceInfo.dataSize);
+      traceEvents.push_back({event.name, ts, event.type, tid});
+    }
+  }
 }
 
 BoundInterpreterFunction::~BoundInterpreterFunction() {

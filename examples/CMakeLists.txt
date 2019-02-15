@@ -77,6 +77,7 @@ if(GLOW_WITH_CPU)
                    resnet-concurrent.cpp)
   target_link_libraries(resnet-concurrent
                         PRIVATE
+                          Backend
                           Backends
                           CPUDeviceManager
                           DeviceManager
@@ -98,7 +99,21 @@ if(GLOW_WITH_CPU)
                           Importer
                           Optimizer)
   target_include_directories(resnet-runtime PUBLIC ${CMAKE_SOURCE_DIR}/lib)
+
+  add_executable(tracing-compare
+                   tracing-compare.cpp)
+  target_link_libraries(tracing-compare
+                        PRIVATE
+                          Backend
+                          Backends
+                          DeviceManager
+                          ExecutionEngine
+                          Graph
+                          Importer
+                          Optimizer
+                          ThreadPool)
 endif()
+
 
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)

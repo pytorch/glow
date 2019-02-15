@@ -15,7 +15,9 @@
  */
 
 #include "glow/Backends/Backend.h"
+#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/IR/Instrs.h"
 #include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
@@ -39,4 +41,70 @@ void Backend::optimizeFunction(CompilationMode mode, Function *F) {
     // In particular, DCE is very likely to be useful.
     ::glow::optimize(F, mode);
   }
+}
+
+TraceInfo Backend::autoInstrument(IRFunction *IR,
+                                  size_t traceEventDataSize) const {
+  if (traceEventDataSize == 0) {
+    return TraceInfo(false, traceEventDataSize);
+  }
+
+  Function *F = IR->getGraph();
+  // Get all instructions in the IRFunction.
+  IRFunction::InstListTy &instructions = IR->getInstrs();
+
+  // Build a placeholder to a backing tensor with space to fit all timestamps.
+  auto *backingPH = F->getParent()->createPlaceholder(
+      ElemKind::Int64ITy,
+      {instructions.size() + 1,
+       traceEventDataSize / Type::getElementSize(ElemKind::Int64ITy)},
+      F->getName().str() + "_instrumentation", false);
+
+  // Create an associated weight and add it to the IR.
+  auto *backingWeight =
+      new WeightVar(IR->uniqueName(backingPH->getName()), backingPH->getType(),
+                    WeightVar::MutabilityKind::Mutable);
+  IR->getWeights().push_back(backingWeight);
+  IR->getVariableMap()[backingPH] = backingWeight;
+
+  TraceInfo traceInfo(true, traceEventDataSize);
+  std::string lastName = "";
+  size_t index = 0;
+
+  // For each instruction, insert a TraceEventInst to record the timestamp, and
+  // two TraceInfo Events for the end of the previous Instruction and the start
+  // of the next.
+  auto it = instructions.begin();
+  while (it != instructions.end()) {
+    auto &I = *it;
+    if (llvm::isa<TraceEventInst>(&I)) {
+      // Don't instrument instrumentation.
+      // But this should should not be possible yet as we don't have a
+      // TraceEventNode.
+      assert(!"Function already instrumented");
+      continue;
+    }
+
+    auto name = I.getName();
+    // End the previous event.
+    if (lastName != "") {
+      traceInfo.add(backingPH, index, lastName, "E");
+    }
+
+    // Start a new event.
+    traceInfo.add(backingPH, index, name, "B");
+    lastName = name;
+
+    it = instructions.insert(
+        it, new TraceEventInst(name.str() + "_trace", backingWeight, index++));
+
+    // Skip over both I and the new TraceEvent.
+    it++;
+    it++;
+  }
+
+  // Add one more for the end of the function.
+  traceInfo.add(backingPH, index, lastName, "E");
+  IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
+  return traceInfo;
 }

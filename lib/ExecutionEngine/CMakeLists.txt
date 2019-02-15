@@ -3,6 +3,7 @@ add_library(ExecutionEngine
 
 target_link_libraries(ExecutionEngine
                       PRIVATE
+                        Backend
                         Backends
                         Optimizer
                         Base

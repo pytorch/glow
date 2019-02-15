@@ -79,6 +79,7 @@ add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)
 target_link_libraries(DeviceManagerTest
                       PRIVATE
+                        Backend
                         Backends
                         DeviceManager
                         Graph
@@ -220,6 +221,7 @@ add_executable(IROptTest
                IROptTest.cpp)
 target_link_libraries(IROptTest
                       PRIVATE
+                        Backends
                         Graph
                         IR
                         Optimizer
@@ -232,6 +234,7 @@ if(GLOW_WITH_CPU)
                  LLVMIRGenTest.cpp)
   target_link_libraries(LLVMIRGenTest
                         PRIVATE
+                          Backends
                           CPUBackend
                           IR
                           Support
@@ -284,6 +287,7 @@ add_executable(OnnxImporterTest
                OnnxImporterTest.cpp)
 target_link_libraries(OnnxImporterTest
                       PRIVATE
+                        Backends
                         Graph
                         Importer
                         ExecutionEngine
@@ -338,18 +342,18 @@ if(GLOW_WITH_CPU)
 
 add_executable(HostManagerTest
                HostManagerTest.cpp)
-target_link_libraries(HostManagerTest	
-                      PRIVATE		
+target_link_libraries(HostManagerTest
+                      PRIVATE
                         Backends
                         HostManager
-                        Executor		
-                        Graph		
-                        IR		
+                        Executor
+                        Graph
+                        IR
                         Partitioner
-                        Provisioner	
+                        Provisioner
                         DeviceManager
-                        gtest		
-                        TestMain)	
+                        gtest
+                        TestMain)
 target_include_directories(HostManagerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends)
 add_glow_test(HostManagerTest ${GLOW_BINARY_DIR}/tests/HostManagerTest --gtest_output=xml:ProvisionerTest.xml)
 
