@@ -2653,7 +2653,6 @@ TEST_P(InterpAndCPU, ClipWithDefaultValue) {
   for (size_t i = 0; i < 5 * 5; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), xHanle.raw(i));
   }
-
 }
 
 TEST_P(InterpAndCPU, Clip) {
