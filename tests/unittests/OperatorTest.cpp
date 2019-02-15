@@ -2636,11 +2636,9 @@ TEST_P(InterpAndCPU, ClipWithDefaultValue) {
   F_->setName("Clip");
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
   auto xHanle = ctx_.allocate(X)->getHandle();
-  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
-            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
-            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
-            38.0, 30.0, 84.0, 40.0};
-
+  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
+            28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
+            12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
   float min = std::numeric_limits<float>::lowest();
   float max = std::numeric_limits<float>::max();
   auto *node = F_->createClip("clip", X, min, max);
@@ -2662,10 +2660,9 @@ TEST_P(InterpAndCPU, Clip) {
   F_->setName("Clip");
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
   auto xHanle = ctx_.allocate(X)->getHandle();
-  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
-            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
-            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
-            38.0, 30.0, 84.0, 40.0};
+  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
+            28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
+            12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
 
   float min = 20.0;
   float max = 60.0;
