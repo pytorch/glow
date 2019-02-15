@@ -610,7 +610,7 @@ TEST(caffe2, FC) {
   auto *saveNode = getSaveNodeFromDest(output);
   auto *fcNode =
       llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(fcNode);
+  EXPECT_TRUE(fcNode);
 
   // Check the numerical values of the weights and biases.
   {
@@ -623,7 +623,7 @@ TEST(caffe2, FC) {
                                                3.0f, 6.0f, 9.0f, 12.0f};
     EXPECT_EQ(expectedDimensions, weights.dims().vec());
     ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto &elements = weights.getHandle();
+    const auto elements = weights.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -637,7 +637,7 @@ TEST(caffe2, FC) {
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto &elements = bias.getHandle();
+    const auto elements = bias.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -698,7 +698,7 @@ TEST(caffe2, FCWithFlatten) {
                                                3.0f, 6.0f, 9.0f, 12.0f};
     EXPECT_EQ(expectedDimensions, weights.dims().vec());
     ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto &elements = weights.getHandle();
+    const auto elements = weights.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -712,7 +712,7 @@ TEST(caffe2, FCWithFlatten) {
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto &elements = bias.getHandle();
+    const auto elements = bias.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -772,7 +772,7 @@ TEST(caffe2, FCTransposed) {
                                                3.0f, 6.0f, 9.0f, 12.0f};
     EXPECT_EQ(expectedDimensions, weights.dims().vec());
     ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto &elements = weights.getHandle();
+    const auto elements = weights.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -786,7 +786,7 @@ TEST(caffe2, FCTransposed) {
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto &elements = bias.getHandle();
+    const auto elements = bias.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -847,7 +847,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
                                                3.0f, 6.0f, 9.0f, 12.0f};
     EXPECT_EQ(expectedDimensions, weights.dims().vec());
     ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto &elements = weights.getHandle();
+    const auto elements = weights.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;
@@ -861,7 +861,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto &elements = bias.getHandle();
+    const auto elements = bias.getHandle();
     for (size_t i = 0; i < expectedValues.size(); ++i) {
       EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
           << "Where i = " << i;

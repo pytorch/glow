@@ -1867,8 +1867,9 @@ TEST_P(Operator, FCWithFlatten) {
   std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
                                        32.1f, 77.2f, 122.3f, 167.4f};
   EXPECT_TRUE(result.dims().vec() == expectedDimensions);
-  for (size_t i = 0; i < 2 * 4; i++)
+  for (size_t i = 0; i < 2 * 4; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
 }
 
 TEST_P(Operator, IntFC) {
