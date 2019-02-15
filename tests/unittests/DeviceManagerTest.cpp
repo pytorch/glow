@@ -392,6 +392,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_NE(ctx1, ctx2);
 }
 
+#ifdef GLOW_WITH_CPU
+
 TEST_P(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   std::promise<const Module *> promise;
@@ -457,6 +459,8 @@ TEST_P(DeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 }
+
+#endif // GLOW_WITH_CPU
 
 INSTANTIATE_TEST_CASE_P(Interpreter, DeviceManagerTest,
                         ::testing::Values(BackendKind::Interpreter));
