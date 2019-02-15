@@ -267,6 +267,12 @@ enum class ElemKind : unsigned char {
   BoolTy,        // Bool type (bool)
 };
 
+/// \returns whether \p e is a quantized ElemKind.
+inline bool isQuantizedElemKind(ElemKind e) {
+  return e == ElemKind::Int8QTy || e == ElemKind::Int16QTy ||
+         e == ElemKind::Int32QTy || e == ElemKind::UInt8FusedQTy;
+}
+
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
@@ -442,12 +448,7 @@ struct Type final {
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.
-  bool isQuantizedType() const {
-    return elementType_ == ElemKind::Int8QTy ||
-           elementType_ == ElemKind::Int16QTy ||
-           elementType_ == ElemKind::Int32QTy ||
-           elementType_ == ElemKind::UInt8FusedQTy;
-  }
+  bool isQuantizedType() const { return isQuantizedElemKind(elementType_); }
 
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.
