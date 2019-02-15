@@ -176,6 +176,15 @@ For platform-specific build instructions and advanced options, such as
 building with Address-Sanitizers refer to this guide:
 [Building the Compiler](docs/Building.md).
 
+If you're running Mac OS v10.14 (Mojave) and `ninja all` fails because it can't
+find headers (e.g. `string.h`), run this command to fix it, and try again.
+More information is available [here](https://developer.apple.com/documentation/xcode_release_notes/xcode_10_release_notes)
+under "Command Line Tools".
+
+  ```
+  open /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
+  ```
+
 #### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
