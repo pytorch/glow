@@ -605,16 +605,47 @@ TEST(caffe2, FC) {
     updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
   }
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  // High level check on the content of the graph. We have 1 FC node and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *fcNode =
+      llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
+  EXPECT_TRUE(fcNode);
 
-  auto result = ctx.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
-                                       32.1f, 77.2f, 122.3f, 167.4f};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 2 * 4; i++)
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  // Check the numerical values of the weights and biases.
+  {
+    const Constant *constant = mod.getConstantByName("weights");
+    ASSERT_TRUE(constant);
+    const Tensor &weights = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                               2.0f, 5.0f, 8.0f, 11.0f, //
+                                               3.0f, 6.0f, 9.0f, 12.0f};
+    EXPECT_EQ(expectedDimensions, weights.dims().vec());
+    ASSERT_EQ(expectedValues.size(), weights.size());
+    const auto elements = weights.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+  {
+    const Constant *constant = mod.getConstantByName("biases");
+    ASSERT_TRUE(constant);
+    const Tensor &bias = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
+    EXPECT_EQ(expectedDimensions, bias.dims().vec());
+    ASSERT_EQ(expectedValues.size(), bias.size());
+    const auto elements = bias.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+
+  // We don't actually check that the output is correct, because this is
+  // already covered in the Operator.FC/* tests.
 }
 
 /// Test loading a FC node : I * transpose(W) + B, where I is need to be
@@ -656,16 +687,40 @@ TEST(caffe2, FCWithFlatten) {
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
   ASSERT_TRUE(reshape);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-  auto result = ctx.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
-                                       32.1f, 77.2f, 122.3f, 167.4f};
-  result = ctx.get(output)->getHandle();
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 2 * 4; i++)
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  // Check the numerical values of the weights and biases.
+  {
+    const Constant *constant = mod.getConstantByName("weights");
+    ASSERT_TRUE(constant);
+    const Tensor &weights = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                               2.0f, 5.0f, 8.0f, 11.0f, //
+                                               3.0f, 6.0f, 9.0f, 12.0f};
+    EXPECT_EQ(expectedDimensions, weights.dims().vec());
+    ASSERT_EQ(expectedValues.size(), weights.size());
+    const auto elements = weights.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+  {
+    const Constant *constant = mod.getConstantByName("biases");
+    ASSERT_TRUE(constant);
+    const Tensor &bias = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
+    EXPECT_EQ(expectedDimensions, bias.dims().vec());
+    ASSERT_EQ(expectedValues.size(), bias.size());
+    const auto elements = bias.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+
+  // We don't actually check that the output is correct, because this is
+  // already covered in the Operator.FCWithFlatten/* tests.
 }
 
 /// Test loading a FCTransposed node: I * W + B
@@ -706,16 +761,40 @@ TEST(caffe2, FCTransposed) {
       llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(fcNode);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  // Check the numerical values of the weights and biases.
+  {
+    const Constant *constant = mod.getConstantByName("weights");
+    ASSERT_TRUE(constant);
+    const Tensor &weights = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                               2.0f, 5.0f, 8.0f, 11.0f, //
+                                               3.0f, 6.0f, 9.0f, 12.0f};
+    EXPECT_EQ(expectedDimensions, weights.dims().vec());
+    ASSERT_EQ(expectedValues.size(), weights.size());
+    const auto elements = weights.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+  {
+    const Constant *constant = mod.getConstantByName("biases");
+    ASSERT_TRUE(constant);
+    const Tensor &bias = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
+    EXPECT_EQ(expectedDimensions, bias.dims().vec());
+    ASSERT_EQ(expectedValues.size(), bias.size());
+    const auto elements = bias.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
 
-  auto result = ctx.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
-                                       32.1f, 77.2f, 122.3f, 167.4f};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 2 * 4; i++)
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  // We don't actually check that the output is correct, because this is
+  // already covered in the Operator.FCWithFlatten/* tests.
 }
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
@@ -757,16 +836,40 @@ TEST(caffe2, FCTransposedWithFlatten) {
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode1->getInput());
   ASSERT_TRUE(reshape);
 
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-  auto result = ctx.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {2, 4};
-  std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
-                                       32.1f, 77.2f, 122.3f, 167.4f};
-  result = ctx.get(output)->getHandle();
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 2 * 4; i++)
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  // Check the numerical values of the weights and biases.
+  {
+    const Constant *constant = mod.getConstantByName("weights");
+    ASSERT_TRUE(constant);
+    const Tensor &weights = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                               2.0f, 5.0f, 8.0f, 11.0f, //
+                                               3.0f, 6.0f, 9.0f, 12.0f};
+    EXPECT_EQ(expectedDimensions, weights.dims().vec());
+    ASSERT_EQ(expectedValues.size(), weights.size());
+    const auto elements = weights.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+  {
+    const Constant *constant = mod.getConstantByName("biases");
+    ASSERT_TRUE(constant);
+    const Tensor &bias = constant->getPayload();
+    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
+    EXPECT_EQ(expectedDimensions, bias.dims().vec());
+    ASSERT_EQ(expectedValues.size(), bias.size());
+    const auto elements = bias.getHandle();
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
+          << "Where i = " << i;
+    }
+  }
+
+  // We don't actually check that the output is correct, because this is
+  // already covered in the Operator.FCWithFlatten/* tests.
 }
 
 /// Test loading clip op from a Caffe2 model.
