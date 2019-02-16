@@ -40,7 +40,7 @@ target_link_libraries(OpenCL
                       QuantizationBase)
 
 target_link_libraries(OpenCL
-                      PRIVATE
+                      PUBLIC
                       OpenCL::OpenCL)
 
 add_library(OpenCLDeviceManager
@@ -54,4 +54,5 @@ target_link_libraries(OpenCLDeviceManager
                         OpenCL
                         Graph
                         IR
-                        Optimizer)
+                        Optimizer
+                        ThreadPool)
