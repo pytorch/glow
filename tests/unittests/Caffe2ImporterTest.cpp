@@ -802,8 +802,10 @@ TEST(caffe2, importClip) {
   ASSERT_TRUE(maxNode);
   auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
   ASSERT_TRUE(maxSplatNode);
+  EXPECT_EQ(maxSplatNode->getValue(), 60.0);
   auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
   ASSERT_TRUE(minSplatNode);
+  EXPECT_EQ(minSplatNode->getValue(), 20.0);
   auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.
@@ -844,8 +846,10 @@ TEST(caffe2, importClipDefault) {
   ASSERT_TRUE(maxNode);
   auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
   ASSERT_TRUE(maxSplatNode);
+  EXPECT_EQ(maxSplatNode->getValue(), std::numeric_limits<float>::max());
   auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
   ASSERT_TRUE(minSplatNode);
+  EXPECT_EQ(minSplatNode->getValue(), std::numeric_limits<float>::lowest());
   auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.

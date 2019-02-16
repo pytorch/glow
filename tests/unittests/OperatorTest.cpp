@@ -2632,36 +2632,12 @@ TEST_P(InterpAndCPU, QuantizedTile) {
   }
 }
 
-TEST_P(InterpAndCPU, ClipWithDefaultValue) {
-  F_->setName("Clip");
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
-  auto xHanle = ctx_.allocate(X)->getHandle();
-  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
-            28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
-            12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
-  float min = std::numeric_limits<float>::lowest();
-  float max = std::numeric_limits<float>::max();
-  auto *node = F_->createClip("clip", X, min, max);
-  auto *save = F_->createSave("save", node);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  auto result = saveTensor->getHandle();
-  std::vector<size_t> expectedDims = {5, 5};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 5 * 5; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), xHanle.raw(i));
-  }
-}
-
 TEST_P(InterpAndCPU, Clip) {
-  F_->setName("Clip");
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
-  auto xHanle = ctx_.allocate(X)->getHandle();
-  xHanle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
-            28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
-            12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
+  auto xHandle = ctx_.allocate(X)->getHandle();
+  xHandle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
+             28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
+             12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
 
   float min = 20.0;
   float max = 60.0;
