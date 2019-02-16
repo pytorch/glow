@@ -887,10 +887,6 @@ TEST(caffe2, importClip) {
   Context ctx;
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
-  inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
-                            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
-                            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
-                            38.0, 30.0, 84.0, 40.0};
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
@@ -901,20 +897,22 @@ TEST(caffe2, importClip) {
     updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
 
-  auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-
-  auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {5, 5};
-  std::vector<float> expectedValues = {45.0, 20.0, 59.0, 60.0, 48.0, 20.0, 44.0,
-                                       46.0, 60.0, 28.0, 20.0, 60.0, 20.0, 20.0,
-                                       60.0, 24.0, 37.0, 60.0, 20.0, 60.0, 36.0,
-                                       38.0, 30.0, 60.0, 40.0};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 5 * 5; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
+  EXPECT_EQ(F->getNodes().size(), 5);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(minNode);
+  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
+  ASSERT_TRUE(maxNode);
+  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
+  ASSERT_TRUE(maxSplatNode);
+  EXPECT_EQ(maxSplatNode->getValue(), 60.0);
+  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
+  ASSERT_TRUE(minSplatNode);
+  EXPECT_EQ(minSplatNode->getValue(), 20.0);
+  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
 /// Test loading clip op from a Caffe2 model with default arg values:
@@ -933,10 +931,6 @@ TEST(caffe2, importClipDefault) {
   Context ctx;
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
-  inputs_0.getHandle<>() = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0,
-                            46.0, 82.0, 28.0, 1.0,  91.0, 18.0, 9.0,
-                            71.0, 24.0, 37.0, 61.0, 12.0, 81.0, 36.0,
-                            38.0, 30.0, 84.0, 40.0};
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -947,17 +941,22 @@ TEST(caffe2, importClipDefault) {
     ctx.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
   }
-
-  auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-
-  auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {5, 5};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 5 * 5; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), inputs_0.getHandle().raw(i));
-  }
+  EXPECT_EQ(F->getNodes().size(), 5);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(minNode);
+  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
+  ASSERT_TRUE(maxNode);
+  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
+  ASSERT_TRUE(maxSplatNode);
+  EXPECT_EQ(maxSplatNode->getValue(), std::numeric_limits<float>::max());
+  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
+  ASSERT_TRUE(minSplatNode);
+  EXPECT_EQ(minSplatNode->getValue(), std::numeric_limits<float>::lowest());
+  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
 /// Test loading a ReplaceNaN operator.
