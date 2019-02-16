@@ -30,7 +30,7 @@ class Operator : public ::testing::TestWithParam<BackendKind> {
 public:
   Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
 
-  ~Operator() { mod_.clear(); }
+  ~Operator() override { mod_.clear(); }
 
 protected:
   ExecutionEngine EE_{GetParam()};

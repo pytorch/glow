@@ -45,7 +45,7 @@ protected:
   ExecutionEngine profileEE{BackendKind::Interpreter};
   ExecutionEngine backendSpecificEE{BackendKind::Interpreter};
 
-  virtual void SetUp() {
+  void SetUp() override {
     BackendKind backend1;
     BackendKind backend2;
     std::tie(backend1, backend2) = GetParam();

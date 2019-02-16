@@ -43,7 +43,7 @@ public:
   GemmBench(size_t m, size_t n, size_t k)
       : aDims{m, k}, bDims{k, n}, cDims{m, n} {}
 
-  virtual void setup() override {
+  void setup() override {
     size_t m = cDims[0];
     size_t n = cDims[1];
     size_t k = aDims[1];
@@ -55,11 +55,11 @@ public:
     randomize(m, n, c.data(), n);
   }
 
-  virtual void run() override {
+  void run() override {
     libjit_matmul_f(c.data(), a.data(), b.data(), cDims, aDims, bDims);
   }
 
-  virtual void teardown() override {}
+  void teardown() override {}
 
   double gflops() const { return 2.0 * cDims[0] * cDims[1] * aDims[1] / 1e9; }
 
