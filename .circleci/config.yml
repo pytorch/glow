@@ -85,7 +85,7 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang6.0-ubuntu16.04:230"
     <<: *linux_default
-  RELEASE_WITH_LIT:
+  RELEASE_WITH_OUTPUTCHECK:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang6.0-ubuntu16.04:230"
     <<: *linux_default
@@ -97,4 +97,4 @@ workflows:
       - ASAN
       - TSAN
       - SHARED
-      - RELEASE_WITH_LIT
+      - RELEASE_WITH_OUTPUTCHECK

@@ -11,6 +11,7 @@ option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 option(LINK_PROTOBUF_AS_DLL "Link against protobuf build as dynamic libray." OFF)
+option(GLOW_BUILD_OUTPUTCHECK_TESTS "Build tests that run with OutputCheck" OFF)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
@@ -92,6 +93,10 @@ if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
   message(FATAL_ERROR "No googletest git submodule. Run: git submodule update --init --recursive")
 endif()
 
+if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/OutputCheck/bin/OutputCheck")
+  message(FATAL_ERROR "No OutputCheck git submodule. Run: git submodule update --init --recursive")
+endif()
+
 if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/onnx")
   message(FATAL_ERROR "No onnx git submodule. Run: git submodule update --init --recursive")
 endif()
@@ -100,20 +105,6 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/fp16")
   message(FATAL_ERROR "No fp16 git submodule. Run: git submodule update --init --recursive")
 else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
-endif()
-
-find_program(FILECHECK "FileCheck")
-# The lit environment works equally with lit.py from llvm source or
-# the python lit package. Check for the other one if lit.py failed.
-find_program(LLVM_LIT "lit.py")
-if (NOT LLVM_LIT)
-  find_program(LLVM_LIT "lit")
-endif()
-
-if (FILECHECK AND LLVM_LIT)
-  set(HAS_LLVM_TEST_ENV ON)
-else()
-  set(HAS_LLVM_TEST_ENV OFF)
 endif()
 
 add_subdirectory(lib)

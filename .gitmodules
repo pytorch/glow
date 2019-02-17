@@ -7,3 +7,6 @@
 [submodule "thirdparty/fp16"]
 	path = thirdparty/fp16
 	url = https://github.com/Maratyszcza/FP16.git
+[submodule "tests/OutputCheck"]
+	path = tests/OutputCheck
+	url = https://github.com/stp/OutputCheck.git
