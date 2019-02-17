@@ -16,12 +16,4 @@
 
 set -euxo pipefail
 
-# Make a temporary file to store quantization profile in.
-TEMP_FILE="$(mktemp)"
-
-$TEXT_TRANSLATOR -m "${MODELS_DIR}/en2gr" -keep-original-precision-for-nodes=Add -dump-profile=$TEMP_FILE -quantization-schema=symmetric <<< "My name is Bob ."
-
-# CHECK: mein Name ist Bob \.$
-$TEXT_TRANSLATOR -m "${MODELS_DIR}/en2gr" -keep-original-precision-for-nodes=Add -load-profile=$TEMP_FILE <<< "My name is Bob ."
-
-rm $TEMP_FILE
+$1 | $OUTPUTCHECK $1
