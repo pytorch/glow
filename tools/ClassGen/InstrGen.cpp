@@ -156,10 +156,6 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Beta")
       .addMember(MemberType::Float, "K")
       .setType("Src->getType()")
-      .inplaceOperand({
-          "Dest",
-          "Src",
-      })
       .autoVerify(VerifyKind::SameType, {"Dest", "Src", "Scale"})
       .addGradientInstr({"Dest", "Src", "Scale"}, {"Dest", "Src"});
 
