@@ -16,9 +16,10 @@
 # Unlike the 'test' target, the 'check' target rebuilds the executables
 # before invoking the tests.
 function(add_glow_test)
+  set(options OPTIONAL EXPENSIVE)
   set(oneValueArgs NAME)
   set(multiValueArgs COMMAND DEPENDS)
-  cmake_parse_arguments(ARG "" "${oneValueArgs}"
+  cmake_parse_arguments(ARG "${options}" "${oneValueArgs}"
                           "${multiValueArgs}" ${ARGN})
 
   if (NOT ARG_NAME)
@@ -45,4 +46,11 @@ function(add_glow_test)
 
   # Produce the specific test rule using the default built-in.
   add_test(NAME ${ARG_NAME} COMMAND ${ARG_COMMAND})
+
+  # If the EXPENSIVE argument is passed, add the EXPENSIVE label to the test
+  # so that it will only be run with the other expensive tests with the
+  # ninja check_expensive command
+  if (ARG_EXPENSIVE)
+    set_property(TEST ${ARG_NAME} PROPERTY LABELS EXPENSIVE)
+  endif()
 endfunction()

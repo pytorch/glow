@@ -134,18 +134,16 @@ Run them as part of your local build using the following
 ```bash
 cmake -G Ninja <glow_src>  -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm         \
-      -DGLOW_MODELS_DIR=<downloaded_c2_models>        \
-      -DGLOW_BUILD_OUTPUTCHECK_TESTS=ON
+      -DGLOW_MODELS_DIR=<downloaded_c2_models>
 ```
 Followed by
 ```bash
-ninja output_check_tests
+ninja check_expensive
 ```
 
-The integration tests get run with the other CMake tests using:
-```bash
-ninja check
-```
+Note: `ninja check_expensive` runs all of the tests that `ninja check` runs plus
+any tests that have been marked as EXPENSIVE using add_glow_test(EXPENSIVE ...)
+such as the integration tests.
 
 Note: The difference between `ninja test` and `ninja check` is that
 `ninja check` makes sure the build dependencies are current before
