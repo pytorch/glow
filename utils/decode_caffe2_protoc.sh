@@ -14,16 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Encodes a textual pbtxt file of a Caffe2 model to binary pb format.
+# Decodes a binary pb file of a Caffe2 model to textual pbtxt format.
 if [ -z "$1" ]; then
-    echo "Usage: $(basename "$0") pbtxt"
+    echo "Usage: $(basename "$0") pb"
     exit 1
 fi
 
-PBTXT="$1"
+PB="$1"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 LIB_DIR="$SCRIPT_DIR/../lib/Importer"
 
-protoc --encode=caffe2.NetDef -I "$LIB_DIR" "$LIB_DIR/caffe2.proto" < "$PBTXT"
+protoc --decode=caffe2.NetDef -I "$LIB_DIR" "$LIB_DIR/caffe2.proto" < "$PB"
