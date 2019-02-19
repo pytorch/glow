@@ -55,8 +55,8 @@ case ${CIRCLE_JOB} in
         # No tests with shared libs; it's similar to DEBUG.
         ;;
 
-    RELEASE_WITH_OUTPUTCHECK)
-        run_unit_tests check
+    RELEASE_WITH_EXPENSIVE_TESTS)
+        run_unit_tests check_expensive
         ;;
 
     *)

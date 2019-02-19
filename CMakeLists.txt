@@ -11,7 +11,6 @@ option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 option(LINK_PROTOBUF_AS_DLL "Link against protobuf build as dynamic libray." OFF)
-option(GLOW_BUILD_OUTPUTCHECK_TESTS "Build tests that run with OutputCheck" OFF)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
@@ -125,7 +124,12 @@ if (GLOW_BUILD_TESTS)
   # Fetch the dependencies for all the tests.
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND}
+  # All tests except expensive tests
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE
+                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+
+  # All tests including expensive tests
+  add_custom_target(check_expensive COMMAND ${CMAKE_CTEST_COMMAND}
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 endif()
 
