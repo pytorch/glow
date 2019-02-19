@@ -18,6 +18,7 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Backends/DeviceManager.h"
 #include "glow/Base/Train.h"
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Context.h"
@@ -38,18 +39,25 @@ namespace glow {
 class ExecutionEngine final {
   /// The Module that represents the high-level program.
   Module M_;
+
   /// The network execution backend.
   Backend *backend_ = nullptr;
+
   /// Whether or not the ExecutionEngine owns the backend or is just using
   /// a backend provided from elsewhere. If ownsBackend is true,
   /// ~ExecutionEngine will delete the backend_.
   bool ownsBackend_ = false;
+
+  /// The device manager for executing compiled funtions.
+  runtime::DeviceManager *device_ = nullptr;
+
   /// Glow functions compiled for this ExecutionEngine's backend.
   llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions_;
 
   /// Single execution of the given \compiledFunction with the given context
   /// \ctx.
-  void runInternal(Context &ctx, CompiledFunction &compiledFunction);
+  void runInternal(Context &ctx, llvm::StringRef name,
+                   CompiledFunction &compiledFunction);
 
 public:
   ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
@@ -70,6 +78,9 @@ public:
 
   /// \returns the internal graph.
   Module &getModule() { return M_; }
+
+  /// Clears the DeviceManager and all CompiledFunctions.
+  void clear();
 
   /// \returns the compiled function. If more than one function
   /// has been compiled by this ExecutionEngine then a name must be supplied

@@ -34,6 +34,10 @@ public:
   ///@{
   ~Interpreter() override = default;
 
+  BackendKind getBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
+
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 

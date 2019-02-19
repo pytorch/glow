@@ -41,6 +41,9 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
+  /// \returns the kind of Backend this is.
+  virtual BackendKind getBackendKind() const = 0;
+
   /// Generate code for input function \param F.
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const = 0;
 

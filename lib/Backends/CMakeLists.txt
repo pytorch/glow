@@ -17,10 +17,12 @@ endif()
 
 add_library(Backend
               Backend.cpp
+              BackendUtils.cpp
               TraceEvents.cpp)
 target_link_libraries(Backend
                       PRIVATE
                         Base
+                        CodeGen
                         Graph
                         IR
                         Optimizer)
@@ -28,19 +30,14 @@ target_link_libraries(Backend
 add_library(Backends
               Backends.cpp)
 target_link_libraries(Backends
+                      PUBLIC
+                        Backend
                       PRIVATE
-                        BackendUtils
                         Base
                         Graph
                         Interpreter
                         Optimizer
                         ${linked_backends})
-
-add_library(BackendUtils BackendUtils.cpp)
-target_link_libraries(BackendUtils
-                      PRIVATE
-                      CodeGen
-                      IR)
 
 add_library(DeviceManager
               DeviceManagers.cpp)

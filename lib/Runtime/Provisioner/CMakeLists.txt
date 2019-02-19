@@ -3,6 +3,6 @@ add_library(Provisioner
 
 target_link_libraries(Provisioner
                       PRIVATE
+                        Backend
                         Backends
-                        BackendUtils
                         Graph)

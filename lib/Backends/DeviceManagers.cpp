@@ -15,8 +15,10 @@
  */
 
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Backends/DummyDeviceManager.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 using namespace glow::runtime;
@@ -61,7 +63,12 @@ DeviceManager *DeviceManager::createDeviceManager(BackendKind backendKind,
   case BackendKind::CPU:
     return createCPUDeviceManager(name);
   default:
-    GLOW_UNREACHABLE("not supported backend");
+    // As a fallback to make developing new Backends easier we'll create a
+    // DummyDeviceManager here, but this is not threadsafe and very simplistic.
+    // Strongly recommended that you create a DeviceManager customized for your
+    // device.
+    llvm::errs() << "Warning: Creating a DummyDeviceManager.\n";
+    return new DummyDeviceManager(backendKind, name);
   }
 
   // This is to make compiler happy. It can never reach this point as switch

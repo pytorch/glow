@@ -64,7 +64,9 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
   // Add to the function name lookup map.
   for (const auto &func : functions) {
-    func.second->getRuntimeBundle().collectConstants(module);
+    if (func.second->getRuntimeBundle().getConstants() == nullptr) {
+      func.second->getRuntimeBundle().collectConstants(module);
+    }
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
   }

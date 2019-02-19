@@ -37,7 +37,7 @@ public:
       : runtimeBundle_(bundle){};
 
   /// Dtor.
-  virtual ~CompiledFunction() = default;
+  virtual ~CompiledFunction() { runtimeBundle_.freeConstants(); }
   /// Execute the network and allocate Placeholder memory with given
   /// \p ctx providing mapping between Placeholder and populated tensor.
   virtual void execute(Context *ctx) = 0;
