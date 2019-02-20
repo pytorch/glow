@@ -192,9 +192,8 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
   case ElemKind::Int64ITy:
     return name + "_uW";
   default:
-    GLOW_ASSERT("Unsupported element type");
+    GLOW_UNREACHABLE("Unsupported element type");
   }
-  return "";
 }
 
 cl_kernel OpenCLFunction::createKernel(const std::string &name,
