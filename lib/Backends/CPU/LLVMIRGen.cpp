@@ -239,6 +239,10 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int8FusedQTy:
     return builder.getInt8Ty();
+  case ElemKind::BoolTy:
+    static_assert(sizeof(bool) == sizeof(int8_t),
+                  "Bool is expected to be the same size as int8.");
+    return builder.getInt8Ty();
   }
   return nullptr;
 }
@@ -327,6 +331,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
   case ElemKind::Int8FusedQTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::BoolTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   default:
@@ -475,6 +482,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int8FusedQTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
   }
   llvm_unreachable("Unknown element type");

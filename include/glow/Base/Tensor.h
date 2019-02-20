@@ -344,6 +344,8 @@ public:
       // scale/offset do not match.
     case ElemKind::Int8FusedQTy:
       return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::BoolTy:
+      return isEqualImpl<bool>(other, allowedError);
     }
 
     // This is to make compiler happy. It can never reach this point as switch
@@ -746,6 +748,9 @@ public:
         }
       }
       return;
+    }
+    case ElemKind::BoolTy: {
+      llvm_unreachable("Undefined to Xavier-initialize Bool Tensor.");
     }
     }
   }

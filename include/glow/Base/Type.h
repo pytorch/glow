@@ -264,6 +264,7 @@ enum class ElemKind : unsigned char {
   Int32ITy,     // 32-bit index type (int32_t)
   Int64ITy,     // 64-bit index type (int64_t)
   Int8FusedQTy, // 8-bit quantized type with fused scale/offset (int8_t)
+  BoolTy,       // Bool type (bool)
 };
 
 /// A class that represents a type of a tensor.
@@ -434,6 +435,8 @@ struct Type final {
       return std::is_same<ElemTy, int64_t>::value;
     case ElemKind::Int8FusedQTy:
       return std::is_same<ElemTy, int8_t>::value;
+    case ElemKind::BoolTy:
+      return std::is_same<ElemTy, bool>::value;
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
@@ -478,6 +481,8 @@ struct Type final {
       return sizeof(int64_t);
     case ElemKind::Int8FusedQTy:
       return sizeof(int8_t);
+    case ElemKind::BoolTy:
+      return sizeof(bool);
     }
     GLOW_UNREACHABLE("Invalid type.");
   }
@@ -490,7 +495,8 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float", "float16", "i8", "i16", "i32", "index32", "index64", "i8fused",
+        "float",   "float16", "i8",      "i16",  "i32",
+        "index32", "index64", "i8fused", "bool",
     };
     return names[(int)Ty];
   }
