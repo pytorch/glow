@@ -1516,16 +1516,14 @@ void BoundInterpreterFunction::fwdElementCmpLTEInstFloatImpl(
     const ElementCmpLTEInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
-  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto outW = getWeightHandle<bool>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i) ? 1.0 : 0.0;
+    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i);
   }
 }
 
-// For both quantized and non-quantized CmpLTE, we set the result to 1.0/0.0.
-// In the quantized case, we assume that the scale params are (1.0, 0).
 void BoundInterpreterFunction::fwdElementCmpLTEInst(
     const ElementCmpLTEInst *I) {
   if (getTensor(I->getLHS())->getType().isQuantizedType()) {
@@ -1538,14 +1536,12 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
     int32_t lhsOffset = lhsTy->getOffset();
     int32_t rhsOffset = rhsTy->getOffset();
 
-    auto outW = getWeightHandle<int8_t>(I->getDest());
+    auto outW = getWeightHandle<bool>(I->getDest());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
     for (size_t i = 0, e = outW.size(); i < e; i++) {
       outW.raw(i) = lhsScale * (lhsW.raw(i) - lhsOffset) <=
-                            rhsScale * (rhsW.raw(i) - rhsOffset)
-                        ? 1.0
-                        : 0.0;
+                    rhsScale * (rhsW.raw(i) - rhsOffset);
     }
     return;
   }
@@ -1557,16 +1553,16 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementCmpEQInstImpl(
     const ElementCmpEQInst *I) {
-  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto outW = getWeightHandle<bool>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) == rhsW.raw(i) ? 1 : 0;
+    outW.raw(i) = lhsW.raw(i) == rhsW.raw(i);
   }
 }
 
 void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
-  auto *T = getTensor(I->getDest());
+  auto *T = getTensor(I->getLHS());
 
   switch (T->getElementType()) {
   case ElemKind::Int64ITy: {
@@ -1603,10 +1599,10 @@ void BoundInterpreterFunction::fwdElementIsNaNInstFloatImpl(
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
-  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto outW = getWeightHandle<bool>(I->getDest());
   for (size_t i = 0, e = inW.size(); i < e; i++) {
     float val = inW.raw(i);
-    outW.raw(i) = ElemTy(std::isnan(val));
+    outW.raw(i) = std::isnan(val);
   }
 }
 
@@ -1640,11 +1636,11 @@ void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
   staticAssertFloatingPointType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
-  auto condW = getWeightHandle<ElemTy>(I->getCond());
+  auto condW = getWeightHandle<bool>(I->getCond());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = (float(condW.raw(i)) != 0.0) ? lhsW.raw(i) : rhsW.raw(i);
+    outW.raw(i) = condW.raw(i) ? lhsW.raw(i) : rhsW.raw(i);
   }
 }
 
@@ -1664,12 +1660,12 @@ void BoundInterpreterFunction::fwdElementSelectInst(
     int32_t rhsOffset = rhsTy->getOffset();
 
     auto outW = getWeightHandle<int8_t>(I->getDest());
-    auto condW = getWeightHandle<int8_t>(I->getCond());
+    auto condW = getWeightHandle<bool>(I->getCond());
     auto lhsW = getWeightHandle<int8_t>(I->getLHS());
     auto rhsW = getWeightHandle<int8_t>(I->getRHS());
     for (size_t i = 0, e = outW.size(); i < e; i++) {
-      float val = (condW.raw(i) != 0) ? lhsScale * (lhsW.raw(i) - lhsOffset)
-                                      : rhsScale * (rhsW.raw(i) - rhsOffset);
+      float val = condW.raw(i) ? lhsScale * (lhsW.raw(i) - lhsOffset)
+                               : rhsScale * (rhsW.raw(i) - rhsOffset);
       int32_t q = std::round(val / destScale + destOffset);
       outW.raw(i) = quantization::clip<int32_t, int8_t>(q);
     }
