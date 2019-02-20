@@ -208,7 +208,7 @@ TEST_P(InterpAndCPU, CmpEQ) {
 
   EE_.run(ctx_);
 
-  auto saveH = saveTensor->getHandle<int64_t>();
+  auto saveH = saveTensor->getHandle<bool>();
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_FALSE(saveH.at({0, i}));
   }
@@ -4517,8 +4517,8 @@ TEST_P(Operator, ReshapeInt) {
 
 /// Verify that the Select operator works correctly.
 TEST_P(Operator, Select) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "A", false);
-  ctx_.allocate(A)->getHandle() = {0.0, 1.0, 1.0, 0.0, 0.0};
+  auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "A", false);
+  ctx_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
 
   auto SNTy = mod_.uniqueType(ElemKind::FloatTy, {5});
   SplatNode *SN10 = F_->createSplat("zero", SNTy, 10.0);

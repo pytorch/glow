@@ -49,11 +49,13 @@ TEST(Optimizer, dseBasic) {
                                     WeightVar::MutabilityKind::Constant);
   auto *input2 = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "input2",
                                     WeightVar::MutabilityKind::Constant);
+  auto *input3 = bb.createWeightVar(glow::ElemKind::BoolTy, {1}, "input3",
+                                    WeightVar::MutabilityKind::Constant);
   auto *output = bb.createWeightVar(glow::ElemKind::FloatTy, {1}, "output",
                                     WeightVar::MutabilityKind::Mutable);
 
   bb.createElementAddInst("elem_add1", output, input1, input1);
-  bb.createElementSelectInst("select", output, input1, output, input2);
+  bb.createElementSelectInst("select", output, input3, output, input2);
   bb.createElementAddInst("elem_add2", output, input2, input2);
 
   optimize(M, MockBackend().shouldShareBuffers());

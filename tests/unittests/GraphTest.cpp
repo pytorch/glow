@@ -807,14 +807,9 @@ TEST(Graph, cmpOutputTypes) {
   // Create cmp nodes using quantized inputs.
   auto *cmpNode1 = F->createCmpEQ("cmpeq", qv1, qv2);
   auto *cmpNode2 = F->createCmpLTE("cmplte", qv1, qv2);
-  // Check that the output type of cmp nodes is quantized, has scale 1.0 and
-  // offset 0.
-  EXPECT_TRUE(cmpNode1->getResult().getType()->isQuantizedType());
-  EXPECT_EQ(cmpNode1->getResult().getType()->getScale(), 1.0);
-  EXPECT_EQ(cmpNode1->getResult().getType()->getOffset(), 0);
-  EXPECT_TRUE(cmpNode2->getResult().getType()->isQuantizedType());
-  EXPECT_EQ(cmpNode2->getResult().getType()->getScale(), 1.0);
-  EXPECT_EQ(cmpNode2->getResult().getType()->getOffset(), 0);
+  // Check that the output type of cmp nodes is BoolKind.
+  EXPECT_TRUE(cmpNode1->getResult().getElementType() == ElemKind::BoolTy);
+  EXPECT_TRUE(cmpNode2->getResult().getElementType() == ElemKind::BoolTy);
 
   // Define a non-quantized type.
   auto nqType3 = F->getParent()->uniqueType(ElemKind::FloatTy, {1, 3});
@@ -824,12 +819,9 @@ TEST(Graph, cmpOutputTypes) {
   // Create cmp nodes using non-quantized inputs.
   auto *cmpNode3 = F->createCmpEQ("cmpeq", nqv3, nqv4);
   auto *cmpNode4 = F->createCmpLTE("cmplte", nqv3, nqv4);
-  // Check that output of cmp nodes is a non-quantized type matching the type of
-  // inputs.
-  EXPECT_FALSE(cmpNode3->getResult().getType()->isQuantizedType());
-  EXPECT_EQ(cmpNode3->getResult().getType(), nqv3->getType());
-  EXPECT_FALSE(cmpNode4->getResult().getType()->isQuantizedType());
-  EXPECT_EQ(cmpNode4->getResult().getType(), nqv3->getType());
+  // Check that the output type of cmp nodes is BoolKind.
+  EXPECT_TRUE(cmpNode3->getResult().getElementType() == ElemKind::BoolTy);
+  EXPECT_TRUE(cmpNode4->getResult().getElementType() == ElemKind::BoolTy);
 }
 
 /// Check that the users of value are equal to expectedUsers.
