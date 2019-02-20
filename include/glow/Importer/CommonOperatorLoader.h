@@ -625,17 +625,19 @@ protected:
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
-    auto axes = getShape(dict["axes"]);
-    RETURN_ERR_IF_NOT(axes.size() == 1,
-                      "Only supporting single reduction for now.");
-    auto axis = axes[0];
 
-    Node *node = nullptr;
+    auto shapeAxes = getShape<unsigned_t>(dict["axes"]);
+    std::sort(shapeAxes.begin(), shapeAxes.end());
 
-    if (typeName == "ReduceMean") {
-      node = G_.createBatchedReduceMean(opName, in, axis);
-    } else {
-      node = G_.createBatchedReduceAdd(opName, in, axis);
+    llvm::ArrayRef<unsigned_t> axes(shapeAxes);
+
+    // Check if axes elements are unique.
+    if (axes.size() > 1) {
+      auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
+      if (it != shapeAxes.end()) {
+        RETURN_ERR("Axes values are not unique.",
+                   GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+      }
     }
 
     bool keepDims = true;
@@ -645,10 +647,23 @@ protected:
       keepDims = (bool)keepdims;
     }
 
-    // Our batched reduce add does not keep the dim; reshape if necessary.
+    Node *node = nullptr;
+
+    if (typeName == "ReduceMean") {
+      node = G_.createBatchedReduceMean(opName, in, axes);
+    } else {
+      node = G_.createBatchedReduceAdd(opName, in, axes);
+    }
+
+    // Our batched reduce add/mean does not keep the dim; reshape if necessary.
     if (keepDims) {
+
       std::vector<size_t> shape = node->dims(0);
-      shape.insert(shape.begin() + axis, 1);
+
+      // Add removed axes. Requires increasing order sort - done above.
+      for (const auto &axis : shapeAxes) {
+        shape.insert(shape.begin() + axis, 1);
+      }
       node = G_.createReshape(opName, node, shape);
     }
 

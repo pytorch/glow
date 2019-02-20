@@ -335,14 +335,23 @@ TypeRef Module::uniqueType(const Type &T) {
 
 TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 
-/// \returns a ShapeVector of rank 1 less than the input \p dims, where the
-/// provided \p axis dimension is removed from the shape.
-static ShapeVector getNewShapeWithoutAxis(llvm::ArrayRef<size_t> dims,
-                                          size_t axis) {
-  assert(axis < dims.size() &&
-         "Axis to remove must fit inside dimensions of the provided dims.");
+/// \returns a ShapeVector of rank axes.size() less than the input \p dims,
+/// where the provided \p axes dimensions are removed from the shape.
+static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
+                                          llvm::ArrayRef<unsigned_t> axes) {
+  assert(axes.size() < dims.size() &&
+         "Axes to remove must fit inside dimensions of the provided dims.");
   ShapeVector newDims(dims.begin(), dims.end());
-  newDims.erase(newDims.begin() + axis);
+  ShapeVector shapeAxes(axes.begin(), axes.end());
+
+  // Sort so that looping erase below doesn't fail.
+  std::sort(shapeAxes.rbegin(), shapeAxes.rend());
+
+  for (const auto &axis : shapeAxes) {
+    assert(axis <= dims.size() &&
+           "Axis to remove must fit inside dimensions of the provided dims.");
+    newDims.erase(newDims.begin() + axis);
+  }
   return newDims;
 }
 
@@ -1332,10 +1341,14 @@ Node *Function::createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
                        {numBatches, N, P});
 }
 
-BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
-                                                       TypeRef outTy,
-                                                       NodeValue batch,
-                                                       unsigned_t axis) {
+BatchedReduceAddNode *
+Function::createBatchedReduceAdd(llvm::StringRef name, TypeRef outTy,
+                                 NodeValue batch,
+                                 llvm::ArrayRef<unsigned_t> axes) {
+
+  assert(axes.size() == 1 && "Only supporting single reduction for now.");
+  auto axis = axes[0];
+
   // Calculate the expected total number of elements in the output tensor
   // based on the number of elements in the batch divided by the axis
   // dimension.
@@ -1347,37 +1360,30 @@ BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
   return addNode(new BatchedReduceAddNode(name, OT, batch, axis));
 }
 
-BatchedReduceAddNode *Function::createBatchedReduceAdd(llvm::StringRef name,
-                                                       NodeValue batch,
-                                                       unsigned_t axis) {
-  auto outDims = getNewShapeWithoutAxis(batch.dims(), axis);
+BatchedReduceAddNode *
+Function::createBatchedReduceAdd(llvm::StringRef name, NodeValue batch,
+                                 llvm::ArrayRef<unsigned_t> axes) {
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
-  return createBatchedReduceAdd(name, OT, batch, axis);
+  return createBatchedReduceAdd(name, OT, batch, axes);
 }
 
-DivNode *Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                           NodeValue batch, unsigned_t axis) {
-  // Use the same output type for both the batched reduce add and the
-  // denominator splat. Only use outTy as the output of the final div.
-  auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
-  auto outTyBRA = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
-
-  // Create a batched add to sum up the values in the provided axis.
-  auto *BRA = createBatchedReduceAdd(name, outTyBRA, batch, axis);
-
-  // Create a splat of the same output type as the BRA, with value of the size
-  // of the original dimensions of the axis, to divide the BRA by.
-  auto *SN = createSplat(name.str() + ".denom", outTyBRA, batch.dims()[axis]);
-
-  // Element-wise divide to produce the reduced mean with outTy provided.
-  return createDiv(name.str() + ".res", outTy, BRA, SN);
+BatchedReduceMeanNode *
+Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
+                                  NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new BatchedReduceMeanNode(name, OT, batch, axes));
 }
 
-DivNode *Function::createBatchedReduceMean(llvm::StringRef name,
-                                           NodeValue batch, unsigned_t axis) {
-  auto redDims = getNewShapeWithoutAxis(batch.dims(), axis);
-  auto outTy = getParent()->uniqueTypeWithNewShape(batch.getType(), redDims);
-  return createBatchedReduceMean(name, outTy, batch, axis);
+BatchedReduceMeanNode *
+Function::createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+
+  // Create new shape with specified dimensions either reduced or removed.
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
+  return createBatchedReduceMean(name, OT, batch, axes);
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,

@@ -67,6 +67,12 @@ Below you can see the list of currently supported graph optimizations:
     This optimization performs a classic CSE with a goal of avoiding of any
     results that were computed already.
 
+  * Optimization of ReduceMean nodes
+
+    This optimization performs substitions of ReduceMean with AvgPool node if
+    the reduce parameters are suitable: input is 4D with last two dimensions
+    to be reduced. 
+
 #### Quantization specific optimizations
 
 Majority of the common optimizations above can be used on a quantized graph.

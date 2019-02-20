@@ -564,27 +564,31 @@ public:
   Node *createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
                                   NodeValue rhs);
 
+  /// Create a node, performing BatchedReduceAdd operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                NodeValue batch,
-                                               unsigned_t axis);
+                                               llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceAdd operation. Output type
+  /// matches input \p outTy type.
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                TypeRef outTy, NodeValue batch,
-                                               unsigned_t axis);
+                                               llvm::ArrayRef<unsigned_t> axes);
 
-  /// Implements a batched reduce mean of the \p batch on the provided \p axis
-  /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
-  /// a DivNode with a SplatNode of the length of the \p axis
-  /// dimension. \returns the final DivNode.
-  DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, unsigned_t axis);
+  /// Create a node, performing BatchedReduceMean operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMeanNode *
+  createBatchedReduceMean(llvm::StringRef name, TypeRef outTy, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
 
-  /// Implements a batched reduce mean of the \p batch on the provided \p axis
-  /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
-  /// SplatNode of the length of the \p axis dimension. \returns the final
-  /// DivNode.
-  DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
-                                   unsigned_t axis);
+  /// Create a node, performing BatchedReduceMean operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceMeanNode *
+  createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);

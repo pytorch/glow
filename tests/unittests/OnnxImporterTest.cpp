@@ -277,6 +277,202 @@ TEST(onnx, importAveragePool3D) {
   }
 }
 
+/// Test loading ReduceMean op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 3D.
+TEST(onnx, reduceMean4Dto3D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/reduceMean4Dto3D.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {2, 2, 2};
+  std::vector<float> expectedValues = {
+      1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ReduceMean op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape stays 4D.
+TEST(onnx, reduceMean4Dto4D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/reduceMean4Dto4D.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {2, 2, 2, 1};
+  std::vector<float> expectedValues = {
+      1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ReduceSum op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D.
+TEST(onnx, reduceSum4D) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/reduceSum4D.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {2, 2, 2, 1};
+  std::vector<float> expectedValues = {3, 7, 11, 15, 19, 23, 27, 31};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ReduceMean op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
+/// optimization using AvgPool. Output shape is 4D.
+TEST(onnx, reduceMean2AvgPoolKeepDims) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename("tests/models/onnxModels/reduceMean2AvgPool.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {2, 2, 1, 1};
+  std::vector<float> expectedValues = {
+      2.5,
+      6.5,
+      10.5,
+      14.5,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 4; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ReduceMean op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
+/// optimization using AvgPool. Output shape is 2D.
+TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      "tests/models/onnxModels/reduceMean2AvgPoolNoKeep.onnxtxt");
+
+  Context ctx;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ctx.allocate(mod.getPlaceholders());
+
+    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+  }
+
+  auto *res = ctx.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(ctx);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {2, 2};
+  std::vector<float> expectedValues = {
+      2.5,
+      6.5,
+      10.5,
+      14.5,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 4; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
 /// Test loading clip op from an ONNX model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(onnx, importClip) {

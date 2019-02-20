@@ -323,6 +323,13 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("BatchedReduceMean")
+      .addInput("Batch")
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Average Mean operation on the Input given "
+                    "Axes.");
+
   BB.newNode("LengthsSum")
       .addInput("Data")
       .addInput("Lengths")

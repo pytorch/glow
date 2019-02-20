@@ -626,6 +626,80 @@ TEST_P(Operator, batchedReduceMeanQuantizedWithAxis) {
   }
 }
 
+/// Verify that batchedReduceMean optimization using AvgPool works correctly.
+TEST_P(Operator, batchedReduceMeanUsingAvgPool) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  std::vector<size_t> dims = {3, 20, 4, 8};
+
+  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, dims, "batch", false);
+
+  auto IH = ctx_.allocate(batch)->getHandle();
+  IH.randomize(1.0, 100.0, mod_.getPRNG());
+
+  auto *R = F_->createBatchedReduceMean("reduce.mean", batch, {2, 3});
+
+  auto *save = F_->createSave("save", R);
+  auto *result = ctx_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer, F_);
+
+  EE_.run(ctx_);
+  auto H = result->getHandle();
+
+  std::array<std::array<float, 20>, 3> results{};
+  for (size_t i = 0; i < dims[0]; i++) {
+    for (size_t j = 0; j < dims[1]; j++) {
+      for (size_t k = 0; k < dims[2]; k++) {
+        for (size_t l = 0; l < dims[3]; l++) {
+          results[i][j] += IH.at({i, j, k, l});
+        }
+      }
+      results[i][j] /= (dims[2] * dims[3]);
+      EXPECT_NEAR(H.at({i, j}), results[i][j], 0.001);
+    }
+  }
+}
+
+/// Verify that quantized batchedReduceMean optimization using AvgPool works
+/// correctly.
+TEST_P(Operator, batchedReduceMeanUsingAvgPoolQuantized) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  std::vector<size_t> dims = {2, 3, 3, 4};
+
+  auto BT = mod_.uniqueType(ElemKind::Int8QTy, dims, 1, 0);
+  auto OT = mod_.uniqueType(ElemKind::Int8QTy, {dims[0], dims[1]}, 1, 0);
+  auto *batch = mod_.createPlaceholder(ElemKind::Int8QTy, dims, BT->getScale(),
+                                       BT->getOffset(), "batch", false);
+
+  auto IH = ctx_.allocate(batch)->getHandle<int8_t>();
+  IH.randomize(1, 100, mod_.getPRNG());
+
+  auto *R = F_->createBatchedReduceMean("reduce.mean", OT, batch, {2, 3});
+
+  auto *save = F_->createSave("save", R);
+  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  std::array<std::array<float, 3>, 2> results{};
+  float s = BT->getScale() / OT->getScale();
+  for (size_t i = 0; i < dims[0]; i++) {
+    for (size_t j = 0; j < dims[1]; j++) {
+      for (size_t k = 0; k < dims[2]; k++) {
+        int32_t o = BT->getOffset();
+        for (size_t l = 0; l < dims[3]; l++) {
+          results[i][j] += IH.at({i, j, k, l}) - o;
+        }
+      }
+      results[i][j] = s * results[i][j] + OT->getOffset();
+      results[i][j] /= (dims[2] * dims[3]);
+      EXPECT_NEAR(std::round(results[i][j]), OH.at({i, j}), 1.0);
+    }
+  }
+}
+
 /// Test that the BatchedAdd operator works.
 TEST_P(Operator, BatchedAdd) {
   auto *batch =
