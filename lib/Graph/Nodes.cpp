@@ -796,6 +796,15 @@ bool LengthsSumNode::verify() const {
                            getLengths().dims().size(), size_t(1), this);
 }
 
+bool BatchedReduceMeanNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
+}
+
 bool SparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(getWeights(), getData().getElementType(), this);

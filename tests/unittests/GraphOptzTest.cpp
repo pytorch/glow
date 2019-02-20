@@ -2639,3 +2639,32 @@ TEST_F(GraphOptz, QuantizedFC) {
   // placeholders just aren't hooked up the the Graph F_.
   EXPECT_EQ(mod_.getPlaceholders().size(), 4);
 }
+
+/// Test batchedReduceMean optimization using AvgPool.
+TEST_F(GraphOptz, convertReduceMean2AvgPool) {
+  const size_t dims[] = {2, 2, 2, 2};
+
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  Node *R = F_->createBatchedReduceMean("reduce.mean", A, {2, 3});
+
+  SaveNode *O = F_->createSave("ret", R);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Optimization adds 2 transpose nodes and one reshape node.
+  EXPECT_EQ(F_->getNodes().size(), 5);
+
+  // Expecting reshape output rather than ReduceMean.
+  auto *RN = llvm::dyn_cast<ReshapeNode>(O->getInput());
+  ASSERT_NE(RN, nullptr);
+
+  // Expecting Transpose node before Reshape node.
+  auto *TN = llvm::dyn_cast<TransposeNode>(RN->getInput());
+  ASSERT_NE(TN, nullptr);
+
+  // Expecting AvgPool node before Transpose node.
+  auto *APN = llvm::dyn_cast<AvgPoolNode>(TN->getInput());
+  ASSERT_NE(APN, nullptr);
+}

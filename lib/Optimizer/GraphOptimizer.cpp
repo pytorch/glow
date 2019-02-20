@@ -1062,6 +1062,62 @@ static void mergeBatchedAdd(Function *F) {
   } // for each batched-add group.
 }
 
+/// Optimize ReduceMean configuration with AvgPool if possible: last two axes
+/// in a 4D input must be reduced.
+static void optimizeReduceMean(Function *F) {
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto &node : nodes) {
+    if (auto *RM = dyn_cast<BatchedReduceMeanNode>(&node)) {
+
+      // Input shape must be 4D.
+      if (RM->getBatch().dims().size() != 4) {
+        continue;
+      }
+
+      // Last two axes must be reduced.
+      auto axes = RM->getAxes();
+      if (axes.size() != 2 || std::count(axes.begin(), axes.end(), 2) != 1 ||
+          std::count(axes.begin(), axes.end(), 3) != 1) {
+        continue;
+      }
+
+      // RM is already shaped to have the required output shape.
+      NodeValue in = RM->getBatch();
+
+      std::vector<unsigned_t> kernels = {static_cast<unsigned_t>(in.dims()[2]),
+                                         static_cast<unsigned_t>(in.dims()[3])};
+      std::vector<unsigned_t> strides = {1, 1};
+      std::vector<unsigned_t> pads = {0, 0, 0, 0};
+
+      // In Glow, AvgPool expects NHWC.
+      auto *TR1 = F->createTranspose(
+          RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC);
+      auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
+                                  kernels, strides, pads);
+      auto *TR2 = F->createTranspose(
+          RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW);
+
+      // AvgPool keeps original shape. Add reshape to match expected output.
+      std::vector<size_t> shape = TR2->getResult().dims();
+
+      ShapeVector shapeAxes(axes.begin(), axes.end());
+
+      // Axes must be sorted for correct erase.
+      std::sort(shapeAxes.rbegin(), shapeAxes.rend());
+      for (const auto &axis : shapeAxes) {
+        shape.erase(shape.begin() + axis);
+      }
+
+      auto *RN = F->createReshape(RM->getName().str() + ".reshape", TR2, shape);
+
+      RM->getResult().replaceAllUsesOfWith(RN);
+      continue;
+    }
+  } // For all nodes in the graph.
+}
+
 /// Pool optimization.
 static void optimizePool(Function *F) {
   auto &nodes = F->getNodes();
@@ -2404,6 +2460,9 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
 
   // Merge multiple batched adds into a larger batched add.
   mergeBatchedAdd(F);
+
+  // Merge ReduceMean into AveragePool if possible.
+  optimizeReduceMean(F);
 
   // Perform Dead Code Elimination.
   DCE(F);
