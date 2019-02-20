@@ -477,9 +477,6 @@ DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL(tanh, float,
                                          1 - 2 / (exp(SRC * 2) + 1))
 DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL(sigmoid, float, 1 / (1 + exp(-SRC)))
 
-DEFINE_OPENCL_TERNARY_DATA_PARALLEL_KERNEL(elementselect, float,
-                                           (COND != (vtype)0.0) ? LHS : RHS)
-
 DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat, float, SRC)
 DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat_u, ulong, SRC)
 DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat_i8, char, SRC)
@@ -490,11 +487,26 @@ DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat_i8, char, SRC)
 #undef DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL_QUANTIZED_M
 #undef DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL
 
-__kernel void elementcmplteK16(__global float *dest, __global float *LHS,
+__kernel void elementselectK(__global float *dest, __global cl_int8_t *cond,
+                             __global float *lhs, __global float *rhs) {
+  size_t i = get_global_id(0);
+  cl_int8_t c = cond[i];
+  float RHS = rhs[i];
+  float LHS = lhs[i];
+  dest[i] = (c != 0) ? LHS : RHS;
+}
+
+__kernel void elementselectW(__global void *mem, cl_uint32_t dest,
+                             cl_uint32_t cond, cl_uint32_t lhs,
+                             cl_uint32_t rhs) {
+  elementselectK(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
+}
+
+__kernel void elementcmplteK16(__global cl_int8_t *dest, __global float *LHS,
                                __global float *RHS) {
   size_t i = get_global_id(0);
-  vstore8(convert_float8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
-  vstore8(convert_float8(islessequal(vload8(i + 1, LHS), vload8(i + 1, RHS))),
+  vstore8(convert_char8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
+  vstore8(convert_char8(islessequal(vload8(i + 1, LHS), vload8(i + 1, RHS))),
           i + 1, dest);
 }
 
@@ -503,10 +515,10 @@ __kernel void elementcmplteW16(__global void *mem, cl_uint32_t dest,
   elementcmplteK16(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
-__kernel void elementcmplteK8(__global float *dest, __global float *LHS,
+__kernel void elementcmplteK8(__global cl_int8_t *dest, __global float *LHS,
                               __global float *RHS) {
   size_t i = get_global_id(0);
-  vstore8(convert_float8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
+  vstore8(convert_char8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
 }
 
 __kernel void elementcmplteW8(__global void *mem, cl_uint32_t dest,
@@ -514,7 +526,7 @@ __kernel void elementcmplteW8(__global void *mem, cl_uint32_t dest,
   elementcmplteK8(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
-__kernel void elementcmplteK(__global float *dest, __global float *LHS,
+__kernel void elementcmplteK(__global cl_int8_t *dest, __global float *LHS,
                              __global float *RHS) {
   size_t i = get_global_id(0);
   dest[i] = LHS[i] <= RHS[i];
