@@ -160,10 +160,9 @@ int main(int argc, char **argv) {
     int index = currDevice % numDevices;
     std::string path = dirIt->path();
 
-    auto image =
-        readPngImageAndPreprocess(path, ImageNormalizationMode::k0to1,
-                                  ImageChannelOrder::BGR, ImageLayout::NCHW,
-                                  /* useImagenetNormalization */ true);
+    auto image = readPngImageAndPreprocess(
+        path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
+        ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
     std::unique_ptr<ExecutionContext> context =
         llvm::make_unique<ExecutionContext>();
 

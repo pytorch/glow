@@ -61,6 +61,17 @@ extern ImageLayout imageLayout;
 /// -use-imagenet-normalization flag.
 extern bool useImagenetNormalization;
 
+/// These are standard normalization factors for imagenet, adjusted for
+/// normalizing values in the 0to255 range instead of 0to1, as seen at:
+/// https://github.com/pytorch/examples/blob/master/imagenet/main.py
+static const float imagenetNormMean[] = {0.485 * 255.0, 0.456 * 255.0,
+                                         0.406 * 255.0};
+static const float imagenetNormStd[] = {0.229, 0.224, 0.225};
+
+/// Default values for mean and stddev.
+static const std::vector<float> zeroMean(max_tensor_dimensions, 0.f);
+static const std::vector<float> oneStd(max_tensor_dimensions, 1.f);
+
 /// \returns the floating-point range corresponding to enum value \p mode.
 std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
 
@@ -69,31 +80,32 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
 std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
 
 /// Reads a png image. \returns True if an error occurred. The values of the
-/// image are in the range \p range. If \p useImagenetNormalization then
-/// specialized normalization for Imagenet images is applied to the image.
-/// \pre !(useImagenetNormalization && numChannels != 3)
+/// image are in the range \p range.
 bool readPngImage(Tensor *T, const char *filename,
                   std::pair<float, float> range,
-                  bool useImagenetNormalization = false);
+                  llvm::ArrayRef<float> mean = zeroMean,
+                  llvm::ArrayRef<float> stddev = oneStd);
 
 /// Writes a png image. \returns True if an error occurred. The values of the
-/// image are in the range \p range. If \p useImagenetNormalization then
-/// specialized normalization for Imagenet images is unapplied to the image.
+/// image are in the range \p range.
 bool writePngImage(Tensor *T, const char *filename,
                    std::pair<float, float> range,
-                   bool useImagenetNormalization = false);
+                   llvm::ArrayRef<float> mean = zeroMean,
+                   llvm::ArrayRef<float> stddev = oneStd);
 
 /// Read a png image and preprocess it according to several parameters.
 /// \param filename the png file to read.
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
-/// \param useImagenetNormalization use special normalization for Imagenet.
+/// \param mean use special mean to normalize.
+/// \param stdev use special stddev to normalize.
 Tensor readPngImageAndPreprocess(llvm::StringRef filename,
                                  ImageNormalizationMode imageNormMode,
                                  ImageChannelOrder imageChannelOrder,
                                  ImageLayout imageLayout,
-                                 bool useImagenetNormalization);
+                                 llvm::ArrayRef<float> mean = zeroMean,
+                                 llvm::ArrayRef<float> stddev = oneStd);
 
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
@@ -102,13 +114,11 @@ Tensor readPngImageAndPreprocess(llvm::StringRef filename,
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
-/// \param useImagenetNormalization use special normalization for Imagenet.
 void loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                              Tensor *inputImageData,
                              ImageNormalizationMode imageNormMode,
                              ImageChannelOrder imageChannelOrder,
-                             ImageLayout imageLayout,
-                             bool useImagenetNormalization);
+                             ImageLayout imageLayout);
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H
