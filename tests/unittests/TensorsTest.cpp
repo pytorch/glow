@@ -801,7 +801,7 @@ TEST(Tensor, initZeroFused) {
   TH.clear(127);
   for (size_t i = 0; i < 10; i++) {
     for (size_t j = 2; j < 10; j++) {
-      // Set 6 due to endianess when loading the int32_t offset.
+      // Set 6 due to endianness when loading the int32_t offset.
       if (j == 6) {
         TH.at({i, j}) = i + 100;
       } else {
