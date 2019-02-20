@@ -985,7 +985,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
                                    "buffer.element.addr");
     } else {
-      GLOW_ASSERT("Type is not supported.");
+      GLOW_UNREACHABLE("Type is not supported.");
     }
 
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1563,7 +1563,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       } else if (sliceTy->getElementType() == ElemKind::Int32QTy) {
         F = getFunction("batchedadd_i32", dest->getElementType());
       } else {
-        GLOW_ASSERT("Type is not supported.");
+        GLOW_UNREACHABLE("Type is not supported.");
       }
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize, destOffset,
