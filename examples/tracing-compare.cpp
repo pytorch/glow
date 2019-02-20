@@ -131,10 +131,9 @@ int main(int argc, char **argv) {
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
   }
 
-  auto image =
-      readPngImageAndPreprocess(inputImage, ImageNormalizationMode::k0to1,
-                                ImageChannelOrder::BGR, ImageLayout::NCHW,
-                                /* useImagenetNormalization */ true);
+  auto image = readPngImageAndPreprocess(
+      inputImage, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
+      ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
 
   Tensor batch = image.getUnowned(inputType->dims());
 

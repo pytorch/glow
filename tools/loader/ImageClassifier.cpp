@@ -77,7 +77,6 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
     llvm::cl::desc(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
-
 } // namespace
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
@@ -341,8 +340,7 @@ int main(int argc, char **argv) {
          isFirstRun) {
     // Load and process the image data into the inputImageData Tensor.
     loadImagesAndPreprocess(inputImageFilenames, &inputImageData, imageNormMode,
-                            imageChannelOrder, imageLayout,
-                            useImagenetNormalization);
+                            imageChannelOrder, imageLayout);
 
     // If this is the first run, then we need to build and compile the model.
     if (isFirstRun) {
