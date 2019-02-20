@@ -60,7 +60,7 @@ case ${CIRCLE_JOB} in
         ;;
 
     *)
-        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, DEBUG, SHARED, RELEASE_WITH_EXPENSIVE_TESTS}."
+        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, TSAN, DEBUG, SHARED, RELEASE_WITH_EXPENSIVE_TESTS}."
         exit 1
         ;;
 esac
