@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Backends/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
@@ -31,6 +32,10 @@ namespace glow {
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
     void execute(Context *) override {}
+
+    BackendKind getCompileBackendKind() const override {
+      return BackendKind::Interpreter;
+    }
   };
 
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
@@ -56,6 +61,10 @@ class MockBackend : public Backend {
 class MockBackendCustomIRGen : public Backend {
   class MockFunction : public CompiledFunction {
     void execute(Context *) override {}
+
+    BackendKind getCompileBackendKind() const override {
+      return BackendKind::Interpreter;
+    }
   };
 
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {

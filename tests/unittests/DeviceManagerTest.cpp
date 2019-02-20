@@ -394,7 +394,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
 
 #ifdef GLOW_WITH_CPU
 
-TEST_P(DeviceManagerTest, AvailableMemory) {
+TEST(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -411,7 +411,7 @@ TEST_P(DeviceManagerTest, AvailableMemory) {
   auto module = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
-      module.get(), compileFunctions(backendKind, module.get(), backing),
+      module.get(), compileFunctions(BackendKind::CPU, module.get(), backing),
       [&promise](const Module *module, ResultCode result) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });
@@ -428,7 +428,7 @@ TEST_P(DeviceManagerTest, AvailableMemory) {
   auto module2 = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
-      module2.get(), compileFunctions(backendKind, module2.get(), backing),
+      module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
       [&promise](const Module *module, ResultCode result) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });
@@ -448,7 +448,7 @@ TEST_P(DeviceManagerTest, AvailableMemory) {
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
-      module2.get(), compileFunctions(backendKind, module2.get(), backing),
+      module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
       [&promise](const Module *module, ResultCode result) {
         callbackHelper(promise, module, result, ResultCode::Ready);
       });

@@ -22,6 +22,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
 #include "OpenCLDeviceManager.h"
+#include "OpenCL.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -113,6 +114,12 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                    << func.first << ".\n";
       readyCB(module, ResultCode::Failed);
       return;
+    }
+
+    if (func.second->getCompileBackendKind() != BackendKind::OpenCL) {
+      llvm::errs() << "Failed to add network: function " << func.first
+                   << " is not an OpenCL Function.\n";
+      readyCB(module, ResultCode::Failed);
     }
   }
   // Collect constants once, since currently the bundle grabs everything in the

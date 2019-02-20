@@ -25,6 +25,7 @@
 namespace glow {
 
 class Context;
+enum class BackendKind;
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:
@@ -70,6 +71,9 @@ public:
 
   /// Read trace events out of this func and write them into /p ctx
   virtual void translateTraceEvents(Context *ctx) const {}
+
+  /// \returns the Kind of Backend used to compile this function.
+  virtual BackendKind getCompileBackendKind() const = 0;
 
 protected:
   /// Flag to ensure setupRuns is only called once.

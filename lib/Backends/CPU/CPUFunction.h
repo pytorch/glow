@@ -18,6 +18,7 @@
 
 #include "GlowJIT.h"
 
+#include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 
@@ -41,6 +42,11 @@ public:
 
   /// Read trace events out of this func and write them into /p ctx
   void translateTraceEvents(Context *ctx) const override;
+
+  /// \returns the Kind of Backend used to compile this function.
+  virtual BackendKind getCompileBackendKind() const override {
+    return BackendKind::CPU;
+  }
   ///@}
   //
 
