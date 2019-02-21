@@ -1437,3 +1437,57 @@ TEST(Graph, TestNodeEnums) {
   // Check connection between Gather and Tanh.
   EXPECT_EQ(SN->getNthInput(SaveNode::OutputIdx), O->getOutput());
 }
+
+/// Searched \p F for a single instance of a node of Kind T. If more than one is
+/// found, \returns nullptr, otherwise returns the single instance.
+template <class T> static T *findSingleInstanceOfNode(Function *F) {
+  T *found = nullptr;
+  for (auto &n : F->getNodes()) {
+    if (auto *currNode = llvm::dyn_cast<T>(&n)) {
+      if (found != nullptr) {
+        return nullptr;
+      }
+      found = currNode;
+    }
+  }
+  return found;
+}
+
+/// Check that group Conv is not lowered when specified to lower by backend if
+/// doNotLowerKinds contains Conv.
+TEST(Graph, GroupTestConvNoLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  Context ctx;
+  Node *K =
+      MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 8}, "input", true);
+  Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
+
+  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, /* group */ 8);
+  K = F->createRELU("Relu", K);
+  K = F->createSoftMax("SoftMax", K, S);
+  F->createSave("Save", K);
+  F->dump();
+  F->dumpDAG();
+  auto backend = MockBackend();
+
+  {
+    // Before we lower, we should have a single Conv node with group = 8.
+    ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    ASSERT_TRUE(CN);
+    EXPECT_EQ(CN->getGroup(), 8);
+  }
+
+  // Now lower, but prevent ConvolutionNodeKinds from being lowered.
+  KindSet doNotLower;
+  doNotLower.insert(Kinded::Kind::ConvolutionNodeKind);
+  lower(F, /* loweredMap */ nullptr, &backend, doNotLower);
+
+  {
+    // Now have lowered but should still have a single Conv node with group = 8.
+    ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    ASSERT_TRUE(CN);
+    EXPECT_EQ(CN->getGroup(), 8);
+  }
+}

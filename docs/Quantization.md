@@ -85,6 +85,24 @@ For example, you can run the following command to capture profile for Resnet50.
 ```
 ./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -dump-profile="profile.yaml"
 ```
+
+By default, everything will be lowered for profiling. This allows for the
+lowered components of nodes to be profiled, allowing for good precision of
+complex nodes. For example, the `SigmoidCrossEntropyWithLogitsNode` has many
+internal nodes that it is lowered to. Without profiling the internal nodes,
+there would be no information on how best to quantize its internal nodes that it
+is lowered to.
+
+Lowering all nodes may cause performance issues for some models, e.g. if a model
+has group Convolutions which explode the size of the graph when lowered, leading
+to long compilation and run time during profiling. Thus, we allow for disabling
+certain NodeKinds for profiling. This means that during quantization, these
+nodes should also not be lowered by the backend. This can be done using the
+command line option `-do-not-lower-nodes-for-profiling` (note: multiple Nodes
+can be listed via comma separation). For example:
+
+```./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=shufflenet -model-input-name=gpu_0/data -dump-profile="shufflenet.yaml" -do-not-lower-nodes-for-profiling=Convolution```
+
 By default, the loader will produce quantized results using asymmetric ranges.
 That is ranges not necessarily centered on 0. The loader supports three modes
 or schemas of quantization: asymmetric, symmetric, and symmetric with uint8. The symmetric schema

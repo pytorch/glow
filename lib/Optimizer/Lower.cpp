@@ -791,10 +791,14 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
   }
 }
 
-void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B) {
+void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B,
+                 const KindSet &doNotLowerKinds) {
   auto &nodes = F->getNodes();
   for (auto &N : nodes) {
     if (B && !B->shouldLower(&N)) {
+      continue;
+    }
+    if (doNotLowerKinds.count(N.getKind())) {
       continue;
     }
     lowerNode(F, &N, loweredMap);

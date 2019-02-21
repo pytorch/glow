@@ -47,8 +47,10 @@ void optimize(Function *F, CompilationMode mode);
 /// will be lowered. If \p loweredMap is not a nullptr, then \p loweredMap will
 /// contain a mapping from output names of the nodes found and lowered in \p F
 /// to the output names of the nodes they were lowered from along with the
-/// NodeKind.
-void lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B = nullptr);
+/// NodeKind. \p doNotLowerKinds is a set of NodeKinds which represents all
+/// Nodes that should not be lowered.
+void lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B = nullptr,
+           const KindSet &doNotLowerKinds = {});
 
 /// Dead code elimination.
 void DCE(Function *F);
