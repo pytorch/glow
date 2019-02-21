@@ -791,8 +791,15 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
   }
 }
 
-/// Cleanup \p F after lowering.
-static void cleanup(Function *F) {
+void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B) {
+  auto &nodes = F->getNodes();
+  for (auto &N : nodes) {
+    if (B && !B->shouldLower(&N)) {
+      continue;
+    }
+    lowerNode(F, &N, loweredMap);
+  }
+
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
     auto cur = &*(it++);
     if (dyn_cast<SGDNode>(cur)) {
@@ -802,23 +809,4 @@ static void cleanup(Function *F) {
 
   // Remove nodes that were lowered.
   DCE(F);
-}
-
-void glow::lowerEverything(Function *F, LoweredInfoMap *loweredMap) {
-  auto &nodes = F->getNodes();
-  for (auto &N : nodes) {
-    lowerNode(F, &N, loweredMap);
-  }
-  cleanup(F);
-}
-
-void glow::lower(Function *F, const Backend &B, LoweredInfoMap *loweredMap) {
-  auto &nodes = F->getNodes();
-  for (auto &N : nodes) {
-    if (!B.shouldLower(&N)) {
-      continue;
-    }
-    lowerNode(F, &N, loweredMap);
-  }
-  cleanup(F);
 }

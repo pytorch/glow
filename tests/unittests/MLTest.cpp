@@ -1054,9 +1054,9 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Lower everything before profiling. The loweredMap will be used when
   // generating the profile to ensure all lowered components' profiles are
   // contained.
-  LoweredInfoMap loweredMap;
+  LoweredInfoMap loweredMapForProf;
   Function *PF = F->clone("profile");
-  lowerEverything(PF, &loweredMap);
+  lower(PF, &loweredMapForProf);
 
   // Profiling:
   PF = glow::profileQuantization(ctx, PF);
@@ -1065,16 +1065,17 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
+      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMapForProf);
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
 
   // Build the new quantized graph.
-  lower(F, *EE.getBackend());
-  Function *QP =
-      quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, loweredMap);
+  LoweredInfoMap loweredMapForQuant;
+  lower(F, &loweredMapForQuant, EE.getBackend());
+  Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                                loweredMapForQuant);
 
   EE.compile(CompilationMode::Infer, QP);
 
@@ -1168,9 +1169,9 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Lower everything before profiling. The loweredMap will be used when
   // generating the profile to ensure all lowered components' profiles are
   // contained.
-  LoweredInfoMap loweredMap;
+  LoweredInfoMap loweredMapForProf;
   Function *PF = F->clone("profile");
-  lowerEverything(PF, &loweredMap);
+  lower(PF, &loweredMapForProf);
 
   // Profile the fully lowered 'F', 'PF'.
   PF = glow::profileQuantization(ctx, PF);
@@ -1181,7 +1182,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // Get quantization infos.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
+      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMapForProf);
 
   // -- STEP3 - evaluate the quantized function. --
 
@@ -1189,9 +1190,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EE.setBackend(GetParam());
 
   // Build the new quantized graph.
-  lower(F, *EE.getBackend());
-  Function *QP =
-      quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, loweredMap);
+  LoweredInfoMap loweredMapForQuant;
+  lower(F, &loweredMapForQuant, EE.getBackend());
+  Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+                                                loweredMapForQuant);
 
   EE.compile(CompilationMode::Infer, QP);
 

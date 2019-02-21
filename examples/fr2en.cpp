@@ -153,7 +153,7 @@ struct Model {
 
       // Lower everything for profile and log lowered info in loweredMap_. Used
       // later when creating quantization infos.
-      ::lowerEverything(F_, &loweredMap_);
+      ::lower(F_, &loweredMap_);
 
       // Instrument the graph to capture profiles for nodes' outputs.
       F_ = glow::profileQuantization(ctx, F_);
@@ -167,7 +167,7 @@ struct Model {
       glow::optimize(F_, CompilationMode::Infer);
 
       // Lower however the backend prefers.
-      ::lower(F_, *EE_.getBackend(), &loweredMap_);
+      ::lower(F_, &loweredMap_, EE_.getBackend());
 
       auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 

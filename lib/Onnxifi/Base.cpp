@@ -52,7 +52,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  glow::lower(function, *glowBackend_);
+  glow::lower(function, /* loweredMap */ nullptr, glowBackend_.get());
 
   const auto &nodes = function->getNodes();
 

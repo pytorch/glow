@@ -409,8 +409,8 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
-  LoweredInfoMap loweredMap;
-  lowerEverything(F1, &loweredMap);
+  LoweredInfoMap loweredMapForProf;
+  lower(F1, &loweredMapForProf);
   F1 = glow::profileQuantization(ctx, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
@@ -420,15 +420,16 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          ctx, F1, loweredMap, quantization::Schema::Asymmetric,
+          ctx, F1, loweredMapForProf, quantization::Schema::Asymmetric,
           quantizationPrecision);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  lower(F2, *backendSpecificEE.getBackend());
-  F2 = quantization::quantizeFunction(backendSpecificEE, QI,
-                                      quantizationPrecision, F2, loweredMap);
+  LoweredInfoMap loweredMapForQuant;
+  lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
+  F2 = quantization::quantizeFunction(
+      backendSpecificEE, QI, quantizationPrecision, F2, loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -1520,7 +1521,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
   LoweredInfoMap loweredMapForProf;
-  lowerEverything(profileF, &loweredMapForProf);
+  lower(profileF, &loweredMapForProf);
 
   // Check that the lowered graph only contains the lowered components of the
   // FC (MM and BA) and not the FC itself.
@@ -1585,7 +1586,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 
   // Lower the function given the backend's preferences for lowering.
   LoweredInfoMap loweredMapForQuant;
-  lower(backendF, *backendEE.getBackend(), &loweredMapForQuant);
+  lower(backendF, &loweredMapForQuant, backendEE.getBackend());
 
   // Check that the backend lowered the function as expected.
   auto *floatFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
