@@ -1510,6 +1510,12 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   FullyConnectedNode *FC = createSimpleFCNet(profileCtx, profileEE, *profileF);
   auto outputNameFC = NodeQuantizationInfo::generateNodeOutputName(
       FC->getName(), FullyConnectedNode::ResultIdx);
+  auto weightsNameFC = NodeQuantizationInfo::generateNodeOutputName(
+      FC->getWeights().getNode()->getName(), FC->getWeights().getResNo());
+  auto biasNameFC = NodeQuantizationInfo::generateNodeOutputName(
+      FC->getBias().getNode()->getName(), FC->getBias().getResNo());
+  auto inputNameFC = NodeQuantizationInfo::generateNodeOutputName(
+      FC->getInput().getNode()->getName(), FC->getInput().getResNo());
 
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
@@ -1545,7 +1551,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 
   // Verify that we have node quantization infos for the FC and the lowered
   // components of the FC (MM and BA).
-  NodeQuantizationInfo *FCQI = nullptr, *MMQI = nullptr, *BAQI = nullptr;
+  NodeQuantizationInfo *FCQI = nullptr, *MMQI = nullptr, *BAQI = nullptr,
+                       *FCWQI = nullptr, *FCBQI = nullptr, *FCIQI = nullptr;
   for (NodeQuantizationInfo &NQI : QI) {
     if (NQI.nodeOutputName_ == outputNameFC) {
       FCQI = &NQI;
@@ -1553,11 +1560,20 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
       MMQI = &NQI;
     } else if (NQI.nodeOutputName_ == outputNameBA) {
       BAQI = &NQI;
+    } else if (NQI.nodeOutputName_ == weightsNameFC) {
+      FCWQI = &NQI;
+    } else if (NQI.nodeOutputName_ == biasNameFC) {
+      FCBQI = &NQI;
+    } else if (NQI.nodeOutputName_ == inputNameFC) {
+      FCIQI = &NQI;
     }
   }
   ASSERT_TRUE(FCQI);
   ASSERT_TRUE(MMQI);
   ASSERT_TRUE(BAQI);
+  ASSERT_TRUE(FCWQI);
+  ASSERT_TRUE(FCBQI);
+  ASSERT_TRUE(FCIQI);
 
   // Now create the same original function in the backend we're testing.
   ExecutionEngine backendEE;
@@ -1605,6 +1621,11 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
     ASSERT_TRUE(quantBA);
     EXPECT_EQ(quantBA->getResult().getType()->getScale(), BAQI->Scale());
     EXPECT_EQ(quantBA->getResult().getType()->getOffset(), BAQI->Offset());
+
+    EXPECT_EQ(quantBA->getSlice().getElementType(), ElemKind::Int32QTy);
+    EXPECT_EQ(quantBA->getSlice().getType()->getScale(),
+              FCWQI->Scale() * FCIQI->Scale());
+    EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), FCBQI->Offset());
   } else {
     ASSERT_TRUE(quantFC);
     EXPECT_EQ(quantFC->getResult().getType()->getScale(), FCQI->Scale());
@@ -1612,6 +1633,11 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 
     ASSERT_FALSE(quantMM);
     ASSERT_FALSE(quantBA);
+
+    EXPECT_EQ(quantFC->getBias().getElementType(), ElemKind::Int32QTy);
+    EXPECT_EQ(quantFC->getBias().getType()->getScale(),
+              FCWQI->Scale() * FCIQI->Scale());
+    EXPECT_EQ(quantFC->getBias().getType()->getOffset(), FCBQI->Offset());
   }
 }
 
