@@ -119,6 +119,18 @@ llvm::cl::list<std::string> keepOriginalPrecisionForNodesOpt(
     llvm::cl::value_desc("NodeNames (e.g. Add,Div)"), llvm::cl::ZeroOrMore,
     llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
 
+llvm::cl::list<std::string> doNotLowerNodesForProfilingOpt(
+    "do-not-lower-nodes-for-profiling",
+    llvm::cl::desc(
+        "Use to specify the name of nodes (e.g. Convolution, FullyConnected, "
+        "etc.) that should not be lowered during profiling. All nodes of the "
+        "listed kinds will be kept as is; e.g. if Conv is specified and the "
+        "model has group convolutions then the convolution will not be lowered "
+        "for profiling. This means when using the profile for quantization, "
+        "the node should not be lowered then either."),
+    llvm::cl::value_desc("NodeNames (e.g. Convolution,FullyConnected)"),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::desc("Backend to use:"),
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
@@ -240,12 +252,23 @@ void Loader::compile(Context &ctx) {
     // perform CSE, etc.
     ::optimize(F_, glow::CompilationMode::Infer);
 
+    // By default everything will be lowered for profiling. However this may
+    // cause performance issues for some models, e.g. if a model has group
+    // Convolutions which explode the size of the graph when lowered. Thus allow
+    // for disabling certain NodeKinds for profiling. This means that during
+    // quantization, these nodes should also not be lowered by the backend.
+    KindSet doNotLowerNodesForProfiling;
+    for (llvm::StringRef kindName : doNotLowerNodesForProfilingOpt) {
+      doNotLowerNodesForProfiling.insert(getKindFromNodeName(kindName));
+    }
+
     // Lower everything, keeping track of what NodeValues were lowered to other
     // NodeValues via the loweredMap_. This loweredMap_ is passed to
     // generateNodeQuantizationInfos() when writing out the profile, allowing
     // for both lowered and unlowered NodeValues to find their quantization
     // parameters.
-    ::lower(F_, &loweredMap_);
+    ::lower(F_, &loweredMap_, /* backend */ nullptr,
+            doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.
     F_ = ::profileQuantization(ctx, F_);
