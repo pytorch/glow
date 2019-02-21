@@ -4539,6 +4539,28 @@ TEST_P(Operator, Select) {
   EXPECT_EQ(resH.at({4}), 20.0);
 }
 
+/// Verify that the CmpLTE operator works correctly.
+TEST_P(Operator, CmpLTE) {
+  Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
+  Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
+  A->getPayload().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
+  B->getPayload().getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
+
+  auto *CMPLTE = F_->createCmpLTE("select", A, B);
+  auto *result = F_->createSave("saveCMPLTE", CMPLTE);
+  Tensor *resultT = ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto resH = resultT->getHandle<bool>();
+  EXPECT_TRUE(resH.at({0}));
+  EXPECT_TRUE(resH.at({1}));
+  EXPECT_FALSE(resH.at({2}));
+  EXPECT_TRUE(resH.at({3}));
+  EXPECT_FALSE(resH.at({4}));
+}
+
 /// Stack many slices/reshapes together. Some of these may be turned into tensor
 /// views stacked onto each other.
 TEST_P(Operator, sliceReshape) {
