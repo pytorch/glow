@@ -43,12 +43,18 @@ void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. \p B can prevent lowering of a node via \ref
-/// Backend::shouldLower(). If \p loweredMap is not a nullptr, then everything
-/// is lowered regardless of the preferences of \p B, and \p loweredMap will
-/// contain a mapping from output names of the nodes found and lowered in \p F
-/// to the output names of the nodes they were lowered from along with the
-/// NodeKind.
+/// Backend::shouldLower(). If \p loweredMap is not a nullptr, then \p
+/// loweredMap will contain a mapping from output names of the nodes found and
+/// lowered in \p F to the output names of the nodes they were lowered from
+/// along with the NodeKind.
 void lower(Function *F, const Backend &B, LoweredInfoMap *loweredMap = nullptr);
+
+/// Lower the high-level neural network nodes found in \p F into low-level
+/// linear algebra operators. All nodes are fully lowered. If \p loweredMap is
+/// not a nullptr, then \p loweredMap will contain a mapping from output names
+/// of the nodes found and lowered in \p F to the output names of the nodes they
+/// were lowered from along with the NodeKind.
+void lowerEverything(Function *F, LoweredInfoMap *loweredMap = nullptr);
 
 /// Dead code elimination.
 void DCE(Function *F);

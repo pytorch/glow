@@ -270,7 +270,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
   };
 
-  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, "", {},
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {}, "", {},
                                      true);
 
   // Check the graph structure after quantization.
@@ -410,7 +410,7 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   LoweredInfoMap loweredMap;
-  lower(F1, *profileEE.getBackend(), &loweredMap);
+  lowerEverything(F1, &loweredMap);
   F1 = glow::profileQuantization(ctx, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
@@ -428,7 +428,7 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
 
   lower(F2, *backendSpecificEE.getBackend());
   F2 = quantization::quantizeFunction(backendSpecificEE, QI,
-                                      quantizationPrecision, F2);
+                                      quantizationPrecision, F2, loweredMap);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -1010,7 +1010,7 @@ TEST(Quantization, quantizeGraphPartially) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1091,7 +1091,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   KindSet doNotQuantize;
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1182,7 +1182,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
   doNotQuantize.insert(Kinded::Kind::AddNodeKind);
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized", doNotQuantize);
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1264,7 +1264,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1328,7 +1328,7 @@ TEST(Quantization, quantizeSlice) {
        {0.4f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1398,7 +1398,7 @@ TEST(Quantization, quantizeReshape) {
        {0.4f, 0}},
   };
 
-  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F,
+  auto *QF = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {},
                                             "_quantized");
   QF->getParent()->eraseFunction(F);
   F = QF;
@@ -1513,8 +1513,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
-  LoweredInfoMap loweredMap;
-  lower(profileF, *profileEE.getBackend(), &loweredMap);
+  LoweredInfoMap loweredMapForProf;
+  lowerEverything(profileF, &loweredMapForProf);
 
   // Check that the lowered graph only contains the lowered components of the
   // FC (MM and BA) and not the FC itself.
@@ -1537,11 +1537,11 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   profileEE.run(profileCtx);
 
   // Get quantization infos and build new quantized graph, passing in the
-  // loweredMap to include the unlowered components in QI.
+  // loweredMapForProf to include the unlowered components in QI.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          profileCtx, profileF, loweredMap, quantization::Schema::Asymmetric,
-          ElemKind::Int8QTy);
+          profileCtx, profileF, loweredMapForProf,
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy);
 
   // Verify that we have node quantization infos for the FC and the lowered
   // components of the FC (MM and BA).
@@ -1568,7 +1568,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   createSimpleFCNet(backendCtx, backendEE, *backendF);
 
   // Lower the function given the backend's preferences for lowering.
-  lower(backendF, *backendEE.getBackend());
+  LoweredInfoMap loweredMapForQuant;
+  lower(backendF, *backendEE.getBackend(), &loweredMapForQuant);
 
   // Check that the backend lowered the function as expected.
   auto *floatFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
@@ -1587,7 +1588,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   // Quantize the function given the current backend we're testing along with
   // the quantization infos gathered.
   backendF = quantization::quantizeFunction(backendEE, QI, ElemKind::Int8QTy,
-                                            backendF);
+                                            backendF, loweredMapForQuant);
 
   // Check that the graph is still structured as expected, and that the
   // scales/offsets are set as found in QI.

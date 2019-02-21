@@ -1056,7 +1056,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // contained.
   LoweredInfoMap loweredMap;
   Function *PF = F->clone("profile");
-  lower(PF, *EE.getBackend(), &loweredMap);
+  lowerEverything(PF, &loweredMap);
 
   // Profiling:
   PF = glow::profileQuantization(ctx, PF);
@@ -1066,11 +1066,16 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
-  Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
+
+  // Build the new quantized graph.
+  lower(F, *EE.getBackend());
+  Function *QP =
+      quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, loweredMap);
+
   EE.compile(CompilationMode::Infer, QP);
 
   // Generate the images used for testing.
@@ -1165,7 +1170,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // contained.
   LoweredInfoMap loweredMap;
   Function *PF = F->clone("profile");
-  lower(PF, *EE.getBackend(), &loweredMap);
+  lowerEverything(PF, &loweredMap);
 
   // Profile the fully lowered 'F', 'PF'.
   PF = glow::profileQuantization(ctx, PF);
@@ -1174,16 +1179,19 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Run the graph to capture the profile.
   runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
 
-  // Get quantization infos and build new quantized graph.
+  // Get quantization infos.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(ctx, PF, loweredMap);
-
-  Function *QP = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
 
   // -- STEP3 - evaluate the quantized function. --
 
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
+
+  // Build the new quantized graph.
+  lower(F, *EE.getBackend());
+  Function *QP =
+      quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, loweredMap);
 
   EE.compile(CompilationMode::Infer, QP);
 

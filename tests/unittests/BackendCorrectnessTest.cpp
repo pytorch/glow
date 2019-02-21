@@ -89,7 +89,7 @@ compareAgainstInterpreter(BackendKind backendKind,
     // info in loweredMap, which is then used when generating QI.
     Function *PF = IF->clone("profile");
     LoweredInfoMap loweredMap;
-    lower(PF, *IEE.getBackend(), &loweredMap);
+    lowerEverything(PF, &loweredMap);
     std::vector<NodeQuantizationInfo> QI =
         profileAndGetNodeQuantizationInfo(ICtx, IEE, PF, loweredMap);
 
@@ -97,8 +97,10 @@ compareAgainstInterpreter(BackendKind backendKind,
     // functions of the Interpreter and Backend.
     lower(IF, *IEE.getBackend());
     lower(BF, *BEE.getBackend());
-    IF = quantization::quantizeFunction(IEE, QI, ElemKind::Int8QTy, IF);
-    BF = quantization::quantizeFunction(BEE, QI, ElemKind::Int8QTy, BF);
+    IF = quantization::quantizeFunction(IEE, QI, ElemKind::Int8QTy, IF,
+                                        loweredMap);
+    BF = quantization::quantizeFunction(BEE, QI, ElemKind::Int8QTy, BF,
+                                        loweredMap);
   }
 
   IEE.compile(CompilationMode::Infer, IF);

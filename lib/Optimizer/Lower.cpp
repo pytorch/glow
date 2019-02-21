@@ -732,81 +732,93 @@ static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, TN.getResult(), IN);
 }
 
-void glow::lower(Function *F, const Backend &B, LoweredInfoMap *loweredMap) {
-  auto &nodes = F->getNodes();
-
-  // If loweredMap is not a nullptr then we should lower everything. loweredMap
-  // should then map from output names of NodeValues to the output names of
-  // their origin NodeValues.
-  const bool lowerEverything = loweredMap != nullptr;
-
-  for (auto &N : nodes) {
-    auto *node = &N;
-    if (!lowerEverything && !B.shouldLower(node)) {
-      continue;
+/// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
+/// log the lowering info of what was replaced by what via output names.
+static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
+  if (auto *RN = dyn_cast<RegressionNode>(node)) {
+    lowerRegressionNode(loweredMap, *RN);
+  } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
+    lowerRegressionGradNode(F, loweredMap, *RGN);
+  } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
+    lowerAddGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
+    lowerMulGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
+    lowerSubGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
+    lowerDivGradNode(F, loweredMap, *EMG);
+  } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
+    lowerFullyConnectedNode(F, loweredMap, *FC);
+  } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
+    lowerFullyConnectedGradNode(F, loweredMap, *FCG);
+  } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
+    lowerReluGradNode(F, loweredMap, *RG);
+  } else if (auto *R = dyn_cast<ReluNode>(node)) {
+    lowerReluNode(F, loweredMap, *R);
+  } else if (auto *P = dyn_cast<PadNode>(node)) {
+    lowerPadNode(F, loweredMap, *P);
+  } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
+    lowerTanhGradNode(F, loweredMap, *THG);
+  } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
+    lowerSigmoidGradNode(F, loweredMap, *SG);
+  } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
+    lowerSGDNode(F, loweredMap, *SGD);
+  } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+    lowerBatchNormalizationNode(F, loweredMap, *BN);
+  } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
+    lowerMeanVarNormalizationNode(F, loweredMap, *MVN);
+  } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
+    lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
+  } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
+    lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
+  } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+    if (CN->getGroup() > 1)
+      lowerGroupConvolutionNode(F, loweredMap, *CN);
+  } else if (auto *SN = dyn_cast<SigmoidNode>(node)) {
+    if (SN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedSigmoidNode(F, loweredMap, SN);
     }
-    if (auto *RN = dyn_cast<RegressionNode>(node)) {
-      lowerRegressionNode(loweredMap, *RN);
-    } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
-      lowerRegressionGradNode(F, loweredMap, *RGN);
-    } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
-      lowerAddGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
-      lowerMulGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
-      lowerSubGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
-      lowerDivGradNode(F, loweredMap, *EMG);
-    } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
-      lowerFullyConnectedNode(F, loweredMap, *FC);
-    } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
-      lowerFullyConnectedGradNode(F, loweredMap, *FCG);
-    } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
-      lowerReluGradNode(F, loweredMap, *RG);
-    } else if (auto *R = dyn_cast<ReluNode>(node)) {
-      lowerReluNode(F, loweredMap, *R);
-    } else if (auto *P = dyn_cast<PadNode>(node)) {
-      lowerPadNode(F, loweredMap, *P);
-    } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
-      lowerTanhGradNode(F, loweredMap, *THG);
-    } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
-      lowerSigmoidGradNode(F, loweredMap, *SG);
-    } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
-      lowerSGDNode(F, loweredMap, *SGD);
-    } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-      lowerBatchNormalizationNode(F, loweredMap, *BN);
-    } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
-      lowerMeanVarNormalizationNode(F, loweredMap, *MVN);
-    } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
-      lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
-    } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
-      lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
-    } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-      if (CN->getGroup() > 1)
-        lowerGroupConvolutionNode(F, loweredMap, *CN);
-    } else if (auto *SN = dyn_cast<SigmoidNode>(node)) {
-      if (SN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedSigmoidNode(F, loweredMap, SN);
-      }
-    } else if (auto *TN = dyn_cast<TanhNode>(node)) {
-      if (TN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedTanhNode(F, loweredMap, TN);
-      }
-    } else if (auto *LN = dyn_cast<LogNode>(node)) {
-      if (LN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedLogNode(F, loweredMap, LN);
-      }
-    } else if (auto *TN = dyn_cast<TileNode>(node)) {
-      lowerTileNode(F, loweredMap, *TN);
+  } else if (auto *TN = dyn_cast<TanhNode>(node)) {
+    if (TN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedTanhNode(F, loweredMap, TN);
     }
+  } else if (auto *LN = dyn_cast<LogNode>(node)) {
+    if (LN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedLogNode(F, loweredMap, LN);
+    }
+  } else if (auto *TN = dyn_cast<TileNode>(node)) {
+    lowerTileNode(F, loweredMap, *TN);
   }
+}
 
+/// Cleanup \p F after lowering.
+static void cleanup(Function *F) {
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
     auto cur = &*(it++);
-    if (dyn_cast<SGDNode>(cur))
+    if (dyn_cast<SGDNode>(cur)) {
       F->eraseNode(cur);
+    }
   }
 
   // Remove nodes that were lowered.
   DCE(F);
+}
+
+void glow::lowerEverything(Function *F, LoweredInfoMap *loweredMap) {
+  auto &nodes = F->getNodes();
+  for (auto &N : nodes) {
+    lowerNode(F, &N, loweredMap);
+  }
+  cleanup(F);
+}
+
+void glow::lower(Function *F, const Backend &B, LoweredInfoMap *loweredMap) {
+  auto &nodes = F->getNodes();
+  for (auto &N : nodes) {
+    if (!B.shouldLower(&N)) {
+      continue;
+    }
+    lowerNode(F, &N, loweredMap);
+  }
+  cleanup(F);
 }

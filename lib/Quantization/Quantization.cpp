@@ -556,8 +556,8 @@ Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  ElemKind quantizationPrecision, Function *F,
-                 llvm::StringRef newFuncName, const KindSet &doNotQuantizeKinds,
-                 bool enableRowwise) {
+                 const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
+                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
   assert((quantizationPrecision == ElemKind::Int8QTy ||
           quantizationPrecision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");

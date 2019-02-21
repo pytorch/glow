@@ -102,13 +102,12 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
 /// \p enableRowwise is true, during quantization, all quantized FullyConnected
 /// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
 /// quantized function.
-Function *
-quantizeFunction(const ExecutionEngine &EE,
-                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 ElemKind quantizationPrecision, Function *F,
-                 llvm::StringRef newFuncName = "",
-                 const KindSet &doNotQuantizeKinds = {},
-                 bool enableRowwise = false);
+Function *quantizeFunction(
+    const ExecutionEngine &EE,
+    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+    ElemKind quantizationPrecision, Function *F,
+    const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",
+    const KindSet &doNotQuantizeKinds = {}, bool enableRowwise = false);
 
 } // namespace quantization
 } // namespace glow
