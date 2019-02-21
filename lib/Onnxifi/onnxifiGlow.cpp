@@ -46,6 +46,24 @@
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     onnxBackendID *backendIDs, size_t *numBackends) {
+#ifdef GLOW_WITH_CPU
+  constexpr bool glowWithCPU = true;
+#else
+  constexpr bool glowWithCPU = false;
+#endif
+
+#ifdef GLOW_WITH_C2_ONNXIFI
+  constexpr bool glowWithC2Onnxifi = true;
+#else
+  constexpr bool glowWithC2Onnxifi = false;
+#endif
+
+#ifdef GLOW_WITH_HOST_MANAGER_ONNXIFI
+  constexpr bool glowWithHostManagerOnnxifi = true;
+#else
+  constexpr bool glowWithHostManagerOnnxifi = false;
+#endif
+
   if (!numBackends) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -54,8 +72,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
   const size_t numBackendsCapacity = *numBackends;
 
-#ifdef GLOW_WITH_CPU
-  *numBackends = 4;
+  // Always create the interpreter, create the CPU backend if glowWithCPU
+  *numBackends = glowWithCPU ? 2 : 1;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -63,58 +81,26 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-  // TODO: change concurrency level to std::thread::hardware_concurrency()
-  // when Glow CPU backend can handle concurrent execution.
-  // For now, limit concurrent execution to a single worker thread..
-  auto *cpuBackendOnnx = new glow::onnxifi::BackendId(
-      glow::BackendKind::CPU, /*id*/ 1,
-      /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *cpuBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::CPU, /*id*/ 3,
-      /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 4, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  manager.addBackendId(cpuBackendOnnx);
-  manager.addBackendId(interpreterBackendOnnx);
-  manager.addBackendId(cpuBackendC2);
-  manager.addBackendId(interpreterBackendC2);
+  size_t i = 0;
 
-  backendIDs[0] = cpuBackendOnnx;
-  backendIDs[1] = interpreterBackendOnnx;
-  backendIDs[2] = cpuBackendC2;
-  backendIDs[3] = interpreterBackendC2;
-#else
-  *numBackends = 3;
-
-  // In case backendIDs is nullptr or does not have enough capacity just return
-  // the total number of supported backends.
-  if (numBackendsCapacity < *numBackends || !backendIDs) {
-    return ONNXIFI_STATUS_FALLBACK;
+  if (glowWithCPU) {
+    auto *cpuBackend = new glow::onnxifi::BackendId(
+        glow::BackendKind::CPU, /*id*/ i + 1,
+        /*concurrency*/ 1, /*useOnnx*/ !glowWithC2Onnxifi,
+        /*useHostManager*/ glowWithHostManagerOnnxifi);
+    manager.addBackendId(cpuBackend);
+    backendIDs[i++] = cpuBackend;
   }
 
-  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
+  auto *interpreterBackend = new glow::onnxifi::BackendId(
       glow::BackendKind::Interpreter,
-      /*id*/ 1, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  auto *interpreterBackendC2HostManager = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false,
-      /*useHostManager*/ true);
+      /*id*/ i + 1, /*concurrency*/ 1, /*useOnnx*/ !glowWithC2Onnxifi,
+      /*useHostManager*/ false);
 
-  manager.addBackendId(interpreterBackendOnnx);
-  manager.addBackendId(interpreterBackendC2);
-  manager.addBackendId(interpreterBackendC2HostManager);
+  manager.addBackendId(interpreterBackend);
+  backendIDs[i++] = interpreterBackend;
 
-  backendIDs[0] = interpreterBackendOnnx;
-  backendIDs[1] = interpreterBackendC2;
-  backendIDs[2] = interpreterBackendC2HostManager;
-#endif
+  assert(i == *numBackends && "Glow created an incorrect number of backends.");
 
   return ONNXIFI_STATUS_SUCCESS;
 }

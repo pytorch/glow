@@ -58,42 +58,60 @@ cd ${GLOW_DIR}
 mkdir build && cd build
 CMAKE_ARGS=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
-if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
-    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-elif [[ "${CIRCLE_JOB}" == "TSAN" ]]; then
-    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Thread'")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-elif [[ "$CIRCLE_JOB" == RELEASE_WITH_EXPENSIVE_TESTS ]]; then
-    # Download the models and tell cmake where to find them.
-    MODELS_DIR="$GLOW_DIR/downloaded_models"
-    DOWNLOAD_EXE="$GLOW_DIR/utils/download_caffe2_models.sh"
-    mkdir $MODELS_DIR
-    (
-        cd $MODELS_DIR
-        $DOWNLOAD_EXE
-    )
-    CMAKE_ARGS+=("-DGLOW_MODELS_DIR=$MODELS_DIR")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-else
-    install_pocl
-    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
-    if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
+
+case ${CIRCLE_JOB} in
+    ASAN)
+        CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+        CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+        ;;
+
+    TSAN)
+        CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Thread'")
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+        ;;
+
+    DEBUG)
+        install_pocl
+        CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
+        CMAKE_ARGS+=("-DGLOW_WITH_C2_ONNXIFI=OFF")
+        # Build onnxifi test driver
+        (
+            cd ${GLOW_DIR}
+            ./tests/onnxifi/build_onnxifi_tests.sh
+        )
+        ;;
+
+    SHARED)
+        install_pocl
+        CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
         CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")
-    fi
-fi
+        ;;
+
+    RELEASE_WITH_EXPENSIVE_TESTS)
+        # Download the models and tell cmake where to find them.
+        MODELS_DIR="$GLOW_DIR/downloaded_models"
+        DOWNLOAD_EXE="$GLOW_DIR/utils/download_caffe2_models.sh"
+        mkdir $MODELS_DIR
+        (
+            cd $MODELS_DIR
+            $DOWNLOAD_EXE
+        )
+        CMAKE_ARGS+=("-DGLOW_MODELS_DIR=$MODELS_DIR")
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+        CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
+        ;;
+
+    *)
+        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, TSAN, DEBUG, SHARED, RELEASE_WITH_EXPENSIVE_TESTS}."
+        exit 1
+        ;;
+esac
 
 cmake -GNinja ${CMAKE_ARGS[*]} ../
 ninja
-
-# Build onnxifi test driver (Only for DEBUG mode)
-if [[ "$CIRCLE_JOB" == DEBUG ]]; then
-    cd ${GLOW_DIR}
-    ./tests/onnxifi/build_onnxifi_tests.sh
-fi
 
 # Report sccache hit/miss stats
 if hash sccache 2>/dev/null; then

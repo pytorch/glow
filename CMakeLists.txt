@@ -11,6 +11,8 @@ option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 option(LINK_PROTOBUF_AS_DLL "Link against protobuf build as dynamic libray." OFF)
+option(GLOW_WITH_C2_ONNXIFI "Create ONNXIFI backends that accept Caffe2 nets." ON)
+option(GLOW_WITH_HOST_MANAGER_ONNXIFI "Create ONNXIFI backends that use HostManager." OFF)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
@@ -65,6 +67,14 @@ endif ()
 if (GLOW_WITH_OPENCL)
   add_definitions(-DGLOW_WITH_OPENCL=1)
   find_package(OpenCL REQUIRED)
+endif ()
+
+if(GLOW_WITH_C2_ONNXIFI)
+  add_definitions(-DGLOW_WITH_C2_ONNXIFI=1)
+endif ()
+
+if(GLOW_WITH_HOST_MANAGER_ONNXIFI)
+  add_definitions(-DGLOW_WITH_HOST_MANAGER_ONNXIFI=1)
 endif ()
 
 # Prefer LLVM 7.
