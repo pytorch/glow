@@ -548,8 +548,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseGraph)(onnxGraph graph) {
 }
 
 ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
-onnxGetExtensionFunctionAddress(onnxBackendID backendID, const char *name,
-                                onnxExtensionFunctionPointer *function) {
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
+    onnxBackendID backendID, const char *name,
+    onnxExtensionFunctionPointer *function) {
   if (!name || !function) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
