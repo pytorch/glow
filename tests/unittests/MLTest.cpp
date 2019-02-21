@@ -1054,7 +1054,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Lower everything before profiling. The loweredMap will be used when
   // generating the profile to ensure all lowered components' profiles are
   // contained.
-  LoweredNamesMap loweredMap;
+  LoweredInfoMap loweredMap;
   Function *PF = F->clone("profile");
   lower(PF, *EE.getBackend(), &loweredMap);
 
@@ -1163,7 +1163,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Lower everything before profiling. The loweredMap will be used when
   // generating the profile to ensure all lowered components' profiles are
   // contained.
-  LoweredNamesMap loweredMap;
+  LoweredInfoMap loweredMap;
   Function *PF = F->clone("profile");
   lower(PF, *EE.getBackend(), &loweredMap);
 

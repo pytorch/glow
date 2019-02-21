@@ -131,7 +131,7 @@ struct Model {
   Placeholder *seqLength_;
   Placeholder *output_;
   Context ctx;
-  LoweredNamesMap loweredMap_;
+  LoweredInfoMap loweredMap_;
 
   void loadLanguages();
   void loadEncoder();

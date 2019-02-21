@@ -47,7 +47,7 @@ namespace {
 static std::vector<NodeQuantizationInfo>
 profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
                                   Function *origF,
-                                  const LoweredNamesMap &loweredMap) {
+                                  const LoweredInfoMap &loweredMap) {
   Function *profileF = glow::profileQuantization(ctx, origF);
   EE.compile(CompilationMode::Infer, profileF);
 
@@ -88,7 +88,7 @@ compareAgainstInterpreter(BackendKind backendKind,
     // Lower everything for profiling in a cloned PF, keeping track of lowered
     // info in loweredMap, which is then used when generating QI.
     Function *PF = IF->clone("profile");
-    LoweredNamesMap loweredMap;
+    LoweredInfoMap loweredMap;
     lower(PF, *IEE.getBackend(), &loweredMap);
     std::vector<NodeQuantizationInfo> QI =
         profileAndGetNodeQuantizationInfo(ICtx, IEE, PF, loweredMap);

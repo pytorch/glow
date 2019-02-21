@@ -491,7 +491,7 @@ namespace quantization {
 /// quantizationInfos along with \p TQP.
 static void
 findAndInsertLoweredInfos(llvm::StringRef currName,
-                          const LoweredNamesMap &loweredMap,
+                          const LoweredInfoMap &loweredMap,
                           std::vector<NodeQuantizationInfo> &quantizationInfos,
                           const TensorQuantizationParams &TQP) {
   auto currSetIt = loweredMap.find(currName);
@@ -507,7 +507,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
   // and then recursively find and insert other names in case currOrigName was
   // also lowered from a previous node.
   for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
-    llvm::StringRef currOrigName = *i;
+    llvm::StringRef currOrigName = i->getName();
     quantizationInfos.emplace_back(currOrigName, TQP);
     findAndInsertLoweredInfos(currOrigName, loweredMap, quantizationInfos, TQP);
   }
@@ -515,7 +515,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
 
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(Context &ctx, const Function *F,
-                              const LoweredNamesMap &loweredMap, Schema schema,
+                              const LoweredInfoMap &loweredMap, Schema schema,
                               ElemKind quantizationPrecision) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 

@@ -409,7 +409,7 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
-  LoweredNamesMap loweredMap;
+  LoweredInfoMap loweredMap;
   lower(F1, *profileEE.getBackend(), &loweredMap);
   F1 = glow::profileQuantization(ctx, F1);
   profileEE.compile(CompilationMode::Infer, F1);
@@ -1513,7 +1513,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
-  LoweredNamesMap loweredMap;
+  LoweredInfoMap loweredMap;
   lower(profileF, *profileEE.getBackend(), &loweredMap);
 
   // Check that the lowered graph only contains the lowered components of the
