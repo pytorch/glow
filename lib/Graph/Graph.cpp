@@ -1150,42 +1150,22 @@ ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
 #undef ARITHMETIC_FUN_DEF
 
-/// This helper function is used only by the functions creating boolean
-/// operations like createCmpEQ and createCmpLTE to compute their output
-/// types. The output type is computed based on the type \p T of the operand
-/// of the logical operation. In case of a quantized type we provide concrete
-/// scale and offset for the type as we know that the output of a boolean
-/// operation could be only 0 or 1.
-///
-/// \returns the output type for a boolean operation.
-static TypeRef getResultTypeOfBooleanOp(Module &M, TypeRef T) {
-  TypeRef OT;
-  if (T->isQuantizedType()) {
-    OT = M.uniqueType(T->getElementType(), T->dims(), 1.0, 0);
-  } else {
-    OT = M.uniqueType(*T);
-  }
-  return OT;
-}
-
-// For the quantized CmpLTE instruction, we require that the scale params be
-// (1.0, 0), so that the actual value and comparison value match.
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
 }
 
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), LHS.getType());
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
 }
 
 IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
-  TypeRef OT = getResultTypeOfBooleanOp(*getParent(), input.getType());
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, input.dims());
   return addNode(new IsNaNNode(name, OT, input));
 }
 

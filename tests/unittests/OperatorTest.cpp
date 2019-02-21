@@ -208,7 +208,7 @@ TEST_P(InterpAndCPU, CmpEQ) {
 
   EE_.run(ctx_);
 
-  auto saveH = saveTensor->getHandle<int64_t>();
+  auto saveH = saveTensor->getHandle<bool>();
   for (size_t i = 0; i < 7; ++i) {
     EXPECT_FALSE(saveH.at({0, i}));
   }
@@ -4517,8 +4517,8 @@ TEST_P(Operator, ReshapeInt) {
 
 /// Verify that the Select operator works correctly.
 TEST_P(Operator, Select) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "A", false);
-  ctx_.allocate(A)->getHandle() = {0.0, 1.0, 1.0, 0.0, 0.0};
+  auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "A", false);
+  ctx_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
 
   auto SNTy = mod_.uniqueType(ElemKind::FloatTy, {5});
   SplatNode *SN10 = F_->createSplat("zero", SNTy, 10.0);
@@ -4537,6 +4537,28 @@ TEST_P(Operator, Select) {
   EXPECT_EQ(resH.at({2}), 10.0);
   EXPECT_EQ(resH.at({3}), 20.0);
   EXPECT_EQ(resH.at({4}), 20.0);
+}
+
+/// Verify that the CmpLTE operator works correctly.
+TEST_P(Operator, CmpLTE) {
+  Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
+  Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
+  A->getPayload().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
+  B->getPayload().getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
+
+  auto *CMPLTE = F_->createCmpLTE("select", A, B);
+  auto *result = F_->createSave("saveCMPLTE", CMPLTE);
+  Tensor *resultT = ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto resH = resultT->getHandle<bool>();
+  EXPECT_TRUE(resH.at({0}));
+  EXPECT_TRUE(resH.at({1}));
+  EXPECT_FALSE(resH.at({2}));
+  EXPECT_TRUE(resH.at({3}));
+  EXPECT_FALSE(resH.at({4}));
 }
 
 /// Stack many slices/reshapes together. Some of these may be turned into tensor

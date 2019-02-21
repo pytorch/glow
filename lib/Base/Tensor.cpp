@@ -285,6 +285,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
   case ElemKind::Int8FusedQTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::BoolTy:
+    return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
 }
 
@@ -308,6 +310,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpGenericImpl(T->getHandle<int64_t>(), os);
   case ElemKind::Int8FusedQTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os);
+  case ElemKind::BoolTy:
+    return dumpGenericImpl(T->getHandle<bool>(), os);
   }
 }
 
@@ -375,6 +379,12 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::Int8FusedQTy: {
     llvm_unreachable("Transposing Int8FusedQTy is unsupported.");
   }
+  case ElemKind::BoolTy: {
+    auto srcH = src->getHandle<bool>();
+    auto destH = dest->getHandle<bool>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   }
 }
 
@@ -433,6 +443,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       }
       break;
     }
+    case ElemKind::BoolTy: {
+      getHandle<bool>().clear(val);
+      break;
+    }
     }
     break;
   }
@@ -470,6 +484,9 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
     case ElemKind::Int8FusedQTy: {
       getHandle<int8_t>().initXavier(val, PRNG);
       break;
+    }
+    case ElemKind::BoolTy: {
+      llvm_unreachable("Undefined to Xavier-initialize Bool Tensor.");
     }
     }
     break;

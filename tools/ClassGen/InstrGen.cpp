@@ -374,29 +374,28 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
       .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("CmpLTE");
 
   BB.newInstr("ElementCmpEQ")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .inplaceOperand({"Dest", "LHS", "RHS"})
       .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameType, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("CmpEQ");
 
   BB.newInstr("ElementIsNaN")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .inplaceOperand({
-          "Dest",
-          "Src",
-      })
       .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("IsNaN");
 
   BB.newInstr("ElementPow")
@@ -426,7 +425,9 @@ int main(int argc, char **argv) {
       .addOperand("RHS", OperandKind::In)
       .inplaceOperand({"Dest", "LHS", "RHS", "Cond"})
       .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Cond", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS", "Cond"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Cond", "ElemKind::BoolTy"})
       .autoIRGen("Select");
 
   BB.newInstr("Modulo")

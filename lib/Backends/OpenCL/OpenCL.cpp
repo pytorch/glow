@@ -191,6 +191,8 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
     return name + "_i32W";
   case ElemKind::Int64ITy:
     return name + "_uW";
+  case ElemKind::BoolTy:
+    return name + "_bW";
   default:
     GLOW_UNREACHABLE("Unsupported element type");
   }
@@ -624,11 +626,24 @@ void OpenCLFunction::execute(Context *ctx) {
   (void)ctx;
 
   for (const auto &I : F_->getInstrs()) {
+    // Skip memory allocation instructions as they are NOPs.
+    if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
+        isa<TensorViewInst>(I)) {
+      continue;
+    }
+
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
     auto elemTy = I.getNumOperands() ? I.getOperand(0).first->getElementType()
                                      : ElemKind::FloatTy;
+
+    // If ElementCmpLTEInst then the first operand is always bool, so instead
+    // set the element type based on the LHS input.
+    if (auto *LTE = dyn_cast<ElementCmpLTEInst>(&I)) {
+      elemTy = LTE->getLHS()->getElementType();
+    }
+
     std::string kernelName = getKernelName(I.getKindName(), elemTy);
 
     //  Check if the instruction is quantized. Consider an instruction to be
@@ -638,12 +653,6 @@ void OpenCLFunction::execute(Context *ctx) {
                         I.getOperand(I.getNumOperands() - 1)
                             .first->getType()
                             ->isQuantizedType());
-
-    // Skip memory allocation instructions as they are NOPs.
-    if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
-        isa<TensorViewInst>(I)) {
-      continue;
-    }
 
     // Element-wise operations, except the copy instruction.
     if (I.isDataParallel() && !isa<CopyInst>(I)) {

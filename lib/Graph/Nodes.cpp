@@ -717,16 +717,8 @@ VERIFY_ARITHMETIC(Sub);
 VERIFY_ARITHMETIC(Div);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
-VERIFY_ARITHMETIC(CmpEQ);
 VERIFY_ARITHMETIC(Pow);
 #undef VERIFY_ARITHMETIC
-
-bool CmpLTENode::verify() const {
-  bool isValid = verifyArithmetic(getLHS(), getRHS(), getResult());
-  // Quantization scale params for result must be (1.0, 0).
-  isValid &= checkNotQuantizedOrSameParams(getResult().getType(), 1.0, 0, this);
-  return isValid;
-}
 
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   bool NODE_NAME_##Node::verify() const {                                      \
@@ -747,6 +739,19 @@ VERIFY_ARITHMETIC(MulGrad);
 VERIFY_ARITHMETIC(SubGrad);
 VERIFY_ARITHMETIC(DivGrad);
 #undef VERIFY_ARITHMETIC
+
+#define VERIFY_CMP(NODE_NAME_)                                                 \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getLHS(), getRHS(), this);                   \
+    isValid &= checkSameShape(getResult(), getLHS(), this);                    \
+    isValid &= checkType(getLHS(), getRHS().getElementType(), this);           \
+    isValid &= checkType(getResult(), ElemKind::BoolTy, this);                 \
+    return isValid;                                                            \
+  }
+
+VERIFY_CMP(CmpLTE)
+VERIFY_CMP(CmpEQ)
+#undef VERIFY_CMP
 
 bool BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();
@@ -1109,16 +1114,18 @@ bool LogNode::verify() const {
 }
 
 bool IsNaNNode::verify() const {
-  return checkSameShape(getInput(), getResult(), this);
+  bool isValid = checkSameShape(getResult(), getInput(), this);
+  isValid &= checkType(getResult(), ElemKind::BoolTy, this);
+  return isValid;
 }
 
 bool SelectNode::verify() const {
-  bool isValid = checkType(getResult(), getCond().getElementType(), this);
-  isValid &= checkType(getResult(), getLHS().getElementType(), this);
-  isValid &= checkType(getResult(), getRHS().getElementType(), this);
-  isValid &= checkSameShape(getResult(), getCond(), this);
-  isValid &= checkSameShape(getResult(), getLHS(), this);
+  bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);
+  isValid &= checkSameShape(getResult(), getCond(), this);
+  isValid &= checkType(getLHS(), getRHS().getElementType(), this);
+  isValid &= checkType(getLHS(), getResult().getElementType(), this);
+  isValid &= checkType(getCond(), ElemKind::BoolTy, this);
   return isValid;
 }
 

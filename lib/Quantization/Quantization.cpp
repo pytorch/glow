@@ -207,21 +207,6 @@ protected:
   CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result)
   // clang-format on
 
-  /// All CmpNode IR Constraint cases below require that the output has scale
-  /// 1.0, offset 0.
-  static constexpr unsigned CmpNodeIRConstraintResultIdx = 0;
-#define CASE_CMP_NODE(NODE_NAME_)                                              \
-  static_assert(NODE_NAME_##Node::ResultIdx == CmpNodeIRConstraintResultIdx,   \
-                #NODE_NAME_ "Node format is unexpected.");                     \
-  case Kinded::Kind::NODE_NAME_##NodeKind
-
-  // clang-format off
-#define casesForCmpNodes                                                       \
-  CASE_CMP_NODE(CmpLTE):                                                       \
-  CASE_CMP_NODE(CmpEQ):                                                        \
-  CASE_CMP_NODE(IsNaN)
-  // clang-format on
-
   /// \see FunctionConverter::morphNode.
   /// This method does the final adjustment to the output types
   /// when the profile and the IR constraints do not agree.
@@ -279,13 +264,6 @@ protected:
       assert(!lastMorphedNodeWithTypeChanges &&
              "Missed one node to rescale in postprocessing");
       lastMorphedNodeWithTypeChanges = &node;
-      return node;
-    }
-    casesForCmpNodes : {
-      TypeRef OT =
-          mod_.uniqueType(quantizationPrecision_,
-                          node.dims(CmpNodeIRConstraintResultIdx), 1.0, 0);
-      node.setType(CmpNodeIRConstraintResultIdx, OT);
       return node;
     }
     default:

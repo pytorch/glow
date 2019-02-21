@@ -239,6 +239,10 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int8FusedQTy:
     return builder.getInt8Ty();
+  case ElemKind::BoolTy:
+    static_assert(sizeof(bool) == sizeof(int8_t),
+                  "Bool is expected to be the same size as int8.");
+    return builder.getInt8Ty();
   }
   return nullptr;
 }
@@ -327,6 +331,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
   case ElemKind::Int8FusedQTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::BoolTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   default:
@@ -476,6 +483,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int8FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::BoolTy:
+    return builder.getInt8(static_cast<int8_t>(val));
   }
   llvm_unreachable("Unknown element type");
 }
@@ -529,6 +538,8 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
     return get("libjit_" + name + "_i32");
   case ElemKind::Int64ITy:
     return get("libjit_" + name + "_u");
+  case ElemKind::BoolTy:
+    return get("libjit_" + name + "_b");
   default:
     GLOW_UNREACHABLE("Unsupported element type");
   }
@@ -874,7 +885,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("elementselect_kernel", dest->getElementType());
+    auto *F = getFunction("elementselect_kernel", lhs->getElementType());
 
     if (lhs->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
@@ -961,8 +972,22 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(Sigmoid, "sigmoid");
     ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
     ARITHMETIC_UNARY_OP_CASE(ElementLog, "element_log");
-    ARITHMETIC_UNARY_OP_CASE(ElementIsNaN, "element_is_nan");
 #undef ARITHMETIC_UNARY_OP_CASE
+
+  case Kinded::Kind::ElementIsNaNInstKind: {
+    auto *AN = cast<ElementIsNaNInst>(I);
+    auto *src = AN->getSrc();
+    auto *dest = AN->getDest();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *F = getFunction("element_is_nan_kernel", src->getElementType());
+    auto *stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
+    auto *elementTy = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
 
   case Kinded::Kind::QuantizeInstKind: {
     auto *QI = cast<QuantizeInst>(I);
@@ -1166,8 +1191,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_lte_kernel", dest->getElementType());
-    auto *elementTy = getElementType(builder, dest);
+    auto *F = getFunction("element_cmp_lte_kernel", lhs->getElementType());
 
     if (lhs->getType()->isQuantizedType()) {
       auto *lhsTy = lhs->getType();
@@ -1194,12 +1218,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
-      auto *pointerNull =
-          llvm::ConstantPointerNull::get(elementTy->getPointerTo());
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
-                                         loopCount, "buffer.element.addr");
+      auto *stackedOpCall = createCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+      auto *elementTy = getElementType(builder, dest);
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
+                                         "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     }
     break;
@@ -1217,12 +1239,9 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_eq_kernel", dest->getElementType());
+    auto *F = getFunction("element_cmp_eq_kernel", lhs->getElementType());
     auto *elementTy = getElementType(builder, dest);
-    auto *pointerNull =
-        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
-    auto *stackedOpCall =
-        createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+    auto *stackedOpCall = createCall(builder, F, {loopCount, lhsPtr, rhsPtr});
     auto *destAddr =
         builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);

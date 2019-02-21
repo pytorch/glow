@@ -717,10 +717,7 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_f, float, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_u, size_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_i8, int8_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_i32, int32_t, LHS[idx])
-DEFINE_DATA_PARALLEL_KERNEL(libjit_element_cmp_lte_kernel_f, float,
-                            LHS[idx] <= RHS[idx] ? 1.0 : 0.0)
-DEFINE_DATA_PARALLEL_KERNEL(libjit_element_cmp_eq_kernel_u, size_t,
-                            LHS[idx] == RHS[idx] ? 1 : 0)
+DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_b, int8_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_add_kernel_f, float,
                             LHS[idx] + RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sub_kernel_f, float,
@@ -734,8 +731,6 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_pow_kernel_f, float,
                             pow(LHS[idx], RHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_log_kernel_f, float, log(LHS[idx]))
-DEFINE_DATA_PARALLEL_KERNEL(libjit_element_is_nan_kernel_f, float,
-                            isnan(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_sub_kernel_i8, int8_t,
@@ -746,6 +741,20 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmin_kernel_i8, int8_t,
                                       MIN(lhs, rhs))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_mul_kernel_i8, lhs *rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
+
+int8_t libjit_element_cmp_eq_kernel_u(size_t idx, const size_t *LHS,
+                                      const size_t *RHS) {
+  return LHS[idx] == RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_is_nan_kernel_f(size_t idx, const float *input) {
+  return isnan(input[idx]) ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lte_kernel_f(size_t idx, const float *LHS,
+                                       const float *RHS) {
+  return LHS[idx] <= RHS[idx] ? 1 : 0;
+}
 
 int8_t libjit_element_cmp_lte_kernel_i8(size_t idx, const int8_t *LHS,
                                         const int8_t *RHS, int32_t lhsOffset,
@@ -763,12 +772,15 @@ int8_t libjit_element_cmp_lte_kernel_i8(size_t idx, const int8_t *LHS,
 // approximation by a direct tanh call.
 DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
                             1 - 2 / (expf(LHS[idx] * 2) + 1))
-DEFINE_DATA_PARALLEL_KERNEL(libjit_elementselect_kernel_f, float,
-                            (LHS[idx] != 0.0) ? RHS[idx] : op3[idx])
 
 int8_t libjit_intlookuptable_kernel_i8(size_t idx, const int8_t *src,
                                        const int8_t *mapping) {
   return mapping[src[idx] + 128];
+}
+
+float libjit_elementselect_kernel_f(size_t idx, const int8_t *cond,
+                                    const float *LHS, const float *RHS) {
+  return (cond[idx] != 0) ? LHS[idx] : RHS[idx];
 }
 
 int8_t libjit_elementselect_kernel_i8(size_t idx, const int8_t *cond,
