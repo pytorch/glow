@@ -1,0 +1,43 @@
+name: "dce_test"
+op {
+  input: "fc_inputs"
+  input: "fc_w"
+  input: "fc_b"
+  output: "fc_result"
+  name: ""
+  type: "FC"
+}
+op {
+  input: "conv_inputs"
+  input: "conv_w"
+  input: "conv_b"
+  output: "conv_result"
+  type: "Conv"
+  arg {
+    name: "order"
+    s: "NHWC"
+  }
+  arg {
+    name: "kernel"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "group"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+}
+external_input: "fc_inputs"
+external_input: "fc_w"
+external_input: "fc_b"
+external_input: "conv_inputs"
+external_input: "conv_w"
+external_input: "conv_b"
+external_output: "conv_result"
