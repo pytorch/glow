@@ -480,8 +480,7 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Expected<bool> loadReshape(const OpType &op,
-                                   ArgumentDictionaryTy &dict) {
+  llvm::Error loadReshape(const OpType &op, ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
@@ -491,9 +490,9 @@ protected:
     // First look at input tensors, then at the "shape" attribute.
     std::vector<int64_t> requestedDims;
     if (op.input_size() > 1) {
-      // Non-constant shape tensors are unsupported by Glow.
-      if (!tensors_.count(op.input(1)))
-        return false;
+      if (!tensors_.count(op.input(1))) {
+        RETURN_ERR("Non-constant shape tensors are unsupported by Glow.");
+      }
       Tensor *constShapeTensor;
       ASSIGN_VALUE_OR_RETURN_ERR(constShapeTensor,
                                  getTensorByName(op.input(1)));
@@ -546,7 +545,7 @@ protected:
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
     nodeValueByName_[op.output(0)] = node->getResult();
-    return true;
+    return llvm::Error::success();
   }
 
   llvm::Error loadTranspose(const OpType &op, ArgumentDictionaryTy &dict,
@@ -874,12 +873,8 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Expected<bool> loadGatherOps(const std::string &typeName,
-                                     const OpType &op,
-                                     const ArgumentDictionaryTy &dict) {
-    if (typeName != "Gather" && typeName != "BatchGather") {
-      return false;
-    }
+  llvm::Error loadGatherOps(const std::string &typeName, const OpType &op,
+                            const ArgumentDictionaryTy &dict) {
 
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data,
@@ -893,7 +888,7 @@ protected:
       int axis;
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.find("axis")->second));
       if (axis != 0 && axis != 1) {
-        return false;
+        RETURN_ERR("Axis must be 0 or 1.");
       }
 
       batchDims = axis;
@@ -901,7 +896,7 @@ protected:
 
     Node *GN = G_.createGather(loadOperatorName(op), data, indices, batchDims);
     RETURN_IF_ERR(addNodeAsOutput(op, GN));
-    return true;
+    return llvm::Error::success();
   }
 
   llvm::Error loadGatherRanges(const std::string &typeName, const OpType &op,
@@ -986,7 +981,8 @@ protected:
       return true;
     }
     if (typeName == "Reshape") {
-      return loadReshape(op, dict);
+      RETURN_IF_ERR(loadReshape(op, dict));
+      return true;
     }
     if (typeName == "Flatten") {
       RETURN_IF_ERR(loadFlatten(op, dict));
@@ -1051,26 +1047,22 @@ protected:
       RETURN_IF_ERR(loadExpandDims(op, dict));
       return true;
     }
-
     if (typeName == "Clip") {
       RETURN_IF_ERR(loadClip(op, dict));
       return true;
     }
-
     if (typeName == "SparseToDense") {
       RETURN_IF_ERR(loadSparseToDense(op, dict));
       return true;
     }
-
     if (typeName == "SparseToDenseMask") {
       RETURN_IF_ERR(loadSparseToDenseMask(op, dict));
       return true;
     }
-
     if (typeName == "Gather" || typeName == "BatchGather") {
-      return loadGatherOps(typeName, op, dict);
+      RETURN_IF_ERR(loadGatherOps(typeName, op, dict));
+      return true;
     }
-
     if (typeName == "GatherRanges") {
       RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
       return true;
