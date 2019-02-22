@@ -1,3 +1,17 @@
+# Copyright (c) 2017-present, Facebook, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from caffe2.proto import caffe2_pb2
 from google.protobuf import text_format
 import argparse
@@ -21,7 +35,7 @@ def write_model_to_file(path, m):
 # Perform dead code elimination on predict_net removing any nodes that aren't
 # used for producing values in predict_net.external_output. Remove any nodes in
 # init_net that produce values that are no longer needed by predict_net.
-def dce(init_net, predict_net): 
+def dce(init_net, predict_net):
     num_predict_net_ops_original = len(predict_net.op)
     num_predict_net_inputs_original = len(predict_net.external_input)
 
@@ -38,7 +52,7 @@ def dce(init_net, predict_net):
         if num_live_predict_net_op_outputs == prev_num_live_predict_net_op_outputs:
             break
         prev_num_live_predict_net_op_outputs = num_live_predict_net_op_outputs
-    
+
     # Find the ops that are required to compute the tensors used during
     # computation of the outputs.
     live_predict_net_ops = []
@@ -51,19 +65,19 @@ def dce(init_net, predict_net):
     num_predict_net_ops_eliminated = len(predict_net.op) - len(live_predict_net_ops)
     del predict_net.op[:]
     predict_net.op.extend(live_predict_net_ops)
-    
+
     # Find the set of all used inputs tensors in predict_net.
     live_predict_net_op_inputs = set()
     for op in predict_net.op:
         for input_tensor in op.input:
             live_predict_net_op_inputs.add(input_tensor)
-    
+
     # Find the set of used external_inputs.
     live_predict_net_external_inputs = set()
     for external_input in predict_net.external_input:
         if external_input in live_predict_net_op_inputs:
             live_predict_net_external_inputs.add(external_input)
-    
+
     # Delete unused external_inputs in predict_net.
     num_predict_net_inputs_eliminated = len(predict_net.external_input) - len(live_predict_net_external_inputs)
     del predict_net.external_input[:]
@@ -85,7 +99,7 @@ def dce(init_net, predict_net):
         for output_tensor in op.output:
             if output_tensor in live_predict_net_external_inputs:
                 live_init_net_ops.append(op)
-    
+
     # Eliminate dead init_net ops
     num_init_net_ops_eliminated = len(init_net.op) - len(live_init_net_ops)
     del init_net.op[:]
@@ -96,12 +110,12 @@ def dce(init_net, predict_net):
     for op in init_net.op:
         for output_tensor in op.output:
             live_init_net_op_outputs.add(output_tensor)
-    
+
     live_init_net_external_outputs = set()
     for output_tensor in init_net.external_output:
         if output_tensor in live_init_net_op_outputs:
             live_init_net_external_outputs.add(output_tensor)
-    
+
     del init_net.external_output[:]
     init_net.external_output.extend(live_init_net_external_outputs)
 
@@ -118,15 +132,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     predict_net = read_model_from_file(args.input_predict_net_path)
-    
+
     init_net = None
     if args.input_init_net_path != None:
         init_net = read_model_from_file(args.input_init_net_path)
-    
+
     dce(init_net, predict_net)
 
     write_model_to_file(args.output_predict_net_path, predict_net)
-    
+
     if args.output_init_net_path != None:
         write_model_to_file(args.output_init_net_path, init_net)
-    
