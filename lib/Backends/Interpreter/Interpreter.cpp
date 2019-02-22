@@ -380,7 +380,3 @@ bool Interpreter::shouldLower(const Node *N) const {
     return false;
   return true;
 }
-
-namespace glow {
-Backend *createInterpreter() { return new Interpreter(); }
-} // namespace glow

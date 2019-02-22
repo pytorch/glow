@@ -359,7 +359,6 @@ if(GLOW_WITH_CPU)
                           IR
                           Provisioner
                           DeviceManager
-                          CPUDeviceManager
                           gtest
                           TestMain)
   target_include_directories(ProvisionerTest PUBLIC ${CMAKE_SOURCE_DIR}/lib/Backends/CPU)

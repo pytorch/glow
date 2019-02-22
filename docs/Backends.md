@@ -13,6 +13,11 @@ backend-specific nodes/instructions, they should be included in
 implementation of the backend is contained here. This includes derived classes
 for [`Backend`](#backend-abstract-class) and
 [`CompiledFunction`](#compiledfunction-abstract-class).
+Each backend needs to be registered through its own registration factory in
+order to be discovered by Glow, see [CPUBackend for example]
+(https://github.com/pytorch/glow/blob/master/lib/Backends/CPU/CPUFactory.cpp).
+And all factories must be linked to the Backends library, see
+[here](https://github.com/pytorch/glow/blob/master/lib/Backends/CMakeLists.txt).
 
 ### `Backend` Abstract Class
 
@@ -22,13 +27,13 @@ are two pure virtual functions all backends must implement:
 
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
 
-  - This function takes a `Function *F` to compile with default 
+  - This function takes a `Function *F` to compile with default
   [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
     [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
 
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F, CompilationOptions &opts) const;`
 
-  - This function takes a `Function *F` and the provided 
+  - This function takes a `Function *F` and the provided
   [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
     [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
 

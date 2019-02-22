@@ -40,14 +40,9 @@ static const unsigned char libjit_bc[] = {
 };
 static const size_t libjit_bc_size = sizeof(libjit_bc);
 
-namespace glow {
-Backend *createCPUBackend() { return new CPUBackend(); }
-} // namespace glow
-
 bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   // Note: For brevity below, "X ==> Y, Z" signifes that Node X is IRGen'd into
   // Instructions Y and Z.
-
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
