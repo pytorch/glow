@@ -108,6 +108,11 @@ public:
 
   /// Collects constants for runtime.
   void collectConstants(Module *module) override;
+
+  /// \returns the Kind of Backend used to compile this function.
+  virtual BackendKind getCompileBackendKind() const override {
+    return BackendKind::OpenCL;
+  }
   ///@}
 
   /// Returns IR function pointer.

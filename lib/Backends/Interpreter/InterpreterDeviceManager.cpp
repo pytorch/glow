@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "InterpreterDeviceManager.h"
+#include "Interpreter.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -46,6 +47,12 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                    << func.first << ".\n";
       readyCB(module, ResultCode::Failed);
       return;
+    }
+
+    if (func.second->getCompileBackendKind() != BackendKind::Interpreter) {
+      llvm::errs() << "Failed to add network: function " << func.first
+                   << " is not an InterpreterFunction.\n";
+      readyCB(module, ResultCode::Failed);
     }
   }
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "CPUDeviceManager.h"
+#include "CPUFunction.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -49,6 +50,12 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
                    << func.first << ".\n";
       readyCB(module, ResultCode::Failed);
       return;
+    }
+
+    if (func.second->getCompileBackendKind() != BackendKind::CPU) {
+      llvm::errs() << "Failed to add network: function " << func.first
+                   << " is not a CPUFunction.\n";
+      readyCB(module, ResultCode::Failed);
     }
   }
 

@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 
+#include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
@@ -67,6 +68,11 @@ public:
 
   /// Read trace events out of this func and write them into /p ctx
   void translateTraceEvents(Context *ctx) const override;
+
+  /// \returns the Kind of Backend used to compile this function.
+  virtual BackendKind getCompileBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
   ///@}
 };
 
