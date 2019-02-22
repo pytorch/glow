@@ -49,3 +49,30 @@ else()
     set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -march=native ${FAST_MATH_FLAGS}")
   endif()
 endif()
+
+# Specify whole archive flag for SRC library.
+# This is useful when static registration is performed in the SRC library and we'd like to ensure
+# linker does not clean unused objects.
+function(make_whole_archive DST SRC)
+  get_target_property(__src_target_type ${SRC} TYPE)
+  
+  # Depending on the type of the source library, we will set up the
+  # link command for the specific SRC library.
+  if (${__src_target_type} STREQUAL "STATIC_LIBRARY")
+    if(APPLE)
+      target_link_libraries(
+          ${DST} INTERFACE -Wl,-force_load,$<TARGET_FILE:${SRC}>)
+    elseif(MSVC)
+      # In MSVC, we will add whole archive in default.
+      target_link_libraries(
+          ${DST} INTERFACE -WHOLEARCHIVE:$<TARGET_FILE:${SRC}>)
+    else()
+      # Assume everything else is like gcc
+      target_link_libraries(${DST} INTERFACE
+        "-Wl,--whole-archive $<TARGET_FILE:${SRC}> -Wl,--no-whole-archive")
+      set_target_properties(${DST} PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")
+    endif()
+  else()
+    target_link_libraries(${DST} INTERFACE ${SRC})
+  endif()
+endfunction()

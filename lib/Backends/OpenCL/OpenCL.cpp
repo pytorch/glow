@@ -88,10 +88,6 @@ llvm::cl::opt<bool> clDoProfile("opencl-profile",
                                 llvm::cl::init(false),
                                 llvm::cl::cat(OpenCLBackendCat));
 
-namespace glow {
-Backend *createOCLBackend() { return new OCLBackend(); }
-} // namespace glow
-
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #ifndef NDEBUG
   // Determine the size of the log.

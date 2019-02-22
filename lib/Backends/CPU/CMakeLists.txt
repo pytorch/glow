@@ -88,6 +88,12 @@ target_link_libraries(CPUBackend
                         LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)
 
+add_library(CPUFactory
+              CPUFactory.cpp)
+target_link_libraries(CPUFactory
+                      PRIVATE
+                        CPUBackend)
+
 add_library(CPUDeviceManager
             CPUDeviceManager.cpp)
 target_link_libraries(CPUDeviceManager

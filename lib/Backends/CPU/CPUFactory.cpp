@@ -14,14 +14,10 @@
  * limitations under the License.
  */
 
-#include "glow/Backends/Backend.h"
+#include "CPUBackend.h"
 
 namespace glow {
 
-Backend *createBackend(BackendKind backendKind) {
-  auto *backend = FactoryRegistry<BackendKind, Backend>::get(backendKind);
-  GLOW_ASSERT(backend != nullptr && "Cannot find registered backend");
-  return backend;
-}
+REGISTER_GLOW_BACKEND_FACTORY(CPUFactory, CPUBackend, CPU);
 
 } // namespace glow

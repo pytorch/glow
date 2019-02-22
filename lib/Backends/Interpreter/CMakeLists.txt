@@ -17,11 +17,17 @@ add_library(InterpreterDeviceManager
 target_link_libraries(InterpreterDeviceManager
                       PRIVATE
                         Backend
-                        Backends
+                        Interpreter
                         Base
                         CodeGen
                         Graph
-                        Interpreter
                         IR
                         Optimizer
                         ThreadPool)
+
+add_library(InterpreterFactory
+              InterpreterFactory.cpp)
+target_link_libraries(InterpreterFactory
+                      PRIVATE
+                        Interpreter)
+

@@ -79,7 +79,6 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backend
                           Backends
-                          CPUDeviceManager
                           DeviceManager
                           ExecutionEngine
                           Graph
@@ -92,9 +91,9 @@ if(GLOW_WITH_CPU)
   target_link_libraries(resnet-runtime
                         PRIVATE
                           Backends
+                          ExecutionEngine
                           HostManager
                           Partitioner
-                          ExecutionEngine
                           Graph
                           Importer
                           Optimizer)

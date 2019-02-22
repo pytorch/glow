@@ -20,6 +20,7 @@
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Support/Register.h"
 
 #include <llvm/ADT/StringRef.h>
 
@@ -132,6 +133,19 @@ public:
   virtual std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const = 0;
 };
+
+/// Perform Backend Factory registration.
+#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass,               \
+                                      SpecificBackendKind)                     \
+  class FactoryName : public BaseFactory<BackendKind, Backend> {               \
+  public:                                                                      \
+    Backend *create() override { return new BackendClass(); }                  \
+    BackendKind getRegistrationKey() const override {                          \
+      return BackendKind::SpecificBackendKind;                                 \
+    }                                                                          \
+  };                                                                           \
+  static RegisterFactory<BackendKind, FactoryName, Backend>                    \
+      FactoryName##_REGISTERED;
 
 } // namespace glow
 

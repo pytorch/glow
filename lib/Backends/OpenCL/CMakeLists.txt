@@ -21,14 +21,14 @@ add_custom_command(
   DEPENDS include-bin CPURuntime
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl")
 
-add_library(OpenCL
+add_library(OpenCLBackend
             "${CMAKE_BINARY_DIR}/glow/kernels.inc"
             "${CMAKE_BINARY_DIR}/glow/kernels_fwd_conv.inc"
             "${CMAKE_BINARY_DIR}/glow/kernels_fwd_quantized_conv.inc"
             OpenCL.cpp
             Transforms.cpp)
 
-target_link_libraries(OpenCL
+target_link_libraries(OpenCLBackend
                       PRIVATE
                       Backend
                       Base
@@ -38,7 +38,7 @@ target_link_libraries(OpenCL
                       Optimizer
                       QuantizationBase)
 
-target_link_libraries(OpenCL
+target_link_libraries(OpenCLBackend
                       PUBLIC
                       OpenCL::OpenCL)
 
@@ -47,11 +47,16 @@ add_library(OpenCLDeviceManager
 target_link_libraries(OpenCLDeviceManager
                       PRIVATE
                         Backend
-                        Backends
+                        OpenCLBackend
                         Base
                         CodeGen
-                        OpenCL
                         Graph
                         IR
                         Optimizer
                         ThreadPool)
+
+add_library(OpenCLFactory
+              OpenCLFactory.cpp)
+target_link_libraries(OpenCLFactory
+                      PRIVATE
+                        OpenCLBackend)

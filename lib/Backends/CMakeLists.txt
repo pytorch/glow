@@ -1,17 +1,18 @@
 add_subdirectory(Interpreter)
 
 LIST(APPEND linked_device_managers InterpreterDeviceManager)
+LIST(APPEND linked_factories InterpreterFactory)
 
 if(GLOW_WITH_OPENCL)
   add_subdirectory(OpenCL)
-  LIST(APPEND linked_backends OpenCL)
+  LIST(APPEND linked_factories OpenCLFactory)
   LIST(APPEND linked_device_managers OpenCLDeviceManager)
 endif()
 
 
 if(GLOW_WITH_CPU)
   add_subdirectory(CPU)
-  LIST(APPEND linked_backends CPUBackend)
+  LIST(APPEND linked_factories CPUFactory)
   LIST(APPEND linked_device_managers CPUDeviceManager)
 endif()
 
@@ -27,16 +28,18 @@ target_link_libraries(Backend
                         Graph
                         IR
                         Optimizer)
-
 add_library(Backends
               Backends.cpp)
 target_link_libraries(Backends
                       PRIVATE
                         Base
                         Graph
-                        Interpreter
-                        Optimizer
-                        ${linked_backends})
+                        Optimizer)
+
+FOREACH(factory ${linked_factories})
+  make_whole_archive(Backends ${factory})
+  target_link_libraries(Backends PRIVATE ${factory})
+ENDFOREACH()
 
 add_library(DeviceManager
               DeviceManagers.cpp)
@@ -45,7 +48,7 @@ target_link_libraries(DeviceManager
                         ThreadPool
                         ${linked_device_managers}
                       PRIVATE
-                        Backend  
+                        Backend
                         Backends
                         Graph
                         ThreadPool)
