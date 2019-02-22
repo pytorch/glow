@@ -114,6 +114,12 @@ CompiledFunction &ExecutionEngine::getCompiledFunction(llvm::StringRef name) {
   return *functionIt->second;
 }
 
+void ExecutionEngine::insertCompiledFunction(
+    llvm::StringRef name, std::unique_ptr<CompiledFunction> func) {
+  assert(compiledFunctions_.find(name) == compiledFunctions_.end());
+  compiledFunctions_[name] = std::move(func);
+}
+
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
                     size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
                     llvm::ArrayRef<Tensor *> inputs) {

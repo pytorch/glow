@@ -25,14 +25,20 @@
 
 using namespace glow;
 std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
+  TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  return compileIR(std::move(IR));
+  auto compiledFunc = compileIR(std::move(IR));
+  compiledFunc->setTraceInfo(std::move(traceInfo));
+  return compiledFunc;
 }
 
 std::unique_ptr<CompiledFunction>
 Interpreter::compileWithoutConstants(Function *F) const {
+  TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  return compileIRWithoutConstants(std::move(IR));
+  auto compiledFunc = compileIRWithoutConstants(std::move(IR));
+  compiledFunc->setTraceInfo(std::move(traceInfo));
+  return compiledFunc;
 }
 
 std::unique_ptr<CompiledFunction>
@@ -57,8 +63,9 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 
 std::unique_ptr<CompiledFunction>
 Interpreter::instrumentAndCompile(Function *F) const {
+  TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  auto traceInfo = autoInstrument(IR.get(), getTraceEventDataSize());
+  autoInstrument(traceInfo, IR.get());
   auto compiledFunc = compileIR(std::move(IR));
   compiledFunc->setTraceInfo(std::move(traceInfo));
   return compiledFunc;
