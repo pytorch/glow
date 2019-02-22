@@ -30,7 +30,7 @@ void Backend::optimizeFunction(CompilationMode mode, Function *F) {
   ::glow::optimize(F, mode);
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, *this);
+  ::glow::lower(F, /* loweredMap */ nullptr, this);
 
   // Optimize the graph again.
   ::glow::optimize(F, mode);

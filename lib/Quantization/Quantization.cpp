@@ -101,10 +101,46 @@ protected:
       float scaleWeights = weights.getType()->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
                              scaleInput * scaleWeights, TQP.offset);
-    } else {
-      return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
-                             TQP.offset);
+    } else if (use.getKind() == glow::Kinded::Kind::BatchedAddNodeKind &&
+               idx == BatchedAddNode::SliceIdx) {
+      // Check if this BatchedAdd was lowered from a FullyConnectedNode. If so
+      // then we need to calculate the Int32QTy scale/offset and use that
+      // instead of Int8QTy.
+      auto *baN = llvm::cast<BatchedAddNode>(&use);
+      NodeValue batch = baN->getBatch();
+
+      // Look for the set of NodeNameAndKinds corresponding to the
+      // BatchedAdd. If one exists, this means it was lowered.
+      auto it = loweredMap_.find(NodeQuantizationInfo::generateNodeOutputName(
+          baN->getName(), BatchedAddNode::ResultIdx));
+      if (it != loweredMap_.end()) {
+        // Look through the set looking to see if the BatchedAdd was lowered
+        // from a FullyConnectedNode.
+        auto &set = it->getValue();
+        for (auto i = set.begin(), e = set.end(); i != e; ++i) {
+          // If it came from a FullyConnected node, then we need to backtrack to
+          // the matrix multiplication to calculate the new scale for the
+          // batched add slice.
+          if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
+            // Batch is always quantized before Slice, which must be a MatMul if
+            // this was lowered from a FullyConnectedNode.
+            assert(llvm::cast<QuantizeNode>(batch) &&
+                   "Batch is quantized before Slice; must be QuantizeNode.");
+            QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
+            assert(llvm::cast<MatMulNode>(QN->getInput()) &&
+                   "MM must be input of BA if lowered from FC.");
+            MatMulNode *MM = llvm::cast<MatMulNode>(QN->getInput());
+            float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
+            float scaleWeights =
+                getTargetTypeForOutput(MM->getRHS())->getScale();
+            return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
+                                   scaleInput * scaleWeights, TQP.offset);
+          }
+        }
+      }
     }
+    return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
+                           TQP.offset);
   }
 
   /// \see FunctionConverter::canConvert.
@@ -377,6 +413,11 @@ private:
   /// For debug, keep track of the last node that we changed because of IR
   /// constraints.
   Node *lastMorphedNodeWithTypeChanges;
+  /// A map between quantization profiling names of NodeValues that were lowered
+  /// from each other. Maps to a set of names of NodeValues and their NodeKinds
+  /// that were replaced by the NodeValue (whose output name is the key) that
+  /// replaced them.
+  const LoweredInfoMap &loweredMap_;
 
 public:
   /// Creates a function quantizer for \p F using the quantization
@@ -387,10 +428,11 @@ public:
   FunctionQuantizer(Function &F, const ExecutionEngine &EE,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     ElemKind quantizationPrecision,
-                    const KindSet &doNotQuantizeKinds)
+                    const KindSet &doNotQuantizeKinds,
+                    const LoweredInfoMap &loweredMap)
       : FunctionConverter(F), mod_(*F.getParent()), EE_(EE),
         quantizationPrecision_(quantizationPrecision),
-        doNotQuantizeKinds_(doNotQuantizeKinds) {
+        doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
@@ -469,7 +511,7 @@ namespace quantization {
 /// quantizationInfos along with \p TQP.
 static void
 findAndInsertLoweredInfos(llvm::StringRef currName,
-                          const LoweredNamesMap &loweredMap,
+                          const LoweredInfoMap &loweredMap,
                           std::vector<NodeQuantizationInfo> &quantizationInfos,
                           const TensorQuantizationParams &TQP) {
   auto currSetIt = loweredMap.find(currName);
@@ -485,7 +527,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
   // and then recursively find and insert other names in case currOrigName was
   // also lowered from a previous node.
   for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
-    llvm::StringRef currOrigName = *i;
+    llvm::StringRef currOrigName = i->getName();
     quantizationInfos.emplace_back(currOrigName, TQP);
     findAndInsertLoweredInfos(currOrigName, loweredMap, quantizationInfos, TQP);
   }
@@ -493,7 +535,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
 
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(Context &ctx, const Function *F,
-                              const LoweredNamesMap &loweredMap, Schema schema,
+                              const LoweredInfoMap &loweredMap, Schema schema,
                               ElemKind quantizationPrecision) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
@@ -534,8 +576,8 @@ Function *
 quantizeFunction(const ExecutionEngine &EE,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  ElemKind quantizationPrecision, Function *F,
-                 llvm::StringRef newFuncName, const KindSet &doNotQuantizeKinds,
-                 bool enableRowwise) {
+                 const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
+                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
   assert((quantizationPrecision == ElemKind::Int8QTy ||
           quantizationPrecision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");
@@ -548,7 +590,7 @@ quantizeFunction(const ExecutionEngine &EE,
   Function *G = F->clone(newFuncName);
 
   FunctionQuantizer quantizer(*G, EE, quantizationInfos, quantizationPrecision,
-                              doNotQuantizeKinds);
+                              doNotQuantizeKinds, loweredMap);
   quantizer.convert();
   if (enableRowwise) {
     quantizer.enableRowwise();

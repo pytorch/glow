@@ -31,7 +31,7 @@ using llvm::dyn_cast;
 /// optionally maps from \p newNV to \p oldNV in \p loweredMap. This map can be
 /// used to determine the NodeOutputNames of NodeValues that were already
 /// created.
-static void replaceAllUsesOfWith(LoweredNamesMap *loweredMap, NodeValue oldNV,
+static void replaceAllUsesOfWith(LoweredInfoMap *loweredMap, NodeValue oldNV,
                                  NodeValue newNV) {
   oldNV.replaceAllUsesOfWith(newNV);
 
@@ -39,14 +39,12 @@ static void replaceAllUsesOfWith(LoweredNamesMap *loweredMap, NodeValue oldNV,
     return;
   }
 
-  std::string oldOutputName = NodeQuantizationInfo::generateNodeOutputName(
-      oldNV.getNode()->getName(), oldNV.getResNo());
   std::string newOutputName = NodeQuantizationInfo::generateNodeOutputName(
       newNV.getNode()->getName(), newNV.getResNo());
-  (*loweredMap)[newOutputName].insert(oldOutputName);
+  (*loweredMap)[newOutputName].insert(NodeNameAndKind(oldNV));
 }
 
-static void lowerAddGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerAddGradNode(Function *F, LoweredInfoMap *loweredMap,
                              const AddGradNode &node) {
   /// The chain rule for addition:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
@@ -56,7 +54,7 @@ static void lowerAddGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), outG);
 }
 
-static void lowerMulGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerMulGradNode(Function *F, LoweredInfoMap *loweredMap,
                              const MulGradNode &node) {
   /// The chain rule for multiplication:
   /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
@@ -71,7 +69,7 @@ static void lowerMulGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), rhsResult);
 }
 
-static void lowerSubGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerSubGradNode(Function *F, LoweredInfoMap *loweredMap,
                              const SubGradNode &node) {
   /// The chain rule for subtraction:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
@@ -82,7 +80,7 @@ static void lowerSubGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedLHS(), outG);
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), sub);
 }
-static void lowerDivGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerDivGradNode(Function *F, LoweredInfoMap *loweredMap,
                              const DivGradNode &node) {
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
@@ -104,13 +102,13 @@ static void lowerDivGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), rhsResult);
 }
 
-static void lowerRegressionNode(LoweredNamesMap *loweredMap,
+static void lowerRegressionNode(LoweredInfoMap *loweredMap,
                                 const RegressionNode &node) {
   auto input = node.getInput();
   replaceAllUsesOfWith(loweredMap, node.getResult(), input);
 }
 
-static void lowerRegressionGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerRegressionGradNode(Function *F, LoweredInfoMap *loweredMap,
                                     const RegressionGradNode &node) {
   auto outG = node.getInput();
 
@@ -121,7 +119,7 @@ static void lowerRegressionGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedExpected(), expG);
 }
 
-static void lowerFullyConnectedNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerFullyConnectedNode(Function *F, LoweredInfoMap *loweredMap,
                                     const FullyConnectedNode &FC) {
   auto *X = F->createFlatten("fc.1X", FC.getInput(), 1);
 
@@ -140,8 +138,7 @@ static void lowerFullyConnectedNode(Function *F, LoweredNamesMap *loweredMap,
   }
 }
 
-static void lowerFullyConnectedGradNode(Function *F,
-                                        LoweredNamesMap *loweredMap,
+static void lowerFullyConnectedGradNode(Function *F, LoweredInfoMap *loweredMap,
                                         const FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
@@ -164,7 +161,7 @@ static void lowerFullyConnectedGradNode(Function *F,
   replaceAllUsesOfWith(loweredMap, FCG.getGradOfInputNamedBias(), db);
 }
 
-static void lowerReluGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerReluGradNode(Function *F, LoweredInfoMap *loweredMap,
                               const ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
@@ -176,7 +173,7 @@ static void lowerReluGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, RG.getGradOfInputNamedInput(), res);
 }
 
-static void lowerTanhGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerTanhGradNode(Function *F, LoweredInfoMap *loweredMap,
                               const TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
@@ -194,7 +191,7 @@ static void lowerTanhGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, THG.getGradOfInputNamedInput(), grad);
 }
 
-static void lowerSigmoidGradNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerSigmoidGradNode(Function *F, LoweredInfoMap *loweredMap,
                                  const SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
@@ -213,7 +210,7 @@ static void lowerSigmoidGradNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, THG.getGradOfInputNamedInput(), grad);
 }
 
-static void lowerReluNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerReluNode(Function *F, LoweredInfoMap *loweredMap,
                           const ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
@@ -222,7 +219,7 @@ static void lowerReluNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, R.getResult(), relu);
 }
 
-static void lowerPadNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerPadNode(Function *F, LoweredInfoMap *loweredMap,
                          const PadNode &P) {
   auto *outputType = P.getResult().getType();
   auto dims = outputType->dims();
@@ -252,7 +249,7 @@ static void lowerPadNode(Function *F, LoweredNamesMap *loweredMap,
 
 /// Lower a quantized Log by creating an IntLookupTable with a new mapping given
 /// the input and output quantization parameters.
-static void lowerQuantizedLogNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerQuantizedLogNode(Function *F, LoweredInfoMap *loweredMap,
                                   const LogNode *LN) {
   TypeRef outTy = LN->getResult().getType();
   TypeRef inTy = LN->getInput().getType();
@@ -280,7 +277,7 @@ static void lowerQuantizedLogNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, LN->getResult(), ILT);
 }
 
-static void lowerQuantizedTanhNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerQuantizedTanhNode(Function *F, LoweredInfoMap *loweredMap,
                                    const TanhNode *TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
@@ -314,7 +311,7 @@ static void lowerQuantizedTanhNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, TN->getResult(), rescaleOutputNode);
 }
 
-static void lowerQuantizedSigmoidNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerQuantizedSigmoidNode(Function *F, LoweredInfoMap *loweredMap,
                                       const SigmoidNode *SN) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
@@ -348,7 +345,7 @@ static void lowerQuantizedSigmoidNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, SN->getResult(), rescaleOutputNode);
 }
 
-static void lowerSGDNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerSGDNode(Function *F, LoweredInfoMap *loweredMap,
                          const SGDNode &SGD) {
   NodeValue W = SGD.getWeight();
   NodeValue G = SGD.getGradient();
@@ -415,8 +412,7 @@ static void lowerSGDNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, SGD.getUpdatedWeight(), newW);
 }
 
-static void lowerBatchNormalizationNode(Function *F,
-                                        LoweredNamesMap *loweredMap,
+static void lowerBatchNormalizationNode(Function *F, LoweredInfoMap *loweredMap,
                                         const BatchNormalizationNode &BN) {
   auto in = BN.getInput();
   auto out = BN.getResult();
@@ -461,7 +457,7 @@ static void lowerBatchNormalizationNode(Function *F,
 }
 
 static void lowerMeanVarNormalizationNode(Function *F,
-                                          LoweredNamesMap *loweredMap,
+                                          LoweredInfoMap *loweredMap,
                                           const MeanVarNormalizationNode &MVN) {
   auto in = MVN.getInput();
 
@@ -540,7 +536,7 @@ static void lowerMeanVarNormalizationNode(Function *F,
 }
 
 static void lowerBatchNormalizationGradNode(Function *F,
-                                            LoweredNamesMap *loweredMap,
+                                            LoweredInfoMap *loweredMap,
                                             BatchNormalizationGradNode &BNG) {
   auto inW = BNG.getInput();
   auto outG = BNG.getGradOfOriginalOutputNamedResult();
@@ -637,7 +633,7 @@ static void lowerBatchNormalizationGradNode(Function *F,
   replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedVar(), zeroSplat);
 }
 
-static void lowerGroupConvolutionNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerGroupConvolutionNode(Function *F, LoweredInfoMap *loweredMap,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
   // a Concatenation of smaller dimension Convolutions. Input channels will be
@@ -681,7 +677,7 @@ static void lowerGroupConvolutionNode(Function *F, LoweredNamesMap *loweredMap,
 }
 
 static void lowerSigmoidCrossEntropyWithLogitsNode(
-    Function *F, LoweredNamesMap *loweredMap,
+    Function *F, LoweredInfoMap *loweredMap,
     const SigmoidCrossEntropyWithLogitsNode &SCEL) {
   // Following Caffe2 implementation closely to lower this Node.
   // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
@@ -722,7 +718,7 @@ static void lowerSigmoidCrossEntropyWithLogitsNode(
 }
 
 /// Lower Tile nodes to InsertTensor nodes with correct axis and count.
-static void lowerTileNode(Function *F, LoweredNamesMap *loweredMap,
+static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
                           const TileNode &TN) {
   auto input = TN.getInput();
 
@@ -736,79 +732,79 @@ static void lowerTileNode(Function *F, LoweredNamesMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, TN.getResult(), IN);
 }
 
-void glow::lower(Function *F, const Backend &B, LoweredNamesMap *loweredMap) {
+/// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
+/// log the lowering info of what was replaced by what via output names.
+static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
+  if (auto *RN = dyn_cast<RegressionNode>(node)) {
+    lowerRegressionNode(loweredMap, *RN);
+  } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
+    lowerRegressionGradNode(F, loweredMap, *RGN);
+  } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
+    lowerAddGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
+    lowerMulGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
+    lowerSubGradNode(F, loweredMap, *EMG);
+  } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
+    lowerDivGradNode(F, loweredMap, *EMG);
+  } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
+    lowerFullyConnectedNode(F, loweredMap, *FC);
+  } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
+    lowerFullyConnectedGradNode(F, loweredMap, *FCG);
+  } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
+    lowerReluGradNode(F, loweredMap, *RG);
+  } else if (auto *R = dyn_cast<ReluNode>(node)) {
+    lowerReluNode(F, loweredMap, *R);
+  } else if (auto *P = dyn_cast<PadNode>(node)) {
+    lowerPadNode(F, loweredMap, *P);
+  } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
+    lowerTanhGradNode(F, loweredMap, *THG);
+  } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
+    lowerSigmoidGradNode(F, loweredMap, *SG);
+  } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
+    lowerSGDNode(F, loweredMap, *SGD);
+  } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+    lowerBatchNormalizationNode(F, loweredMap, *BN);
+  } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
+    lowerMeanVarNormalizationNode(F, loweredMap, *MVN);
+  } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
+    lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
+  } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
+    lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
+  } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
+    if (CN->getGroup() > 1)
+      lowerGroupConvolutionNode(F, loweredMap, *CN);
+  } else if (auto *SN = dyn_cast<SigmoidNode>(node)) {
+    if (SN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedSigmoidNode(F, loweredMap, SN);
+    }
+  } else if (auto *TN = dyn_cast<TanhNode>(node)) {
+    if (TN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedTanhNode(F, loweredMap, TN);
+    }
+  } else if (auto *LN = dyn_cast<LogNode>(node)) {
+    if (LN->getResult().getType()->isQuantizedType()) {
+      lowerQuantizedLogNode(F, loweredMap, LN);
+    }
+  } else if (auto *TN = dyn_cast<TileNode>(node)) {
+    lowerTileNode(F, loweredMap, *TN);
+  }
+}
+
+void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B) {
   auto &nodes = F->getNodes();
-
-  // If loweredMap is not a nullptr then we should lower everything. loweredMap
-  // should then map from output names of NodeValues to the output names of
-  // their origin NodeValues.
-  const bool lowerEverything = loweredMap != nullptr;
-
   for (auto &N : nodes) {
-    auto *node = &N;
-    if (!lowerEverything && !B.shouldLower(node)) {
+    if (B && !B->shouldLower(&N)) {
       continue;
     }
-    if (auto *RN = dyn_cast<RegressionNode>(node)) {
-      lowerRegressionNode(loweredMap, *RN);
-    } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
-      lowerRegressionGradNode(F, loweredMap, *RGN);
-    } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
-      lowerAddGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
-      lowerMulGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
-      lowerSubGradNode(F, loweredMap, *EMG);
-    } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
-      lowerDivGradNode(F, loweredMap, *EMG);
-    } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
-      lowerFullyConnectedNode(F, loweredMap, *FC);
-    } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
-      lowerFullyConnectedGradNode(F, loweredMap, *FCG);
-    } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
-      lowerReluGradNode(F, loweredMap, *RG);
-    } else if (auto *R = dyn_cast<ReluNode>(node)) {
-      lowerReluNode(F, loweredMap, *R);
-    } else if (auto *P = dyn_cast<PadNode>(node)) {
-      lowerPadNode(F, loweredMap, *P);
-    } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
-      lowerTanhGradNode(F, loweredMap, *THG);
-    } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
-      lowerSigmoidGradNode(F, loweredMap, *SG);
-    } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
-      lowerSGDNode(F, loweredMap, *SGD);
-    } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-      lowerBatchNormalizationNode(F, loweredMap, *BN);
-    } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
-      lowerMeanVarNormalizationNode(F, loweredMap, *MVN);
-    } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
-      lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
-    } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
-      lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
-    } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-      if (CN->getGroup() > 1)
-        lowerGroupConvolutionNode(F, loweredMap, *CN);
-    } else if (auto *SN = dyn_cast<SigmoidNode>(node)) {
-      if (SN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedSigmoidNode(F, loweredMap, SN);
-      }
-    } else if (auto *TN = dyn_cast<TanhNode>(node)) {
-      if (TN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedTanhNode(F, loweredMap, TN);
-      }
-    } else if (auto *LN = dyn_cast<LogNode>(node)) {
-      if (LN->getResult().getType()->isQuantizedType()) {
-        lowerQuantizedLogNode(F, loweredMap, LN);
-      }
-    } else if (auto *TN = dyn_cast<TileNode>(node)) {
-      lowerTileNode(F, loweredMap, *TN);
-    }
+    lowerNode(F, &N, loweredMap);
   }
 
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {
     auto cur = &*(it++);
-    if (dyn_cast<SGDNode>(cur))
+    if (dyn_cast<SGDNode>(cur)) {
       F->eraseNode(cur);
+    }
   }
 
   // Remove nodes that were lowered.

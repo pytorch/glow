@@ -245,7 +245,7 @@ void Loader::compile(Context &ctx) {
     // generateNodeQuantizationInfos() when writing out the profile, allowing
     // for both lowered and unlowered NodeValues to find their quantization
     // parameters.
-    ::lower(F_, *EE_.getBackend(), &loweredMap_);
+    ::lower(F_, &loweredMap_);
 
     // Instrument the graph to capture profiles for nodes' outputs.
     F_ = ::profileQuantization(ctx, F_);
@@ -272,7 +272,7 @@ void Loader::compile(Context &ctx) {
     // lowered, however all lowered and unlowered components have a profile, and
     // so the backend can lower however it prefers and always find all of its
     // NodeValue's quantization parameters.
-    ::lower(F_, *EE_.getBackend());
+    ::lower(F_, &loweredMap_, EE_.getBackend());
 
     auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
@@ -285,7 +285,7 @@ void Loader::compile(Context &ctx) {
 
     // Quantize the graph based on the captured profile.
     auto *Q = quantization::quantizeFunction(
-        EE_, quantizationInfos, quantizationPrecision, F_, oldName,
+        EE_, quantizationInfos, quantizationPrecision, F_, loweredMap_, oldName,
         keepOriginalPrecisionForNodes, enableRowwiseOpt);
 
     // Erase the original function so that the redundant variables that are only

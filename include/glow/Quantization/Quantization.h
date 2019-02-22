@@ -28,12 +28,6 @@ namespace glow {
 
 class ExecutionEngine;
 
-/// Used to keep track of the origin of lowered Nodes via output names as
-/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
-/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
-/// is a key which maps to a set of names which contains the output name of Y.
-using LoweredNamesMap = llvm::StringMap<std::set<std::string>>;
-
 /// Tensor quantization parameters for a given node.
 struct NodeQuantizationInfo {
   std::string nodeOutputName_;
@@ -56,6 +50,32 @@ struct NodeQuantizationInfo {
   }
 };
 
+/// Struct containing the output name string and node kind for use in the
+/// LoweredInfoMap for keeping track of lowered node info.
+struct NodeNameAndKind : public Named, public Kinded {
+public:
+  NodeNameAndKind(const NodeValue &NV)
+      : Named(NodeQuantizationInfo::generateNodeOutputName(
+            NV.getNode()->getName(), NV.getResNo())),
+        Kinded(NV.getNode()->getKind()) {}
+};
+
+/// Overload < operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator<(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() < y.getName();
+}
+
+/// Overload == operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() == y.getName();
+}
+
+/// Used to keep track of the origin of lowered Nodes via output names as
+/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
+/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
+/// is a key which maps to a set of names which contains the output name of Y.
+using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
+
 namespace quantization {
 
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
@@ -66,7 +86,7 @@ namespace quantization {
 /// map is used to generate infos for the original unlowered NodeValues which no
 /// longer exist in \p F.
 std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    Context &ctx, const Function *F, const LoweredNamesMap &loweredMap = {},
+    Context &ctx, const Function *F, const LoweredInfoMap &loweredMap = {},
     Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
@@ -82,13 +102,12 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
 /// \p enableRowwise is true, during quantization, all quantized FullyConnected
 /// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
 /// quantized function.
-Function *
-quantizeFunction(const ExecutionEngine &EE,
-                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 ElemKind quantizationPrecision, Function *F,
-                 llvm::StringRef newFuncName = "",
-                 const KindSet &doNotQuantizeKinds = {},
-                 bool enableRowwise = false);
+Function *quantizeFunction(
+    const ExecutionEngine &EE,
+    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+    ElemKind quantizationPrecision, Function *F,
+    const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",
+    const KindSet &doNotQuantizeKinds = {}, bool enableRowwise = false);
 
 } // namespace quantization
 } // namespace glow

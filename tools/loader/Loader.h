@@ -42,9 +42,10 @@ class Loader {
   /// Function containing the model.
   Function *F_{nullptr};
   /// A map between quantization profiling names of NodeValues that were lowered
-  /// from each other. Maps to a set of NodeValues that were replaced by the
-  /// NodeValue (key) that replaced them.
-  LoweredNamesMap loweredMap_;
+  /// from each other. Maps to a set of names of NodeValues and their NodeKinds
+  /// that were replaced by the NodeValue (whose output name is the key) that
+  /// replaced them.
+  LoweredInfoMap loweredMap_;
 
 public:
   /// Getter for the Function.

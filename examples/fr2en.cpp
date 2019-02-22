@@ -131,7 +131,7 @@ struct Model {
   Placeholder *seqLength_;
   Placeholder *output_;
   Context ctx;
-  LoweredNamesMap loweredMap_;
+  LoweredInfoMap loweredMap_;
 
   void loadLanguages();
   void loadEncoder();
@@ -153,7 +153,7 @@ struct Model {
 
       // Lower everything for profile and log lowered info in loweredMap_. Used
       // later when creating quantization infos.
-      ::lower(F_, *EE_.getBackend(), &loweredMap_);
+      ::lower(F_, &loweredMap_);
 
       // Instrument the graph to capture profiles for nodes' outputs.
       F_ = glow::profileQuantization(ctx, F_);
@@ -167,13 +167,13 @@ struct Model {
       glow::optimize(F_, CompilationMode::Infer);
 
       // Lower however the backend prefers.
-      ::lower(F_, *EE_.getBackend());
+      ::lower(F_, &loweredMap_, EE_.getBackend());
 
       auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
 
       // Quantize the graph based on the captured profile.
-      auto *Q = glow::quantization::quantizeFunction(EE_, quantizationInfos,
-                                                     ElemKind::Int8QTy, F_);
+      auto *Q = glow::quantization::quantizeFunction(
+          EE_, quantizationInfos, ElemKind::Int8QTy, F_, loweredMap_);
 
       // Erase the original function so that the redundant variables that are
       // only referenced by the original function will be removed.

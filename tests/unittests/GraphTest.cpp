@@ -87,9 +87,10 @@ TEST(Graph, simpleTestConv) {
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
-  M.generateIR(MockBackend());
+  M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }
@@ -109,9 +110,10 @@ TEST(Graph, simpleTestConv3D) {
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
-  M.generateIR(MockBackend());
+  M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }
@@ -132,7 +134,8 @@ TEST(Graph, simpleTestConvCustomLower) {
   F->createSave("Save", K);
   F->dump();
   F->dumpDAG();
-  lower(F, MockBackendCustomIRGen());
+  auto backend = MockBackendCustomIRGen();
+  lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(MockBackendCustomIRGen());
   M.dump();
@@ -162,11 +165,12 @@ TEST(Graph, float16Conv) {
   EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
 
   IRFunction M(F);
 
-  M.generateIR(MockBackend());
+  M.generateIR(backend);
   EXPECT_GT(M.getInstrs().size(), 0);
   auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
                              [](const Instruction &inst) -> bool {
@@ -196,7 +200,8 @@ TEST(Graph, float16BatchNorm) {
   EXPECT_EQ(BN->getMean().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(BN->getVar().getElementType(), ElemKind::Float16Ty);
 
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
 
   EXPECT_TRUE(std::all_of(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
@@ -333,9 +338,10 @@ TEST(Graph, simpleTestFC) {
   F->createSave("Save", O);
   F->dump();
   F->dumpDAG();
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
-  M.generateIR(MockBackend());
+  M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
 }
@@ -368,7 +374,8 @@ TEST(Graph, QuantizationProfileNodes) {
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
   F = ::glow::profileQuantization(ctx, F);
-  lower(F, MockBackend());
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Infer);
 
   size_t numberOfProfileNodes =
@@ -623,7 +630,7 @@ unsigned getConvNodeSize(BackendKind kind) {
   F->createSave("save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
-  lower(F, *backend);
+  lower(F, /* loweredMap */ nullptr, backend.get());
 
   unsigned count = 0;
   for (auto &n : F->getNodes()) {
