@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H
 #define GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H
 
+#include <cstdlib>
 #include <stdint.h>
 #include <string.h>
 
@@ -122,5 +123,14 @@ inline int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
   // of overflow and the result will be clipped.
   return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
+
+#ifdef _WIN32
+#define libjit_aligned_malloc(p, a, s)                                         \
+  (((*(p)) = _aligned_malloc((s), (a))), *(p) ? 0 : errno)
+#define libjit_aligned_free(p) _aligned_free(p)
+#else
+#define libjit_aligned_malloc(p, a, s) posix_memalign(p, a, s)
+#define libjit_aligned_free(p) free(p)
+#endif
 
 #endif // GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H

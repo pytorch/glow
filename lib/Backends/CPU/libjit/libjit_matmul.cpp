@@ -225,7 +225,8 @@ template <bool pack>
 void __attribute__((noinline))
 libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
                     const float *b, size_t ldb, float *c, size_t ldc) {
-  float packedB[kc * nc] __attribute__((aligned(64)));
+  float *packedB;
+  libjit_aligned_malloc((void **)&packedB, 64, kc * nc);
 
   for (size_t p = 0; p < k; p += kc) {
     size_t pb = MIN(k - p, kc);
@@ -241,6 +242,8 @@ libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
       }
     }
   }
+
+  libjit_aligned_free(packedB);
 }
 
 #undef C
