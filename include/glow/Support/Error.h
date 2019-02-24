@@ -186,6 +186,19 @@ private:
       RETURN_ERR(__VA_ARGS__);                                                 \
     }                                                                          \
   } while (0)
+
+/// Marks the Error \p err as as checked. \returns true if it contains an
+/// error value and prints the message in the error value, returns false
+/// otherwise.
+inline bool errorToBool(llvm::Error err) {
+  if (static_cast<bool>(err)) {
+    llvm::errs() << "Converting error to boolean: "
+                 << llvm::toString(std::move(err)) << "\n";
+    return true;
+  }
+  return false;
+}
+
 } // end namespace glow
 
 #endif // GLOW_SUPPORT_ERROR_H
