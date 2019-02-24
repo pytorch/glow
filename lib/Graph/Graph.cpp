@@ -2111,6 +2111,41 @@ Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
   return createBatchedReduceAdd(name.str() + ".bra", MN, 1);
 }
 
+Node *Function::createElementwiseLinear(llvm::StringRef name, NodeValue X,
+                                        NodeValue w, NodeValue b,
+                                        unsigned axis) {
+  auto XDims = X.dims();
+  auto wDims = w.dims();
+  auto bDims = b.dims();
+
+  // Suppress release mode unused variable warnings.
+  (void)wDims;
+  (void)bDims;
+
+  // Check that the inputs are sensible.
+  assert(XDims.size() == 2 && "X must be 2D");
+  assert((axis == 0 || axis == 1) && "axis must be 0 or 1");
+  assert(wDims.size() == 1 && "w must be 1D");
+  assert(bDims.size() == 1 && "b must be 1D");
+  assert(wDims[0] == XDims[axis] &&
+         "size of w must match input dimension of X");
+  assert(bDims[0] == XDims[axis] &&
+         "size of b must match input dimension of X");
+
+  // Broadcast w and b so that they have the same dimensions as X.
+  auto *broadcastW =
+      createBroadcast(name.str() + ".broadcastW", w, XDims, axis);
+  auto *broadcastB =
+      createBroadcast(name.str() + ".broadcastB", b, XDims, axis);
+
+  // Implement the elementwise linear operation by multiplying X elementwise
+  // with broadcasted w and adding broadcasted b elementwise.
+  auto *wX = createMul(name.str() + ".mul", broadcastW, X);
+  auto *out = createAdd(name.str() + ".add", wX, broadcastB);
+
+  return out;
+}
+
 void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,

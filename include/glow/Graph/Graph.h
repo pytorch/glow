@@ -339,6 +339,15 @@ public:
   /// \p Y are 2D. \returns either the Mul or BatchedReduceAdd node.
   Node *createDotProduct(llvm::StringRef name, NodeValue X, NodeValue Y);
 
+  /// Create a node that implements the elementwise linear operator. \p X is
+  /// 2D and \p w and \p b are 1D. \p w and \p b are broadcasted to match the
+  /// shape of \p X and then the output is computed by multiplying \p X and
+  /// broadcasted \p w and adding broadcasted \p b. \returns the
+  /// ElementwiseLinearNode. \p axis indicates the axis of the inputs (the other
+  /// axis of \p X is assumed to be the batch index).
+  Node *createElementwiseLinear(llvm::StringRef name, NodeValue X, NodeValue w,
+                                NodeValue b, unsigned axis);
+
   /// Create a ReLU node with the given \p name and \p input.
   /// Result type will be implicitly set based on the \p input type.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input);

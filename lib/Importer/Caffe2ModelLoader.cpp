@@ -843,6 +843,29 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "ElementwiseLinear") {
+    NodeValue X, w, b;
+
+    // If the axis argument does not exist in the protobuf, the default
+    // value should be 1.
+    unsigned axis = 1;
+
+    ASSIGN_VALUE_OR_RETURN_ERR(X,
+                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(w,
+                               getNodeValueOrCreateConstantByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(b,
+                               getNodeValueOrCreateConstantByName(op.input(2)));
+
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    }
+
+    Node *EL = G_.createElementwiseLinear(opName, X, w, b, axis);
+    RETURN_IF_ERR(addNodeAsOutput(op, EL));
+    return llvm::Error::success();
+  }
+
   if (typeName == "AveragedLoss") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
