@@ -5181,6 +5181,63 @@ TEST_P(Operator, dotProduct1D) {
   }
 }
 
+// Test an ElementwiseLinear operator with both axis = 0 and axis = 1 arguments.
+TEST_P(Operator, elementwiseLinear) {
+  constexpr std::size_t kRows = 10;
+  constexpr std::size_t kCols = 20;
+
+  // Create and allocate input placeholders.
+  auto *X =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kCols, kRows}, "X", false);
+  auto *w = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "w", false);
+  auto *b = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "b", false);
+
+  auto XH = ctx_.allocate(X)->getHandle();
+  auto wH = ctx_.allocate(w)->getHandle();
+  auto bH = ctx_.allocate(b)->getHandle();
+
+  // Fill inputs with random values.
+  XH.randomize(-3.0, 3.0, mod_.getPRNG());
+  wH.randomize(-3.0, 3.0, mod_.getPRNG());
+  bH.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  // Create two separate models to test behaviour when axis = 0 and axis = 1.
+  // For the test with axis = 0, the 0th dimension of X, w, and b must match.
+  auto *elementwiseLinearAxisZero =
+      F_->createElementwiseLinear("elAxisZero", X, w, b, /*axis=*/0);
+  auto *resultAxisZero =
+      F_->createSave("saveAxisZero", elementwiseLinearAxisZero);
+  ctx_.allocate(resultAxisZero->getPlaceholder());
+
+  // For the test with axis = 1, the 1st dimension of X must match the 0th
+  // dimension of w and b must match, so a transpose is needed.
+  auto *XT = F_->createTranspose("XT", X, {1, 0});
+  auto *elementwiseLinearAxisOne =
+      F_->createElementwiseLinear("elAxisOne", XT, w, b, /*axis=*/1);
+  auto *resultAxisOne = F_->createSave("saveAxisOne", elementwiseLinearAxisOne);
+  ctx_.allocate(resultAxisOne->getPlaceholder());
+
+  // Compile and run the model.
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto resAxisZeroH = ctx_.get(resultAxisZero->getPlaceholder())->getHandle();
+  auto resAxisOneH = ctx_.get(resultAxisOne->getPlaceholder())->getHandle();
+
+  // Results should be the same shape as X/XT.
+  ASSERT_EQ(resAxisZeroH.size(), XH.size());
+  ASSERT_EQ(resAxisOneH.size(), (XT->getResult().getType())->size());
+
+  // Compute the expected output and check that the model outputs match.
+  for (std::size_t i = 0; i < resAxisZeroH.dims()[0]; ++i) {
+    for (std::size_t j = 0; j < resAxisZeroH.dims()[1]; ++j) {
+      float expected = (XH.at({i, j}) * wH.at({i})) + bH.at({i});
+      EXPECT_NEAR(resAxisZeroH.at({i, j}), expected, 0.00001);
+      EXPECT_NEAR(resAxisOneH.at({j, i}), expected, 0.00001);
+    }
+  }
+}
+
 // Test a DotProduct operator with 2D inputs.
 TEST_P(InterpAndCPU, dotProduct2D) {
   // Input tensors.
