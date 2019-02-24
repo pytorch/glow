@@ -41,9 +41,9 @@ public:
     // Load and compile ResNet-50.
     Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
                              {inputName}, {inputType}, *F);
-    input =
-        llvm::cast<Placeholder>(cantFail(loader.getNodeValueByName(inputName)));
-    output = cantFail(loader.getSingleOutput());
+    input = llvm::cast<Placeholder>(
+        EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
+    output = EXIT_ON_ERR(loader.getSingleOutput());
   }
 
   void bindInput(Tensor *batch) {

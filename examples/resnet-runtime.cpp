@@ -59,8 +59,8 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
   const char inputName[] = "gpu_0/data";
   Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
                            {inputName}, {inputType}, *F);
-  Placeholder *input =
-      llvm::cast<Placeholder>(cantFail(loader.getNodeValueByName(inputName)));
+  Placeholder *input = llvm::cast<Placeholder>(
+      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
   return input;
 }
 
