@@ -44,15 +44,22 @@ public:
   /// glow::DeviceManager for descriptions of what they do. Since this
   /// class exists only to help test Executor implementations, the only
   /// important function is runFunction().
-  void init() override {}
-
   void addNetwork(const Module *module, FunctionMapTy functions,
                   ReadyCBTy readyCB) override {}
 
-  void evictNetwork(std::string functionName) override {
+  void evictNetwork(std::string functionName,
+                    EvictFunctionCBTy evictCB) override {
     // Erase the entry so that the same function name can be used to register
     // another result.
-    resultMap_.erase(functionName);
+    ResultCode resultCode = ResultCode::Failed;
+
+    if (resultMap_.erase(functionName)) {
+      resultCode = ResultCode::Executed;
+    }
+
+    if (evictCB) {
+      evictCB(functionName, resultCode);
+    }
   }
 
   /// Look up the previously registered response for \p functionName and
@@ -97,8 +104,6 @@ public:
     });
     return 0;
   }
-
-  void stop(bool /*block*/) override {}
 
   uint64_t getMaximumMemory() const override {
     return std::numeric_limits<uint64_t>::max();

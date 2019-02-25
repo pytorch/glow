@@ -106,7 +106,8 @@ protected:
 
   /// Remove network from the device. Also serialized so concurrency is not an
   /// issue.
-  void evictNetworkImpl(std::string functionName) override;
+  void evictNetworkImpl(std::string functionName,
+                        EvictFunctionCBTy evictCB) override;
 
   /// Run the function on the device, there is a single thread of execution so
   /// only one function can execute at a time.
