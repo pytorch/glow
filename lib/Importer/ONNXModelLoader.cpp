@@ -24,7 +24,6 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
-#include "onnx/onnx_pb.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -128,6 +127,22 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
     // TODO: some other operators also support multidirectional broadcasting.
   }
   return false;
+}
+
+llvm::Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
+    ONNX_NAMESPACE::TensorProto_DataType t) {
+  switch (t) {
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    return ElemKind::FloatTy;
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    return ElemKind::Float16Ty;
+  case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+    return ElemKind::Int32ITy;
+  case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+    return ElemKind::Int64ITy;
+  default:;
+  }
+  RETURN_ERR("Non supported ONNX type");
 }
 
 llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
@@ -837,6 +852,45 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Input type
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ElemKind inputKind = input.getType()->getElementType();
+
+  // Target type.
+  ElemKind targetKind;
+  RETURN_ERR_IF_NOT(dict.count("to"), "Cast: missing 'to' attribute");
+  int toONNXTypeValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(toONNXTypeValue, loadInt(dict.at("to")));
+  RETURN_ERR_IF_NOT(
+      ONNX_NAMESPACE::TensorProto_DataType_IsValid(toONNXTypeValue),
+      "Cast: invalid target type",
+      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      targetKind, convertTensorProtoDataType(
+                      ONNX_NAMESPACE::TensorProto_DataType(toONNXTypeValue)));
+
+  // Only support non quantized types.
+  RETURN_ERR_IF_NOT((!isQuantizedElemKind(inputKind)) &&
+                        (!isQuantizedElemKind(targetKind)),
+                    "Unsupported Cast");
+
+  // Create the node.
+  auto inputDims = input.dims();
+  auto outTy = G_.getParent()->uniqueType(targetKind, inputDims);
+
+  // Create the IR node.
+  Node *N = G_.createConvertTo(opName, input, outTy);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -890,6 +944,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Pad") {
     return loadPad(op, dict);
+  }
+  if (typeName == "Cast") {
+    return loadCast(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",
