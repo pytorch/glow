@@ -14,7 +14,7 @@ set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_STATIC_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 
 set(CPURunttimeCompileOptions
-      -std=c++11
+      -std=c++14
       -ffast-math
       -fno-finite-math-only
       -g0
