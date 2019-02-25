@@ -30,8 +30,8 @@
 using namespace glow;
 using namespace glow::runtime;
 
-std::array<BackendKind, 2> supportedBackends({BackendKind::Interpreter,
-                                              BackendKind::CPU});
+std::array<BackendKind, 2> supportedBackends{BackendKind::Interpreter,
+                                             BackendKind::CPU};
 
 namespace {
 llvm::cl::OptionCategory category("tracing-compare Options");
