@@ -78,9 +78,17 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   readyCB(module, ResultCode::Ready);
 }
 
-void CPUDeviceManager::evictNetworkImpl(std::string functionName) {
+void CPUDeviceManager::evictNetworkImpl(std::string functionName,
+                                        EvictFunctionCBTy evictCB) {
+  ResultCode resultCode = ResultCode::Failed;
+
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
+    resultCode = ResultCode::Executed;
+  }
+
+  if (evictCB) {
+    evictCB(functionName, resultCode);
   }
 }
 

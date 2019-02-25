@@ -85,7 +85,8 @@ TEST_P(DeviceManagerTest, Basic) {
       compileFunctions(backendKind, module.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind, "Basic");
-  device->init();
+  ResultCode initResult = device->init();
+  EXPECT_EQ(initResult, ResultCode::Executed);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -121,6 +122,10 @@ TEST_P(DeviceManagerTest, Basic) {
   runFuture.wait_for(std::chrono::seconds(2));
 
   EXPECT_NE(runFuture.get(), nullptr);
+
+  ResultCode stopResult = device->stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
+  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiRun) {
@@ -130,7 +135,8 @@ TEST_P(DeviceManagerTest, MultiRun) {
       compileFunctions(backendKind, module.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind, "MultiRun");
-  device->init();
+  ResultCode initResult = device->init();
+  EXPECT_EQ(initResult, ResultCode::Executed);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -181,6 +187,10 @@ TEST_P(DeviceManagerTest, MultiRun) {
   ctx1 = runF1.get();
   ctx2 = runF2.get();
   EXPECT_NE(ctx1, ctx2);
+
+  ResultCode stopResult = device->stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
+  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiFunction) {
@@ -203,7 +213,8 @@ TEST_P(DeviceManagerTest, MultiFunction) {
 
   auto *device =
       DeviceManager::createDeviceManager(backendKind, "MultiFunction");
-  device->init();
+  ResultCode initResult = device->init();
+  EXPECT_EQ(initResult, ResultCode::Executed);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -244,6 +255,10 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   ctx1 = runF1.get();
   ctx2 = runF2.get();
   EXPECT_NE(ctx1, ctx2);
+
+  ResultCode stopResult = device->stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
+  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiModule) {
@@ -257,7 +272,8 @@ TEST_P(DeviceManagerTest, MultiModule) {
       compileFunctions(backendKind, module2.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind, "MultiModule");
-  device->init();
+  ResultCode initResult = device->init();
+  EXPECT_EQ(initResult, ResultCode::Executed);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -312,6 +328,10 @@ TEST_P(DeviceManagerTest, MultiModule) {
   ctx1 = runF1.get();
   ctx2 = runF2.get();
   EXPECT_NE(ctx1, ctx2);
+
+  ResultCode stopResult = device->stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
+  delete device;
 }
 
 TEST_P(DeviceManagerTest, ReuseModule) {
@@ -340,7 +360,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_EQ(functions2.size(), 1);
 
   auto *device = DeviceManager::createDeviceManager(backendKind, "ReuseModule");
-  device->init();
+  ResultCode initResult = device->init();
+  EXPECT_EQ(initResult, ResultCode::Executed);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -390,6 +411,10 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   ctx1 = runF1.get();
   ctx2 = runF2.get();
   EXPECT_NE(ctx1, ctx2);
+
+  ResultCode stopResult = device->stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
+  delete device;
 }
 
 #ifdef GLOW_WITH_CPU
@@ -443,7 +468,15 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 
   // Evict the first network.
-  cpuCoreDevice.evictNetwork("main");
+  std::promise<std::string> evictPromise;
+  std::future<std::string> evictFuture;
+  std::tie(evictPromise, evictFuture) = getFutureHelper<std::string>();
+  cpuCoreDevice.evictNetwork("main", [&evictPromise](std::string functionName,
+                                                     ResultCode result) {
+    callbackHelper(evictPromise, functionName, result, ResultCode::Executed);
+  });
+  evictFuture.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(evictFuture.get(), "main");
 
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();
@@ -458,6 +491,9 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
+
+  ResultCode stopResult = cpuCoreDevice.stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
 }
 
 #endif // GLOW_WITH_CPU

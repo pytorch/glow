@@ -41,7 +41,7 @@ public:
   }
 
   /// Initialize the device.
-  void init() override {}
+  ResultCode init() override { return ResultCode::Executed; }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use
@@ -55,9 +55,11 @@ public:
 
   /// Remove (and delete) the provided network and all it's functions, freeing
   /// up space on the device.
-  void evictNetwork(std::string functionName) override {
-    workThread_.submit(
-        [this, functionName] { evictNetworkImpl(functionName); });
+  void evictNetwork(std::string functionName,
+                    EvictFunctionCBTy evictCB) override {
+    workThread_.submit([this, functionName, evictCB] {
+      evictNetworkImpl(functionName, evictCB);
+    });
   }
 
   /// Execute the named Function in an already provided network on the device.
@@ -79,17 +81,21 @@ public:
   }
 
   /// Stops execution and shuts down the Device.
-  void stop(bool block = true) override { workThread_.stop(block); }
+  ResultCode stop(bool block = true) override {
+    workThread_.stop(block);
+    return ResultCode::Executed;
+  }
 
 protected:
   /// Operator handling methods to be implemented in subclasses (i.e. per Device
-  /// type)
+  /// type).
 
-  /// Load and compile the Module
+  /// Load and compile the Module.
   virtual void addNetworkImpl(const Module *, FunctionMapTy, ReadyCBTy) = 0;
 
-  /// Remove the module and reclaim it's memory
-  virtual void evictNetworkImpl(std::string functionName) = 0;
+  /// Remove the module and reclaim its memory.
+  virtual void evictNetworkImpl(std::string functionName,
+                                EvictFunctionCBTy evictCB) = 0;
 
   /// Execute provided Function.
   virtual void runFunctionImpl(RunIdentifierTy, std::string,

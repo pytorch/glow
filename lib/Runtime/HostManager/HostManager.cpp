@@ -106,7 +106,8 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   for (auto &networkName : allNodes) {
     auto networkIterator = networks_.find(networkName);
     if (networkIterator != networks_.end()) {
-      devices_[networkIterator->second->deviceID]->evictNetwork(networkName);
+      devices_[networkIterator->second->deviceID]->evictNetwork(
+          networkName, /*evictCB=*/nullptr);
       networks_.erase(networkIterator);
     }
   }
@@ -129,7 +130,8 @@ void HostManager::clearHost() {
     it.second->stop();
   }
   for (auto &network : networks_) {
-    devices_[network.second->deviceID]->evictNetwork(network.second->name);
+    devices_[network.second->deviceID]->evictNetwork(network.second->name,
+                                                     /*evictCB=*/nullptr);
   }
   networks_.clear();
   roots_.clear();

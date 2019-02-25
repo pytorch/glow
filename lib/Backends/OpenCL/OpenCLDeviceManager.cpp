@@ -167,7 +167,10 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   readyCB(module, ResultCode::Ready);
 }
 
-void OpenCLDeviceManager::evictNetworkImpl(std::string functionName) {
+void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
+                                           EvictFunctionCBTy evictCB) {
+  ResultCode resultCode = ResultCode::Failed;
+
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
     auto users = buffer->decrementUsers();
@@ -177,6 +180,11 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName) {
       assert(usedMemoryBytes_ >= size);
       usedMemoryBytes_ -= size;
     }
+    resultCode = ResultCode::Executed;
+  }
+
+  if (evictCB) {
+    evictCB(functionName, resultCode);
   }
 }
 

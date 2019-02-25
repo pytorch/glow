@@ -29,6 +29,10 @@
 namespace glow {
 namespace runtime {
 
+/// Callback signalling success/failure of evicting a function from a Device.
+using EvictFunctionCBTy =
+    std::function<void(std::string functionName, runtime::ResultCode)>;
+
 /// Callback signalling success/failure of loading a Module onto a device.
 using ReadyCBTy = std::function<void(const Module *, runtime::ResultCode)>;
 
@@ -56,7 +60,7 @@ public:
                                             llvm::StringRef name);
 
   /// Initialize the device.
-  virtual void init() {}
+  virtual ResultCode init() { return ResultCode::Executed; }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.
@@ -66,8 +70,10 @@ public:
                           ReadyCBTy readyCB) = 0;
 
   /// Remove (and delete) the provided function, freeing
-  /// up space on the device.
-  virtual void evictNetwork(std::string functionName) = 0;
+  /// up space on the device. \p evictCB will be called when the operation
+  /// is completed or attempted and failed.
+  virtual void evictNetwork(std::string functionName,
+                            EvictFunctionCBTy evictCB) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
@@ -78,7 +84,7 @@ public:
               runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.
-  virtual void stop(bool block = true) {}
+  virtual ResultCode stop(bool block = true) { return ResultCode::Executed; };
 
   /// \returns the type of Backend that powers this Device.
   BackendKind getBackendKind() { return backend_; }
