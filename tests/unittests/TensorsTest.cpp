@@ -153,6 +153,24 @@ TEST(Tensor, equalHandles) {
   }
 }
 
+TEST(Tensor, equalNAN) {
+  {
+    Tensor A = {0.5, 0, 0, 25};
+    Tensor B = {NAN, 0, NAN, NAN};
+    EXPECT_FALSE(A.isEqual(B));
+  }
+  {
+    Tensor A = {NAN, 0, NAN, NAN};
+    Tensor B = {0.5, 0, 0, 25};
+    EXPECT_FALSE(A.isEqual(B));
+  }
+  {
+    Tensor A = {NAN, 0, NAN, NAN};
+    Tensor B = {NAN, 0, NAN, NAN};
+    EXPECT_FALSE(A.isEqual(B));
+  }
+}
+
 template <typename Ty> void testAssignment(const Type &ty) {
   // Testing some tensor operations.
   Tensor T(ty);
