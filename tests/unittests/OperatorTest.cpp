@@ -3282,6 +3282,61 @@ TEST_P(Operator, MaxPool) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+TEST_P(InterpAndCPU, BatchBoxCox) {
+  const size_t kRows = 10;
+  const size_t kCols = 5;
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "data", false);
+  auto *lambda1 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda1", false);
+  auto *lambda2 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda2", false);
+
+  auto dataH = ctx_.allocate(data)->getHandle();
+  auto lambda1H = ctx_.allocate(lambda1)->getHandle();
+  auto lambda2H = ctx_.allocate(lambda2)->getHandle();
+
+  dataH.randomize(1.0, 2.0, mod_.getPRNG());
+  lambda1H.randomize(1.0, 2.0, mod_.getPRNG());
+  lambda2H.randomize(1.0, 2.0, mod_.getPRNG());
+
+  for (size_t i = 0; i < kCols; i += 2) {
+      lambda1H.at({i}) = 0;
+  }
+
+  auto *batchBoxCox = F_->createBatchBoxCox("boxcox", data, lambda1, lambda2);
+  auto *S = F_->createSave("save", batchBoxCox);
+  ctx_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  Tensor O(ElemKind::FloatTy, {kRows, kCols});
+  auto OH = O.getHandle();
+
+  for (size_t i = 0; i < kRows; ++i) {
+      for (size_t j = 0; j < kCols; ++j) {
+        float d = dataH.at({i, j});
+        float l1 = lambda1H.at({j});
+        float l2 = lambda2H.at({j});
+
+        // Compute elementwise Box-Cox transform.
+        float tmp = std::max(d + l2, 1e-6f);
+        if (l1 == 0) {
+          // Clip argument to log and pow at 1e-6 to avoid saturation.
+          OH.at({i, j}) = std::log(tmp);
+        } else {
+          OH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
+        }
+      }
+  }
+
+  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0; i < result.size(); ++i) {
+    EXPECT_FLOAT_EQ(result.raw(i), OH.raw(i));
+  }
+}
+
 TEST_P(InterpOnly, FP16MaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
