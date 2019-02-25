@@ -62,9 +62,9 @@ std::pair<Placeholder *, Placeholder *> loadResnet50Model(TypeRef inputType,
   const char inputName[] = "gpu_0/data";
   Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
                            {inputName}, {inputType}, *F);
-  Placeholder *input =
-      llvm::cast<Placeholder>(cantFail(loader.getNodeValueByName(inputName)));
-  Placeholder *output = cantFail(loader.getSingleOutput());
+  Placeholder *input = llvm::cast<Placeholder>(
+      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
+  Placeholder *output = EXIT_ON_ERR(loader.getSingleOutput());
 
   return std::make_pair(input, output);
 }
