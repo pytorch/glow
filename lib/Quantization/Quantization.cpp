@@ -184,6 +184,11 @@ protected:
       return (SLS->getData().getElementType() == ElemKind::FloatTy) &&
              (SLS->getWeights().getElementType() == ElemKind::FloatTy);
     }
+    case Kinded::Kind::SelectNodeKind: {
+      auto *SN = cast<SelectNode>(&node);
+      return SN->getLHS().getElementType() == ElemKind::FloatTy &&
+             SN->getRHS().getElementType() == ElemKind::FloatTy;
+    }
     default:
       // Let the general procedure handle this node kind.
       break;

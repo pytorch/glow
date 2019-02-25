@@ -882,7 +882,8 @@ public:
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||
         opKind == Kinded::Kind::LocalResponseNormalizationNodeKind ||
-        opKind == Kinded::Kind::SaveNodeKind) {
+        opKind == Kinded::Kind::SaveNodeKind ||
+        opKind == Kinded::Kind::SelectNodeKind) {
       return true;
     }
     return backend_->isOpSupported(opKind, elementTy);
@@ -939,6 +940,52 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
       EXPECT_FALSE(saveNode->getInput().getType()->isQuantizedType());
     }
   }
+}
+
+/// Check that Select is quantized.
+TEST(Quantization, quantizeSelect) {
+  ExecutionEngine EE;
+  Context ctx;
+  EE.setBackend(new MockQuantBackend());
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {1, 10}, "LHS", false);
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {1, 10}, "RHS", false);
+  auto *cond = mod.createPlaceholder(ElemKind::BoolTy, {1, 10}, "cond", false);
+  auto *select = F->createSelect("select", cond, LHS, RHS);
+  F->createSave("save", select);
+
+  TensorQuantizationParams LHSQP = {0.5f, 0};
+  TensorQuantizationParams RHSQP = {0.3f, 0};
+  TensorQuantizationParams selectQP = {0.4f, 0};
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), LHSQP},
+      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), RHSQP},
+      {NodeQuantizationInfo::generateNodeOutputName(select->getName()),
+       selectQP}};
+
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F);
+
+  auto it = std::find_if(
+      F->getNodes().begin(), F->getNodes().end(),
+      [](const Node &node) -> bool { return llvm::isa<SelectNode>(&node); });
+  ASSERT_NE(it, F->getNodes().end());
+
+  SelectNode *qSelect = llvm::cast<SelectNode>(&(*it));
+  TypeRef qSelectTy = qSelect->getResult().getType();
+  TypeRef qLHSTy = qSelect->getLHS().getType();
+  TypeRef qRHSTy = qSelect->getRHS().getType();
+
+  ASSERT_TRUE(qSelectTy->isQuantizedType());
+  EXPECT_EQ(qSelectTy->getScale(), selectQP.scale);
+  EXPECT_EQ(qSelectTy->getOffset(), selectQP.offset);
+  EXPECT_EQ(qLHSTy->getScale(), LHSQP.scale);
+  EXPECT_EQ(qLHSTy->getOffset(), LHSQP.offset);
+  EXPECT_EQ(qRHSTy->getScale(), RHSQP.scale);
+  EXPECT_EQ(qRHSTy->getOffset(), RHSQP.offset);
 }
 
 /// Check that AvgPool is quantized, and its input and output have different
