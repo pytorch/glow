@@ -238,8 +238,8 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   size_t mem = 0;
   for (int i = level - 1; i >= 0; i--) {
     size_t tmp = 0;
-    for (size_t j = 0, e = bfs[i].second.size(); j < e; j++) {
-      Node *N = bfs[i].second[j];
+    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
+      Node *N = bfs[i][j];
       tmp += memUsage_[N];
     }
     if (mem + tmp > availableMemory) {
@@ -269,8 +269,8 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
     mapping.createPartition(newF);
     size_t mem = 0;
     for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
-      for (size_t j = 0, e1 = bfs[i].second.size(); j < e1; j++) {
-        Node *N = bfs[i].second[j];
+      for (size_t j = 0, e1 = bfs[i].size(); j < e1; j++) {
+        Node *N = bfs[i][j];
         if (mem + memUsage_[N] > availableMemory) {
           newF = F->getParent()->createFunction(
               std::string(F->getName()) + "_part" + std::to_string(++color));
