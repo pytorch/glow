@@ -29,12 +29,22 @@ using ComputeTimeMapTy = std::unordered_map<Node *, float>;
 using NodesSetTy = std::set<Node *>;
 using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
-/// Helper structure for building a partition. Records 1) a mapping of nodes in
+/// Helper structure for building a partition. Records mapping of nodes in
 /// the original function to destination partitions, along with a list of the
-/// newly-created functions; 2) a mapping of newly-created functions aalong with
-/// a set of nodes sets.
+/// newly-created functions;
 using NodeToFunctionMapTy = llvm::DenseMap<Node *, Function *>;
-using FunctionToNodesMapTy = llvm::DenseMap<Function *, NodesSetTy>;
+
+/// A mapping of newly-created functions along with a set of nodes sets. The
+/// overloaded compare function to make sure the map is sorted by the key's
+/// name(i.e. the function's name) which makes the optimization sequence is
+/// consistent for each run.
+struct FunctionNameComparator {
+  bool operator()(const Function *lhs, const Function *rhs) const {
+    return strcmp(lhs->getName().data(), rhs->getName().data()) < 0;
+  }
+};
+using FunctionToNodesMapTy =
+    std::map<Function *, NodesSetTy, FunctionNameComparator>;
 
 class NodeToFunctionMap {
 

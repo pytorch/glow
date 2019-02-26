@@ -201,46 +201,60 @@ void Partitioner::initOpComputeTime() {
   }
 }
 
-// Combine the partitions if necessary : if all outside uses of the nodes in
-// partition1 is in partition2, and the sum of memory consumption of partition1
-// and partition2 is less than availableMemory, combine partition1 and
-// partition2.
+// Combine the partitions according to the following rules:
+// Rule 1 :if all outside uses of the nodes in partition1 is in partition2, and
+// the sum of memory consumption of partition1 and partition2 is less than
+// availableMemory, combine partition1 and partition2.
 void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
                                     FunctionToNodesMapTy &nodesSet,
                                     uint64_t availableMemory) {
 
-  for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
-       it != nodesSet.end(); ++it) {
-    std::vector<Node *> outUsers = getOutUsers((*it).second);
-    if (outUsers.empty()) {
-      continue;
-    }
+  size_t origPartitions = 0;
 
-    bool flag = true;
-    for (int i = 1, e = outUsers.size(); i < e; i++) {
-      if (partitions[outUsers[i]] != partitions[outUsers[i - 1]]) {
-        flag = false;
-        break;
+  // Do the combination until the size of partitions is stable.
+  while (partitions.getPartitions().size() != origPartitions) {
+    origPartitions = partitions.getPartitions().size();
+    // Rule 1:
+    for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+         it != nodesSet.end(); ++it) {
+      std::vector<Node *> outUsers = getOutUsers((*it).second);
+      if (outUsers.empty()) {
+        continue;
       }
-    }
-    if (flag) {
-      // This partition only has one successor.
-      Function *cur = (*it).first;
-      Function *suc = partitions[outUsers[0]];
-      NodesSetTy tmp = nodesSet.lookup(suc);
-      GraphMemInfo cost1 = partitions.getGraphMemInfo(cur);
-      GraphMemInfo cost2 = partitions.getGraphMemInfo(suc);
-      if (cost1.constMemSize + cost1.inMemSize + cost2.constMemSize +
-              cost2.inMemSize - cost1.outMemSize <
-          availableMemory) {
-        // We can combine the two partitions to fit one device.
-        for (NodesSetTy::iterator it2 = tmp.begin(); it2 != tmp.end(); ++it2) {
-          partitions.add(*it2, cur);
+
+      bool flag = true;
+      for (int i = 1, e = outUsers.size(); i < e; i++) {
+        if (partitions[outUsers[i]] != partitions[outUsers[i - 1]]) {
+          flag = false;
+          break;
         }
-        (*it).second.insert(tmp.begin(), tmp.end());
-        partitions.deletePartition(suc);
-        nodesSet.erase(suc);
-        module_->eraseFunction(suc);
+      }
+      if (flag) {
+        // This partition only has one successor.
+        Function *cur = (*it).first;
+        Function *suc = partitions[outUsers[0]];
+        NodesSetTy tmp = (nodesSet.find(suc))->second;
+        GraphMemInfo cost1 = partitions.getGraphMemInfo(cur);
+        GraphMemInfo cost2 = partitions.getGraphMemInfo(suc);
+        if (cost1.getTotalMemSize() + cost2.getTotalMemSize() -
+                cost1.outMemSize <
+            availableMemory) {
+          // We can combine the two partitions to fit one device.
+          for (NodesSetTy::iterator it2 = tmp.begin(); it2 != tmp.end();
+               ++it2) {
+            partitions.add(*it2, cur);
+          }
+          GraphMemInfo newCost;
+          newCost.constMemSize = cost1.constMemSize + cost2.constMemSize;
+          newCost.inMemSize =
+              cost1.inMemSize + cost2.inMemSize - cost1.outMemSize;
+          newCost.outMemSize = cost2.outMemSize;
+          partitions.setGraphMemInfo((*it).first, newCost);
+          (*it).second.insert(tmp.begin(), tmp.end());
+          partitions.deletePartition(suc);
+          nodesSet.erase(suc);
+          module_->eraseFunction(suc);
+        }
       }
     }
   }
@@ -310,9 +324,10 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
         // node movement or paritionCombine.
         nSet.insert(outUsers[i]);
         GraphMemInfo cost = getGraphMemInfo(nSet);
-        if (cost.outMemSize <= communicationCost) {
+        Function *suc = partitions[outUsers[i]];
+        uint64_t outMem = getOutMemPerNode(nodesSet[suc], outUsers[i]);
+        if (cost.outMemSize - outMem <= communicationCost) {
           // Move this node to current node set.
-          nSet.insert(outUsers[i]);
           nodesSet[cur].insert(outUsers[i]);
           Function *suc = partitions[outUsers[i]];
           nodesSet[suc].erase(outUsers[i]);
@@ -324,13 +339,16 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
             // Partition1, Partition2 become empty. Remove the empty partition.
             partitions.deletePartition(suc);
             module_->eraseFunction(suc);
+            nodesSet.erase(suc);
           } else {
-            cost = getGraphMemInfo(nodesSet[suc]);
-            partitions.setGraphMemInfo(suc, cost);
+            GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc]);
+            partitions.setGraphMemInfo(suc, newCost);
           }
           gain = true;
-          communicationCost = cost.outMemSize;
+          communicationCost = cost.outMemSize - outMem;
           memSize += memUsage_[outUsers[i]];
+        } else {
+          nSet.erase(outUsers[i]);
         }
       }
     }

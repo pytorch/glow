@@ -33,6 +33,11 @@ struct GraphMemInfo {
   uint64_t constMemSize;
 
   GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
+
+  // Get the total memory size of each partition.
+  uint64_t getTotalMemSize() const {
+    return inMemSize + outMemSize + constMemSize;
+  }
 };
 
 /// A list of <nodelist> with BFS order.
@@ -50,7 +55,12 @@ std::vector<Node *> getOutUsers(const std::set<Node *> &nodes);
 std::vector<Node *>
 getOutUsersWithOnePredecessor(const std::set<Node *> &nodes);
 
+/// Return the memory usage of the output caused by \p node who has users not in
+/// the set \p nodes.
+uint64_t getOutMemPerNode(const std::set<Node *> &nodes, const Node *node);
+
 /// Return the memory usage of a given nodes set.
 GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes);
+
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONUTILS_H
