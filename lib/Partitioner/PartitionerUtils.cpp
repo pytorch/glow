@@ -15,16 +15,22 @@
  */
 
 #include "glow/Partitioner/PartitionerUtils.h"
+#include <unordered_set>
 
 using llvm::isa;
 
 namespace glow {
 
+/// Used to sort 2 Nodes by their name.
+static bool compFunc(Node *n1, Node *n2) {
+  return (n1->getName().compare(n2->getName()) > 0);
+}
+
 /// The nodes in function \p F which be grouped into levels based on how far
 /// (the longest distance) they are from the roots.
 BFSLevel getBFSLevel(Function *F) {
-  // The current list of nodes needs to be visited
-  std::vector<Node *> cur;
+  // The current set of nodes needs to be visited
+  std::unordered_set<Node *> cur;
   // A map between a node and its level.
   llvm::DenseMap<Node *, int> nodeLevel;
 
@@ -32,7 +38,7 @@ BFSLevel getBFSLevel(Function *F) {
   for (auto &node : F->getNodes()) {
     if (node.getNumUsers() == 0) {
       // A root has no users.
-      cur.push_back(&node);
+      cur.insert(&node);
       nodeLevel[&node] = 0;
     }
   }
@@ -41,24 +47,24 @@ BFSLevel getBFSLevel(Function *F) {
   BFSLevel bfs;
   int level = 0;
   int current = 0;
-  bfs.push_back({level, std::vector<Node *>()});
+  bfs.push_back(std::vector<Node *>());
   level++;
   while (current < level) {
-    std::vector<Node *> nodes;
-    for (size_t i = 0, e = cur.size(); i < e; i++) {
-      Node *N = cur[i];
+    std::unordered_set<Node *> nodes;
+    for (std::unordered_set<Node *>::iterator it = cur.begin(); it != cur.end();
+         ++it) {
+      Node *N = *it;
       for (size_t j = 0, e = N->getNumInputs(); j < e; ++j) {
         Node *in = N->getNthInput(j).getNode();
         if (isa<Storage>(in)) {
           continue;
         }
-        nodes.push_back(in);
+        nodes.insert(in);
         nodeLevel[in] = level;
       }
     }
     if (nodes.size() > 0) {
-      auto newPair = std::make_pair(level, std::vector<Node *>());
-      bfs.push_back(newPair);
+      bfs.push_back(std::vector<Node *>());
       level++;
       cur = std::move(nodes);
     }
@@ -70,7 +76,13 @@ BFSLevel getBFSLevel(Function *F) {
        it != nodeLevel.end(); ++it) {
     Node *in = (*it).first;
     int level = (*it).second;
-    bfs[level].second.push_back(in);
+    bfs[level].push_back(in);
+  }
+
+  // Sort the nodes of each level by name to make sure the nodes sequence are
+  // the same for different run.
+  for (int i = 0; i < level; i++) {
+    std::sort(bfs[i].begin(), bfs[i].end(), compFunc);
   }
   return bfs;
 }

@@ -35,8 +35,8 @@ struct GraphMemInfo {
   GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
 };
 
-/// A list of <level, nodelist> with BFS order.
-using BFSLevel = std::vector<std::pair<int, std::vector<Node *>>>;
+/// A list of <nodelist> with BFS order.
+using BFSLevel = std::vector<std::vector<Node *>>;
 
 /// Visit nodes if Function \p F in BFS order and return the nodes by levels
 /// (the longest distance between one node and the root).
