@@ -31,7 +31,7 @@
  * Documentation on the functions implementing onnxifi interface in
  * this file is very shallow.
  * Please see more documentation on functions that need to be
- * implemented: https://github.com/onnx/onnx/blob/master/onnx/onnxifi.h.
+ * implemented: https://github.com/houseroad/foxi/blob/master/foxi/onnxifi.h.
  */
 
 /// Return stable IDs of available backends on the system.

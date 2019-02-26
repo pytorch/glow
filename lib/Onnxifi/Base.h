@@ -21,8 +21,8 @@
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Support/ThreadPool.h"
 
-#include "onnx/onnxifi.h"
-#include "onnx/onnxifi_ext.h"
+#include "foxi/onnxifi.h"
+#include "foxi/onnxifi_ext.h"
 
 #include <atomic>
 #include <condition_variable>
