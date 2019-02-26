@@ -100,6 +100,10 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/onnx")
   message(FATAL_ERROR "No onnx git submodule. Run: git submodule update --init --recursive")
 endif()
 
+if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/foxi")
+  message(FATAL_ERROR "No foxi git submodule. Run: git submodule update --init --recursive")
+endif()
+
 if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/fp16")
   message(FATAL_ERROR "No fp16 git submodule. Run: git submodule update --init --recursive")
 else()

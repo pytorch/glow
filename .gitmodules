@@ -10,3 +10,6 @@
 [submodule "tests/OutputCheck"]
 	path = tests/OutputCheck
 	url = https://github.com/stp/OutputCheck.git
+[submodule "thirdparty/foxi"]
+	path = thirdparty/foxi
+	url = https://github.com/houseroad/foxi.git

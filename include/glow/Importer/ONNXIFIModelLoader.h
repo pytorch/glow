@@ -17,7 +17,7 @@
 #ifndef GLOW_IMPORTER_ONNXIFIMODELLOADER_H
 #define GLOW_IMPORTER_ONNXIFIMODELLOADER_H
 
-#include "onnx/onnxifi.h"
+#include "foxi/onnxifi.h"
 
 #include "glow/Importer/ONNXModelLoader.h"
 

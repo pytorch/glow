@@ -37,7 +37,7 @@ add_library(Importer
               ONNXIFIModelLoader.cpp
               ${CAFFE_SRCS}
               ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h)
-target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS})
+target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS} ${FOXI_INCLUDE_DIRS} ${GLOW_THIRDPARTY_DIR}/foxi)
 target_compile_definitions(Importer
                            INTERFACE
                              -DGOOGLE_PROTOBUF_NO_RTTI)
@@ -48,6 +48,7 @@ target_link_libraries(Importer
                         LLVMSupport
                         Support)
 target_link_libraries(Importer PUBLIC onnx_proto ${PROTOBUF_LIBRARY})
+# add_subdirectory(${GLOW_THIRDPARTY_DIR}/foxi EXCLUDE_FROM_ALL build2)
 
 if (MSVC AND LINK_PROTOBUF_AS_DLL)
   # For protobuf warning when it is build as dll.
