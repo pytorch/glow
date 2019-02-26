@@ -90,16 +90,19 @@ BFSLevel getBFSLevel(Function *F) {
 /// Given \p nodes, return a list of nodes who are not in this set but use any
 /// node in this set.
 std::vector<Node *> getOutUsers(const std::set<Node *> &nodes) {
-  std::vector<Node *> ret;
+  std::set<Node *> used;
   for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
       if (nodes.count(U.getUser())) {
         continue;
       }
-      ret.push_back(U.getUser());
+      used.insert(U.getUser());
     }
   }
+
+  std::vector<Node *> ret(used.begin(), used.end());
+  std::sort(ret.begin(), ret.end(), compFunc);
   return ret;
 }
 
@@ -107,7 +110,7 @@ std::vector<Node *> getOutUsers(const std::set<Node *> &nodes) {
 /// the nodes in this set or constant.
 std::vector<Node *>
 getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
-  std::vector<Node *> ret;
+  std::set<Node *> used;
   for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
@@ -125,11 +128,28 @@ getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
         break;
       }
       if (flag) {
-        ret.push_back(user);
+        used.insert(user);
       }
     }
   }
+
+  std::vector<Node *> ret(used.begin(), used.end());
+  std::sort(ret.begin(), ret.end(), compFunc);
   return ret;
+}
+
+uint64_t getOutMemPerNode(const std::set<Node *> &nodes, const Node *node) {
+  for (size_t i = 0, e = node->getNumResults(); i < e; i++) {
+    for (auto &U : node->getNthResult(i).getNode()->getUsers()) {
+      Node *user = U.getUser();
+      if (nodes.count(user) == 0) {
+        // Find the user that doesn't belong to this subgraph.
+        // If a node has several users, the memory usage is only counted once.
+        return node->getType(i)->getSizeInBytes();
+      }
+    }
+  }
+  return 0;
 }
 
 GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
@@ -179,18 +199,9 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
     // contributes to the memory usage. Although at the stage, the output may
     // not be a storage node, after real partitioning, a Save node will be added
     // to hold the output:
-    for (size_t i = 0, e = cur->getNumResults(); i < e; i++) {
-      for (auto &U : cur->getNthResult(i).getNode()->getUsers()) {
-        Node *node = U.getUser();
-        if (nodes.count(node) || nSet.count(node)) {
-          // The output belongs to this subgraph, nothing needs to do.
-          continue;
-        }
-        nSet.insert(node);
-        ret.outMemSize += cur->getType(i)->getSizeInBytes();
-      }
-    }
+    ret.outMemSize += getOutMemPerNode(nodes, cur);
   }
   return ret;
 }
+
 } // namespace glow
