@@ -1559,13 +1559,18 @@ OCLBackend::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
       generateRuntimeBundle(*IR, allocator, allocator, allocator);
   return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
 }
-std::unique_ptr<CompiledFunction> OCLBackend::compile(Function *F) const {
-  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  return compileIR(std::move(IR));
-}
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compileWithoutConstants(Function *F) const {
+OCLBackend::compile(Function *F, const CompileOptions &opts) const {
+  if (opts.autoInstrument) {
+    GLOW_UNREACHABLE("Instrumentation not supported on this Backend");
+  }
+
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
+
+  if (opts.collectConstants) {
+    return compileIR(std::move(IR));
+  }
+
   return compileIRWithoutConstants(std::move(IR));
 }
