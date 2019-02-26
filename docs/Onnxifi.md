@@ -1,5 +1,7 @@
 # Getting Started with ONNXIFI
 
+Notes that Glow uses [Foxi](https://github.com/houseroad/foxi/tree/master/foxi), a fork of ONNXIFI.
+
 [ONNXIFI](https://github.com/onnx/onnx/blob/master/docs/ONNXIFI.md) is an
 interface that allows PyTorch/Caffe2 to use Glow as an execution backend.
 
