@@ -122,14 +122,19 @@ protected:
           // the matrix multiplication to calculate the new scale for the
           // batched add slice.
           if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
-            // Batch is always quantized before Slice, which must be a MatMul if
-            // this was lowered from a FullyConnectedNode.
-            assert(llvm::cast<QuantizeNode>(batch) &&
-                   "Batch is quantized before Slice; must be QuantizeNode.");
-            QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
-            assert(llvm::cast<MatMulNode>(QN->getInput()) &&
-                   "MM must be input of BA if lowered from FC.");
-            MatMulNode *MM = llvm::cast<MatMulNode>(QN->getInput());
+            // Slice must be a MatMul if this was lowered from a FullyConnected.
+            // Batch may have already been quantized.
+            assert((llvm::isa<MatMulNode>(batch) ||
+                    llvm::isa<QuantizeNode>(batch)) &&
+                   "Batch must be either a MatMul or a Quantize.");
+            MatMulNode *MM = llvm::dyn_cast<MatMulNode>(batch);
+            if (!MM) {
+              QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
+              assert(llvm::isa<MatMulNode>(QN->getInput()) &&
+                     "MM must be input of BA if lowered from FC.");
+              MM = llvm::cast<MatMulNode>(QN->getInput());
+            }
+
             float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
             float scaleWeights =
                 getTargetTypeForOutput(MM->getRHS())->getScale();
