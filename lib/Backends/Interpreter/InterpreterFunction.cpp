@@ -34,7 +34,6 @@ InterpreterFunction::~InterpreterFunction() {
   }
   constants_.clear();
 
-  alignedFree(runtimeBundle_.getConstants());
   tearDownRuns();
 }
 

@@ -86,7 +86,6 @@ target_link_libraries(CPUBackend
                         Backend
                         Base
                         CodeGen
-                        BackendUtils
                         Graph
                         IR
                         Optimizer
@@ -121,7 +120,6 @@ add_library(CPUDeviceManager
 target_link_libraries(CPUDeviceManager
                       PRIVATE
                         Backends
-                        BackendUtils
                         Base
                         CodeGen
                         CPUBackend

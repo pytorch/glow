@@ -22,6 +22,8 @@
 
 #include "llvm/ADT/STLExtras.h"
 
+#include <future>
+
 using namespace glow;
 
 ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
@@ -31,16 +33,33 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
 /// Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   setBackend(createBackend(backendKind));
+  device_ = runtime::DeviceManager::createDeviceManager(backendKind,
+                                                        "ExecutionEngine");
 }
 
 /// Set the code generator to the given \p backend.
 void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
+  bool differentKinds = (backend_ == nullptr || backend == nullptr) ||
+                        backend->getBackendKind() != backend_->getBackendKind();
   if (ownsBackend_) {
     delete backend_;
   }
   backend_ = backend;
   ownsBackend_ = ownsBackend;
-  compiledFunctions_.clear();
+  clear();
+
+  if (differentKinds) {
+    if (device_) {
+      device_->stop();
+      delete device_;
+      device_ = nullptr;
+    }
+
+    if (backend) {
+      device_ = runtime::DeviceManager::createDeviceManager(
+          backend->getBackendKind(), "ExecutionEngine");
+    }
+  }
 }
 
 const Backend *ExecutionEngine::getBackend() const { return backend_; }
@@ -48,6 +67,14 @@ const Backend *ExecutionEngine::getBackend() const { return backend_; }
 ExecutionEngine::~ExecutionEngine() {
   // Call setBackend to make sure that backend_ is deleted if it's owned.
   setBackend(nullptr, /*ownsBackend*/ false);
+}
+
+void ExecutionEngine::clear() {
+  for (auto &func : compiledFunctions_) {
+    device_->evictNetwork(func.first(),
+                          [](std::string, runtime::ResultCode) {});
+  }
+  compiledFunctions_.clear();
 }
 
 void glow::updateInputPlaceholders(Context &ctx,
@@ -83,22 +110,36 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
   }
 }
 
-void ExecutionEngine::runInternal(Context &ctx,
+void ExecutionEngine::runInternal(Context &ctx, llvm::StringRef name,
                                   CompiledFunction &compiledFunction) {
   // Make sure that the context has backing tensors for all placeholders.
   ctx.allocate(M_.getPlaceholders());
-  compiledFunction.setupRuns();
-  compiledFunction.beforeRun(ctx);
-  compiledFunction.execute(&ctx);
-  compiledFunction.afterRun(ctx);
+
+  std::unique_ptr<Context> ctxPtr(&ctx);
+  std::promise<runtime::ResultCode> runPromise;
+  auto fut = runPromise.get_future();
+  device_->runFunction(name, std::move(ctxPtr),
+                       [&runPromise](runtime::RunIdentifierTy,
+                                     runtime::ResultCode code,
+                                     std::unique_ptr<Context> ctxPtr) {
+                         // Don't delete context
+                         ctxPtr.release();
+                         runPromise.set_value(code);
+                       });
+
+  fut.wait();
+  assert(fut.get() == runtime::ResultCode::Executed &&
+         "Function failed to execute");
 }
 
 void ExecutionEngine::run(Context &ctx) {
-  runInternal(ctx, getCompiledFunction());
+  assert(compiledFunctions_.size() == 1 &&
+         "Expected exactly one compiled function.");
+  runInternal(ctx, *compiledFunctions_.keys().begin(), getCompiledFunction());
 }
 
 void ExecutionEngine::run(Context &ctx, llvm::StringRef name) {
-  runInternal(ctx, getCompiledFunction(name));
+  runInternal(ctx, name, getCompiledFunction(name));
 }
 
 CompiledFunction &ExecutionEngine::getCompiledFunction() {
@@ -117,7 +158,20 @@ CompiledFunction &ExecutionEngine::getCompiledFunction(llvm::StringRef name) {
 void ExecutionEngine::insertCompiledFunction(
     llvm::StringRef name, std::unique_ptr<CompiledFunction> func) {
   assert(compiledFunctions_.find(name) == compiledFunctions_.end());
+
+  runtime::FunctionMapTy functionMap;
+  functionMap[name] = func.get();
   compiledFunctions_[name] = std::move(func);
+
+  std::promise<runtime::ResultCode> addPromise;
+  auto fut = addPromise.get_future();
+  device_->addNetwork(&M_, std::move(functionMap),
+                      [&addPromise](const Module *, runtime::ResultCode code) {
+                        addPromise.set_value(code);
+                      });
+  fut.wait();
+  assert(fut.get() == runtime::ResultCode::Ready &&
+         "Compiled function failed to be added to device");
 }
 
 void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
@@ -160,14 +214,15 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F,
   llvm::StringRef name = F->getName();
 
   if (clearOtherFunctions) {
-    compiledFunctions_.clear();
+    clear();
   }
 
   assert(!compiledFunctions_.count(name) &&
          "A function with this name has already been compiled.");
 
   backend_->optimizeFunction(mode, F);
-  compiledFunctions_[name] = backend_->compile(F);
+  auto func = backend_->compile(F);
+  insertCompiledFunction(name, std::move(func));
 }
 
 void ExecutionEngine::save(CompilationMode mode, Function *F,

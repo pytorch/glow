@@ -15,6 +15,7 @@
  */
 
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Backends/DummyDeviceManager.h"
 
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -74,6 +75,7 @@ std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
 
 template <typename ResultType>
 void callbackHelper(std::promise<ResultType> &promise, ResultType res,
+
                     ResultCode result, ResultCode expected) {
   promise.set_value(result == expected ? std::move(res) : ResultType());
 }
@@ -494,6 +496,45 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   ResultCode stopResult = cpuCoreDevice.stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
+}
+
+TEST(DeviceManagerTest, DummyDeviceManager) {
+  DummyDeviceManager deviceManager(BackendKind::Interpreter,
+                                   "DeviceManagerTest");
+  deviceManager.init();
+
+  auto module = makeBasicModule();
+  std::vector<std::unique_ptr<CompiledFunction>> backing;
+  FunctionMapTy functions =
+      compileFunctions(BackendKind::Interpreter, module.get(), backing);
+
+  std::promise<const Module *> promise;
+  std::future<const Module *> future;
+  std::tie(promise, future) = getFutureHelper<const Module *>();
+  deviceManager.addNetwork(module.get(), std::move(functions),
+                           [&promise](const Module *module, ResultCode result) {
+                             callbackHelper(promise, module, result,
+                                            ResultCode::Ready);
+                           });
+  // no need to wait.
+  EXPECT_EQ(future.get(), module.get());
+
+  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
+  ctx1->allocate(module->getPlaceholders());
+
+  PseudoRNG PRNG;
+  Tensor inputs1(ElemKind::FloatTy, {1, 32, 32, 3});
+  inputs1.getHandle().randomize(-12.0, 13.0, PRNG);
+
+  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("main_input")},
+                          {&inputs1});
+
+  deviceManager.runFunction(
+      "main", std::move(ctx1),
+      [&ctx1](RunIdentifierTy, ResultCode result,
+              std::unique_ptr<Context> ctx_) { ctx1 = std::move(ctx_); });
+
+  EXPECT_NE(ctx1.get(), nullptr);
 }
 
 #endif // GLOW_WITH_CPU

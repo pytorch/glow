@@ -38,6 +38,10 @@ class MockBackend : public Backend {
     }
   };
 
+  BackendKind getBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
+
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return llvm::make_unique<MockFunction>();
   }
@@ -66,6 +70,10 @@ class MockBackendCustomIRGen : public Backend {
       return BackendKind::Interpreter;
     }
   };
+
+  BackendKind getBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
 
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return llvm::make_unique<MockFunction>();

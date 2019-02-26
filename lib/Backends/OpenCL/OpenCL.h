@@ -170,6 +170,8 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
+  BackendKind getBackendKind() const override { return BackendKind::OpenCL; }
+
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
   std::unique_ptr<CompiledFunction>

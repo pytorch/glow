@@ -31,7 +31,6 @@ add_library(OpenCL
 target_link_libraries(OpenCL
                       PRIVATE
                       Backend
-                      BackendUtils
                       Base
                       Graph
                       CodeGen
@@ -47,8 +46,8 @@ add_library(OpenCLDeviceManager
             OpenCLDeviceManager.cpp)
 target_link_libraries(OpenCLDeviceManager
                       PRIVATE
+                        Backend
                         Backends
-                        BackendUtils
                         Base
                         CodeGen
                         OpenCL

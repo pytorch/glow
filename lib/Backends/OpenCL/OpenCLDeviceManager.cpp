@@ -125,7 +125,9 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   // Collect constants once, since currently the bundle grabs everything in the
   // module.
   auto bundle = functions.begin()->second->getRuntimeBundle();
-  bundle.collectConstants(module);
+  if (bundle.getConstants() == nullptr) {
+    bundle.collectConstants(module);
+  }
   size_t sizeInBytes = bundle.getConstantWeightSize();
   if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
     llvm::errs() << "Failed to add network: not enough memory.\n";

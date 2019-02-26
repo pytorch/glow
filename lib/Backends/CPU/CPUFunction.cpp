@@ -25,10 +25,7 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          const runtime::RuntimeBundle &runtimeBundle)
     : CompiledFunction(runtimeBundle), JIT_(std::move(JIT)) {}
 
-CPUFunction::~CPUFunction() {
-  alignedFree(runtimeBundle_.getConstants());
-  tearDownRuns();
-}
+CPUFunction::~CPUFunction() { tearDownRuns(); }
 
 void CPUFunction::collectConstants(Module *module) {
   runtimeBundle_.collectConstants(module);

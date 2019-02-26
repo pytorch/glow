@@ -8,7 +8,6 @@ target_link_libraries(Interpreter
                         Base
                         Graph
                         CodeGen
-                        BackendUtils
                         IR
                         Optimizer
                         QuantizationBase)
@@ -17,8 +16,8 @@ add_library(InterpreterDeviceManager
               InterpreterDeviceManager.cpp)
 target_link_libraries(InterpreterDeviceManager
                       PRIVATE
+                        Backend
                         Backends
-                        BackendUtils
                         Base
                         CodeGen
                         Graph

@@ -869,6 +869,11 @@ public:
   MockQuantBackend() {
     backend_.reset(createBackend(BackendKind::Interpreter));
   }
+
+  BackendKind getBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
+
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return backend_->compile(F);
   }

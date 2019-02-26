@@ -34,6 +34,7 @@ void glow::runtime::RuntimeBundle::setInputsandOutputs() {
 void glow::runtime::RuntimeBundle::freeConstants() {
   if (constants_) {
     glow::alignedFree(constants_);
+    constants_ = nullptr;
   }
 }
 void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
@@ -45,6 +46,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
     return;
   }
 
+  assert(constants_ == nullptr && "constants already allocated");
   constants_ =
       (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
 

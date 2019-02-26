@@ -79,7 +79,6 @@ add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)
 target_link_libraries(DeviceManagerTest
                       PRIVATE
-                        Backend
                         Backends
                         DeviceManager
                         Graph
@@ -407,7 +406,6 @@ add_executable(TraceEventsTest
                TraceEventsTest.cpp)
 target_link_libraries(TraceEventsTest
                       PRIVATE
-                        Backend
                         Backends
                         Graph
                         IR

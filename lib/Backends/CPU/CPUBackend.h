@@ -43,6 +43,8 @@ public:
   ///@{
   ~CPUBackend() override = default;
 
+  BackendKind getBackendKind() const override { return BackendKind::CPU; }
+
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 

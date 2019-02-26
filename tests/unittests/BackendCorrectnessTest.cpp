@@ -252,6 +252,9 @@ public:
     backend_.reset(
         static_cast<BackendUsingGlowIR *>(createBackend(BackendKind::CPU)));
   }
+
+  BackendKind getBackendKind() const override { return BackendKind::CPU; }
+
   std::unique_ptr<CompiledFunction> compile(Function *F) const override {
     return backend_->compile(F);
   }
