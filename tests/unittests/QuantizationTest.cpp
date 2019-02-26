@@ -60,6 +60,37 @@ bool operator==(const NodeQuantizationInfo &lhs,
          lhs.nodeOutputName_ == rhs.nodeOutputName_;
 }
 
+/// This is a mock backend which extended support of quantized operators.
+class MockQuantBackend : public Backend {
+  // The actual backend being wrapped.
+  std::unique_ptr<Backend> backend_;
+
+public:
+  MockQuantBackend() {
+    backend_.reset(createBackend(BackendKind::Interpreter));
+  }
+
+  BackendKind getBackendKind() const override {
+    return BackendKind::Interpreter;
+  }
+
+  std::unique_ptr<CompiledFunction>
+  compile(Function *F, const CompilationOptions &opts) const override {
+    return backend_->compile(F, opts);
+  }
+
+  bool isOpSupported(const NodeInfo &NI) const override {
+    if (NI.getKind() == Kinded::Kind::SoftMaxNodeKind ||
+        NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||
+        NI.getKind() == Kinded::Kind::SaveNodeKind ||
+        NI.getKind() == Kinded::Kind::ReluNodeKind ||
+        NI.getKind() == Kinded::Kind::SelectNodeKind) {
+      return true;
+    }
+    return backend_->isOpSupported(NI);
+  }
+};
+
 void testSerialization(const std::vector<NodeQuantizationInfo> &expected) {
   llvm::SmallVector<char, 10> resultPath;
   llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
@@ -305,6 +336,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
 /// point range.
 TEST(Quantization, quantizeReLU) {
   ExecutionEngine EE;
+  EE.setBackend(new MockQuantBackend());
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
@@ -859,35 +891,6 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
-
-/// This is a mock backend which extended support of quantized operators.
-class MockQuantBackend : public Backend {
-  // The actual backend being wrapped.
-  std::unique_ptr<Backend> backend_;
-
-public:
-  MockQuantBackend() {
-    backend_.reset(createBackend(BackendKind::Interpreter));
-  }
-
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
-
-  std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override {
-    return backend_->compile(F, opts);
-  }
-  bool isOpSupported(const NodeInfo &NI) const override {
-    if (NI.getKind() == Kinded::Kind::SoftMaxNodeKind ||
-        NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||
-        NI.getKind() == Kinded::Kind::SaveNodeKind ||
-        NI.getKind() == Kinded::Kind::SelectNodeKind) {
-      return true;
-    }
-    return backend_->isOpSupported(NI);
-  }
-};
 
 /// Check that LRN and Softmax are quantized.
 TEST(Quantization, quantizeSoftmaxAndLRN) {
