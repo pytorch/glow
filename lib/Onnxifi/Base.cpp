@@ -54,6 +54,8 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
 
   glow::lower(function, /* loweredMap */ nullptr, glowBackend_.get());
 
+  glowBackend_->transformPostLowering(function, CompilationMode::Infer);
+
   const auto &nodes = function->getNodes();
 
   for (const auto &node : nodes) {
