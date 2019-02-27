@@ -133,29 +133,22 @@ CPUBackend::compileIRWithoutConstants(IRFunction *IR) const {
   return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeInfo);
 }
 
-std::unique_ptr<CompiledFunction> CPUBackend::compile(Function *F) const {
-  TraceInfo traceInfo = buildManualTraceInfo(F);
-  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  auto compiledFunc = compileIR(std::move(IR));
-  compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
-}
-
 std::unique_ptr<CompiledFunction>
-CPUBackend::instrumentAndCompile(Function *F) const {
+CPUBackend::compile(Function *F, const CompileOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  autoInstrument(traceInfo, IR.get());
-  auto compiledFunc = compileIR(std::move(IR));
-  compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
-}
 
-std::unique_ptr<CompiledFunction>
-CPUBackend::compileWithoutConstants(Function *F) const {
-  TraceInfo traceInfo = buildManualTraceInfo(F);
-  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  auto compiledFunc = compileIRWithoutConstants(IR.get());
+  if (opts.autoInstrument) {
+    autoInstrument(traceInfo, IR.get());
+  }
+
+  std::unique_ptr<CompiledFunction> compiledFunc;
+  if (opts.collectConstants) {
+    compiledFunc = compileIR(std::move(IR));
+  } else {
+    compiledFunc = compileIRWithoutConstants(IR.get());
+  }
+
   compiledFunc->setTraceInfo(std::move(traceInfo));
   return compiledFunc;
 }

@@ -42,12 +42,8 @@ class MockBackend : public Backend {
     return BackendKind::Interpreter;
   }
 
-  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
-    return llvm::make_unique<MockFunction>();
-  }
-
   std::unique_ptr<CompiledFunction>
-  compileWithoutConstants(Function *F) const override {
+  compile(Function *F, const CompileOptions &) const override {
     return llvm::make_unique<MockFunction>();
   }
 
@@ -75,12 +71,8 @@ class MockBackendCustomIRGen : public Backend {
     return BackendKind::Interpreter;
   }
 
-  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
-    return llvm::make_unique<MockFunction>();
-  }
-
   std::unique_ptr<CompiledFunction>
-  compileWithoutConstants(Function *F) const override {
+  compile(Function *F, const CompileOptions &) const override {
     return llvm::make_unique<MockFunction>();
   }
 

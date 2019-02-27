@@ -35,6 +35,15 @@ enum class BackendKind {
   CPU,         // Compile and run the code on the host.
 };
 
+/// Configuration options for the compile() method on Backend.
+struct CompileOptions {
+  /// Allocate and collect constant Tensors in the RuntimeBundle.
+  bool collectConstants{true};
+
+  /// Insert TraceEvents between all instructions for profiling.
+  bool autoInstrument{false};
+};
+
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -44,21 +53,14 @@ public:
   /// \returns the kind of Backend this is.
   virtual BackendKind getBackendKind() const = 0;
 
-  /// Generate code for input function \param F.
-  virtual std::unique_ptr<CompiledFunction> compile(Function *F) const = 0;
-
-  /// Generate instrumented (for tracing) code for input function \param F.
-  /// When writing a new backend you must override this function to support auto
-  /// instrumentation.
-  virtual std::unique_ptr<CompiledFunction>
-  instrumentAndCompile(Function *F) const {
-    GLOW_UNREACHABLE("Auto instrumentation is not supported by the backend");
-    return compile(F);
+  virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
+    CompileOptions opts;
+    return compile(F, opts);
   }
 
-  /// Generate code for input function \param F but do not collect constants.
+  /// Generate code for input function \param F.
   virtual std::unique_ptr<CompiledFunction>
-  compileWithoutConstants(Function *F) const = 0;
+  compile(Function *F, const CompileOptions &opts) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for

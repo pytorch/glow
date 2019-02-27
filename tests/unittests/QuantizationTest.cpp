@@ -874,14 +874,11 @@ public:
     return BackendKind::Interpreter;
   }
 
-  std::unique_ptr<CompiledFunction> compile(Function *F) const override {
-    return backend_->compile(F);
+  std::unique_ptr<CompiledFunction>
+  compile(Function *F, const CompileOptions &opts) const override {
+    return backend_->compile(F, opts);
   }
 
-  std::unique_ptr<CompiledFunction>
-  compileWithoutConstants(Function *F) const override {
-    return backend_->compile(F);
-  }
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override {
     if (opKind == Kinded::Kind::SoftMaxNodeKind ||
         opKind == Kinded::Kind::LocalResponseNormalizationNodeKind ||

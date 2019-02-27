@@ -239,7 +239,9 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   ctx.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
   backend->optimizeFunction(CompilationMode::Infer, F);
-  EE_.insertCompiledFunction(F->getName(), backend->instrumentAndCompile(F));
+  CompileOptions opts;
+  opts.autoInstrument = true;
+  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -272,7 +274,9 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   ctx.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
   backend->optimizeFunction(CompilationMode::Infer, F);
-  EE_.insertCompiledFunction(F->getName(), backend->instrumentAndCompile(F));
+  CompileOptions opts;
+  opts.autoInstrument = true;
+  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);

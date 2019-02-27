@@ -24,19 +24,23 @@
 #include "glow/IR/IR.h"
 
 using namespace glow;
-std::unique_ptr<CompiledFunction> Interpreter::compile(Function *F) const {
-  TraceInfo traceInfo = buildManualTraceInfo(F);
-  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  auto compiledFunc = compileIR(std::move(IR));
-  compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
-}
 
 std::unique_ptr<CompiledFunction>
-Interpreter::compileWithoutConstants(Function *F) const {
+Interpreter::compile(Function *F, const CompileOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  auto compiledFunc = compileIRWithoutConstants(std::move(IR));
+
+  if (opts.autoInstrument) {
+    autoInstrument(traceInfo, IR.get());
+  }
+
+  std::unique_ptr<CompiledFunction> compiledFunc;
+  if (opts.collectConstants) {
+    compiledFunc = compileIR(std::move(IR));
+  } else {
+    compiledFunc = compileIRWithoutConstants(std::move(IR));
+  }
+
   compiledFunc->setTraceInfo(std::move(traceInfo));
   return compiledFunc;
 }
@@ -59,16 +63,6 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
       generateRuntimeBundle(*IR, constantWeightsAllocator,
                             placeholderWeightsAllocator, activationsAllocator);
   return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
-}
-
-std::unique_ptr<CompiledFunction>
-Interpreter::instrumentAndCompile(Function *F) const {
-  TraceInfo traceInfo = buildManualTraceInfo(F);
-  auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  autoInstrument(traceInfo, IR.get());
-  auto compiledFunc = compileIR(std::move(IR));
-  compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
 }
 
 bool Interpreter::isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const {

@@ -73,7 +73,9 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
 
   llvm::outs() << "Starting compile.\n";
   backend->optimizeFunction(CompilationMode::Infer, F);
-  return backend->instrumentAndCompile(F);
+  CompileOptions opts;
+  opts.autoInstrument = true;
+  return backend->compile(F, opts);
 }
 
 std::future<ResultCode> addToDevice(unsigned int id, DeviceManager *device,

@@ -168,8 +168,8 @@ TEST_P(BackendTest, debugPrint) {
   function->tearDownRuns();
 }
 
-/// Test the compileWithoutConstants method on the backend completes without
-/// error.
+/// Test the compile method on the backend completes without error when
+/// collectConstants is false.
 TEST_P(BackendTest, CompileWithoutConstants) {
   Module mod;
   Context ctx;
@@ -181,7 +181,9 @@ TEST_P(BackendTest, CompileWithoutConstants) {
   auto *save = F->createSave("save", pow);
   ctx.allocate(save->getPlaceholder());
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  auto function = backend->compileWithoutConstants(F);
+  CompileOptions opts;
+  opts.collectConstants = false;
+  auto function = backend->compile(F, opts);
 }
 
 /// This test checks that we can compile a function without depending on the

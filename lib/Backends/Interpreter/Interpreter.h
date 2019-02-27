@@ -44,13 +44,8 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
-  std::unique_ptr<CompiledFunction> compile(Function *F) const override;
-
   std::unique_ptr<CompiledFunction>
-  instrumentAndCompile(Function *F) const override;
-
-  std::unique_ptr<CompiledFunction>
-  compileWithoutConstants(Function *F) const override;
+  compile(Function *F, const CompileOptions &opts) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 
