@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_BACKEND_H
 #define GLOW_BACKENDS_BACKEND_H
 
+#include "glow/Backends/CompilationOptions.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -35,15 +36,6 @@ enum class BackendKind {
   CPU,         // Compile and run the code on the host.
 };
 
-/// Configuration options for the compile() method on Backend.
-struct CompileOptions {
-  /// Allocate and collect constant Tensors in the RuntimeBundle.
-  bool collectConstants{true};
-
-  /// Insert TraceEvents between all instructions for profiling.
-  bool autoInstrument{false};
-};
-
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -54,13 +46,13 @@ public:
   virtual BackendKind getBackendKind() const = 0;
 
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
-    CompileOptions opts;
+    CompilationOptions opts;
     return compile(F, opts);
   }
 
   /// Generate code for input function \param F.
   virtual std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompileOptions &opts) const = 0;
+  compile(Function *F, const CompilationOptions &opts) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for
@@ -76,7 +68,8 @@ public:
   /// backend may insert backend-specific nodes. The backend is responsible for
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
-  virtual bool transformPostLowering(Function *F, CompilationMode mode) const {
+  virtual bool transformPostLowering(Function *F,
+                                     const CompilationOptions &opts) const {
     return false;
   }
 
@@ -92,8 +85,8 @@ public:
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
 
-  /// Optimize the Function \p F given compilation mode \p mode.
-  void optimizeFunction(CompilationMode mode, Function *F) const;
+  /// Optimize the Function \p F given compilation options \p opts.
+  void optimizeFunction(Function *F, const CompilationOptions &opts) const;
 
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.

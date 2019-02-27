@@ -72,9 +72,10 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   Function *F = module.getFunction("resnet50");
 
   llvm::outs() << "Starting compile.\n";
-  backend->optimizeFunction(CompilationMode::Infer, F);
-  CompileOptions opts;
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
+  backend->optimizeFunction(F, opts);
   return backend->compile(F, opts);
 }
 

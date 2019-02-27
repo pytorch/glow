@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
+#include "glow/Backends/CompilationOptions.h"
 #include "glow/Quantization/Quantization.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -30,15 +31,10 @@ class Module;
 class Context;
 class Placeholder;
 
-enum class CompilationMode {
-  Train, /// Compile the graph in preperation for training.
-  Infer, /// Compile the graph for inference. Notice that this operation
-         /// changes the graph in a way that is not reversible.
-};
-
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
+void optimize(Function *F, const CompilationOptions &opts);
 void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level

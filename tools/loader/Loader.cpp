@@ -325,12 +325,14 @@ void Loader::compile(Context &ctx) {
     ::optimize(F_, glow::CompilationMode::Infer);
   }
 
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(CompilationMode::Infer, F_, emitBundle, networkName);
+    EE_.save(F_, opts, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(F_, opts);
   }
 
   if (dumpGraphOpt) {

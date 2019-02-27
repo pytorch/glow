@@ -57,8 +57,10 @@ ResultCode HostManager::addNetwork(Module *M) {
   // Optimize functions before passing to partitioner.
   // Currently hardcoding inference.
   if (backend_) {
+    CompilationOptions opts;
+    opts.mode = CompilationMode::Infer;
     for (auto F : M->getFunctions()) {
-      backend_->optimizeFunction(CompilationMode::Infer, F);
+      backend_->optimizeFunction(F, opts);
     }
   }
   auto partitioner = Partitioner(M, deviceInfo);

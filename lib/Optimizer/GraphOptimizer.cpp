@@ -2365,7 +2365,7 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
   }
 }
 
-void glow::optimize(Function *F, CompilationMode mode) {
+void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2383,7 +2383,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
   optimizeReshape(F);
-  if (mode == CompilationMode::Infer) {
+  if (opts.mode == CompilationMode::Infer) {
     transposeConstants(F);
   }
 
@@ -2408,7 +2408,7 @@ void glow::optimize(Function *F, CompilationMode mode) {
   // Perform Dead Code Elimination.
   DCE(F);
 
-  if (mode == CompilationMode::Infer) {
+  if (opts.mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
@@ -2445,4 +2445,10 @@ void glow::optimize(Function *F, CompilationMode mode) {
 
   // Perform Dead Code Elimination.
   DCE(F);
+}
+
+void glow::optimize(Function *F, CompilationMode mode) {
+  CompilationOptions opts;
+  opts.mode = mode;
+  optimize(F, opts);
 }

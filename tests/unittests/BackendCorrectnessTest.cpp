@@ -256,7 +256,7 @@ public:
   BackendKind getBackendKind() const override { return BackendKind::CPU; }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompileOptions &opts) const override {
+  compile(Function *F, const CompilationOptions &opts) const override {
     return backend_->compile(F, opts);
   }
 

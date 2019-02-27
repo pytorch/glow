@@ -129,7 +129,9 @@ TEST_P(TraceEventsTest, manualEvents) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -170,7 +172,9 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -207,7 +211,9 @@ TEST_P(TraceEventsTest, internalGap) {
   n = part_four(F, ctx, n);
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -238,9 +244,10 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 
   ctx.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  backend->optimizeFunction(CompilationMode::Infer, F);
-  CompileOptions opts;
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
+  backend->optimizeFunction(F, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
@@ -273,9 +280,10 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 
   ctx.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  backend->optimizeFunction(CompilationMode::Infer, F);
-  CompileOptions opts;
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
+  backend->optimizeFunction(F, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
@@ -308,7 +316,9 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   }
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -353,7 +363,9 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   F->createTraceEvent("event3", "E", eventData4, 0);
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
   EE_.run(ctx);
@@ -401,7 +413,9 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   ctx.allocate(EE_.getModule().getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
 
   updateInputPlaceholders(ctx, {inputPH}, {&inputs});
 

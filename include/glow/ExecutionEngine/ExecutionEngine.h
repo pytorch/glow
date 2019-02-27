@@ -104,6 +104,10 @@ public:
   /// be added to the collection of previously compiled functions otherwise any
   /// previously compiled functions will be removed first. This method should be
   /// invoked before the run method.
+  void compile(Function *F, const CompilationOptions &opts,
+               bool clearOtherFunctions = true);
+
+  /// A convenience function for the most common type of compile.
   void compile(CompilationMode mode, Function *F,
                bool clearOtherFunctions = true);
 
@@ -113,8 +117,8 @@ public:
   /// Make \p networkName the function name for
   /// the entry point of the network and prepend all generated
   /// files with this name.
-  void save(CompilationMode mode, Function *F, llvm::StringRef outputDir,
-            llvm::StringRef networkName);
+  void save(Function *F, const CompilationOptions &opts,
+            llvm::StringRef outputDir, llvm::StringRef networkName);
 
   /// Context aware single execution of a function. If more than one function
   /// has been compiled by this ExecutionEngine then a name must be supplied

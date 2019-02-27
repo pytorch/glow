@@ -13,7 +13,7 @@ set(CMAKE_LLIR_CREATE_SHARED_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_STATIC_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 
-set(CPURunttimeCompileOptions
+set(CPURunttimeCompilationOptions
       -std=c++14
       -ffast-math
       -fno-finite-math-only
@@ -35,7 +35,7 @@ foreach(libjit_src_file ${libjit_files})
 
   add_custom_command(
     OUTPUT  ${libjit_obj_file}
-    COMMAND ${CLANG_BIN} -c ${libjit_src_file_path} ${CPURunttimeCompileOptions} -o ${libjit_obj_file}
+    COMMAND ${CLANG_BIN} -c ${libjit_src_file_path} ${CPURunttimeCompilationOptions} -o ${libjit_obj_file}
     DEPENDS ${libjit_src_file_path}
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
 

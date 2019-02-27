@@ -209,6 +209,13 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
                               bool clearOtherFunctions) {
+  CompilationOptions opts;
+  opts.mode = mode;
+  compile(F, opts, clearOtherFunctions);
+}
+
+void ExecutionEngine::compile(Function *F, const CompilationOptions &opts,
+                              bool clearOtherFunctions) {
   llvm::StringRef name = F->getName();
 
   if (clearOtherFunctions) {
@@ -218,14 +225,14 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F,
   assert(!compiledFunctions_.count(name) &&
          "A function with this name has already been compiled.");
 
-  backend_->optimizeFunction(mode, F);
-  auto func = backend_->compile(F);
+  backend_->optimizeFunction(F, opts);
+  auto func = backend_->compile(F, opts);
   insertCompiledFunction(name, std::move(func));
 }
 
-void ExecutionEngine::save(CompilationMode mode, Function *F,
+void ExecutionEngine::save(Function *F, const CompilationOptions &opts,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
-  backend_->optimizeFunction(mode, F);
+  backend_->optimizeFunction(F, opts);
   backend_->save(F, outputDir, networkName);
 }
