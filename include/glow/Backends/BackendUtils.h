@@ -43,13 +43,13 @@ class RuntimeBundle {
   /// Map from symbol name to a RuntimeSymbolInfo.
   SymbolTableTy symbolTable_;
   /// Pointer to memory containing the weights for execution.
-  uint8_t *constants_;
+  uint8_t *constants_{nullptr};
   /// Amount of memory needed for weights.
-  size_t constantWeightVarsMemSize_;
+  size_t constantWeightVarsMemSize_{0};
   /// Amount of memory needed for mutable vars.
-  size_t mutableWeightVarsMemSize_;
+  size_t mutableWeightVarsMemSize_{0};
   /// Amount of memory needed for activations.
-  size_t activationsMemSize_;
+  size_t activationsMemSize_{0};
 
 public:
   /// Get Constant Weights memory size.
