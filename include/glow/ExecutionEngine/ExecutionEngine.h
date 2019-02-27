@@ -49,7 +49,7 @@ class ExecutionEngine final {
   bool ownsBackend_ = false;
 
   /// The device manager for executing compiled funtions.
-  runtime::DeviceManager *device_ = nullptr;
+  std::unique_ptr<runtime::DeviceManager> device_;
 
   /// Glow functions compiled for this ExecutionEngine's backend.
   llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions_;

@@ -49,13 +49,13 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
   if (differentKinds) {
     if (device_) {
       device_->stop();
-      delete device_;
-      device_ = nullptr;
+      device_.reset();
     }
 
     if (backend) {
-      device_ = runtime::DeviceManager::createDeviceManager(
-          backend->getBackendKind(), "ExecutionEngine");
+      device_ = std::unique_ptr<runtime::DeviceManager>(
+          runtime::DeviceManager::createDeviceManager(backend->getBackendKind(),
+                                                      "ExecutionEngine"));
     }
   }
 }
