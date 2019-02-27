@@ -33,8 +33,6 @@ ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
 /// Set the code generator kind to \p backendKind.
 void ExecutionEngine::setBackend(BackendKind backendKind) {
   setBackend(createBackend(backendKind));
-  device_ = runtime::DeviceManager::createDeviceManager(backendKind,
-                                                        "ExecutionEngine");
 }
 
 /// Set the code generator to the given \p backend.
