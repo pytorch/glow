@@ -20,6 +20,7 @@
 #include "glow/Graph/Graph.h"
 
 #include <future>
+#include <map>
 #include <queue>
 
 using namespace glow;
@@ -29,85 +30,96 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
   }
+  auto backendKind = devices[0]->getBackendKind();
+  backend_.reset(createBackend(backendKind));
 }
 
+void walkNetwork(DAGNode *node,
+                 std::map<DeviceIDTy, std::vector<DAGNode *>> &logicalDevices) {
+
+  auto it = logicalDevices.find(node->logicalDevice);
+  if (it != logicalDevices.end()) {
+    it->second.push_back(node);
+  } else {
+    logicalDevices.emplace(node->logicalDevice, std::vector<DAGNode *>{node});
+  }
+  for (auto &child : node->children) {
+    walkNetwork(child, logicalDevices);
+  }
+}
+
+bool sortMostMemory(const std::pair<DeviceIDTy, uint64_t> &a,
+                    const std::pair<DeviceIDTy, uint64_t> &b) {
+  return (a.second > b.second);
+}
 ResultCode
 Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
                        Module &module) {
-  // For the first pass we will just assign and load devices in order and update
-  // the deviceID field of the node.
-  std::queue<std::vector<DAGNode *>> nextNode;
-  // Process head node, this does not contain a function but serves as an entry
-  // point for the network. We build a vector of nodes, containing all
-  // sub-functions that use the same constants. Later we will group by
-  // logicalDevice.
-  for (unsigned int i = 0; i < networks[0]->children.size(); i++) {
-    std::vector<DAGNode *> newSet;
-    for (auto &node : networks) {
-      newSet.push_back(node->children[i]);
+  // Walk the networks and group by logicalDeviceId.
+  std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
+
+  for (auto &network : networks) {
+    for (auto &child : network->children) {
+      walkNetwork(child, logicalDevices);
     }
-    nextNode.push(newSet);
   }
-  while (!nextNode.empty()) {
-    FunctionMapTy compiledFunctions;
-    auto nodes = nextNode.front();
-    nextNode.pop();
+  // Check if there are more logical devices than physical devices.
+  if (logicalDevices.size() > devices_.size()) {
+    return ResultCode::Failed;
+  }
 
-    // Add child nodes to the queue.
-    for (unsigned int i = 0; i < nodes[0]->children.size(); i++) {
-      std::vector<DAGNode *> newSet;
-      for (auto node : nodes) {
-        newSet.push_back(node->children[i]);
-      }
-      nextNode.push(newSet);
-    }
-    // Assign collection of nodes to a device, compile and load the device.
-    // We will do a round robin assignment of nodes. If there is not space we
-    // will return an error.
-    // TODO Add ability to try against another device when currDevice has
-    // insufficient space.
-
-    // Get the next Device to be loaded.
-    auto &device = devices_[nextDevice_];
-    // Set backend to match the device.
-    backend_.reset(createBackend(device->getBackendKind()));
-
-    // Iterate over the nodes, compile them and add them to compiledFunctions.
-    for (auto node : nodes) {
-      node->deviceID = nextDevice_;
+  std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
+  std::map<DeviceIDTy, FunctionMapTy> functionMaps;
+  // Compile functions and calculate required memory for each logical device.
+  for (auto &device : logicalDevices) {
+    uint64_t totalMemory = 0;
+    FunctionMapTy functionMap;
+    for (auto &node : device.second) {
       Function *function = module.getFunction(node->name);
-      auto compiled = backend_->compile(function);
+      auto compileOptions = CompilationOptions();
+      compileOptions.collectConstants = false;
+      auto compiled = backend_->compile(function, compileOptions);
       node->runtimeBundle = compiled->getRuntimeBundle();
       node->runtimeBundle.setInputsandOutputs();
-      compiledFunctions.emplace(node->name, compiled.get());
+      functionMap.emplace(node->name, compiled.get());
       functions_.emplace(node->name, std::move(compiled));
+      totalMemory += node->runtimeBundle.getConstantWeightSize();
     }
+    logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
+    functionMaps.emplace(device.first, functionMap);
+  }
+  // Sort by total size in descending order.
+  std::sort(logicalDeviceSize.begin(), logicalDeviceSize.end(), sortMostMemory);
 
-    // Check if sufficient space on device. Currently requiring a buffer
-    // over the size of constants determined by NETWORK_PADDING_FACTOR.
-    auto availableMemory = device->getAvailableMemory();
-    auto requiredMemory = NETWORK_PADDING_FACTOR *
-                          nodes[0]->runtimeBundle.getConstantWeightSize();
-    if (availableMemory < requiredMemory) {
+  // Get available memory for all devices.
+  std::vector<std::pair<DeviceIDTy, uint64_t>> deviceMemory;
+  for (unsigned i = 0; i < devices_.size(); i++) {
+    uint64_t availableMemory = devices_[i]->getAvailableMemory();
+    deviceMemory.push_back(std::make_pair(i, availableMemory));
+  }
+  // Sort by available memory in descending order.
+  std::sort(deviceMemory.begin(), deviceMemory.end(), sortMostMemory);
+
+  // Try to add functions to devices in order from largest to smallest.
+  for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
+    if (logicalDeviceSize[i].second * NETWORK_PADDING_FACTOR >=
+        deviceMemory[i].second) {
       return ResultCode::Failed;
     }
-
-    // Load functions on device. Create a promise that is passed into the
-    // callback that is passed to the deviceManager alongside a reference to the
-    // module and a map of the functions. Then wait on the future for the
-    // results.
+    // Load functions on device.
+    DeviceIDTy logicalID = logicalDeviceSize[i].first;
+    DeviceIDTy deviceID = deviceMemory[i].first;
     std::promise<bool> addNetwork;
     auto ready = addNetwork.get_future();
-    device->addNetwork(&module, compiledFunctions,
-                       [&addNetwork](const Module *, ResultCode result) {
-                         addNetwork.set_value(result == ResultCode::Ready);
-                       });
+    devices_[deviceID]->addNetwork(
+        &module, functionMaps[logicalID],
+        [&addNetwork](const Module *, ResultCode result) {
+          addNetwork.set_value(result == ResultCode::Ready);
+        });
     auto result = ready.get();
     if (!result) {
       return ResultCode::Failed;
     }
-
-    nextDevice_ = (nextDevice_ + 1) % devices_.size();
   }
   return ResultCode::Ready;
 };
