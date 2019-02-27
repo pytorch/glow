@@ -54,10 +54,6 @@ private:
 
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
-
-  /// Index of current deviceManager. This allows a round robin loading of
-  /// deviceManagers.
-  unsigned int nextDevice_{0};
 };
 } // namespace runtime
 } // namespace glow
