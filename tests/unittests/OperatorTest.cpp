@@ -3313,20 +3313,20 @@ TEST_P(InterpOnly, BatchBoxCox) {
   auto OH = O.getHandle();
 
   for (size_t i = 0; i < kRows; ++i) {
-      for (size_t j = 0; j < kCols; ++j) {
-        float d = dataH.at({i, j});
-        float l1 = lambda1H.at({j});
-        float l2 = lambda2H.at({j});
+    for (size_t j = 0; j < kCols; ++j) {
+      float d = dataH.at({i, j});
+      float l1 = lambda1H.at({j});
+      float l2 = lambda2H.at({j});
 
-        // Compute elementwise Box-Cox transform.
-        float tmp = std::max(d + l2, 1e-6f);
-        if (l1 == 0) {
-          // Clip argument to log and pow at 1e-6 to avoid saturation.
-          OH.at({i, j}) = std::log(tmp);
-        } else {
-          OH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
-        }
+      // Compute elementwise Box-Cox transform.
+      float tmp = std::max(d + l2, 1e-6f);
+      if (l1 == 0) {
+        // Clip argument to log and pow at 1e-6 to avoid saturation.
+        OH.at({i, j}) = std::log(tmp);
+      } else {
+        OH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
       }
+    }
   }
 
   auto result = ctx_.get(S->getPlaceholder())->getHandle();
