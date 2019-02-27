@@ -2,6 +2,8 @@
 
 [ONNXIFI](https://github.com/onnx/onnx/blob/master/docs/ONNXIFI.md) is an
 interface that allows PyTorch/Caffe2 to use Glow as an execution backend.
+Right now, [FOXI](https://github.com/houseroad/foxi) (i.e., ONNXIFI with
+Facebook Extension) is used to support more features.
 
 Setting up a Caffe2 environment to use Glow via ONNXIFI can be tricky the first
 time. The steps in this walkthrough show how to build all the required

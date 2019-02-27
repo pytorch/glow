@@ -17,7 +17,7 @@
 #ifndef GLOW_IMPORTER_COMMONOPERATORLOADER_H
 #define GLOW_IMPORTER_COMMONOPERATORLOADER_H
 
-#include "onnx/onnxifi.h"
+#include "foxi/onnxifi.h"
 
 #include "glow/Importer/ProtobufLoader.h"
 

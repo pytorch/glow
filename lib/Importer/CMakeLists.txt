@@ -9,7 +9,7 @@ if(NOT TARGET onnx_proto)
     set(ONNX_NAMESPACE "glow_onnx")
   endif()
   add_definitions("-DONNX_NAMESPACE=${ONNX_NAMESPACE}")
-  add_subdirectory(${GLOW_THIRDPARTY_DIR}/onnx EXCLUDE_FROM_ALL build)
+  add_subdirectory(${GLOW_THIRDPARTY_DIR}/onnx EXCLUDE_FROM_ALL build_onnx)
 endif()
 
 find_package(Protobuf REQUIRED)
@@ -37,7 +37,7 @@ add_library(Importer
               ONNXIFIModelLoader.cpp
               ${CAFFE_SRCS}
               ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h)
-target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS})
+target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS} ${GLOW_THIRDPARTY_DIR}/foxi)
 target_compile_definitions(Importer
                            INTERFACE
                              -DGOOGLE_PROTOBUF_NO_RTTI)
