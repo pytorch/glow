@@ -472,7 +472,9 @@ private:
     auto const *otherData = other.getRawDataPointer<ElemTy>();
     for (size_t i = 0, e = size(); i < e; i++) {
       double delta = myData[i] - otherData[i];
-      if (std::abs(delta) > allowedError) {
+      // Since any comparison with NAN returns false, we use a negated condition
+      // so that this function correctly returns false when delta is NAN.
+      if (!(std::abs(delta) <= allowedError)) {
         return false;
       }
     }
