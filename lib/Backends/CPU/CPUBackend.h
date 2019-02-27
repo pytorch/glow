@@ -52,12 +52,13 @@ public:
   compileIRWithoutConstants(IRFunction *IR) const;
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompileOptions &opts) const override;
+  compile(Function *F, const CompilationOptions &opts) const override;
 
   void save(Function *F, llvm::StringRef outputDir,
             llvm::StringRef networkName) const override;
 
-  bool transformPostLowering(Function *F, CompilationMode mode) const override;
+  bool transformPostLowering(Function *F,
+                             const CompilationOptions &opts) const override;
 
   bool isOpSupported(Kinded::Kind opKind, ElemKind elementTy) const override;
 

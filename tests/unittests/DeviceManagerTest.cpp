@@ -55,9 +55,11 @@ compileFunctions(BackendKind backendKind, Module *module,
                  std::vector<std::unique_ptr<CompiledFunction>> &backing) {
   FunctionMapTy results;
   auto *backend = createBackend(backendKind);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
   for (auto *F : module->getFunctions()) {
-    backend->optimizeFunction(CompilationMode::Infer, F);
-    auto f = backend->compile(F);
+    backend->optimizeFunction(F, opts);
+    auto f = backend->compile(F, opts);
     backing.push_back(std::move(f));
     results.emplace(F->getName(), backing.back().get());
   }

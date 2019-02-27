@@ -43,7 +43,7 @@ class MockBackend : public Backend {
   }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompileOptions &) const override {
+  compile(Function *F, const CompilationOptions &) const override {
     return llvm::make_unique<MockFunction>();
   }
 
@@ -72,7 +72,7 @@ class MockBackendCustomIRGen : public Backend {
   }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompileOptions &) const override {
+  compile(Function *F, const CompilationOptions &) const override {
     return llvm::make_unique<MockFunction>();
   }
 

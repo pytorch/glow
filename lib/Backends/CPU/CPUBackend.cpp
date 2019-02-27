@@ -134,7 +134,7 @@ CPUBackend::compileIRWithoutConstants(IRFunction *IR) const {
 }
 
 std::unique_ptr<CompiledFunction>
-CPUBackend::compile(Function *F, const CompileOptions &opts) const {
+CPUBackend::compile(Function *F, const CompilationOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
 

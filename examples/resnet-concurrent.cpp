@@ -75,8 +75,11 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module) {
   Function *F = module.getFunction("resnet50");
 
   llvm::outs() << "Starting compile.\n";
-  backend->optimizeFunction(CompilationMode::Infer, F);
-  return backend->compile(F);
+
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  backend->optimizeFunction(F, opts);
+  return backend->compile(F, opts);
 }
 
 /// Loads the CompliedFunction into device \p device.

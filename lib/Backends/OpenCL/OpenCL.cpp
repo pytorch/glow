@@ -1561,7 +1561,7 @@ OCLBackend::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compile(Function *F, const CompileOptions &opts) const {
+OCLBackend::compile(Function *F, const CompilationOptions &opts) const {
   if (opts.autoInstrument) {
     GLOW_UNREACHABLE("Instrumentation not supported on this Backend");
   }
