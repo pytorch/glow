@@ -1115,40 +1115,10 @@ TEST(caffe2, batchBoxCox) {
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});
-  auto dataH = data.getHandle();
-  auto lambda1H = lambda1.getHandle();
-  auto lambda2H = lambda2.getHandle();
-
-  // Fill inputs with random values.
-  dataH.randomize(0.0, 5.0, mod.getPRNG());
-  lambda1H.randomize(1.0, 2.0, mod.getPRNG());
-  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
-
-  // Zero out every other element to lambda1 to test that case of the transform.
-  for (size_t i = 0; i < kCols; i += 2) {
-    lambda1H.at({i}) = 0;
-  }
 
   // Compute expected output.
   Tensor O(ElemKind::FloatTy, {kRows, kCols});
   auto OH = O.getHandle();
-
-  for (size_t i = 0; i < kRows; ++i) {
-    for (size_t j = 0; j < kCols; ++j) {
-      float d = dataH.at({i, j});
-      float l1 = lambda1H.at({j});
-      float l2 = lambda2H.at({j});
-
-      // Compute elementwise Box-Cox transform.
-      float tmp = std::max(d + l2, 1e-6f);
-      if (l1 == 0) {
-        // Clip argument to log and pow at 1e-6 to avoid saturation.
-        OH.at({i, j}) = std::log(tmp);
-      } else {
-        OH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
-      }
-    }
-  }
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -1240,18 +1210,6 @@ TEST(caffe2, batchBoxCox) {
 
   // There are three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
-
-  // Compile and run the model.
-  auto *res = ctx.get(output);
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-
-  auto result = res->getHandle();
-
-  // Check that the output tensor is the same as the expected output.
-  for (size_t i = 0; i < result.size(); ++i) {
-    EXPECT_FLOAT_EQ(result.raw(i), OH.raw(i));
-  }
 }
 
 // Test loading a EQ operator with 1D inputs.
