@@ -591,6 +591,8 @@ TEST_P(Operator, end2endGRU) {
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
+  LoweredInfoMap loweredMapForProf;
+  lower(F1, &loweredMapForProf);
   F1 = glow::profileQuantization(ctx, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
@@ -599,13 +601,15 @@ TEST_P(Operator, end2endGRU) {
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, F1);
+      quantization::generateNodeQuantizationInfos(ctx, F1, loweredMapForProf);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
+  LoweredInfoMap loweredMapForQuant;
+  lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
-                                      F2);
+                                      F2, loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(ctx);
 
@@ -1583,7 +1587,6 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   auto outputNameBA = NodeQuantizationInfo::generateNodeOutputName(
       loweredBA->getName(), BatchedAddNode::ResultIdx);
 
-  // Now profile the fully lowered graph.
   profileF = glow::profileQuantization(profileCtx, profileF);
 
   // Compile/run to capture profile.
