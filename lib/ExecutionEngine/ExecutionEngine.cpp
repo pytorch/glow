@@ -226,6 +226,13 @@ void ExecutionEngine::compile(Function *F, const CompilationOptions &opts,
          "A function with this name has already been compiled.");
 
   backend_->optimizeFunction(F, opts);
+
+  for (const Node &N : F->getNodes()) {
+    (void)N;
+    assert(backend_->isOpSupported(N) &&
+           "Backend must support all nodes after high-level optimizations.");
+  }
+
   auto func = backend_->compile(F, opts);
   insertCompiledFunction(name, std::move(func));
 }
