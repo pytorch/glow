@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_CPU_LLVMIRGEN_H
-#define GLOW_BACKENDS_CPU_LLVMIRGEN_H
+#ifndef GLOW_LLVMIRCODEGEN_LLVMIRGEN_H
+#define GLOW_LLVMIRCODEGEN_LLVMIRGEN_H
 
-#include "AllocationsInfo.h"
 #include "glow/Base/Tensor.h"
 #include "glow/IR/IR.h"
 
@@ -80,16 +79,22 @@ struct DebugInfo {
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {
-private:
+protected:
   /// Implementation of emitDataParallelKernel where we bound the number of
   /// inputs to 64.
-  void emitDataParallelKernelImpl(llvm::IRBuilder<> &builder,
-                                  llvm::ArrayRef<const Instruction *> bundle,
-                                  llvm::ArrayRef<llvm::Type *> argTypes,
-                                  llvm::DenseMap<Value *, int> &bufferToArgNum,
-                                  llvm::ArrayRef<llvm::Value *> buffers);
+  /// \param builder IRBuilder to be used for the LLVM IR code emission.
+  /// \param bundle set of instructions to be emitted as a data-parallel kernel.
+  /// \param argType types of arguments for the data-parallel kernel.
+  /// \bufferToArgNum mapping from a buffer to its argument number in the
+  /// data-parallel kernel.
+  /// \param buffers buffers used by the data-parallel kernel.
+  virtual void
+  emitDataParallelKernelImpl(llvm::IRBuilder<> &builder,
+                             llvm::ArrayRef<const Instruction *> bundle,
+                             llvm::ArrayRef<llvm::Type *> argTypes,
+                             llvm::DenseMap<Value *, int> &bufferToArgNum,
+                             llvm::ArrayRef<llvm::Value *> buffers);
 
-protected:
   /// The IR to generate code for.
   const IRFunction *F_;
   /// The LLVM context.
@@ -129,10 +134,19 @@ protected:
   /// specializer not to specialize.
   llvm::DenseSet<llvm::Value *> dontSpecializeArgsSet_;
 
+  /// Bitcode of the libjit. Containts the starting address and the length of
+  /// the bitcode.
+  llvm::StringRef libjitBC_;
+
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
   llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
                                 const glow::Value *val);
+  /// Emit the address of the buffer \p v inside a data-parallel kernel \p
+  /// kernel using the mapping provided by \p bufferToArgNum.
+  llvm::Value *emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
+                                 llvm::Function *kernel,
+                                 llvm::DenseMap<Value *, int> &bufferToArgNum);
   /// Generates LLVM IR that computes the size of the tensor of \p val using
   /// \p builder. The size type is native to the machine (size_t).
   llvm::Value *emitValueSize(llvm::IRBuilder<> &builder,
@@ -177,7 +191,9 @@ protected:
   /// stacked \p kernel. The current loop count is described by \p loopCount.
   /// The \p bufferToArgNum map can be used to find the required buffers, which
   /// are provided as arguments to the stacked \p kernel.
-  void generateLLVMIRForDataParallelInstr(
+  /// Derived classes may want to override this function to implement a
+  /// backend-specific LLVM IR generation logic for some intructions.
+  virtual void generateLLVMIRForDataParallelInstr(
       llvm::IRBuilder<> &builder, const glow::Instruction *I,
       llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
       llvm::Value *loopCount);
@@ -212,13 +228,22 @@ public:
   /// Destructor
   virtual ~LLVMIRGen() {}
   /// Ctor.
+  /// \param M IRFunction to be converted into LLVM IR.
+  /// \param allocationsInfo information about allocation of weights and
+  /// activations.
+  /// \param mainEntryName Name of the main entry.
+  /// \param libjitBC bitcode of the backend's libjit library.
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
-                     std::string mainEntryName);
+                     std::string mainEntryName, llvm::StringRef libjitBC);
 
   /// Init the TargetMachine using a given target and code model.
-  void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
+  virtual void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
+  /// Derived classes may want to override this function to implement a
+  /// backend-specific LLVM IR generation logic for some intructions.
+  /// \param builder IRBuilder to be used to emit LLVM IR code.
+  /// \param I IR instruction which should be compiled into LLVM IR.
   virtual void generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                       const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
@@ -227,11 +252,6 @@ public:
   llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
   llvm::Function *getFunction(const std::string &name, glow::ElemKind elemTy);
-  /// Creates global variables for the base addresses of different memory areas
-  /// and invokes a library function to set their values.
-  void
-  createGlobalVariables(llvm::IRBuilder<> &builder,
-                        llvm::ArrayRef<llvm::Value *> initFunctionCallArgs);
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
   void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
@@ -279,4 +299,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_BACKENDS_CPU_LLVMIRGEN_H
+#endif // GLOW_LLVMIRCODEGEN_LLVMIRGEN_H

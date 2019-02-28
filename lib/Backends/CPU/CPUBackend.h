@@ -16,10 +16,9 @@
 #ifndef GLOW_BACKENDS_CPU_CPUBACKEND_H
 #define GLOW_BACKENDS_CPU_CPUBACKEND_H
 
-#include "AllocationsInfo.h"
-#include "LLVMIRGen.h"
 #include "glow/Backends/Backend.h"
 #include "glow/Base/Tensor.h"
+#include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
@@ -27,35 +26,17 @@
 namespace glow {
 
 class Context;
+class NodeInfo;
 
-/// Helper function to create a new CallInst, with the specified \p builder, \p
-/// callee, and \p args. Verifies that the function signature is correct,
-/// and then creates and \returns the CallInst.
-llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
-                           llvm::ArrayRef<llvm::Value *> args);
-
-class CPUBackend : public BackendUsingGlowIR {
+class CPUBackend : public LLVMBackend {
 public:
   CPUBackend() = default;
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
-  ~CPUBackend() override = default;
-
   BackendKind getBackendKind() const override { return BackendKind::CPU; }
-
-  std::unique_ptr<CompiledFunction>
-  compileIR(std::unique_ptr<IRFunction> IR) const override;
-
-  std::unique_ptr<CompiledFunction>
-  compileIRWithoutConstants(IRFunction *IR) const;
-
-  std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override;
-
-  void save(Function *F, llvm::StringRef outputDir,
-            llvm::StringRef networkName) const override;
+  virtual ~CPUBackend() override = default;
 
   bool transformPostLowering(Function *F,
                              const CompilationOptions &opts) const override;
@@ -65,18 +46,21 @@ public:
   bool shouldLower(const Node *N) const override;
   /// @}
 
-  /// \returns the size of metrics collected for a single TraceEvent.
-  static size_t getTraceEventDataSizeStatic() { return sizeof(uint64_t); }
-  size_t getTraceEventDataSize() const override {
-    return CPUBackend::getTraceEventDataSizeStatic();
-  }
+public:
+  /// @name LLVMBackend methods.
+  /// This is the implementation of the LLVMBackend interface.
+  ///@{
+  virtual std::unique_ptr<LLVMIRGen>
+  createIRGen(const IRFunction *IR,
+              AllocationsInfo &allocationsInfo) const override;
 
 protected:
-  /// Method that creates the LLVM IR generator. This gives the possibility to
-  /// create a backend that inherits from the CPU backend, while providing
-  /// a specific version of the LLVM IR generator derived from LLVMIRGen.
-  virtual std::unique_ptr<LLVMIRGen>
-  createIRGen(IRFunction *IR, AllocationsInfo &allocationsInfo) const;
+  virtual std::unique_ptr<CompiledFunction> createCompiledFunction(
+      std::unique_ptr<llvm::orc::GlowJIT> JIT,
+      const runtime::RuntimeBundle &runtimeBundle) const override;
+
+  virtual llvm::StringRef getLibjitBitcode() const override;
+  /// @}
 };
 
 } // namespace glow

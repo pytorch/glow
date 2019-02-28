@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "CPUBackend.h"
-#include "LLVMIRGen.h"
+#include "glow/LLVMIRCodeGen/LLVMBackend.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"

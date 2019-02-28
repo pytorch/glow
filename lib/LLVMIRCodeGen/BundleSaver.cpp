@@ -17,7 +17,7 @@
 
 #include "BundleSaver.h"
 
-#include "CPUBackend.h"
+#include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
@@ -39,8 +39,8 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-BundleSaver::BundleSaver(const IRFunction *F)
-    : F_(F), irgen_(F_, allocationsInfo_, "") {}
+BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
+    : F_(F), irgen_(llvmBackend.createIRGen(F_, allocationsInfo_)) {}
 
 void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   std::error_code EC;
@@ -70,7 +70,7 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   // Make sure that the file is as long as the constantWeightVarsMemSize_.
   // This is needed to properly handle alignments.
   weightsFile.seek(maxPos);
-  for (size_t endPos = irgen_.getAllocationsInfo().constantWeightVarsMemSize_;
+  for (size_t endPos = irgen_->getAllocationsInfo().constantWeightVarsMemSize_;
        maxPos < endPos; maxPos++) {
     weightsFile.write(0);
   }
@@ -85,11 +85,11 @@ void BundleSaver::emitSymbolTable() {
   //  size_t size;
   //  char kind;
   // };
-  auto *charTy = llvm::Type::getInt8Ty(irgen_.getLLVMContext());
+  auto *charTy = llvm::Type::getInt8Ty(irgen_->getLLVMContext());
   auto *sizeTTy =
-      llvm::Type::getIntNTy(irgen_.getLLVMContext(), sizeof(size_t) * 8);
+      llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(size_t) * 8);
   auto symbolTableEntryTy =
-      llvm::StructType::get(irgen_.getLLVMContext(),
+      llvm::StructType::get(irgen_->getLLVMContext(),
                             {charTy->getPointerTo(), sizeTTy, sizeTTy, charTy});
   // Set of entries in the symbol table.
   llvm::SmallVector<llvm::Constant *, 128> entries;
@@ -103,8 +103,8 @@ void BundleSaver::emitSymbolTable() {
     auto *entry = llvm::ConstantStruct::get(
         symbolTableEntryTy,
         {// name.
-         dyn_cast<llvm::Constant>(irgen_.getBuilder().CreateBitCast(
-             irgen_.emitStringConst(irgen_.getBuilder(), w->getName()),
+         dyn_cast<llvm::Constant>(irgen_->getBuilder().CreateBitCast(
+             irgen_->emitStringConst(irgen_->getBuilder(), w->getName()),
              charTy->getPointerTo())),
          // offset.
          llvm::ConstantInt::get(sizeTTy, addr),
@@ -119,9 +119,9 @@ void BundleSaver::emitSymbolTable() {
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(symbolTableEntryTy, entries.size()), entries);
   // Create a global variable and initialize it with the constructed array.
-  new llvm::GlobalVariable(irgen_.getModule(), arr->getType(), true,
+  new llvm::GlobalVariable(irgen_->getModule(), arr->getType(), true,
                            llvm::GlobalValue::InternalLinkage, arr,
-                           irgen_.getMainEntryName() + "SymbolTable");
+                           irgen_->getMainEntryName() + "SymbolTable");
 }
 
 void BundleSaver::produceBundle(llvm::StringRef outputDir) {
@@ -130,8 +130,8 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   // Emit the config for the bundle.
   emitBundleConfig();
 
-  auto &M = irgen_.getModule();
-  auto bundleName = irgen_.getMainEntryName();
+  auto &M = irgen_->getModule();
+  auto bundleName = irgen_->getMainEntryName();
   auto bundleCodeOutput = (outputDir + "/" + bundleName + ".o").str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
@@ -153,7 +153,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   } else if (fileName.endswith(".o")) {
     // Emit the object file.
     llvm::legacy::PassManager PM;
-    auto &TM = irgen_.getTargetMachine();
+    auto &TM = irgen_->getTargetMachine();
 
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     TM.addPassesToEmitFile(
@@ -184,15 +184,15 @@ void BundleSaver::emitBundleEntryFunction() {
   // The bundle entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t *baseInoutWeightVars,
   // uint8_t *baseActivations);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_.getLLVMContext());
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_.getLLVMContext());
+  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_->getLLVMContext());
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_->getLLVMContext());
   llvm::FunctionType *bundleFuncTy =
       llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
       llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
-                             irgen_.getMainEntryName(), &irgen_.getModule());
+                             irgen_->getMainEntryName(), &irgen_->getModule());
   llvm::BasicBlock *entry_bb =
-      llvm::BasicBlock::Create(irgen_.getLLVMContext(), "entry", func);
+      llvm::BasicBlock::Create(irgen_->getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
 
   // Prepare arguments for the "main" function.
@@ -201,17 +201,17 @@ void BundleSaver::emitBundleEntryFunction() {
   initFunctionCallArgs.push_back(func->args().begin() + 1);
   initFunctionCallArgs.push_back(func->args().begin() + 2);
   // Now form the offsets array and pass it as the last argument.
-  auto offsetsArray = irgen_.emitConstOffsetsArray(builder, allocationsInfo_);
+  auto offsetsArray = irgen_->emitConstOffsetsArray(builder, allocationsInfo_);
   initFunctionCallArgs.push_back(offsetsArray);
   // Invoke the main entry with constant arguments and let LLVM optimizer make
   // use of it.
-  auto *entryF = irgen_.getModule().getFunction("main");
+  auto *entryF = irgen_->getModule().getFunction("main");
   entryF->setLinkage(llvm::Function::InternalLinkage);
   createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
   // Create the debug info for the bundle entry point function.
-  irgen_.generateFunctionDebugInfo(func);
+  irgen_->generateFunctionDebugInfo(func);
 }
 
 // Create a config for this network. It will be exposed to the clients,
@@ -226,28 +226,29 @@ void BundleSaver::emitBundleEntryFunction() {
 //   SymbolTableEntry *symbolTable;
 // };
 void BundleSaver::emitBundleConfig() {
-  auto symbolTable = irgen_.getModule().getGlobalVariable(
-      irgen_.getMainEntryName() + "SymbolTable", true);
+  auto symbolTable = irgen_->getModule().getGlobalVariable(
+      irgen_->getMainEntryName() + "SymbolTable", true);
   GLOW_ASSERT(symbolTable &&
               "Expected to find a symbol table for the AOT bundle");
   // Get the integer type having the same size in bits as size_t.
-  auto *SizeTType = irgen_.getBuilder().getIntNTy(sizeof(size_t) * 8);
+  auto *SizeTType = irgen_->getBuilder().getIntNTy(sizeof(size_t) * 8);
   auto symbolTableEntryTy = symbolTable->getType()->getPointerElementType();
-  auto *bundleConfigTy = llvm::StructType::get(
-      irgen_.getLLVMContext(), {SizeTType, SizeTType, SizeTType, SizeTType,
-                                SizeTType, symbolTableEntryTy->getPointerTo()});
+  auto *bundleConfigTy =
+      llvm::StructType::get(irgen_->getLLVMContext(),
+                            {SizeTType, SizeTType, SizeTType, SizeTType,
+                             SizeTType, symbolTableEntryTy->getPointerTo()});
   auto config = new llvm::GlobalVariable(
-      irgen_.getModule(), bundleConfigTy, /* isConst */ true,
+      irgen_->getModule(), bundleConfigTy, /* isConst */ true,
       llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
-      irgen_.getMainEntryName() + "_config");
+      irgen_->getMainEntryName() + "_config");
   config->setInitializer(llvm::ConstantStruct::get(
       bundleConfigTy,
       llvm::ConstantInt::get(
-          SizeTType, irgen_.getAllocationsInfo().constantWeightVarsMemSize_),
+          SizeTType, irgen_->getAllocationsInfo().constantWeightVarsMemSize_),
       llvm::ConstantInt::get(
-          SizeTType, irgen_.getAllocationsInfo().mutableWeightVarsMemSize_),
+          SizeTType, irgen_->getAllocationsInfo().mutableWeightVarsMemSize_),
       llvm::ConstantInt::get(SizeTType,
-                             irgen_.getAllocationsInfo().activationsMemSize_),
+                             irgen_->getAllocationsInfo().activationsMemSize_),
       llvm::ConstantInt::get(SizeTType, TensorAlignment),
       llvm::ConstantInt::get(
           SizeTType, F_->getGraph()->getParent()->getConstants().size()),
@@ -266,16 +267,16 @@ void BundleSaver::performBundleMemoryAllocation() {
 void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir,
                        llvm::StringRef networkName) {
   // Object files generation works properly only in small mode.
-  irgen_.initTargetMachine(target, llvm::CodeModel::Model::Small);
-  irgen_.setMainEntryName(networkName);
-  irgen_.setOutputDir(outputDir);
-  irgen_.initCodeGen();
+  irgen_->initTargetMachine(target, llvm::CodeModel::Model::Small);
+  irgen_->setMainEntryName(networkName);
+  irgen_->setOutputDir(outputDir);
+  irgen_->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   performBundleMemoryAllocation();
   // Create the bundle entry function.
   emitBundleEntryFunction();
   // Emit the code for the body of the entry function.
-  irgen_.performCodeGen();
+  irgen_->performCodeGen();
   // Produce the bundle.
   produceBundle(outputDir);
 }

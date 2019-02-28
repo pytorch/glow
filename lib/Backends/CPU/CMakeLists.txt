@@ -44,19 +44,19 @@ foreach(libjit_src_file ${libjit_files})
 endforeach()
 
 add_custom_command(
-    OUTPUT ${GLOW_BINARY_DIR}/libjit.bc
-    COMMAND ${LLVM_LINK_BIN} -o ${GLOW_BINARY_DIR}/libjit.bc ${CPURuntime_OBJS}
+    OUTPUT ${GLOW_BINARY_DIR}/CPU/libjit.bc
+    COMMAND ${LLVM_LINK_BIN} -o ${GLOW_BINARY_DIR}/CPU/libjit.bc ${CPURuntime_OBJS}
     DEPENDS  ${CPURuntime_OBJS} ${CPURuntime_SRCS}
     WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/glow/libjit_bc.inc
-    COMMAND include-bin "${CMAKE_BINARY_DIR}/libjit.bc" "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
-    DEPENDS ${GLOW_BINARY_DIR}/libjit.bc
+    OUTPUT ${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc
+    COMMAND include-bin "${CMAKE_BINARY_DIR}/CPU/libjit.bc" "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
+    DEPENDS ${GLOW_BINARY_DIR}/CPU/libjit.bc
     WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 add_custom_target(CPURuntime
-  DEPENDS ${CMAKE_BINARY_DIR}/glow/libjit_bc.inc
+  DEPENDS ${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc
   WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 if (NOT MSVC)
@@ -67,20 +67,12 @@ if (NOT MSVC)
 endif(NOT MSVC)
 
 add_library(CPUBackend
-            "${CMAKE_BINARY_DIR}/glow/libjit_bc.inc"
-            AllocationsInfo.cpp
-            BundleSaver.cpp
-            CommandLine.cpp
+            "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
             CPUFunction.cpp
-            DebugInfo.cpp
-            FunctionSpecializer.cpp
-            GlowJIT.cpp
-            Pipeline.cpp
             Transforms.cpp
-            LLVMIRGen.cpp
-            CPUBackend.cpp)
+            CPUBackend.cpp
+            CPULLVMIRGen.cpp)
 
-llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
 target_link_libraries(CPUBackend
                       PUBLIC
                         Backend
@@ -90,29 +82,7 @@ target_link_libraries(CPUBackend
                         IR
                         Optimizer
                         QuantizationBase
-                        ${LLVM_TARGET_LIBRARIES}
-                        LLVMAnalysis
-                        LLVMBitWriter
-                        LLVMCodeGen
-                        LLVMCore
-                        LLVMExecutionEngine
-                        LLVMIRReader
-                        LLVMInstCombine
-                        LLVMInterpreter
-                        LLVMMC
-                        LLVMObject
-                        LLVMPasses
-                        LLVMScalarOpts
-                        LLVMSupport
-                        LLVMTarget
-                        LLVMTransformUtils
-                        LLVMVectorize
-                        LLVMipo)
-if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
-  target_link_libraries(CPUBackend
-                        PRIVATE
-                          LLVMOrcJIT)
-endif()
+                        LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)
 
 add_library(CPUDeviceManager

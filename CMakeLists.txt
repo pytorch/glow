@@ -6,6 +6,7 @@ project(Glow C CXX)
 enable_testing()
 
 option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
+option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
@@ -58,7 +59,14 @@ if(PNG_FOUND)
   add_definitions(-DWITH_PNG)
 endif()
 
+if(GLOW_WITH_LLVMIRCODEGEN)
+  add_definitions(-DGLOW_WITH_LLVMIRCODEGEN=1)
+endif()
+
 if(GLOW_WITH_CPU)
+  if(NOT GLOW_WITH_LLVMIRCODEGEN)
+    message(FATAL_ERROR "Cannot use -DGLOW_WITH_CPU without -DGLOW_WITH_LLVMIRCODEGEN")
+  endif ()
   add_definitions(-DGLOW_WITH_CPU=1)
 endif ()
 

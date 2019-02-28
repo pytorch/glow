@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_BACKENDS_CPU_COMMANDLINE_H
-#define GLOW_BACKENDS_CPU_COMMANDLINE_H
+#ifndef GLOW_LLVMIRCODEGEN_COMMANDLINE_H
+#define GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 
 #include "llvm/Support/CommandLine.h"
 
-llvm::cl::OptionCategory &getCPUBackendCat();
+llvm::cl::OptionCategory &getLLVMBackendCat();
 
-#endif // GLOW_BACKENDS_CPU_COMMANDLINE_H
+#endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H

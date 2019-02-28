@@ -16,7 +16,7 @@
 
 #include "CommandLine.h"
 
-llvm::cl::OptionCategory &getCPUBackendCat() {
+llvm::cl::OptionCategory &getLLVMBackendCat() {
   static llvm::cl::OptionCategory cpuBackendCat("Glow CPU Backend Options");
 
   return cpuBackendCat;
