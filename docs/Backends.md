@@ -44,11 +44,11 @@ are two pure virtual functions all backends must implement:
 
 Additionally, there are virtual functions that backends can override:
 
-- `virtual bool transformPostLowering(Function *F, CompilationMode mode) const;`
+- `virtual bool transformPostLowering(Function *F, const CompilationOptions &opts) const;`
 
   - Allow the backend to transform the `Function *F` after [node
     lowering](https://github.com/pytorch/glow/blob/master/docs/IR.md#node-lowering)
-    occurs, given some `CompilationMode mode`. For example, the CPU backend
+    occurs, given some `CompilationOptions`. For example, the CPU backend
     prefers to transform MaxNodes, which take a SplatNode as an input, into a
     [backend-specific](https://github.com/pytorch/glow/blob/master/docs/NewBackendSpecificNode.md)
     CPUMaxSplatNode, which takes a scalar value as a member input instead of a
