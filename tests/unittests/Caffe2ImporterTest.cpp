@@ -1603,7 +1603,8 @@ TEST(caffe2, tensorFillsTest) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
-  Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill;
+  Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill,
+      *tensorStringToUInt8Fill;
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
@@ -1620,27 +1621,37 @@ TEST(caffe2, tensorFillsTest) {
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill")));
     tensorInt64Fill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_int64_fill")));
+    tensorStringToUInt8Fill = llvm::dyn_cast<Constant>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueOrCreateConstantByName(
+            "tensor_string_to_uint8_fill")));
   }
 
   ASSERT_TRUE(tensorFillFloat);
   ASSERT_TRUE(tensorIntFill);
   ASSERT_TRUE(tensorInt64Fill);
+  ASSERT_TRUE(tensorStringToUInt8Fill);
 
   // All fills in fill_test_init_net.pbtxt use shape {2, 2}.
   const std::vector<size_t> expectedDims = {2, 2};
   ASSERT_TRUE(tensorFillFloat->dims().equals(expectedDims));
   ASSERT_TRUE(tensorIntFill->dims().equals(expectedDims));
   ASSERT_TRUE(tensorInt64Fill->dims().equals(expectedDims));
+  ASSERT_TRUE(tensorStringToUInt8Fill->dims().equals(expectedDims));
 
   auto tensorFillFloatH = tensorFillFloat->getPayload().getHandle<float>();
   auto tensorIntFillH = tensorIntFill->getPayload().getHandle<int32_t>();
   auto tensorInt64FillH = tensorInt64Fill->getPayload().getHandle<int64_t>();
+  // We load GivenTensorByteStringToUInt8Fill as Int8QTy with dummy scale/offset
+  // for now, because it's only used for rowwise-quantized tensors.
+  auto tensorStringToUInt8FillH =
+      tensorStringToUInt8Fill->getPayload().getHandle<int8_t>();
 
   // All fills in fill_test_init_net.pbtxt are set to 0 through 3.
   for (size_t i = 0; i < 4; i++) {
     EXPECT_FLOAT_EQ(tensorFillFloatH.raw(i), (float)i);
     EXPECT_EQ(tensorIntFillH.raw(i), (int32_t)i);
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);
+    EXPECT_EQ(tensorStringToUInt8FillH.raw(i), (int8_t)i);
   }
 }
 
@@ -1962,7 +1973,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   EE.run(ctx);
 
   Tensor &result = *ctx.get(output);
-  Tensor expected(ElemKind::FloatTy, {4});
+  Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle() = {
       0.5,
       0,
@@ -1970,7 +1981,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+  EXPECT_TRUE(expected.isEqual(result, 0.03f));
 }
 
 /// Test loading SparseLengthsSum8BitsRowwise. This is created as a
@@ -2143,7 +2154,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLWS->getData().getNode());
   ASSERT_TRUE(data);
-  EXPECT_TRUE(data->getElementType() == ElemKind::Int8FusedQTy);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
 
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
@@ -2244,7 +2255,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
   ASSERT_TRUE(data);
-  EXPECT_TRUE(data->getElementType() == ElemKind::Int8FusedQTy);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
 
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);

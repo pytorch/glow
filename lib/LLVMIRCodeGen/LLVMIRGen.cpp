@@ -231,7 +231,7 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int32ITy:
     return builder.getInt32Ty();
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
@@ -324,7 +324,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int32ITy:
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::BoolTy:
@@ -475,7 +475,7 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));

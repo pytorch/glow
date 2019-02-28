@@ -9,7 +9,7 @@ op {
   }
   arg {
     name: "values"
-    s: "\324\377\254\377\311\377"
+    s: "\000\377\000\377\000\377"
   }
   arg {
     name: "Y_zero_point"
@@ -30,11 +30,11 @@ op {
   }
   arg {
     name: "values"
-    floats: 0.004706
-    floats: -128.0
-    floats: 0.013333
-    floats: -128.0
-    floats: 0.022353
-    floats: -128.0
+    floats: 0.00078431389
+    floats: 1.0
+    floats: 0.0043137260
+    floats: 2.3
+    floats: 0.0047058817
+    floats: 4.5
   }
 }

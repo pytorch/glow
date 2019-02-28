@@ -4148,7 +4148,7 @@ TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsWeightedSum) {
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result));
+  EXPECT_TRUE(expected.isEqual(result, 0.01));
 }
 
 TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
@@ -4199,7 +4199,7 @@ TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02));
+  EXPECT_TRUE(expected.isEqual(result, 0.03));
 }
 
 TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
@@ -4307,7 +4307,7 @@ TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsSum) {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02));
+  EXPECT_TRUE(expected.isEqual(result, 0.03));
 }
 
 TEST_P(InterpAndCPU, SparseToDense) {

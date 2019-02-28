@@ -8,6 +8,8 @@ op {
   name: ""
   type: "SparseLengthsWeightedSumFused8BitRowwise"
 }
+external_input: "data"
+external_input: "weights"
 external_input: "indices"
 external_input: "lengths"
 external_output: "result"

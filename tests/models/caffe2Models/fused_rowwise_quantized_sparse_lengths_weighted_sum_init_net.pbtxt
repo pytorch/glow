@@ -1,7 +1,7 @@
 name: "fused_rowwise_quantized_sparse_lengths_weighted_sum_init_net_test"
 op {
   output: "data"
-  type: "Int8GivenTensorFill"
+  type: "GivenTensorByteStringToUInt8Fill"
   arg {
     name: "shape"
     ints: 3
@@ -9,15 +9,7 @@ op {
   }
   arg {
     name: "values"
-    s: "\377\001\000\200\274\200\200\200\103\000\001\000\200\273\200\200\176\302\377\121\120\320\275\200\200\200\103"
-  }
-  arg {
-    name: "Y_zero_point"
-    i: 0
-  }
-  arg {
-    name: "Y_scale"
-    f: 0.0
+    strings: "\000\000\000\000\000\000\000\000\100\000\000\000\000\000\000\000\000\277\000\000\000\000\000\000\000\120\101"
   }
 }
 op {

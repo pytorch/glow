@@ -942,28 +942,23 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
-      // Int8QTy. We then change it from Int8QTy to Int8FusedQTy here if
+      // Int8QTy. We then change it from Int8QTy to UInt8FusedQTy here if
       // necessary -- another user could have already changed it.
-      if (dataC->getElementType() != ElemKind::Int8FusedQTy) {
+      if (dataC->getElementType() != ElemKind::UInt8FusedQTy) {
         RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::Int8QTy,
                           "Data must be Int8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets are
         // fused inline with the data.
-        TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::Int8FusedQTy,
+        TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
                                                      dataC->dims(), 0.0, 0);
         dataC->setType(Storage::OutputIdx, fusedTy);
-      }
+        dataC->getPayload().setType(fusedTy);
 
-      // Caffe2 stores offsets as floats, whereas we want to use int32_t.
-      char *dataBasePtr = dataC->getPayload().getUnsafePtr();
-      const size_t width = dataC->dims()[1];
-      for (size_t i = 0, e = dataC->dims()[0]; i < e; ++i) {
-        // Must memcpy to the stack and back to avoid misaligned addresses.
-        char *currRowOffsetPtr = dataBasePtr + (i + 1) * width - 4;
-        float fOffset;
-        memcpy(&fOffset, currRowOffsetPtr, 4);
-        int32_t iOffset = static_cast<int32_t>(fOffset);
-        memcpy(currRowOffsetPtr, &iOffset, 4);
+        // We also need to update the data to be unsigned instead of signed.
+        auto dataCH = dataC->getHandle<uint8_t>();
+        for (size_t i = 0, e = dataCH.size(); i < e; i++) {
+          dataCH.raw(i) = dataCH.raw(i) + OFFSETSHIFT;
+        }
       }
 
       // No other work to do, since the data is already loaded fused, so just
@@ -995,16 +990,14 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       Constant *dataScales = G_.getParent()->createConstant(
           ElemKind::FloatTy, {numRows}, "dataScales");
       Constant *dataOffsets = G_.getParent()->createConstant(
-          ElemKind::Int32ITy, {numRows}, "dataOffsets");
+          ElemKind::FloatTy, {numRows}, "dataOffsets");
 
       auto dataScalesH = dataScales->getHandle<float>();
-      auto dataOffsetsH = dataOffsets->getHandle<int32_t>();
+      auto dataOffsetsH = dataOffsets->getHandle<float>();
       auto scalesBiasesH = scalesBiasesC->getHandle<float>();
       for (size_t i = 0, e = numRows; i < e; i++) {
         dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
-        // Caffe2 represents offsets (bias) using float, while Glow uses
-        // int32_t.
-        dataOffsetsH.at({i}) = static_cast<int32_t>(scalesBiasesH.at({i, 1}));
+        dataOffsetsH.at({i}) = scalesBiasesH.at({i, 1});
       }
 
       // Now create the actual node.
@@ -1140,6 +1133,49 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
     }
     tensors_[op.output().Get(0)] = std::move(T);
+    return llvm::Error::success();
+  }
+
+  if (typeName == "GivenTensorByteStringToUInt8Fill") {
+    /*
+      output: "data"
+      type: "GivenTensorByteStringToUInt8Fill"
+      arg {
+      name: "shape"
+      ints: 3
+      ints: 10
+      }
+      arg {
+      name: "values"
+      s:
+      "\000\377\152\232\115\072\000\000\200\077\000\377\050\132\215\073\063\063\023\100\000\377\314\063\232\073\000\000\220\100"
+      }
+     */
+
+    for (auto &o : op.output()) {
+      std::unique_ptr<Tensor> T(new Tensor());
+      if (tensors_.count(o)) {
+        continue;
+      }
+      auto dim = getShape(dict["shape"]);
+
+      T->reset(ElemKind::Int8QTy, dim, 0.0, 0);
+      auto TH = T->getHandle<int8_t>();
+      assert(dict["values"]->strings().size() == 1 &&
+             "Expect single string input for GivenTensorByteStringToUInt8Fill");
+      const std::string str = dict["values"]->strings().Get(0);
+
+      // We're loading unsigned data into Int8QTy, so we use OFFSETSHIFT to
+      // convert to signed.
+      size_t i;
+      for (i = 0; i < str.size(); i++) {
+        TH.raw(i) = (uint8_t)str.c_str()[i] - OFFSETSHIFT;
+      }
+      RETURN_ERR_IF_NOT(i == T->size(),
+                        "The number of serialized values does not "
+                        "match the size of the tensor.");
+      tensors_[o] = std::move(T);
+    }
     return llvm::Error::success();
   }
 
