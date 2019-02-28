@@ -254,6 +254,10 @@ public:
     return outTypes_[idx]->getElementType();
   }
 
+  /// \returns whether all of the element types of inTypes_ and outTypes_ are
+  /// all the same and one of those found in \p allowedElemKinds. \p ignoreIn
+  /// and \p ignoreOut represent indices that can be skipped in inTypes_ and
+  /// outTypes_ respectively.
   bool
   allInputsAndOutputsHaveSameElemKind(llvm::ArrayRef<ElemKind> allowedElemKinds,
                                       const IndicesSet &ignoreIn = {},
@@ -267,6 +271,8 @@ public:
     return false;
   }
 
+  /// Helper for debugging which \returns a string representation for the
+  /// NodeInfo.
   std::string getDebugDesc() const {
     DescriptionBuilder db(getKindName());
     for (size_t i = 0; i < inTypes_.size(); ++i) {
