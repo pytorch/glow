@@ -54,6 +54,8 @@ protected:
   }
 };
 
+class InterpAndCPU : public Operator {};
+
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
   return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
@@ -484,7 +486,7 @@ TEST_P(Operator, end2endInt8) {
   testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int8QTy);
 }
 
-TEST_P(Operator, end2endInt16) {
+TEST_P(InterpAndCPU, end2endInt16) {
   testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int16QTy);
 }
 
@@ -1709,33 +1711,37 @@ INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
 
 #ifdef GLOW_WITH_CPU
+INSTANTIATE_TEST_CASE_P(CPU, Quantization, ::testing::Values(BackendKind::CPU));
+
 INSTANTIATE_TEST_CASE_P(
-    Interpreter, Operator,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
-                                         BackendKind::CPU),
-                       ::testing::Values(BackendKind::Interpreter)));
+    InterpAndCPUProfAndQuant, Operator,
+    ::testing::Combine(
+        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU),
+        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU)));
+
+INSTANTIATE_TEST_CASE_P(
+    InterpAndCPUProfAndQuant, InterpAndCPU,
+    ::testing::Combine(
+        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU),
+        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU)));
+
 #else
 INSTANTIATE_TEST_CASE_P(
-    Interpreter, Operator,
+    InterpreterProfAndQuant, Operator,
     ::testing::Combine(::testing::Values(BackendKind::Interpreter),
                        ::testing::Values(BackendKind::Interpreter)));
-#endif
 
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, Quantization, ::testing::Values(BackendKind::CPU));
 INSTANTIATE_TEST_CASE_P(
-    JIT, Operator,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
-                                         BackendKind::CPU),
-                       ::testing::Values(BackendKind::CPU)));
+    Interpreter, InterpAndCPU,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
+                       ::testing::Values(BackendKind::Interpreter)));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
 INSTANTIATE_TEST_CASE_P(
-    OpenCL, Operator,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter,
-                                         BackendKind::Interpreter),
+    InterpProfOpenCLQuant, Operator,
+    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
                        ::testing::Values(BackendKind::OpenCL)));
-#endif // GLOW_WITH_CPU
+#endif // GLOW_WITH_OPENCL
 
 } // namespace glow
