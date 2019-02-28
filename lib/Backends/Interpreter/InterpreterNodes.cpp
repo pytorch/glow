@@ -2190,7 +2190,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
 
   auto DH = data->getHandle<int8_t>();
   auto DSH = dataScales->getHandle<float>();
-  auto DOH = dataOffsets->getHandle<int32_t>();
+  auto DOH = dataOffsets->getHandle<float>();
   auto WH = weights->getHandle<float>();
   auto OH = out->getHandle<float>();
 
@@ -2200,12 +2200,12 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
       const float weight = WH.raw(curIdx);
       const size_t rowIdx = IH.raw(curIdx++);
       const float scale = DSH.at({rowIdx});
-      const int32_t offset = DOH.at({rowIdx});
+      const float offset = DOH.at({rowIdx});
       size_t offsetIn = rowIdx * lineSize;
       size_t offsetOut = i * lineSize;
       for (size_t k = 0; k < lineSize; k++) {
-        float d = quantization::dequantize(
-            DH.raw(offsetIn++), TensorQuantizationParams{scale, offset});
+        float d = quantization::dequantizeWithFloatOffset(DH.raw(offsetIn++),
+                                                          scale, offset);
         OH.raw(offsetOut++) += d * weight;
       }
     }
@@ -2237,7 +2237,7 @@ void BoundInterpreterFunction::
   const size_t inLineSize = data->size() / data->dims()[0];
   const size_t outLineSize = out->size() / out->dims()[0];
 
-  auto DH = data->getHandle<int8_t>();
+  auto DH = data->getHandle<uint8_t>();
   auto WH = weights->getHandle<float>();
   auto OH = out->getHandle<float>();
 
@@ -2254,12 +2254,12 @@ void BoundInterpreterFunction::
       const char *currRowScaleOffsetPtr =
           data->getUnsafePtr() + offsetIn + inLineSize - 8;
       float scale;
-      int32_t offset;
+      float offset;
       memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
-      memcpy(&offset, currRowScaleOffsetPtr + 4, sizeof(int32_t));
+      memcpy(&offset, currRowScaleOffsetPtr + sizeof(float), sizeof(float));
       for (size_t k = 0; k < outLineSize; k++) {
-        float d = quantization::dequantize(
-            DH.raw(offsetIn++), TensorQuantizationParams{scale, offset});
+        float d = quantization::dequantizeWithFloatOffset(DH.raw(offsetIn++),
+                                                          scale, offset);
         OH.raw(offsetOut++) += d * weight;
       }
     }

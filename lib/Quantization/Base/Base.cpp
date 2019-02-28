@@ -365,34 +365,6 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
   return mapping;
 }
 
-void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
-                               Tensor &scales, Tensor &offsets) {
-  const auto fDims = flattenCdr(input.dims());
-  Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
-  Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
-  ShapeHW idim(finalIn.dims());
-
-  auto srcH = finalIn.getHandle<float>();
-  auto destH = finalOut.getHandle<int8_t>();
-  auto scalesH = scales.getHandle<float>();
-  auto offsetsH = offsets.getHandle<int32_t>();
-  for (size_t i = 0; i < idim.height; i++) {
-    auto slice = srcH.extractSlice(i);
-    auto rSrc = slice.getHandle<float>();
-    auto res = rSrc.minMaxArg();
-    float min = rSrc.raw(res.first);
-    float max = rSrc.raw(res.second);
-
-    TensorQuantizationParams qParams =
-        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
-    for (size_t j = 0; j < idim.width; j++) {
-      destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
-    }
-    scalesH.raw(i) = qParams.scale;
-    offsetsH.raw(i) = qParams.offset;
-  }
-}
-
 void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
   // We are fusing the float scale and int32_t offset onto the end of each
   // row. Thus input and output must both be 2 dimensional, with output having 8
@@ -406,7 +378,7 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
   char *dataBasePtr = output.getUnsafePtr();
 
   auto srcH = input.getHandle<float>();
-  auto destH = output.getHandle<int8_t>();
+  auto destH = output.getHandle<uint8_t>();
   for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
     auto slice = srcH.extractSlice(i);
     auto rSrc = slice.getHandle<float>();
@@ -414,17 +386,22 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     float min = rSrc.raw(res.first);
     float max = rSrc.raw(res.second);
 
-    // Set the dest's actual data based on the calculated scale/offset.
-    TensorQuantizationParams qParams =
-        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+    min = std::min(min, 0.0f);
+    max = std::max(max, 0.0f);
+
+    float scale = ((double)max - (double)min) / 255.0;
+    float offset = min;
+
     for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
-      destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
+      destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
+          srcH.at({i, j}), scale, offset);
     }
 
     // Now set the scale/offset at the end of each row.
-    char *currRowScaleOffsetPtr = dataBasePtr + (i + 1) * outWidth - 8;
-    memcpy(currRowScaleOffsetPtr, &qParams.scale, 4);
-    memcpy(currRowScaleOffsetPtr + 4, &qParams.offset, 4);
+    char *currRowScaleOffsetPtr =
+        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(float);
+    memcpy(currRowScaleOffsetPtr, &scale, sizeof(float));
+    memcpy(currRowScaleOffsetPtr + sizeof(float), &offset, sizeof(float));
   }
 }
 

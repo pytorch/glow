@@ -238,8 +238,25 @@ fused inline with the data. Caffe2 implements nodes with fused storage, such as
 [SparseLengthsWeightedSum](https://caffe2.ai/docs/operators-catalogue.html#sparselengthsweightedsumfused8bitrowwise). Glow
 supports such fused Nodes/Instructions, for example
 `FusedRowwiseQuantizedSparseLengthsWeightedSum`. The `ElemKind` of fused tensors
-is `Int8FusedQTy`. Tensors with `Int8FusedQTy` are 2-dimensional, and have an
-extra 8 columns for each row. The first extra 4 bytes are the float scale of the
-row, and the second extra 4 bytes are the in32_t offset. Note that similar to
-normal row-wise quantized tensors, they use a dummy scale and offset in the
-Type.
+is `UInt8FusedQTy`. Tensors with `UInt8FusedQTy` are 2-dimensional, and have an
+extra 8 columns for each row. The first extra 4 bytes are the scale of the row,
+and the second extra 4 bytes are the offset. Note that similar to normal
+row-wise quantized tensors, they use a dummy scale and offset in the Type.
+
+### Conversion formula when using row-wise quantization
+
+Some row-wise quantized operators prefer to use float offsets instead of
+int32. For these operators, they use the following conversion formula:
+
+  ```
+    value = (scale * input) + offset
+  ```
+
+Operators using `UInt8FusedQTy` always use float offsets and this alternate
+conversion formula. Nodes that use float offsets and this alternate conversion
+formula are:
+
+```
+RowwiseQuantizedSparseLengthsWeightedSum
+FusedRowwiseQuantizedSparseLengthsWeightedSum
+```

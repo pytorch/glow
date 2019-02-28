@@ -17,6 +17,7 @@
 #ifndef GLOW_QUANTIZATION_BASE_BASE_H
 #define GLOW_QUANTIZATION_BASE_BASE_H
 
+#include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
 
 #include <algorithm>
@@ -25,8 +26,6 @@
 #include <limits>
 
 namespace glow {
-
-class Tensor;
 
 /// Main attributes of a quantized tensor.
 /// Scale and Offset allow quantization of a float tensor and dequantization of
@@ -98,6 +97,30 @@ inline float dequantize(eTy input, const TensorQuantizationParams &TQP) {
   return TQP.scale * ((int64_t)input - TQP.offset);
 }
 
+/// Converts floating point value to DestTy (quantized type) based on the
+/// quantization parameters \p scale and \p offset. If the dest type is int8_t,
+/// then an offset of 128 is substracted to convert to int8_t.
+template <class DestTy>
+inline DestTy quantizeWithFloatOffset(float input, float scale, float offset) {
+  uint8_t d = static_cast<uint8_t>((input - offset) / scale);
+  if (std::is_same<int8_t, DestTy>::value) {
+    d -= 128;
+  }
+  return static_cast<DestTy>(d);
+}
+
+/// Converts a quantized value (type eTy) to floating point based on the
+/// quantization parameters \p scale and \p offset. If the input type is int8_t,
+/// then an offset of 128 is added to convert to uint8_t.
+template <class eTy>
+inline float dequantizeWithFloatOffset(eTy input, float scale, float offset) {
+  uint8_t d = static_cast<uint8_t>(input);
+  if (std::is_same<int8_t, eTy>::value) {
+    d += 128;
+  }
+  return (d * scale) + offset;
+}
+
 /// Converts a floating point \p tensor to quantized tensor based on the
 /// quantization parameters \p TQP and \p Ty.
 Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
@@ -133,8 +156,53 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// input, quantized from \p input using \p scales and \p offsets for each
 /// row. Note that the shape of input/output can be any non-zero number of
 /// dimensions; row refers to all data in the first dimension of the shape.
+/// \p T represents the type to use for the offsets for quantization. Currently
+/// this must either be int32_t or float.
+template <typename T>
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
-                               Tensor &scales, Tensor &offsets);
+                               Tensor &scales, Tensor &offsets) {
+  const auto fDims = flattenCdr(input.dims());
+  Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
+  Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
+  ShapeHW idim(finalIn.dims());
+
+  auto srcH = finalIn.getHandle<float>();
+  auto destH = finalOut.getHandle<int8_t>();
+  auto scalesH = scales.getHandle<float>();
+  auto offsetsH = offsets.getHandle<T>();
+  for (size_t i = 0; i < idim.height; i++) {
+    auto slice = srcH.extractSlice(i);
+    auto rSrc = slice.getHandle<float>();
+    auto res = rSrc.minMaxArg();
+    float min = rSrc.raw(res.first);
+    float max = rSrc.raw(res.second);
+    // Expand the range to include 0.0f so that 0 is exactly representable.
+    min = std::min(min, 0.0f);
+    max = std::max(max, 0.0f);
+
+    if (std::is_same<int32_t, T>::value) {
+      TensorQuantizationParams qParams =
+          chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+      for (size_t j = 0; j < idim.width; j++) {
+        destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
+      }
+      scalesH.raw(i) = qParams.scale;
+      offsetsH.raw(i) = qParams.offset;
+    } else if (std::is_same<float, T>::value) {
+      float scale = ((double)max - (double)min) / 255.0;
+      float offset = min;
+
+      for (size_t j = 0; j < idim.width; j++) {
+        destH.at({i, j}) = quantization::quantizeWithFloatOffset<int8_t>(
+            srcH.at({i, j}), scale, offset);
+      }
+      scalesH.raw(i) = scale;
+      offsetsH.raw(i) = offset;
+    } else {
+      llvm_unreachable("Unsupported offset type.");
+    }
+  }
+}
 
 /// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
 /// from each row of \p input. \p output is tensor of the same shape as input

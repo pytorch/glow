@@ -107,7 +107,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::OffsetsIdx) ==
-            ElemKind::Int32ITy) &&
+            ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
             ElemKind::FloatTy) &&
@@ -239,7 +239,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::Int8FusedQTy) &&
+            ElemKind::UInt8FusedQTy) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                WeightsIdx) == ElemKind::FloatTy) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::

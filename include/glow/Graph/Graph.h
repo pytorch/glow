@@ -663,11 +663,11 @@ public:
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
   /// the scales and offsets are fused inline with each row of data. \p data
-  /// must be ElemKind::Int8FusedQTy. Gathers slices of the outer-most dimension
-  /// of data indexed by the \p indices vector, and then accumulates them into
-  /// len(\p lengths) entries: first Lengths[0] slices are aggregated to
-  /// Result[0], next Lengths[1] slices are aggregated to Result[1],
-  /// etc. I.e. sum(Lengths) must be equal to len(Indices).
+  /// must be ElemKind::UInt8FusedQTy. Gathers slices of the outer-most
+  /// dimension of data indexed by the \p indices vector, and then accumulates
+  /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
+  /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
+  /// I.e. sum(Lengths) must be equal to len(Indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Constant *data, NodeValue indices,

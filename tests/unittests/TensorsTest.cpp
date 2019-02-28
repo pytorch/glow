@@ -15,6 +15,7 @@
  */
 
 #include "glow/Base/Tensor.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "gtest/gtest.h"
 
@@ -814,40 +815,51 @@ TEST(Tensor, insertSlice) {
 /// offset are not changed and that the values for each row are set to that
 /// row's offset.
 TEST(Tensor, initZeroFused) {
-  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
-  auto TH = T.getHandle<int8_t>();
+  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 0.0, 0);
+  auto TH = T.getHandle<uint8_t>();
+  auto *TData = reinterpret_cast<uint8_t *>(T.getUnsafePtr());
   TH.clear(127);
+
+  // Now set the scale/offset of each row. Set the scale to 0.1 so that we are
+  // multiplying by 10 when calculating zero. Offset is dependent on each row.
+  float scaleForAllRows = 0.1;
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 2; j < 10; j++) {
-      // Set 6 due to endianness when loading the int32_t offset.
-      if (j == 6) {
-        TH.at({i, j}) = i + 100;
-      } else {
-        TH.at({i, j}) = 0;
-      }
-    }
+    const float offset = -(i + 0.7);
+    uint8_t *scaleOffsetPtr = &TData[(i + 1) * 10] - 2 * sizeof(float);
+    memcpy(scaleOffsetPtr, &scaleForAllRows, sizeof(float));
+    memcpy(scaleOffsetPtr + sizeof(float), &offset, sizeof(float));
   }
+
+  // Now reset so that all row's actual data is set to zero based on the
+  // scale/offset in the row.
   PseudoRNG PRNG;
   T.init(Tensor::InitKind::Zero, 1, PRNG);
+
+  EXPECT_TRUE(TH.isZero(0.00001f));
+
+  // Now check that we correctly set the data, and that the scale/offsets are
+  // the same as expected (untouched by initializing to zero).
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 10; j++) {
-      // Now check that both the offset and the values are correct, and that all
-      // other values are still 0.
-      if (j < 2 || j == 6) {
-        EXPECT_EQ(TH.at({i, j}), i + 100);
-      } else {
-        EXPECT_EQ(TH.at({i, j}), 0);
-      }
-    }
+    uint8_t *scaleOffsetPtr = &TData[(i + 1) * 10] - 2 * sizeof(float);
+    float scale, offset;
+    memcpy(&scale, scaleOffsetPtr, sizeof(float));
+    memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
+
+    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(TH.at({i, 0}),
+                                                                 scale, offset),
+                0, 1E-5);
+    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(TH.at({i, 1}),
+                                                                 scale, offset),
+                0, 1E-5);
   }
 }
 
 /// Check that initializing a fused tensor with Xavier that the scale and offset
 /// are not changed.
 TEST(Tensor, initXavierFused) {
-  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
+  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 0.0, 0);
   PseudoRNG PRNG;
-  auto TH = T.getHandle<int8_t>();
+  auto TH = T.getHandle<uint8_t>();
   for (size_t i = 0; i < 10; i++) {
     for (size_t j = 0; j < 10; j++) {
       TH.at({i, j}) = i * 10 + j;
@@ -865,8 +877,8 @@ TEST(Tensor, initXavierFused) {
 /// Check that initializing a fused tensor with Broadcast that the scale and
 /// offset are not changed, and broadcast value is set correctly.
 TEST(Tensor, initBroadcastFused) {
-  Tensor T(ElemKind::Int8FusedQTy, {10, 10}, 0.0, 0);
-  auto TH = T.getHandle<int8_t>();
+  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 0.0, 0);
+  auto TH = T.getHandle<uint8_t>();
   for (size_t i = 0; i < 10; i++) {
     for (size_t j = 0; j < 10; j++) {
       TH.at({i, j}) = i * 10 + j;

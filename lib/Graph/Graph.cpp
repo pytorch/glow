@@ -701,7 +701,8 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
     wt.assign(&(weights->getPayload()));
   }
 
-  quantization::tensorRowwiseQuantization(
+  // Note: Using int32_t offset here as that is what RWQ-FC expects.
+  quantization::tensorRowwiseQuantization<int32_t>(
       wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload());
 
   return addNode(new RowwiseQuantizedFullyConnectedNode(
@@ -1468,11 +1469,12 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   Constant *dataScales = F->getParent()->createConstant(
       ElemKind::FloatTy, {inDims[0]}, "dataScales");
   Constant *dataOffsets = F->getParent()->createConstant(
-      ElemKind::Int32ITy, {inDims[0]}, "dataOffsets");
+      ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
 
-  quantization::tensorRowwiseQuantization(data, rwqData->getPayload(),
-                                          dataScales->getPayload(),
-                                          dataOffsets->getPayload());
+  // Note: Using float offset here as that is what RWQ-SLWS expects.
+  quantization::tensorRowwiseQuantization<float>(data, rwqData->getPayload(),
+                                                 dataScales->getPayload(),
+                                                 dataOffsets->getPayload());
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
@@ -1507,7 +1509,7 @@ Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
   outDims[0] = lengths.dims()[0];
   // The output column count is the same as the input column count, but without
   // the extra 8 bytes for the fused scale/offset, as the output is not
-  // Int8FusedQTy.
+  // UInt8FusedQTy.
   outDims[1] -= 8;
   auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
@@ -1545,7 +1547,7 @@ quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
   // dimension to include space for the scale/offset, each 4 bytes
   // (float/int32_t).
   Constant *rwqData = F->getParent()->createConstant(
-      ElemKind::Int8FusedQTy, {fDims.first, fDims.second + 8}, 0.0, 0, "data");
+      ElemKind::UInt8FusedQTy, {fDims.first, fDims.second + 8}, 0.0, 0, "data");
 
   quantization::tensorFusedRowwiseQuantization(fData, rwqData->getPayload());
   return F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
@@ -2782,6 +2784,8 @@ bool Function::verify() const {
 
   for (auto *V : getParent()->getConstants()) {
     isValid &= insertAndReport(nameToNode, *V, *this);
+    isValid &= expectCompareTrue("Constant and its payload must have same type",
+                                 *V->getType(), V->getPayload().getType(), V);
   }
 
   nameToNode.clear();
