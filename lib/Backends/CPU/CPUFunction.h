@@ -16,7 +16,8 @@
 #ifndef GLOW_BACKENDS_CPU_CPUFUNCTION_H
 #define GLOW_BACKENDS_CPU_CPUFUNCTION_H
 
-#include "GlowJIT.h"
+#include "glow/LLVMIRCodeGen/GlowJIT.h"
+#include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
@@ -24,24 +25,15 @@
 
 namespace glow {
 /// A Glow IR function compiled for the CPU using LLVM.
-class CPUFunction final : public CompiledFunction {
-  /// The LLVM JIT engine. The jit must be initialized after the ctor
-  /// initializes the LLVM backends.
-  std::unique_ptr<llvm::orc::GlowJIT> JIT_;
-
+class CPUFunction final : public LLVMCompiledFunction {
 public:
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
               const runtime::RuntimeBundle &runtimeBundle);
 
   /// \name CompiledFunction interface
   ///@{
-  ~CPUFunction() override;
+  ~CPUFunction() override = default;
   void execute(Context *ctx) override;
-
-  void collectConstants(Module *module) override;
-
-  /// Read trace events out of this func and write them into /p ctx
-  void translateTraceEvents(Context *ctx) const override;
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const override {
@@ -49,15 +41,6 @@ public:
   }
   ///@}
   //
-
-private:
-  /// Load constant tensors from \p ctx into \p weightsAddress, as defined by
-  /// the RuntimeBundle (pre-run).
-  void loadPlaceholders(Context *ctx, uint8_t *weightsAddress);
-
-  /// Load weights from \p weightsAddress into applicable backing tensors in
-  /// \p ctx, as defined by the RuntimeBundle (post-run).
-  void updatePlaceholders(Context *ctx, uint8_t *weightsAddress);
 };
 } // end namespace glow
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "GlowJIT.h"
+#include "glow/LLVMIRCodeGen/GlowJIT.h"
 #include "CommandLine.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/Object/SymbolSize.h"
@@ -28,7 +28,7 @@ namespace {
 static llvm::cl::opt<bool> dumpJITSymbolInfo(
     "dump-jit-symbol-info",
     llvm::cl::desc("Dump the load addresses and sizes of JITted symbols"),
-    llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
+    llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
 /// This is a callback that is invoked when an LLVM module is compiled and
 /// loaded by the JIT for execution.

@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#include "LLVMIRGen.h"
-
+#include "AllocationsInfo.h"
 #include "CommandLine.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"

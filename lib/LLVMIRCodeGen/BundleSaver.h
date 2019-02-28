@@ -13,15 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_CPU_BUNDLESAVER_H
-#define GLOW_BACKENDS_CPU_BUNDLESAVER_H
+#ifndef GLOW_LLVMIRCODEGEN_BUNDLESAVER_H
+#define GLOW_LLVMIRCODEGEN_BUNDLESAVER_H
 
 #include "AllocationsInfo.h"
-#include "LLVMIRGen.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "glow/IR/IR.h"
 
 namespace glow {
+class LLVMBackend;
 
 class BundleSaver final {
   /// The IR to be compiled.
@@ -29,7 +30,7 @@ class BundleSaver final {
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.
-  LLVMIRGen irgen_;
+  std::unique_ptr<LLVMIRGen> irgen_;
 
   /// Perform memory allocation for a bundle.
   void performBundleMemoryAllocation();
@@ -46,7 +47,7 @@ class BundleSaver final {
 
 public:
   /// Ctor.
-  explicit BundleSaver(const IRFunction *F);
+  explicit BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend);
   /// Save code bundle built for \p target to \p outputDir.
   /// Make \p networkName the function name for
   /// the entry point of the network and prepend all generated
@@ -57,4 +58,4 @@ public:
 
 } // namespace glow
 
-#endif // GLOW_BACKENDS_CPU_BUNDLESAVER_H
+#endif // GLOW_LLVMIRCODEGEN_BUNDLESAVER_H

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "../../lib/Backends/CPU/LLVMIRGen.h"
-#include "../../lib/Backends/CPU/AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
+#include "../../lib/LLVMIRCodeGen/AllocationsInfo.h"
 
 #include "glow/IR/IR.h"
 
@@ -31,7 +31,7 @@ using namespace glow;
 TEST(LLVMIRGen, getEntryName) {
   IRFunction irfunc;
   AllocationsInfo allocInfo;
-  LLVMIRGen llvmIRGen(&irfunc, allocInfo, "name");
+  LLVMIRGen llvmIRGen(&irfunc, allocInfo, "name", "");
   EXPECT_EQ(llvmIRGen.getMainEntryName(), "name");
 
   llvmIRGen.setMainEntryName("customName");

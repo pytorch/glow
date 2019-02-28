@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-#include "LLVMIRGen.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
-#include "CPUBackend.h"
+#include "AllocationsInfo.h"
 #include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
@@ -42,16 +43,16 @@ using llvm::isa;
 static llvm::cl::opt<bool>
     dumpIR("dump-llvm-ir",
            llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-           llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
+           llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
 static llvm::cl::opt<bool>
     dumpJitAsm("dump-llvm-asm",
                llvm::cl::desc("Dump the textual assembly of the jitted code"),
-               llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
+               llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
 llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
-                  llvm::cl::init(false), llvm::cl::cat(getCPUBackendCat()));
+                  llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
 llvm::cl::opt<llvm::Reloc::Model> relocModel(
     "relocation-model",
@@ -60,7 +61,7 @@ llvm::cl::opt<llvm::Reloc::Model> relocModel(
     llvm::cl::values(
         clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
         clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
-    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getCPUBackendCat()));
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getLLVMBackendCat()));
 
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
@@ -93,8 +94,9 @@ static llvm::StringRef getHostCpuName() {
 }
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
-                     std::string mainEntryName)
-    : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName) {}
+                     std::string mainEntryName, llvm::StringRef libjitBC)
+    : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
+      libjitBC_(libjitBC) {}
 
 void LLVMIRGen::initTargetMachine(llvm::StringRef T,
                                   llvm::CodeModel::Model codeModel) {
@@ -139,20 +141,12 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
   offsetsArray_ = F->args().begin() + 3;
 }
 
-/// We compile the standard library (libjit) to LLVM bitcode, and then convert
-/// that binary data to an include file using an external utility (include-bin).
-/// The resulting file is included here to compile the bitcode image into our
-/// library.
-static const unsigned char libjit_bc[] = {
-#include "glow/libjit_bc.inc"
-};
-static const size_t libjit_bc_size = sizeof(libjit_bc);
-
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
 static std::unique_ptr<llvm::Module>
-loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
+loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
+                    llvm::StringRef libjitBC) {
   using llvm::sys::path::append;
   using llvm::sys::path::parent_path;
 
@@ -161,8 +155,8 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename) {
   // Parse the compiled-in image of libjit and return the resulting Module.
   return llvm::parseIR(
       llvm::MemoryBufferRef(
-          llvm::StringRef(reinterpret_cast<const char *>(&libjit_bc[0]),
-                          libjit_bc_size),
+          llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
+                          libjitBC.size()),
           "libjit.bc"),
       error, *ctx);
 }
@@ -185,7 +179,7 @@ static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
 void LLVMIRGen::initCodeGen() {
   instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
-  llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc");
+  llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc", libjitBC_);
   GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
 
   // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
@@ -613,10 +607,10 @@ createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
 
 /// Emit the address of the buffer \p v inside a data-parallel kernel \p kernel
 /// using the mapping provided by \p bufferToArgNum.
-static llvm::Value *
-emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
-                  llvm::Function *kernel,
-                  llvm::DenseMap<Value *, int> &bufferToArgNum) {
+llvm::Value *
+LLVMIRGen::emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,
+                             llvm::Function *kernel,
+                             llvm::DenseMap<Value *, int> &bufferToArgNum) {
   assert(bufferToArgNum.count(val) && "Buffer should be in the map");
   return kernel->args().begin() + bufferToArgNum[val];
 }
@@ -1082,42 +1076,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
-  case Kinded::Kind::CPUMaxSplatInstKind: {
-    auto *AN = cast<CPUMaxSplatInst>(I);
-    auto *dest = AN->getDest();
-    auto V = AN->getSplatValue();
-    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
-    auto *lhs = AN->getSrc();
-    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
-    auto *F = getFunction("element_maxsplat_kernel", dest->getElementType());
-    auto *elementTy = getElementType(builder, dest);
-    auto *pointerNull =
-        llvm::ConstantPointerNull::get(elementTy->getPointerTo());
-
-    if (lhs->getType()->isQuantizedType()) {
-      // Quantize value from the splat to the {S,O} of the lhs param.
-      TensorQuantizationParams TQP{lhs->getType()->getScale(),
-                                   lhs->getType()->getOffset()};
-      auto quantizedValue = quantization::quantize(V, TQP);
-      auto *val = emitConst(builder, quantizedValue, lhs->getElementType());
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
-                                         loopCount, "buffer.element.addr");
-      builder.CreateStore(stackedOpCall, destAddr);
-    } else {
-      auto *val = emitConst(builder, V, lhs->getElementType());
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
-                                         loopCount, "buffer.element.addr");
-      builder.CreateStore(stackedOpCall, destAddr);
-    }
-
-    break;
-  }
-
-#undef ARITHMETIC_UNARY_OP_CASE
 
 #define ARITHMETIC_BINARY_OP_CASE(INST_NAME_, FUN_NAME_)                       \
   case Kinded::Kind::INST_NAME_##InstKind: {                                   \
@@ -1728,77 +1686,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   filterDims, biasDims, kernels, strides, pads, group,
                   unrollD});
     }
-    break;
-  }
-
-  case Kinded::Kind::CPUConvDKKC8InstKind: {
-    auto *CI = cast<CPUConvDKKC8Inst>(I);
-    auto *dest = CI->getDest();
-    auto *src = CI->getSrc();
-    auto *filter = CI->getFilter();
-    auto *bias = CI->getBias();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *srcPtr = emitValueAddress(builder, src);
-    auto *filterPtr = emitValueAddress(builder, filter);
-    auto *biasPtr = emitValueAddress(builder, bias);
-
-    auto *destDims = emitValueDims(builder, dest);
-    auto *srcDims = emitValueDims(builder, src);
-    auto *filterDims = emitValueDims(builder, filter);
-    auto *biasDims = emitValueDims(builder, bias);
-
-    auto *kernels = emitConstSizeTArray(builder, CI->getKernels());
-    auto *strides = emitConstSizeTArray(builder, CI->getStrides());
-    auto *pads = emitConstSizeTArray(builder, CI->getPads());
-    auto *group = emitConstSizeT(builder, CI->getGroup());
-
-    size_t inChannels = src->dims()[3];
-    size_t outChannels = dest->dims()[3];
-
-    // Select a method for iterating on the image in the pixel (filter-first, or
-    // input-first). Perform convolutions with a high channel count by scanning
-    // the input image multiple times, once for each filter entry. Scan images
-    // with a low channel count by scanning the image once because the filter
-    // scan will fall in the cache.
-    bool pixelScanFirst = (inChannels < 16);
-
-    // The number of float8 registers that we use to process the depth channel.
-    unsigned numDepthRegs = (pixelScanFirst ? 8 : 2);
-    // The number of y pixels to process at once.
-    unsigned sizeGroupY = (pixelScanFirst ? 1 : 5);
-
-    // When producing output pixels process this many times of depth-strips,
-    // where each chunk is float8 * numDepthRegs. This is a form of tiling. It's
-    // profitable to scan multiple depth-strips of the filter if the scanned
-    // memory fits in the cahce and does not get evicted before the next
-    // iteration. By increasing the number strips (and using more cache memory)
-    // we reduce the number of times that we iterate over the input. However, we
-    // also increase the pressure on the cache that has to store the filter so
-    // we can't process too many strips at once.
-    unsigned depthStrips = 1;
-    unsigned stripSize = 8 * numDepthRegs * inChannels;
-    unsigned tileSize = 16384;
-    // Increase the number of strips until we reach the output-tensor depth size
-    // or until we exceed some threashold.
-    while (2 * depthStrips * stripSize <= tileSize &&
-           2 * depthStrips * numDepthRegs * 8 <= outChannels / CI->getGroup() &&
-           depthStrips < 8) {
-      depthStrips *= 2;
-    }
-
-    auto *pixelScanFirstVal = emitConstI32(builder, pixelScanFirst);
-    auto *numDepthRegsVal = emitConstI32(builder, numDepthRegs);
-    auto *sizeGroupYVal = emitConstI32(builder, sizeGroupY);
-    auto *depthStripsVal = emitConstI32(builder, depthStrips);
-
-    const char *kernelName = "convDKKC8";
-    auto *F = getFunction(kernelName, dest->getElementType());
-
-    createCall(builder, F,
-               {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
-                filterDims, biasDims, kernels, strides, pads, group,
-                pixelScanFirstVal, numDepthRegsVal, sizeGroupYVal,
-                depthStripsVal});
     break;
   }
 

@@ -1,0 +1,45 @@
+add_library(LLVMIRCodeGen
+            AllocationsInfo.cpp
+            BundleSaver.cpp
+            CommandLine.cpp
+            LLVMCompiledFunction.cpp
+            DebugInfo.cpp
+            FunctionSpecializer.cpp
+            GlowJIT.cpp
+            Pipeline.cpp
+            LLVMIRGen.cpp
+            LLVMBackend.cpp)
+
+llvm_map_components_to_libnames(LLVM_TARGET_LIBRARIES ${LLVM_TARGETS_TO_BUILD})
+target_link_libraries(LLVMIRCodeGen
+                      PUBLIC
+                        Backend
+                        Base
+                        CodeGen
+                        Graph
+                        IR
+                        Optimizer
+                        QuantizationBase
+                        ${LLVM_TARGET_LIBRARIES}
+                        LLVMAnalysis
+                        LLVMBitWriter
+                        LLVMCodeGen
+                        LLVMCore
+                        LLVMExecutionEngine
+                        LLVMIRReader
+                        LLVMInstCombine
+                        LLVMInterpreter
+                        LLVMMC
+                        LLVMObject
+                        LLVMPasses
+                        LLVMScalarOpts
+                        LLVMSupport
+                        LLVMTarget
+                        LLVMTransformUtils
+                        LLVMVectorize
+                        LLVMipo)
+if(LLVM_VERSION_MAJOR VERSION_GREATER 6)
+  target_link_libraries(LLVMIRCodeGen
+                        PRIVATE
+                          LLVMOrcJIT)
+endif()

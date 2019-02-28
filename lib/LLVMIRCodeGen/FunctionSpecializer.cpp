@@ -15,9 +15,9 @@
  */
 #define DEBUG_TYPE "ir-function-specializer"
 
-#include "CPUBackend.h"
 #include "CommandLine.h"
-#include "LLVMIRGen.h"
+#include "glow/LLVMIRCodeGen/LLVMBackend.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
@@ -41,7 +41,7 @@ static llvm::cl::opt<bool>
     jitSpecializeDims("jit-specialize",
                       llvm::cl::desc("Create specialized functions for "
                                      "operations with constant dimensions"),
-                      llvm::cl::init(true), llvm::cl::cat(getCPUBackendCat()));
+                      llvm::cl::init(true), llvm::cl::cat(getLLVMBackendCat()));
 
 STATISTIC(NumSpecializations, "Number of created specializations");
 STATISTIC(NumSharedSpecializations, "Number of shared specializations");
