@@ -65,7 +65,7 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
 }
 
-bool Interpreter::isOpSupported(const NodeInfo &NI) const {
+bool Interpreter::isOpSupportedStatic(const NodeInfo &NI) {
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
@@ -358,10 +358,30 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   }
 }
 
-bool Interpreter::shouldLower(const Node *N) const {
-  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+bool Interpreter::isOpSupported(const NodeInfo &NI) const {
+  return Interpreter::isOpSupportedStatic(NI);
+}
+
+bool Interpreter::shouldLowerStatic(const Node *N) {
+  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind) {
     return false;
+  }
+
   return true;
+}
+
+bool Interpreter::shouldLower(const Node *N) const {
+  return Interpreter::shouldLowerStatic(N);
+}
+
+bool Interpreter::transformPostLoweringStatic(Function *F,
+                                              const CompilationOptions &opts) {
+  return false;
+}
+
+bool Interpreter::transformPostLowering(Function *F,
+                                        const CompilationOptions &opts) const {
+  return Interpreter::transformPostLoweringStatic(F, opts);
 }
 
 namespace glow {

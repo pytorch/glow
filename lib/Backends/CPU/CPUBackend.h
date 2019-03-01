@@ -47,6 +47,16 @@ public:
   /// @}
 
 public:
+  /// See Backend::transformPostLoweringStatic.
+  static bool transformPostLoweringStatic(Function *F,
+                                          const CompilationOptions &opts);
+
+  /// See Backend::isOpSupportedStatic.
+  static bool isOpSupportedStatic(const NodeInfo &NI);
+
+  /// See Backend::shouldLowerStatic.
+  static bool shouldLowerStatic(const Node *N);
+
   /// @name LLVMBackend methods.
   /// This is the implementation of the LLVMBackend interface.
   ///@{

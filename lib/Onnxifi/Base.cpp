@@ -52,20 +52,21 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  glow::lower(function, /* loweredMap */ nullptr, glowBackend_.get());
+  glow::lower(function, /* loweredMap */ nullptr, /* backend */ nullptr,
+              &glowBackendKind_);
 
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
-  if (glowBackend_->transformPostLowering(function, opts)) {
+  if (glow::transformPostLoweringStatic(glowBackendKind_, function, opts)) {
     glow::DCE(function);
   }
 
   const auto &nodes = function->getNodes();
 
   for (const auto &node : nodes) {
-    if (!glowBackend_->isOpSupported(node)) {
+    if (!glow::isOpSupportedStatic(glowBackendKind_, node)) {
       // TODO: Use a more specific ONNXIFI error code here to denote what about
       // this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;

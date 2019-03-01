@@ -1575,7 +1575,7 @@ OCLBackend::compile(Function *F, const CompilationOptions &opts) const {
   return compileIRWithoutConstants(std::move(IR));
 }
 
-bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
+bool OCLBackend::isOpSupportedStatic(const NodeInfo &NI) {
   switch (NI.getKind()) {
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::TransposeNodeKind:
@@ -1689,4 +1689,19 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   default:
     return false;
   }
+}
+
+bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
+  return OCLBackend::isOpSupportedStatic(NI);
+}
+
+bool OCLBackend::shouldLowerStatic(const Node *N) {
+  // The group convolution is supported in OpenCL slow convolution kernel.
+  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+    return false;
+  return true;
+}
+
+bool OCLBackend::shouldLower(const Node *N) const {
+  return OCLBackend::shouldLowerStatic(N);
 }

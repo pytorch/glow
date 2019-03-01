@@ -47,12 +47,25 @@ public:
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override;
 
+  bool transformPostLowering(Function *F,
+                             const CompilationOptions &opts) const override;
+
   bool isOpSupported(const NodeInfo &NI) const override;
 
   bool shouldLower(const Node *N) const override;
 
   /// @}
-  //
+
+  /// See Backend::transformPostLoweringStatic.
+  static bool transformPostLoweringStatic(Function *F,
+                                          const CompilationOptions &opts);
+
+  /// See Backend::isOpSupportedStatic.
+  static bool isOpSupportedStatic(const NodeInfo &NI);
+
+  /// See Backend::shouldLowerStatic.
+  static bool shouldLowerStatic(const Node *N);
+
   /// \returns the size of metrics collected for a single TraceEvent.
   static size_t getTraceEventDataSizeStatic() { return sizeof(uint64_t); }
   size_t getTraceEventDataSize() const override {

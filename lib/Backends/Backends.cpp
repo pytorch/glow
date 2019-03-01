@@ -14,9 +14,18 @@
  * limitations under the License.
  */
 
+#include "Interpreter/Interpreter.h"
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+
+#if defined(GLOW_WITH_OPENCL)
+#include "OpenCL/OpenCL.h"
+#endif
+
+#if defined(GLOW_WITH_CPU)
+#include "CPU/CPUBackend.h"
+#endif
 
 #include "llvm/Support/Casting.h"
 
@@ -56,6 +65,82 @@ Backend *glow::createBackend(BackendKind backendKind) {
     return createOCLBackend();
   case BackendKind::CPU:
     return createCPUBackend();
+  }
+
+  // This is to make compiler happy. It can never reach this point as switch
+  // always covers all possible values.
+  llvm_unreachable("unreachable");
+}
+
+bool glow::transformPostLoweringStatic(BackendKind backendKind, Function *F,
+                                       const CompilationOptions &opts) {
+  switch (backendKind) {
+  case BackendKind::Interpreter:
+    return Interpreter::transformPostLoweringStatic(F, opts);
+
+  case BackendKind::OpenCL:
+#if defined(GLOW_WITH_OPENCL)
+    return OCLBackend::transformPostLoweringStatic(F, opts);
+#else
+    GLOW_UNREACHABLE("Must compile with OpenCL support");
+#endif
+
+  case BackendKind::CPU:
+#if defined(GLOW_WITH_CPU)
+    return CPUBackend::transformPostLoweringStatic(F, opts);
+#else
+    GLOW_UNREACHABLE("Must compile with CPU support");
+#endif
+  }
+
+  // This is to make compiler happy. It can never reach this point as switch
+  // always covers all possible values.
+  llvm_unreachable("unreachable");
+}
+
+bool glow::isOpSupportedStatic(BackendKind backendKind, const NodeInfo &NI) {
+  switch (backendKind) {
+  case BackendKind::Interpreter:
+    return Interpreter::isOpSupportedStatic(NI);
+
+  case BackendKind::OpenCL:
+#if defined(GLOW_WITH_OPENCL)
+    return OCLBackend::isOpSupportedStatic(NI);
+#else
+    GLOW_UNREACHABLE("Must compile with OpenCL support");
+#endif
+
+  case BackendKind::CPU:
+#if defined(GLOW_WITH_CPU)
+    return CPUBackend::isOpSupportedStatic(NI);
+#else
+    GLOW_UNREACHABLE("Must compile with CPU support");
+#endif
+  }
+
+  // This is to make compiler happy. It can never reach this point as switch
+  // always covers all possible values.
+  llvm_unreachable("unreachable");
+}
+
+bool glow::shouldLowerStatic(BackendKind backendKind, const Node *N) {
+  switch (backendKind) {
+  case BackendKind::Interpreter:
+    return Interpreter::shouldLowerStatic(N);
+
+  case BackendKind::OpenCL:
+#if defined(GLOW_WITH_OPENCL)
+    return OCLBackend::shouldLowerStatic(N);
+#else
+    GLOW_UNREACHABLE("Must compile with OpenCL support");
+#endif
+
+  case BackendKind::CPU:
+#if defined(GLOW_WITH_CPU)
+    return CPUBackend::shouldLowerStatic(N);
+#else
+    GLOW_UNREACHABLE("Must compile with CPU support");
+#endif
   }
 
   // This is to make compiler happy. It can never reach this point as switch

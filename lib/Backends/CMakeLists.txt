@@ -36,7 +36,6 @@ target_link_libraries(Backends
                         Base
                         Graph
                         Interpreter
-                        Optimizer
                         ${linked_backends})
 
 add_library(DeviceManager

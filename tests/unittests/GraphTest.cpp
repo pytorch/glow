@@ -1482,7 +1482,8 @@ TEST(Graph, GroupTestConvNoLower) {
   // Now lower, but prevent ConvolutionNodeKinds from being lowered.
   KindSet doNotLower;
   doNotLower.insert(Kinded::Kind::ConvolutionNodeKind);
-  lower(F, /* loweredMap */ nullptr, &backend, doNotLower);
+  lower(F, /* loweredMap */ nullptr, &backend,
+        /* backendKind */ nullptr, doNotLower);
 
   {
     // Now have lowered but should still have a single Conv node with group = 8.

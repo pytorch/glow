@@ -26,8 +26,8 @@ using llvm::dyn_cast;
 using namespace glow;
 
 /// Perform OpenCL specific post-lowering graph transformation.
-bool OCLBackend::transformPostLowering(Function *F,
-                                       const CompilationOptions &opts) const {
+bool OCLBackend::transformPostLoweringStatic(Function *F,
+                                             const CompilationOptions &opts) {
   // NCHW transformation is not supported in training mode yet, because of some
   // issues with gradient nodes.
   if (opts.mode == CompilationMode::Train)
@@ -60,4 +60,9 @@ bool OCLBackend::transformPostLowering(Function *F,
     }
   }
   return changed;
+}
+
+bool OCLBackend::transformPostLowering(Function *F,
+                                       const CompilationOptions &opts) const {
+  return OCLBackend::transformPostLoweringStatic(F, opts);
 }

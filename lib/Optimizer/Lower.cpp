@@ -791,11 +791,20 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
   }
 }
 
-void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B,
+void glow::lower(Function *F, LoweredInfoMap *loweredMap,
+                 const Backend *backend, const BackendKind *backendKind,
                  const KindSet &doNotLowerKinds) {
+  assert(!(backend && backendKind) &&
+         "Only backend or backendKind should be provided.");
   auto &nodes = F->getNodes();
   for (auto &N : nodes) {
-    if (B && !B->shouldLower(&N)) {
+    bool shouldLower = true;
+    if (backend) {
+      shouldLower = backend->shouldLower(&N);
+    } else if (backendKind) {
+      shouldLower = shouldLowerStatic(*backendKind, &N);
+    }
+    if (!shouldLower) {
       continue;
     }
     if (doNotLowerKinds.count(N.getKind())) {

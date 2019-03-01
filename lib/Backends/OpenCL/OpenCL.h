@@ -185,14 +185,18 @@ public:
 
   bool isOpSupported(const NodeInfo &NI) const override;
 
-  bool shouldLower(const Node *N) const override {
-    // The group convolution is supported in OpenCL slow convolution kernel.
-    if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
-      return false;
-    return true;
-  }
-
+  bool shouldLower(const Node *N) const override;
   /// @}
+
+  /// See Backend::transformPostLoweringStatic.
+  static bool transformPostLoweringStatic(Function *F,
+                                          const CompilationOptions &opts);
+
+  /// See Backend::isOpSupportedStatic.
+  static bool isOpSupportedStatic(const NodeInfo &NI);
+
+  /// See Backend::shouldLowerStatic.
+  static bool shouldLowerStatic(const Node *N);
 };
 
 } // namespace glow

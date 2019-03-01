@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
+#include "glow/Backends/Backend.h"
 #include "glow/Backends/CompilationOptions.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -38,14 +39,18 @@ void optimize(Function *F, const CompilationOptions &opts);
 void optimize(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
-/// linear algebra operators. If \p B is not a nullptr then it can prevent
-/// lowering of a node via \ref Backend::shouldLower(); otherwise everything
-/// will be lowered. If \p loweredMap is not a nullptr, then \p loweredMap will
-/// contain a mapping from output names of the nodes found and lowered in \p F
-/// to the output names of the nodes they were lowered from along with the
-/// NodeKind. \p doNotLowerKinds is a set of NodeKinds which represents all
-/// Nodes that should not be lowered.
-void lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B = nullptr,
+/// linear algebra operators. If \p backend is not a nullptr then it can prevent
+/// lowering of a node via \ref Backend::shouldLower(); likewise if \p
+/// backendKind is not null then Backend::shouldLowerStatic can prevent
+/// lowering; otherwise everything will be lowered. At most of one of backend
+/// and backendKind should be non-null. If \p loweredMap is not a nullptr, then
+/// \p loweredMap will contain a mapping from output names of the nodes found
+/// and lowered in \p F to the output names of the nodes they were lowered from
+/// along with the NodeKind. \p doNotLowerKinds is a set of NodeKinds which
+/// represents all Nodes that should not be lowered.
+void lower(Function *F, LoweredInfoMap *loweredMap,
+           const Backend *backend = nullptr,
+           const BackendKind *backendKind = nullptr,
            const KindSet &doNotLowerKinds = {});
 
 /// Dead code elimination.

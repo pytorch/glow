@@ -267,7 +267,7 @@ void Loader::compile(Context &ctx) {
     // generateNodeQuantizationInfos() when writing out the profile, allowing
     // for both lowered and unlowered NodeValues to find their quantization
     // parameters.
-    ::lower(F_, &loweredMap_, /* backend */ nullptr,
+    ::lower(F_, &loweredMap_, /* backend */ nullptr, /* backendKind */ nullptr,
             doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.

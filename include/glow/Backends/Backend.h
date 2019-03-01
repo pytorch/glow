@@ -95,6 +95,25 @@ public:
 
   virtual size_t getTraceEventDataSize() const { return 0; }
 
+  /// Used by the compiler during graph optimization and before code generation,
+  /// giving the backend an opportunity to transform the graph before IRGen. The
+  /// backend may insert backend-specific nodes. The backend is responsible for
+  /// cleaning up after itself. Given a \p backendKind, calls
+  /// transformPostLoweringStatic on the corresponding Backend. \returns True if
+  /// the graph was modified.
+  static bool transformPostLoweringStatic(BackendKind backendKind, Function *F,
+                                          const CompilationOptions &opts);
+
+  /// Given a \p backendKind, calls isOpSupportedStatic on the corresponding
+  /// Backend. \returns True if \returns whether the provided \p NI is supported
+  /// by the backend.
+  static bool isOpSupportedStatic(BackendKind backendKind, const NodeInfo &NI);
+
+  /// Given a \p backendKind, calls isOpSupportedStatic on the corresponding
+  /// backend. \returns true if the supplied Node \N should be lowered. By
+  /// default, all Nodes are candidates for lowering.
+  static bool shouldLowerStatic(BackendKind backendKind, const Node *N);
+
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
   /// TraceEventNodes.
@@ -109,6 +128,25 @@ protected:
 
 /// Create a backend of kind \p kind.
 Backend *createBackend(BackendKind backendKind);
+
+/// Used by the compiler during graph optimization and before code generation,
+/// giving the backend an opportunity to transform the graph before IRGen. The
+/// backend may insert backend-specific nodes. The backend is responsible for
+/// cleaning up after itself. Given a \p backendKind, calls
+/// transformPostLoweringStatic on the corresponding Backend. \returns True if
+/// the graph was modified.
+bool transformPostLoweringStatic(BackendKind backendKind, Function *F,
+                                 const CompilationOptions &opts);
+
+/// Given a \p backendKind, calls isOpSupportedStatic on the corresponding
+/// Backend. \returns True if \returns whether the provided \p NI is supported
+/// by the backend.
+bool isOpSupportedStatic(BackendKind backendKind, const NodeInfo &NI);
+
+/// Given a \p backendKind, calls isOpSupportedStatic on the corresponding
+/// backend. \returns true if the supplied Node \N should be lowered. By
+/// default, all Nodes are candidates for lowering.
+bool shouldLowerStatic(BackendKind backendKind, const Node *N);
 
 // Backends that use Glow low-level IR should inherit from this class. It allows
 // for unit tests to create low-level IR to compile and run.

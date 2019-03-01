@@ -5,6 +5,8 @@ add_library(Optimizer
               Quantization.cpp)
 
 target_link_libraries(Optimizer
+                      PUBLIC
+                        Backends
                       PRIVATE
                         Graph
                         IR

@@ -57,7 +57,8 @@ public:
   explicit BackendId(glow::BackendKind kind, int id, int concurrency,
                      bool useOnnx, bool useHostManager)
       : id_(id), useOnnx_(useOnnx), concurrency_(concurrency),
-        glowBackend_(createBackend(kind)), useHostManager_(useHostManager) {}
+        glowBackend_(createBackend(kind)), glowBackendKind_(kind),
+        useHostManager_(useHostManager) {}
 
   bool isOpSupported(const NodeInfo &NI);
 
@@ -99,6 +100,7 @@ private:
   bool useOnnx_;
   int concurrency_;
   std::unique_ptr<glow::Backend> glowBackend_;
+  glow::BackendKind glowBackendKind_;
   bool useHostManager_;
   HostManager hostManager_; // TODO use real HostManager once landed.
 };

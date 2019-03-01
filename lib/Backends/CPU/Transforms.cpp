@@ -114,8 +114,8 @@ static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
       new CPUMaxSplatNode(MN->getName(), input, splat->getValue()));
 }
 
-bool CPUBackend::transformPostLowering(Function *F,
-                                       const CompilationOptions &) const {
+bool CPUBackend::transformPostLoweringStatic(Function *F,
+                                             const CompilationOptions &) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Try to replace generic convolution with cpu-optimized version.
@@ -138,4 +138,9 @@ bool CPUBackend::transformPostLowering(Function *F,
   }
 
   return changed;
+}
+
+bool CPUBackend::transformPostLowering(Function *F,
+                                       const CompilationOptions &opts) const {
+  return CPUBackend::transformPostLoweringStatic(F, opts);
 }

@@ -45,7 +45,7 @@ namespace glow {
 Backend *createCPUBackend() { return new CPUBackend(); }
 } // namespace glow
 
-bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
+bool CPUBackend::isOpSupportedStatic(const NodeInfo &NI) {
   // Note: For brevity below, "X ==> Y, Z" signifes that Node X is IRGen'd into
   // Instructions Y and Z.
 
@@ -299,10 +299,18 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   }
 }
 
-bool CPUBackend::shouldLower(const Node *N) const {
+bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
+  return CPUBackend::isOpSupportedStatic(NI);
+}
+
+bool CPUBackend::shouldLowerStatic(const Node *N) {
   if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
     return false;
   return true;
+}
+
+bool CPUBackend::shouldLower(const Node *N) const {
+  return CPUBackend::shouldLowerStatic(N);
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
