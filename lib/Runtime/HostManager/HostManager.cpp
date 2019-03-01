@@ -38,6 +38,9 @@ HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
     devices_[deviceCount] =
         std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
             config.backendKind, config.deviceName));
+    ResultCode response = devices_[deviceCount]->init();
+    assert(response == ResultCode::Executed && "Failed to initialize device.");
+    (void)response;
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
