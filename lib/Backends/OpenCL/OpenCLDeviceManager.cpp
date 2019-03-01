@@ -124,7 +124,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   }
   // Collect constants once, since currently the bundle grabs everything in the
   // module.
-  auto bundle = functions.begin()->second->getRuntimeBundle();
+  auto &bundle = functions.begin()->second->getRuntimeBundle();
   if (bundle.getConstants() == nullptr) {
     bundle.collectConstants(module);
   }
