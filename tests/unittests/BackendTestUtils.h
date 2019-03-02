@@ -111,6 +111,29 @@ class MockBackendCustomIRGen : public Backend {
 /// allocated Tensor that backs the Placeholder of the single output.
 using FunctionTensorPair = std::pair<Function *, Tensor *>;
 
+/// Signature of functions used to create and init a Function. Returns a pair of
+/// the Function created and the Placeholder of the output of the Function.
+using CreateAndInitFunction =
+    std::function<FunctionTensorPair(Context &, ExecutionEngine &)>;
+
+/// Given a method \p createAndInitFunction that creates and initializes a
+/// FloatTy Function with a single output Tensor, \returns a bool representing
+/// if the output Tensor of executing the Function on the Interpreter backend is
+/// equal to executing it on a backend of kind \p backendKind. \p interpElemKind
+/// and \p backendElemKind represent the desired ElemKinds for their respective
+/// functions to use. If either require quantization then a profile will first
+/// be gathered on the Interpreter, and then that profile will be used to
+/// quantize one or both. Otherwise if either is Float16Ty then the respective
+/// Function it will be converted using the Converter. If
+/// \p enableRowwiseQuantization then rowwise quantization will be used for
+/// nodes that support it.
+void compareAgainstInterpreter(BackendKind backendKind,
+                               CreateAndInitFunction createAndInitFunction,
+                               ElemKind interpElemKind,
+                               ElemKind backendElemKind,
+                               float allowedError = 0.0001,
+                               bool enableRowwiseQuantization = false);
+
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
 

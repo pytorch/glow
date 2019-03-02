@@ -5,12 +5,21 @@ target_link_libraries(TestMain
                         LLVMSupport
                         gtest)
 
+add_library(BackendTestUtils
+            BackendTestUtils.cpp)
+target_link_libraries(BackendTestUtils
+                      PRIVATE
+                        Converter
+                        Quantization
+                        LLVMSupport
+                        gtest)
+
 add_executable(BackendCorrectnessTest
-               BackendTestUtils.cpp
                BackendCorrectnessTest.cpp)
 target_link_libraries(BackendCorrectnessTest
                       PRIVATE
                         Backends
+                        BackendTestUtils
                         Graph
                         IR
                         ExecutionEngine
@@ -189,10 +198,10 @@ LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_CPU)
   add_executable(HyphenTest
-                 BackendTestUtils.cpp
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
                         PRIVATE
+                          BackendTestUtils
                           Graph
                           IR
                           ExecutionEngine
@@ -269,10 +278,10 @@ LIST(APPEND UNOPT_TESTS ./tests/MLTest -optimize-ir=false &&)
 
 if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
-                 BackendTestUtils.cpp
                  OCLTest.cpp)
   target_link_libraries(OCLTest
                         PRIVATE
+                          BackendTestUtils
                           ExecutionEngine
                           Graph
                           IR
@@ -301,6 +310,7 @@ add_executable(OperatorTest
                OperatorTest.cpp)
 target_link_libraries(OperatorTest
                       PRIVATE
+                        BackendTestUtils
                         Graph
                         IR
                         ExecutionEngine
@@ -387,7 +397,7 @@ add_executable(TensorsTest
                TensorsTest.cpp)
 target_link_libraries(TensorsTest
                       PRIVATE
-                        Backend  
+                        Backend
                         Base
                         gtest
                         TestMain)
