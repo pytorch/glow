@@ -16,11 +16,14 @@
 
 #include "BackendTestUtils.h"
 
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+
+#include "gtest/gtest.h"
 
 namespace glow {
 
@@ -49,7 +52,108 @@ static Placeholder *createQuantizedPlaceholder(Module &mod, Context &ctx,
 
   return P;
 }
+
+/// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
+/// quantization parameters from the profile, given the lowered info passed in
+/// via \p loweredMap.
+static std::vector<NodeQuantizationInfo>
+profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
+                                  Function *origF,
+                                  const LoweredInfoMap &loweredMap) {
+  Function *profileF = glow::profileQuantization(ctx, origF);
+  EE.compile(CompilationMode::Infer, profileF);
+
+  EE.run(ctx);
+
+  return quantization::generateNodeQuantizationInfos(ctx, profileF, loweredMap);
+}
+
+/// Helper to profile and quantize \p IF and/or \p BF if \p interpElemKind or \p
+/// backendElemKind are a quantized type. \p ICtx is used during profiling. \p
+/// IEE and \p BEE are used when quantizing as well.
+static void profileAndQuantize(Context &ICtx, ExecutionEngine &IEE,
+                               ExecutionEngine &BEE, Function *&IF,
+                               Function *&BF, ElemKind interpElemKind,
+                               ElemKind backendElemKind,
+                               bool enableRowwiseQuantization) {
+  // Lower everything for profiling in a cloned PF, keeping track of lowered
+  // info in loweredMap, which is then used when generating QI.
+  Function *PF = IF->clone("profile");
+  LoweredInfoMap loweredMapForProf;
+  lower(PF, &loweredMapForProf, IEE.getBackend());
+  std::vector<NodeQuantizationInfo> QI =
+      profileAndGetNodeQuantizationInfo(ICtx, IEE, PF, loweredMapForProf);
+
+  if (isQuantizedElemKind(interpElemKind)) {
+    // Lower only as the backends prefer for actually quantizing.
+    LoweredInfoMap loweredMapForQuant;
+    lower(IF, &loweredMapForQuant, IEE.getBackend());
+    IF = quantization::quantizeFunction(IEE, QI, interpElemKind, IF,
+                                        loweredMapForQuant, "quant", {},
+                                        enableRowwiseQuantization);
+  }
+  if (isQuantizedElemKind(backendElemKind)) {
+    // Lower only as the backends prefer for actually quantizing.
+    LoweredInfoMap loweredMapForQuant;
+    lower(BF, &loweredMapForQuant, BEE.getBackend());
+    BF = quantization::quantizeFunction(BEE, QI, backendElemKind, BF,
+                                        loweredMapForQuant, "quant", {},
+                                        enableRowwiseQuantization);
+  }
+}
+
 } // namespace
+
+void compareAgainstInterpreter(BackendKind backendKind,
+                               CreateAndInitFunction createAndInitFunction,
+                               ElemKind interpElemKind,
+                               ElemKind backendElemKind, float allowedError,
+                               bool enableRowwiseQuantization) {
+  ExecutionEngine IEE{BackendKind::Interpreter};
+  ExecutionEngine BEE{backendKind};
+  Context ICtx, BCtx;
+
+  // Create the same network on the interpreter and the backend being tested.
+  FunctionTensorPair IFT = createAndInitFunction(ICtx, IEE);
+  FunctionTensorPair BFT = createAndInitFunction(BCtx, BEE);
+
+  Function *IF = IFT.first;
+  Function *BF = BFT.first;
+
+  // If one or both functions will be quantized, then gather a profile the graph
+  // on the interpreter, and then quantize the Functions as requested.
+  const bool profAndQuant = isQuantizedElemKind(interpElemKind) ||
+                            isQuantizedElemKind(backendElemKind);
+  if (profAndQuant) {
+    profileAndQuantize(ICtx, IEE, BEE, IF, BF, interpElemKind, backendElemKind,
+                       enableRowwiseQuantization);
+  }
+
+  if (interpElemKind == ElemKind::Float16Ty) {
+    TypeAToTypeBFunctionConverter converter(*IF, ElemKind::FloatTy,
+                                            ElemKind::Float16Ty);
+    converter.convert();
+  }
+  if (backendElemKind == ElemKind::Float16Ty) {
+    TypeAToTypeBFunctionConverter converter(*BF, ElemKind::FloatTy,
+                                            ElemKind::Float16Ty);
+    converter.convert();
+  }
+
+  BEE.compile(CompilationMode::Infer, BF);
+  BEE.run(BCtx);
+
+  // If we profiled above (always in FloatTy) then IF's result tensor is already
+  // set to the result of the original (FloatTy) IF. So if we did not run
+  // profiling, or if we did profile but also modified IF to be non-FloatTy,
+  // then we need to run again to get IF's result.
+  if (!profAndQuant || interpElemKind != ElemKind::FloatTy) {
+    IEE.compile(CompilationMode::Infer, IF);
+    IEE.run(ICtx);
+  }
+
+  EXPECT_TRUE(IFT.second->isEqual(*BFT.second, allowedError));
+}
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
                             llvm::ArrayRef<int8_t> table, BackendKind kind) {
