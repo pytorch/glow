@@ -1604,17 +1604,24 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     // the backend to be an OCLPool/OCLConv.
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::MaxPoolNodeKind:
-  case Kinded::Kind::ConvolutionNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
-  case Kinded::Kind::OCLConvolutionNodeKind:
+  case Kinded::Kind::ConvolutionNodeKind:
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
     }
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
                                                   {ConvolutionNode::BiasIdx}) &&
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+
+  case Kinded::Kind::OCLConvolutionNodeKind:
+    if (!NI.getInTy(OCLConvolutionNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+    }
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int8QTy}, {OCLConvolutionNode::BiasIdx}) &&
+           (NI.getInElemTy(OCLConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
   case Kinded::Kind::TopKNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
