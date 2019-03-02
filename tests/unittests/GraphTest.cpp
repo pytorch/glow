@@ -101,7 +101,7 @@ TEST(Graph, simpleTestConv3D) {
   Function *F = MD.createFunction("F");
   IRFunction M(F);
   PlaceholderBindings bindings;
-  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3, 100},
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 100, 3},
                                  "input", true);
   K = F->createConv3D(bindings, /* name */ "Conv3D", /* input */ K,
                       /* outChannels */ 16, /* kernel */ 3, /* stride */ 2,
@@ -178,6 +178,39 @@ TEST(Graph, float16Conv) {
                              });
   ASSERT_TRUE(convIt != M.getInstrs().end());
   const auto *convInst = llvm::cast<ConvolutionInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::Float16Ty);
+}
+
+/// Check that we can create conv3D with float16.
+TEST(Graph, float16Conv3D) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
+
+  auto backend = MockBackend();
+  lower(F, /* loweredMap */ nullptr, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<Convolution3DInst>(&*convIt);
   EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::Float16Ty);

@@ -175,10 +175,10 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   if (src.getElementType() == ElemKind::Int8QTy) {
     isValid &= checkType(bias, ElemKind::Int32QTy, parent);
   }
-  ShapeNHWCT idim(src.getType()->dims());
-  ShapeNHWCT odim(dest.getType()->dims());
-  PaddingTLBRNF pdim(pads);
-  ShapeHWT kdim(kernels);
+  ShapeNHWDC idim(src.getType()->dims());
+  ShapeNHWDC odim(dest.getType()->dims());
+  PaddingTLNBRF pdim(pads);
+  ShapeHWD kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
                                parent, CompareOperatorGreaterEqual<size_t>());
@@ -186,12 +186,12 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
                                idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("buffer time too small for selected stride",
-                               idim.t + pdim.near + pdim.far, kdim.time, parent,
-                               CompareOperatorGreaterEqual<size_t>());
+                               idim.d + pdim.near + pdim.far, kdim.depth,
+                               parent, CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, size_t(0), parent);
 
-  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.t, kernels,
+  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
                                              strides, pads);
   isValid &=
       expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
@@ -199,13 +199,13 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
                                outSz.height, parent);
   isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
                                outSz.width, parent);
-  isValid &= expectCompareTrue("Invalid output dimension T", odim.t, outSz.time,
-                               parent);
+  isValid &= expectCompareTrue("Invalid output dimension D", odim.d,
+                               outSz.depth, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
                                size_t(0), parent);
 
-  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
-                               idim.c / (size_t)group, kdim.time};
+  const size_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
+                               idim.c / (size_t)group};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);
@@ -261,7 +261,7 @@ static bool verifyPool(NodeValue src, NodeValue dest,
       expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
 
   // For quantized AvgPool, the scale and offset of its input and output could
-  // be different. But for quantized MaxPool, the scale and ofset of its input
+  // be different. But for quantized MaxPool, the scale and offset of its input
   // and output should be the same.
   isValid &= checkSameIsQuantized(src.getType(), dest.getType(), parent);
   if (!isAvgPool) {

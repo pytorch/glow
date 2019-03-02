@@ -57,7 +57,7 @@ void singleConvNet(Tensor *input, Tensor *out, BackendKind kind,
   out->assign(resultTensor);
 }
 
-/// Test a few configurations of the fp convolution by comparing the retuls to
+/// Test a few configurations of the fp convolution by comparing the results to
 /// the interpreter.
 TEST_P(ConvCorrectnessTest, convTest) {
   PseudoRNG PRNG;

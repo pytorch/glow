@@ -350,11 +350,206 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   }         // N
 }
 
+/// This is the floating point implementation of Convolution3D.
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdConvolution3DInstFloatImpl(
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto filterW = getWeightHandle<ElemTy>(filterV);
+  auto biasW = getWeightHandle<ElemTy>(biasV);
+
+  ShapeNHWDC odim(outW.dims());
+  ShapeNHWDC idim(inW.dims());
+  ShapeHWD kdim(kernelSizes);
+  ShapeHWD sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+
+  PaddingTLNBRF pdim(pads);
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each group of input channels:
+    for (size_t ig = 0; ig < group; ig++) {
+
+      // For each output channel in the group:
+      for (size_t og = ig * outCperG; og < (ig + 1) * outCperG; og++) {
+
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            ssize_t z = -ssize_t(pdim.near);
+            for (size_t az = 0; az < odim.d; z += sdim.depth, az++) {
+
+              // For each element in the 3D convolution-filter:
+              float sum = 0;
+              for (size_t fx = 0; fx < kdim.height; fx++) {
+                for (size_t fy = 0; fy < kdim.width; fy++) {
+                  for (size_t fz = 0; fz < kdim.depth; fz++) {
+                    ssize_t ox = x + fx;
+                    ssize_t oy = y + fy;
+                    ssize_t oz = z + fz;
+
+                    // Ignore index access below zero (this is due to padding).
+                    if (ox < 0 || oy < 0 || oz < 0 || ox >= ssize_t(idim.h) ||
+                        oy >= ssize_t(idim.w) || oz >= ssize_t(idim.d)) {
+                      continue;
+                    }
+                    for (size_t fg = 0; fg < inCperG; fg++) {
+                      sum += float(filterW.at({og, fx, fy, fz, fg}) *
+                                   inW.at({n, (size_t)ox, (size_t)oy,
+                                           (size_t)oz, ig * inCperG + fg}));
+                    }
+                  }
+                }
+              }
+
+              sum += float(biasW.at({og}));
+              outW.at({n, ax, ay, az, og}) = ElemTy(sum);
+            } // D
+          }   // W
+        }     // H
+      }       // C
+    }         // G
+  }           // N
+}
+
+/// This is the quantized implementation of Convolution3D.
+/// For bias, we support int32 quantization.
+template <typename ElemTy, typename AccumulatorTy>
+void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group) {
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto filterW = getWeightHandle<ElemTy>(filterV);
+  auto biasW = getWeightHandle<int32_t>(biasV);
+
+  ShapeNHWDC odim(outW.dims());
+  ShapeNHWDC idim(inW.dims());
+  ShapeHWD kdim(kernelSizes);
+  ShapeHWD sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+
+  PaddingTLNBRF pdim(pads);
+
+  auto outTy = outV->getType();
+  auto inTy = inV->getType();
+  auto filterTy = filterV->getType();
+  auto biasTy = biasV->getType();
+
+  int32_t outOffset = outTy->getOffset();
+  int32_t inOffset = inTy->getOffset();
+  int32_t filterOffset = filterTy->getOffset();
+  int32_t biasOffset = biasTy->getOffset();
+
+  float outScale = outTy->getScale();
+  float inScale = inTy->getScale();
+  float filterScale = filterTy->getScale();
+  float biasScale = biasTy->getScale();
+
+  // Calculate the scale of the values that come out of the matrix
+  // multiplication part of the calculation.
+  float matMulScale = inScale * filterScale;
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+
+    // For each group of input channels:
+    for (size_t ig = 0; ig < group; ig++) {
+
+      // For each output channel in the group:
+      for (size_t og = ig * outCperG; og < (ig + 1) * outCperG; og++) {
+
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            ssize_t z = -ssize_t(pdim.near);
+            for (size_t az = 0; az < odim.d; z += sdim.depth, az++) {
+
+              // For each element in the convolution-filter:
+              AccumulatorTy sum = 0;
+              for (size_t fx = 0; fx < kdim.height; fx++) {
+                for (size_t fy = 0; fy < kdim.width; fy++) {
+                  for (size_t fz = 0; fz < kdim.depth; fz++) {
+                    ssize_t ox = x + fx;
+                    ssize_t oy = y + fy;
+                    ssize_t oz = z + fz;
+
+                    // Ignore index access below zero (this is due to padding).
+                    if (ox < 0 || oy < 0 || oz < 0 || ox >= ssize_t(idim.h) ||
+                        oy >= ssize_t(idim.w) || oz >= ssize_t(idim.d)) {
+                      continue;
+                    }
+                    for (size_t fg = 0; fg < inCperG; fg++) {
+
+                      AccumulatorTy F = filterW.at({og, fx, fy, fz, fg});
+                      AccumulatorTy I = inW.at({n, (size_t)ox, (size_t)oy,
+                                                (size_t)oz, ig * inCperG + fg});
+                      // We represent the element multiplication with offset as
+                      // (value - offset).
+                      sum += (F - filterOffset) * (I - inOffset);
+                    }
+                  }
+                }
+              }
+
+              // Scale the bias to match the scale of the matrix multiplication.
+              AccumulatorTy B = std::round(float(biasW.at({og}) - biasOffset) *
+                                           (biasScale / matMulScale));
+
+              // Add the bias:
+              sum += B;
+
+              // Scale the result back to the expected destination scale.
+              outW.at({n, ax, ay, az, og}) =
+                  quantization::clip<AccumulatorTy, ElemTy>(std::round(
+                      float(sum) * (matMulScale / outScale) + outOffset));
+            } // D
+          }   // W
+        }     // H
+      }       // C
+    }         // G
+  }           // N
+}
+
 void BoundInterpreterFunction::fwdConvolution3DInst(
     const Convolution3DInst *I) {
-  (void)I;
-  // TODO
-  llvm_unreachable("not yet implemented");
+  auto kernelSizes = I->getKernels();
+  auto pads = I->getPads();
+  auto strides = I->getStrides();
+  size_t group = I->getGroup();
+
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    dispatchQuantizedWithAccumulationImpl(
+        fwdConvolution3DInstQuantizedImpl, I->getSrc()->getElementType(),
+        I->getSrc(), I->getDest(), I->getFilter(), I->getBias(), kernelSizes,
+        strides, pads, group);
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdConvolution3DInstFloatImpl,
+                            I->getSrc()->getElementType(), I->getSrc(),
+                            I->getDest(), I->getFilter(), I->getBias(),
+                            kernelSizes, strides, pads, group);
 }
 
 void BoundInterpreterFunction::fwdConvolution3DGradInst(
