@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "BackendTestUtils.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
@@ -27,12 +29,7 @@
 
 using namespace glow;
 
-class Operator : public ::testing::TestWithParam<BackendKind> {
-public:
-  Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
-
-  ~Operator() override { mod_.clear(); }
-
+class OperatorStateless : public ::testing::TestWithParam<BackendKind> {
 protected:
   bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {
     return enabledBackends.find(GetParam()) != enabledBackends.end();
@@ -41,6 +38,13 @@ protected:
   const BackendKind Interpreter = BackendKind::Interpreter;
   const BackendKind CPU = BackendKind::CPU;
   const BackendKind OpenCL = BackendKind::OpenCL;
+};
+
+class Operator : public OperatorStateless {
+public:
+  Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+
+  ~Operator() override { mod_.clear(); }
 
   ExecutionEngine EE_{GetParam()};
   Module &mod_;
@@ -1602,45 +1606,32 @@ TEST_P(Operator, ScatterAssignQuantized) {
 }
 
 // Note: Add only currently supports int8_t as quantized type.
-template <class floatType>
-void quantizeAndDequantizeTest(glow::Context &ctx_, glow::Module &mod_,
-                               glow::Function *F_, glow::ExecutionEngine &EE_,
-                               ElemKind FTy, ElemKind QTy) {
-  auto *A = mod_.createPlaceholder(FTy, {1, 4}, "A", false);
-  auto *B = mod_.createPlaceholder(FTy, {1, 4}, "B", false);
-  ctx_.allocate(A)->getHandle<floatType>() = {1, 1.2f, 0.5f, 1.3f};
-  ctx_.allocate(B)->getHandle<floatType>() = {1.8f, 5.2f, 3.5f, 11.3f};
+static FunctionTensorPair createAndInitBasicAddTest(glow::Context &ctx,
+                                                    glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
-  auto qType = mod_.uniqueType(QTy, {1, 4}, 0.05f, -138);
-  auto *quantizeA = F_->createQuantize("quantize", A, qType);
-  auto *quantizeB = F_->createQuantize("quantize", B, qType);
-  auto *add = F_->createAdd("add", quantizeA, quantizeB);
-  auto *dequantize = F_->createDequantize("dequantize", add, A->getType());
-  auto *result = F_->createSave("save", dequantize);
-  ctx_.allocate(result->getPlaceholder());
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
+  ctx.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
+  ctx.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 2.7f};
 
-  auto *fpAdd = F_->createAdd("fpAdd", A, B);
-  auto *fpResult = F_->createSave("fpSave", fpAdd);
-  ctx_.allocate(fpResult->getPlaceholder());
+  auto *add = F->createAdd("add", A, B);
+  auto *result = F->createSave("save", add);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  float allowedError = (FTy == ElemKind::Float16Ty) ? 0.01f : 0.002f;
-  EXPECT_TRUE(
-      ctx_.get(result->getPlaceholder())
-          ->isEqual(*ctx_.get(fpResult->getPlaceholder()), allowedError));
+  return std::make_pair(F, resultTensor);
 }
 
-TEST_P(Operator, QuantizeAndDequantizeFPtoI8) {
-  quantizeAndDequantizeTest<float>(ctx_, mod_, F_, EE_, ElemKind::FloatTy,
-                                   ElemKind::Int8QTy);
+TEST_P(OperatorStateless, BasicAddNetFloatVsInt8) {
+  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.02f);
 }
 
-TEST_P(Operator, QuantizeAndDequantizeFPtoI16) {
+TEST_P(OperatorStateless, BasicAddNetFloat16VsInt8) {
   ENABLED_BACKENDS(Interpreter);
-  quantizeAndDequantizeTest<float16>(ctx_, mod_, F_, EE_, ElemKind::Float16Ty,
-                                     ElemKind::Int8QTy);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
+                            ElemKind::Float16Ty, ElemKind::Int8QTy, 0.02f);
 }
 
 TEST_P(Operator, IntMatMul) {
@@ -1743,180 +1734,82 @@ TEST_P(Operator, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, allowedError);
 }
 
-void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
-                             unsigned convDepth) {
-  // In this test we generate a single precision floating-point based
-  // convolution and an half precision one. We pass the same values
-  // and we check that the results are below some
-  // known delta.
-
+template <size_t convDepth>
+static FunctionTensorPair
+createAndInitConvDepthTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
-  Context ctx;
-
-  auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
-  ctx.allocate(input);
-  auto *inputFloat16 = mod.createPlaceholder(
-      ElemKind::Float16Ty, {1, 10, 10, 3}, "in_float16", false);
-  ctx.allocate(inputFloat16);
-  auto *conv = F->createConv(ctx, "conv", input, convDepth, 5, 1, 0, 1);
-  auto *convFloat16 =
-      F->createConv(ctx, "convFloat16", inputFloat16, convDepth, 5, 1, 0, 1);
-
-  // Make sure the inputs are the same for both convolutions.
-  Tensor *inputFloat16Tensor = ctx.get(inputFloat16);
-  auto inputFloat16Handle = inputFloat16Tensor->getHandle<float16_t>();
-  inputFloat16Handle.randomize(-1.0, 1.0, mod.getPRNG());
-
-  ctx.get(input)->copyWithCast<float, float16_t>(inputFloat16Tensor);
-
-  auto *filterFloat16Var =
-      llvm::cast<Placeholder>(convFloat16->getFilter().getNode());
-  auto *filterVar = llvm::cast<Placeholder>(conv->getFilter().getNode());
-  ctx.get(filterVar)->copyWithCast<float, float16_t>(ctx.get(filterFloat16Var));
-
-  auto *biasFloat16Var =
-      llvm::cast<Placeholder>(convFloat16->getBias().getNode());
-  auto *biasVar = llvm::cast<Placeholder>(conv->getBias().getNode());
-  ctx.get(biasVar)->copyWithCast<float, float16_t>(ctx.get(biasFloat16Var));
-
-  SaveNode *save = F->createSave("save", conv);
-  SaveNode *saveFloat16 = F->createSave("saveFloat16", convFloat16);
-
-  auto floatOut =
-      ctx.allocate(llvm::cast<Placeholder>(save->getOutput()))->getHandle();
-  auto float16Out =
-      ctx.allocate(llvm::cast<Placeholder>(saveFloat16->getOutput()))
-          ->getHandle<float16_t>();
-
-  ::glow::convertPlaceholdersToConstants(F, ctx,
-                                         {input, inputFloat16,
-                                          save->getPlaceholder(),
-                                          saveFloat16->getPlaceholder()});
-  EE.compile(CompilationMode::Infer, F);
-
-  EE.run(ctx);
-
-  // Check that the difference in the results is less than 0.1.
-  for (int i = 0, e = floatOut.size(); i < e; i++) {
-    EXPECT_NEAR(floatOut.raw(i), float(float16Out.raw(i)), 0.1);
-  }
-}
-
-TEST_P(Operator, FP16ConvolutionDepth10) {
-  ENABLED_BACKENDS(Interpreter);
-  checkFloat16Convolution(EE_, F_, 10);
-}
-
-TEST_P(Operator, FP16ConvolutionDepth8) {
-  ENABLED_BACKENDS(Interpreter);
-  checkFloat16Convolution(EE_, F_, 8);
-}
-
-void checkIntConvolution(ExecutionEngine &EE, Function *F,
-                         ElemKind quantizationKind, unsigned convDepth,
-                         Context &ctx) {
-  // In this test we generate a Floating-point based convolution and an integer
-  // convolution. We pass the same values and then subtract the results. We
-  // check that the results are below some known delta.
-
-  // In this test the output of the convolution is in the range [-256 ... 256].
-  // The inputs (specified below) are in the range [-1 .. 1],
-  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
   auto *conv = F->createConv(ctx, "conv", input, convDepth, 5, 1, 0, 1);
-  auto *filter = llvm::cast<Placeholder>(conv->getFilter().getNode());
   auto *bias = llvm::cast<Placeholder>(conv->getBias().getNode());
 
   ctx.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
   ctx.get(bias)->getHandle().randomize(-2.0, 2.0, mod.getPRNG());
 
-  TypeRef resTy =
-      mod.uniqueType(quantizationKind, conv->getResult().dims(), 0.08, 0.0);
-  TypeRef inputTy = mod.uniqueType(quantizationKind, input->dims(), 0.01, 0.0);
-  TypeRef filterTy =
-      mod.uniqueType(quantizationKind, filter->dims(), 0.01, 0.0);
-  TypeRef biasTy = mod.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.04, 0.0);
-
-  auto *inputq = F->createQuantize("input.q", input, inputTy);
-  auto *filterq = F->createQuantize("filter.q", filter, filterTy);
-  auto *biasq = F->createQuantize("bias.q", bias, biasTy);
-
-  auto *convq =
-      F->createConv("convq", inputq, filterq, biasq, resTy, conv->getKernels(),
-                    conv->getStrides(), conv->getPads(), 1);
-  auto *dequantRes = F->createDequantize("dequant", convq);
-
-  // Subtract the results of the convolution from the quantized convolution.
-  auto *sub = F->createSub("compare", dequantRes, conv);
-
-  auto *res = F->createSave("save", sub);
-  ctx.allocate(res->getPlaceholder());
+  auto *res = F->createSave("save", conv);
   ::glow::convertPlaceholdersToConstants(F, ctx,
                                          {input, res->getPlaceholder()});
-  EE.compile(CompilationMode::Infer, F);
+  auto *resultTensor = ctx.allocate(res->getPlaceholder());
 
-  EE.run(ctx);
-  auto H = ctx.get(res->getPlaceholder())->getHandle();
-
-  // Check that the difference in the results is less than 0.1.
-  for (auto elem : H) {
-    EXPECT_NEAR(elem, 0, 0.1);
-  }
+  return std::make_pair(F, resultTensor);
 }
 
-TEST_P(Operator, Int8ConvolutionDepth10) {
-  checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 10, ctx_);
+TEST_P(OperatorStateless, Int8ConvolutionDepth10) {
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f);
 }
-
-TEST_P(Operator, Int16ConvollutionDepth10) {
+TEST_P(OperatorStateless, Int16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
-  checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 10, ctx_);
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+                            ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f);
 }
-
-TEST_P(Operator, Int8ConvolutionDepth8) {
-  checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 8, ctx_);
+TEST_P(OperatorStateless, Int8ConvolutionDepth8) {
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f);
 }
-
-TEST_P(Operator, Int16ConvolutionDepth8) {
+TEST_P(OperatorStateless, Int16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
-  checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 8, ctx_);
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+                            ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f);
 }
 
-TEST_P(Operator, IntConcat) {
+TEST_P(OperatorStateless, FP16ConvolutionDepth10) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+}
+
+TEST_P(OperatorStateless, FP16ConvolutionDepth8) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+}
+
+static FunctionTensorPair
+createAndInitBasicConcatTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
+  ctx.allocate(A)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  ctx.allocate(B)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+
+  auto *C = F->createConcat("concat", {A, B}, 0);
+  auto *res = F->createSave("save", C);
+  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F, ctx, {A, B, res->getPlaceholder()});
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStateless, IntConcat) {
   ENABLED_BACKENDS(Interpreter, CPU);
-
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
-  ctx_.allocate(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ctx_.allocate(B)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-
-  auto ATy = mod_.uniqueType(ElemKind::Int8QTy, A->dims(), 0.01, 0);
-  auto BTy = mod_.uniqueType(ElemKind::Int8QTy, B->dims(), 0.01, 0);
-  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {5, 3}, 0.01, 0);
-
-  auto *QA = F_->createQuantize("QA", A, ATy);
-  auto *QB = F_->createQuantize("QB", B, BTy);
-
-  auto *C = F_->createConcat("concat", {A, B}, 0);
-  auto *CQ = F_->createConcat("concatQ", {QA, QB}, 0, outTy);
-  auto *DCQ = F_->createDequantize("DQ", CQ);
-
-  // Subtract the results of the Concat from the quantized Concat.
-  auto *sub = F_->createSub("compare", C, DCQ);
-
-  auto *res = F_->createSave("save", sub);
-  ctx_.allocate(res->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  auto R = ctx_.get(res->getPlaceholder())->getHandle();
-  // Check that the difference in the results is less than 0.2.
-  for (auto elem : R) {
-    EXPECT_NEAR(elem, 0, 0.2);
-  }
+  compareAgainstInterpreter(GetParam(), createAndInitBasicConcatTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f);
 }
 
 TEST_P(Operator, FCWithFlatten) {
@@ -1949,55 +1842,33 @@ TEST_P(Operator, FCWithFlatten) {
   }
 }
 
-TEST_P(Operator, IntFC) {
-  // In this test we subtract the outputs of a quantized FC and a floating-point
-  // FC and ensure that the error is below some low value.
+static FunctionTensorPair createAndInitBasicFCTest(glow::Context &ctx,
+                                                   glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
-  auto *fc = F_->createFullyConnected(ctx_, "FC", input, 30);
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+  auto *fc = F->createFullyConnected(ctx, "FC", input, 30);
 
   auto *weights = llvm::cast<Placeholder>(fc->getWeights());
   auto *bias = llvm::cast<Placeholder>(fc->getBias());
 
-  ctx_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ctx_.get(bias)->getHandle().randomize(0, 0.00001, mod_.getPRNG());
-  ctx_.get(weights)->getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
+  ctx.allocate(input)->getHandle().randomize(-0.5, 0.5, mod.getPRNG());
+  ctx.get(bias)->getHandle().randomize(0, 0.00001, mod.getPRNG());
+  ctx.get(weights)->getHandle().randomize(-0.7, 0.7, mod.getPRNG());
 
-  TypeRef resTy =
-      mod_.uniqueType(ElemKind::Int8QTy, fc->getResult().dims(), 0.15, 4);
-  TypeRef inputTy = mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.01, 0);
-  TypeRef weightsTy =
-      mod_.uniqueType(ElemKind::Int8QTy, weights->dims(), 0.01, 2);
-  TypeRef biasTy = mod_.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.02, 1);
-
-  auto *inputq = F_->createQuantize("input.q", input, inputTy);
-  auto *weightsq = F_->createQuantize("filter.q", weights, weightsTy);
-  auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
-
-  auto *fcq = F_->createFullyConnected("fcq", inputq, weightsq, biasq, resTy);
-  auto *dequantRes = F_->createDequantize("dequant", fcq);
-
-  // Subtract the results of the convolution from the quantized fc.
-  auto *sub = F_->createSub("compare", dequantRes, fc);
-
-  auto *res = F_->createSave("save", sub);
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  auto *res = F->createSave("save", fc);
+  ::glow::convertPlaceholdersToConstants(F, ctx,
                                          {input, res->getPlaceholder()});
-  ctx_.allocate(res->getPlaceholder());
+  auto *resultTensor = ctx.allocate(res->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  return std::make_pair(F, resultTensor);
+}
 
-  auto H = ctx_.get(res->getPlaceholder())->getHandle();
-  // Check that there aren't too many elements with a difference in the results
-  // of greater than 0.2.
-  int count = 0;
-  for (auto elem : H) {
-    if (std::abs(elem) > 0.2) {
-      count++;
-    }
-  }
-  EXPECT_LT(count, 2);
+TEST_P(OperatorStateless, IntFC) {
+  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f);
 }
 
 TEST_P(Operator, EntropyLossTest) {
@@ -2107,8 +1978,9 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
 
   const size_t len = 100;
 
-  // In this test we check the correctness of the quantized Max, Min, Add, Sub,
-  // Mul, and Div nodes as well as how they interact with the rescaling node.
+  // In this test we check the correctness of the quantized Max, Min, Add,
+  // Sub, Mul, and Div nodes as well as how they interact with the rescaling
+  // node.
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "A", false);
   auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "B", false);
   auto *C = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "C", false);
@@ -2194,7 +2066,8 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
     auto mul = AH.at({i}) * BH.at({i});
     auto div = BH.at({i}) / CH.at({i});
 
-    // We generate numbers up to 110, so a difference of 2 (~2%) is reasonable.
+    // We generate numbers up to 110, so a difference of 2 (~2%) is
+    // reasonable.
     EXPECT_NEAR(max, ctx_.get(O1->getPlaceholder())->getHandle().at({i}), 2.0);
     EXPECT_NEAR(min, ctx_.get(O2->getPlaceholder())->getHandle().at({i}), 2.0);
     EXPECT_NEAR(add, ctx_.get(O3->getPlaceholder())->getHandle().at({i}), 2.0);
@@ -2204,38 +2077,30 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
   }
 }
 
-TEST_P(Operator, QuantizedTranspose) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "B", false);
+static FunctionTensorPair createAndInitTransposeNet(glow::Context &ctx,
+                                                    glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
-  ctx_.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 5.8f};
-  ctx_.allocate(B);
-  ctx_.get(A)->transpose(ctx_.get(B), {1, 0});
-  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {2, 3}, 0.05, -138);
-  auto *quantizeA = F_->createQuantize("quantize", A, qType);
-  auto *tr = F_->createTranspose("tr", quantizeA, {1, 0});
-  auto *dequantize = F_->createDequantize("dequantize", tr);
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {2, 3}, "A", false);
+  ctx.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 3.1f};
+  auto *tr = F->createTranspose("Tr", A, {1, 0});
+  auto *result = F->createSave("Ret", tr);
+  auto *resultTensor = ctx.allocate(result->getPlaceholder());
 
-  auto *result = F_->createSave("ret", dequantize);
-  ctx_.allocate(result->getPlaceholder());
-  auto *fpTr = F_->createTranspose("fpTr", A, {1, 0});
+  return std::make_pair(F, resultTensor);
+}
 
-  auto *fpResult = F_->createSave("fpRet", fpTr);
-  ctx_.allocate(fpResult->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  EXPECT_TRUE(
-      ctx_.get(result->getPlaceholder())->isEqual(*ctx_.get(B), 0.001f));
-  EXPECT_TRUE(ctx_.get(fpResult->getPlaceholder())->isEqual(*ctx_.get(B)));
+TEST_P(OperatorStateless, QuantizedTranspose) {
+  compareAgainstInterpreter(GetParam(), createAndInitTransposeNet,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.004f);
 }
 
 TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   const size_t len = 1000;
 
-  // In this test we check the correctness of the quantized Max, Min, Add, Sub,
-  // Mul, and Div operations.
+  // In this test we check the correctness of the quantized Max, Min, Add,
+  // Sub, Mul, and Div operations.
   auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -1);
   auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 2);
   // For TQC, set offset to -11 to avoid division by 0 later.
@@ -2386,9 +2251,9 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   auto AH = ctx_.allocate(A)->getHandle();
 
-  // Notice that the range below is the an approximation of the scale factors in
-  // T3 and T4. If we increase the size of the range we may start losing some
-  // values.
+  // Notice that the range below is the an approximation of the scale factors
+  // in T3 and T4. If we increase the size of the range we may start losing
+  // some values.
   AH.randomize(-12, 12, mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.0, 0);
@@ -2504,9 +2369,9 @@ TEST_P(Operator, concatVectors) {
   }
 }
 
-/// Check that concatenating two tensors repeatedly is correct. This is intended
-/// to verify that IRGen to InsertTensor instructions with axis/count works
-/// correctly.
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly.
 TEST_P(Operator, concatVectorsRepeated) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
@@ -2517,8 +2382,8 @@ TEST_P(Operator, concatVectorsRepeated) {
   ctx_.allocate(V1);
   ctx_.allocate(V2);
 
-  // Alternate adding sequences of V1 and V2, so that the IRGen'd InsertTensors
-  // have different counts.
+  // Alternate adding sequences of V1 and V2, so that the IRGen'd
+  // InsertTensors have different counts.
   Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
   auto *result = F_->createSave("ret", L);
   ctx_.allocate(result->getPlaceholder());
@@ -3175,8 +3040,8 @@ TEST_P(Operator, GroupConvolution) {
 
 /// Check non-square padding for convolution. The first conv has non-square
 /// padding, while the second one has zero padding. The second conv's input is
-/// the same as the first one's after-padding input. All other parameters of the
-/// two convs are the same.
+/// the same as the first one's after-padding input. All other parameters of
+/// the two convs are the same.
 TEST_P(Operator, NonSquarePaddingConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -3236,8 +3101,8 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
 
 /// Check non-square padding for AveragePool. The first pool op has non-square
 /// padding, while the second one has zero padding. The second pool op's input
-/// is the same as the first one's after-padding input. All other parameters of
-/// the two convs are the same.
+/// is the same as the first one's after-padding input. All other parameters
+/// of the two convs are the same.
 TEST_P(Operator, NonSquarePaddingAveragePool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -3428,44 +3293,24 @@ TEST_P(Operator, Int8MaxPool) {
   }
 }
 
-TEST_P(Operator, Int8Tanh) {
+static FunctionTensorPair
+createAndInitBasicTanhTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  ctx.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  auto *tanh = F->createTanh("Tanh", input);
+  auto *save = F->createSave("Save", tanh);
+  auto *resultTensor = ctx.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStateless, Int8Tanh) {
   ENABLED_BACKENDS(Interpreter, CPU);
-
-  constexpr size_t size = 10;
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
-
-  auto *fpTanh = F_->createTanh("fpTanh", input);
-  auto *saveFp = F_->createSave("fpSave", fpTanh);
-  ctx_.allocate(saveFp->getPlaceholder());
-
-  auto quantizationParams =
-      glow::quantization::chooseQuantizationParams(-3.0, 3.0);
-  auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-  auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
-
-  quantizationParams = glow::quantization::chooseQuantizationParams(-1.0, 1.0);
-  auto tanhTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-
-  auto *intTanh = F_->createTanh("int8Tanh", tanhTy, quantize);
-  auto *dequantize = F_->createDequantize("dequantize", intTanh);
-  auto *saveInt = F_->createSave("int8Save", dequantize);
-  ctx_.allocate(saveInt->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  auto fpResult = ctx_.get(saveFp->getPlaceholder())->getHandle();
-  auto intResult = ctx_.get(saveInt->getPlaceholder())->getHandle();
-
-  for (size_t i = 0; i < size; i++) {
-    EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
-  }
+  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f);
 }
 
 /// Verify that the Tanh operator works correctly.
@@ -3490,52 +3335,34 @@ TEST_P(Operator, Tanh) {
   }
 }
 
-/// Verify that a quantized Log works correctly.
-TEST_P(Operator, Int8Log) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+static FunctionTensorPair createAndInitBasicLogTest(glow::Context &ctx,
+                                                    glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
   constexpr size_t size = 1000;
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+      mod.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
 
   const float min = 1.0;
   const float max = 100.0;
-  ctx_.allocate(input)->getHandle().randomize(min, max, mod_.getPRNG());
+  ctx.allocate(input)->getHandle().randomize(min, max, mod.getPRNG());
 
-  // Input some random data into an fp log.
-  auto *fpLog = F_->createLog("fpLog", input);
-  auto *saveFp = F_->createSave("fpSave", fpLog);
-  ctx_.allocate(saveFp->getPlaceholder());
+  // Input some random data into a log.
+  auto *log = F->createLog("log", input);
+  auto *res = F->createSave("save", log);
+  ::glow::convertPlaceholdersToConstants(F, ctx,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = ctx.allocate(res->getPlaceholder());
 
-  // Quantize the input that was also used for the fpLog, and pass it to the
-  // quantized Log.
-  auto quantizationParams =
-      glow::quantization::chooseQuantizationParams(min, max);
-  auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-  auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
+  return std::make_pair(F, resultTensor);
+}
 
-  // Use log of min/max to calculate quantization output params.
-  quantizationParams =
-      glow::quantization::chooseQuantizationParams(log(min), log(max));
-  auto logTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-
-  // Create a quantized log with the quantized version of the input.
-  auto *intLog = F_->createLog("int8Log", quantize, logTy);
-  auto *dequantize = F_->createDequantize("dequantize", intLog);
-  auto *saveInt = F_->createSave("int8Save", dequantize);
-  ctx_.allocate(saveInt->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  // Compare the results of the fp and quantized log.
-  auto &fpResult = *ctx_.get(saveFp->getPlaceholder());
-  auto &intResult = *ctx_.get(saveInt->getPlaceholder());
-  EXPECT_TRUE(fpResult.isEqual(intResult, 0.1));
+/// Verify that a quantized Log works correctly.
+TEST_P(OperatorStateless, Int8Log) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicLogTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.1f);
 }
 
 /// Check Non-square kernel for conv.
@@ -3724,43 +3551,24 @@ TEST_P(Operator, SigmoidOverflow) {
   }
 }
 
-TEST_P(Operator, Int8Sigmoid) {
+static FunctionTensorPair
+createAndInitBasicSigmoidTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  ctx.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  auto *sigmoid = F->createSigmoid("Sigmoid", input);
+  auto *save = F->createSave("Save", sigmoid);
+  auto *resultTensor = ctx.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStateless, Int8Sigmoid) {
   ENABLED_BACKENDS(Interpreter, CPU);
-
-  constexpr size_t size = 10;
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
-
-  auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
-  auto *saveFp = F_->createSave("fpSave", fpSigmoid);
-  ctx_.allocate(saveFp->getPlaceholder());
-
-  auto quantizationParams =
-      glow::quantization::chooseQuantizationParams(-6.0, 6.0);
-  auto quantizeTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-  auto *quantize = F_->createQuantize("quantize", input, quantizeTy);
-
-  quantizationParams = glow::quantization::chooseQuantizationParams(0, 1.0);
-  auto sigmoidTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, quantizationParams.scale,
-                      quantizationParams.offset);
-  auto *intSigmoid = F_->createSigmoid("int8Sigmoid", sigmoidTy, quantize);
-  auto *dequantize = F_->createDequantize("dequantize", intSigmoid);
-  auto *saveInt = F_->createSave("int8Save", dequantize);
-  ctx_.allocate(saveInt->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  auto fpResult = ctx_.get(saveFp->getPlaceholder())->getHandle();
-  auto intResult = ctx_.get(saveInt->getPlaceholder())->getHandle();
-
-  for (size_t i = 0; i < size; i++) {
-    EXPECT_NEAR(fpResult.raw(i), intResult.raw(i), 0.05);
-  }
+  compareAgainstInterpreter(GetParam(), createAndInitBasicSigmoidTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f);
 }
 
 /// Check that the batch add operator works properly.
@@ -4716,8 +4524,8 @@ TEST_P(Operator, CmpLTE) {
   EXPECT_FALSE(resH.at({4}));
 }
 
-/// Stack many slices/reshapes together. Some of these may be turned into tensor
-/// views stacked onto each other.
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other.
 TEST_P(Operator, sliceReshape) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "X", false);
 
@@ -4764,13 +4572,14 @@ TEST_P(Operator, sliceReshape) {
   auto SSXH = ctx_.get(resultSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
 
-  // Verify the reshape of the slice of the slice has the same data as the slice
-  // of the slice.
+  // Verify the reshape of the slice of the slice has the same data as the
+  // slice of the slice.
   auto RSSXH = ctx_.get(resultRSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
-/// Check that the flatten operator produces 2D tensors of the right dimensions.
+/// Check that the flatten operator produces 2D tensors of the right
+/// dimensions.
 TEST_P(Operator, Flatten) {
   auto *tensor4D =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 4, 3}, "4D", false);
@@ -4986,62 +4795,37 @@ TEST_P(Operator, insertTensorTest) {
   }
 }
 
-/// Test RowwiseQuantizedFullyConnected Node.
-TEST_P(Operator, rowwiseQuantizedFCTest) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+static FunctionTensorPair
+createAndInitBasicRowwiseFCTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
 
   // In this test we subtract the outputs of a row-wise quantized FC and a
   // floating-point FC and ensure that the error is below some low value.
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 100}, "in", false);
-  auto *fc = F_->createFullyConnected(ctx_, "FC", input, 5);
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {2, 100}, "in", false);
+  auto *fc = F->createFullyConnected(ctx, "FC", input, 5);
 
   auto *weights = llvm::cast<Placeholder>(fc->getWeights());
   auto *bias = llvm::cast<Placeholder>(fc->getBias());
 
-  ctx_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ctx_.get(bias)->getHandle().randomize(0, 0.1, mod_.getPRNG());
-  ctx_.get(weights)->getHandle().randomize(-1.1, 1.1, mod_.getPRNG());
+  ctx.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  ctx.get(bias)->getHandle().randomize(0, 0.1, mod.getPRNG());
+  ctx.get(weights)->getHandle().randomize(-1.1, 1.1, mod.getPRNG());
 
-  // Create rowwise quantized FC.
-  // The FC fomula is I * W + B, while the RWQFC is I * transpose(W) + B.
-  // So get the tranpose of weights from the above FC.
-  auto *newWeights = mod_.createConstant(
-      ElemKind::FloatTy, {weights->dims()[1], weights->dims()[0]}, "newW");
-  ctx_.get(weights)->transpose(&newWeights->getPayload(), {1, 0});
+  auto *res = F->createSave("save", fc);
+  ::glow::convertPlaceholdersToConstants(F, ctx,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = ctx.allocate(res->getPlaceholder());
 
-  TypeRef inputTy =
-      mod_.uniqueType(ElemKind::Int8QTy, input->dims(), 0.0086, -1);
-  TypeRef resTy =
-      mod_.uniqueType(ElemKind::Int8QTy, fc->getResult().dims(), 0.05, 49);
-  TypeRef biasTy =
-      mod_.uniqueType(ElemKind::Int32QTy, bias->dims(), 0.00036, -128);
+  return std::make_pair(F, resultTensor);
+}
 
-  auto *inputq = F_->createQuantize("input.q", input, inputTy);
-  auto *biasq = F_->createQuantize("bias.q", bias, biasTy);
-
-  auto *fcq = F_->createRowwiseQuantizedFullyConnected(
-      "fcq", inputq, newWeights, biasq, resTy);
-  auto *dequantRes = F_->createDequantize("dequant", fcq);
-
-  // Subtract the results of the convolution from the rowwise quantized fc.
-  auto *sub = F_->createSub("compare", dequantRes, fc);
-
-  auto *save = F_->createSave("save", sub);
-
-  ctx_.allocate(save->getPlaceholder());
-
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
-                                         {input, save->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-
-  auto H = ctx_.get(save->getPlaceholder())->getHandle();
-
-  // The difference in the results should be less than 0.05.
-  for (auto elem : H) {
-    EXPECT_LE(std::abs(elem), 0.05);
-  }
+/// Test RowwiseQuantizedFullyConnected Node.
+TEST_P(OperatorStateless, rowwiseQuantizedFCTest) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
+                            /* enableRowwiseQuantization */ true);
 }
 
 /// Check the correctness of the SoftMax operator.
@@ -5362,7 +5146,8 @@ TEST_P(Operator, dotProduct1D) {
   }
 }
 
-// Test an ElementwiseLinear operator with both axis = 0 and axis = 1 arguments.
+// Test an ElementwiseLinear operator with both axis = 0 and axis = 1
+// arguments.
 TEST_P(Operator, elementwiseLinear) {
   constexpr std::size_t kRows = 10;
   constexpr std::size_t kCols = 20;
