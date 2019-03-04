@@ -49,21 +49,21 @@ protected:
 };
 
 // The parameterized test suite is instantiated with all available backends.
-INSTANTIATE_TEST_CASE_P(
-    AllOperatorTest, Operator,
-    ::testing::Values(
+INSTANTIATE_TEST_CASE_P(AllOperatorTest, Operator,
+                        ::testing::Values(
 #ifdef GLOW_WITH_CPU
-        BackendKind::CPU,
+                            BackendKind::CPU,
 #endif // GLOW_WITH_CPU
 #ifdef GLOW_WITH_OPENCL
-        BackendKind::OpenCL,
+                            BackendKind::OpenCL,
 #endif // GLOW_WITHOPENCL
-        BackendKind::Interpreter
-    ));
+                            BackendKind::Interpreter));
 
 // TODO(d1jang): Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
-#define ENABLED_BACKENDS(...) if(!isEnabledBackend({__VA_ARGS__})) return;
+#define ENABLED_BACKENDS(...)                                                  \
+  if (!isEnabledBackend({__VA_ARGS__}))                                        \
+    return;
 
 TEST_P(Operator, pow) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
