@@ -34,7 +34,7 @@ public:
   ~Operator() override { mod_.clear(); }
 
 protected:
-  bool isEnabledBackend(const std::set<BackendKind> enabledBackends) {
+  bool isEnabledBackend(const std::set<BackendKind>& enabledBackends) {
     return enabledBackends.find(GetParam()) != enabledBackends.end();
   }
 
