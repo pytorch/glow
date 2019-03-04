@@ -1642,6 +1642,24 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *unrollD = emitConstI32(builder, unrollDFactor);
 
+    bool channelWiseQuantize = false;
+    Value *filterOffsets = nullptr;
+    const Constant *cnstScales = nullptr;
+    if (src->getType()->isQuantizedType()) {
+      for (auto use : filter->getUsers()) {
+        if (auto cwqInst = llvm::dyn_cast<ChannelWiseWeightQuantizationInst>(
+                use.getUser())) {
+          channelWiseQuantize = true;
+          filterOffsets = cwqInst->getOffsets();
+          kernelName = "convolution_channelwise";
+          const Function *grph = F_->getGraph();
+          const Module *mod = grph->getParent();
+          cnstScales = F_->getGraph()->getParent()->getConstantByName(
+              cwqInst->getScales()->getName());
+          break;
+        }
+      }
+    }
     auto *F = getFunction(kernelName, dest->getElementType());
 
     if (src->getType()->isQuantizedType()) {
@@ -1652,40 +1670,97 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
       auto *biasOffset = emitConstI32(builder, biasTy->getOffset());
 
-      // Calculate the scale of the values that come out of the matrix
-      // multiplication part of the calculation.
-      float matMulScale = srcTy->getScale() * filterTy->getScale();
+      if (channelWiseQuantize) {
+        auto scalesH = cnstScales->getPayload().getHandle<float>();
+        size_t rowNum = scalesH.dims()[0];
+        auto *filterOffsetsPtr = emitValueAddress(builder, filterOffsets);
+        std::vector<llvm::Constant *> biasPreV(rowNum);
+        std::vector<llvm::Constant *> biasPostV(rowNum);
+        std::vector<llvm::Constant *> biasScaleV(rowNum);
+        std::vector<llvm::Constant *> outputPreV(rowNum);
+        std::vector<llvm::Constant *> outputPostV(rowNum);
+        std::vector<llvm::Constant *> outputScaleV(rowNum);
+        for (size_t i = 0; i < rowNum; ++i) {
+          float matMulScale = srcTy->getScale() * scalesH.raw(i);
+          auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+              biasTy->getScale() / matMulScale, biasTy->getOffset());
+          auto outScaleParam = quantization::quantizeScaleOffset32To8(
+              matMulScale / destTy->getScale(), 0);
+          biasPreV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                               biasScaleParam.pre, true);
+          biasPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                                biasScaleParam.post, true);
+          biasScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                                 biasScaleParam.scale, true);
+          outputPreV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                                 outScaleParam.pre, true);
+          outputPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                                  outScaleParam.post, true);
+          outputScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                                   outScaleParam.scale, true);
+        }
+        auto *biasPrePtr =
+            emitConstArray(builder, biasPreV, builder.getInt32Ty());
+        auto *biasPostPtr =
+            emitConstArray(builder, biasPostV, builder.getInt32Ty());
+        auto *biasScalePtr =
+            emitConstArray(builder, biasScaleV, builder.getInt32Ty());
+        auto *outPrePtr =
+            emitConstArray(builder, outputPreV, builder.getInt32Ty());
+        auto *outPostPtr =
+            emitConstArray(builder, outputPostV, builder.getInt32Ty());
+        auto *outScalePtr =
+            emitConstArray(builder, outputScaleV, builder.getInt32Ty());
+        auto isScalar = emitConstI32(builder, 0);
+        createCall(builder, F, {destPtr,      srcPtr,     filterPtr,
+                                biasPtr,      destDims,   srcDims,
+                                filterDims,   biasDims,   kernels,
+                                strides,      pads,       group,
+                                destOffset,   srcOffset,  filterOffsetsPtr,
+                                biasOffset,   biasPrePtr, biasPostPtr,
+                                biasScalePtr, outPrePtr,  outPostPtr,
+                                outScalePtr,  unrollD,    isScalar});
+      } else {
+        auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
+        // Calculate the scale of the values that come out of the matrix
+        // multiplication part of the calculation.
+        float matMulScale = srcTy->getScale() * filterTy->getScale();
 
-      // Calculate the sacling parameters for the bias and output.
-      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
-          biasTy->getScale() / matMulScale, biasTy->getOffset());
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(
-          matMulScale / destTy->getScale(), 0);
+        // Calculate the sacling parameters for the bias and output.
+        auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+            biasTy->getScale() / matMulScale, biasTy->getOffset());
+        auto outScaleParam = quantization::quantizeScaleOffset32To8(
+            matMulScale / destTy->getScale(), 0);
 
-      // Pass the pre-shift, post-shift and integer scale parameters for the
-      // bias and output calculation.
-      auto *biasPre = emitConstI32(builder, biasScaleParam.pre);
-      auto *biasPost = emitConstI32(builder, biasScaleParam.post);
-      auto *biasScale = emitConstI32(builder, biasScaleParam.scale);
-      auto *outPre = emitConstI32(builder, outScaleParam.pre);
-      auto *outPost = emitConstI32(builder, outScaleParam.post);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+        // Pass the pre-shift, post-shift and integer scale parameters for the
+        // bias and output calculation.
+        auto *biasPre = emitConstI32(builder, biasScaleParam.pre);
+        auto *biasPost = emitConstI32(builder, biasScaleParam.post);
+        auto *biasScale = emitConstI32(builder, biasScaleParam.scale);
+        auto *outPre = emitConstI32(builder, outScaleParam.pre);
+        auto *outPost = emitConstI32(builder, outScaleParam.post);
+        auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
-      createCall(builder, F,
-                 {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
-                  srcDims,    filterDims, biasDims,   kernels,   strides,
-                  pads,       group,      destOffset, srcOffset, filterOffset,
-                  biasOffset, biasPre,    biasPost,   biasScale, outPre,
-                  outPost,    outScale,   unrollD});
+        createCall(builder, F,
+                   {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
+                    srcDims,    filterDims, biasDims,   kernels,   strides,
+                    pads,       group,      destOffset, srcOffset, filterOffset,
+                    biasOffset, biasPre,    biasPost,   biasScale, outPre,
+                    outPost,    outScale,   unrollD});
+      }
     } else {
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
                   filterDims, biasDims, kernels, strides, pads, group,
                   unrollD});
     }
+    break;
+  }
+  case Kinded::Kind::ChannelWiseWeightQuantizationInstKind: {
+    // NOOP, nothing need to be done. Instruction that it feeds in to will
+    // handle it
     break;
   }
 

@@ -417,6 +417,15 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   }           // For each N, the sample in the batch.
 }
 
+void libjit_convolution_channelwise_i8(
+    int8_t *outW, const int8_t *inW, const int8_t *filterW,
+    const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
+    const size_t *filterWdims, const size_t *biasWdims,
+    const size_t *kernelSizes, const size_t *strides, const size_t *pads,
+    size_t group, int32_t outOffset, int32_t inOffset, int32_t *filterOffsets,
+    int32_t biasOffset, int32_t *biasPre, int32_t *biasPost, int32_t *biasScale,
+    int32_t *outPre, int32_t *outPost, int32_t *outScale, unsigned depthUnroll,
+    int32_t isScalar);
 void libjit_convolution_i8(
     int8_t *outW, const int8_t *inW, const int8_t *filterW,
     const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
@@ -425,6 +434,21 @@ void libjit_convolution_i8(
     size_t group, int32_t outOffset, int32_t inOffset, int32_t filterOffset,
     int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
     int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
+  libjit_convolution_channelwise_i8(
+      outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
+      kernelSizes, strides, pads, group, outOffset, inOffset, &filterOffset,
+      biasOffset, &biasPre, &biasPost, &biasScale, &outPre, &outPost, &outScale,
+      depthUnroll, 1);
+}
+void libjit_convolution_channelwise_i8(
+    int8_t *outW, const int8_t *inW, const int8_t *filterW,
+    const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
+    const size_t *filterWdims, const size_t *biasWdims,
+    const size_t *kernelSizes, const size_t *strides, const size_t *pads,
+    size_t group, int32_t outOffset, int32_t inOffset, int32_t *filterOffsets,
+    int32_t biasOffset, int32_t *biasPre, int32_t *biasPost, int32_t *biasScale,
+    int32_t *outPre, int32_t *outPost, int32_t *outScale, unsigned depthUnroll,
+    int32_t isScalar) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;
@@ -435,6 +459,10 @@ void libjit_convolution_i8(
   size_t stride_w = strides[1];
   size_t kernel_h = kernelSizes[0];
   size_t kernel_w = kernelSizes[1];
+  int32_t adjIndex = 1;
+  if (isScalar != 0)
+    adjIndex = 0;
+#define CALC_INDEX_ADJ(filterID, index) ((filterID + index) * adjIndex)
   // For each input in the batch:
   for (size_t n = 0; n < inWdims[0]; n++) {
     // For each group of input channels:
@@ -453,7 +481,9 @@ void libjit_convolution_i8(
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the bias to match the scale of the matrix multiplication.
               sum[i] = libjit_scale_i32i8((int32_t)biasW[d + i] - biasOffset,
-                                          biasPre, biasPost, biasScale, 0);
+                                          biasPre[CALC_INDEX_ADJ(d, i)],
+                                          biasPost[CALC_INDEX_ADJ(d, i)],
+                                          biasScale[CALC_INDEX_ADJ(d, i)], 0);
             }
 
             // For each element in the convolution-filter:
@@ -481,7 +511,7 @@ void libjit_convolution_i8(
                   int32_t in = inW[inIdx + fd] - inOffset;
                   for (unsigned i = 0; i < MIN(4, depthUnroll); i++) {
                     sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
-                               filterOffset) *
+                               filterOffsets[d]) *
                               in;
                   }
                 }
@@ -492,7 +522,7 @@ void libjit_convolution_i8(
                     int32_t in = inW[inIdx + fd] - inOffset;
                     for (unsigned i = 4; i < MIN(8, depthUnroll); i++) {
                       sum[i] += (filterW[filterIdx + (sliceSize * i) + fd] -
-                                 filterOffset) *
+                                 filterOffsets[CALC_INDEX_ADJ(d, i)]) *
                                 in;
                     }
                   }
@@ -501,8 +531,10 @@ void libjit_convolution_i8(
 
             for (unsigned i = 0; i < depthUnroll; i++) {
               // Scale the result back to the expected destination scale.
-              int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
-                                                     outScale, outOffset);
+              int32_t scaledSum =
+                  libjit_scale_i32i8(sum[i], outPre[CALC_INDEX_ADJ(d, i)],
+                                     outPost[CALC_INDEX_ADJ(d, i)],
+                                     outScale[CALC_INDEX_ADJ(d, i)], outOffset);
               outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
                   libjit_clip(scaledSum);
             }
