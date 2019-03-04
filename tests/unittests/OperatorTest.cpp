@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
+
 class Operator : public ::testing::TestWithParam<BackendKind> {
 public:
   Operator() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
@@ -33,15 +34,36 @@ public:
   ~Operator() override { mod_.clear(); }
 
 protected:
+  bool isEnabledBackend(const std::set<BackendKind> enabledBackends) {
+    return enabledBackends.find(GetParam()) != enabledBackends.end();
+  }
+
+  const BackendKind Interpreter = BackendKind::Interpreter;
+  const BackendKind CPU = BackendKind::CPU;
+  const BackendKind OpenCL = BackendKind::OpenCL;
+
   ExecutionEngine EE_{GetParam()};
   Module &mod_;
   Function *F_;
   Context ctx_;
 };
 
-class InterpAndCPU : public Operator {};
+// The parameterized test suite is instantiated with all available backends.
+INSTANTIATE_TEST_CASE_P(
+    AllOperatorTest, Operator,
+    ::testing::Values(
+#ifdef GLOW_WITH_CPU
+        BackendKind::CPU,
+#endif // GLOW_WITH_CPU
+#ifdef GLOW_WITH_OPENCL
+        BackendKind::OpenCL,
+#endif // GLOW_WITHOPENCL
+        BackendKind::Interpreter
+    ));
 
-class InterpOnly : public Operator {};
+// TODO(d1jang): Replace return for GTEST_SKIP() so that skipped tests are
+// correctly reported once the macro gets available.
+#define ENABLED_BACKENDS(...) if(!isEnabledBackend({__VA_ARGS__})) return;
 
 TEST_P(Operator, pow) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
@@ -87,7 +109,9 @@ TEST_P(Operator, pow) {
   EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
-TEST_P(InterpAndCPU, replaceNaN) {
+TEST_P(Operator, replaceNaN) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto value = 1.0f;
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
   auto XH = ctx_.allocate(X)->getHandle();
@@ -113,7 +137,9 @@ TEST_P(InterpAndCPU, replaceNaN) {
   }
 }
 
-TEST_P(InterpAndCPU, log) {
+TEST_P(Operator, log) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
   auto XH = ctx_.allocate(X)->getHandle();
   XH = {210030, 600, 4, 0.7f, .005f, 0.000829f};
@@ -134,7 +160,9 @@ TEST_P(InterpAndCPU, log) {
   }
 }
 
-TEST_P(InterpAndCPU, logit) {
+TEST_P(Operator, logit) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto eps = 1E-6f;                // the default in Caffe2
   constexpr std::size_t size = 10; // sample size for randomized tests
 
@@ -192,7 +220,9 @@ TEST_P(InterpAndCPU, logit) {
   }
 }
 
-TEST_P(InterpAndCPU, CmpEQ) {
+TEST_P(Operator, CmpEQ) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
   ctx_.allocate(X)->getHandle<int64_t>() = {
       0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
@@ -244,7 +274,9 @@ TEST_P(Operator, add) {
 }
 
 /// Check that the add operator works properly with FP16.
-TEST_P(InterpOnly, FP16Add) {
+TEST_P(Operator, FP16Add) {
+  ENABLED_BACKENDS(Interpreter);
+
   PseudoRNG PRNG;
 
   auto *inputA =
@@ -290,7 +322,9 @@ TEST_P(Operator, matmul) {
 }
 
 /// Check that the matmul operator behaves correctly with FP16.
-TEST_P(InterpOnly, FP16Matmul) {
+TEST_P(Operator, FP16Matmul) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *lhs = mod_.createPlaceholder(ElemKind::Float16Ty, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::Float16Ty, {2, 1}, "rhs", false);
   ctx_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
@@ -380,7 +414,9 @@ TEST_P(Operator, batchedReduceAdd) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
-TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
+TEST_P(Operator, batchedReduceAddWithAxis) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
@@ -400,7 +436,9 @@ TEST_P(InterpAndCPU, batchedReduceAddWithAxis) {
   EXPECT_NEAR(H.at({1, 1}), 27, 0.001);
 }
 
-TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
+TEST_P(Operator, batchedReduceAddQuantized) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
 
@@ -434,7 +472,9 @@ TEST_P(InterpAndCPU, batchedReduceAddQuantized) {
   }
 }
 
-TEST_P(InterpAndCPU, batchedReduceAddQuantizedWithAxis) {
+TEST_P(Operator, batchedReduceAddQuantizedWithAxis) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
 
@@ -490,7 +530,9 @@ TEST_P(Operator, batchedReduceMean) {
   EXPECT_NEAR(H.at({3}), 22.0, 0.001);
 }
 
-TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
+TEST_P(Operator, batchedReduceMeanWithAxis) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
   ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
@@ -510,7 +552,9 @@ TEST_P(InterpAndCPU, batchedReduceMeanWithAxis) {
   EXPECT_NEAR(H.at({1, 1}), 9.0, 0.001);
 }
 
-TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
+TEST_P(Operator, batchedReduceMeanQuantized) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
 
@@ -544,7 +588,9 @@ TEST_P(InterpAndCPU, batchedReduceMeanQuantized) {
   }
 }
 
-TEST_P(InterpAndCPU, batchedReduceMeanQuantizedWithAxis) {
+TEST_P(Operator, batchedReduceMeanQuantizedWithAxis) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
 
@@ -610,7 +656,9 @@ TEST_P(Operator, BatchedAdd) {
 }
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
-TEST_P(InterpAndCPU, broadcastSimple) {
+TEST_P(Operator, broadcastSimple) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   const size_t numDims_A = 3;
   const size_t dimY_A = 2;
   const size_t dimZ_A = 4;
@@ -673,7 +721,9 @@ TEST_P(InterpAndCPU, broadcastSimple) {
 }
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
-TEST_P(InterpAndCPU, broadcast) {
+TEST_P(Operator, broadcast) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
   const size_t dimY_A = 2;
@@ -892,7 +942,9 @@ TEST_P(Operator, TopK) {
 }
 
 // Check that concatenating Nodes with multiple outputs works correctly.
-TEST_P(InterpAndCPU, ConcatTopK) {
+TEST_P(Operator, ConcatTopK) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *inp1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
   auto *inp2 =
@@ -1000,7 +1052,9 @@ TEST_P(Operator, matmul2) {
 }
 
 // Check the TopK operator for the special case of K=1.
-TEST_P(InterpAndCPU, TopK1) {
+TEST_P(Operator, TopK1) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
 
@@ -1030,7 +1084,9 @@ TEST_P(InterpAndCPU, TopK1) {
   EXPECT_EQ(I.at({2, 0, 0}), 2);
 }
 
-TEST_P(InterpAndCPU, QuantizedTopK) {
+TEST_P(Operator, QuantizedTopK) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *INV = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5,
                                      "input", false);
   ctx_.allocate(INV)->getHandle<int8_t>() = {
@@ -1072,7 +1128,9 @@ TEST_P(InterpAndCPU, QuantizedTopK) {
   EXPECT_EQ(IH.at({2, 0, 2}), 4);
 }
 
-TEST_P(InterpAndCPU, Gather64) {
+TEST_P(Operator, Gather64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1138,7 +1196,9 @@ TEST_P(InterpAndCPU, Gather64) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
-TEST_P(InterpAndCPU, Gather32) {
+TEST_P(Operator, Gather32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1254,11 +1314,13 @@ void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
   EXPECT_EQ(LH.at({1}), 2);
 }
 
-TEST_P(InterpAndCPU, GatherRanges32) {
+TEST_P(Operator, GatherRanges32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   gatherRangesTest<int32_t>(ctx_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
-TEST_P(InterpAndCPU, GatherRanges64) {
+TEST_P(Operator, GatherRanges64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   gatherRangesTest<int64_t>(ctx_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
@@ -1282,7 +1344,9 @@ TEST_P(Operator, Transpose2Dims) {
 }
 
 /// Check that transpose is supported for FP16.
-TEST_P(InterpOnly, FP16Transpose2Dims) {
+TEST_P(Operator, FP16Transpose2Dims) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   ctx_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0, mod_.getPRNG());
 
@@ -1345,7 +1409,9 @@ TEST_P(Operator, Transpose3Dims) {
 }
 
 /// Check that gather on Int64ITy/size_t works.
-TEST_P(InterpAndCPU, GatherSizeT) {
+TEST_P(Operator, GatherSizeT) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1, 2],
@@ -1491,7 +1557,9 @@ TEST_P(Operator, ScatterAssign) {
   EXPECT_FLOAT_EQ(H.at({4, 1}), 10.0);
 }
 
-TEST_P(InterpAndCPU, ScatterAssignQuantized) {
+TEST_P(Operator, ScatterAssignQuantized) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
@@ -1569,7 +1637,8 @@ TEST_P(Operator, QuantizeAndDequantizeFPtoI8) {
                                    ElemKind::Int8QTy);
 }
 
-TEST_P(InterpOnly, QuantizeAndDequantizeFPtoI16) {
+TEST_P(Operator, QuantizeAndDequantizeFPtoI16) {
+  ENABLED_BACKENDS(Interpreter);
   quantizeAndDequantizeTest<float16>(ctx_, mod_, F_, EE_, ElemKind::Float16Ty,
                                      ElemKind::Int8QTy);
 }
@@ -1624,7 +1693,9 @@ TEST_P(Operator, IntMatMul) {
   EXPECT_NEAR(H.at({2, 2}), 58.8, 1.0);
 }
 
-TEST_P(InterpAndCPU, IntBatchedArith) {
+TEST_P(Operator, IntBatchedArith) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
   TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.14, -2.0);
@@ -1732,11 +1803,13 @@ void checkFloat16Convolution(ExecutionEngine &EE, Function *F,
   }
 }
 
-TEST_P(InterpOnly, FP16ConvolutionDepth10) {
+TEST_P(Operator, FP16ConvolutionDepth10) {
+  ENABLED_BACKENDS(Interpreter);
   checkFloat16Convolution(EE_, F_, 10);
 }
 
-TEST_P(InterpOnly, FP16ConvolutionDepth8) {
+TEST_P(Operator, FP16ConvolutionDepth8) {
+  ENABLED_BACKENDS(Interpreter);
   checkFloat16Convolution(EE_, F_, 8);
 }
 
@@ -1798,7 +1871,8 @@ TEST_P(Operator, Int8ConvolutionDepth10) {
   checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 10, ctx_);
 }
 
-TEST_P(InterpOnly, Int16ConvollutionDepth10) {
+TEST_P(Operator, Int16ConvollutionDepth10) {
+  ENABLED_BACKENDS(Interpreter);
   checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 10, ctx_);
 }
 
@@ -1806,11 +1880,14 @@ TEST_P(Operator, Int8ConvolutionDepth8) {
   checkIntConvolution(EE_, F_, ElemKind::Int8QTy, 8, ctx_);
 }
 
-TEST_P(InterpOnly, Int16ConvolutionDepth8) {
+TEST_P(Operator, Int16ConvolutionDepth8) {
+  ENABLED_BACKENDS(Interpreter);
   checkIntConvolution(EE_, F_, ElemKind::Int16QTy, 8, ctx_);
 }
 
-TEST_P(InterpAndCPU, IntConcat) {
+TEST_P(Operator, IntConcat) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
   auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
   ctx_.allocate(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
@@ -1923,7 +2000,9 @@ TEST_P(Operator, IntFC) {
   EXPECT_LT(count, 2);
 }
 
-TEST_P(InterpAndCPU, EntropyLossTest) {
+TEST_P(Operator, EntropyLossTest) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "P", false);
   auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "Y", false);
 
@@ -1967,7 +2046,9 @@ TEST_P(Operator, Max) {
 }
 
 /// Check that the max operator works properly with FP16.
-TEST_P(InterpOnly, FP16Max) {
+TEST_P(Operator, FP16Max) {
+  ENABLED_BACKENDS(Interpreter);
+
   PseudoRNG PRNG;
 
   auto *inputA =
@@ -2021,7 +2102,9 @@ TEST_P(Operator, RescaleNode) {
   EXPECT_NEAR(RO.raw(0), 40, 1);
 }
 
-TEST_P(InterpAndCPU, QuantizedArithmeticRescaled) {
+TEST_P(Operator, QuantizedArithmeticRescaled) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   const size_t len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add, Sub,
@@ -2231,7 +2314,9 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   }
 }
 
-TEST_P(InterpAndCPU, QuantizedCmpLTEAndSelect) {
+TEST_P(Operator, QuantizedCmpLTEAndSelect) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
   const size_t len = 1000;
@@ -2374,7 +2459,9 @@ TEST_P(Operator, FCGradientCheck) {
   EXPECT_NEAR(ctx_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
 }
 
-TEST_P(InterpAndCPU, concatVectors) {
+TEST_P(Operator, concatVectors) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("concatVectors");
 
   auto *V1 = mod_.createPlaceholder(ElemKind::Int64ITy, {10}, "V1", false);
@@ -2420,7 +2507,9 @@ TEST_P(InterpAndCPU, concatVectors) {
 /// Check that concatenating two tensors repeatedly is correct. This is intended
 /// to verify that IRGen to InsertTensor instructions with axis/count works
 /// correctly.
-TEST_P(InterpAndCPU, concatVectorsRepeated) {
+TEST_P(Operator, concatVectorsRepeated) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("concatVectors");
 
   auto *V1 = mod_.createPlaceholder(ElemKind::Int64ITy, {10}, "V1", false);
@@ -2463,7 +2552,9 @@ TEST_P(InterpAndCPU, concatVectorsRepeated) {
   }
 }
 
-TEST_P(InterpAndCPU, sliceVectors) {
+TEST_P(Operator, sliceVectors) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("sliceVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 30}, "V", false);
@@ -2518,7 +2609,9 @@ TEST_P(InterpAndCPU, sliceVectors) {
   }
 }
 
-TEST_P(InterpAndCPU, sliceConcatVectors) {
+TEST_P(Operator, sliceConcatVectors) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("sliceConcatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 4}, "V", false);
@@ -2565,7 +2658,9 @@ TEST_P(InterpAndCPU, sliceConcatVectors) {
   }
 }
 
-TEST_P(InterpAndCPU, Tile) {
+TEST_P(Operator, Tile) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("concatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
@@ -2609,7 +2704,9 @@ TEST_P(InterpAndCPU, Tile) {
   }
 }
 
-TEST_P(InterpAndCPU, QuantizedTile) {
+TEST_P(Operator, QuantizedTile) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   F_->setName("concatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
@@ -2662,7 +2759,9 @@ TEST_P(InterpAndCPU, QuantizedTile) {
   }
 }
 
-TEST_P(InterpAndCPU, Clip) {
+TEST_P(Operator, Clip) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
   auto xHandle = ctx_.allocate(X)->getHandle();
   xHandle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
@@ -2769,7 +2868,9 @@ TEST_P(Operator, simplePredication) {
   EE_.run(ctx_);
 }
 
-TEST_P(InterpAndCPU, ChannelShuffle) {
+TEST_P(Operator, ChannelShuffle) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs", false);
   ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
@@ -2886,7 +2987,9 @@ TEST_P(Operator, ExpandDims) {
   }
 }
 
-TEST_P(InterpAndCPU, Split) {
+TEST_P(Operator, Split) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 6}, "inputs", false);
   ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
@@ -3000,7 +3103,9 @@ TEST_P(Operator, IntSplat) {
   }
 }
 
-TEST_P(InterpOnly, Fp16Splat) {
+TEST_P(Operator, Fp16Splat) {
+  ENABLED_BACKENDS(Interpreter);
+
   const float splatValue = 10;
   const size_t size = 3;
 
@@ -3210,7 +3315,9 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
-TEST_P(InterpOnly, FP16AvgPool) {
+TEST_P(Operator, FP16AvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
   ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
@@ -3282,7 +3389,9 @@ TEST_P(Operator, MaxPool) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
-TEST_P(InterpOnly, FP16MaxPool) {
+TEST_P(Operator, FP16MaxPool) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
   ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
@@ -3319,7 +3428,9 @@ TEST_P(Operator, Int8MaxPool) {
   }
 }
 
-TEST_P(InterpAndCPU, Int8Tanh) {
+TEST_P(Operator, Int8Tanh) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -3380,7 +3491,9 @@ TEST_P(Operator, Tanh) {
 }
 
 /// Verify that a quantized Log works correctly.
-TEST_P(InterpAndCPU, Int8Log) {
+TEST_P(Operator, Int8Log) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   constexpr size_t size = 1000;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -3463,7 +3576,9 @@ TEST_P(Operator, NonSquareKernelConvolution) {
 }
 
 /// Check Non-square kernel for AveragePool.
-TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
+TEST_P(Operator, NonSquareKernelAveragePool) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = ctx_.allocate(input)->getHandle();
@@ -3484,7 +3599,9 @@ TEST_P(InterpAndCPU, NonSquareKernelAveragePool) {
 }
 
 /// Check Non-square kernel for MaxPool.
-TEST_P(InterpAndCPU, NonSquareKernelMaxPool) {
+TEST_P(Operator, NonSquareKernelMaxPool) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = ctx_.allocate(input)->getHandle();
@@ -3542,7 +3659,9 @@ TEST_P(Operator, NonSquareStrideConvolution) {
 }
 
 /// Check Non-square stride for AveragePool.
-TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
+TEST_P(Operator, NonSquareStrideAveragePool) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = ctx_.allocate(input)->getHandle();
@@ -3563,7 +3682,9 @@ TEST_P(InterpAndCPU, NonSquareStrideAveragePool) {
 }
 
 /// Check Non-square stride for MaxPool.
-TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
+TEST_P(Operator, NonSquareStrideMaxPool) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = ctx_.allocate(input)->getHandle();
@@ -3583,7 +3704,9 @@ TEST_P(InterpAndCPU, NonSquareStrideMaxPool) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
-TEST_P(InterpAndCPU, SigmoidOverflow) {
+TEST_P(Operator, SigmoidOverflow) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "input", false);
   auto IH = ctx_.allocate(input)->getHandle();
   IH.raw(0) = 1000;
@@ -3601,7 +3724,9 @@ TEST_P(InterpAndCPU, SigmoidOverflow) {
   }
 }
 
-TEST_P(InterpAndCPU, Int8Sigmoid) {
+TEST_P(Operator, Int8Sigmoid) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -3666,7 +3791,9 @@ TEST_P(Operator, BatchAdd) {
 }
 
 /// Check that the batch add operator works properly for FP16.
-TEST_P(InterpOnly, FP16BatchAdd) {
+TEST_P(Operator, FP16BatchAdd) {
+  ENABLED_BACKENDS(Interpreter);
+
   PseudoRNG PRNG;
 
   auto *input =
@@ -3715,7 +3842,9 @@ TEST_P(Operator, Sigmoid) {
   }
 }
 
-TEST_P(InterpAndCPU, IntLookupTable) {
+TEST_P(Operator, IntLookupTable) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   constexpr size_t size = 6;
   auto *input =
       mod_.createPlaceholder(ElemKind::Int8QTy, {size}, 1, 0, "input", false);
@@ -3847,7 +3976,9 @@ TEST_P(Operator, testQuantizedBatchAdd) {
   quantizedBatchAdd(EE_, F_, ctx_, ElemKind::Int32QTy);
 }
 
-TEST_P(InterpAndCPU, LengthsSum) {
+TEST_P(Operator, LengthsSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -3887,7 +4018,9 @@ TEST_P(InterpAndCPU, LengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpAndCPU, SparseLengthsSum) {
+TEST_P(Operator, SparseLengthsSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -3936,7 +4069,9 @@ TEST_P(InterpAndCPU, SparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseLengthsSumI8) {
+TEST_P(Operator, SparseLengthsSumI8) {
+  ENABLED_BACKENDS(Interpreter);
+
   /*
     DATA  = [
         [11, 13],
@@ -3985,7 +4120,9 @@ TEST_P(InterpOnly, SparseLengthsSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
+TEST_P(Operator, SparseLengthsWeightedSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -4039,7 +4176,9 @@ TEST_P(InterpAndCPU, SparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
+TEST_P(Operator, SparseLengthsWeightedSumI8) {
+  ENABLED_BACKENDS(Interpreter);
+
   /*
     DATA  =   [4, -1, 26]
     WEIGHTS = [6, 2, 0, 0, 0, 0, 4, -1]
@@ -4094,7 +4233,9 @@ TEST_P(InterpOnly, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsWeightedSum) {
+TEST_P(Operator, RowwiseQuantizedSparseLengthsWeightedSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -4151,7 +4292,9 @@ TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
+TEST_P(Operator, RowwiseQuantizedSparseLengthsSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -4202,7 +4345,9 @@ TEST_P(InterpAndCPU, RowwiseQuantizedSparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result, 0.02));
 }
 
-TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
+TEST_P(Operator, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -4259,7 +4404,9 @@ TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
   EXPECT_TRUE(expected.isEqual(result, 0.02));
 }
 
-TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsSum) {
+TEST_P(Operator, FusedRowwiseQuantizedSparseLengthsSum) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     DATA  = [
         [1.0, 1.2],
@@ -4310,7 +4457,9 @@ TEST_P(InterpAndCPU, FusedRowwiseQuantizedSparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result, 0.02));
 }
 
-TEST_P(InterpAndCPU, SparseToDense) {
+TEST_P(Operator, SparseToDense) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
   constexpr size_t kNumIndices = 4;
@@ -4358,7 +4507,9 @@ TEST_P(InterpAndCPU, SparseToDense) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseToDenseMask1) {
+TEST_P(Operator, SparseToDenseMask1) {
+  ENABLED_BACKENDS(Interpreter);
+
   /*
     INDICES = [4, 42, 13, 0, 100, 13]
     VALUES = [-5.5, 0.7, 11, 1e6, 2, 3.5]
@@ -4399,7 +4550,9 @@ TEST_P(InterpOnly, SparseToDenseMask1) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, SparseToDenseMask2) {
+TEST_P(Operator, SparseToDenseMask2) {
+  ENABLED_BACKENDS(Interpreter);
+
   /*
     INDICES = [300, 100, 101, 299]
     VALUES = [[[-0.1, -0.2], [-0.3, -0.4]], [[2, -2], [2, 9]],
@@ -4443,7 +4596,9 @@ TEST_P(InterpOnly, SparseToDenseMask2) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, FP16Reshape) {
+TEST_P(Operator, FP16Reshape) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -4703,7 +4858,9 @@ TEST_P(Operator, Flatten) {
 }
 
 /// Check that div on Int64ITy/size_t works.
-TEST_P(InterpAndCPU, DivSizeT) {
+TEST_P(Operator, DivSizeT) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *LHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "LHS", false);
   auto *RHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "RHS", false);
   auto LHSH = ctx_.allocate(LHS)->getHandle<int64_t>();
@@ -4729,7 +4886,9 @@ TEST_P(InterpAndCPU, DivSizeT) {
   }
 }
 
-TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
+TEST_P(Operator, SigmoidCrossEntropyWithLogits) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     LOGITS  = [
       [
@@ -4786,7 +4945,9 @@ TEST_P(InterpAndCPU, SigmoidCrossEntropyWithLogits) {
 }
 
 /// Test the InsertTensor node works correctly.
-TEST_P(InterpAndCPU, insertTensorTest) {
+TEST_P(Operator, insertTensorTest) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto SN0Ty = mod_.uniqueType(ElemKind::Int64ITy, {4, 6});
   auto SN1Ty = mod_.uniqueType(ElemKind::Int64ITy, {2, 2});
 
@@ -4826,7 +4987,9 @@ TEST_P(InterpAndCPU, insertTensorTest) {
 }
 
 /// Test RowwiseQuantizedFullyConnected Node.
-TEST_P(InterpAndCPU, rowwiseQuantizedFCTest) {
+TEST_P(Operator, rowwiseQuantizedFCTest) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   // In this test we subtract the outputs of a row-wise quantized FC and a
   // floating-point FC and ensure that the error is below some low value.
   auto *input =
@@ -4910,7 +5073,9 @@ TEST_P(Operator, SoftMax) {
 
 /// Check that the softmax operator works properly with FP16.
 /// See the test that check the SoftMax operator for more details.
-TEST_P(InterpOnly, FP16SoftMax) {
+TEST_P(Operator, FP16SoftMax) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
   ctx_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
@@ -4958,15 +5123,19 @@ static void quantizeSimpleTest(glow::Context &ctx_, glow::Module &mod_,
 TEST_P(Operator, QuantizeSimpleInt8) {
   quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
-TEST_P(InterpOnly, QuantizeSimpleInt16) {
+TEST_P(Operator, QuantizeSimpleInt16) {
+  ENABLED_BACKENDS(Interpreter);
   quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
-TEST_P(InterpOnly, QuantizeSimpleInt32) {
+TEST_P(Operator, QuantizeSimpleInt32) {
+  ENABLED_BACKENDS(Interpreter);
   quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Check that convertTo node works properly from float16_t to float.
-TEST_P(InterpOnly, ConvertFromFloat16ToFloat) {
+TEST_P(Operator, ConvertFromFloat16ToFloat) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
   auto inputHandle = ctx_.allocate(A)->getHandle<float>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -4988,7 +5157,9 @@ TEST_P(InterpOnly, ConvertFromFloat16ToFloat) {
 }
 
 /// Check that convertTo node works properly from float to float16_t.
-TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
+TEST_P(Operator, ConvertFromFloatToFloat16) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -5011,7 +5182,9 @@ TEST_P(InterpOnly, ConvertFromFloatToFloat16) {
 
 /// Noop convert can happen on unoptimized graphs.
 /// Make sure we support them.
-TEST_P(InterpOnly, NoopConvertFromFloatToFloat) {
+TEST_P(Operator, NoopConvertFromFloatToFloat) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
   auto *inputTensor = ctx_.allocate(A);
   inputTensor->getHandle<float>().randomize(-3.0, 3.0, mod_.getPRNG());
@@ -5027,7 +5200,9 @@ TEST_P(InterpOnly, NoopConvertFromFloatToFloat) {
   EXPECT_TRUE(inputTensor->isEqual(*outputTensor));
 }
 
-TEST_P(InterpAndCPU, LengthsToRanges) {
+TEST_P(Operator, LengthsToRanges) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   /*
     LENGTHS = [1, 3, 0, 2]
     OUTPUT =  [[0, 1], [1, 3], [4, 0], [4, 2]]
@@ -5053,7 +5228,9 @@ TEST_P(InterpAndCPU, LengthsToRanges) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(InterpOnly, BatchOneHot) {
+TEST_P(Operator, BatchOneHot) {
+  ENABLED_BACKENDS(Interpreter);
+
   /*
     DATA = [[5, 0], [11, 3], [0, 5]]
     LENGTHS = [4, 2]
@@ -5087,7 +5264,9 @@ TEST_P(InterpOnly, BatchOneHot) {
 }
 
 /// Check that modulo works.
-TEST_P(InterpOnly, Modulo1) {
+TEST_P(Operator, Modulo1) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
 
@@ -5115,7 +5294,9 @@ TEST_P(InterpOnly, Modulo1) {
 }
 
 // Test signFollowDivisor works in modulo.
-TEST_P(InterpOnly, Modulo2) {
+TEST_P(Operator, Modulo2) {
+  ENABLED_BACKENDS(Interpreter);
+
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
 
@@ -5239,7 +5420,9 @@ TEST_P(Operator, elementwiseLinear) {
 }
 
 // Test a DotProduct operator with 2D inputs.
-TEST_P(InterpAndCPU, dotProduct2D) {
+TEST_P(Operator, dotProduct2D) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   // Input tensors.
   constexpr std::size_t kRows = 10;
   constexpr std::size_t kCols = 20;
@@ -5287,21 +5470,4 @@ TEST_P(InterpAndCPU, dotProduct2D) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, InterpOnly,
-                        ::testing::Values(BackendKind::Interpreter));
-
-INSTANTIATE_TEST_CASE_P(Interpreter, InterpAndCPU,
-                        ::testing::Values(BackendKind::Interpreter));
-
-INSTANTIATE_TEST_CASE_P(Interpreter, Operator,
-                        ::testing::Values(BackendKind::Interpreter));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, Operator, ::testing::Values(BackendKind::CPU));
-INSTANTIATE_TEST_CASE_P(CPU, InterpAndCPU, ::testing::Values(BackendKind::CPU));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, Operator,
-                        ::testing::Values(BackendKind::OpenCL));
-#endif // GLOW_WITH_OPENCL
+#undef ENABLED_BACKENDS
