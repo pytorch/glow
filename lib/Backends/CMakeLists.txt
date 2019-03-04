@@ -18,6 +18,7 @@ endif()
 add_library(Backend
               Backend.cpp
               BackendUtils.cpp
+              CompiledFunction.cpp
               TraceEvents.cpp)
 target_link_libraries(Backend
                       PRIVATE
@@ -30,8 +31,6 @@ target_link_libraries(Backend
 add_library(Backends
               Backends.cpp)
 target_link_libraries(Backends
-                      PUBLIC
-                        Backend
                       PRIVATE
                         Base
                         Graph
@@ -46,6 +45,7 @@ target_link_libraries(DeviceManager
                         ThreadPool
                         ${linked_device_managers}
                       PRIVATE
+                        Backend  
                         Backends
                         Graph
                         ThreadPool)

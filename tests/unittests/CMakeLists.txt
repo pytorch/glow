@@ -79,6 +79,7 @@ add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)
 target_link_libraries(DeviceManagerTest
                       PRIVATE
+                        Backend
                         Backends
                         DeviceManager
                         Graph
@@ -175,6 +176,7 @@ add_executable(GraphTest
                GraphTest.cpp)
 target_link_libraries(GraphTest
                       PRIVATE
+                        Backend
                         Backends
                         ExecutionEngine
                         Graph
@@ -191,7 +193,6 @@ if(GLOW_WITH_CPU)
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
                         PRIVATE
-                          Backends
                           Graph
                           IR
                           ExecutionEngine
@@ -220,7 +221,7 @@ add_executable(IROptTest
                IROptTest.cpp)
 target_link_libraries(IROptTest
                       PRIVATE
-                        Backends
+                        Backend
                         Graph
                         IR
                         Optimizer
@@ -233,7 +234,7 @@ if(GLOW_WITH_CPU)
                  LLVMIRGenTest.cpp)
   target_link_libraries(LLVMIRGenTest
                         PRIVATE
-                          Backends
+                          Backend
                           CPUBackend
                           IR
                           Support
@@ -286,7 +287,7 @@ add_executable(OnnxImporterTest
                OnnxImporterTest.cpp)
 target_link_libraries(OnnxImporterTest
                       PRIVATE
-                        Backends
+                        Backend
                         Graph
                         Importer
                         ExecutionEngine
@@ -314,7 +315,6 @@ add_executable(PartitionerTest
                PartitionerTest.cpp)
 target_link_libraries(PartitionerTest
                       PRIVATE
-                        Backends
                         ExecutionEngine
                         Graph
                         IR
@@ -328,7 +328,6 @@ if(GLOW_WITH_CPU)
                  ProvisionerTest.cpp)
   target_link_libraries(ProvisionerTest
                         PRIVATE
-                          Backends
                           Graph
                           IR
                           Provisioner
@@ -343,7 +342,6 @@ add_executable(HostManagerTest
                HostManagerTest.cpp)
 target_link_libraries(HostManagerTest
                       PRIVATE
-                        Backends
                         HostManager
                         Executor
                         Graph
@@ -362,6 +360,7 @@ add_executable(QuantizationTest
                QuantizationTest.cpp)
 target_link_libraries(QuantizationTest
                       PRIVATE
+                        Backend
                         Backends
                         ExecutionEngine
                         Graph
@@ -388,6 +387,7 @@ add_executable(TensorsTest
                TensorsTest.cpp)
 target_link_libraries(TensorsTest
                       PRIVATE
+                        Backend  
                         Base
                         gtest
                         TestMain)
@@ -406,7 +406,7 @@ add_executable(TraceEventsTest
                TraceEventsTest.cpp)
 target_link_libraries(TraceEventsTest
                       PRIVATE
-                        Backends
+                        Backend
                         Graph
                         IR
                         ExecutionEngine
