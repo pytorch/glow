@@ -701,11 +701,29 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
     wt.assign(&(weights->getPayload()));
   }
 
-  quantization::tensorRowwiseQuantization(
-      wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload());
+  quantization::tensorRowwiseQuantization(wt, qWeights->getPayload(),
+                                          scales->getPayload(),
+                                          offsets->getPayload(), schema_);
 
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));
+}
+ChannelWiseWeightQuantizationNode *
+Function::createChannelWiseWeightQuantization(llvm::StringRef name, Constant *W,
+                                              TypeRef outTy) {
+  size_t numChannels = W->getType()->dims()[0];
+  auto *qWeights = getParent()->createConstant(
+      ElemKind::Int8QTy, W->dims(), outTy->getScale(), outTy->getOffset(),
+      "weights.chq");
+  auto *scales = getParent()->createConstant(ElemKind::FloatTy, {numChannels},
+                                             "scales.chq");
+  auto *offsets = getParent()->createConstant(ElemKind::Int32QTy, {numChannels},
+                                              0.0, 0, "offsets.chq");
+  quantization::tensorRowwiseQuantization(
+      W->getPayload(), qWeights->getPayload(), scales->getPayload(),
+      offsets->getPayload(), schema_);
+  return addNode(new ChannelWiseWeightQuantizationNode(name, outTy, qWeights, W,
+                                                       scales, offsets));
 }
 
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
@@ -1457,7 +1475,7 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths) {
+    NodeValue indices, NodeValue lengths, quantization::Schema schema) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1472,7 +1490,7 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
 
   quantization::tensorRowwiseQuantization(data, rwqData->getPayload(),
                                           dataScales->getPayload(),
-                                          dataOffsets->getPayload());
+                                          dataOffsets->getPayload(), schema);
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
@@ -1484,7 +1502,7 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
                                                          NodeValue indices,
                                                          NodeValue lengths) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths);
+      this, name, data, weights, indices, lengths, schema_);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
@@ -1495,7 +1513,7 @@ Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
   auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths);
+      this, name, data, ones, indices, lengths, schema_);
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
@@ -1957,7 +1975,8 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
                                       llvm::ArrayRef<unsigned_t> kernels,
                                       llvm::ArrayRef<unsigned_t> strides,
                                       llvm::ArrayRef<unsigned_t> pads,
-                                      unsigned_t group) {
+                                      unsigned_t group,
+                                      bool createConstFilterBias) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -1984,14 +2003,29 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
   ElemKind inputTy = input.getType()->getElementType();
   assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
          "Convolution on non-floating point type?");
-  auto *filter =
-      getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
-  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+  Storage *filter = nullptr;
+  Storage *bias = nullptr;
+  if (!createConstFilterBias) {
+    filter = getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
+    ctx.allocate(llvm::cast<Placeholder>(filter))
+        ->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
 
-  auto *bias =
-      getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
-  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
-
+    bias = getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
+    ctx.allocate(llvm::cast<Placeholder>(bias))
+        ->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+  } else {
+    filter = getParent()->createConstant(inputTy, filterDim, "filter");
+    bias = getParent()->createConstant(inputTy, {outChannels}, "bias");
+    if (inputTy == ElemKind::FloatTy) {
+      llvm::cast<Constant>(filter)->getHandle<float>().initXavier(fanIn,
+                                                                  getPRNG());
+      llvm::cast<Constant>(bias)->getHandle<float>().clear();
+    } else {
+      llvm::cast<Constant>(filter)->getHandle<float16_t>().initXavier(
+          fanIn, getPRNG());
+      llvm::cast<Constant>(bias)->getHandle<float16_t>().clear();
+    }
+  }
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
@@ -2001,12 +2035,13 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
 ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
                                       NodeValue input, size_t outChannels,
                                       unsigned_t kernel, unsigned_t stride,
-                                      unsigned_t pad, unsigned_t group) {
+                                      unsigned_t pad, unsigned_t group,
+                                      bool createConstFilterBias) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(ctx, name, input, outChannels, kernels, strides, pads,
-                    group);
+                    group, createConstFilterBias);
 }
 
 Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
@@ -2671,7 +2706,7 @@ Function *Function::clone(llvm::StringRef newName,
                           llvm::DenseMap<Node *, Node *> *map) {
   Module *M = getParent();
   auto *newF = M->createFunction(newName);
-
+  newF->setQuantizationSchema(getQuantizationSchema());
   // Maps current nodes to new nodes.
   llvm::DenseMap<Node *, Node *> currToNew;
 

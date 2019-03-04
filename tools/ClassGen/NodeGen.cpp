@@ -145,6 +145,15 @@ int main(int argc, char **argv) {
           "Bias and Result are regularly quantized, while Weights use row-wise"
           "quantization.");
 
+  BB.newNode("ChannelWiseWeightQuantization")
+      .addInput("Weights")
+      .addInput("WeightsOriginal")
+      .addInput("Scales")
+      .addInput("Offsets")
+      .addResultFromCtorArg()
+      .setHasSideEffects(true)
+      .setDocstring("Channel Wise Weight Quantization");
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//
@@ -615,16 +624,16 @@ int main(int argc, char **argv) {
       .addMember(MemberType::String, "ProfiledNodeName")
       .addMember(MemberType::Unsigned, "ProfiledOutputNumber")
       .addExtraMethod(
-          "Placeholder *getHistogramPlaceholder() const ;",
+          "Placeholder *getHistogramPlaceholder() const ;\n",
           "Placeholder *QuantizationProfileNode::getHistogramPlaceholder() "
           "const { return "
-          "llvm::cast<Placeholder>(Histogram_.getNode()); };")
+          "llvm::cast<Placeholder>(Histogram_.getNode()); };\n")
       .addExtraMethod(
-          "Placeholder *getComputationInfoPlaceholder() const;",
+          "Placeholder *getComputationInfoPlaceholder() const;\n",
           "Placeholder "
           "*QuantizationProfileNode::getComputationInfoPlaceholder() const "
           "{ "
-          "return llvm::cast<Placeholder>(ComputationInfo_.getNode()); };")
+          "return llvm::cast<Placeholder>(ComputationInfo_.getNode()); };\n")
       .addOverwrittenInput("ComputationInfo")
       .addOverwrittenInput("Histogram")
       .setHasSideEffects(true)

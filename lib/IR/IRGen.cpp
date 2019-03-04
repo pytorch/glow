@@ -380,7 +380,18 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(TKN->getIndices(), V->getIndices());
     break;
   }
+  case glow::Kinded::Kind::ChannelWiseWeightQuantizationNodeKind: {
+    auto *CWWQ = cast<ChannelWiseWeightQuantizationNode>(N);
+    auto *weights = valueForNode(CWWQ->getWeights());
+    auto *weightsOriginal = valueForNode(CWWQ->getWeightsOriginal());
+    auto *scales = valueForNode(CWWQ->getScales());
+    auto *offsets = valueForNode(CWWQ->getOffsets());
+    CWWQ->getResult().replaceAllUsesOfWith(CWWQ->getWeights());
 
+    auto inst = builder_.createChannelWiseWeightQuantizationInst(
+        CWWQ->getName(), weights, weightsOriginal, scales, offsets);
+    break;
+  }
   case glow::Kinded::Kind::TraceEventNodeKind: {
     auto *TEN = cast<TraceEventNode>(N);
     auto *dataTensor = valueForNode(TEN->getData());

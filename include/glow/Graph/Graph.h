@@ -18,6 +18,7 @@
 
 #include "glow/Base/Type.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -205,6 +206,8 @@ class Function final : public Named {
   /// A reference to the owner of the function.
   Module *parent_;
 
+  quantization::Schema schema_{quantization::Schema::Asymmetric};
+
 public:
   Function(Module *parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent) {}
@@ -333,6 +336,13 @@ public:
                                        Constant *W, Node *B, TypeRef outTy,
                                        bool transposeWeight = false);
 
+  /// Create a channel-wise quantization node for Weights/filters. It feeds in
+  /// to use node of Weight. It doesn't actually produce any results. It's just
+  /// a place holder to maintain a link to quantized weights, per row scales and
+  /// offsets.
+  ChannelWiseWeightQuantizationNode *
+  createChannelWiseWeightQuantization(llvm::StringRef name, Constant *W,
+                                      TypeRef outTy);
   /// Implement an operation that computes the row-wise dot product of its
   /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This
   /// lowered to a Mul node, and is followed by a BatchedReduceAdd if \p X and
@@ -874,9 +884,8 @@ public:
                               NodeValue input, size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group);
-
+                              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
+                              bool createConstFilterBias = false);
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernel defines the size of the height and width dimensions of
   /// the convolutional filters. \p stride defines the the number of steps to
@@ -887,7 +896,8 @@ public:
   ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
                               NodeValue input, size_t outChannels,
                               unsigned_t kernel, unsigned_t stride,
-                              unsigned_t pad, unsigned_t group);
+                              unsigned_t pad, unsigned_t group,
+                              bool createConstFilterBias = false);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input. \p kernels defines the size of the height, width, and time
@@ -1005,6 +1015,8 @@ public:
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }
+  quantization::Schema getQuantizationSchema() { return schema_; }
+  void setQuantizationSchema(quantization::Schema schema) { schema_ = schema; }
 };
 
 struct TrainingConfig;

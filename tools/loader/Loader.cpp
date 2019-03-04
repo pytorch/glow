@@ -307,6 +307,7 @@ void Loader::compile(Context &ctx) {
     F_->setName("old");
 
     // Quantize the graph based on the captured profile.
+    F_->setQuantizationSchema(quantizationSchema);
     auto *Q = quantization::quantizeFunction(
         EE_, quantizationInfos, quantizationPrecision, F_, loweredMap_, oldName,
         keepOriginalPrecisionForNodes, enableRowwiseOpt);

@@ -366,7 +366,8 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 }
 
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
-                               Tensor &scales, Tensor &offsets) {
+                               Tensor &scales, Tensor &offsets,
+                               quantization::Schema schema) {
   const auto fDims = flattenCdr(input.dims());
   Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
   Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
@@ -384,7 +385,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     float max = rSrc.raw(res.second);
 
     TensorQuantizationParams qParams =
-        chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+        chooseQuantizationParams(min, max, schema);
     for (size_t j = 0; j < idim.width; j++) {
       destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
     }

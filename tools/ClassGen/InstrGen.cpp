@@ -143,6 +143,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "ElemKind::Int8QTy"});
 
+  BB.newInstr("ChannelWiseWeightQuantization")
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("WeightsOriginal", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Weights", "ElemKind::Int8QTy"});
+
   //===--------------------------------------------------------------------===//
   //                     Normalization
   //===--------------------------------------------------------------------===//

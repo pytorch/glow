@@ -29,6 +29,10 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
+
 namespace glow {
 
 using llvm::cast;
@@ -377,20 +381,35 @@ static void fillStableRandomData(Handle<float> H, size_t seed,
 
 /// Builds a simple graph, returns back input var and save node through refs.
 static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
-                                                  Placeholder *A,
-                                                  Placeholder *B,
-                                                  llvm::StringRef funcName) {
+                                                  Storage *A, Storage *B,
+                                                  llvm::StringRef funcName,
+                                                  bool generateConst) {
   Function *F = M->createFunction(funcName);
 
-  fillStableRandomData(ctx.allocate(A)->getHandle(), 1100, 1);
+  ConvolutionNode *CV =
+      F->createConv(ctx, "conv", A, 16, 5, 1, 2, 2, generateConst);
 
-  fillStableRandomData(ctx.allocate(B)->getHandle(), 2001, 1);
+  if (!generateConst) {
+    fillStableRandomData(ctx.allocate(cast<Placeholder>(A))->getHandle(), 1100,
+                         1);
+    fillStableRandomData(ctx.allocate(cast<Placeholder>(B))->getHandle(), 2001,
+                         1);
 
-  ConvolutionNode *CV = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 2);
-  auto *bias = cast<Placeholder>(CV->getBias());
-  auto *filter = cast<Placeholder>(CV->getFilter());
-  fillStableRandomData(ctx.get(bias)->getHandle(), 2001, 1);
-  fillStableRandomData(ctx.get(filter)->getHandle(), 1000, 1);
+    auto bias = cast<Placeholder>(CV->getBias());
+    auto filter = cast<Placeholder>(CV->getFilter());
+
+    fillStableRandomData(ctx.get(bias)->getHandle(), 2001, 1);
+    fillStableRandomData(ctx.get(filter)->getHandle(), 1000, 1);
+  } else {
+    fillStableRandomData(cast<Constant>(A)->getHandle(), 2001, 1);
+    fillStableRandomData(cast<Constant>(B)->getHandle(), 1000, 1);
+
+    auto bias = cast<Constant>(CV->getBias());
+    auto filter = cast<Constant>(CV->getFilter());
+
+    fillStableRandomData(bias->getHandle(), 2001, 1);
+    fillStableRandomData(filter->getHandle(), 1000, 1);
+  }
 
   auto *RL = F->createRELU("relu", CV);
   auto *MP = F->createMaxPool("maxPool", RL, 2, 2, 1);
@@ -439,7 +458,8 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   auto *B = mod->createPlaceholder(ElemKind::FloatTy, {10, 9}, "B", false);
 
   // STEP1 - Generate the first network to record the quantization parameters.
-  Function *F1 = createSimpleGraphForQuantization(mod, ctx, A, B, "main");
+  Function *F1 =
+      createSimpleGraphForQuantization(mod, ctx, A, B, "main", false);
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
@@ -479,6 +499,67 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
 
     // Allow 3% difference.
     EXPECT_NEAR(diff, 0, 0.03);
+  }
+}
+
+TEST_P(Operator, end2endChannelQuantize) {
+  llvm::SmallVector<const char *, 2> newArgv;
+  newArgv.push_back("quantizationTest");
+  newArgv.push_back("-enable-channel-wise-weight-quantization-convolution");
+  llvm::cl::ParseCommandLineOptions(2, &newArgv[0]);
+
+  auto *mod = &profileEE.getModule();
+  Context ctx;
+
+  auto *A = mod->createConstant(ElemKind::FloatTy, {1, 32, 32, 2}, "A");
+  auto *B = mod->createConstant(ElemKind::FloatTy, {10, 9}, "B");
+
+  // STEP1 - Generate the first network to record the quantization parameters.
+  Function *F1 = createSimpleGraphForQuantization(mod, ctx, A, B, "main", true);
+  Function *F2 = F1->clone("main2");
+  SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
+  LoweredInfoMap loweredMap;
+  lower(F1, &loweredMap, profileEE.getBackend());
+  F1 = glow::profileQuantization(ctx, F1);
+  profileEE.compile(CompilationMode::Infer, F1);
+
+  // Run graph to capture profile.
+  profileEE.run(ctx);
+
+  // Get quantization infos and build new quantized graph.
+  std::vector<NodeQuantizationInfo> QI =
+      quantization::generateNodeQuantizationInfos(
+          ctx, F1, loweredMap, quantization::Schema::Asymmetric,
+          ElemKind::Int8QTy);
+
+  // STEP2 - Use the profile to quantize a network.
+  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+
+  F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
+                                      F2);
+  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.run(ctx);
+
+  // STEP3 - Compare the results of the original and quantized functions.
+  auto result1Handle = ctx.get(result1->getPlaceholder())->getHandle();
+  auto result2Handle = ctx.get(result2->getPlaceholder())->getHandle();
+
+  EXPECT_EQ(result1Handle.size(), result2Handle.size());
+
+  for (int i = 0, e = result1Handle.size(); i < e; ++i) {
+    float mx = result2Handle.raw(result2Handle.minMaxArg().second);
+    double diff = std::fabs(result2Handle.raw(i) - result1Handle.raw(i)) / mx;
+
+    // Allow 3% difference.
+    EXPECT_NEAR(diff, 0, 0.03);
+  }
+
+  auto options = llvm::cl::getRegisteredOptions();
+  auto opt =
+      options.find("enable-channel-wise-weight-quantization-convolution");
+  if (opt != options.end()) {
+    llvm::cl::Option *ecOption = opt->second;
+    ecOption->reset();
   }
 }
 

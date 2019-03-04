@@ -1028,6 +1028,12 @@ bool RowwiseQuantizedFullyConnectedNode::verify() const {
   return isValid;
 }
 
+bool ChannelWiseWeightQuantizationNode::verify() const {
+  bool isValid = checkType(getResult(), getWeights().getElementType(), this);
+
+  return isValid;
+}
+
 bool GatherNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(

@@ -134,7 +134,8 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// row. Note that the shape of input/output can be any non-zero number of
 /// dimensions; row refers to all data in the first dimension of the shape.
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
-                               Tensor &scales, Tensor &offsets);
+                               Tensor &scales, Tensor &offsets,
+                               quantization::Schema schema);
 
 /// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
 /// from each row of \p input. \p output is tensor of the same shape as input

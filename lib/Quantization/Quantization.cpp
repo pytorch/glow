@@ -19,9 +19,16 @@
 #include "glow/Converter/FunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <cmath>
 #include <unordered_set>
 #include <vector>
+
+llvm::cl::opt<bool> enableChannelWiseWeightQuantizationConvolution(
+    "enable-channel-wise-weight-quantization-convolution",
+    llvm::cl::desc(
+        "When enabled does channel wise quantization of Convolution Weights."));
 
 using llvm::cast;
 
@@ -532,6 +539,37 @@ public:
     cleanUp();
     assert(function_.verify() && "Conversion led to invalid function");
   }
+
+  /// Traverses the graph and replaces
+  /// Filter  --> QuantizationNode        --> convolution
+  /// with
+  /// FilterQ --> ChannelWiseQuantization --> convolution
+  void enableChannelWiseConvolution() {
+    auto nodeIt = function_.getNodes().end();
+    auto stopIt = function_.getNodes().begin();
+    do {
+      --nodeIt;
+      Node &node = *nodeIt;
+
+      if (auto *convN = llvm::dyn_cast<ConvolutionNode>(&node)) {
+        NodeValue filter = convN->getFilter();
+        if (auto *qN = llvm::dyn_cast<QuantizeNode>(filter)) {
+          auto input = qN->getInput();
+          Constant *cN = llvm::dyn_cast<Constant>(input);
+          if (cN && (cN->getPayload().getType().isFPType() &&
+                     qN->getResult().getType()->getElementType() ==
+                         ElemKind::Int8QTy)) {
+            auto *chwQN = function_.createChannelWiseWeightQuantization(
+                "ChannelWiseWeightQuantization", cN, qN->getResult().getType());
+            qN->getNthResult(0).replaceAllUsesOfWith(chwQN);
+          }
+        }
+      }
+    } while (nodeIt != stopIt);
+
+    cleanUp();
+    assert(function_.verify() && "Conversion led to invalid function");
+  }
 };
 
 } // namespace
@@ -628,6 +666,10 @@ quantizeFunction(const ExecutionEngine &EE,
   quantizer.convert();
   if (enableRowwise) {
     quantizer.enableRowwise();
+  }
+
+  if (enableChannelWiseWeightQuantizationConvolution) {
+    quantizer.enableChannelWiseConvolution();
   }
 
   return G;
