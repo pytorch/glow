@@ -197,9 +197,24 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
   float filterScale = filterTy->getScale();
   float biasScale = biasTy->getScale();
 
-  // Calculate the scale of the values that come out of the matrix
-  // multiplication part of the calculation.
-  float matMulScale = inScale * filterScale;
+  int32_t *filterOffsetArray = &filterOffset;
+  float *filterScaleArray = &filterScale;
+  int32_t scaleAdj = 0;
+
+  for (auto use : filterV->getUsers()) {
+    if (auto cwqInst =
+            llvm::dyn_cast<ChannelWiseWeightQuantizationInst>(use.getUser())) {
+      scaleAdj = 1;
+      auto filterScaleT = getTensor(cwqInst->getScales());
+      auto filterOffsetsT = getTensor(cwqInst->getOffsets());
+
+      filterScaleArray =
+          reinterpret_cast<float *>(filterScaleT->getUnsafePtr());
+      filterOffsetArray =
+          reinterpret_cast<int32_t *>(filterOffsetsT->getUnsafePtr());
+      break;
+    }
+  }
 
   // For each input in the batch:
   for (size_t n = 0; n < idim.n; n++) {
@@ -208,6 +223,10 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 
       // For each output channel in the group:
       for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+        // Calculate the scale of the values that come out of the matrix
+        // multiplication part of the calculation.
+        float matMulScale = inScale * filterScaleArray[d * scaleAdj];
 
         // For each convolution 'jump' in the input tensor:
         ssize_t x = -ssize_t(pdim.top);
@@ -234,7 +253,7 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
                       inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
                   // We represent the element multiplication with offset as
                   // (value - offset).
-                  sum += (F - filterOffset) * (I - inOffset);
+                  sum += (F - filterOffsetArray[d * scaleAdj]) * (I - inOffset);
                 }
               }
             }
@@ -1824,6 +1843,14 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
           std::round(float(sum) * (matMulScale / outScale) + outOffset));
     }
   }
+}
+
+//===----------------------------------------------------------------------===//
+//                       Channel Wise Weight Quantization
+//===----------------------------------------------------------------------===//
+void BoundInterpreterFunction::fwdChannelWiseWeightQuantizationInst(
+    const ChannelWiseWeightQuantizationInst *inst) {
+  // this is NOOP
 }
 
 //===----------------------------------------------------------------------===//
