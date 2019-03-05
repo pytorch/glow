@@ -73,20 +73,19 @@ static const unsigned char kernels_fwd_quantized_conv_cl_src[] = {
 static const size_t kernels_fwd_quantized_conv_cl_src_size =
     sizeof(kernels_fwd_quantized_conv_cl_src);
 
-namespace {
 llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
-static llvm::cl::opt<unsigned>
-    platformId("platform", llvm::cl::desc("OpenCL platform to be used"),
-               llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
-static llvm::cl::opt<unsigned>
-    deviceId("device", llvm::cl::desc("OpenCL device to be used"),
-             llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
-static llvm::cl::opt<bool> doProfile("opencl-profile",
-                                     llvm::cl::desc("Profile OpenCL kernels"),
-                                     llvm::cl::init(false),
-                                     llvm::cl::cat(OpenCLBackendCat));
-} // namespace
+llvm::cl::opt<unsigned>
+    clPlatformId("platform", llvm::cl::desc("OpenCL platform to be used"),
+                 llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
+llvm::cl::opt<unsigned> clDeviceId("device",
+                                   llvm::cl::desc("OpenCL device to be used"),
+                                   llvm::cl::init(0),
+                                   llvm::cl::cat(OpenCLBackendCat));
+llvm::cl::opt<bool> clDoProfile("opencl-profile",
+                                llvm::cl::desc("Profile OpenCL kernels"),
+                                llvm::cl::init(false),
+                                llvm::cl::cat(OpenCLBackendCat));
 
 namespace glow {
 Backend *createOCLBackend() { return new OCLBackend(); }
@@ -129,27 +128,27 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
-  GLOW_ASSERT(numPlatforms > platformId &&
+  GLOW_ASSERT(numPlatforms > clPlatformId &&
               "Should have at least one platform for running OpenCL");
   std::vector<cl_platform_id> platform_ids(numPlatforms);
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
-  cl_platform_id platform_id_used = platform_ids[platformId];
+  cl_platform_id platform_id_used = platform_ids[clPlatformId];
   GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
 
   cl_uint num{0};
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-  GLOW_ASSERT(num > deviceId &&
+  GLOW_ASSERT(num > clDeviceId &&
               "Should have at least one GPU/CPU/FPGA for running OpenCL");
   std::vector<cl_device_id> devices(num);
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
                        devices.data(), nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-  deviceId_ = devices[deviceId];
+  deviceId_ = devices[clDeviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   GLOW_ASSERT(context_ && "clCreateContext Failed.");
   commands_ = clCreateCommandQueue(
-      context_, deviceId_, (doProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
+      context_, deviceId_, (clDoProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
 
   err = CL_SUCCESS;
@@ -358,7 +357,7 @@ void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
   cl_event event{nullptr};
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
-                               doProfile ? &event : nullptr);
+                               clDoProfile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
   kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
 }
@@ -381,7 +380,7 @@ void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
   cl_event event{nullptr};
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
-                               doProfile ? &event : nullptr);
+                               clDoProfile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
   kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
 }
@@ -389,7 +388,7 @@ void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
 /// Analyze and dump the collected profiling information about the execution of
 /// OpenCL kernels.
 static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
-  if (!doProfile)
+  if (!clDoProfile)
     return;
   cl_ulong total = 0;
 
@@ -1229,8 +1228,8 @@ void OpenCLFunction::execute(Context *ctx) {
       cl_event event{nullptr};
       cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
                                        srcOff, destOff, sizeInBytes, 0, nullptr,
-                                       doProfile ? &event : nullptr);
-      if (doProfile) {
+                                       clDoProfile ? &event : nullptr);
+      if (clDoProfile) {
         kernelLaunches_.emplace_back(KernelLaunch("copy", event));
       }
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
@@ -1407,9 +1406,9 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (doProfile) {
+    if (clDoProfile) {
       kernelLaunches_.emplace_back(KernelLaunch("copyValueToDevice", event));
     }
     copiedBytes += sizeInBytes;
@@ -1428,11 +1427,11 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
     DEBUG_GLOW(llvm::dbgs()
                << "Copied the value from device: " << v->getName() << "\n");
-    if (doProfile) {
+    if (clDoProfile) {
       kernelLaunches_.emplace_back(KernelLaunch("copyValueFromDevice", event));
     }
     copiedBytes += sizeInBytes;
@@ -1454,9 +1453,9 @@ void OpenCLFunction::setupRuns() {
       cl_int err = clEnqueueWriteBuffer(
           commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
           sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-          /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+          /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
       GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-      if (doProfile) {
+      if (clDoProfile) {
         kernelLaunches_.emplace_back(
             KernelLaunch("copyConstantsToDevice", event));
       }
@@ -1479,9 +1478,9 @@ void OpenCLFunction::beforeRun(const Context &ctx) {
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (doProfile) {
+    if (clDoProfile) {
       kernelLaunches_.emplace_back(KernelLaunch("copyInputsToDevice", event));
     }
   }
@@ -1501,9 +1500,9 @@ void OpenCLFunction::afterRun(const Context &ctx) {
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile ? &event : nullptr);
+        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data from the device");
-    if (doProfile) {
+    if (clDoProfile) {
       kernelLaunches_.emplace_back(
           KernelLaunch("copyOutputsFromDevice", event));
     }
