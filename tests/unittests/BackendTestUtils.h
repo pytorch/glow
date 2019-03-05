@@ -26,7 +26,69 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRGen.h"
 
+#include "gtest/gtest.h"
+
 namespace glow {
+
+// A test harness to enable a test case for specific backends. A test suite
+// should subclass this and instantiate it as follows:
+//
+// class OperationTest : public BackendTest {
+//   ...
+// };
+//
+// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(Prefix, OperationTest);
+//
+// A test case is defined using TEST_P(), and ENABLED_BACKENDS() can be used
+// to whitelist certain backends for the test. The absence of ENABLED_BACKENDS()
+// enables the test for all available backends:
+//
+//
+// TEST_P(OperationTest, replaceNaN) {
+//   // Enable this test case only for Interpreter and CPU.
+//   ENABLED_BACKENDS(Interpreter, CPU);
+//   // Regular test code.
+//   ...
+// }
+class BackendTest : public ::testing::TestWithParam<BackendKind> {
+public:
+  BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+
+  ~BackendTest() override { mod_.clear(); }
+
+protected:
+  bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {
+    return enabledBackends.find(GetParam()) != enabledBackends.end();
+  }
+
+  const BackendKind Interpreter = BackendKind::Interpreter;
+  const BackendKind CPU = BackendKind::CPU;
+  const BackendKind OpenCL = BackendKind::OpenCL;
+
+  ExecutionEngine EE_{GetParam()};
+  Module &mod_;
+  Function *F_;
+  Context ctx_;
+};
+
+static const auto all_backends = ::testing::Values(
+#ifdef GLOW_WITH_CPU
+    BackendKind::CPU,
+#endif // GLOW_WITH_CPU
+#ifdef GLOW_WITH_OPENCL
+    BackendKind::OpenCL,
+#endif // GLOW_WITHOPENCL
+    BackendKind::Interpreter);
+
+// Instantiate parameterized test suite with all available backends.
+#define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(prefix, test_case_name)       \
+  INSTANTIATE_TEST_CASE_P(prefix, test_case_name, all_backends)
+
+// TODO: Replace return for GTEST_SKIP() so that skipped tests are
+// correctly reported once the macro gets available.
+#define ENABLED_BACKENDS(...)                                                  \
+  if (!isEnabledBackend({__VA_ARGS__}))                                        \
+    return;
 
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
