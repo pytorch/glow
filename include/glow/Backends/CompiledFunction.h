@@ -33,11 +33,10 @@ public:
   CompiledFunction() = default;
 
   /// Ctor that accepts runtimeBundle.
-  CompiledFunction(const runtime::RuntimeBundle &bundle)
-      : runtimeBundle_(bundle){};
+  CompiledFunction(const runtime::RuntimeBundle &bundle);
 
   /// Dtor.
-  virtual ~CompiledFunction() { runtimeBundle_.freeConstants(); }
+  virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
   /// \p ctx providing mapping between Placeholder and populated tensor.
   virtual void execute(Context *ctx) = 0;

@@ -49,42 +49,69 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
 }
 OpenCLDeviceManager::OpenCLDeviceManager(llvm::StringRef name)
     : QueueBackedDeviceManager(BackendKind::OpenCL, name) {
-  // For now we have a string, if the first digit is an int use it, otherwise
+  name_ = name.str();
+}
+
+ResultCode OpenCLDeviceManager::init() {
+  // For now we have a string, if the first digit is
+  // an int use it, otherwise
   // use 0 as the default.
   // There are flags in the OpenCLBackend to select devices. Once we refactor
   // more functionality out of the OCLCompiledFunction we can move those flags
   // here.
   auto deviceId{0};
-  if (llvm::isDigit(name[0])) {
-    deviceId = std::stoi(name.substr(0, 1));
+  if (llvm::isDigit(name_[0])) {
+    deviceId = std::stoi(name_.substr(0, 1));
   }
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
+  if (err != CL_SUCCESS) {
+    llvm::outs() << "clGetPlatformIDs Failed. \n";
+    return ResultCode::Failed;
+  }
   std::vector<cl_platform_id> platform_ids(numPlatforms);
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
   // Take the first platform.
   cl_platform_id platform_id_used = platform_ids[0];
   cl_uint num{0};
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-  GLOW_ASSERT(num > deviceId &&
-              "Should have at least one GPU/CPU/FPGA for running OpenCL");
+  if (err != CL_SUCCESS) {
+    llvm::outs() << "clGetDeviceIDs Failed.\n";
+    return ResultCode::Failed;
+  }
+  if (num < deviceId) {
+    llvm::outs()
+        << "Should have at least one GPU/CPU/FPGA for running OpenCL\n";
+    return ResultCode::Failed;
+  }
   std::vector<cl_device_id> devices(num);
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
                        devices.data(), nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
+  if (err != CL_SUCCESS) {
+    llvm::outs() << "clGetDeviceIDs Failed.\n";
+    return ResultCode::Failed;
+  }
   deviceId_ = devices[deviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
-  GLOW_ASSERT(context_ && "clCreateContext Failed.");
+  if (!context_) {
+    llvm::outs() << "clCreateContext Failed.\n";
+    return ResultCode::Failed;
+  }
   commands_ = clCreateCommandQueue(
       context_, deviceId_, (doProfile_) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
-  GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
+  if (!commands_) {
+    llvm::outs() << "clCreateCommandQueue Failed.\n";
+    return ResultCode::Failed;
+  }
   cl_ulong mem_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong),
                         &mem_size, NULL);
-  GLOW_ASSERT(err == CL_SUCCESS && "Error getting device memory limit.");
+  if (err != CL_SUCCESS) {
+    llvm::outs() << "Error getting device memory limit.\n";
+    return ResultCode::Failed;
+  }
   maxMemoryBytes_ = mem_size;
+  return ResultCode::Executed;
 }
 
 OpenCLDeviceManager::~OpenCLDeviceManager() {
@@ -124,7 +151,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   }
   // Collect constants once, since currently the bundle grabs everything in the
   // module.
-  auto bundle = functions.begin()->second->getRuntimeBundle();
+  auto &bundle = functions.begin()->second->getRuntimeBundle();
   if (bundle.getConstants() == nullptr) {
     bundle.collectConstants(module);
   }

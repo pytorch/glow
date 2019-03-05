@@ -81,10 +81,15 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(uint64_t size);
 
+  /// Device name.
+  std::string name_;
+
 public:
   OpenCLDeviceManager(llvm::StringRef name = "unnamed");
 
   ~OpenCLDeviceManager();
+
+  ResultCode init() override;
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.

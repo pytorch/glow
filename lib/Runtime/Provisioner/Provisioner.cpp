@@ -76,7 +76,7 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
     FunctionMapTy functionMap;
     for (auto &node : device.second) {
       Function *function = module.getFunction(node->name);
-      auto compileOptions = CompilationOptions();
+      CompilationOptions compileOptions;
       compileOptions.collectConstants = false;
       auto compiled = backend_->compile(function, compileOptions);
       node->runtimeBundle = compiled->getRuntimeBundle();
@@ -119,6 +119,10 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
     auto result = ready.get();
     if (!result) {
       return ResultCode::Failed;
+    }
+    // Set deviceID for each node added
+    for (auto &node : logicalDevices[logicalID]) {
+      node->deviceID = deviceID;
     }
   }
   return ResultCode::Ready;
