@@ -599,6 +599,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 
   deviceManager.runFunction(
       "main", std::move(ctx1),
+
       [&ctx1](RunIdentifierTy, ResultCode result,
               std::unique_ptr<Context> ctx_) { ctx1 = std::move(ctx_); });
 
