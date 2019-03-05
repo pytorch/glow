@@ -70,6 +70,9 @@ llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
     T->reset(ElemKind::Int32ITy, dim);
     return llvm::Error::success();
+  } else if (in.data_type() == caffe2::TensorProto::UINT8) {
+    T->reset(ElemKind::Int8QTy, dim, 1.0, 0);
+    return llvm::Error::success();
   } else {
     RETURN_ERR("Only float and index tensors are supported");
   }
