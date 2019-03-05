@@ -34,7 +34,7 @@ public:
   ~Operator() override { mod_.clear(); }
 
 protected:
-  bool isEnabledBackend(const std::set<BackendKind>& enabledBackends) {
+  bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {
     return enabledBackends.find(GetParam()) != enabledBackends.end();
   }
 
@@ -59,7 +59,7 @@ INSTANTIATE_TEST_CASE_P(AllOperatorTest, Operator,
 #endif // GLOW_WITHOPENCL
                             BackendKind::Interpreter));
 
-// TODO(d1jang): Replace return for GTEST_SKIP() so that skipped tests are
+// TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
 #define ENABLED_BACKENDS(...)                                                  \
   if (!isEnabledBackend({__VA_ARGS__}))                                        \
