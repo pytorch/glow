@@ -25,10 +25,15 @@
 #include "OpenCL.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace glow;
 using namespace glow::runtime;
+
+extern llvm::cl::opt<unsigned> clPlatformId;
+extern llvm::cl::opt<unsigned> clDeviceId;
+extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
 namespace runtime {
@@ -51,33 +56,39 @@ OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
     : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
 
 ResultCode OpenCLDeviceManager::init() {
-  // For now we have a string, if the first digit is
-  // an int use it, otherwise
-  // use 0 as the default.
-  // There are flags in the OpenCLBackend to select devices. Once we refactor
-  // more functionality out of the OCLCompiledFunction we can move those flags
-  // here.
-  auto deviceId{0};
-  if (llvm::isDigit(name_[0])) {
-    deviceId = std::stoi(name_.substr(0, 1));
+  // The OpenCl Backend defines three command line options: doProfile, deviceId,
+  // and platformId. If an OpenCLDeviceConfig is not provided we use the CL
+  // options from the OpenCl Backend.
+
+  if (config_ && config_->getBackendKind() == BackendKind::OpenCL) {
+    OpenCLDeviceConfig *config =
+        static_cast<OpenCLDeviceConfig *>(config_.get());
+    clDeviceId = config->deviceId;
+    clPlatformId = config->platformId;
+    clDoProfile = config->doProfile;
   }
+
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
   if (err != CL_SUCCESS) {
     llvm::outs() << "clGetPlatformIDs Failed. \n";
     return ResultCode::Failed;
   }
+  if (numPlatforms < clPlatformId) {
+    llvm::outs() << "Should have at least one platform for running OpenCL \n";
+    return ResultCode::Failed;
+  }
   std::vector<cl_platform_id> platform_ids(numPlatforms);
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
-  // Take the first platform.
-  cl_platform_id platform_id_used = platform_ids[0];
+
+  cl_platform_id platform_id_used = platform_ids[clPlatformId];
   cl_uint num{0};
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   if (err != CL_SUCCESS) {
     llvm::outs() << "clGetDeviceIDs Failed.\n";
     return ResultCode::Failed;
   }
-  if (num < deviceId) {
+  if (num < clDeviceId) {
     llvm::outs()
         << "Should have at least one GPU/CPU/FPGA for running OpenCL\n";
     return ResultCode::Failed;
@@ -89,14 +100,14 @@ ResultCode OpenCLDeviceManager::init() {
     llvm::outs() << "clGetDeviceIDs Failed.\n";
     return ResultCode::Failed;
   }
-  deviceId_ = devices[deviceId];
+  deviceId_ = devices[clDeviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
     llvm::outs() << "clCreateContext Failed.\n";
     return ResultCode::Failed;
   }
   commands_ = clCreateCommandQueue(
-      context_, deviceId_, (doProfile_) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
+      context_, deviceId_, (clDoProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
   if (!commands_) {
     llvm::outs() << "clCreateCommandQueue Failed.\n";
     return ResultCode::Failed;
