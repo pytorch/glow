@@ -106,8 +106,7 @@ int main(int argc, char **argv) {
 
   std::array<DeviceManager *, supportedBackends.size()> devices;
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
-    devices[i] = DeviceManager::createDeviceManager(supportedBackends[i],
-                                                    "tracing-compare");
+    devices[i] = DeviceManager::createDeviceManager(supportedBackends[i]);
     devices[i]->init();
   }
 

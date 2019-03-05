@@ -40,9 +40,9 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   const uint64_t functionCost_{1};
 
 public:
-  CPUDeviceManager(llvm::StringRef name = "unnamed",
+  CPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
                    size_t maxMemory = 1000000000)
-      : QueueBackedDeviceManager(BackendKind::CPU, name),
+      : QueueBackedDeviceManager(BackendKind::CPU, std::move(config)),
         maxMemoryBytes_(maxMemory) {}
 
   /// Returns the amount of memory in bytes available on the device when no

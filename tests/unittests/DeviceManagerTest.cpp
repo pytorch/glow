@@ -87,7 +87,7 @@ TEST_P(DeviceManagerTest, Basic) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
 
-  auto *device = DeviceManager::createDeviceManager(backendKind, "Basic");
+  auto *device = DeviceManager::createDeviceManager(backendKind);
   ResultCode initResult = device->init();
   EXPECT_EQ(initResult, ResultCode::Executed);
 
@@ -143,8 +143,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
-
-  auto *device = DeviceManager::createDeviceManager(backendKind, "MultiRun");
+  auto *device = DeviceManager::createDeviceManager(backendKind);
   ResultCode initResult = device->init();
   EXPECT_EQ(initResult, ResultCode::Executed);
 
@@ -237,9 +236,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
-
-  auto *device =
-      DeviceManager::createDeviceManager(backendKind, "MultiFunction");
+  auto *device = DeviceManager::createDeviceManager(backendKind);
   ResultCode initResult = device->init();
   EXPECT_EQ(initResult, ResultCode::Executed);
 
@@ -312,8 +309,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
       compileFunctions(backendKind, module1.get(), backing);
   FunctionMapTy functions2 =
       compileFunctions(backendKind, module2.get(), backing);
-
-  auto *device = DeviceManager::createDeviceManager(backendKind, "MultiModule");
+  auto *device = DeviceManager::createDeviceManager(backendKind);
   ResultCode initResult = device->init();
   EXPECT_EQ(initResult, ResultCode::Executed);
 
@@ -418,8 +414,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   functions.erase("func2");
   EXPECT_EQ(functions.size(), 1);
   EXPECT_EQ(functions2.size(), 1);
-
-  auto *device = DeviceManager::createDeviceManager(backendKind, "ReuseModule");
+  auto *device = DeviceManager::createDeviceManager(backendKind);
   ResultCode initResult = device->init();
   EXPECT_EQ(initResult, ResultCode::Executed);
 
@@ -499,8 +494,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   std::promise<const Module *> promise;
   std::future<const Module *> future;
-
-  CPUDeviceManager cpuCoreDevice("AvailableMemoryTest", 1);
+  CPUDeviceManager cpuCoreDevice(nullptr, 1);
   cpuCoreDevice.init();
 
   uint64_t expectedBytes = 1;
@@ -573,8 +567,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
-  DummyDeviceManager deviceManager(BackendKind::Interpreter,
-                                   "DeviceManagerTest");
+  DummyDeviceManager deviceManager(BackendKind::Interpreter);
   deviceManager.init();
 
   auto module = makeBasicModule();

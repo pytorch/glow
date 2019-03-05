@@ -40,9 +40,9 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   const uint64_t functionCost_{1};
 
 public:
-  InterpreterDeviceManager(llvm::StringRef name = "unnamed",
+  InterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
                            size_t maxMemory = 1000)
-      : QueueBackedDeviceManager(BackendKind::Interpreter, name),
+      : QueueBackedDeviceManager(BackendKind::Interpreter, std::move(config)),
         maxMemoryBytes_(maxMemory) {}
 
   /// Returns the amount of memory in bytes available on the device when no

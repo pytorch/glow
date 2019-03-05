@@ -32,8 +32,8 @@ using namespace glow::runtime;
 
 namespace glow {
 namespace runtime {
-DeviceManager *createOCLDeviceManager(llvm::StringRef name) {
-  return new OpenCLDeviceManager(name);
+DeviceManager *createOCLDeviceManager(std::unique_ptr<DeviceConfig> config) {
+  return new OpenCLDeviceManager(std::move(config));
 }
 } // namespace runtime
 } // namespace glow
@@ -47,10 +47,8 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   GLOW_ASSERT(buf && "Allocation failed!");
   return buf;
 }
-OpenCLDeviceManager::OpenCLDeviceManager(llvm::StringRef name)
-    : QueueBackedDeviceManager(BackendKind::OpenCL, name) {
-  name_ = name.str();
-}
+OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
+    : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
 
 ResultCode OpenCLDeviceManager::init() {
   // For now we have a string, if the first digit is

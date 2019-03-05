@@ -23,8 +23,8 @@ using namespace glow::runtime;
 
 namespace glow {
 namespace runtime {
-DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
-  return new CPUDeviceManager(name);
+DeviceManager *createCPUDeviceManager(std::unique_ptr<DeviceConfig> config) {
+  return new CPUDeviceManager(std::move(config));
 }
 } // namespace runtime
 } // namespace glow

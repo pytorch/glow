@@ -21,8 +21,9 @@
 namespace glow {
 namespace runtime {
 
-DeviceManager *createInterpreterDeviceManager(llvm::StringRef name) {
-  return new InterpreterDeviceManager(name);
+DeviceManager *
+createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config) {
+  return new InterpreterDeviceManager(std::move(config));
 }
 
 uint64_t InterpreterDeviceManager::getMaximumMemory() const {

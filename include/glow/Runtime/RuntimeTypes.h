@@ -16,6 +16,7 @@
 #ifndef GLOW_RUNTIME_RUNTIMETYPES_H
 #define GLOW_RUNTIME_RUNTIMETYPES_H
 
+#include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 
@@ -90,6 +91,20 @@ struct DAGNodeList {
   std::vector<std::unique_ptr<DAGNode>> roots;
   /// The non-root DAGNode pointers.
   std::vector<std::unique_ptr<DAGNode>> nodes;
+};
+
+/// This is the base class for DeviceManager configurations. Any specific
+/// device can extend this class to contain information to identify
+/// and configure the device manager. Additionally it needs to set it's kind_
+/// member variable to it's correct BackendKind.
+class DeviceConfig {
+  const BackendKind backendKind_;
+
+protected:
+  DeviceConfig(BackendKind kind) : backendKind_(kind) {}
+
+public:
+  BackendKind getBackendKind() { return backendKind_; }
 };
 
 } // namespace runtime

@@ -102,12 +102,12 @@ int main(int argc, char **argv) {
   llvm::outs() << "Initializing " << numDevices
                << " CPU Devices on HostManager.\n";
 
-  std::vector<DeviceConfig> configs;
+  std::vector<DeviceManagerConfig> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = DeviceConfig();
-    config.deviceName = "CPU" + std::to_string(i);
+    auto config = DeviceManagerConfig();
+    config.deviceConfig = nullptr;
     config.backendKind = BackendKind::CPU;
-    configs.push_back(config);
+    configs.push_back(std::move(config));
   }
 
   std::unique_ptr<HostManager> hostManager =
