@@ -37,15 +37,14 @@ public:
 
 std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
-  std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
 
   Function *F = module->createFunction(functionName);
-  auto *input = module->createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3},
+  auto *input = module->createPlaceholder(ElemKind::FloatTy, {1},
                                           functionName + "_input", false);
-
-  auto *FC = F->createFullyConnected(*ctx, "fc", input, 10);
-  auto *RU = F->createRELU("relu", FC);
-  F->createSave("ret", RU);
+  auto *output = module->createPlaceholder(ElemKind::FloatTy, {1},
+                                           functionName + "_output", false);
+  auto *p = F->createPow("pow2", input, 2.0f);
+  F->createSave("ret", p, output);
 
   return module;
 }
@@ -108,9 +107,13 @@ TEST_P(DeviceManagerTest, Basic) {
   std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
   ctx->allocate(module->getPlaceholders());
 
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+  Tensor input1(ElemKind::FloatTy, {1});
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(2);
+  output1.getHandle().clear(4);
+
   updateInputPlaceholders(*ctx, {module->getPlaceholderByName("main_input")},
-                          {&inputs});
+                          {&input1});
 
   std::promise<std::unique_ptr<Context>> runPromise;
   std::future<std::unique_ptr<Context>> runFuture;
@@ -124,8 +127,11 @@ TEST_P(DeviceManagerTest, Basic) {
                       });
 
   runFuture.wait_for(std::chrono::seconds(2));
-
-  EXPECT_NE(runFuture.get(), nullptr);
+  ctx = runFuture.get();
+  ASSERT_TRUE(ctx);
+  Tensor *result1 = ctx->get(module->getPlaceholderByName("main_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_TRUE(result1->isEqual(output1));
 
   ResultCode stopResult = device->stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
@@ -158,16 +164,20 @@ TEST_P(DeviceManagerTest, MultiRun) {
   ctx1->allocate(module->getPlaceholders());
   ctx2->allocate(module->getPlaceholders());
 
-  PseudoRNG PRNG;
-  Tensor inputs1(ElemKind::FloatTy, {1, 32, 32, 3});
-  Tensor inputs2(ElemKind::FloatTy, {1, 32, 32, 3});
-  inputs1.getHandle().randomize(-12.0, 13.0, PRNG);
-  inputs2.getHandle().randomize(-12.0, 13.0, PRNG);
+  Tensor input1(ElemKind::FloatTy, {1});
+  Tensor input2(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(2.0f);
+  input2.getHandle().clear(3.0f);
+
+  Tensor output1(ElemKind::FloatTy, {1});
+  Tensor output2(ElemKind::FloatTy, {1});
+  output1.getHandle().clear(4.0f);
+  output2.getHandle().clear(9.0f);
 
   updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("main_input")},
-                          {&inputs1});
+                          {&input1});
   updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("main_input")},
-                          {&inputs2});
+                          {&input2});
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -190,7 +200,16 @@ TEST_P(DeviceManagerTest, MultiRun) {
 
   ctx1 = runF1.get();
   ctx2 = runF2.get();
+  ASSERT_TRUE(ctx1);
+  ASSERT_TRUE(ctx2);
   EXPECT_NE(ctx1, ctx2);
+
+  Tensor *result1 = ctx1->get(module->getPlaceholderByName("main_output"));
+  Tensor *result2 = ctx2->get(module->getPlaceholderByName("main_output"));
+  ASSERT_TRUE(result1);
+  ASSERT_TRUE(result2);
+  EXPECT_TRUE(result1->isEqual(output1));
+  EXPECT_TRUE(result2->isEqual(output2));
 
   ResultCode stopResult = device->stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
@@ -201,14 +220,18 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   auto module = makeBasicModule("func1");
 
   std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
+  ctx1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
-  auto *input = module->getPlaceholderByName("func1_input");
-  auto *C = F->createConv(*ctx1, "conv2a", input, 64, 4, 1, 0, 1);
-  ctx1->get(llvm::cast<Placeholder>(C->getFilter()))->getHandle().clear(0.3);
-  ctx1->get(llvm::cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
-  F->createSave("ret2", C);
-  ctx1->allocate(module->getPlaceholders());
+  auto *inP = module->getPlaceholderByName("func1_input");
+  auto *outP =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
+  auto *p = F->createPow("pow3", inP, 3.0f);
+  F->createSave("ret2", p, outP);
+
+  ctx2->allocate(inP);
+  ctx2->allocate(outP);
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
@@ -231,11 +254,17 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
-                          {&inputs});
+  Tensor input(ElemKind::FloatTy, {1});
+  input.getHandle().clear(2.0f);
+  Tensor output1(ElemKind::FloatTy, {1});
+  output1.getHandle().clear(4.0f);
+  Tensor output2(ElemKind::FloatTy, {1});
+  output2.getHandle().clear(8.0f);
 
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>(ctx1->clone());
+  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
+                          {&input});
+  updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("func1_input")},
+                          {&input});
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -258,7 +287,16 @@ TEST_P(DeviceManagerTest, MultiFunction) {
 
   ctx1 = runF1.get();
   ctx2 = runF2.get();
+  ASSERT_TRUE(ctx1);
+  ASSERT_TRUE(ctx2);
   EXPECT_NE(ctx1, ctx2);
+
+  Tensor *result1 = ctx1->get(module->getPlaceholderByName("func1_output"));
+  Tensor *result2 = ctx2->get(module->getPlaceholderByName("func2_output"));
+  ASSERT_TRUE(result1);
+  ASSERT_TRUE(result2);
+  EXPECT_TRUE(result1->isEqual(output1));
+  EXPECT_TRUE(result2->isEqual(output2));
 
   ResultCode stopResult = device->stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
@@ -301,14 +339,18 @@ TEST_P(DeviceManagerTest, MultiModule) {
 
   std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
   ctx1->allocate(module1->getPlaceholders());
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
+  Tensor input(ElemKind::FloatTy, {1});
+  input.getHandle().clear(2.0f);
+  Tensor output(ElemKind::FloatTy, {1});
+  output.getHandle().clear(4.0f);
+
   updateInputPlaceholders(*ctx1, {module1->getPlaceholderByName("func1_input")},
-                          {&inputs});
+                          {&input});
 
   std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
   ctx2->allocate(module2->getPlaceholders());
   updateInputPlaceholders(*ctx2, {module2->getPlaceholderByName("func2_input")},
-                          {&inputs});
+                          {&input});
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -331,7 +373,17 @@ TEST_P(DeviceManagerTest, MultiModule) {
 
   ctx1 = runF1.get();
   ctx2 = runF2.get();
+  ASSERT_TRUE(ctx1);
+  ASSERT_TRUE(ctx2);
   EXPECT_NE(ctx1, ctx2);
+
+  Tensor *result1 = ctx1->get(module1->getPlaceholderByName("func1_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_TRUE(result1->isEqual(output));
+
+  Tensor *result2 = ctx2->get(module2->getPlaceholderByName("func2_output"));
+  ASSERT_TRUE(result2);
+  EXPECT_TRUE(result2->isEqual(output));
 
   ResultCode stopResult = device->stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
@@ -342,14 +394,18 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   auto module = makeBasicModule("func1");
 
   std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
+  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
+  ctx1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
-  auto *input = module->getPlaceholderByName("func1_input");
-  auto *C = F->createConv(*ctx1, "conv2a", input, 64, 4, 1, 0, 1);
-  ctx1->get(llvm::cast<Placeholder>(C->getFilter()))->getHandle().clear(0.3);
-  ctx1->get(llvm::cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
-  F->createSave("ret2", C);
-  ctx1->allocate(module->getPlaceholders());
+  auto *inP = module->getPlaceholderByName("func1_input");
+  auto *outP =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
+  auto *p = F->createPow("pow3", inP, 3.0f);
+  F->createSave("ret2", p, outP);
+
+  ctx2->allocate(inP);
+  ctx2->allocate(outP);
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
@@ -387,11 +443,17 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
-                          {&inputs});
+  Tensor input(ElemKind::FloatTy, {1});
+  input.getHandle().clear(2.0f);
+  Tensor output1(ElemKind::FloatTy, {1});
+  output1.getHandle().clear(4.0f);
+  Tensor output2(ElemKind::FloatTy, {1});
+  output2.getHandle().clear(8.0f);
 
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>(ctx1->clone());
+  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
+                          {&input});
+  updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("func1_input")},
+                          {&input});
 
   std::promise<std::unique_ptr<Context>> runP1, runP2;
   std::future<std::unique_ptr<Context>> runF1, runF2;
@@ -414,7 +476,17 @@ TEST_P(DeviceManagerTest, ReuseModule) {
 
   ctx1 = runF1.get();
   ctx2 = runF2.get();
+  ASSERT_TRUE(ctx1);
+  ASSERT_TRUE(ctx2);
   EXPECT_NE(ctx1, ctx2);
+
+  Tensor *result1 = ctx1->get(module->getPlaceholderByName("func1_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_TRUE(result1->isEqual(output1));
+
+  Tensor *result2 = ctx2->get(module->getPlaceholderByName("func2_output"));
+  ASSERT_TRUE(result2);
+  EXPECT_TRUE(result2->isEqual(output2));
 
   ResultCode stopResult = device->stop();
   EXPECT_EQ(stopResult, ResultCode::Executed);
@@ -524,19 +596,27 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
   ctx1->allocate(module->getPlaceholders());
 
-  PseudoRNG PRNG;
-  Tensor inputs1(ElemKind::FloatTy, {1, 32, 32, 3});
-  inputs1.getHandle().randomize(-12.0, 13.0, PRNG);
+  Tensor input1(ElemKind::FloatTy, {1});
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(2.0f);
+  output1.getHandle().clear(4.0f);
 
   updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("main_input")},
-                          {&inputs1});
+                          {&input1});
 
   deviceManager.runFunction(
       "main", std::move(ctx1),
       [&ctx1](RunIdentifierTy, ResultCode result,
               std::unique_ptr<Context> ctx_) { ctx1 = std::move(ctx_); });
 
-  EXPECT_NE(ctx1.get(), nullptr);
+  ASSERT_TRUE(ctx1);
+
+  Tensor *result1 = ctx1->get(module->getPlaceholderByName("main_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_TRUE(result1->isEqual(output1));
+
+  ResultCode stopResult = deviceManager.stop();
+  EXPECT_EQ(stopResult, ResultCode::Executed);
 }
 
 #endif // GLOW_WITH_CPU
