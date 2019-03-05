@@ -54,8 +54,8 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
 
     if (backend) {
       device_ = std::unique_ptr<runtime::DeviceManager>(
-          runtime::DeviceManager::createDeviceManager(backend->getBackendKind(),
-                                                      "ExecutionEngine"));
+          runtime::DeviceManager::createDeviceManager(
+              backend->getBackendKind()));
       runtime::ResultCode initResult = device_->init();
       (void)initResult;
       assert(initResult == runtime::ResultCode::Executed &&

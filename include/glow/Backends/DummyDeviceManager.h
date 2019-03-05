@@ -32,8 +32,9 @@ class DummyDeviceManager : public DeviceManager {
   FunctionMapTy functions_;
 
 public:
-  DummyDeviceManager(BackendKind backend, llvm::StringRef name)
-      : DeviceManager(backend, name) {}
+  DummyDeviceManager(BackendKind backend,
+                     std::unique_ptr<DeviceConfig> config = nullptr)
+      : DeviceManager(backend, std::move(config)) {}
 
   /// The DummyDeviceManager is a simple wrapper for testing, if you need
   /// memory guards you should implement a DeviceManager for your device.

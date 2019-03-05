@@ -28,16 +28,15 @@
 using namespace glow;
 using namespace runtime;
 
-HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
+HostManager::HostManager(const std::vector<DeviceManagerConfig> &configs) {
   DeviceIDTy deviceCount = 0;
 
   if (configs.size() > 0) {
     backend_.reset(createBackend(configs[0].backendKind));
   }
   for (auto &config : configs) {
-    devices_[deviceCount] =
-        std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
-            config.backendKind, config.deviceName));
+    devices_[deviceCount] = std::unique_ptr<DeviceManager>(
+        DeviceManager::createDeviceManager(config.backendKind, nullptr));
     ResultCode response = devices_[deviceCount]->init();
     assert(response == ResultCode::Executed && "Failed to initialize device.");
     (void)response;

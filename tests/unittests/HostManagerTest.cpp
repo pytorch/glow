@@ -40,13 +40,12 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
   return module;
 }
 
-std::unique_ptr<HostManager> createHostManager(llvm::StringRef name,
-                                               BackendKind kind) {
-  std::vector<DeviceConfig> configs;
-  auto config = DeviceConfig();
-  config.deviceName = name;
+std::unique_ptr<HostManager> createHostManager(BackendKind kind) {
+  std::vector<DeviceManagerConfig> configs;
+  auto config = DeviceManagerConfig();
+  config.deviceConfig = nullptr;
   config.backendKind = kind;
-  configs.push_back(config);
+  configs.push_back(std::move(config));
   std::unique_ptr<HostManager> hostManager =
       llvm::make_unique<HostManager>(configs);
   return hostManager;
@@ -65,13 +64,11 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   manager->removeNetwork("function" + std::to_string(functionNumber));
 }
 
-TEST_F(HostManagerTest, newHostManager) {
-  createHostManager("CPU0", BackendKind::CPU);
-}
+TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
 
 TEST_F(HostManagerTest, addNetwork) {
   auto mod = setupModule(6);
-  auto hostManager = createHostManager("CPU0", BackendKind::CPU);
+  auto hostManager = createHostManager(BackendKind::CPU);
   hostManager->addNetwork(mod.get());
 }
 
@@ -87,7 +84,7 @@ TEST_F(HostManagerTest, runNetwork) {
   auto *save = F->createSave("save", pow);
   auto *saveTensor = ctx->allocate(save->getPlaceholder());
 
-  auto hostManager = createHostManager("CPU0", BackendKind::CPU);
+  auto hostManager = createHostManager(BackendKind::CPU);
   hostManager->addNetwork(&mod);
   std::promise<ResultCode> runNetwork;
   auto ready = runNetwork.get_future();

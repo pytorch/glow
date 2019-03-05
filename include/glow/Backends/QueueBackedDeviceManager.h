@@ -33,8 +33,9 @@ protected:
   std::atomic<RunIdentifierTy> nextIdentifier_{1};
 
 public:
-  QueueBackedDeviceManager(BackendKind backend, llvm::StringRef name)
-      : DeviceManager(backend, name), workThread_(1) {}
+  QueueBackedDeviceManager(BackendKind backend,
+                           std::unique_ptr<DeviceConfig> config)
+      : DeviceManager(backend, std::move(config)), workThread_(1) {}
 
   virtual ~QueueBackedDeviceManager() {
     stop(true); // will join workThread_
@@ -69,7 +70,6 @@ public:
   RunIdentifierTy runFunction(std::string functionName,
                               std::unique_ptr<Context> ctx,
                               ResultCBTy callback) override {
-
     RunIdentifierTy id = nextIdentifier_++;
     workThread_.submit([this, id, functionName = std::move(functionName),
                         ctx = std::move(ctx),

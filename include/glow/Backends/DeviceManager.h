@@ -46,18 +46,20 @@ protected:
   /// Type of Backend for this Device.
   BackendKind backend_;
 
-  /// Name or address of the device.
-  std::string name_;
+  /// Configuration object for the device.
+  std::unique_ptr<DeviceConfig> config_;
 
 public:
-  DeviceManager(BackendKind backend, llvm::StringRef name = "unnamed")
-      : backend_(backend), name_(name) {}
+  DeviceManager(BackendKind backend,
+                std::unique_ptr<DeviceConfig> config = nullptr)
+      : backend_(backend), config_(std::move(config)) {}
   virtual ~DeviceManager() {}
 
   /// Create a device of the type /p backend, with the backend specific
   /// name/addres /p name.
-  static DeviceManager *createDeviceManager(BackendKind backend,
-                                            llvm::StringRef name);
+  static DeviceManager *
+  createDeviceManager(BackendKind backend,
+                      std::unique_ptr<DeviceConfig> config = nullptr);
 
   /// Initialize the device.
   virtual ResultCode init() { return ResultCode::Executed; }

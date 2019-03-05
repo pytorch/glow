@@ -29,8 +29,8 @@
 namespace glow {
 namespace runtime {
 
-struct DeviceConfig {
-  std::string deviceName;
+struct DeviceManagerConfig {
+  std::unique_ptr<DeviceConfig> deviceConfig;
   BackendKind backendKind;
 };
 
@@ -111,7 +111,7 @@ public:
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<Context> context,
                              ResultCBTy callback);
-  HostManager(const std::vector<DeviceConfig> &configs);
+  HostManager(const std::vector<DeviceManagerConfig> &configs);
   ~HostManager();
 };
 } // namespace runtime
