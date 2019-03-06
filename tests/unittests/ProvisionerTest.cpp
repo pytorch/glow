@@ -20,8 +20,6 @@
 
 using namespace glow;
 using namespace glow::runtime;
-using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
-                                std::vector<std::unique_ptr<DAGNode>>>;
 
 class ProvisionerTest : public ::testing::Test {};
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
@@ -36,11 +34,11 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
   return module;
 }
 
-DAGNodePairTy setupDAG(unsigned rootCount, unsigned childCount) {
-  std::vector<std::unique_ptr<DAGNode>> networks;
-  std::vector<std::unique_ptr<DAGNode>> children;
+DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
+  DAGListTy partitions;
   unsigned currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
+    nodesDAGNodeTy nodes;
     auto rootNode = llvm::make_unique<DAGNode>();
     auto firstNode = llvm::make_unique<DAGNode>();
     rootNode->name = "root" + std::to_string(root);
@@ -52,12 +50,12 @@ DAGNodePairTy setupDAG(unsigned rootCount, unsigned childCount) {
       newChild->name = "function" + std::to_string(currentFunction);
       currentFunction++;
       firstNode->children.push_back(newChild.get());
-      children.push_back(std::move(newChild));
+      nodes.push_back(std::move(newChild));
     }
-    networks.push_back(std::move(rootNode));
-    children.push_back(std::move(firstNode));
+    nodes.push_back(std::move(firstNode));
+    partitions.push_back({std::move(rootNode), std::move(nodes)});
   }
-  return std::make_pair(std::move(networks), std::move(children));
+  return partitions;
 }
 
 TEST_F(ProvisionerTest, provisionDag) {
@@ -70,7 +68,7 @@ TEST_F(ProvisionerTest, provisionDag) {
     devices.emplace(i, std::move(device));
   }
   auto provisioner = Provisioner(devices);
-  auto err = provisioner.provision(networks.first, *mod.get());
+  auto err = provisioner.provision(networks, *mod.get());
   // Expect that there was no Error when provisioning
   EXPECT_FALSE(glow::errorToBool(std::move(err)));
 }

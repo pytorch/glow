@@ -56,13 +56,10 @@ class HostManager final {
   /// refuse additional request and return Failed.
   const unsigned int activeRequestLimit_ = 20;
 
-  /// A map from a networkName to the DAG that represents the root of a network.
-  std::unordered_map<std::string, std::unique_ptr<DAGNode>> roots_;
+  /// A map from a networkName to a network, which is represented by struct DAG.
+  std::unordered_map<std::string, DAG> networks_;
 
-  /// A map from a networkName to the DAG that represents the network.
-  std::unordered_map<std::string, std::unique_ptr<DAGNode>> networks_;
-
-  /// Mutex for networks_ and roots_ since runNetwork, addNetwork, and
+  /// Mutex for networks_ since runNetwork, addNetwork, and
   /// removeNetwork can all be called concurrently, a guard is needed.
   std::mutex networkLock_;
 

@@ -75,64 +75,31 @@ ResultCode HostManager::addNetwork(Module *M) {
   auto partitioner = Partitioner(M, deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
   // TODO: pass any errors up the stack.
-  bool failed = glow::errorToBool(provisioner_->provision(nodeList.roots, *M));
+  bool failed = glow::errorToBool(provisioner_->provision(nodeList, *M));
 
   if (failed) {
     return ResultCode::Failed;
   }
 
-  for (auto &node : nodeList.roots) {
-    roots_.emplace(node->name, std::move(node));
-  }
-  for (auto &node : nodeList.nodes) {
-    networks_.emplace(node->name, std::move(node));
+  for (auto &node : nodeList) {
+    networks_.emplace((node.root)->name, std::move(node));
   }
 
   return ResultCode::Ready;
 }
 
 void HostManager::removeNetwork(llvm::StringRef networkName) {
-  // Walk the tree for the given function, calling evict function for each node
-  // before removing it from networks_ which frees the node.
   std::lock_guard<std::mutex> networkLock(networkLock_);
-  if (roots_.find(networkName) == roots_.end()) {
+  auto networkIterator = networks_.find(networkName);
+  if (networkIterator == networks_.end()) {
     return;
   }
-  std::queue<std::string> nodes;
-  std::set<std::string> allNodes;
-  for (auto &child : roots_[networkName]->children) {
-    nodes.push(child->name);
-    allNodes.insert(child->name);
-  }
-
-  while (!nodes.empty()) {
-    auto nodeName = nodes.front();
-    nodes.pop();
-    auto it = networks_.find(nodeName);
-    if (it != networks_.end()) {
-      for (auto &node : it->second->children) {
-        auto name = node->name;
-        if (allNodes.find(node->name) == allNodes.end()) {
-          nodes.push(node->name);
-          allNodes.insert(node->name);
-        }
-      }
-    }
-  }
-  roots_.erase(roots_.find(networkName));
-  for (auto &networkName : allNodes) {
-    auto networkIterator = networks_.find(networkName);
-    if (networkIterator != networks_.end()) {
-      devices_[networkIterator->second->deviceID]->evictNetwork(
-          networkName, /*evictCB=*/nullptr);
-      networks_.erase(networkIterator);
-    }
-  }
+  networks_.erase(networkIterator);
 }
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
-  return roots_.find(networkName) != roots_.end();
+  return networks_.find(networkName) != networks_.end();
 }
 
 void HostManager::clearHost() {
@@ -146,12 +113,13 @@ void HostManager::clearHost() {
   for (auto &it : devices_) {
     it.second->stop();
   }
+
   for (auto &network : networks_) {
-    devices_[network.second->deviceID]->evictNetwork(network.second->name,
-                                                     /*evictCB=*/nullptr);
+    for (auto &node : network.second.nodes) {
+      devices_[node->deviceID]->evictNetwork(node->name, /*evictCB=*/nullptr);
+    }
   }
   networks_.clear();
-  roots_.clear();
 }
 
 RunIdentifierTy
@@ -161,7 +129,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
-  if (roots_.find(networkName) == roots_.end()) {
+  if (networks_.find(networkName) == networks_.end()) {
     callback(currentRun, ResultCode::Failed, std::move(context));
     return currentRun;
   }
@@ -170,7 +138,8 @@ HostManager::runNetwork(llvm::StringRef networkName,
     return currentRun;
   }
   activeRequestCount_++;
-  executor_->run(roots_[networkName].get(), std::move(context), currentRun,
+  executor_->run(networks_[networkName].root.get(), std::move(context),
+                 currentRun,
                  [&activeRequest = this->activeRequestCount_,
                   callback](RunIdentifierTy runID, ResultCode result,
                             std::unique_ptr<ExecutionContext> context) {
