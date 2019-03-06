@@ -37,8 +37,7 @@ public:
   /// devices. The Provisioner calls the addNetwork method for each
   /// DeviceManager. Returns a GlowErr indicating if the operation was a
   /// success.
-  llvm::Error provision(std::vector<std::unique_ptr<DAGNode>> &networks,
-                        Module &module);
+  llvm::Error provision(DAGListTy &networks, Module &module);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per

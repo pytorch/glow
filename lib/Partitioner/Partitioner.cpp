@@ -419,13 +419,13 @@ void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
 /// Current only partition the representive function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
-  std::unique_ptr<DAGNode> DAG = llvm::make_unique<DAGNode>();
-  DAG->logicalDevice = 0;
-  DAG->name = F->getName();
-  DAG->deviceID = 0;
-  DAG->logicalDevice = 0;
-  DAGNode *root = DAG.get();
-  partitions_.roots.push_back(std::move(DAG));
+  rootDAGNodeTy DAGRoot = llvm::make_unique<DAGNode>();
+  nodesDAGNodeTy nodes;
+  DAGRoot->logicalDevice = 0;
+  DAGRoot->name = F->getName();
+  DAGRoot->deviceID = 0;
+  DAGRoot->logicalDevice = 0;
+  DAGNode *root = DAGRoot.get();
   llvm::DenseMap<Node *, Node *> currToNew;
 
   // Clone nodes into target partition.
@@ -446,7 +446,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
       subDAG->name = subF->getName();
       subDAG->logicalDevice = logicalID++;
       funcDAG[subF] = subDAG.get();
-      partitions_.nodes.push_back(std::move(subDAG));
+      nodes.push_back(std::move(subDAG));
     }
 
     // Link subF to its parents.
@@ -467,7 +467,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
           subDAG->name = inputF->getName();
           subDAG->logicalDevice = logicalID++;
           funcDAG[inputF] = subDAG.get();
-          partitions_.nodes.push_back(std::move(subDAG));
+          nodes.push_back(std::move(subDAG));
         }
 
         // subF is a child of inputF, inputF is a parent of subF.
@@ -490,6 +490,11 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
     }
   }
 
+  // Push the DAG {root, nodes} into partitions_.
+  //  DAG newDag = {.root = std::move(DAGRoot), .nodes = std::move(nodes)};
+  partitions_.push_back(
+      {.root = std::move(DAGRoot), .nodes = std::move(nodes)});
+
   // Update links between nodes in the cloned functions. Add placeholders (and
   // save nodes) where a link crosses a partition boundary.
   for (auto *subF : mapping.getPartitions()) {
@@ -508,18 +513,18 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // For all DAGNode without parents, link them to the root DAG.
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG[subF]->parents.size() == 0) {
-      funcDAG[subF]->parents.push_back(DAG.get());
+      funcDAG[subF]->parents.push_back(root);
       root->children.push_back(funcDAG[subF]);
     }
   }
 
   // Adjust the logicalDevice for each DAGNode.
   if (mapping.getPartitions().size() > deviceInfo_.size()) {
-    adjustLogicalDeviceID(DAG.get(), mapping.getPartitions().size());
+    adjustLogicalDeviceID(root, mapping.getPartitions().size());
   }
 }
 
-DAGNodeList &Partitioner::Partition() {
+DAGListTy &Partitioner::Partition() {
 
   // Find the representive function for running partitioning algrithm.
   F_ = selectRepFunc(module_, memSize_);
@@ -529,16 +534,17 @@ DAGNodeList &Partitioner::Partition() {
     // No partition is needed. Create DAGNode and return. This root is alway a
     // dummy function.
     for (auto F : module_->getFunctions()) {
-      std::unique_ptr<DAGNode> DAG = llvm::make_unique<DAGNode>();
-      DAG->logicalDevice = 0;
-      DAG->name = F->getName();
+      std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
+      DAG0->logicalDevice = 0;
+      DAG0->name = F->getName();
       std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
       DAG1->logicalDevice = 0;
       DAG1->name = F->getName();
-      DAG1->parents.push_back(DAG.get());
-      DAG->children.push_back(DAG1.get());
-      partitions_.roots.push_back(std::move(DAG));
-      partitions_.nodes.push_back(std::move(DAG1));
+      DAG1->parents.push_back(DAG0.get());
+      DAG0->children.push_back(DAG1.get());
+      nodesDAGNodeTy nodes;
+      nodes.push_back(std::move(DAG1));
+      partitions_.push_back({std::move(DAG0), std::move(nodes)});
     }
     return partitions_;
   }

@@ -90,7 +90,7 @@ class Partitioner {
   const std::vector<DeviceInfo> &deviceInfo_;
 
   /// The result of module partitioning.
-  DAGNodeList partitions_;
+  DAGListTy partitions_;
 
   /// Total memory (bytes) requested by one module.
   size_t memSize_;
@@ -146,7 +146,7 @@ public:
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices);
 
   /// Decompose each function in a module and return a list of DAGNodes.
-  DAGNodeList &Partition();
+  DAGListTy &Partition();
 
   /// Get function for computeTime_
   ComputeTimeMapTy getComputeTime() const { return computeTime_; }

@@ -88,14 +88,18 @@ struct DAGNode {
   RuntimeBundle runtimeBundle;
 };
 
-/// This struct contains all the created DAGNodes from the Partitioner. The
-/// contained DAGNodes can only refer to the DAGNodes from the same DAGNodeList.
-struct DAGNodeList {
-  /// The root DAGNode pointer of each graph/function.
-  std::vector<std::unique_ptr<DAGNode>> roots;
-  /// The non-root DAGNode pointers.
-  std::vector<std::unique_ptr<DAGNode>> nodes;
+/// This struct represents a DAG. The first element is the root of a DAG, and
+/// the second one is a list of all rest nodes in this DAG.
+using rootDAGNodeTy = std::unique_ptr<DAGNode>;
+using nodesDAGNodeTy = std::vector<std::unique_ptr<DAGNode>>;
+struct DAG {
+  rootDAGNodeTy root;
+  nodesDAGNodeTy nodes;
 };
+
+/// This list contains all the created DAGNodes from the Partitioner. The
+/// contained DAGNodes can only refer to the DAGNodes from the same DAGListTy.
+using DAGListTy = std::vector<DAG>;
 
 /// This is the base class for DeviceManager configurations. Any specific
 /// device can extend this class to contain information to identify

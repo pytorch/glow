@@ -34,33 +34,24 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   backend_.reset(createBackend(backendKind));
 }
 
-void walkNetwork(DAGNode *node,
-                 std::map<DeviceIDTy, std::vector<DAGNode *>> &logicalDevices) {
-
-  auto it = logicalDevices.find(node->logicalDevice);
-  if (it != logicalDevices.end()) {
-    it->second.push_back(node);
-  } else {
-    logicalDevices.emplace(node->logicalDevice, std::vector<DAGNode *>{node});
-  }
-  for (auto &child : node->children) {
-    walkNetwork(child, logicalDevices);
-  }
-}
-
 bool sortMostMemory(const std::pair<DeviceIDTy, uint64_t> &a,
                     const std::pair<DeviceIDTy, uint64_t> &b) {
   return (a.second > b.second);
 }
-llvm::Error
-Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
-                       Module &module) {
+
+llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
 
   for (auto &network : networks) {
-    for (auto &child : network->children) {
-      walkNetwork(child, logicalDevices);
+    for (auto &node : network.nodes) {
+      auto it = logicalDevices.find(node->logicalDevice);
+      if (it != logicalDevices.end()) {
+        it->second.push_back(node.get());
+      } else {
+        logicalDevices.emplace(node->logicalDevice,
+                               std::vector<DAGNode *>{node.get()});
+      }
     }
   }
 

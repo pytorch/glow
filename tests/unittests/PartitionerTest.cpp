@@ -126,15 +126,15 @@ TEST_F(PartitionerTest, Basic1) {
   std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
   Partitioner myPartitioner(&mod_, devices);
 
-  DAGNodeList myList = std::move(myPartitioner.Partition());
+  DAGListTy myList = std::move(myPartitioner.Partition());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.roots.size(), 1);
+  ASSERT_EQ(myList.size(), 1);
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
-  for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
+  for (auto it = myList.begin(); it != myList.end(); ++it) {
     bindings_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
+    executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
@@ -195,15 +195,15 @@ TEST_F(PartitionerTest, Basic2) {
   std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
   Partitioner myPartitioner(&mod_, devices);
 
-  DAGNodeList myList = std::move(myPartitioner.Partition());
+  DAGListTy myList = std::move(myPartitioner.Partition());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
-  ASSERT_EQ(myList.roots.size(), 1);
+  ASSERT_EQ(myList.size(), 1);
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
-  for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
+  for (auto it = myList.begin(); it != myList.end(); ++it) {
     bindings_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
+    executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
@@ -276,7 +276,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
                                      {3072, 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
 
-  DAGNodeList myList = std::move(myPartitioner.Partition());
+  DAGListTy myList = std::move(myPartitioner.Partition());
 
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
@@ -307,5 +307,5 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   }
 
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.roots.size(), 1);
+  ASSERT_EQ(myList.size(), 1);
 }
