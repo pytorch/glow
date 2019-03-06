@@ -26,21 +26,26 @@ GlowOnnxifiManager &GlowOnnxifiManager::get() {
   return manager;
 }
 
-void GlowOnnxifiManager::addBackendId(BackendIdPtr backendId) {
+BackendIdPtr GlowOnnxifiManager::createBackendId(glow::BackendKind kind,
+                                                 bool useOnnx) {
   std::lock_guard<std::mutex> lock(m_);
 
-  assert(!backendIds_.count(backendId));
+  auto *hostManager = getOrCreateHostManager(kind);
+
+  BackendIdPtr backendId = new onnxifi::BackendId(hostManager, kind, useOnnx);
 
   auto res = backendIds_.insert(backendId);
 
   (void)res;
   assert((res.second && *res.first) && "Failed to add new BackendId");
+
+  return backendId;
 }
 
 BackendPtr GlowOnnxifiManager::createBackend(BackendIdPtr backendId) {
   assert(isValid(backendId));
 
-  BackendPtr backend = new Backend(backendId);
+  BackendPtr backend = new onnxifi::Backend(backendId);
 
   std::lock_guard<std::mutex> lock(m_);
 
@@ -52,7 +57,7 @@ BackendPtr GlowOnnxifiManager::createBackend(BackendIdPtr backendId) {
 }
 
 EventPtr GlowOnnxifiManager::createEvent() {
-  EventPtr event = new glow::onnxifi::Event();
+  EventPtr event = new onnxifi::Event();
 
   std::lock_guard<std::mutex> lock(m_);
 
@@ -66,7 +71,7 @@ EventPtr GlowOnnxifiManager::createEvent() {
 GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend) {
   assert(isValid(backend));
 
-  GraphPtr graph = new glow::onnxifi::Graph(backend);
+  GraphPtr graph = new onnxifi::Graph(backend);
 
   std::lock_guard<std::mutex> lock(m_);
 
@@ -75,6 +80,22 @@ GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend) {
   (void)res;
   assert((res.second && *res.first) && "Failed to create new Graph");
   return graph;
+}
+
+runtime::HostManager *
+GlowOnnxifiManager::getOrCreateHostManager(BackendKind backendKind) {
+  auto it = hostManagers_.find(backendKind);
+
+  // If a HostManager doesn't exist yet for this BackendKind then create one
+  if (it == hostManagers_.end()) {
+    auto newHostManager = onnxifi::BackendId::createHostManager(backendKind);
+    assert(newHostManager != nullptr);
+    auto ptr = newHostManager.get();
+    hostManagers_[backendKind] = std::move(newHostManager);
+    return ptr;
+  }
+
+  return it->second.get();
 }
 
 bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) const {

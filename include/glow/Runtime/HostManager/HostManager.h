@@ -103,7 +103,7 @@ public:
   /// specic inference request. Calls \p callback with the results when
   /// inference is done.
   /// Note: This method is intended to be thread-safe, it will be called
-  /// concurrently from mutliple threads.
+  /// concurrently from multiple threads.
   /// Returns -1 if networkName not found or too many active requests.
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<ExecutionContext> context,

@@ -24,13 +24,8 @@ using namespace glow::onnxifi;
 
 TEST(GlowOnnxifiManagerTest, BackendIdTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 1,
-      /*concurrency*/ 1, /*use_onnx*/ true, /*useHostManager*/ false);
-  // BackendId isn't valid before it has been added to the manager.
-  EXPECT_FALSE(manager.isValid(backendId));
-  manager.addBackendId(backendId);
+  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+                                            /*use_onnx*/ true);
   // BackendId is valid after it has been added to the manager.
   EXPECT_TRUE(manager.isValid(backendId));
   manager.release(backendId);
@@ -44,11 +39,8 @@ TEST(GlowOnnxifiManagerTest, BackendIdTest) {
 
 TEST(GlowOnnxifiManagerTest, BackendTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 1,
-      /*concurrency*/ 1, /*use_onnx*/ true, /*useHostManager*/ false);
-  manager.addBackendId(backendId);
+  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+                                            /*use_onnx*/ true);
 
   auto *backend = manager.createBackend(backendId);
   // Backend is valid after it has been created by the manager.
@@ -80,11 +72,9 @@ TEST(GlowOnnxifiManagerTest, EventTest) {
 
 TEST(GlowOnnxifiManagerTest, GraphTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 1,
-      /*concurrency*/ 1, /*use_onnx*/ true, /*useHostManager*/ false);
-  manager.addBackendId(backendId);
+  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+                                            /*use_onnx*/ true);
+
   auto *backend = manager.createBackend(backendId);
 
   auto *graph = manager.createGraph(backend);
@@ -105,11 +95,9 @@ TEST(GlowOnnxifiManagerTest, GraphTest) {
 
 void createAndDestroyManagerObjects() {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 1,
-      /*concurrency*/ 1, /*use_onnx*/ true, /*useHostManager*/ false);
-  manager.addBackendId(backendId);
+  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+                                            /*use_onnx*/ true);
+
   auto *backend = manager.createBackend(backendId);
   auto *event = manager.createEvent();
   auto *graph = manager.createGraph(backend);
