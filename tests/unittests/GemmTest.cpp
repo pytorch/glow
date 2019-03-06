@@ -40,25 +40,25 @@ extern void libjit_matmul_f(float *c, const float *a, const float *b,
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   ExecutionEngine EE(BackendKind::Interpreter);
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *lhsVar =
       mod.createPlaceholder(lhs->getElementType(), lhs->dims(), "lhs", false);
-  ctx.allocate(lhsVar);
+  bindings.allocate(lhsVar);
   auto *rhsVar =
       mod.createPlaceholder(rhs->getElementType(), rhs->dims(), "rhs", false);
-  ctx.allocate(rhsVar);
+  bindings.allocate(rhsVar);
   auto OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
   auto *matmul = F->createMatMul("matmul", OT, lhsVar, rhsVar);
   auto *save = F->createSave("ret", matmul);
-  auto *res = ctx.allocate(save->getPlaceholder());
+  auto *res = bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(ctx, {lhsVar, rhsVar}, {lhs, rhs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {lhsVar, rhsVar}, {lhs, rhs});
+  EE.run(bindings);
 
   out->assign(res);
 }

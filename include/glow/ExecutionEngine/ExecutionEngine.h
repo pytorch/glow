@@ -21,8 +21,8 @@
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Base/Train.h"
 #include "glow/Base/Traits.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -55,8 +55,8 @@ class ExecutionEngine final {
   llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions_;
 
   /// Single execution of the given \compiledFunction with the given context
-  /// \ctx.
-  void runInternal(Context &ctx, llvm::StringRef name,
+  /// \bindings.
+  void runInternal(PlaceholderBindings &bindings, llvm::StringRef name,
                    CompiledFunction &compiledFunction);
 
 public:
@@ -121,13 +121,14 @@ public:
   void save(Function *F, const CompilationOptions &opts,
             llvm::StringRef outputDir, llvm::StringRef networkName);
 
-  /// Context aware single execution of a function. If more than one function
-  /// has been compiled by this ExecutionEngine then a name must be supplied
-  /// to specify which function to run.
-  void run(Context &ctx);
+  /// PlaceholderBindings aware single execution of a function. If more than one
+  /// function has been compiled by this ExecutionEngine then a name must be
+  /// supplied to specify which function to run.
+  void run(PlaceholderBindings &bindings);
 
-  /// Context aware single execution of a function with the given \p name.
-  void run(Context &ctx, llvm::StringRef name);
+  /// PlaceholderBindings aware single execution of a function with the given \p
+  /// name.
+  void run(PlaceholderBindings &bindings, llvm::StringRef name);
 };
 
 //===----------------------------------------------------------------------===//
@@ -135,14 +136,15 @@ public:
 //===----------------------------------------------------------------------===//
 
 /// This method updates the placeholders in \p ph with the tensor content
-/// values \p inputs, in \p ctx.
-void updateInputPlaceholders(Context &ctx, llvm::ArrayRef<Placeholder *> ph,
+/// values \p inputs, in \p bindings.
+void updateInputPlaceholders(PlaceholderBindings &bindings,
+                             llvm::ArrayRef<Placeholder *> ph,
                              llvm::ArrayRef<Tensor *> inputs);
 
 /// This method updates the placeholders in the module. The placeholders are
 /// found by name
 ///  in \p ph with the tensor content values \p inputs.
-void updateInputPlaceholdersByName(Context &ctx, Module *mod,
+void updateInputPlaceholdersByName(PlaceholderBindings &bindings, Module *mod,
                                    llvm::ArrayRef<llvm::StringRef> ph,
                                    llvm::ArrayRef<Tensor *> inputs);
 
@@ -158,8 +160,9 @@ void updateInputPlaceholdersByName(Context &ctx, Module *mod,
 /// variable records the number of samples that were consumed by the network in
 /// previous iterations. The next input to be loaded is
 /// (sampleCounter % batchsize).
-void runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
-              size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
+void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
+              size_t iterations, size_t &sampleCounter,
+              llvm::ArrayRef<Placeholder *> ph,
               llvm::ArrayRef<Tensor *> inputs);
 
 } // namespace glow

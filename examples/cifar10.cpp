@@ -60,21 +60,22 @@ const size_t cifarImageSize = 1 + (32 * 32 * 3);
 const size_t cifarNumImages = 10000;
 const unsigned numLabels = 10;
 
-static Placeholder *createDefaultModel(Context &ctx, Function *F,
-                                       NodeValue input, NodeValue expected) {
-  auto *CV0 = F->createConv(ctx, "conv", input, 16, 5, 1, 2, 1);
+static Placeholder *createDefaultModel(PlaceholderBindings &bindings,
+                                       Function *F, NodeValue input,
+                                       NodeValue expected) {
+  auto *CV0 = F->createConv(bindings, "conv", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv(ctx, "conv", MP0, 20, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv(ctx, "conv", MP1, 20, 5, 1, 2, 1);
+  auto *CV2 = F->createConv(bindings, "conv", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu", CV2);
   auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, numLabels);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP2, numLabels);
   auto *SM = F->createSoftMax("softmax", FCL1, expected);
   auto *save = F->createSave("ret", SM);
   return save->getPlaceholder();
@@ -82,8 +83,8 @@ static Placeholder *createDefaultModel(Context &ctx, Function *F,
 
 /// Creates a VGG Model. Inspired by pytorch/torchvision vgg.py/vgg11:
 /// https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
-static Placeholder *createVGGModel(Context &ctx, Function *F, NodeValue input,
-                                   NodeValue expected) {
+static Placeholder *createVGGModel(PlaceholderBindings &bindings, Function *F,
+                                   NodeValue input, NodeValue expected) {
   NodeValue v = input;
 
   // Create feature detection part.
@@ -92,7 +93,7 @@ static Placeholder *createVGGModel(Context &ctx, Function *F, NodeValue input,
     if (c == 0) {
       v = F->createMaxPool("pool", v, 2, 2, 0);
     } else {
-      auto *conv = F->createConv(ctx, "conv", v, c, 3, 1, 1, 1);
+      auto *conv = F->createConv(bindings, "conv", v, c, 3, 1, 1, 1);
       auto *relu = F->createRELU("relu", conv);
       v = relu;
     }
@@ -100,13 +101,13 @@ static Placeholder *createVGGModel(Context &ctx, Function *F, NodeValue input,
 
   // Create classifier part.
   for (unsigned i = 0; i < 2; ++i) {
-    auto *fc0 = F->createFullyConnected(ctx, "fc", v, 4096);
+    auto *fc0 = F->createFullyConnected(bindings, "fc", v, 4096);
     auto *relu0 = F->createRELU("relu", fc0);
     // TODO: There is not builtin dropout node in glow yet
     // Dropout
     v = relu0;
   }
-  v = F->createFullyConnected(ctx, "fc", v, numLabels);
+  v = F->createFullyConnected(bindings, "fc", v, numLabels);
   auto *softmax = F->createSoftMax("softmax", v, expected);
   auto *save = F->createSave("ret", softmax);
   return save->getPlaceholder();
@@ -161,7 +162,7 @@ void testCIFAR10() {
   TrainingConfig TC;
 
   ExecutionEngine EE(executionBackend);
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TC.learningRate = 0.001;
   TC.momentum = 0.9;
@@ -174,15 +175,15 @@ void testCIFAR10() {
   // Create the input layer:
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {minibatchSize, 32, 32, 3},
                                   "input", false);
-  ctx.allocate(A);
+  bindings.allocate(A);
   auto *E = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1},
                                   "expected", false);
-  ctx.allocate(E);
+  bindings.allocate(E);
 
   auto createModel =
       model == ModelKind::MODEL_SIMPLE ? createDefaultModel : createVGGModel;
-  auto *resultPH = createModel(ctx, F, A, E);
-  auto *result = ctx.allocate(resultPH);
+  auto *resultPH = createModel(bindings, F, A, E);
+  auto *result = bindings.allocate(resultPH);
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
@@ -207,15 +208,16 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    runBatch(EE, ctx, reportRate, sampleCounter, {A, E}, {&images, &labels});
+    runBatch(EE, bindings, reportRate, sampleCounter, {A, E},
+             {&images, &labels});
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      updateInputPlaceholders(ctx, {A}, {&sample});
-      EE.run(ctx);
+      updateInputPlaceholders(bindings, {A}, {&sample});
+      EE.run(bindings);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {
         auto T = result->getHandle<>().extractSlice(iter);

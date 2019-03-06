@@ -76,26 +76,26 @@ public:
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
-  /// Context should have all Placeholders allocated. resultCB will be called
-  /// with the Context results filled.
+  /// PlaceholderBindings \p bindings should have all Placeholders allocated.
+  /// resultCB will be called with the bindings results filled.
   RunIdentifierTy runFunction(std::string functionName,
-                              std::unique_ptr<Context> ctx,
+                              std::unique_ptr<PlaceholderBindings> bindings,
                               ResultCBTy callback) override {
     auto funcIt = functions_.find(functionName);
     if (funcIt == functions_.end()) {
-      callback(0, ResultCode::Failed, std::move(ctx));
+      callback(0, ResultCode::Failed, std::move(bindings));
       return 0;
     }
 
     CompiledFunction *func = funcIt->second;
 
     func->setupRuns();
-    func->beforeRun(*ctx.get());
-    func->execute(ctx.get());
-    func->afterRun(*ctx.get());
+    func->beforeRun(*bindings.get());
+    func->execute(bindings.get());
+    func->afterRun(*bindings.get());
 
     // Fire the resultCB.
-    callback(0, ResultCode::Executed, std::move(ctx));
+    callback(0, ResultCode::Executed, std::move(bindings));
 
     return 0;
   }

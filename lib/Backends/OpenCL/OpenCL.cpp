@@ -621,8 +621,8 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-void OpenCLFunction::execute(Context *ctx) {
-  (void)ctx;
+void OpenCLFunction::execute(PlaceholderBindings *bindings) {
+  (void)bindings;
 
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.
@@ -1466,8 +1466,8 @@ void OpenCLFunction::setupRuns() {
   }
 }
 
-void OpenCLFunction::beforeRun(const Context &ctx) {
-  for (auto PH : ctx.pairs()) {
+void OpenCLFunction::beforeRun(const PlaceholderBindings &bindings) {
+  for (auto PH : bindings.pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
@@ -1488,8 +1488,8 @@ void OpenCLFunction::beforeRun(const Context &ctx) {
   clFinish(commands_);
 }
 
-void OpenCLFunction::afterRun(const Context &ctx) {
-  for (auto PH : ctx.pairs()) {
+void OpenCLFunction::afterRun(const PlaceholderBindings &bindings) {
+  for (auto PH : bindings.pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;

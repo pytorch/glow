@@ -15,7 +15,7 @@
  */
 #include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 
-#include "glow/Graph/Context.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
 
@@ -33,9 +33,9 @@ void LLVMCompiledFunction::collectConstants(Module *module) {
 }
 
 void LLVMCompiledFunction::loadPlaceholders(
-    Context *ctx, uint8_t *baseMutableWeightVarsAddress) {
+    PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
   // Copy Placeholders into allocated memory.
-  for (auto PH : ctx->pairs()) {
+  for (auto PH : bindings->pairs()) {
     auto payload = PH.second->getUnsafePtr();
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
@@ -46,9 +46,9 @@ void LLVMCompiledFunction::loadPlaceholders(
 }
 
 void LLVMCompiledFunction::updatePlaceholders(
-    Context *ctx, uint8_t *baseMutableWeightVarsAddress) {
-  // Copy placeholders from device back into context.
-  for (auto PH : ctx->pairs()) {
+    PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
+  // Copy placeholders from device back into bindings.
+  for (auto PH : bindings->pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
     auto numBytes = symbolInfo.size;
@@ -58,7 +58,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   }
 }
 
-void LLVMCompiledFunction::execute(Context *ctx) {
+void LLVMCompiledFunction::execute(PlaceholderBindings *bindings) {
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -74,7 +74,7 @@ void LLVMCompiledFunction::execute(Context *ctx) {
         runtimeBundle_.getMutableWeightSize(), TensorAlignment);
   }
 
-  loadPlaceholders(ctx, baseMutableWeightVarsAddress);
+  loadPlaceholders(bindings, baseMutableWeightVarsAddress);
 
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
@@ -90,15 +90,16 @@ void LLVMCompiledFunction::execute(Context *ctx) {
     GLOW_UNREACHABLE("Error getting address");
   }
 
-  updatePlaceholders(ctx, baseMutableWeightVarsAddress);
+  updatePlaceholders(bindings, baseMutableWeightVarsAddress);
 
   alignedFree(baseMutableWeightVarsAddress);
   alignedFree(baseActivationsAddress);
 
-  translateTraceEvents(ctx);
+  translateTraceEvents(bindings);
 }
 
-void LLVMCompiledFunction::translateTraceEvents(Context *ctx) const {
+void LLVMCompiledFunction::translateTraceEvents(
+    PlaceholderBindings *bindings) const {
   auto &traceInfo = getTraceInfo();
   if (!traceInfo.enabled) {
     return;
@@ -107,10 +108,10 @@ void LLVMCompiledFunction::translateTraceEvents(Context *ctx) const {
   int tid = 0;
   for (auto &backing : traceInfo.events) {
     tid++;
-    Tensor *backingTensor = ctx->get(backing.first);
+    Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);
 
-    auto &traceEvents = ctx->getTraceEvents();
+    auto &traceEvents = bindings->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
       uint64_t ts{0};
       memcpy(&ts,

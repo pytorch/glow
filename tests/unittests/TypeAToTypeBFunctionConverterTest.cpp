@@ -66,14 +66,14 @@ protected:
 TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
-  auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
+  auto *FC = F->createFullyConnected(bindings, "FC", input, 10);
   auto *result = F->createSave("save", FC, output);
 
   size_t origGraphSize = F->getNodes().size();
@@ -170,14 +170,14 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
 TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
-  auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
+  auto *FC = F->createFullyConnected(bindings, "FC", input, 10);
   auto *ReLU =
       F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
@@ -293,14 +293,14 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
 TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 10}, "Output", false);
 
-  auto *FC = F->createFullyConnected(ctx, "FC", input, 10);
+  auto *FC = F->createFullyConnected(bindings, "FC", input, 10);
   auto *ReLU =
       F->createRELU("ReLU", FC, FC->getType(FullyConnectedNode::ResultIdx));
   auto *result = F->createSave("save", ReLU, output);
@@ -406,7 +406,7 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
 TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
@@ -523,7 +523,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
 TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
@@ -707,11 +707,11 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
   Function *F = mod.createFunction("test");
   Function *F2 = mod.createFunction("test2");
   Function *F3 = mod.createFunction("test3");
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
-  Tensor *inputTensor = ctx.allocate(input);
+  Tensor *inputTensor = bindings.allocate(input);
   inputTensor->getHandle().randomize(-6.0, 6.0, mod.getPRNG());
   Tensor origInput;
   origInput.assign(inputTensor);
@@ -752,7 +752,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
     if (output2 == placeholder) {
       continue;
     }
-    converter.convertPlaceholder(*placeholder, &ctx);
+    converter.convertPlaceholder(*placeholder, &bindings);
   }
 
   // We should have 2 more nodes in F:

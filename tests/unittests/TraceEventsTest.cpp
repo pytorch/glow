@@ -15,8 +15,8 @@
  */
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRBuilder.h"
 
 #include "gtest/gtest.h"
@@ -45,31 +45,31 @@ public:
 
   // Split a sample network into four parts to make it easy to insert
   // TraceEventNodes.
-  Node *part_one(Function *F, Context &ctx) {
-    auto *CV0 = F->createConv(ctx, "conv1", inputPH, 16, 5, 1, 2, 1);
+  Node *part_one(Function *F, PlaceholderBindings &bindings) {
+    auto *CV0 = F->createConv(bindings, "conv1", inputPH, 16, 5, 1, 2, 1);
     auto *RL0 = F->createRELU("relu1", CV0);
     auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
     return MP0;
   }
 
-  Node *part_two(Function *F, Context &ctx, Node *last) {
-    auto *CV1 = F->createConv(ctx, "conv2", last, 20, 5, 1, 2, 1);
+  Node *part_two(Function *F, PlaceholderBindings &bindings, Node *last) {
+    auto *CV1 = F->createConv(bindings, "conv2", last, 20, 5, 1, 2, 1);
     auto *RL1 = F->createRELU("relu2", CV1);
     auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
     return MP1;
   }
 
-  Node *part_three(Function *F, Context &ctx, Node *last) {
-    auto *CV2 = F->createConv(ctx, "conv3", last, 20, 5, 1, 2, 1);
+  Node *part_three(Function *F, PlaceholderBindings &bindings, Node *last) {
+    auto *CV2 = F->createConv(bindings, "conv3", last, 20, 5, 1, 2, 1);
     auto *RL2 = F->createRELU("relu3", CV2);
     auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
     return MP2;
   }
 
-  Node *part_four(Function *F, Context &ctx, Node *last) {
+  Node *part_four(Function *F, PlaceholderBindings &bindings, Node *last) {
     auto *ex = F->getParent()->createPlaceholder(ElemKind::Int64ITy, {1, 1},
                                                  "exp", false);
-    auto *FCL1 = F->createFullyConnected(ctx, "fc", last, 10);
+    auto *FCL1 = F->createFullyConnected(bindings, "fc", last, 10);
     auto *RL3 = F->createRELU("relu4", FCL1);
     auto *SM = F->createSoftMax("sm", RL3, ex);
     auto *S = F->createSave("ret", SM);
@@ -110,33 +110,33 @@ public:
 };
 
 TEST_P(TraceEventsTest, manualEvents) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, ctx);
-  n = part_two(F, ctx, n);
+  auto *n = part_one(F, bindings);
+  n = part_two(F, bindings, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, {{"first half", "B"},
@@ -147,7 +147,7 @@ TEST_P(TraceEventsTest, manualEvents) {
   checkEventTimestamps(traceEvents);
 
   // Check that each timestamp matches the tensor
-  auto eventHandle = ctx.get(eventData)->getHandle<int64_t>();
+  auto eventHandle = bindings.get(eventData)->getHandle<int64_t>();
   eventId = 0;
   for (const auto &event : traceEvents) {
     ASSERT_EQ(event.timestamp, eventHandle.at({eventId++, 0}));
@@ -155,31 +155,31 @@ TEST_P(TraceEventsTest, manualEvents) {
 }
 
 TEST_P(TraceEventsTest, incompleteCoverage) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  auto *n = part_one(F, ctx);
-  n = part_two(F, ctx, n);
+  auto *n = part_one(F, bindings);
+  n = part_two(F, bindings, n);
 
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, {{"second half", "B"}, {"second half", "E"}});
@@ -187,7 +187,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   checkEventTimestamps(traceEvents);
 
   // Check that each timestamp matches the tensor
-  auto eventHandle = ctx.get(eventData)->getHandle<int64_t>();
+  auto eventHandle = bindings.get(eventData)->getHandle<int64_t>();
   eventId = 0;
   for (const auto &event : traceEvents) {
     ASSERT_EQ(event.timestamp, eventHandle.at({eventId++, 0}));
@@ -195,30 +195,30 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 }
 
 TEST_P(TraceEventsTest, internalGap) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  auto *n = part_one(F, ctx);
+  auto *n = part_one(F, bindings);
 
   F->createTraceEvent("middle section", "B", eventData, eventId++);
-  n = part_two(F, ctx, n);
-  n = part_three(F, ctx, n);
+  n = part_two(F, bindings, n);
+  n = part_three(F, bindings, n);
   F->createTraceEvent("middle section", "E", eventData, eventId++);
 
-  n = part_four(F, ctx, n);
+  n = part_four(F, bindings, n);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents,
@@ -227,7 +227,7 @@ TEST_P(TraceEventsTest, internalGap) {
   checkEventTimestamps(traceEvents);
 
   // Check that each timestamp matches the tensor
-  auto eventHandle = ctx.get(eventData)->getHandle<int64_t>();
+  auto eventHandle = bindings.get(eventData)->getHandle<int64_t>();
   eventId = 0;
   for (const auto &event : traceEvents) {
     ASSERT_EQ(event.timestamp, eventHandle.at({eventId++, 0}));
@@ -235,14 +235,14 @@ TEST_P(TraceEventsTest, internalGap) {
 }
 
 TEST_P(TraceEventsTest, automaticInstrumentation) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
-  auto *n = part_one(F, ctx);
-  n = part_two(F, ctx, n);
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  auto *n = part_one(F, bindings);
+  n = part_two(F, bindings, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
@@ -250,35 +250,35 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   backend->optimizeFunction(F, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
   checkEventTimestamps(traceEvents);
 }
 
 TEST_P(TraceEventsTest, manualAndAutomatic) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, ctx);
-  n = part_two(F, ctx, n);
+  auto *n = part_one(F, bindings);
+  n = part_two(F, bindings, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
@@ -286,10 +286,10 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   backend->optimizeFunction(F, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), numEvents);
   size_t manualEvents = 0;
@@ -302,7 +302,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 }
 
 TEST_P(TraceEventsTest, onlyTraceEvents) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 16;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -315,22 +315,22 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
     expected.push_back({name, "X"});
   }
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, expected);
   checkEventTimestamps(traceEvents);
 
   // Check that each timestamp matches the tensor
-  auto eventHandle = ctx.get(eventData)->getHandle<int64_t>();
+  auto eventHandle = bindings.get(eventData)->getHandle<int64_t>();
   eventId = 0;
   for (const auto &event : traceEvents) {
     ASSERT_EQ(event.timestamp, eventHandle.at({eventId++, 0}));
@@ -338,18 +338,18 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 }
 
 TEST_P(TraceEventsTest, multipleBackingTensors) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 6;
   auto *eventData1 = createEventPlaceholder(3);
   auto *eventData2 = createEventPlaceholder(3);
 
   F->createTraceEvent("event1", "B", eventData1, 0);
-  auto *n = part_one(F, ctx);
+  auto *n = part_one(F, bindings);
   F->createTraceEvent("event1", "E", eventData1, 1);
 
   F->createTraceEvent("event2", "B", eventData2, 0);
-  n = part_two(F, ctx, n);
+  n = part_two(F, bindings, n);
   F->createTraceEvent("event2", "E", eventData2, 1);
 
   // now lets split between two tensors
@@ -358,19 +358,19 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   auto *eventData4 = createEventPlaceholder(1);
 
   F->createTraceEvent("event3", "B", eventData3, 0);
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
   F->createTraceEvent("event3", "E", eventData4, 0);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
+  EE_.run(bindings);
 
-  auto &traceEvents = ctx.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
 
@@ -394,39 +394,39 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 }
 
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, ctx);
-  n = part_two(F, ctx, n);
+  auto *n = part_one(F, bindings);
+  n = part_two(F, bindings, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
-  n = part_three(F, ctx, n);
-  n = part_four(F, ctx, n);
+  n = part_three(F, bindings, n);
+  n = part_four(F, bindings, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
-  ctx.allocate(EE_.getModule().getPlaceholders());
+  bindings.allocate(EE_.getModule().getPlaceholders());
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   EE_.compile(F, opts);
 
-  updateInputPlaceholders(ctx, {inputPH}, {&inputs});
+  updateInputPlaceholders(bindings, {inputPH}, {&inputs});
 
-  Context ctx2{ctx.clone()};
+  PlaceholderBindings bindings2{bindings.clone()};
 
   // run twice
-  EE_.run(ctx);
-  EE_.run(ctx2);
+  EE_.run(bindings);
+  EE_.run(bindings2);
 
-  auto &traceEvents = ctx.getTraceEvents();
-  auto &traceEvents2 = ctx2.getTraceEvents();
+  auto &traceEvents = bindings.getTraceEvents();
+  auto &traceEvents2 = bindings2.getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   ASSERT_EQ(traceEvents2.size(), numEvents);

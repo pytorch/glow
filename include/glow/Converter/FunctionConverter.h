@@ -23,7 +23,7 @@
 #include <utility> // For std::pair.
 
 namespace glow {
-class Context;
+class PlaceholderBindings;
 class Function;
 class Node;
 struct NodeValue;
@@ -170,7 +170,8 @@ public:
   /// Note: If \p placeholder is used in functions other than F, changes to
   /// those functions will be made as well to accommodate the converted
   /// placeholder.
-  void convertPlaceholder(Placeholder &placeholder, Context *context);
+  void convertPlaceholder(Placeholder &placeholder,
+                          PlaceholderBindings *context);
 };
 } // namespace glow
 #endif

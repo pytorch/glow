@@ -245,7 +245,7 @@ const vector<const char *> TrainingData{
 namespace {
 struct HyphenNetwork {
   /// The execution context.
-  Context ctx_;
+  PlaceholderBindings bindings_;
 
   /// The input variable is N x 6 x 27 as encoded by mapLetterWindow().
   Placeholder *input_;
@@ -268,16 +268,16 @@ struct HyphenNetwork {
         expected_(mod.createPlaceholder(ElemKind::Int64ITy, {conf.batchSize, 1},
                                         "expected", false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
-    ctx_.allocate(input_);
-    ctx_.allocate(expected_);
+    bindings_.allocate(input_);
+    bindings_.allocate(expected_);
     Node *n;
 
-    n = infer_->createFullyConnected(ctx_, "hidden_fc", input_, 10);
+    n = infer_->createFullyConnected(bindings_, "hidden_fc", input_, 10);
     n = infer_->createRELU("hidden", n);
-    n = infer_->createFullyConnected(ctx_, "output_fc", n, 2);
+    n = infer_->createFullyConnected(bindings_, "output_fc", n, 2);
     n = infer_->createSoftMax("output", n, expected_);
     result_ = infer_->createSave("result", n);
-    ctx_.allocate(result_->getPlaceholder());
+    bindings_.allocate(result_->getPlaceholder());
     train_ = glow::differentiate(infer_, conf);
   }
 
@@ -293,7 +293,7 @@ struct HyphenNetwork {
     auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
-    auto resultHandle = ctx_.get(result_->getPlaceholder())->getHandle<>();
+    auto resultHandle = bindings_.get(result_->getPlaceholder())->getHandle<>();
     unsigned errors = 0;
 
     for (size_t bi = 0; bi < numSamples; bi += batchSize) {
@@ -304,8 +304,8 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      updateInputPlaceholders(ctx_, {input_}, {&batchInputs});
-      EE.run(ctx_);
+      updateInputPlaceholders(bindings_, {input_}, {&batchInputs});
+      EE.run(bindings_);
 
       // Check each output in the batch.
       for (size_t i = 0; i != batchSize; i++) {
@@ -368,7 +368,7 @@ TEST(HyphenTest, network) {
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train, net.train_);
-  runBatch(EE, net.ctx_, 1000, sampleCounter, {net.input_, net.expected_},
+  runBatch(EE, net.bindings_, 1000, sampleCounter, {net.input_, net.expected_},
            {&inputs, &expected});
 
   // Now test inference on the trained network.

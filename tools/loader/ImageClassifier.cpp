@@ -157,16 +157,17 @@ createProtobufLoader(Loader &loader, TypeRef inputImageType) {
   return LD;
 }
 
-/// Given \p loader, the \p ctx, and \p inputImageType, build the graph from the
-/// provided protobuf file found via \p loader. Then compiles and \returns a
-/// pair of pointers to the input Placeholder and output Tensor for the Softmax.
+/// Given \p loader, the \p bindings, and \p inputImageType, build the graph
+/// from the provided protobuf file found via \p loader. Then compiles and
+/// \returns a pair of pointers to the input Placeholder and output Tensor for
+/// the Softmax.
 static std::pair<Placeholder *, Tensor *>
-buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
+buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   TypeRef inputImageType) {
   auto LD = createProtobufLoader(loader, inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
-  ctx.allocate(loader.getModule()->getPlaceholders());
+  bindings.allocate(loader.getModule()->getPlaceholders());
 
   // Convert the placeholders for now. The backing Tensor's data will be
   // converted later.
@@ -174,13 +175,13 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
     TypeAToTypeBFunctionConverter converter(
         *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
     for (auto *placeholder : loader.getModule()->getPlaceholders()) {
-      converter.convertPlaceholder(*placeholder, &ctx);
+      converter.convertPlaceholder(*placeholder, &bindings);
     }
   }
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile(ctx);
+  loader.compile(bindings);
 
   // The image name that the model expects must be passed on the command line.
   const char *inputName = modelInputName.c_str();
@@ -190,7 +191,7 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, Context &ctx,
   // Get the Tensor from the Placeholder that the final expected Softmax writes
   // into at the end of image inference.
   Placeholder *SMPH = EXIT_ON_ERR(LD->getSingleOutput());
-  Tensor *SMT = ctx.get(SMPH);
+  Tensor *SMT = bindings.get(SMPH);
 
   return std::make_pair(inputImagePH, SMT);
 }
@@ -319,7 +320,7 @@ static void processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
 }
 
 int main(int argc, char **argv) {
-  Context ctx;
+  PlaceholderBindings bindings;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -351,7 +352,7 @@ int main(int argc, char **argv) {
       // Build and compile the graph, and then get back the input Placeholder
       // and output Softmax Tensor.
       std::pair<Placeholder *, Tensor *> inputOutputPair =
-          buildAndCompileAndGetInAndOutPair(loader, ctx,
+          buildAndCompileAndGetInAndOutPair(loader, bindings,
                                             &inputImageData.getType());
 
       // If in bundle mode, the bundle has been saved by the above call, so we
@@ -375,10 +376,10 @@ int main(int argc, char **argv) {
 
     // About to run inference, so update the input image Placeholder's backing
     // Tensor with inputImageData.
-    updateInputPlaceholders(ctx, {inputImagePH}, {&inputImageData});
+    updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
 
     // Perform the inference execution, updating SMT.
-    loader.runInference(ctx);
+    loader.runInference(bindings);
 
     // Print the top-k results from the output Softmax tensor.
     processAndPrintResults(SMT, loader.getFunction()->getName());
@@ -387,7 +388,7 @@ int main(int argc, char **argv) {
   // If profiling, generate and serialize the quantization infos now that we
   // have run inference one or more times to gather the profile.
   if (profilingGraph()) {
-    loader.generateAndSerializeQuantizationInfos(ctx);
+    loader.generateAndSerializeQuantizationInfos(bindings);
   }
 
   return 0;

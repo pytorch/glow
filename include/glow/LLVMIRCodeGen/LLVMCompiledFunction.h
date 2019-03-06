@@ -31,23 +31,26 @@ public:
   /// \name CompiledFunction interface
   ///@{
   virtual ~LLVMCompiledFunction() override;
-  virtual void execute(Context *ctx) override;
+  virtual void execute(PlaceholderBindings *bindings) override;
 
   virtual void collectConstants(Module *module) override;
 
-  /// Read trace events out of this func and write them into /p ctx
-  virtual void translateTraceEvents(Context *ctx) const override;
+  /// Read trace events out of this func and write them into /p bindings
+  virtual void
+  translateTraceEvents(PlaceholderBindings *bindings) const override;
   ///@}
   //
 
 protected:
-  /// Load constant tensors from \p ctx into \p weightsAddress, as defined by
-  /// the RuntimeBundle (pre-run).
-  virtual void loadPlaceholders(Context *ctx, uint8_t *weightsAddress);
+  /// Load constant tensors from \p bindings into \p weightsAddress, as defined
+  /// by the RuntimeBundle (pre-run).
+  virtual void loadPlaceholders(PlaceholderBindings *bindings,
+                                uint8_t *weightsAddress);
 
   /// Load weights from \p weightsAddress into applicable backing tensors in
-  /// \p ctx, as defined by the RuntimeBundle (post-run).
-  virtual void updatePlaceholders(Context *ctx, uint8_t *weightsAddress);
+  /// \p bindings, as defined by the RuntimeBundle (post-run).
+  virtual void updatePlaceholders(PlaceholderBindings *bindings,
+                                  uint8_t *weightsAddress);
 
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.

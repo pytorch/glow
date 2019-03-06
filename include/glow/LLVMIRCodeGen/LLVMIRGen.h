@@ -29,7 +29,7 @@
 
 namespace glow {
 
-class Context;
+class PlaceholderBindings;
 class IRFunction;
 class Value;
 class Tensor;

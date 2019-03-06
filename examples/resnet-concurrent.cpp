@@ -106,18 +106,20 @@ std::future<ResultCode> addToDevice(unsigned int id, DeviceManager *device,
 }
 
 /// Starts a run of resnet50 on the given image. The image must be already
-/// loaded into the input placeholder in /p ctx.
+/// loaded into the input placeholder in /p bindings.
 /// If, at the end of the run the number of \p returned results is equal to
 /// maxImages, the \p finished promise is set.
 void dispatchClassify(unsigned int id, DeviceManager *device, std::string path,
-                      Placeholder *output, std::unique_ptr<Context> ctx,
+                      Placeholder *output,
+                      std::unique_ptr<PlaceholderBindings> bindings,
                       std::atomic<size_t> &returned,
                       std::promise<void> &finished) {
   device->runFunction(
-      "resnet50", std::move(ctx),
-      [id, path, output, &returned, &finished](RunIdentifierTy, ResultCode r,
-                                               std::unique_ptr<Context> ctx) {
-        size_t maxIdx = ctx->get(output)->getHandle<>().minMaxArg().second;
+      "resnet50", std::move(bindings),
+      [id, path, output, &returned,
+       &finished](RunIdentifierTy, ResultCode r,
+                  std::unique_ptr<PlaceholderBindings> bindings) {
+        size_t maxIdx = bindings->get(output)->getHandle<>().minMaxArg().second;
 
         llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
         if (++returned == maxImages) {
@@ -201,12 +203,12 @@ int main(int argc, char **argv) {
 
     Tensor batch = image.getUnowned(inputType->dims());
 
-    auto ctx = llvm::make_unique<Context>();
-    ctx->allocate(module.getPlaceholders());
-    updateInputPlaceholders(*ctx, {input}, {&batch});
+    auto bindings = llvm::make_unique<PlaceholderBindings>();
+    bindings->allocate(module.getPlaceholders());
+    updateInputPlaceholders(*bindings, {input}, {&batch});
 
     dispatchClassify(started, devices[started % numDevices].get(),
-                     std::move(path), output, std::move(ctx), returned,
+                     std::move(path), output, std::move(bindings), returned,
                      finished);
 
     dirIt.increment(code);

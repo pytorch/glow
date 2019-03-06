@@ -244,7 +244,7 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
   GLOW_UNREACHABLE("Unknown node name.");
 }
 
-void Loader::compile(Context &ctx) {
+void Loader::compile(PlaceholderBindings &bindings) {
   // Handle the request to profile the graph in preperation for quantization.
   if (!dumpProfileFileOpt.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
@@ -271,7 +271,7 @@ void Loader::compile(Context &ctx) {
             doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    F_ = ::profileQuantization(ctx, F_);
+    F_ = ::profileQuantization(bindings, F_);
   }
 
   // By default, when converting models, all nodes that can be
@@ -343,7 +343,7 @@ void Loader::compile(Context &ctx) {
   }
 }
 
-void Loader::runInference(Context &ctx) {
+void Loader::runInference(PlaceholderBindings &bindings) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
 
@@ -352,7 +352,7 @@ void Loader::runInference(Context &ctx) {
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterationsOpt; i++) {
-    EE_.run(ctx);
+    EE_.run(bindings);
   }
   if (timeOpt) {
     timer.stopTimer();
@@ -362,12 +362,13 @@ void Loader::runInference(Context &ctx) {
   }
 }
 
-void Loader::generateAndSerializeQuantizationInfos(Context &ctx) {
+void Loader::generateAndSerializeQuantizationInfos(
+    PlaceholderBindings &bindings) {
   assert(!dumpProfileFileOpt.empty() &&
          "Filename to dump serialized profile to must not be empty.");
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          ctx, F_, loweredMap_, quantizationSchema, quantizationPrecision);
+          bindings, F_, loweredMap_, quantizationSchema, quantizationPrecision);
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 

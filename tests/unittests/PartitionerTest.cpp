@@ -28,11 +28,11 @@ public:
 protected:
   Module mod_;
   Function *F_;
-  Context ctx_;
+  PlaceholderBindings bindings_;
 };
 
 /// Execute a graph of functions based on the given DAG.
-static void executeDAG(DAGNode *G, Module &mod, Context &ctx,
+static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
                        llvm::ArrayRef<Placeholder *> vars,
                        llvm::ArrayRef<Tensor *> inputs) {
   std::unordered_map<std::string, Function *> name2func;
@@ -54,8 +54,8 @@ static void executeDAG(DAGNode *G, Module &mod, Context &ctx,
       ExecutionEngine EE;
       Function *func = name2func[dag->name];
       EE.compile(CompilationMode::Infer, func);
-      updateInputPlaceholders(ctx, vars, inputs);
-      EE.run(ctx);
+      updateInputPlaceholders(bindings, vars, inputs);
+      EE.run(bindings);
     }
     for (int i = 0, e = dag->children.size(); i < e; i++) {
       exeList.push_back(dag->children.at(i));
@@ -73,7 +73,7 @@ TEST_F(PartitionerTest, Basic1) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
-  ctx_.allocate(input);
+  bindings_.allocate(input);
   w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
   b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
 
@@ -112,15 +112,15 @@ TEST_F(PartitionerTest, Basic1) {
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
   auto *save = F_->createSave("ret", mul);
-  auto &res = *ctx_.allocate(save->getPlaceholder());
+  auto &res = *bindings_.allocate(save->getPlaceholder());
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
-  updateInputPlaceholders(ctx_, {input}, {&in});
-  EE.run(ctx_);
+  updateInputPlaceholders(bindings_, {input}, {&in});
+  EE.run(bindings_);
   Tensor ref = res.clone();
 
   std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
@@ -131,10 +131,10 @@ TEST_F(PartitionerTest, Basic1) {
   ASSERT_EQ(myList.roots.size(), 1);
 
   // Run the paritioned graph and compare the results.
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
-    ctx_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, ctx_, {input}, {&in});
+    bindings_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
@@ -148,8 +148,8 @@ TEST_F(PartitionerTest, Basic2) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input1", false);
-  ctx_.allocate(input);
-  ctx_.allocate(input1);
+  bindings_.allocate(input);
+  bindings_.allocate(input1);
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
@@ -181,15 +181,15 @@ TEST_F(PartitionerTest, Basic2) {
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
   auto *save = F_->createSave("ret", mul);
-  auto &res = *ctx_.allocate(save->getPlaceholder());
+  auto &res = *bindings_.allocate(save->getPlaceholder());
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
-  updateInputPlaceholders(ctx_, {input, input1}, {&in, &in});
-  EE.run(ctx_);
+  updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
+  EE.run(bindings_);
   Tensor ref = res.clone();
 
   std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
@@ -200,10 +200,10 @@ TEST_F(PartitionerTest, Basic2) {
   ASSERT_EQ(myList.roots.size(), 1);
 
   // Run the paritioned graph and compare the results.
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
-    ctx_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, ctx_, {input}, {&in});
+    bindings_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
@@ -216,7 +216,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
-  ctx_.allocate(input);
+  bindings_.allocate(input);
   w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
   b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
 
@@ -255,15 +255,15 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
   auto *save = F_->createSave("ret", mul);
-  auto &res = *ctx_.allocate(save->getPlaceholder());
+  auto &res = *bindings_.allocate(save->getPlaceholder());
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
-  updateInputPlaceholders(ctx_, {input}, {&in});
-  EE.run(ctx_);
+  updateInputPlaceholders(bindings_, {input}, {&in});
+  EE.run(bindings_);
   Tensor ref = res.clone();
 
   std::unordered_map<Node *, std::string> nodeNamesMap;

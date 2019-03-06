@@ -142,23 +142,25 @@ int main(int argc, char **argv) {
   Tensor batch = image.getUnowned(inputType->dims());
 
   llvm::outs() << "Starting Run.\n";
-  std::array<std::promise<std::unique_ptr<Context>>, supportedBackends.size()>
+  std::array<std::promise<std::unique_ptr<PlaceholderBindings>>,
+             supportedBackends.size()>
       promises;
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
-    auto ctx = llvm::make_unique<Context>();
-    ctx->allocate(module.getPlaceholders());
-    updateInputPlaceholders(*ctx, {input}, {&batch});
+    auto bindings = llvm::make_unique<PlaceholderBindings>();
+    bindings->allocate(module.getPlaceholders());
+    updateInputPlaceholders(*bindings, {input}, {&batch});
 
-    devices[i]->runFunction("resnet50", std::move(ctx),
-                            [&promises, i](RunIdentifierTy, ResultCode r,
-                                           std::unique_ptr<Context> ctx) {
-                              promises[i].set_value(std::move(ctx));
-                            });
+    devices[i]->runFunction(
+        "resnet50", std::move(bindings),
+        [&promises, i](RunIdentifierTy, ResultCode r,
+                       std::unique_ptr<PlaceholderBindings> bindings) {
+          promises[i].set_value(std::move(bindings));
+        });
   }
 
-  auto ctx = llvm::make_unique<Context>();
-  auto &allEvents = ctx->getTraceEvents();
+  auto bindings = llvm::make_unique<PlaceholderBindings>();
+  auto &allEvents = bindings->getTraceEvents();
 
   allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "Interpreter"}}});
   allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "CPU"}}});
@@ -166,8 +168,8 @@ int main(int argc, char **argv) {
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto f = promises[i].get_future();
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
-    auto runCtx = f.get();
-    for (auto &event : runCtx->getTraceEvents()) {
+    auto runbindings = f.get();
+    for (auto &event : runbindings->getTraceEvents()) {
       event.tid = i;
       allEvents.push_back(event);
     }

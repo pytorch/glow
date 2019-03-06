@@ -25,7 +25,7 @@
 
 namespace glow {
 
-class Context;
+class PlaceholderBindings;
 class NodeInfo;
 
 class CPUBackend : public LLVMBackend {

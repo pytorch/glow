@@ -29,7 +29,7 @@ using namespace glow;
 
 TEST(GraphAutoGrad, autoGrad) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TrainingConfig TC;
 
@@ -44,15 +44,15 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
 
-  auto *CV0 = F->createConv(ctx, "conv1", A, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(bindings, "conv1", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv(ctx, "conv2", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv2", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("conv23", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc3", MP1, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc3", MP1, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
@@ -70,7 +70,7 @@ TEST(GraphAutoGrad, autoGrad) {
 TEST(GraphAutoGrad, checkLRNGen) {
   ExecutionEngine EE;
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Construct the network:
   TC.learningRate = 0.001;
@@ -83,7 +83,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *A =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 28, 28, 1}, "input", false);
   auto *CV0 = F->createLocalResponseNormalization("LRN", A);
-  auto *FCL1 = F->createFullyConnected(ctx, "fc3", CV0, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
@@ -101,7 +101,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
   ExecutionEngine EE;
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
   Module M;
 
   auto *F = M.createFunction("main");
@@ -157,7 +157,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   ExecutionEngine EE;
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Construct the network:
   TC.learningRate = 0.001;
@@ -186,7 +186,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
 TEST(GraphAutoGrad, checkConvertToGradTest) {
   ExecutionEngine EE;
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Construct the network:
   TC.learningRate = 0.001;
@@ -195,14 +195,14 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   Function *F = mod.createFunction("main");
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  auto inputHandle = ctx.allocate(A)->getHandle<float>();
+  auto inputHandle = bindings.allocate(A)->getHandle<float>();
   inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
 
   TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, A->dims());
 
   auto *convertTo = F->createConvertTo("convertTo", A, outTy);
   auto *result = F->createSave("save", convertTo);
-  ctx.allocate(result->getPlaceholder());
+  bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);

@@ -568,7 +568,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
 }
 
 std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(Context &ctx, const Function *F,
+generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
                               const LoweredInfoMap &loweredMap, Schema schema,
                               ElemKind quantizationPrecision) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
@@ -577,10 +577,10 @@ generateNodeQuantizationInfos(Context &ctx, const Function *F,
     auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(&node);
 
     if (QPN) {
-      auto CI =
-          ctx.get(QPN->getComputationInfoPlaceholder())->getHandle<float>();
+      auto CI = bindings.get(QPN->getComputationInfoPlaceholder())
+                    ->getHandle<float>();
       auto histogram =
-          ctx.get(QPN->getHistogramPlaceholder())->getHandle<float>();
+          bindings.get(QPN->getHistogramPlaceholder())->getHandle<float>();
       float min = CI.raw(0);
       float max = CI.raw(1);
 

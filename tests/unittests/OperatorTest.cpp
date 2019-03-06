@@ -49,7 +49,7 @@ public:
   ExecutionEngine EE_{GetParam()};
   Module &mod_;
   Function *F_;
-  Context ctx_;
+  PlaceholderBindings bindings_;
 };
 
 // The parameterized test suite is instantiated with all available backends.
@@ -74,9 +74,9 @@ TEST_P(Operator, pow) {
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);
   auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Exp", false);
 
-  ctx_.allocate(X)->getHandle() = {5, 0.1f, -3};
-  ctx_.allocate(Y)->getHandle() = {2, 100};
-  ctx_.allocate(Exp)->getHandle() = {2, -1};
+  bindings_.allocate(X)->getHandle() = {5, 0.1f, -3};
+  bindings_.allocate(Y)->getHandle() = {2, 100};
+  bindings_.allocate(Exp)->getHandle() = {2, -1};
 
   auto *Pow1 = F_->createPow("Pow1", X, 2.0);
   auto *Pow2 = F_->createPow("Pow2", Y, 0.5);
@@ -91,24 +91,24 @@ TEST_P(Operator, pow) {
   auto *save3 = F_->createSave("save", Pow3);
   auto *savePlaceholder3 = save3->getPlaceholder();
 
-  ctx_.allocate(savePlaceholder1);
-  ctx_.allocate(savePlaceholder2);
-  ctx_.allocate(savePlaceholder3);
+  bindings_.allocate(savePlaceholder1);
+  bindings_.allocate(savePlaceholder2);
+  bindings_.allocate(savePlaceholder3);
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto HX = ctx_.get(savePlaceholder1)->getHandle();
+  auto HX = bindings_.get(savePlaceholder1)->getHandle();
   EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
   EXPECT_NEAR(HX.at({0, 0, 1}), 0.01, 1E-5);
   EXPECT_NEAR(HX.at({0, 0, 2}), 9, 1E-5);
 
-  auto HY = ctx_.get(savePlaceholder2)->getHandle();
+  auto HY = bindings_.get(savePlaceholder2)->getHandle();
   EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
   EXPECT_NEAR(HY.at({1}), 10, 1E-5);
 
-  auto HZ = ctx_.get(savePlaceholder3)->getHandle();
+  auto HZ = bindings_.get(savePlaceholder3)->getHandle();
   EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
   EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
@@ -118,17 +118,17 @@ TEST_P(Operator, replaceNaN) {
 
   auto value = 1.0f;
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
-  auto XH = ctx_.allocate(X)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
   XH = {1, NAN, 2, NAN, 3, NAN};
 
   auto *RNN = F_->createReplaceNaN("replaceNaN", X, value);
 
   auto *save = F_->createSave("save", RNN);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto saveH = saveTensor->getHandle();
 
@@ -145,17 +145,17 @@ TEST_P(Operator, log) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
-  auto XH = ctx_.allocate(X)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
   XH = {210030, 600, 4, 0.7f, .005f, 0.000829f};
 
   auto *LN = F_->createLog("log", X);
 
   auto *save = F_->createSave("save", LN);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto saveH = saveTensor->getHandle();
 
@@ -185,11 +185,11 @@ TEST_P(Operator, logit) {
   // generate the input data in (0.0f, 1.0f) (probabilites including degenerate
   // cases) and test that afterward the input data is clamped in
   // (eps, 1 - eps) as in Caffe2.
-  ctx_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
 
   auto *logitDiff = F_->createLogit("logitDiff", input, eps);
   auto *saveDiff = F_->createSave("saveDiff", logitDiff);
-  ctx_.allocate(saveDiff->getPlaceholder());
+  bindings_.allocate(saveDiff->getPlaceholder());
 
   // property: zero-sum for the log-odds for complementary events probabilities
   // i.e., logit(p) + logit(1 - p) == 0
@@ -197,21 +197,21 @@ TEST_P(Operator, logit) {
   Node *complInput = F_->createSub("sub", const1, input);
   Node *logitCompl = F_->createLogit("logitCompl", complInput, eps);
   auto *saveCompl = F_->createSave("saveCompl", logitCompl);
-  ctx_.allocate(saveCompl->getPlaceholder());
+  bindings_.allocate(saveCompl->getPlaceholder());
 
   // property: the logit function is the right-inverse of the logistic function
   // i.e., logistic(logit(p)) == p
   auto logistic_test = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // results: differential test against the oracle
-  auto resultDiffH = ctx_.get(saveDiff->getPlaceholder())->getHandle();
-  auto inputH = ctx_.get(input)->getHandle();
+  auto resultDiffH = bindings_.get(saveDiff->getPlaceholder())->getHandle();
+  auto inputH = bindings_.get(input)->getHandle();
 
   // results: zero-sum property
-  auto resultComplH = ctx_.get(saveCompl->getPlaceholder())->getHandle();
+  auto resultComplH = bindings_.get(saveCompl->getPlaceholder())->getHandle();
 
   for (std::size_t i = 0; i != size; ++i) {
     // differential test against the oracle
@@ -228,19 +228,19 @@ TEST_P(Operator, CmpEQ) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
-  ctx_.allocate(X)->getHandle<int64_t>() = {
+  bindings_.allocate(X)->getHandle<int64_t>() = {
       0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
   auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
-  ctx_.allocate(Y)->getHandle<int64_t>() = {
+  bindings_.allocate(Y)->getHandle<int64_t>() = {
       1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
 
   auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
   auto *save = F_->createSave("save", cmpEQ);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto saveH = saveTensor->getHandle<bool>();
   for (size_t i = 0; i < 7; ++i) {
@@ -257,20 +257,20 @@ TEST_P(Operator, add) {
 
   auto *inputA =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
-  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *inputB =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
-  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *Pool = F_->createAdd("pool", inputA, inputB);
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle();
-  auto handleA = ctx_.get(inputA)->getHandle();
-  auto handleB = ctx_.get(inputB)->getHandle();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  auto handleA = bindings_.get(inputA)->getHandle();
+  auto handleB = bindings_.get(inputB)->getHandle();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
@@ -285,20 +285,20 @@ TEST_P(Operator, FP16Add) {
 
   auto *inputA =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
-  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *inputB =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
-  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *Pool = F_->createAdd("pool", inputA, inputB);
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
-  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
-  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = bindings_.get(inputA)->getHandle<float16_t>();
+  auto handleB = bindings_.get(inputB)->getHandle<float16_t>();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
@@ -308,16 +308,16 @@ TEST_P(Operator, FP16Add) {
 TEST_P(Operator, matmul) {
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
-  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
-  ctx_.allocate(rhs)->getHandle() = {7, 10};
+  bindings_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(rhs)->getHandle() = {7, 10};
 
   auto *R = F_->createMatMul("MM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = saveTensor->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
@@ -331,16 +331,16 @@ TEST_P(Operator, FP16Matmul) {
 
   auto *lhs = mod_.createPlaceholder(ElemKind::Float16Ty, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::Float16Ty, {2, 1}, "rhs", false);
-  ctx_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
-  ctx_.allocate(rhs)->getHandle<float16_t>() = {7, 10};
+  bindings_.allocate(lhs)->getHandle<float16_t>() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(rhs)->getHandle<float16_t>() = {7, 10};
 
   auto *R = F_->createMatMul("MM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = saveTensor->getHandle<float16_t>();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
@@ -353,16 +353,17 @@ TEST_P(Operator, BroadcastedBatchMatMul) {
   auto *lhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
-  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
-  ctx_.allocate(rhs)->getHandle() = {7, 10};
+  bindings_.allocate(lhs)->getHandle() = {1,  2,  3,  4,  5,  6,
+                                          -1, -2, -3, -4, -5, -6};
+  bindings_.allocate(rhs)->getHandle() = {7, 10};
 
   auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
@@ -378,16 +379,17 @@ TEST_P(Operator, ParallelBatchMatMul) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
   auto *rhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 1}, "rhs", false);
-  ctx_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6};
-  ctx_.allocate(rhs)->getHandle() = {7, 10, 12, -1};
+  bindings_.allocate(lhs)->getHandle() = {1,  2,  3,  4,  5,  6,
+                                          -1, -2, -3, -4, -5, -6};
+  bindings_.allocate(rhs)->getHandle() = {7, 10, 12, -1};
 
   auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
@@ -401,15 +403,15 @@ TEST_P(Operator, ParallelBatchMatMul) {
 TEST_P(Operator, batchedReduceAdd) {
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
-  ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+  bindings_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0}), 11, 0.001);
@@ -423,15 +425,16 @@ TEST_P(Operator, batchedReduceAddWithAxis) {
 
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
-  ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  bindings_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4,  5,
+                                            6, 7, 8, 9, 10, 11};
 
   auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 6, 0.001);
@@ -450,20 +453,20 @@ TEST_P(Operator, batchedReduceAddQuantized) {
       mod_.createPlaceholder(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
                              BT->getOffset(), "batch", false);
 
-  ctx_.allocate(batch)->getHandle<int8_t>() = {
+  bindings_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = ctx_.get(batch)->getHandle<int8_t>();
+  auto BH = bindings_.get(batch)->getHandle<int8_t>();
 
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
-  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < 8; i++) {
     std::array<int32_t, 3> b{{BH.at({0, i}), BH.at({1, i}), BH.at({2, i})}};
@@ -486,19 +489,19 @@ TEST_P(Operator, batchedReduceAddQuantizedWithAxis) {
       mod_.createPlaceholder(ElemKind::Int8QTy, {2, 3, 4}, BT->getScale(),
                              BT->getOffset(), "batch", false);
 
-  ctx_.allocate(batch)->getHandle<int8_t>() = {
+  bindings_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = ctx_.get(batch)->getHandle<int8_t>();
+  auto BH = bindings_.get(batch)->getHandle<int8_t>();
 
   auto *R =
       F_->createBatchedReduceAdd("batched.reduce.add", OT, batch, /* axis */ 1);
   auto *save = F_->createSave("save", R);
-  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < 2; i++) {
     for (size_t j = 0; j < 4; j++) {
@@ -517,15 +520,15 @@ TEST_P(Operator, batchedReduceAddQuantizedWithAxis) {
 TEST_P(Operator, batchedReduceMean) {
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
-  ctx_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+  bindings_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
 
   auto *R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0}), 5.5, 0.001);
@@ -539,15 +542,16 @@ TEST_P(Operator, batchedReduceMeanWithAxis) {
 
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
-  ctx_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  bindings_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4,  5,
+                                            6, 7, 8, 9, 10, 11};
 
   auto *R = F_->createBatchedReduceMean("reduce.add", batch, /* axis */ 1);
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto H = result->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 2.0, 0.001);
@@ -566,20 +570,20 @@ TEST_P(Operator, batchedReduceMeanQuantized) {
       mod_.createPlaceholder(ElemKind::Int8QTy, {3, 8}, BT->getScale(),
                              BT->getOffset(), "batch", false);
 
-  ctx_.allocate(batch)->getHandle<int8_t>() = {
+  bindings_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = ctx_.get(batch)->getHandle<int8_t>();
+  auto BH = bindings_.get(batch)->getHandle<int8_t>();
 
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 0);
 
   auto *save = F_->createSave("save", R);
-  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < 8; i++) {
     std::array<int32_t, 3> b{{BH.at({0, i}), BH.at({1, i}), BH.at({2, i})}};
@@ -602,19 +606,19 @@ TEST_P(Operator, batchedReduceMeanQuantizedWithAxis) {
       mod_.createPlaceholder(ElemKind::Int8QTy, {2, 3, 4}, BT->getScale(),
                              BT->getOffset(), "batch", false);
 
-  ctx_.allocate(batch)->getHandle<int8_t>() = {
+  bindings_.allocate(batch)->getHandle<int8_t>() = {
       27, -31, 16,  7,  20, 34, -2, 8,   -10, 83, 29,  -17,
       19, 13,  -11, -9, 50, 58, 0,  -20, -72, 43, -25, -1};
 
-  auto BH = ctx_.get(batch)->getHandle<int8_t>();
+  auto BH = bindings_.get(batch)->getHandle<int8_t>();
 
   auto *R = F_->createBatchedReduceMean("batched.reduce.add", OT, batch,
                                         /* axis */ 1);
   auto *save = F_->createSave("save", R);
-  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < 2; i++) {
     for (size_t j = 0; j < 4; j++) {
@@ -638,16 +642,16 @@ TEST_P(Operator, batchedReduceMeanUsingAvgPool) {
 
   auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, dims, "batch", false);
 
-  auto IH = ctx_.allocate(batch)->getHandle();
+  auto IH = bindings_.allocate(batch)->getHandle();
   IH.randomize(1.0, 100.0, mod_.getPRNG());
 
   auto *R = F_->createBatchedReduceMean("reduce.mean", batch, {2, 3});
 
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
   auto H = result->getHandle();
 
   std::array<std::array<float, 20>, 3> results{};
@@ -676,16 +680,16 @@ TEST_P(Operator, batchedReduceMeanUsingAvgPoolQuantized) {
   auto *batch = mod_.createPlaceholder(ElemKind::Int8QTy, dims, BT->getScale(),
                                        BT->getOffset(), "batch", false);
 
-  auto IH = ctx_.allocate(batch)->getHandle<int8_t>();
+  auto IH = bindings_.allocate(batch)->getHandle<int8_t>();
   IH.randomize(1, 100, mod_.getPRNG());
 
   auto *R = F_->createBatchedReduceMean("reduce.mean", OT, batch, {2, 3});
 
   auto *save = F_->createSave("save", R);
-  auto OH = ctx_.allocate(save->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   std::array<std::array<float, 3>, 2> results{};
   float s = BT->getScale() / OT->getScale();
@@ -711,18 +715,18 @@ TEST_P(Operator, BatchedAdd) {
   auto *added =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "added", false);
 
-  ctx_.allocate(batch)->getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
-                                       6, 7, 8, 9, 10, 11, 12, 13, 14};
-  ctx_.allocate(added)->getHandle().clear(1.0);
+  bindings_.allocate(batch)->getHandle() = {9, 8, 7, 6, 5,  4,  3,  4,  5,
+                                            6, 7, 8, 9, 10, 11, 12, 13, 14};
+  bindings_.allocate(added)->getHandle().clear(1.0);
 
   auto *R = F_->createBatchedAdd("batch.add", batch, added);
   auto *save = F_->createSave("save", R);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto BH = ctx_.get(batch)->getHandle();
+  auto BH = bindings_.get(batch)->getHandle();
   auto RH = result->getHandle();
   for (size_t i = 0; i < 2; i++) {
     for (size_t j = 0; j < 3; j++) {
@@ -752,8 +756,8 @@ TEST_P(Operator, broadcastSimple) {
   auto *B = mod_.createPlaceholder(ElemKind::FloatTy, dims_B, "B", false);
   auto *QB =
       mod_.createPlaceholder(ElemKind::Int8QTy, dims_B, 1.1, -2, "QB", false);
-  auto H_B = ctx_.allocate(B)->getHandle();
-  auto H_QB = ctx_.allocate(QB)->getHandle<int8_t>();
+  auto H_B = bindings_.allocate(B)->getHandle();
+  auto H_QB = bindings_.allocate(QB)->getHandle<int8_t>();
   H_B = {20, 10};
   H_QB = {35, -18};
 
@@ -763,13 +767,13 @@ TEST_P(Operator, broadcastSimple) {
   auto *QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
   auto *save = F_->createSave("save", R);
-  auto *broadcasted = ctx_.allocate(save->getPlaceholder());
+  auto *broadcasted = bindings_.allocate(save->getPlaceholder());
 
   auto *saveQ = F_->createSave("saveQ", QR);
-  auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
+  auto *broadcastedQ = bindings_.allocate(saveQ->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto broadcastedBHandle = broadcasted->getHandle();
   auto broadcastedQBHandle = broadcastedQ->getHandle<int8_t>();
@@ -818,8 +822,8 @@ TEST_P(Operator, broadcast) {
   auto *QB =
       mod_.createPlaceholder(ElemKind::Int8QTy, dims_B, 0.8, 3, "QB", false);
 
-  auto H_B = ctx_.allocate(B)->getHandle();
-  auto H_QB = ctx_.allocate(QB)->getHandle<int8_t>();
+  auto H_B = bindings_.allocate(B)->getHandle();
+  auto H_QB = bindings_.allocate(QB)->getHandle<int8_t>();
   H_B = {20, 10};
   H_QB = {-8, 41};
 
@@ -829,13 +833,13 @@ TEST_P(Operator, broadcast) {
   auto *QR = F_->createBroadcast("broadcastedQ", QB, dims_A, axis);
 
   auto *save = F_->createSave("save", R);
-  auto *broadcasted = ctx_.allocate(save->getPlaceholder());
+  auto *broadcasted = bindings_.allocate(save->getPlaceholder());
 
   auto *saveQ = F_->createSave("saveQ", QR);
-  auto *broadcastedQ = ctx_.allocate(saveQ->getPlaceholder());
+  auto *broadcastedQ = bindings_.allocate(saveQ->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto broadcastedBHandle = broadcasted->getHandle();
   auto broadcastedQBHandle = broadcastedQ->getHandle<int8_t>();
@@ -869,25 +873,25 @@ TEST_P(Operator, broadcast) {
 TEST_P(Operator, weightedSum) {
   // Create the data.
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "A", false);
-  ctx_.allocate(A)->getHandle() = {1.0, 2.0, 3.0, 4.0};
+  bindings_.allocate(A)->getHandle() = {1.0, 2.0, 3.0, 4.0};
 
   auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "B", false);
-  ctx_.allocate(B)->getHandle() = {5.0, 6.0, 7.0, 8.0};
+  bindings_.allocate(B)->getHandle() = {5.0, 6.0, 7.0, 8.0};
 
   // Create the weights.
   auto *AW = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "AW", false);
-  ctx_.allocate(AW)->getHandle() = {0.1f};
+  bindings_.allocate(AW)->getHandle() = {0.1f};
 
   auto *BW = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "BW", false);
-  ctx_.allocate(BW)->getHandle() = {10.0f};
+  bindings_.allocate(BW)->getHandle() = {10.0f};
 
   // Create the weighted sum with the data and weights, and save it.
   auto *WS = F_->createWeightedSum("ws", {A, B}, {AW, BW});
   auto *save = F_->createSave("save", WS);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // Verify the weighted sum was correctly calculated.
   auto resultH = saveTensor->getHandle();
@@ -905,17 +909,17 @@ TEST_P(Operator, minElem) {
   auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
   auto *min = F_->createMin("min", LHS, RHS);
   auto *save = F_->createSave("min", min);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
-  ctx_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
-  ctx_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
+  bindings_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
+  bindings_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto resultH = result->getHandle();
-  auto LHSH = ctx_.get(LHS)->getHandle();
-  auto RHSH = ctx_.get(RHS)->getHandle();
+  auto LHSH = bindings_.get(LHS)->getHandle();
+  auto RHSH = bindings_.get(RHS)->getHandle();
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_EQ(resultH.raw(i), std::min(LHSH.raw(i), RHSH.raw(i)));
@@ -931,17 +935,17 @@ TEST_P(Operator, maxElem) {
   auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
   auto *max = F_->createMax("max", LHS, RHS);
   auto *save = F_->createSave("max", max);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
-  ctx_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
-  ctx_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
+  bindings_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
+  bindings_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto resultH = result->getHandle();
-  auto LHSH = ctx_.get(LHS)->getHandle();
-  auto RHSH = ctx_.get(RHS)->getHandle();
+  auto LHSH = bindings_.get(LHS)->getHandle();
+  auto RHSH = bindings_.get(RHS)->getHandle();
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_EQ(resultH.raw(i), std::max(LHSH.raw(i), RHSH.raw(i)));
@@ -953,12 +957,12 @@ TEST_P(Operator, ReluSimple) {
   auto *in = mod_.createPlaceholder(ElemKind::FloatTy, {7}, "in", false);
   auto *relu = F_->createRELU("relu", in);
   auto *save = F_->createSave("relu", relu);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
-  ctx_.allocate(in)->getHandle() = {0, -1, -2, -3, 4, 5, 6};
+  bindings_.allocate(in)->getHandle() = {0, -1, -2, -3, 4, 5, 6};
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto resultH = result->getHandle();
 
@@ -979,11 +983,11 @@ TEST_P(Operator, TopK) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {3, 1, 3}, "indices", false);
 
-  ctx_.allocate(inp)->getHandle() = {
+  bindings_.allocate(inp)->getHandle() = {
       28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
   };
-  ctx_.allocate(values);
-  ctx_.allocate(indices);
+  bindings_.allocate(values);
+  bindings_.allocate(indices);
 
   auto *R = F_->createTopK("TopK", inp, 3);
 
@@ -992,10 +996,10 @@ TEST_P(Operator, TopK) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto V = ctx_.get(values)->getHandle();
-  auto I = ctx_.get(indices)->getHandle<int64_t>();
+  auto V = bindings_.get(values)->getHandle();
+  auto I = bindings_.get(indices)->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
   EXPECT_EQ(I.at({0, 0, 0}), 2);
@@ -1030,8 +1034,8 @@ TEST_P(Operator, ConcatTopK) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
 
-  ctx_.allocate(inp1)->getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
-  ctx_.allocate(inp2)->getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
+  bindings_.allocate(inp1)->getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
+  bindings_.allocate(inp2)->getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
 
   auto *R1 = F_->createTopK("TopK1", inp1, 2);
   auto *R2 = F_->createTopK("TopK2", inp2, 2);
@@ -1044,14 +1048,14 @@ TEST_P(Operator, ConcatTopK) {
                               {R1->getIndices(), R2->getIndices()}, 0);
 
   auto *saveValues = F_->createSave("Save.Values", CV);
-  auto *saveValuesTensor = ctx_.allocate(saveValues->getPlaceholder());
+  auto *saveValuesTensor = bindings_.allocate(saveValues->getPlaceholder());
 
   auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
-  auto *saveIndicesTensor = ctx_.allocate(saveIndices->getPlaceholder());
+  auto *saveIndicesTensor = bindings_.allocate(saveIndices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto V = saveValuesTensor->getHandle();
   auto I = saveIndicesTensor->getHandle<int64_t>();
@@ -1090,7 +1094,7 @@ TEST_P(Operator, matmul2) {
   float deg = 45.0 / 180.0 * 3.1415926;
   // Use the rotation matrix to manipulate some values.
   // https://en.wikipedia.org/wiki/Rotation_matrix
-  ctx_.allocate(rot)->getHandle() = {
+  bindings_.allocate(rot)->getHandle() = {
       cosf(deg),
       -sinf(deg),
       sinf(deg),
@@ -1098,28 +1102,28 @@ TEST_P(Operator, matmul2) {
   };
 
   // Some test vectors.
-  ctx_.allocate(inp0)->getHandle() = {1, 4};
-  ctx_.allocate(inp1)->getHandle() = {14, 2};
-  ctx_.allocate(inp2)->getHandle() = {5, 2};
+  bindings_.allocate(inp0)->getHandle() = {1, 4};
+  bindings_.allocate(inp1)->getHandle() = {14, 2};
+  bindings_.allocate(inp2)->getHandle() = {5, 2};
 
   auto *A0 = F_->createMatMul("m0", inp0, rot);
   auto *A1 = F_->createMatMul("m1", inp1, rot);
   auto *A2 = F_->createMatMul("m2", inp2, rot);
 
   auto *res0 = F_->createSave("save.values", A0);
-  ctx_.allocate(res0->getPlaceholder());
+  bindings_.allocate(res0->getPlaceholder());
   auto *res1 = F_->createSave("save.values", A1);
-  ctx_.allocate(res1->getPlaceholder());
+  bindings_.allocate(res1->getPlaceholder());
   auto *res2 = F_->createSave("save.values", A2);
-  ctx_.allocate(res2->getPlaceholder());
+  bindings_.allocate(res2->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto R0 = ctx_.get(res0->getPlaceholder())->getHandle();
-  auto R1 = ctx_.get(res1->getPlaceholder())->getHandle();
-  auto R2 = ctx_.get(res2->getPlaceholder())->getHandle();
+  auto R0 = bindings_.get(res0->getPlaceholder())->getHandle();
+  auto R1 = bindings_.get(res1->getPlaceholder())->getHandle();
+  auto R2 = bindings_.get(res2->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(R0.at({0, 0}), 3.5355339);
   EXPECT_FLOAT_EQ(R0.at({0, 1}), 2.1213205);
@@ -1136,23 +1140,23 @@ TEST_P(Operator, TopK1) {
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
 
-  ctx_.allocate(inp)->getHandle() = {
+  bindings_.allocate(inp)->getHandle() = {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
   };
 
   auto *R = F_->createTopK("TopK", inp, 1);
 
   auto *values = F_->createSave("save.values", {R, 0});
-  ctx_.allocate(values->getPlaceholder());
+  bindings_.allocate(values->getPlaceholder());
 
   auto *indices = F_->createSave("save.indices", {R, 1});
-  ctx_.allocate(indices->getPlaceholder());
+  bindings_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto V = ctx_.get(values->getPlaceholder())->getHandle();
-  auto I = ctx_.get(indices->getPlaceholder())->getHandle<int64_t>();
+  auto V = bindings_.get(values->getPlaceholder())->getHandle();
+  auto I = bindings_.get(indices->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
   EXPECT_EQ(I.at({0, 0, 0}), 1);
@@ -1167,22 +1171,22 @@ TEST_P(Operator, QuantizedTopK) {
 
   auto *INV = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5,
                                      "input", false);
-  ctx_.allocate(INV)->getHandle<int8_t>() = {
+  bindings_.allocate(INV)->getHandle<int8_t>() = {
       -12, -28, -7, 8, -93, 0, 10, 3, -1, 10, -2, 3, -2, 3, 3,
   };
 
   auto *TK = F_->createTopK("TopK", INV, 3);
 
   auto *values = F_->createSave("save.values", TK->getValues());
-  ctx_.allocate(values->getPlaceholder());
+  bindings_.allocate(values->getPlaceholder());
   auto *indices = F_->createSave("save.indices", TK->getIndices());
-  ctx_.allocate(indices->getPlaceholder());
+  bindings_.allocate(indices->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto VH = ctx_.get(values->getPlaceholder())->getHandle<int8_t>();
-  auto IH = ctx_.get(indices->getPlaceholder())->getHandle<int64_t>();
+  auto VH = bindings_.get(values->getPlaceholder())->getHandle<int8_t>();
+  auto IH = bindings_.get(indices->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(VH.at({0, 0, 0}), 8);
   EXPECT_EQ(IH.at({0, 0, 0}), 3);
@@ -1238,22 +1242,22 @@ TEST_P(Operator, Gather64) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
 
-  ctx_.allocate(data)->getHandle() = {
+  bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
   auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
@@ -1306,22 +1310,22 @@ TEST_P(Operator, Gather32) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int32ITy, {2, 4}, "indices", false);
 
-  ctx_.allocate(data)->getHandle() = {
+  bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  ctx_.allocate(indices)->getHandle<int32_t>() = {
+  bindings_.allocate(indices)->getHandle<int32_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
   auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
@@ -1343,7 +1347,7 @@ TEST_P(Operator, Gather32) {
 }
 
 template <typename IndexType>
-void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
+void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
                       glow::Function *F_, glow::ExecutionEngine &EE_,
                       ElemKind ITy) {
   /*
@@ -1364,8 +1368,8 @@ void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
   auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "data", false);
   auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
 
-  ctx_.allocate(data)->getHandle<int64_t>() = {1, 2, 3, 4, 5, 6};
-  ctx_.allocate(ranges)->getHandle<IndexType>() = {0, 1, 2, 2, 4, 1, 5, 1};
+  bindings_.allocate(data)->getHandle<int64_t>() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(ranges)->getHandle<IndexType>() = {0, 1, 2, 2, 4, 1, 5, 1};
 
   auto *R =
       F_->createGatherRanges("gatherranges", data, ranges, /*maxOutputSize=*/5);
@@ -1373,14 +1377,14 @@ void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
   auto *output = F_->createSave("output", R->getOutput());
   auto *lengths = F_->createSave("lengths", R->getLengths());
 
-  ctx_.allocate(output->getPlaceholder());
-  ctx_.allocate(lengths->getPlaceholder());
+  bindings_.allocate(output->getPlaceholder());
+  bindings_.allocate(lengths->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto OH = ctx_.get(output->getPlaceholder())->getHandle<int64_t>();
-  auto LH = ctx_.get(lengths->getPlaceholder())->getHandle<IndexType>();
+  auto OH = bindings_.get(output->getPlaceholder())->getHandle<int64_t>();
+  auto LH = bindings_.get(lengths->getPlaceholder())->getHandle<IndexType>();
 
   EXPECT_EQ(OH.at({0}), 1);
   EXPECT_EQ(OH.at({1}), 3);
@@ -1394,12 +1398,12 @@ void gatherRangesTest(glow::Context &ctx_, glow::Module &mod_,
 
 TEST_P(Operator, GatherRanges32) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherRangesTest<int32_t>(ctx_, mod_, F_, EE_, ElemKind::Int32ITy);
+  gatherRangesTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 TEST_P(Operator, GatherRanges64) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherRangesTest<int64_t>(ctx_, mod_, F_, EE_, ElemKind::Int64ITy);
+  gatherRangesTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Check if the code generation of transposes
@@ -1407,18 +1411,18 @@ TEST_P(Operator, GatherRanges64) {
 /// Note: This assumes that Tensor::transpose is correct.
 TEST_P(Operator, Transpose2Dims) {
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  ctx_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+  bindings_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
   auto *result = F_->createSave("saveTranspose", tr);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   Tensor dest(ElemKind::FloatTy, {13, 20});
-  ctx_.get(A)->transpose(&dest, {1, 0});
-  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
+  bindings_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
 
 /// Check that transpose is supported for FP16.
@@ -1426,18 +1430,19 @@ TEST_P(Operator, FP16Transpose2Dims) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
-  ctx_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0, mod_.getPRNG());
+  bindings_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0,
+                                                          mod_.getPRNG());
 
   auto *tr = F_->createTranspose("tr", A, {1, 0});
   auto *result = F_->createSave("saveTranspose", tr);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   Tensor dest(ElemKind::Float16Ty, {13, 20});
-  ctx_.get(A)->transpose(&dest, {1, 0});
-  EXPECT_TRUE(ctx_.get(result->getPlaceholder())->isEqual(dest));
+  bindings_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
 
 /// Check if the code generation of transposes
@@ -1446,7 +1451,7 @@ TEST_P(Operator, FP16Transpose2Dims) {
 TEST_P(Operator, Transpose3Dims) {
   constexpr size_t dims[] = {20, 13, 7};
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "A", false);
-  ctx_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+  bindings_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
   int nbOfShuffle = 0;
   SaveNode *savedTransposes[6];
@@ -1466,7 +1471,7 @@ TEST_P(Operator, Transpose3Dims) {
         shuffles[nbOfShuffle][2] = k;
         auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
         savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
-        ctx_.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
+        bindings_.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
         ++nbOfShuffle;
       }
     }
@@ -1476,13 +1481,14 @@ TEST_P(Operator, Transpose3Dims) {
   EXPECT_EQ(6, nbOfShuffle);
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (int i = 0; i < 6; ++i) {
     Tensor dest(ElemKind::FloatTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
                                     dims[shuffles[i][2]]});
-    ctx_.get(A)->transpose(&dest, shuffles[i]);
-    EXPECT_TRUE(ctx_.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
+    bindings_.get(A)->transpose(&dest, shuffles[i]);
+    EXPECT_TRUE(
+        bindings_.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
   }
 }
 
@@ -1520,22 +1526,22 @@ TEST_P(Operator, GatherSizeT) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
 
-  ctx_.allocate(data)->getHandle<int64_t>() = {
+  bindings_.allocate(data)->getHandle<int64_t>() = {
       1, 2, 3, 4, 5, 6,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
   auto *R = F_->createGather("gather", data, indices);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(H.at({0, 0, 0}), 1);
   EXPECT_EQ(H.at({0, 0, 1}), 2);
@@ -1576,10 +1582,10 @@ TEST_P(Operator, BatchedGather) {
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
 
-  ctx_.allocate(data)->getHandle() = {
+  bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0,
       2,
   };
@@ -1588,12 +1594,12 @@ TEST_P(Operator, BatchedGather) {
   auto *R = F_->createGather("gather", data, indices, 1);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.4);
   EXPECT_FLOAT_EQ(H.at({1, 0}), 2.3);
@@ -1609,19 +1615,19 @@ TEST_P(Operator, ScatterAssign) {
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
-  ctx_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  ctx_.allocate(indices)->getHandle<int64_t>() = {1, 3};
-  ctx_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
+  bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto *R = F_->createScatterAssign("scatterassign", data, indices, slices);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 1}), 2.0);
@@ -1644,9 +1650,9 @@ TEST_P(Operator, ScatterAssignQuantized) {
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
-  ctx_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  ctx_.allocate(indices)->getHandle<int64_t>() = {1, 3};
-  ctx_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
+  bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
   auto dataTy =
@@ -1660,12 +1666,12 @@ TEST_P(Operator, ScatterAssignQuantized) {
   auto *DQ = F_->createDequantize("dequantize", SA);
 
   auto *result = F_->createSave("save", DQ);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
 
   EXPECT_NEAR(H.at({0, 0}), 1.0, 0.05);
   EXPECT_NEAR(H.at({0, 1}), 2.0, 0.05);
@@ -1680,19 +1686,20 @@ TEST_P(Operator, ScatterAssignQuantized) {
 }
 
 // Note: Add only currently supports int8_t as quantized type.
-static FunctionTensorPair createAndInitBasicAddTest(glow::Context &ctx,
-                                                    glow::ExecutionEngine &EE) {
+static FunctionTensorPair
+createAndInitBasicAddTest(glow::PlaceholderBindings &bindings,
+                          glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
-  ctx.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
-  ctx.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 2.7f};
+  bindings.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
+  bindings.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 2.7f};
 
   auto *add = F->createAdd("add", A, B);
   auto *result = F->createSave("save", add);
-  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -1718,11 +1725,11 @@ TEST_P(Operator, IntMatMul) {
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", false);
 
-  ctx_.allocate(lhs)->getHandle() = {
+  bindings_.allocate(lhs)->getHandle() = {
       1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -4.0, -3.0, 9.0,
   };
 
-  ctx_.allocate(rhs)->getHandle() = {
+  bindings_.allocate(rhs)->getHandle() = {
       0.1f, -0.2f, 0.3f, 9.0f, -8.0f, 7.0f, 6.0f, 5.0f, 9.0f,
   };
 
@@ -1734,10 +1741,10 @@ TEST_P(Operator, IntMatMul) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   auto *result = F_->createSave("save", rq);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   /*
    Test the following matrix multiplication:
@@ -1746,7 +1753,7 @@ TEST_P(Operator, IntMatMul) {
    A x B = [36.1,  -1.2,  41.3], [15.4, -65.8, -8.8], [26.6, 69.8,  58.8]]
    */
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
   EXPECT_NEAR(H.at({0, 0}), 36.1, 1.0);
   EXPECT_NEAR(H.at({0, 1}), -1.2, 1.0);
   EXPECT_NEAR(H.at({0, 2}), 41.3, 1.0);
@@ -1767,15 +1774,15 @@ TEST_P(Operator, IntBatchedArith) {
 
   auto *lhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3}, "lhs", false);
-  ctx_.allocate(lhs);
+  bindings_.allocate(lhs);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", false);
-  ctx_.allocate(rhs);
+  bindings_.allocate(rhs);
 
-  ctx_.get(lhs)->getHandle() = {
+  bindings_.get(lhs)->getHandle() = {
       8.7f, 6.5f, 4.3f, 2.1f, 1.0f, -5.1f, -4.0f, -12.0f, 0.2f,
   };
 
-  ctx_.get(rhs)->getHandle() = {
+  bindings_.get(rhs)->getHandle() = {
       -9.1f, -0.4f, 1.3f, 2.2f, -8.1f, 7.6f, -6.4f, 10.0f, 9.1f,
   };
 
@@ -1787,15 +1794,15 @@ TEST_P(Operator, IntBatchedArith) {
   auto *rq = F_->createDequantize("dequant", matmulq);
 
   auto *result = F_->createSave("save", rq);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // A = [8.7, 6.5, 4.3, 2.1, 1.0, -5.1, -4.0, -12.0, 0.2]
   // B = [-9.1, -0.4, 1.3, 2.2, -8.1, 7.6, -6.4, 10.0, 9.1]
   // A + B = [-0.4, 6.1, 5.6, 4.3, -7.1, 2.5, -10.4, -2. , 9.3]
-  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
   constexpr float allowedError = 0.105;
   EXPECT_NEAR(H.at({0, 0, 0}), -0.4, allowedError);
   EXPECT_NEAR(H.at({0, 0, 1}), 6.1, allowedError);
@@ -1810,22 +1817,23 @@ TEST_P(Operator, IntBatchedArith) {
 
 template <size_t convDepth>
 static FunctionTensorPair
-createAndInitConvDepthTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
-  auto *conv = F->createConv(ctx, "conv", input, convDepth, 5, 1, 0, 1);
+  auto *conv = F->createConv(bindings, "conv", input, convDepth, 5, 1, 0, 1);
   auto *bias = llvm::cast<Placeholder>(conv->getBias().getNode());
 
-  ctx.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-  ctx.get(bias)->getHandle().randomize(-2.0, 2.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.get(bias)->getHandle().randomize(-2.0, 2.0, mod.getPRNG());
 
   auto *res = F->createSave("save", conv);
-  ::glow::convertPlaceholdersToConstants(F, ctx,
+  ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
-  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -1862,20 +1870,22 @@ TEST_P(OperatorStateless, FP16ConvolutionDepth8) {
 }
 
 static FunctionTensorPair
-createAndInitBasicConcatTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
+                             glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "A", false);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2, 3}, "B", false);
-  ctx.allocate(A)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-  ctx.allocate(B)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(A)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(B)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   auto *C = F->createConcat("concat", {A, B}, 0);
   auto *res = F->createSave("save", C);
-  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F, ctx, {A, B, res->getPlaceholder()});
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {A, B, res->getPlaceholder()});
 
   return std::make_pair(F, resultTensor);
 }
@@ -1893,20 +1903,20 @@ TEST_P(Operator, FCWithFlatten) {
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "weights", true);
   auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "bias", true);
 
-  ctx_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  ctx_.allocate(weights)->getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                         2.0f, 5.0f, 8.0f, 11.0f, //
-                                         3.0f, 6.0f, 9.0f, 12.0f};
-  ctx_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+  bindings_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  bindings_.allocate(weights)->getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                              2.0f, 5.0f, 8.0f, 11.0f, //
+                                              3.0f, 6.0f, 9.0f, 12.0f};
+  bindings_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *S = F_->createSave("save", FC);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
   std::vector<size_t> expectedDimensions = {2, 4};
   std::vector<float> expectedValues = {14.1f, 32.2f, 50.3f,  68.4f,
                                        32.1f, 77.2f, 122.3f, 167.4f};
@@ -1916,26 +1926,27 @@ TEST_P(Operator, FCWithFlatten) {
   }
 }
 
-static FunctionTensorPair createAndInitBasicFCTest(glow::Context &ctx,
-                                                   glow::ExecutionEngine &EE) {
+static FunctionTensorPair
+createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
+                         glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
-  auto *fc = F->createFullyConnected(ctx, "FC", input, 30);
+  auto *fc = F->createFullyConnected(bindings, "FC", input, 30);
 
   auto *weights = llvm::cast<Placeholder>(fc->getWeights());
   auto *bias = llvm::cast<Placeholder>(fc->getBias());
 
-  ctx.allocate(input)->getHandle().randomize(-0.5, 0.5, mod.getPRNG());
-  ctx.get(bias)->getHandle().randomize(0, 0.00001, mod.getPRNG());
-  ctx.get(weights)->getHandle().randomize(-0.7, 0.7, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-0.5, 0.5, mod.getPRNG());
+  bindings.get(bias)->getHandle().randomize(0, 0.00001, mod.getPRNG());
+  bindings.get(weights)->getHandle().randomize(-0.7, 0.7, mod.getPRNG());
 
   auto *res = F->createSave("save", fc);
-  ::glow::convertPlaceholdersToConstants(F, ctx,
+  ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
-  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -1951,16 +1962,16 @@ TEST_P(Operator, EntropyLossTest) {
   auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "P", false);
   auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "Y", false);
 
-  ctx_.allocate(P)->getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
-  ctx_.allocate(Y)->getHandle<int64_t>() = {1, 2};
+  bindings_.allocate(P)->getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
+  bindings_.allocate(Y)->getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   auto *L = F_->createSave("save", ceLoss);
-  ctx_.allocate(L->getPlaceholder());
+  bindings_.allocate(L->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto R = ctx_.get(L->getPlaceholder())->getHandle();
+  auto R = bindings_.get(L->getPlaceholder())->getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
 }
 
@@ -1970,20 +1981,20 @@ TEST_P(Operator, Max) {
 
   auto *inputA =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
-  ctx_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *inputB =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
-  ctx_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *Max = F_->createMax("max", inputA, inputB);
   auto *S = F_->createSave("save", Max);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<float>();
-  auto handleA = ctx_.get(inputA)->getHandle<float>();
-  auto handleB = ctx_.get(inputB)->getHandle<float>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float>();
+  auto handleA = bindings_.get(inputA)->getHandle<float>();
+  auto handleB = bindings_.get(inputB)->getHandle<float>();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
@@ -1998,20 +2009,20 @@ TEST_P(Operator, FP16Max) {
 
   auto *inputA =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "A", false);
-  ctx_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputA)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *inputB =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "B", false);
-  ctx_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(inputB)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *Max = F_->createMax("max", inputA, inputB);
   auto *S = F_->createSave("save", Max);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
-  auto handleA = ctx_.get(inputA)->getHandle<float16_t>();
-  auto handleB = ctx_.get(inputB)->getHandle<float16_t>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleA = bindings_.get(inputA)->getHandle<float16_t>();
+  auto handleB = bindings_.get(inputB)->getHandle<float16_t>();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
@@ -2022,7 +2033,8 @@ TEST_P(Operator, RescaleNode) {
   // Check the outputs of the RescaleQuantized operation.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
                                        "input", false);
-  ctx_.allocate(input)->init(Tensor::InitKind::Broadcast, 40, mod_.getPRNG());
+  bindings_.allocate(input)->init(Tensor::InitKind::Broadcast, 40,
+                                  mod_.getPRNG());
 
   auto T1 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.7, 5);
   auto T2 = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.3, -4);
@@ -2035,13 +2047,13 @@ TEST_P(Operator, RescaleNode) {
   auto *Z = F_->createRescaleQuantized("R3", Y, resTy);
 
   auto *output = F_->createSave("save", Z);
-  ctx_.allocate(output->getPlaceholder());
+  bindings_.allocate(output->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto RI = ctx_.get(input)->getHandle<int8_t>();
-  auto RO = ctx_.get(output->getPlaceholder())->getHandle<int8_t>();
+  auto RI = bindings_.get(input)->getHandle<int8_t>();
+  auto RO = bindings_.get(output->getPlaceholder())->getHandle<int8_t>();
 
   EXPECT_EQ(RI.raw(0), 40);
   EXPECT_NEAR(RO.raw(0), 40, 1);
@@ -2059,9 +2071,9 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
   auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "B", false);
   auto *C = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "C", false);
 
-  auto AH = ctx_.allocate(A)->getHandle();
-  auto BH = ctx_.allocate(B)->getHandle();
-  auto CH = ctx_.allocate(C)->getHandle();
+  auto AH = bindings_.allocate(A)->getHandle();
+  auto BH = bindings_.allocate(B)->getHandle();
+  auto CH = bindings_.allocate(C)->getHandle();
 
   AH.randomize(-10, 10, mod_.getPRNG());
   BH.randomize(-10, 10, mod_.getPRNG());
@@ -2122,15 +2134,15 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
   auto *O5 = F_->createSave("saveMul", mul);
   auto *O6 = F_->createSave("saveDiv", div);
 
-  ctx_.allocate(O1->getPlaceholder());
-  ctx_.allocate(O2->getPlaceholder());
-  ctx_.allocate(O3->getPlaceholder());
-  ctx_.allocate(O4->getPlaceholder());
-  ctx_.allocate(O5->getPlaceholder());
-  ctx_.allocate(O6->getPlaceholder());
+  bindings_.allocate(O1->getPlaceholder());
+  bindings_.allocate(O2->getPlaceholder());
+  bindings_.allocate(O3->getPlaceholder());
+  bindings_.allocate(O4->getPlaceholder());
+  bindings_.allocate(O5->getPlaceholder());
+  bindings_.allocate(O6->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
     auto max = std::max(AH.at({i}), BH.at({i}));
@@ -2142,25 +2154,32 @@ TEST_P(Operator, QuantizedArithmeticRescaled) {
 
     // We generate numbers up to 110, so a difference of 2 (~2%) is
     // reasonable.
-    EXPECT_NEAR(max, ctx_.get(O1->getPlaceholder())->getHandle().at({i}), 2.0);
-    EXPECT_NEAR(min, ctx_.get(O2->getPlaceholder())->getHandle().at({i}), 2.0);
-    EXPECT_NEAR(add, ctx_.get(O3->getPlaceholder())->getHandle().at({i}), 2.0);
-    EXPECT_NEAR(sub, ctx_.get(O4->getPlaceholder())->getHandle().at({i}), 2.0);
-    EXPECT_NEAR(mul, ctx_.get(O5->getPlaceholder())->getHandle().at({i}), 2.0);
-    EXPECT_NEAR(div, ctx_.get(O6->getPlaceholder())->getHandle().at({i}), 2.0);
+    EXPECT_NEAR(max, bindings_.get(O1->getPlaceholder())->getHandle().at({i}),
+                2.0);
+    EXPECT_NEAR(min, bindings_.get(O2->getPlaceholder())->getHandle().at({i}),
+                2.0);
+    EXPECT_NEAR(add, bindings_.get(O3->getPlaceholder())->getHandle().at({i}),
+                2.0);
+    EXPECT_NEAR(sub, bindings_.get(O4->getPlaceholder())->getHandle().at({i}),
+                2.0);
+    EXPECT_NEAR(mul, bindings_.get(O5->getPlaceholder())->getHandle().at({i}),
+                2.0);
+    EXPECT_NEAR(div, bindings_.get(O6->getPlaceholder())->getHandle().at({i}),
+                2.0);
   }
 }
 
-static FunctionTensorPair createAndInitTransposeNet(glow::Context &ctx,
-                                                    glow::ExecutionEngine &EE) {
+static FunctionTensorPair
+createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
+                          glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {2, 3}, "A", false);
-  ctx.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 3.1f};
+  bindings.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f, 2.7f, 3.1f};
   auto *tr = F->createTranspose("Tr", A, {1, 0});
   auto *result = F->createSave("Ret", tr);
-  auto *resultTensor = ctx.allocate(result->getPlaceholder());
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -2193,9 +2212,12 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   auto *QC = mod_.createPlaceholder(ElemKind::Int8QTy, {len}, TQC->getScale(),
                                     TQC->getOffset(), "QC", false);
 
-  ctx_.allocate(QA)->getHandle<int8_t>().randomize(-10, 10, mod_.getPRNG());
-  ctx_.allocate(QB)->getHandle<int8_t>().randomize(-10, 10, mod_.getPRNG());
-  ctx_.allocate(QC)->getHandle<int8_t>().randomize(-10, 10, mod_.getPRNG());
+  bindings_.allocate(QA)->getHandle<int8_t>().randomize(-10, 10,
+                                                        mod_.getPRNG());
+  bindings_.allocate(QB)->getHandle<int8_t>().randomize(-10, 10,
+                                                        mod_.getPRNG());
+  bindings_.allocate(QC)->getHandle<int8_t>().randomize(-10, 10,
+                                                        mod_.getPRNG());
 
   // Apply max/min/add/sub/mul/div quantized.
   Node *max = F_->createMax("max", TO1, QA, QB);
@@ -2213,25 +2235,25 @@ TEST_P(Operator, QuantizedArithmeticUnrescaled) {
   auto *O5 = F_->createSave("saveMul", mul);
   auto *O6 = F_->createSave("saveDiv", div);
 
-  ctx_.allocate(O1->getPlaceholder());
-  ctx_.allocate(O2->getPlaceholder());
-  ctx_.allocate(O3->getPlaceholder());
-  ctx_.allocate(O4->getPlaceholder());
-  ctx_.allocate(O5->getPlaceholder());
-  ctx_.allocate(O6->getPlaceholder());
+  bindings_.allocate(O1->getPlaceholder());
+  bindings_.allocate(O2->getPlaceholder());
+  bindings_.allocate(O3->getPlaceholder());
+  bindings_.allocate(O4->getPlaceholder());
+  bindings_.allocate(O5->getPlaceholder());
+  bindings_.allocate(O6->getPlaceholder());
 
-  auto QAH = ctx_.get(QA)->getHandle<int8_t>();
-  auto QBH = ctx_.get(QB)->getHandle<int8_t>();
-  auto QCH = ctx_.get(QC)->getHandle<int8_t>();
-  auto O1H = ctx_.get(O1->getPlaceholder())->getHandle<int8_t>();
-  auto O2H = ctx_.get(O2->getPlaceholder())->getHandle<int8_t>();
-  auto O3H = ctx_.get(O3->getPlaceholder())->getHandle<int8_t>();
-  auto O4H = ctx_.get(O4->getPlaceholder())->getHandle<int8_t>();
-  auto O5H = ctx_.get(O5->getPlaceholder())->getHandle<int8_t>();
-  auto O6H = ctx_.get(O6->getPlaceholder())->getHandle<int8_t>();
+  auto QAH = bindings_.get(QA)->getHandle<int8_t>();
+  auto QBH = bindings_.get(QB)->getHandle<int8_t>();
+  auto QCH = bindings_.get(QC)->getHandle<int8_t>();
+  auto O1H = bindings_.get(O1->getPlaceholder())->getHandle<int8_t>();
+  auto O2H = bindings_.get(O2->getPlaceholder())->getHandle<int8_t>();
+  auto O3H = bindings_.get(O3->getPlaceholder())->getHandle<int8_t>();
+  auto O4H = bindings_.get(O4->getPlaceholder())->getHandle<int8_t>();
+  auto O5H = bindings_.get(O5->getPlaceholder())->getHandle<int8_t>();
+  auto O6H = bindings_.get(O6->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
     float a = TQA->getScale() * (QAH.at({i}) - TQA->getOffset());
@@ -2274,10 +2296,10 @@ TEST_P(Operator, QuantizedCmpLTEAndSelect) {
   auto *QD = mod_.createPlaceholder(ElemKind::Int8QTy, {len}, TQD->getScale(),
                                     TQD->getOffset(), "QD", false);
 
-  auto QAH = ctx_.allocate(QA)->getHandle<int8_t>();
-  auto QBH = ctx_.allocate(QB)->getHandle<int8_t>();
-  auto QCH = ctx_.allocate(QC)->getHandle<int8_t>();
-  auto QDH = ctx_.allocate(QD)->getHandle<int8_t>();
+  auto QAH = bindings_.allocate(QA)->getHandle<int8_t>();
+  auto QBH = bindings_.allocate(QB)->getHandle<int8_t>();
+  auto QCH = bindings_.allocate(QC)->getHandle<int8_t>();
+  auto QDH = bindings_.allocate(QD)->getHandle<int8_t>();
 
   QAH.randomize(-128, 127, mod_.getPRNG());
   QBH.randomize(-128, 127, mod_.getPRNG());
@@ -2290,10 +2312,10 @@ TEST_P(Operator, QuantizedCmpLTEAndSelect) {
 
   // Save result of the operation.
   auto *out = F_->createSave("save", select);
-  auto OH = ctx_.allocate(out->getPlaceholder())->getHandle<int8_t>();
+  auto OH = bindings_.allocate(out->getPlaceholder())->getHandle<int8_t>();
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   int count_strict = 0;
   int count = 0;
@@ -2323,7 +2345,7 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "A", false);
 
-  auto AH = ctx_.allocate(A)->getHandle();
+  auto AH = bindings_.allocate(A)->getHandle();
 
   // Notice that the range below is the an approximation of the scale factors
   // in T3 and T4. If we increase the size of the range we may start losing
@@ -2351,9 +2373,9 @@ TEST_P(Operator, TestQuantizedRescaleSequence) {
 
   // Test a sequence of rescale operations t
   auto *result = F_->createSave("save", DQ);
-  auto OH = ctx_.allocate(result->getPlaceholder())->getHandle();
+  auto OH = bindings_.allocate(result->getPlaceholder())->getHandle();
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
     EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
@@ -2375,15 +2397,16 @@ TEST_P(Operator, FCGradientCheck) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "X", true);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "Y", true);
 
-  ctx_.allocate(A);
-  ctx_.allocate(B);
-  ctx_.allocate(X)->init(Tensor::InitKind::Broadcast, -1.26274, mod_.getPRNG());
-  ctx_.allocate(Y)->init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
+  bindings_.allocate(A);
+  bindings_.allocate(B);
+  bindings_.allocate(X)->init(Tensor::InitKind::Broadcast, -1.26274,
+                              mod_.getPRNG());
+  bindings_.allocate(Y)->init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
 
   auto *FC = F_->createFullyConnected("fc", A, X, Y);
   auto *S = F_->createRegression("reg", FC, B);
   auto *save = F_->createSave("ret", S);
-  ctx_.allocate(save->getPlaceholder());
+  bindings_.allocate(save->getPlaceholder());
 
   Tensor initA(ElemKind::FloatTy, {2, 1});
   Tensor initB(ElemKind::FloatTy, {2, 1});
@@ -2392,10 +2415,10 @@ TEST_P(Operator, FCGradientCheck) {
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
   EE_.compile(CompilationMode::Train, DF);
-  runBatch(EE_, ctx_, 3, sampleCounter, {A, B}, {&initA, &initB});
+  runBatch(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB});
 
-  EXPECT_NEAR(ctx_.get(X)->getHandle().raw(0), -0.21294, 1E-5);
-  EXPECT_NEAR(ctx_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
+  EXPECT_NEAR(bindings_.get(X)->getHandle().raw(0), -0.21294, 1E-5);
+  EXPECT_NEAR(bindings_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
 }
 
 TEST_P(Operator, concatVectors) {
@@ -2407,13 +2430,13 @@ TEST_P(Operator, concatVectors) {
   auto *V2 = mod_.createPlaceholder(ElemKind::Int64ITy, {20}, "V2", false);
   auto *V3 = mod_.createPlaceholder(ElemKind::Int64ITy, {30}, "V3", false);
 
-  ctx_.allocate(V1);
-  ctx_.allocate(V2);
-  ctx_.allocate(V3);
+  bindings_.allocate(V1);
+  bindings_.allocate(V2);
+  bindings_.allocate(V3);
 
   Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
   auto *result = F_->createSave("ret", L);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   Tensor I1(ElemKind::Int64ITy, {10});
   Tensor I2(ElemKind::Int64ITy, {20});
@@ -2432,10 +2455,10 @@ TEST_P(Operator, concatVectors) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
-  updateInputPlaceholders(ctx_, {V1, V2, V3}, {&I1, &I2, &I3});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V1, V2, V3}, {&I1, &I2, &I3});
+  EE_.run(bindings_);
 
-  auto RNWH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
@@ -2453,14 +2476,14 @@ TEST_P(Operator, concatVectorsRepeated) {
 
   auto *V1 = mod_.createPlaceholder(ElemKind::Int64ITy, {10}, "V1", false);
   auto *V2 = mod_.createPlaceholder(ElemKind::Int64ITy, {20}, "V2", false);
-  ctx_.allocate(V1);
-  ctx_.allocate(V2);
+  bindings_.allocate(V1);
+  bindings_.allocate(V2);
 
   // Alternate adding sequences of V1 and V2, so that the IRGen'd
   // InsertTensors have different counts.
   Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
   auto *result = F_->createSave("ret", L);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   Tensor I1(ElemKind::Int64ITy, {10});
   Tensor I2(ElemKind::Int64ITy, {20});
@@ -2475,10 +2498,10 @@ TEST_P(Operator, concatVectorsRepeated) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output vector.
-  updateInputPlaceholders(ctx_, {V1, V2}, {&I1, &I2});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V1, V2}, {&I1, &I2});
+  EE_.run(bindings_);
 
-  auto outH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto outH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   // Simply verify here that the values are in their correct places, based on
   // the number of times/order V1 and V2 are concatenated and their sizes.
@@ -2497,7 +2520,7 @@ TEST_P(Operator, sliceVectors) {
   F_->setName("sliceVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 30}, "V", false);
-  ctx_.allocate(V);
+  bindings_.allocate(V);
 
   Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
   Node *S2 = F_->createSlice("slice2", V, {1, 0}, {2, 30});
@@ -2507,9 +2530,9 @@ TEST_P(Operator, sliceVectors) {
   auto *result2 = F_->createSave("ret2", S2);
   auto *result3 = F_->createSave("ret3", S3);
 
-  ctx_.allocate(result1->getPlaceholder());
-  ctx_.allocate(result2->getPlaceholder());
-  ctx_.allocate(result3->getPlaceholder());
+  bindings_.allocate(result1->getPlaceholder());
+  bindings_.allocate(result2->getPlaceholder());
+  bindings_.allocate(result3->getPlaceholder());
 
   Tensor I(ElemKind::Int64ITy, {3, 30});
 
@@ -2522,12 +2545,12 @@ TEST_P(Operator, sliceVectors) {
   EE_.compile(CompilationMode::Infer, F_);
 
   // Testing the output slices.
-  updateInputPlaceholders(ctx_, {V}, {&I});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V}, {&I});
+  EE_.run(bindings_);
 
-  auto RNWH1 = ctx_.get(result1->getPlaceholder())->getHandle<int64_t>();
-  auto RNWH2 = ctx_.get(result2->getPlaceholder())->getHandle<int64_t>();
-  auto RNWH3 = ctx_.get(result3->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH1 = bindings_.get(result1->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH2 = bindings_.get(result2->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH3 = bindings_.get(result3->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(3, RNWH1.dims()[0]);
   EXPECT_EQ(3, RNWH1.dims()[1]);
@@ -2554,7 +2577,7 @@ TEST_P(Operator, sliceConcatVectors) {
   F_->setName("sliceConcatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 4}, "V", false);
-  ctx_.allocate(V);
+  bindings_.allocate(V);
 
   Tensor I(ElemKind::Int64ITy, {5, 4});
   for (size_t i = 0; i < 5; i++) {
@@ -2575,19 +2598,19 @@ TEST_P(Operator, sliceConcatVectors) {
   Node *C2 = F_->createConcat("concat2", {S2, C1, C0}, 0);
 
   auto *result = F_->createSave("ret", C2);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  updateInputPlaceholders(ctx_, {V}, {&I});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V}, {&I});
+  EE_.run(bindings_);
 
   const size_t expected[7][4] = {{300, 301, 302, 303}, {400, 401, 402, 403},
                                  {100, 101, 302, 303}, {200, 201, 402, 403},
                                  {0, 1, 2, 3},         {100, 101, 102, 103},
                                  {200, 201, 202, 203}};
 
-  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
   EXPECT_EQ(7, resultH.dims()[0]);
   EXPECT_EQ(4, resultH.dims()[1]);
   for (size_t i = 0; i < 7; i++) {
@@ -2603,15 +2626,15 @@ TEST_P(Operator, Tile) {
   F_->setName("concatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
-  ctx_.allocate(V);
+  bindings_.allocate(V);
 
   Node *T0 = F_->createTile("tile0", V, /* tiles */ 3, /* axis */ 0);
   auto *result0 = F_->createSave("res0", T0);
-  ctx_.allocate(result0->getPlaceholder());
+  bindings_.allocate(result0->getPlaceholder());
 
   Node *T1 = F_->createTile("tile1", V, /* tiles */ 3, /* axis */ 1);
   auto *result1 = F_->createSave("res1", T1);
-  ctx_.allocate(result1->getPlaceholder());
+  bindings_.allocate(result1->getPlaceholder());
 
   Tensor VT(ElemKind::FloatTy, {4, 5});
 
@@ -2623,11 +2646,11 @@ TEST_P(Operator, Tile) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  updateInputPlaceholders(ctx_, {V}, {&VT});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V}, {&VT});
+  EE_.run(bindings_);
 
   // Testing the output vector with axis 0.
-  auto res0 = ctx_.get(result0->getPlaceholder())->getHandle<float>();
+  auto res0 = bindings_.get(result0->getPlaceholder())->getHandle<float>();
   for (size_t i = 0; i < res0.dims()[0]; i++) {
     for (size_t j = 0; j < res0.dims()[1]; j++) {
       EXPECT_EQ(res0.at({i, j}), (i % 4) * 5 + j);
@@ -2635,7 +2658,7 @@ TEST_P(Operator, Tile) {
   }
 
   // Testing the output vector with axis 1.
-  auto res1 = ctx_.get(result1->getPlaceholder())->getHandle<float>();
+  auto res1 = bindings_.get(result1->getPlaceholder())->getHandle<float>();
   for (size_t i = 0; i < res1.dims()[0]; i++) {
     for (size_t j = 0; j < res1.dims()[1]; j++) {
       EXPECT_EQ(res1.at({i, j}), i * 5 + (j % 5));
@@ -2649,7 +2672,7 @@ TEST_P(Operator, QuantizedTile) {
   F_->setName("concatVectors");
 
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
-  ctx_.allocate(V);
+  bindings_.allocate(V);
 
   auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
   auto quantizeTy =
@@ -2660,12 +2683,12 @@ TEST_P(Operator, QuantizedTile) {
   Node *T0 = F_->createTile("tile0", Q, /* tiles */ 3, /* axis */ 0);
   auto *DQ0 = F_->createDequantize("dequantize0", T0);
   auto *result0 = F_->createSave("res0", DQ0);
-  ctx_.allocate(result0->getPlaceholder());
+  bindings_.allocate(result0->getPlaceholder());
 
   Node *T1 = F_->createTile("tile1", Q, /* tiles */ 3, /* axis */ 1);
   auto *DQ1 = F_->createDequantize("dequantize1", T1);
   auto *result1 = F_->createSave("res1", DQ1);
-  ctx_.allocate(result1->getPlaceholder());
+  bindings_.allocate(result1->getPlaceholder());
 
   Tensor VT(ElemKind::FloatTy, {4, 5});
 
@@ -2677,11 +2700,11 @@ TEST_P(Operator, QuantizedTile) {
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  updateInputPlaceholders(ctx_, {V}, {&VT});
-  EE_.run(ctx_);
+  updateInputPlaceholders(bindings_, {V}, {&VT});
+  EE_.run(bindings_);
 
   // Testing the output vector with axis 0.
-  auto res0 = ctx_.get(result0->getPlaceholder())->getHandle<float>();
+  auto res0 = bindings_.get(result0->getPlaceholder())->getHandle<float>();
   for (size_t i = 0; i < res0.dims()[0]; i++) {
     for (size_t j = 0; j < res0.dims()[1]; j++) {
       EXPECT_NEAR(res0.at({i, j}), (i % 4) * 5 + j, 0.05);
@@ -2689,7 +2712,7 @@ TEST_P(Operator, QuantizedTile) {
   }
 
   // Testing the output vector with axis 1.
-  auto res1 = ctx_.get(result1->getPlaceholder())->getHandle<float>();
+  auto res1 = bindings_.get(result1->getPlaceholder())->getHandle<float>();
   (void)res1;
   for (size_t i = 0; i < res1.dims()[0]; i++) {
     for (size_t j = 0; j < res1.dims()[1]; j++) {
@@ -2702,7 +2725,7 @@ TEST_P(Operator, Clip) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
-  auto xHandle = ctx_.allocate(X)->getHandle();
+  auto xHandle = bindings_.allocate(X)->getHandle();
   xHandle = {45.0, 16.0, 59.0, 99.0, 48.0, 12.0, 44.0, 46.0, 82.0,
              28.0, 1.0,  91.0, 18.0, 9.0,  71.0, 24.0, 37.0, 61.0,
              12.0, 81.0, 36.0, 38.0, 30.0, 84.0, 40.0};
@@ -2711,9 +2734,9 @@ TEST_P(Operator, Clip) {
   float max = 60.0;
   auto *node = F_->createClip("clip", X, min, max);
   auto *save = F_->createSave("save", node);
-  auto *saveTensor = ctx_.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto result = saveTensor->getHandle();
   std::vector<size_t> expectedDims = {5, 5};
@@ -2737,8 +2760,8 @@ TEST_P(Operator, simpleCmpSelectPredication) {
   auto *counters =
       mod_.createPlaceholder(ElemKind::FloatTy, {10}, "counters", false);
 
-  ctx_.allocate(counters)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  ctx_.allocate(inputs)->getHandle().clear(1);
+  bindings_.allocate(counters)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  bindings_.allocate(inputs)->getHandle().clear(1);
 
   Node *cnt = counters;
   Node *data = inputs;
@@ -2757,12 +2780,12 @@ TEST_P(Operator, simpleCmpSelectPredication) {
   }
 
   auto *SN = F_->createSave("ret", data);
-  ctx_.allocate(SN->getPlaceholder());
+  bindings_.allocate(SN->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(SN->getPlaceholder())->getHandle();
+  auto H = bindings_.get(SN->getPlaceholder())->getHandle();
   ASSERT_NEAR(H.at(0), 1, 0.001);
   ASSERT_NEAR(H.at(1), 2, 0.001);
   ASSERT_NEAR(H.at(2), 4, 0.001);
@@ -2781,30 +2804,30 @@ TEST_P(Operator, simplePredication) {
   auto *counters =
       mod_.createPlaceholder(ElemKind::FloatTy, {10}, "counters", false);
 
-  ctx_.allocate(counters)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  ctx_.allocate(inputs)->getHandle().randomize(-10, 10, mod_.getPRNG());
+  bindings_.allocate(counters)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  bindings_.allocate(inputs)->getHandle().randomize(-10, 10, mod_.getPRNG());
 
   Node *C5 = F_->createSplat("C5", counters->getType(), 5.0);
   Node *pred = F_->createCmpLTE("cmp", C5, counters);
 
-  auto *FC0 = F_->createFullyConnected(ctx_, "FC0", inputs, 128);
+  auto *FC0 = F_->createFullyConnected(bindings_, "FC0", inputs, 128);
   auto *RL0 = F_->createRELU("RL0", FC0);
-  auto *FC1 = F_->createFullyConnected(ctx_, "FC1", RL0, 64);
+  auto *FC1 = F_->createFullyConnected(bindings_, "FC1", RL0, 64);
   auto *RL1 = F_->createRELU("RL1", FC1);
-  auto *FC2 = F_->createFullyConnected(ctx_, "FC2", RL1, 32);
+  auto *FC2 = F_->createFullyConnected(bindings_, "FC2", RL1, 32);
   auto *RL2 = F_->createRELU("RL2", FC2);
 
   auto *save = F_->createSave("ret", RL2);
-  ctx_.allocate(save->getPlaceholder());
+  bindings_.allocate(save->getPlaceholder());
 
   FC0->setPredicate(pred);
   FC1->setPredicate(pred);
   FC2->setPredicate(pred);
 
   ::glow::convertPlaceholdersToConstants(
-      F_, ctx_, {inputs, counters, save->getPlaceholder()});
+      F_, bindings_, {inputs, counters, save->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 }
 
 TEST_P(Operator, ChannelShuffle) {
@@ -2812,16 +2835,17 @@ TEST_P(Operator, ChannelShuffle) {
 
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs", false);
-  ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4,  5,  6,
+                                             7, 8, 9, 10, 11, 12};
 
   Node *CS = F_->createChannelShuffle("CS", inputs, 3, 1);
   SaveNode *S = F_->createSave("save", CS);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto results = ctx_.get(S->getPlaceholder())->getHandle();
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
 
   EXPECT_EQ(results.size(), 12);
   std::vector<float> expected = {1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12};
@@ -2832,7 +2856,7 @@ TEST_P(Operator, ChannelShuffle) {
 TEST_P(Operator, Squeeze) {
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
-  ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
@@ -2841,12 +2865,12 @@ TEST_P(Operator, Squeeze) {
     std::vector<size_t> axes = {0};
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
-    ctx_.allocate(S->getPlaceholder());
+    bindings_.allocate(S->getPlaceholder());
 
     EE_.compile(CompilationMode::Infer, F_);
-    EE_.run(ctx_);
+    EE_.run(bindings_);
 
-    auto results = ctx_.get(S->getPlaceholder())->getHandle();
+    auto results = bindings_.get(S->getPlaceholder())->getHandle();
     std::vector<size_t> expectedDims = {2, 1, 5};
     EXPECT_TRUE(results.dims().vec() == expectedDims);
     for (size_t i = 0; i < 10; i++)
@@ -2858,12 +2882,12 @@ TEST_P(Operator, Squeeze) {
     std::vector<size_t> axes = {0, 2, 2};
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
-    ctx_.allocate(S->getPlaceholder());
+    bindings_.allocate(S->getPlaceholder());
 
     EE_.compile(CompilationMode::Infer, F_);
-    EE_.run(ctx_);
+    EE_.run(bindings_);
 
-    auto results = ctx_.get(S->getPlaceholder())->getHandle();
+    auto results = bindings_.get(S->getPlaceholder())->getHandle();
     std::vector<size_t> expectedDims = {2, 5};
     EXPECT_TRUE(results.dims().vec() == expectedDims);
     for (size_t i = 0; i < 10; i++)
@@ -2874,7 +2898,7 @@ TEST_P(Operator, Squeeze) {
   {
     auto *emptyInput =
         mod_.createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
-    ctx_.allocate(emptyInput)->getHandle() = {42.0};
+    bindings_.allocate(emptyInput)->getHandle() = {42.0};
 
     std::vector<size_t> axes = {0};
     Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
@@ -2882,16 +2906,16 @@ TEST_P(Operator, Squeeze) {
     Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
     SaveNode *S2 = F_->createSave("save", UnSQZ);
 
-    ctx_.allocate(S1->getPlaceholder());
-    ctx_.allocate(S2->getPlaceholder());
+    bindings_.allocate(S1->getPlaceholder());
+    bindings_.allocate(S2->getPlaceholder());
 
     EE_.compile(CompilationMode::Infer, F_);
-    EE_.run(ctx_);
+    EE_.run(bindings_);
 
-    auto res1 = ctx_.get(S1->getPlaceholder())->getHandle();
+    auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
     EXPECT_TRUE(res1.dims().vec() == std::vector<size_t>());
     EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
-    auto res2 = ctx_.get(S2->getPlaceholder())->getHandle();
+    auto res2 = bindings_.get(S2->getPlaceholder())->getHandle();
     EXPECT_TRUE(res2.dims().vec() == std::vector<size_t>(1, 1));
     EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
   }
@@ -2902,22 +2926,22 @@ TEST_P(Operator, Squeeze) {
 TEST_P(Operator, ExpandDims) {
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "inputs", false);
-  auto IH = ctx_.allocate(inputs)->getHandle();
+  auto IH = bindings_.allocate(inputs)->getHandle();
   IH = {1, 2, 3, 4};
 
   // This should be uniqued and sorted, so should become {0, 1, 3, 5}.
   std::vector<size_t> axes = {3, 0, 5, 1, 3};
   Node *EDN = F_->createExpandDims("expand", inputs, axes);
   SaveNode *S = F_->createSave("save", EDN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // Expected dims based on the axes above; inserted new dimensions of 1 in
   // every unique axes location, based on the output tensor shape.
   std::vector<size_t> expectedDims = {1, 1, 2, 1, 2, 1};
-  auto results = ctx_.get(S->getPlaceholder())->getHandle();
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
   EXPECT_TRUE(results.dims().vec() == expectedDims);
 
   // The data should be the same, as this was just a reshape.
@@ -2931,7 +2955,8 @@ TEST_P(Operator, Split) {
 
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 6}, "inputs", false);
-  ctx_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4,  5,  6,
+                                             7, 8, 9, 10, 11, 12};
 
   std::vector<SliceNode *> outputs1;
   F_->createSplit("Split1", inputs, /*outputNum = */ 2, /*axis = */ 2,
@@ -2944,15 +2969,15 @@ TEST_P(Operator, Split) {
   auto *S3 = F_->createSave("save3", outputs2[0]);
   auto *S4 = F_->createSave("save4", outputs2[1]);
 
-  ctx_.allocate(S1->getPlaceholder());
-  ctx_.allocate(S2->getPlaceholder());
-  ctx_.allocate(S3->getPlaceholder());
-  ctx_.allocate(S4->getPlaceholder());
+  bindings_.allocate(S1->getPlaceholder());
+  bindings_.allocate(S2->getPlaceholder());
+  bindings_.allocate(S3->getPlaceholder());
+  bindings_.allocate(S4->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S1->getPlaceholder())->getHandle();
+  auto result = bindings_.get(S1->getPlaceholder())->getHandle();
   EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
   EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
   EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
@@ -2961,7 +2986,7 @@ TEST_P(Operator, Split) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
   EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 9);
 
-  result = ctx_.get(S2->getPlaceholder())->getHandle();
+  result = bindings_.get(S2->getPlaceholder())->getHandle();
   EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
   EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 4);
   EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 5);
@@ -2970,14 +2995,14 @@ TEST_P(Operator, Split) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 11);
   EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 12);
 
-  result = ctx_.get(S3->getPlaceholder())->getHandle();
+  result = bindings_.get(S3->getPlaceholder())->getHandle();
   EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 2}));
   EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
   EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
   EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 7);
   EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
 
-  result = ctx_.get(S4->getPlaceholder())->getHandle();
+  result = bindings_.get(S4->getPlaceholder())->getHandle();
   EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 4}));
   EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 3);
   EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 4);
@@ -3009,12 +3034,12 @@ TEST_P(Operator, IntRelu) {
   auto *dequantize = F_->createDequantize("dequantize", relu);
 
   auto *save = F_->createSave("save", dequantize);
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(save->getPlaceholder())->getHandle();
+  auto result = bindings_.get(save->getPlaceholder())->getHandle();
   float expectedValue = std::max(0.0f, splatValue);
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(expectedValue, result.raw(i));
@@ -3032,11 +3057,11 @@ TEST_P(Operator, IntSplat) {
   auto *dequantize = F_->createDequantize("dequantize", splat);
 
   auto *save = F_->createSave("save", dequantize);
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(save->getPlaceholder())->getHandle();
+  auto result = bindings_.get(save->getPlaceholder())->getHandle();
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(splatValue, result.raw(i));
   }
@@ -3052,11 +3077,11 @@ TEST_P(Operator, Fp16Splat) {
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
 
   auto *save = F_->createSave("save", splat);
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(save->getPlaceholder())->getHandle<float16_t>();
+  auto result = bindings_.get(save->getPlaceholder())->getHandle<float16_t>();
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(float16_t(splatValue), result.raw(i));
   }
@@ -3065,14 +3090,14 @@ TEST_P(Operator, Fp16Splat) {
 TEST_P(Operator, GroupConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 2 * 8; i++) {
     IH.raw(i) = i + 1;
   }
 
   auto filter =
       mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 4}, "filter", false);
-  auto FH = ctx_.allocate(filter)->getHandle();
+  auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 6; i++)
     for (size_t j = 0; j < 4; j++) {
       FH.at({i, 0, 0, j}) = pow(10.0, i);
@@ -3080,21 +3105,21 @@ TEST_P(Operator, GroupConvolution) {
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {6}, "bias", false);
-  ctx_.allocate(zeroBias)->zero();
+  bindings_.allocate(zeroBias)->zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 1, 6});
 
   ConvolutionNode *CN =
       F_->createConv("Conv", input, filter, zeroBias, outTy, 1, 1, 0, 2);
   SaveNode *S = F_->createSave("save", CN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
 
   std::vector<size_t> expectedDims = {1, 2, 1, 6};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -3119,40 +3144,40 @@ TEST_P(Operator, GroupConvolution) {
 TEST_P(Operator, NonSquarePaddingConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
 
   auto filter =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 1}, "filter", false);
-  auto FH = ctx_.allocate(filter)->getHandle();
+  auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     FH.raw(i) = pow(2.0, i);
   }
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
-  ctx_.allocate(zeroBias)->zero();
+  bindings_.allocate(zeroBias)->zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
 
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {1, 1}, {0, 2, 1, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   // Create the reference conv operator whose input is the same as the
   // after-padding-input above.
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 1}, "input1", false);
-  ctx_.allocate(input1)->zero();
-  auto IH1 = ctx_.get(input1)->getHandle();
+  bindings_.allocate(input1)->zero();
+  auto IH1 = bindings_.get(input1)->getHandle();
   for (size_t i = 0; i < 4; i++)
     for (size_t j = 2; j < 6; j++) {
       IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
@@ -3162,13 +3187,13 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
   CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
                         {1, 1}, {0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, input1, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(ctx_);
-  Tensor &result1 = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
 }
@@ -3180,22 +3205,22 @@ TEST_P(Operator, NonSquarePaddingConvolution) {
 TEST_P(Operator, NonSquarePaddingAveragePool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 1}, "input1", false);
-  ctx_.allocate(input1)->zero();
-  auto IH1 = ctx_.get(input1)->getHandle();
+  bindings_.allocate(input1)->zero();
+  auto IH1 = bindings_.get(input1)->getHandle();
   for (size_t i = 0; i < 4; i++)
     for (size_t j = 2; j < 6; j++) {
       IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
@@ -3204,10 +3229,10 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(ctx_);
-  Tensor &result1 = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
 }
@@ -3219,23 +3244,23 @@ TEST_P(Operator, NonSquarePaddingAveragePool) {
 TEST_P(Operator, NonSquarePaddingMaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 1}, "input1", false);
-  ctx_.allocate(input1)->zero();
-  auto IH1 = ctx_.get(input1)->getHandle();
+  bindings_.allocate(input1)->zero();
+  auto IH1 = bindings_.get(input1)->getHandle();
   for (size_t i = 0; i < 4; i++)
     for (size_t j = 2; j < 6; j++) {
       IH1.at({0, i, j, 0}) = i * 4 + j - 2 + 1;
@@ -3244,12 +3269,12 @@ TEST_P(Operator, NonSquarePaddingMaxPool) {
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result1 = *ctx_.get(S->getPlaceholder());
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
 }
@@ -3259,16 +3284,16 @@ TEST_P(Operator, FP16AvgPool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
-  ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
-                                                  5., 6., 7., 8.};
+  bindings_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
+                                                       5., 6., 7., 8.};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto *result = ctx_.get(S->getPlaceholder());
+  auto *result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 2, 2, 1});
   out.getHandle<float16_t>() = {2., 3., 5., 6.};
   EXPECT_TRUE(out.isEqual(*result));
@@ -3278,15 +3303,15 @@ TEST_P(Operator, FP16AvgPool) {
 TEST_P(Operator, AvgPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
-  ctx_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto *result = ctx_.get(S->getPlaceholder());
+  auto *result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::FloatTy, {1, 2, 2, 1});
   out.getHandle() = {2., 3., 5., 6.};
   EXPECT_TRUE(out.isEqual(*result));
@@ -3295,15 +3320,15 @@ TEST_P(Operator, AvgPool) {
 TEST_P(Operator, Int8AvgPool) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
-  ctx_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<int8_t>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
   out.getHandle<int8_t>() = {2, 3, 5, 6};
   for (size_t i = 0; i < 2 * 2; i++) {
@@ -3314,15 +3339,15 @@ TEST_P(Operator, Int8AvgPool) {
 TEST_P(Operator, MaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
-  ctx_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder());
+  auto result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::FloatTy, {1, 2, 2, 1});
   out.getHandle() = {4., 5., 7., 8.};
   EXPECT_TRUE(out.isEqual(*result));
@@ -3333,16 +3358,16 @@ TEST_P(Operator, FP16MaxPool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
-  ctx_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
-                                                  5., 6., 7., 8.};
+  bindings_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
+                                                       5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder());
+  auto result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 2, 2, 1});
   out.getHandle<float16_t>() = {4., 5., 7., 8.};
   EXPECT_TRUE(out.isEqual(*result));
@@ -3351,15 +3376,15 @@ TEST_P(Operator, FP16MaxPool) {
 TEST_P(Operator, Int8MaxPool) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
-  ctx_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<int8_t>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
   Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
   out.getHandle<int8_t>() = {4, 5, 7, 8};
   for (size_t i = 0; i < 2 * 2; i++) {
@@ -3368,15 +3393,16 @@ TEST_P(Operator, Int8MaxPool) {
 }
 
 static FunctionTensorPair
-createAndInitBasicTanhTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+createAndInitBasicTanhTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  ctx.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   auto *tanh = F->createTanh("Tanh", input);
   auto *save = F->createSave("Save", tanh);
-  auto *resultTensor = ctx.allocate(save->getPlaceholder());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -3392,25 +3418,26 @@ TEST_P(Operator, Tanh) {
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *tanh = F_->createTanh("Tanh", input);
   auto *save = F_->createSave("Save", tanh);
-  ctx_.allocate(save->getPlaceholder());
+  bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto resultH = ctx_.get(save->getPlaceholder())->getHandle();
-  auto inputH = ctx_.get(input)->getHandle();
+  auto resultH = bindings_.get(save->getPlaceholder())->getHandle();
+  auto inputH = bindings_.get(input)->getHandle();
 
   for (size_t i = 0; i < size; i++) {
     EXPECT_NEAR(resultH.at({i}), std::tanh(inputH.at({i})), 0.001);
   }
 }
 
-static FunctionTensorPair createAndInitBasicLogTest(glow::Context &ctx,
-                                                    glow::ExecutionEngine &EE) {
+static FunctionTensorPair
+createAndInitBasicLogTest(glow::PlaceholderBindings &bindings,
+                          glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -3420,14 +3447,14 @@ static FunctionTensorPair createAndInitBasicLogTest(glow::Context &ctx,
 
   const float min = 1.0;
   const float max = 100.0;
-  ctx.allocate(input)->getHandle().randomize(min, max, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(min, max, mod.getPRNG());
 
   // Input some random data into a log.
   auto *log = F->createLog("log", input);
   auto *res = F->createSave("save", log);
-  ::glow::convertPlaceholdersToConstants(F, ctx,
+  ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
-  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -3443,33 +3470,33 @@ TEST_P(OperatorStateless, Int8Log) {
 TEST_P(Operator, NonSquareKernelConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
 
   auto filter =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 1}, "filter", false);
-  auto FH = ctx_.allocate(filter)->getHandle();
+  auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 1 * 2 * 3; i++) {
     FH.raw(i) = i + 1;
   }
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
-  ctx_.allocate(zeroBias)->zero();
+  bindings_.allocate(zeroBias)->zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 3}, {1, 1}, {0, 0, 0, 0}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {106, 127, 190, 211, 274, 295};
   for (size_t i = 0; i < 6; i++)
@@ -3482,17 +3509,17 @@ TEST_P(Operator, NonSquareKernelAveragePool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {4, 5, 8, 9, 12, 13};
   for (size_t i = 0; i < 6; i++)
@@ -3505,17 +3532,17 @@ TEST_P(Operator, NonSquareKernelMaxPool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {7, 8, 11, 12, 15, 16};
   for (size_t i = 0; i < 6; i++)
@@ -3526,33 +3553,33 @@ TEST_P(Operator, NonSquareKernelMaxPool) {
 TEST_P(Operator, NonSquareStrideConvolution) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
 
   auto filter =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "filter", false);
-  auto FH = ctx_.allocate(filter)->getHandle();
+  auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 1 * 2 * 2; i++) {
     FH.raw(i) = i + 1;
   }
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
-  ctx_.allocate(zeroBias)->zero();
+  bindings_.allocate(zeroBias)->zero();
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 2, 1});
   ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
                                        {2, 2}, {3, 2}, {0, 0, 1, 1}, 1);
   SaveNode *S = F_->createSave("save", CN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_,
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {44, 64, 41, 47};
   for (size_t i = 0; i < 4; i++)
@@ -3565,17 +3592,17 @@ TEST_P(Operator, NonSquareStrideAveragePool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {3.5, 5.5, 6.75, 7.75};
   for (size_t i = 0; i < 4; i++)
@@ -3588,17 +3615,17 @@ TEST_P(Operator, NonSquareStrideMaxPool) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   static const float ref[] = {6, 8, 14, 16};
   for (size_t i = 0; i < 4; i++)
@@ -3609,16 +3636,16 @@ TEST_P(Operator, SigmoidOverflow) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "input", false);
-  auto IH = ctx_.allocate(input)->getHandle();
+  auto IH = bindings_.allocate(input)->getHandle();
   IH.raw(0) = 1000;
   IH.raw(1) = -1000;
 
   auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
   auto *S = F_->createSave("fpSave", fpSigmoid);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   static const float ref[] = {1, 0};
   for (size_t i = 0; i < 2; i++) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
@@ -3626,15 +3653,16 @@ TEST_P(Operator, SigmoidOverflow) {
 }
 
 static FunctionTensorPair
-createAndInitBasicSigmoidTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+createAndInitBasicSigmoidTest(glow::PlaceholderBindings &bindings,
+                              glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  ctx.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   auto *sigmoid = F->createSigmoid("Sigmoid", input);
   auto *save = F->createSave("Save", sigmoid);
-  auto *resultTensor = ctx.allocate(save->getPlaceholder());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -3651,20 +3679,20 @@ TEST_P(Operator, BatchAdd) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {13, 3, 3}, "A", false);
-  ctx_.allocate(input)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(input)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *slice =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "slice", false);
-  ctx_.allocate(slice)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(slice)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
   auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
   auto *S = F_->createSave("save", batchAdd);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<float>();
-  auto handleInput = ctx_.get(input)->getHandle<float>();
-  auto handleSlice = ctx_.get(slice)->getHandle<float>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float>();
+  auto handleInput = bindings_.get(input)->getHandle<float>();
+  auto handleSlice = bindings_.get(slice)->getHandle<float>();
   ASSERT_EQ(result.size(), handleInput.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx),
@@ -3680,20 +3708,20 @@ TEST_P(Operator, FP16BatchAdd) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {13, 3, 3}, "A", false);
-  ctx_.allocate(input)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *slice =
       mod_.createPlaceholder(ElemKind::Float16Ty, {3, 3}, "slice", false);
-  ctx_.allocate(slice)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
+  bindings_.allocate(slice)->getHandle<float16_t>().randomize(-3.0, 3.0, PRNG);
   auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
   auto *S = F_->createSave("save", batchAdd);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder())->getHandle<float16_t>();
-  auto handleInput = ctx_.get(input)->getHandle<float16_t>();
-  auto handleSlice = ctx_.get(slice)->getHandle<float16_t>();
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  auto handleInput = bindings_.get(input)->getHandle<float16_t>();
+  auto handleSlice = bindings_.get(slice)->getHandle<float16_t>();
   ASSERT_EQ(result.size(), handleInput.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx),
@@ -3706,17 +3734,17 @@ TEST_P(Operator, Sigmoid) {
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   auto *sigmoid = F_->createSigmoid("sigmoid", input);
   auto *save = F_->createSave("Save", sigmoid);
-  ctx_.allocate(save->getPlaceholder());
+  bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto RH = ctx_.get(save->getPlaceholder())->getHandle();
-  auto inH = ctx_.get(input)->getHandle();
+  auto RH = bindings_.get(save->getPlaceholder())->getHandle();
+  auto inH = bindings_.get(input)->getHandle();
 
   for (size_t i = 0; i < size; i++) {
     float val = 1 / (1 + std::exp(-inH.at({i})));
@@ -3730,7 +3758,7 @@ TEST_P(Operator, IntLookupTable) {
   constexpr size_t size = 6;
   auto *input =
       mod_.createPlaceholder(ElemKind::Int8QTy, {size}, 1, 0, "input", false);
-  ctx_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5};
+  bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5};
 
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, 3, 3);
 
@@ -3743,12 +3771,12 @@ TEST_P(Operator, IntLookupTable) {
   auto *lookupTable =
       F_->createIntLookupTable("lookupTable", input, initValues, outTy);
   auto *save = F_->createSave("save", lookupTable);
-  ctx_.allocate(save->getPlaceholder());
+  bindings_.allocate(save->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(save->getPlaceholder())->getHandle<int8_t>();
+  auto result = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(result.raw(i), i);
   }
@@ -3762,8 +3790,8 @@ TEST_P(Operator, testBatchAdd) {
   auto *slice =
       mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
 
-  ctx_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
-  ctx_.allocate(slice)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  bindings_.allocate(slice)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
   std::vector<NodeValue> adds;
   for (size_t i = 0; i < numSlices; i++) {
@@ -3778,14 +3806,14 @@ TEST_P(Operator, testBatchAdd) {
   adds.clear();
 
   auto *result = F_->createSave("save", cc);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto RH = ctx_.get(result->getPlaceholder())->getHandle();
-  auto IH = ctx_.get(input)->getHandle();
-  auto SH = ctx_.get(slice)->getHandle();
+  auto RH = bindings_.get(result->getPlaceholder())->getHandle();
+  auto IH = bindings_.get(input)->getHandle();
+  auto SH = bindings_.get(slice)->getHandle();
 
   // Check that batched add works as expected.
   for (size_t i = 0; i < numSlices; i++) {
@@ -3798,8 +3826,8 @@ TEST_P(Operator, testBatchAdd) {
   }
 }
 
-static void quantizedBatchAdd(ExecutionEngine &EE, Function *F, Context &ctx,
-                              ElemKind Ty) {
+static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
+                              PlaceholderBindings &bindings, ElemKind Ty) {
   auto &mod = EE.getModule();
   unsigned numSlices = 10;
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
@@ -3807,8 +3835,8 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F, Context &ctx,
   auto *slice =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
 
-  ctx.allocate(input)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
-  ctx.allocate(slice)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  bindings.allocate(slice)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
 
   // Scale the numbers in the range (-5. .. 5.) to (-50 .. 50).
   auto qInType = mod.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
@@ -3828,17 +3856,17 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F, Context &ctx,
   Node *cc = F->createConcat("concat", adds, 0, qInType);
   cc = F->createDequantize("dq", cc);
   auto *result = F->createSave("save", cc);
-  ctx.allocate(result->getPlaceholder());
+  bindings.allocate(result->getPlaceholder());
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
-  auto RH = ctx.get(result->getPlaceholder())->getHandle();
-  auto IH = ctx.get(input)->getHandle();
-  auto SH = ctx.get(slice)->getHandle();
+  auto RH = bindings.get(result->getPlaceholder())->getHandle();
+  auto IH = bindings.get(input)->getHandle();
+  auto SH = bindings.get(slice)->getHandle();
 
   // Check that batched add works as expected.
   for (size_t i = 0; i < numSlices; i++) {
@@ -3853,9 +3881,9 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F, Context &ctx,
 /// Tests quantized batched-add arithmetic.
 TEST_P(Operator, testQuantizedBatchAdd) {
   // Test Int8QTy Slice.
-  quantizedBatchAdd(EE_, F_, ctx_, ElemKind::Int8QTy);
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
   // Test Int32QTy Slice.
-  quantizedBatchAdd(EE_, F_, ctx_, ElemKind::Int32QTy);
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int32QTy);
 }
 
 TEST_P(Operator, LengthsSum) {
@@ -3882,18 +3910,18 @@ TEST_P(Operator, LengthsSum) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  ctx_.allocate(data)->getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 3.7f,
-                                      3.0f, 2.9f, 1.1f, 1.4f, 2.8f, 8.4f};
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {2, 0, 3, 1};
+  bindings_.allocate(data)->getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 3.7f,
+                                           3.0f, 2.9f, 1.1f, 1.4f, 2.8f, 8.4f};
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {2, 0, 3, 1};
 
   auto *R = F_->createLengthsSum("LS", data, lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4, 2});
   expected.getHandle() = {3.3f, 4.6f, 0.0f, 0.0f, 8.6f, 8.0f, 2.8f, 8.4f};
 
@@ -3925,24 +3953,24 @@ TEST_P(Operator, SparseLengthsSum) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
-  ctx_.allocate(data)->getHandle() = {
+  bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
   auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
@@ -3977,24 +4005,24 @@ TEST_P(Operator, SparseLengthsSumI8) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
-  ctx_.allocate(data)->getHandle<int8_t>() = {
+  bindings_.allocate(data)->getHandle<int8_t>() = {
       11, 13, 24, 35, 46, 58,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
   auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::Int8QTy, {5, 2}, 0.1f, 1);
   expected.getHandle<int8_t>() = {
       56, 70, 1, 1, 69, 92, 11, 13, 31, 37,
@@ -4020,18 +4048,18 @@ TEST_P(Operator, SparseLengthsWeightedSum) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  ctx_.allocate(data)->getHandle() = {
+  bindings_.allocate(data)->getHandle() = {
       2.0,
       -0.5,
       13,
   };
-  ctx_.allocate(weights)->getHandle() = {
+  bindings_.allocate(weights)->getHandle() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -4041,12 +4069,12 @@ TEST_P(Operator, SparseLengthsWeightedSum) {
   auto *R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
                                                lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4});
   expected.getHandle() = {
       0.5,
@@ -4077,18 +4105,18 @@ TEST_P(Operator, SparseLengthsWeightedSumI8) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  ctx_.allocate(data)->getHandle<int8_t>() = {
+  bindings_.allocate(data)->getHandle<int8_t>() = {
       4,
       -1,
       26,
   };
-  ctx_.allocate(weights)->getHandle<int8_t>() = {
+  bindings_.allocate(weights)->getHandle<int8_t>() = {
       6, 2, 0, 0, 0, 0, 4, -1,
   };
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -4098,12 +4126,12 @@ TEST_P(Operator, SparseLengthsWeightedSumI8) {
   auto *R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
                                                lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::Int8QTy, {4}, 0.5, 0);
   expected.getHandle<int8_t>() = {
       1,
@@ -4144,10 +4172,10 @@ TEST_P(Operator, RowwiseQuantizedSparseLengthsWeightedSum) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                              /* isTrainable */ false);
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -4157,12 +4185,12 @@ TEST_P(Operator, RowwiseQuantizedSparseLengthsWeightedSum) {
   auto *R = F_->createRowwiseQuantizedSparseLengthsWeightedSum(
       "RQSLWS", data, weights, indices, lengths);
   SaveNode *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4});
   expected.getHandle() = {
       0.5,
@@ -4203,22 +4231,22 @@ TEST_P(Operator, RowwiseQuantizedSparseLengthsSum) {
   Placeholder *lengths = mod_.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
   auto *R = F_->createRowwiseQuantizedSparseLengthsSum("RQSLWS", data, indices,
                                                        lengths);
   SaveNode *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
@@ -4256,10 +4284,10 @@ TEST_P(Operator, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                              /* isTrainable */ false);
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -4269,12 +4297,12 @@ TEST_P(Operator, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
   auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       "RQSLWS", data, weights, indices, lengths);
   SaveNode *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle() = {
       0.5,
@@ -4315,22 +4343,22 @@ TEST_P(Operator, FusedRowwiseQuantizedSparseLengthsSum) {
   Placeholder *lengths = mod_.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
   auto *R = F_->createFusedRowwiseQuantizedSparseLengthsSum("RQSLWS", data,
                                                             indices, lengths);
   SaveNode *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
@@ -4356,8 +4384,8 @@ TEST_P(Operator, SparseToDense) {
   auto *dataToInferDim = mod_.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
                                                 "dataToInferDim", false);
 
-  auto IH = ctx_.allocate(indices)->getHandle<int64_t>();
-  auto VH = ctx_.allocate(values)->getHandle();
+  auto IH = bindings_.allocate(indices)->getHandle<int64_t>();
+  auto VH = bindings_.allocate(values)->getHandle();
 
   // Duplicate one index to test that the corresponding values are added.
   IH = {1, 3, 1, 9};
@@ -4365,12 +4393,12 @@ TEST_P(Operator, SparseToDense) {
 
   auto *STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
   auto *S = F_->createSave("save", STDN);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
 
   // Compute expected output.
   Tensor expected(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
@@ -4410,20 +4438,20 @@ TEST_P(Operator, SparseToDenseMask1) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
   std::vector<int64_t> mask{2, 1, 0, 13, 42, 43};
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {4, 42, 13, 0, 100, 13};
-  ctx_.allocate(values)->getHandle<float>() = {-5.5, 0.7, 11, 1e6, 2, 3.5};
-  ctx_.allocate(defaultValue)->getHandle<float>().raw(0) = 1.1;
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {4, 42, 13, 0, 100, 13};
+  bindings_.allocate(values)->getHandle<float>() = {-5.5, 0.7, 11, 1e6, 2, 3.5};
+  bindings_.allocate(defaultValue)->getHandle<float>().raw(0) = 1.1;
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
 
   auto *R = F_->createSparseToDenseMask("STDM", indices, values, defaultValue,
                                         lengths, mask);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {2, 6});
   expected.getHandle<float>() = {
       1.1, 1.1, 1e6, 11, 0.7, 1.1, 1.1, 1.1, 1.1, 3.5, 1.1, 1.1,
@@ -4455,21 +4483,21 @@ TEST_P(Operator, SparseToDenseMask2) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {}, "lengths", false);
   std::vector<int64_t> mask{100, 300, 1};
 
-  ctx_.allocate(indices)->getHandle<int64_t>() = {300, 100, 101, 299};
-  ctx_.allocate(values)->getHandle<float>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {300, 100, 101, 299};
+  bindings_.allocate(values)->getHandle<float>() = {
       -0.1, -0.2, -0.3, -0.4, 2, -2, 2, 9, 15, 4.2, 10.3, 30.4, 0, 2, 3, 4.4};
-  ctx_.allocate(defaultValue)->getHandle<float>() = {0.1, 0.2, 0.3, 0.4};
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {4};
+  bindings_.allocate(defaultValue)->getHandle<float>() = {0.1, 0.2, 0.3, 0.4};
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {4};
 
   auto *R = F_->createSparseToDenseMask("STDM", indices, values, defaultValue,
                                         lengths, mask);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {3, 2, 2});
   expected.getHandle<float>() = {
       2, -2, 2, 9, -0.1, -0.2, -0.3, -0.4, 0.1, 0.2, 0.3, 0.4,
@@ -4482,18 +4510,18 @@ TEST_P(Operator, FP16Reshape) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
-  auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
+  auto inputHandle = bindings_.allocate(A)->getHandle<float16_t>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *tr = F_->createReshape("tr", A, {13, 20, 1});
   auto *result = F_->createSave("saveTranspose", tr);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto outputHandle =
-      ctx_.get(result->getPlaceholder())->getHandle<float16_t>();
+      bindings_.get(result->getPlaceholder())->getHandle<float16_t>();
   ASSERT_EQ(outputHandle.size(), inputHandle.size());
   for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
     EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
@@ -4503,17 +4531,17 @@ TEST_P(Operator, FP16Reshape) {
 /// Verify that the Reshape operator works correctly.
 TEST_P(Operator, Reshape) {
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5, 7}, "A", false);
-  auto inputHandle = ctx_.allocate(A)->getHandle();
+  auto inputHandle = bindings_.allocate(A)->getHandle();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *RN = F_->createReshape("reshape", A, {7, 5, 1});
   auto *result = F_->createSave("saveReshape", RN);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto outputHandle = ctx_.get(result->getPlaceholder())->getHandle();
+  auto outputHandle = bindings_.get(result->getPlaceholder())->getHandle();
   ASSERT_EQ(outputHandle.size(), inputHandle.size());
   ASSERT_EQ(outputHandle.dims().size(), 3);
   EXPECT_EQ(outputHandle.dims()[0], 7);
@@ -4529,17 +4557,18 @@ TEST_P(Operator, Reshape) {
 /// Verify that the Reshape operator works correctly with Int64ITy..
 TEST_P(Operator, ReshapeInt) {
   auto *A = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 7}, "A", false);
-  auto inputHandle = ctx_.allocate(A)->getHandle<int64_t>();
+  auto inputHandle = bindings_.allocate(A)->getHandle<int64_t>();
   inputHandle.randomize<int64_t>(0, 100, mod_.getPRNG());
 
   auto *RN = F_->createReshape("reshape", A, {7, 5, 1});
   auto *result = F_->createSave("saveReshape", RN);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto outputHandle = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto outputHandle =
+      bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
   ASSERT_EQ(outputHandle.size(), inputHandle.size());
   ASSERT_EQ(outputHandle.dims().size(), 3);
   EXPECT_EQ(outputHandle.dims()[0], 7);
@@ -4555,7 +4584,7 @@ TEST_P(Operator, ReshapeInt) {
 /// Verify that the Select operator works correctly.
 TEST_P(Operator, Select) {
   auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "A", false);
-  ctx_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
+  bindings_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
 
   auto SNTy = mod_.uniqueType(ElemKind::FloatTy, {5});
   SplatNode *SN10 = F_->createSplat("zero", SNTy, 10.0);
@@ -4563,12 +4592,12 @@ TEST_P(Operator, Select) {
 
   auto *SN = F_->createSelect("select", A, SN10, SN20);
   auto *result = F_->createSave("saveSelect", SN);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto resH = ctx_.get(result->getPlaceholder())->getHandle();
+  auto resH = bindings_.get(result->getPlaceholder())->getHandle();
   EXPECT_EQ(resH.at({0}), 20.0);
   EXPECT_EQ(resH.at({1}), 10.0);
   EXPECT_EQ(resH.at({2}), 10.0);
@@ -4585,10 +4614,10 @@ TEST_P(Operator, CmpLTE) {
 
   auto *CMPLTE = F_->createCmpLTE("select", A, B);
   auto *result = F_->createSave("saveCMPLTE", CMPLTE);
-  Tensor *resultT = ctx_.allocate(result->getPlaceholder());
+  Tensor *resultT = bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   auto resH = resultT->getHandle<bool>();
   EXPECT_TRUE(resH.at({0}));
@@ -4603,7 +4632,7 @@ TEST_P(Operator, CmpLTE) {
 TEST_P(Operator, sliceReshape) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "X", false);
 
-  auto XH = ctx_.allocate(X)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
   for (size_t i = 0; i < 3; i++) {
     for (size_t j = 0; j < 3; j++) {
       XH.at({i, j}) = i * 3 + j;
@@ -4621,34 +4650,34 @@ TEST_P(Operator, sliceReshape) {
   auto *resultSSX = F_->createSave("saveSSX", SSX);
   auto *resultRSSX = F_->createSave("saveRSSX", RSSX);
 
-  ctx_.allocate(resultSX->getPlaceholder());
-  ctx_.allocate(resultRSX->getPlaceholder());
-  ctx_.allocate(resultSSX->getPlaceholder());
-  ctx_.allocate(resultRSSX->getPlaceholder());
+  bindings_.allocate(resultSX->getPlaceholder());
+  bindings_.allocate(resultRSX->getPlaceholder());
+  bindings_.allocate(resultSSX->getPlaceholder());
+  bindings_.allocate(resultRSSX->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // Verify the slice has the same data as the original X.
-  auto SXH = ctx_.get(resultSX->getPlaceholder())->getHandle();
+  auto SXH = bindings_.get(resultSX->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), XH.at({2, i}), 1E-5);
   }
 
   // Verify the reshaped slice has the same data as the slice.
-  auto RSXH = ctx_.get(resultRSX->getPlaceholder())->getHandle();
+  auto RSXH = bindings_.get(resultRSX->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), RSXH.at({i}), 1E-5);
   }
 
   // Verify the slice of the slice has the same data as the slice.
-  auto SSXH = ctx_.get(resultSSX->getPlaceholder())->getHandle();
+  auto SSXH = bindings_.get(resultSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
 
   // Verify the reshape of the slice of the slice has the same data as the
   // slice of the slice.
-  auto RSSXH = ctx_.get(resultRSSX->getPlaceholder())->getHandle();
+  auto RSSXH = bindings_.get(resultRSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
@@ -4657,7 +4686,8 @@ TEST_P(Operator, sliceReshape) {
 TEST_P(Operator, Flatten) {
   auto *tensor4D =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 4, 3}, "4D", false);
-  ctx_.allocate(tensor4D)->init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+  bindings_.allocate(tensor4D)->init(Tensor::InitKind::Xavier, 1.0,
+                                     mod_.getPRNG());
 
   auto *reshape4Dto2DAxis1 = F_->createFlatten("flat4Dto2Da1", tensor4D, 1);
   EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
@@ -4687,7 +4717,8 @@ TEST_P(Operator, Flatten) {
   // again because flattening is supported for every axis up and including the
   // rank of a tensor, 1D vector means we can flatten it on axis 1.
   auto *tensor1D = mod_.createPlaceholder(ElemKind::FloatTy, {15}, "1D", false);
-  ctx_.allocate(tensor1D)->init(Tensor::InitKind::Xavier, 1.0, mod_.getPRNG());
+  bindings_.allocate(tensor1D)->init(Tensor::InitKind::Xavier, 1.0,
+                                     mod_.getPRNG());
 
   auto *reshape1Dto2DAxis1 = F_->createFlatten("flat1Dto2D", tensor1D, 1);
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);
@@ -4701,40 +4732,44 @@ TEST_P(Operator, Flatten) {
   auto *save4Dto2Da3 = F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3);
   auto *save4Dto2Da4 = F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4);
 
-  ctx_.allocate(save1Dto2D->getPlaceholder());
-  ctx_.allocate(save4Dto2Da1->getPlaceholder());
-  ctx_.allocate(save4Dto2Da2->getPlaceholder());
-  ctx_.allocate(save4Dto2Da3->getPlaceholder());
-  ctx_.allocate(save4Dto2Da4->getPlaceholder());
+  bindings_.allocate(save1Dto2D->getPlaceholder());
+  bindings_.allocate(save4Dto2Da1->getPlaceholder());
+  bindings_.allocate(save4Dto2Da2->getPlaceholder());
+  bindings_.allocate(save4Dto2Da3->getPlaceholder());
+  bindings_.allocate(save4Dto2Da4->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // Verify the reshapes have the same data as the original value.
-  auto tensor4DH = ctx_.get(tensor4D)->getHandle();
-  auto save4Dto2Da1H = ctx_.get(save4Dto2Da1->getPlaceholder())->getHandle();
+  auto tensor4DH = bindings_.get(tensor4D)->getHandle();
+  auto save4Dto2Da1H =
+      bindings_.get(save4Dto2Da1->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da1H.raw(i), 1E-5);
   }
 
-  auto save4Dto2Da2H = ctx_.get(save4Dto2Da2->getPlaceholder())->getHandle();
+  auto save4Dto2Da2H =
+      bindings_.get(save4Dto2Da2->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da2H.raw(i), 1E-5);
   }
 
-  auto save4Dto2Da3H = ctx_.get(save4Dto2Da3->getPlaceholder())->getHandle();
+  auto save4Dto2Da3H =
+      bindings_.get(save4Dto2Da3->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da3H.raw(i), 1E-5);
   }
 
-  auto save4Dto2Da4H = ctx_.get(save4Dto2Da4->getPlaceholder())->getHandle();
+  auto save4Dto2Da4H =
+      bindings_.get(save4Dto2Da4->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da4H.raw(i), 1E-5);
   }
 
-  auto tensor1DH = ctx_.get(tensor1D)->getHandle();
-  auto save1Dto2DH = ctx_.get(save1Dto2D->getPlaceholder())->getHandle();
+  auto tensor1DH = bindings_.get(tensor1D)->getHandle();
+  auto save1Dto2DH = bindings_.get(save1Dto2D->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 15; i++) {
     EXPECT_NEAR(tensor1DH.raw(i), save1Dto2DH.raw(i), 1E-5);
   }
@@ -4746,8 +4781,8 @@ TEST_P(Operator, DivSizeT) {
 
   auto *LHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "LHS", false);
   auto *RHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "RHS", false);
-  auto LHSH = ctx_.allocate(LHS)->getHandle<int64_t>();
-  auto RHSH = ctx_.allocate(RHS)->getHandle<int64_t>();
+  auto LHSH = bindings_.allocate(LHS)->getHandle<int64_t>();
+  auto RHSH = bindings_.allocate(RHS)->getHandle<int64_t>();
 
   LHSH = {10, 20, 30, 40, 50, 60};
   RHSH = {2, 20, 100, 41, 3, 59};
@@ -4755,12 +4790,12 @@ TEST_P(Operator, DivSizeT) {
   auto *R = F_->createDiv("div", LHS, RHS);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto H = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   for (size_t i = 0; i < 3; i++) {
     for (size_t j = 0; j < 2; j++) {
@@ -4803,18 +4838,18 @@ TEST_P(Operator, SigmoidCrossEntropyWithLogits) {
   auto *targets =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 3}, "targets", false);
 
-  ctx_.allocate(logits)->getHandle() = {1.0f,  1.2f, -0.5f, 0.1f, 0.6f, 0.5f,
-                                        -0.1f, -2.f, 0.3f,  1.f,  2.f,  3.f};
-  ctx_.allocate(targets)->getHandle() = {0.7f, 0.7f, 0.7f, -0.7f, -0.99f, 1.0f,
-                                         0.f,  0.f,  0.f,  1.f,   2.f,    3.f};
+  bindings_.allocate(logits)->getHandle() = {
+      1.0f, 1.2f, -0.5f, 0.1f, 0.6f, 0.5f, -0.1f, -2.f, 0.3f, 1.f, 2.f, 3.f};
+  bindings_.allocate(targets)->getHandle() = {
+      0.7f, 0.7f, 0.7f, -0.7f, -0.99f, 1.0f, 0.f, 0.f, 0.f, 1.f, 2.f, 3.f};
 
   auto *R = F_->createSigmoidCrossEntropyWithLogits("SCEL", logits, targets);
 
   auto *result = F_->createSave("save", R);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   Tensor expected(ElemKind::FloatTy, {2, 2});
   expected.getHandle() = {
@@ -4824,7 +4859,7 @@ TEST_P(Operator, SigmoidCrossEntropyWithLogits) {
       -2.50374103f,
   };
 
-  EXPECT_TRUE(expected.isEqual(*ctx_.get(result->getPlaceholder())));
+  EXPECT_TRUE(expected.isEqual(*bindings_.get(result->getPlaceholder())));
 }
 
 /// Test the InsertTensor node works correctly.
@@ -4851,14 +4886,14 @@ TEST_P(Operator, insertTensorTest) {
   Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {1, 1},
                                     /* count */ 2, /* axis */ 1);
   SaveNode *result = F_->createSave("result", IN);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
   // Verify the output looks as expected (pictured above).
-  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
   for (size_t i = 0; i < 4; i++) {
     for (size_t j = 0; j < 6; j++) {
       int64_t expected = 1;
@@ -4870,26 +4905,27 @@ TEST_P(Operator, insertTensorTest) {
 }
 
 static FunctionTensorPair
-createAndInitBasicRowwiseFCTest(glow::Context &ctx, glow::ExecutionEngine &EE) {
+createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   // In this test we subtract the outputs of a row-wise quantized FC and a
   // floating-point FC and ensure that the error is below some low value.
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {2, 100}, "in", false);
-  auto *fc = F->createFullyConnected(ctx, "FC", input, 5);
+  auto *fc = F->createFullyConnected(bindings, "FC", input, 5);
 
   auto *weights = llvm::cast<Placeholder>(fc->getWeights());
   auto *bias = llvm::cast<Placeholder>(fc->getBias());
 
-  ctx.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-  ctx.get(bias)->getHandle().randomize(0, 0.1, mod.getPRNG());
-  ctx.get(weights)->getHandle().randomize(-1.1, 1.1, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.get(bias)->getHandle().randomize(0, 0.1, mod.getPRNG());
+  bindings.get(weights)->getHandle().randomize(-1.1, 1.1, mod.getPRNG());
 
   auto *res = F->createSave("save", fc);
-  ::glow::convertPlaceholdersToConstants(F, ctx,
+  ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
-  auto *resultTensor = ctx.allocate(res->getPlaceholder());
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
 
   return std::make_pair(F, resultTensor);
 }
@@ -4908,17 +4944,17 @@ TEST_P(OperatorStateless, rowwiseQuantizedFCTest) {
 TEST_P(Operator, SoftMax) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
-  ctx_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
+  bindings_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder());
+  auto result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::FloatTy, {1, 6});
   // Expected results are:
   // sum = exp(input_0) + ... + exp(input_N) = ~245.387
@@ -4936,29 +4972,30 @@ TEST_P(Operator, FP16SoftMax) {
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
-  ctx_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
+  bindings_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
   auto *selected =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
   auto *S = F_->createSave("save", Pool);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto result = ctx_.get(S->getPlaceholder());
+  auto result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 6});
   out.getHandle<float16_t>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
 /// Verify that Quantize, Rescale, Dequantize work correctly together.
-static void quantizeSimpleTest(glow::Context &ctx_, glow::Module &mod_,
-                               glow::Function *F_, glow::ExecutionEngine &EE_,
-                               ElemKind QTy) {
+static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
+                               glow::Module &mod_, glow::Function *F_,
+                               glow::ExecutionEngine &EE_, ElemKind QTy) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input", true);
-  ctx_.allocate(input)->init(Tensor::InitKind::Broadcast, 21, mod_.getPRNG());
+  bindings_.allocate(input)->init(Tensor::InitKind::Broadcast, 21,
+                                  mod_.getPRNG());
 
   auto *Q =
       F_->createQuantize("quant", input, mod_.uniqueType(QTy, {1, 1}, 0.25, 4));
@@ -4966,12 +5003,12 @@ static void quantizeSimpleTest(glow::Context &ctx_, glow::Module &mod_,
                                         mod_.uniqueType(QTy, {1, 1}, 0.5, 11));
   auto *D = F_->createDequantize("dequantize", RS);
   auto *save = F_->createSave("ret", D);
-  auto *result = ctx_.allocate(save->getPlaceholder());
+  auto *result = bindings_.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   EE_.compile(CompilationMode::Infer, F_);
 
-  EE_.run(ctx_);
+  EE_.run(bindings_);
   EXPECT_EQ(F_->getNodes().size(), 1);
 
   auto RH = result->getHandle();
@@ -4979,15 +5016,15 @@ static void quantizeSimpleTest(glow::Context &ctx_, glow::Module &mod_,
 }
 
 TEST_P(Operator, QuantizeSimpleInt8) {
-  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int8QTy);
+  quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 TEST_P(Operator, QuantizeSimpleInt16) {
   ENABLED_BACKENDS(Interpreter);
-  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int16QTy);
+  quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
 TEST_P(Operator, QuantizeSimpleInt32) {
   ENABLED_BACKENDS(Interpreter);
-  quantizeSimpleTest(ctx_, mod_, F_, EE_, ElemKind::Int32QTy);
+  quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Check that convertTo node works properly from float16_t to float.
@@ -4995,20 +5032,20 @@ TEST_P(Operator, ConvertFromFloat16ToFloat) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  auto inputHandle = ctx_.allocate(A)->getHandle<float>();
+  auto inputHandle = bindings_.allocate(A)->getHandle<float>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
 
   TypeRef outTy = mod_.uniqueType(ElemKind::Float16Ty, A->dims());
 
   auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
   auto *result = F_->createSave("save", convertTo);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto *outputTensor = ctx_.get(result->getPlaceholder());
-  Tensor convertedInput = ctx_.get(A)->clone();
+  auto *outputTensor = bindings_.get(result->getPlaceholder());
+  Tensor convertedInput = bindings_.get(A)->clone();
   convertedInput.convertToType(ElemKind::Float16Ty);
   ASSERT_EQ(outputTensor->size(), inputHandle.size());
   EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
@@ -5019,20 +5056,20 @@ TEST_P(Operator, ConvertFromFloatToFloat16) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
-  auto inputHandle = ctx_.allocate(A)->getHandle<float16_t>();
+  auto inputHandle = bindings_.allocate(A)->getHandle<float16_t>();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, A->dims());
 
   auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
   auto *result = F_->createSave("save", convertTo);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto *outputTensor = ctx_.get(result->getPlaceholder());
-  Tensor convertedInput = ctx_.get(A)->clone();
+  auto *outputTensor = bindings_.get(result->getPlaceholder());
+  Tensor convertedInput = bindings_.get(A)->clone();
   convertedInput.convertToType(ElemKind::FloatTy);
   ASSERT_EQ(outputTensor->size(), inputHandle.size());
   EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
@@ -5044,17 +5081,17 @@ TEST_P(Operator, NoopConvertFromFloatToFloat) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  auto *inputTensor = ctx_.allocate(A);
+  auto *inputTensor = bindings_.allocate(A);
   inputTensor->getHandle<float>().randomize(-3.0, 3.0, mod_.getPRNG());
 
   auto *convertTo = F_->createConvertTo("convertTo", A, A->getType());
   auto *result = F_->createSave("save", convertTo);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto *outputTensor = ctx_.get(result->getPlaceholder());
+  auto *outputTensor = bindings_.get(result->getPlaceholder());
   EXPECT_TRUE(inputTensor->isEqual(*outputTensor));
 }
 
@@ -5068,16 +5105,16 @@ TEST_P(Operator, LengthsToRanges) {
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 0, 2};
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {1, 3, 0, 2};
 
   auto *R = F_->createLengthsToRanges("LTR", lengths);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::Int32ITy, {4, 2});
   expected.getHandle<int32_t>() = {
       0, 1, 1, 3, 4, 0, 4, 2,
@@ -5101,18 +5138,18 @@ TEST_P(Operator, BatchOneHot) {
   auto *values =
       mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
 
-  ctx_.allocate(data)->getHandle<float>() = {5, 0, 11, 3, 0, 5};
-  ctx_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
-  ctx_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
+  bindings_.allocate(data)->getHandle<float>() = {5, 0, 11, 3, 0, 5};
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
+  bindings_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
 
   auto *R = F_->createBatchOneHot("BOH", data, lengths, values);
   auto *S = F_->createSave("save", R);
-  ctx_.allocate(S->getPlaceholder());
+  bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  Tensor &result = *ctx_.get(S->getPlaceholder());
+  Tensor &result = *bindings_.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {3, 6});
   expected.getHandle<float>() = {
       1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
@@ -5126,7 +5163,7 @@ TEST_P(Operator, Modulo1) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
-  auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
+  auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
 
   srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
 
@@ -5135,12 +5172,12 @@ TEST_P(Operator, Modulo1) {
 
   auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
   auto *result = F_->createSave("save", modulo);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   std::vector<int64_t> expectedResults = {-1, 0, -2, -1, 0, -2, -1, 0,
                                           1,  2, 0,  1,  2, 0,  1};
@@ -5156,7 +5193,7 @@ TEST_P(Operator, Modulo2) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
-  auto srcH = ctx_.allocate(src)->getHandle<int64_t>();
+  auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
 
   srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
 
@@ -5165,12 +5202,12 @@ TEST_P(Operator, Modulo2) {
 
   auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
   auto *result = F_->createSave("save", modulo);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto resultH = ctx_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   std::vector<int64_t> expectedResults = {2, 0, 1, 2, 0, 1, 2, 0,
                                           1, 2, 0, 1, 2, 0, 1};
@@ -5187,8 +5224,8 @@ TEST_P(Operator, dotProduct1D) {
   constexpr std::size_t kDataSize = 10;
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "X", false);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "Y", false);
-  auto XH = ctx_.allocate(X)->getHandle();
-  auto YH = ctx_.allocate(Y)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
+  auto YH = bindings_.allocate(Y)->getHandle();
 
   // Fill inputs with random values.
   XH.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -5197,7 +5234,7 @@ TEST_P(Operator, dotProduct1D) {
   // Compute expected output.
   auto *expected =
       mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "expected", false);
-  auto expectedH = ctx_.allocate(expected)->getHandle();
+  auto expectedH = bindings_.allocate(expected)->getHandle();
 
   for (std::size_t i = 0; i < kDataSize; ++i) {
     expectedH.at({i}) = XH.at({i}) * YH.at({i});
@@ -5206,12 +5243,12 @@ TEST_P(Operator, dotProduct1D) {
   // Compile and run the model.
   auto *dotProduct = F_->createDotProduct("prod", X, Y);
   auto *result = F_->createSave("save", dotProduct);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto actualH = ctx_.get(result->getPlaceholder())->getHandle();
+  auto actualH = bindings_.get(result->getPlaceholder())->getHandle();
 
   // Check that the output tensor is the same as the expected output.
   EXPECT_EQ(actualH.size(), expectedH.size());
@@ -5232,9 +5269,9 @@ TEST_P(Operator, elementwiseLinear) {
   auto *w = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "w", false);
   auto *b = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "b", false);
 
-  auto XH = ctx_.allocate(X)->getHandle();
-  auto wH = ctx_.allocate(w)->getHandle();
-  auto bH = ctx_.allocate(b)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
+  auto wH = bindings_.allocate(w)->getHandle();
+  auto bH = bindings_.allocate(b)->getHandle();
 
   // Fill inputs with random values.
   XH.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -5247,7 +5284,7 @@ TEST_P(Operator, elementwiseLinear) {
       F_->createElementwiseLinear("elAxisZero", X, w, b, /*axis=*/0);
   auto *resultAxisZero =
       F_->createSave("saveAxisZero", elementwiseLinearAxisZero);
-  ctx_.allocate(resultAxisZero->getPlaceholder());
+  bindings_.allocate(resultAxisZero->getPlaceholder());
 
   // For the test with axis = 1, the 1st dimension of X must match the 0th
   // dimension of w and b must match, so a transpose is needed.
@@ -5255,14 +5292,16 @@ TEST_P(Operator, elementwiseLinear) {
   auto *elementwiseLinearAxisOne =
       F_->createElementwiseLinear("elAxisOne", XT, w, b, /*axis=*/1);
   auto *resultAxisOne = F_->createSave("saveAxisOne", elementwiseLinearAxisOne);
-  ctx_.allocate(resultAxisOne->getPlaceholder());
+  bindings_.allocate(resultAxisOne->getPlaceholder());
 
   // Compile and run the model.
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto resAxisZeroH = ctx_.get(resultAxisZero->getPlaceholder())->getHandle();
-  auto resAxisOneH = ctx_.get(resultAxisOne->getPlaceholder())->getHandle();
+  auto resAxisZeroH =
+      bindings_.get(resultAxisZero->getPlaceholder())->getHandle();
+  auto resAxisOneH =
+      bindings_.get(resultAxisOne->getPlaceholder())->getHandle();
 
   // Results should be the same shape as X/XT.
   ASSERT_EQ(resAxisZeroH.size(), XH.size());
@@ -5289,8 +5328,8 @@ TEST_P(Operator, dotProduct2D) {
       mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "X", false);
   auto *Y =
       mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "Y", false);
-  auto XH = ctx_.allocate(X)->getHandle();
-  auto YH = ctx_.allocate(Y)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
+  auto YH = bindings_.allocate(Y)->getHandle();
 
   // Fill inputs with random values.
   XH.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -5299,7 +5338,7 @@ TEST_P(Operator, dotProduct2D) {
   // Compute expected output.
   auto *expected =
       mod_.createPlaceholder(ElemKind::FloatTy, {kRows}, "expected", false);
-  auto expectedH = ctx_.allocate(expected)->getHandle();
+  auto expectedH = bindings_.allocate(expected)->getHandle();
 
   for (std::size_t i = 0; i < kRows; ++i) {
     auto dotProduct = 0.0f;
@@ -5315,12 +5354,12 @@ TEST_P(Operator, dotProduct2D) {
   // Compile and run the model.
   auto *dotProduct = F_->createDotProduct("prod", X, Y);
   auto *result = F_->createSave("save", dotProduct);
-  ctx_.allocate(result->getPlaceholder());
+  bindings_.allocate(result->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(ctx_);
+  EE_.run(bindings_);
 
-  auto actualH = ctx_.get(result->getPlaceholder())->getHandle();
+  auto actualH = bindings_.get(result->getPlaceholder())->getHandle();
 
   // Check that the output tensor is the same as the expected output.
   EXPECT_EQ(actualH.size(), expectedH.size());

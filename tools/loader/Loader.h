@@ -65,21 +65,21 @@ public:
   llvm::StringRef getModelOptPath();
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
-  /// dumping debug information. \p ctx is the context that binds specific
+  /// dumping debug information. \p bindings bind specific
   /// placeholders to concrete tensors. The concrete tensors include
   /// quantization profile guided information.
-  void compile(Context &ctx);
+  void compile(PlaceholderBindings &bindings);
 
-  /// Runs inference, unless emit bundle mode is enabled. \p ctx is the context
-  /// that binds specific placeholders to concrete tensors. The concrete
+  /// Runs inference, unless emit bundle mode is enabled. \p bindings
+  /// binds specific placeholders to concrete tensors. The concrete
   /// tensors include quantization profile guided information.
-  void runInference(Context &ctx);
+  void runInference(PlaceholderBindings &bindings);
 
   /// Generates and serializes the quantization infos after gathering a profile
-  /// by running inference one or more times. \p ctx is the context that binds
-  /// specific placeholders to concrete tensors. The concrete tensors include
-  /// quantization profile guided information.
-  void generateAndSerializeQuantizationInfos(Context &ctx);
+  /// by running inference one or more times. \p bindings
+  /// binds specific placeholders to concrete tensors. The concrete tensors
+  /// include quantization profile guided information.
+  void generateAndSerializeQuantizationInfos(PlaceholderBindings &bindings);
 
   /// Create the Loader driver object, and parse/verify the command line
   /// parameters.
