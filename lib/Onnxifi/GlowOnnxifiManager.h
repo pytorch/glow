@@ -108,8 +108,7 @@ private:
   std::unordered_set<GraphPtr> graphs_;
 
   // Map from BackendKind to HostManager managing devices of that kind.
-  std::map<BackendKind, std::unique_ptr<runtime::HostManager>>
-      hostManagers_;
+  std::map<BackendKind, std::unique_ptr<runtime::HostManager>> hostManagers_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
   /// TODO: can use one mutex per set if performance becomes an issue.
