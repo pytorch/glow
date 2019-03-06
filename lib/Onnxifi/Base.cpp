@@ -76,11 +76,11 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
 // static
 std::unique_ptr<runtime::HostManager>
 BackendId::createHostManager(glow::BackendKind kind) {
-  std::vector<runtime::DeviceConfig> configs;
-  auto config = runtime::DeviceConfig();
-  config.deviceName = "device";
+  std::vector<runtime::DeviceManagerConfig> configs;
+  auto config = runtime::DeviceManagerConfig();
+  config.deviceConfig = nullptr;
   config.backendKind = kind;
-  configs.push_back(config);
+  configs.push_back(std::move(config));
   return llvm::make_unique<runtime::HostManager>(configs);
 }
 
