@@ -244,14 +244,14 @@ void quantizeGraph(ElemKind quantizationPrecision) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
-  Context ctx;
-  ctx.allocate(input);
-  ctx.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+  PlaceholderBindings bindings;
+  bindings.allocate(input);
+  bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
   auto *FC = F->createFullyConnected("FC", input, W, B);
   auto *S = F->createSave("ret", FC);
-  ctx.allocate(S->getPlaceholder());
+  bindings.allocate(S->getPlaceholder());
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -285,15 +285,15 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2}, "bias", true);
-  Context ctx;
-  ctx.allocate(input);
-  ctx.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+  PlaceholderBindings bindings;
+  bindings.allocate(input);
+  bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
   auto *WC = mod.createConstant(ElemKind::FloatTy, W->dims(), "wc");
   auto *FC = F->createFullyConnected("FC", input, WC, B);
   auto *S = F->createSave("ret", FC);
-  ctx.allocate(S->getPlaceholder());
+  bindings.allocate(S->getPlaceholder());
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -330,7 +330,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   // RowwiseQuantizedFullyConnected in operatorTests.cpp.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 }
 
 /// Quantize ReLU node and make sure that quantized version
@@ -343,7 +343,7 @@ TEST(Quantization, quantizeReLU) {
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *relu = F->createRELU("ReLU", input);
-  Context ctx;
+  PlaceholderBindings bindings;
   F->createSave("ret", relu);
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
@@ -376,21 +376,22 @@ static void fillStableRandomData(Handle<float> H, size_t seed,
 }
 
 /// Builds a simple graph, returns back input var and save node through refs.
-static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
+static Function *createSimpleGraphForQuantization(Module *M,
+                                                  PlaceholderBindings &bindings,
                                                   Placeholder *A,
                                                   Placeholder *B,
                                                   llvm::StringRef funcName) {
   Function *F = M->createFunction(funcName);
 
-  fillStableRandomData(ctx.allocate(A)->getHandle(), 1100, 1);
+  fillStableRandomData(bindings.allocate(A)->getHandle(), 1100, 1);
 
-  fillStableRandomData(ctx.allocate(B)->getHandle(), 2001, 1);
+  fillStableRandomData(bindings.allocate(B)->getHandle(), 2001, 1);
 
-  ConvolutionNode *CV = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 2);
+  ConvolutionNode *CV = F->createConv(bindings, "conv", A, 16, 5, 1, 2, 2);
   auto *bias = cast<Placeholder>(CV->getBias());
   auto *filter = cast<Placeholder>(CV->getFilter());
-  fillStableRandomData(ctx.get(bias)->getHandle(), 2001, 1);
-  fillStableRandomData(ctx.get(filter)->getHandle(), 1000, 1);
+  fillStableRandomData(bindings.get(bias)->getHandle(), 2001, 1);
+  fillStableRandomData(bindings.get(filter)->getHandle(), 1000, 1);
 
   auto *RL = F->createRELU("relu", CV);
   auto *MP = F->createMaxPool("maxPool", RL, 2, 2, 1);
@@ -400,7 +401,7 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
   auto *AP = F->createAvgPool("avgPool", R, 2, 2, 1);
 
-  FullyConnectedNode *FC = F->createFullyConnected(ctx, "fc", AP, 10);
+  FullyConnectedNode *FC = F->createFullyConnected(bindings, "fc", AP, 10);
 
   // Noop slice, make sure conversion quantization procedure works well.
   auto *S =
@@ -409,8 +410,8 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *bias2 = cast<Placeholder>(FC->getBias());
   auto *filter2 = cast<Placeholder>(FC->getWeights());
 
-  fillStableRandomData(ctx.get(bias2)->getHandle(), 3001, 1);
-  fillStableRandomData(ctx.get(filter2)->getHandle(), 4000, 1);
+  fillStableRandomData(bindings.get(bias2)->getHandle(), 3001, 1);
+  fillStableRandomData(bindings.get(filter2)->getHandle(), 4000, 1);
 
   auto *CN = F->createConcat("concat", {S, B}, 0);
   auto *SP = F->createSplat("splat", B->getType(), 10.0);
@@ -424,7 +425,7 @@ static Function *createSimpleGraphForQuantization(Module *M, Context &ctx,
   auto *CLTE = F->createCmpLTE("cmplte", MN, SN);
   auto *SLN = F->createSelect("select", CLTE, SN, MN);
   auto *save = F->createSave("save", SLN);
-  ctx.allocate(save->getPlaceholder());
+  bindings.allocate(save->getPlaceholder());
   return F;
 }
 
@@ -432,29 +433,29 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
                              ExecutionEngine &backendSpecificEE,
                              ElemKind quantizationPrecision) {
   auto *mod = &profileEE.getModule();
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *A =
       mod->createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 2}, "A", false);
   auto *B = mod->createPlaceholder(ElemKind::FloatTy, {10, 9}, "B", false);
 
   // STEP1 - Generate the first network to record the quantization parameters.
-  Function *F1 = createSimpleGraphForQuantization(mod, ctx, A, B, "main");
+  Function *F1 = createSimpleGraphForQuantization(mod, bindings, A, B, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   LoweredInfoMap loweredMapForProf;
   lower(F1, &loweredMapForProf);
-  F1 = glow::profileQuantization(ctx, F1);
+  F1 = glow::profileQuantization(bindings, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  profileEE.run(ctx);
+  profileEE.run(bindings);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          ctx, F1, loweredMapForProf, quantization::Schema::Asymmetric,
+          bindings, F1, loweredMapForProf, quantization::Schema::Asymmetric,
           quantizationPrecision);
 
   // STEP2 - Use the profile to quantize a network.
@@ -465,11 +466,11 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   F2 = quantization::quantizeFunction(
       backendSpecificEE, QI, quantizationPrecision, F2, loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
-  backendSpecificEE.run(ctx);
+  backendSpecificEE.run(bindings);
 
   // STEP3 - Compare the results of the original and quantized functions.
-  auto result1Handle = ctx.get(result1->getPlaceholder())->getHandle();
-  auto result2Handle = ctx.get(result2->getPlaceholder())->getHandle();
+  auto result1Handle = bindings.get(result1->getPlaceholder())->getHandle();
+  auto result2Handle = bindings.get(result2->getPlaceholder())->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
 
@@ -500,7 +501,8 @@ static void fillStableRandomIndex(Handle<int64_t> H, size_t seed,
 }
 
 /// Builds a graph with two GRUs and saves output from last hidden node.
-static Function *createGRUForQuantization(Module *M, Context &ctx,
+static Function *createGRUForQuantization(Module *M,
+                                          PlaceholderBindings &bindings,
                                           llvm::StringRef funcName) {
   Function *F = M->createFunction(funcName);
 
@@ -513,15 +515,16 @@ static Function *createGRUForQuantization(Module *M, Context &ctx,
   // STEP1 - Initialize inputs into GRU
   auto *emb = F->getParent()->createPlaceholder(
       ElemKind::FloatTy, {languageSize, embeddingSize}, "embedding", false);
-  fillStableRandomData(ctx.allocate(emb)->getHandle(), 4565, 1);
+  fillStableRandomData(bindings.allocate(emb)->getHandle(), 4565, 1);
 
   auto *input = F->getParent()->createPlaceholder(
       ElemKind::Int64ITy, {batchSize, sequenceSize}, "input", false);
-  fillStableRandomIndex(ctx.allocate(input)->getHandle<int64_t>(), 7227, 10);
+  fillStableRandomIndex(bindings.allocate(input)->getHandle<int64_t>(), 7227,
+                        10);
 
   auto *hiddenInit = F->getParent()->createPlaceholder(
       ElemKind::FloatTy, {batchSize, embeddingSize}, "hiddenInit", false);
-  ctx.allocate(hiddenInit)->zero();
+  bindings.allocate(hiddenInit)->zero();
   Node *hidden = hiddenInit;
 
   for (unsigned step = 0; step < sequenceSize; step++) {
@@ -538,17 +541,19 @@ static Function *createGRUForQuantization(Module *M, Context &ctx,
     // https://github.com/pytorch/pytorch/blob/dd5c195646b941d3e20a72847ac48c41e272b8b2/torch/nn/_functions/rnn.py#L46
     // similar to /examples/fr2en.cpp
 
-    auto *FCi = F->createFullyConnected(ctx, "gru.fci", reshape, hiddenSize);
+    auto *FCi =
+        F->createFullyConnected(bindings, "gru.fci", reshape, hiddenSize);
     auto *biasI = cast<Placeholder>(FCi->getBias());
     auto *filterI = cast<Placeholder>(FCi->getWeights());
-    fillStableRandomData(ctx.get(biasI)->getHandle(), 8877, 1);
-    fillStableRandomData(ctx.get(filterI)->getHandle(), 1441, 1);
+    fillStableRandomData(bindings.get(biasI)->getHandle(), 8877, 1);
+    fillStableRandomData(bindings.get(filterI)->getHandle(), 1441, 1);
 
-    auto *FCh = F->createFullyConnected(ctx, "gru.fch", hidden, hiddenSize);
+    auto *FCh =
+        F->createFullyConnected(bindings, "gru.fch", hidden, hiddenSize);
     auto *biasH = cast<Placeholder>(FCh->getBias());
     auto *filterH = cast<Placeholder>(FCh->getWeights());
-    fillStableRandomData(ctx.get(biasH)->getHandle(), 9009, 1);
-    fillStableRandomData(ctx.get(filterH)->getHandle(), 1001, 1);
+    fillStableRandomData(bindings.get(biasH)->getHandle(), 9009, 1);
+    fillStableRandomData(bindings.get(filterH)->getHandle(), 1001, 1);
 
     Node *i_r =
         F->createSlice("gru.i_r", FCi, {0, 0}, {batchSize, embeddingSize});
@@ -581,29 +586,30 @@ static Function *createGRUForQuantization(Module *M, Context &ctx,
   Node *downsample = F->createTopK("gru.downsample", hidden, embeddingSize / 2);
 
   auto *save = F->createSave("save", {downsample, 0});
-  ctx.allocate(save->getPlaceholder());
+  bindings.allocate(save->getPlaceholder());
   return F;
 }
 
 TEST_P(Operator, end2endGRU) {
   // STEP1 - Generate the first network to record the quantization parameters.
   auto *mod = &profileEE.getModule();
-  Context ctx;
-  Function *F1 = createGRUForQuantization(mod, ctx, "main");
+  PlaceholderBindings bindings;
+  Function *F1 = createGRUForQuantization(mod, bindings, "main");
   Function *F2 = F1->clone("main2");
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   LoweredInfoMap loweredMapForProf;
   lower(F1, &loweredMapForProf);
-  F1 = glow::profileQuantization(ctx, F1);
+  F1 = glow::profileQuantization(bindings, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
-  profileEE.run(ctx);
+  profileEE.run(bindings);
 
   // Get quantization infos and build new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, F1, loweredMapForProf);
+      quantization::generateNodeQuantizationInfos(bindings, F1,
+                                                  loweredMapForProf);
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
@@ -613,11 +619,11 @@ TEST_P(Operator, end2endGRU) {
   F2 = quantization::quantizeFunction(backendSpecificEE, QI, ElemKind::Int8QTy,
                                       F2, loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
-  backendSpecificEE.run(ctx);
+  backendSpecificEE.run(bindings);
 
   // STEP3 - Compare the results of the original and quantized functions.
-  auto result1Handle = ctx.get(result1->getPlaceholder())->getHandle();
-  auto result2Handle = ctx.get(result2->getPlaceholder())->getHandle();
+  auto result1Handle = bindings.get(result1->getPlaceholder())->getHandle();
+  auto result2Handle = bindings.get(result2->getPlaceholder())->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
 
@@ -632,23 +638,24 @@ TEST_P(Operator, end2endGRU) {
 
 TEST(Quantization, rescaleSameType) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input =
       mod.createPlaceholder(ElemKind::Int8QTy, {1, 1}, 0.5, 11, "input", true);
-  ctx.allocate(input)->init(Tensor::InitKind::Broadcast, 21, mod.getPRNG());
+  bindings.allocate(input)->init(Tensor::InitKind::Broadcast, 21,
+                                 mod.getPRNG());
 
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
   auto *D = F->createDequantize("dequantize", Q);
   auto *save = F->createSave("ret", D);
-  auto *result = ctx.allocate(save->getPlaceholder());
+  auto *result = bindings.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 3);
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   EXPECT_EQ(F->getNodes().size(), 2);
 
   auto RH = result->getHandle();
@@ -657,11 +664,12 @@ TEST(Quantization, rescaleSameType) {
 
 TEST(Quantization, optimizeRescaleQuantize) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input", true);
-  ctx.allocate(input)->init(Tensor::InitKind::Broadcast, 21, mod.getPRNG());
+  bindings.allocate(input)->init(Tensor::InitKind::Broadcast, 21,
+                                 mod.getPRNG());
 
   auto *Q = F->createQuantize(
       "quant", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
@@ -669,12 +677,12 @@ TEST(Quantization, optimizeRescaleQuantize) {
       "rescale", Q, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
   auto *D = F->createDequantize("dequantize", RS);
   auto *save = F->createSave("ret", D);
-  auto *result = ctx.allocate(save->getPlaceholder());
+  auto *result = bindings.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 4);
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   EXPECT_EQ(F->getNodes().size(), 1);
 
   auto RH = result->getHandle();
@@ -803,14 +811,14 @@ TEST(Quantization, chooseQuantizationSymmetricInf) {
 
 /// Check that Relu can use our symmetric quantization schema.
 TEST(Quantization, reluCanUseSymmetricSchema) {
-  Context ctx;
+  PlaceholderBindings bindings;
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   Placeholder *input =
       mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  auto *inputTensor = ctx.allocate(input);
+  auto *inputTensor = bindings.allocate(input);
   auto IH = inputTensor->getHandle<float>();
   for (size_t i = 0; i < 10; i++) {
     IH.at({i}) = (i % 2 == 0) ? 5 : -5;
@@ -831,10 +839,10 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
   ReluNode *RN = F->createRELU("relu", QN, reluTy);
   DequantizeNode *DN = F->createDequantize("dequantize", RN);
   SaveNode *SN = F->createSave("save", DN);
-  auto *res = ctx.allocate(SN->getPlaceholder());
+  auto *res = bindings.allocate(SN->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   // Verify all negative values were correctly set to zero.
   auto RH = res->getHandle();
@@ -901,7 +909,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
 /// Check that LRN and Softmax are quantized.
 TEST(Quantization, quantizeSoftmaxAndLRN) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
   auto &mod = EE.getModule();
@@ -953,7 +961,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
 /// Check that Select is quantized.
 TEST(Quantization, quantizeSelect) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
   auto &mod = EE.getModule();
@@ -1000,7 +1008,7 @@ TEST(Quantization, quantizeSelect) {
 /// scale and offset.
 TEST(Quantization, quantizeAvgPool) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
   auto &mod = EE.getModule();
@@ -1039,20 +1047,20 @@ TEST(Quantization, quantizeAvgPool) {
 /// Test option to disable quantization of specific node kinds in the graph.
 TEST(Quantization, quantizeGraphPartially) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
   auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
-  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *TN = F->createTanh("tanh", MMN);
   auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
@@ -1074,10 +1082,10 @@ TEST(Quantization, quantizeGraphPartially) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
+  ::glow::convertPlaceholdersToConstants(F, bindings, {result});
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -1117,21 +1125,21 @@ TEST(Quantization, quantizeGraphPartially) {
 /// where there are multiple of that node kind.
 TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
   auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
-  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *TNLHS = F->createTanh("tanh", LHS);
   auto *MMN = F->createMatMul("matmul", TNLHS, RHS);
   auto *TN = F->createTanh("tanh", MMN);
   auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
@@ -1155,10 +1163,10 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
+  ::glow::convertPlaceholdersToConstants(F, bindings, {result});
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -1208,21 +1216,21 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 /// graph.
 TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
   auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "rhs", true);
-  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(RHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *CN = F->createAdd("concat", LHS, MMN);
   auto *TN = F->createTanh("tanh", CN);
   auto *save = F->createSave("ret", TN);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
@@ -1246,10 +1254,10 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   F = QF;
 
   // Make sure that graph can be compiled and run.
-  ::glow::convertPlaceholdersToConstants(F, ctx, {result});
+  ::glow::convertPlaceholdersToConstants(F, bindings, {result});
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
   {
     // Verify that the output variable is not quantized, and that it has a
@@ -1299,19 +1307,19 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 /// instead of leaving quantize node around.
 TEST(Quantization, quantizeFunctionConvertConstant) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
   auto *RHS = mod.createConstant(ElemKind::FloatTy, {3, 3}, "rhs");
-  ctx.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
   RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *save = F->createSave("ret", MMN);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
@@ -1360,24 +1368,24 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 }
 
 /// Check that the slice node doesn't change the quantization parameters between
 /// its input and output.
 TEST(Quantization, quantizeSlice) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
-  ctx.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *slice = F->createSlice("slice", input, {2}, {3});
   auto *save = F->createSave("ret", slice);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(slice->getName()),
@@ -1430,24 +1438,24 @@ TEST(Quantization, quantizeSlice) {
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 }
 
 /// Check that the reshape node doesn't change the quantization parameters
 /// between its input and output.
 TEST(Quantization, quantizeReshape) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "input", true);
-  ctx.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(input)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *reshape = F->createReshape("reshape", input, {9});
   auto *save = F->createSave("ret", reshape);
   auto *result = save->getPlaceholder();
-  ctx.allocate(result);
+  bindings.allocate(result);
 
   std::vector<NodeQuantizationInfo> QI{
       {NodeQuantizationInfo::generateNodeOutputName(reshape->getName()),
@@ -1500,7 +1508,7 @@ TEST(Quantization, quantizeReshape) {
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 }
 
 /// Mock backend that does not lower FC nodes.
@@ -1520,22 +1528,22 @@ class MockBackendLoweredFC : public MockBackend {
   bool isOpSupported(const NodeInfo &NI) const override { return true; }
 };
 
-/// Create a simple network with an FC given \p ctx, \p EE, and \p F.
+/// Create a simple network with an FC given \p bindings, \p EE, and \p F.
 /// \returns the FC node.
-static FullyConnectedNode *createSimpleFCNet(Context &ctx, ExecutionEngine &EE,
-                                             Function &F) {
+static FullyConnectedNode *createSimpleFCNet(PlaceholderBindings &bindings,
+                                             ExecutionEngine &EE, Function &F) {
   auto &mod = EE.getModule();
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
 
-  ctx.allocate(input);
-  ctx.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+  bindings.allocate(input);
+  bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
   auto *FC = F.createFullyConnected("FC", input, W, B);
   auto *S = F.createSave("ret", FC);
-  ctx.allocate(S->getPlaceholder());
+  bindings.allocate(S->getPlaceholder());
 
   return FC;
 }
@@ -1560,8 +1568,9 @@ template <class BackendClass>
 static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   ExecutionEngine profileEE(BackendKind::Interpreter);
   Function *profileF = profileEE.getModule().createFunction("profile");
-  Context profileCtx;
-  FullyConnectedNode *FC = createSimpleFCNet(profileCtx, profileEE, *profileF);
+  PlaceholderBindings profilebindings;
+  FullyConnectedNode *FC =
+      createSimpleFCNet(profilebindings, profileEE, *profileF);
   auto outputNameFC = NodeQuantizationInfo::generateNodeOutputName(
       FC->getName(), FullyConnectedNode::ResultIdx);
   auto weightsNameFC = NodeQuantizationInfo::generateNodeOutputName(
@@ -1589,17 +1598,17 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   auto outputNameBA = NodeQuantizationInfo::generateNodeOutputName(
       loweredBA->getName(), BatchedAddNode::ResultIdx);
 
-  profileF = glow::profileQuantization(profileCtx, profileF);
+  profileF = glow::profileQuantization(profilebindings, profileF);
 
   // Compile/run to capture profile.
   profileEE.compile(CompilationMode::Infer, profileF);
-  profileEE.run(profileCtx);
+  profileEE.run(profilebindings);
 
   // Get quantization infos and build new quantized graph, passing in the
   // loweredMapForProf to include the unlowered components in QI.
   std::vector<NodeQuantizationInfo> QI =
       quantization::generateNodeQuantizationInfos(
-          profileCtx, profileF, loweredMapForProf,
+          profilebindings, profileF, loweredMapForProf,
           quantization::Schema::Asymmetric, ElemKind::Int8QTy);
 
   // Verify that we have node quantization infos for the FC and the lowered
@@ -1633,8 +1642,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   BackendClass backend;
   backendEE.setBackend(&backend, /* ownsBackend */ false);
   Function *backendF = backendEE.getModule().createFunction("quantized");
-  Context backendCtx;
-  createSimpleFCNet(backendCtx, backendEE, *backendF);
+  PlaceholderBindings backendbindings;
+  createSimpleFCNet(backendbindings, backendEE, *backendF);
 
   // Lower the function given the backend's preferences for lowering.
   LoweredInfoMap loweredMapForQuant;

@@ -27,7 +27,7 @@
 namespace glow {
 
 struct AllocationsInfo;
-class Context;
+class PlaceholderBindings;
 class LLVMIRGen;
 
 /// Helper function to create a new CallInst, with the specified \p builder, \p

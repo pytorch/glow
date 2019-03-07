@@ -109,7 +109,7 @@ public:
   /// concurrently from mutliple threads.
   /// Returns -1 if networkName not found or too many active requests.
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
-                             std::unique_ptr<Context> context,
+                             std::unique_ptr<PlaceholderBindings> context,
                              ResultCBTy callback);
   HostManager(const std::vector<DeviceManagerConfig> &configs);
   ~HostManager();

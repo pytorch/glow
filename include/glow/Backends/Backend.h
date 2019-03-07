@@ -27,7 +27,7 @@ namespace glow {
 
 class IRFunction;
 class Node;
-class Context;
+class PlaceholderBindings;
 class IRGenVisitor;
 
 enum class BackendKind {
@@ -114,9 +114,8 @@ Backend *createBackend(BackendKind backendKind);
 // for unit tests to create low-level IR to compile and run.
 class BackendUsingGlowIR : public Backend {
 public:
-  /// Generate code for input IR function \param IR. \p ctx is the context that
-  /// maps the graph to the concrete execution environment for a specific
-  /// function. This is used only for unit testing.
+  /// Generate code for input IR function \param IR.
+  /// This is used only for unit testing.
   virtual std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const = 0;
 };

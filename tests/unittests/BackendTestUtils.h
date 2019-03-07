@@ -31,7 +31,7 @@ namespace glow {
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
-    void execute(Context *) override {}
+    void execute(PlaceholderBindings *) override {}
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;
@@ -58,7 +58,7 @@ class MockBackend : public Backend {
 /// from Node to Instruction IR.
 class MockBackendCustomIRGen : public Backend {
   class MockFunction : public CompiledFunction {
-    void execute(Context *) override {}
+    void execute(PlaceholderBindings *) override {}
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;
@@ -114,7 +114,7 @@ using FunctionTensorPair = std::pair<Function *, Tensor *>;
 /// Signature of functions used to create and init a Function. Returns a pair of
 /// the Function created and the Placeholder of the output of the Function.
 using CreateAndInitFunction =
-    std::function<FunctionTensorPair(Context &, ExecutionEngine &)>;
+    std::function<FunctionTensorPair(PlaceholderBindings &, ExecutionEngine &)>;
 
 /// Given a method \p createAndInitFunction that creates and initializes a
 /// FloatTy Function with a single output Tensor, \returns a bool representing
@@ -184,7 +184,8 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
 void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
                         Tensor *out, BackendKind kind);
 
-FunctionTensorPair createAndInitBasicFCNet(Context &ctx, ExecutionEngine &EE);
+FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
+                                           ExecutionEngine &EE);
 
 void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);
 

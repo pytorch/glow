@@ -289,7 +289,7 @@ static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
 }
 
 int main(int argc, char **argv) {
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
@@ -327,14 +327,14 @@ int main(int argc, char **argv) {
                        inputTensors, *loader.getFunction());
 
   // Allocate tensors to back all inputs and outputs.
-  ctx.allocate(loader.getModule()->getPlaceholders());
+  bindings.allocate(loader.getModule()->getPlaceholders());
 
   Placeholder *encoderInputsVar = llvm::cast<Placeholder>(
       EXIT_ON_ERR(LD.getNodeValueByName("encoder_inputs")));
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile(ctx);
+  loader.compile(bindings);
 
   assert(!emittingBundle() && "Bundle mode has not been tested.");
 
@@ -347,22 +347,22 @@ int main(int argc, char **argv) {
 
   while (loadNextInputTranslationText(&encoderInputs)) {
     // Update the inputs.
-    updateInputPlaceholders(ctx, {encoderInputsVar}, {&encoderInputs});
+    updateInputPlaceholders(bindings, {encoderInputsVar}, {&encoderInputs});
 
     // Run actual translation.
-    loader.runInference(ctx);
+    loader.runInference(bindings);
 
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.
-    processAndPrintDecodedTranslation(ctx.get(outputTokenBeamList),
-                                      ctx.get(outputScoreBeamList),
-                                      ctx.get(outputPrevIndexBeamList));
+    processAndPrintDecodedTranslation(bindings.get(outputTokenBeamList),
+                                      bindings.get(outputScoreBeamList),
+                                      bindings.get(outputPrevIndexBeamList));
   }
 
   // If profiling, generate and serialize the quantization infos now that we
   // have run inference to gather the profile.
   if (profilingGraph()) {
-    loader.generateAndSerializeQuantizationInfos(ctx);
+    loader.generateAndSerializeQuantizationInfos(bindings);
   }
 
   return 0;

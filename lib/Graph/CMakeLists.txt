@@ -21,11 +21,11 @@ add_library(Graph
             ${NODES_HDR}
             ${NODES_SRC}
             ${NODES_DEF}
-            Context.cpp
             Hook.cpp
             Node.cpp
             Nodes.cpp
             NodeValue.cpp
+            PlaceholderBindings.cpp
             Graph.cpp
             Grad.cpp
             VerifierHelper.cpp)

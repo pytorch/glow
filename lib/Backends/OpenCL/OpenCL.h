@@ -21,8 +21,8 @@
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Node.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "llvm/ADT/ArrayRef.h"
 
@@ -96,13 +96,13 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute(Context *ctx) override;
+  void execute(PlaceholderBindings *bindings) override;
   /// Allocates on device buffer and copies Constant weights to device.
   void setupRuns() override;
-  /// Per run setup, copies Inputs from \p ctx to on device memory.
-  void beforeRun(const Context &ctx) override;
-  /// Copies outputs from device to tensors in \p ctx.
-  void afterRun(const Context &ctx) override;
+  /// Per run setup, copies Inputs from \p bindings to on device memory.
+  void beforeRun(const PlaceholderBindings &bindings) override;
+  /// Copies outputs from device to tensors in \p bindings.
+  void afterRun(const PlaceholderBindings &bindings) override;
   /// Final cleanup, currently an empty function in OpenCL.
   void tearDownRuns() override;
 

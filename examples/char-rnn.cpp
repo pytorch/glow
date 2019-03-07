@@ -158,17 +158,18 @@ static std::unique_ptr<llvm::MemoryBuffer> loadFile(llvm::StringRef filename) {
 
 /// Creates a new RNN network. The network answers the question, given N chars
 /// of input, what is the character following each one of these chars.
-static Function *createNetwork(Module &mod, Context &ctx, size_t minibatchSize,
-                               size_t numSteps, size_t hiddenSize) {
+static Function *createNetwork(Module &mod, PlaceholderBindings &bindings,
+                               size_t minibatchSize, size_t numSteps,
+                               size_t hiddenSize) {
   Function *F = mod.createFunction("main");
 
   auto *X = mod.createPlaceholder(
       ElemKind::FloatTy, {minibatchSize, numSteps, 128}, "input", false);
-  ctx.allocate(X);
+  bindings.allocate(X);
 
   auto *Y = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, numSteps},
                                   "expected", false);
-  ctx.allocate(Y);
+  bindings.allocate(Y);
 
   std::vector<Node *> slicesX;
   std::vector<Node *> expectedX;
@@ -185,7 +186,7 @@ static Function *createNetwork(Module &mod, Context &ctx, size_t minibatchSize,
   }
 
   std::vector<NodeValue> outputNodes;
-  F->createLSTM(ctx, "rnn", slicesX, minibatchSize, hiddenSize, 128,
+  F->createLSTM(bindings, "rnn", slicesX, minibatchSize, hiddenSize, 128,
                 outputNodes);
 
   std::vector<NodeValue> resX;
@@ -199,7 +200,7 @@ static Function *createNetwork(Module &mod, Context &ctx, size_t minibatchSize,
 
   Node *O = F->createConcat("output", resX, 1);
   auto *S = F->createSave("result", O);
-  ctx.allocate(S->getPlaceholder());
+  bindings.allocate(S->getPlaceholder());
 
   return F;
 }
@@ -209,7 +210,7 @@ int main(int argc, char **argv) {
   auto mb = loadFile(inputFilename);
   auto text = mb.get()->getBuffer();
   llvm::outs() << "Loaded " << text.size() << " chars.\n";
-  Context ctx;
+  PlaceholderBindings bindings;
 
   const size_t numSteps = 50;
   const size_t minibatchSize = 32;
@@ -227,7 +228,8 @@ int main(int argc, char **argv) {
   auto &mod = EE.getModule();
 
   //// Train the network ////
-  Function *F = createNetwork(mod, ctx, minibatchSize, numSteps, hiddenSize);
+  Function *F =
+      createNetwork(mod, bindings, minibatchSize, numSteps, hiddenSize);
   Function *TF = differentiate(F, TC);
 
   auto *X = mod.getPlaceholderByName("input");
@@ -248,7 +250,7 @@ int main(int argc, char **argv) {
 
     // Train the network on the whole input.
     llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
-    runBatch(EE, ctx, batchSize / minibatchSize, sampleCounter, {X, Y},
+    runBatch(EE, bindings, batchSize / minibatchSize, sampleCounter, {X, Y},
              {&thisCharTrain, &nextCharTrain});
     llvm::outs() << ".\n";
 
@@ -258,7 +260,7 @@ int main(int argc, char **argv) {
     // Clone the function before optimizing it, so that we can promote
     // placeholders to constants.
     auto *OF = F->clone("clone");
-    ::glow::convertPlaceholdersToConstants(OF, ctx, {X, res});
+    ::glow::convertPlaceholdersToConstants(OF, bindings, {X, res});
     EE.compile(CompilationMode::Infer, OF);
 
     // Load a few characters to start the text that we generate.
@@ -266,7 +268,7 @@ int main(int argc, char **argv) {
     Tensor nextCharInfer(ElemKind::Int64ITy, {minibatchSize, numSteps});
     loadText(currCharInfer, nextCharInfer, text.slice(0, 128), false);
 
-    auto *T = ctx.get(res);
+    auto *T = bindings.get(res);
     std::string result;
     std::string input;
     input.insert(input.begin(), text.begin(), text.begin() + numSteps);
@@ -275,8 +277,8 @@ int main(int argc, char **argv) {
     // Generate a sentence by running inference over and over again.
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
-      updateInputPlaceholders(ctx, {X}, {&currCharInfer});
-      EE.run(ctx);
+      updateInputPlaceholders(bindings, {X}, {&currCharInfer});
+      EE.run(bindings);
 
       // Pick a char at random from the softmax distribution.
       char c = getPredictedChar(*T, 0, numSteps - 1);

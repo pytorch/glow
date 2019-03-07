@@ -104,32 +104,35 @@ TEST_P(DeviceManagerTest, Basic) {
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
-  ctx->allocate(module->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings->allocate(module->getPlaceholders());
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(2);
   output1.getHandle().clear(4);
 
-  updateInputPlaceholders(*ctx, {module->getPlaceholderByName("main_input")},
-                          {&input1});
+  updateInputPlaceholders(
+      *bindings, {module->getPlaceholderByName("main_input")}, {&input1});
 
-  std::promise<std::unique_ptr<Context>> runPromise;
-  std::future<std::unique_ptr<Context>> runFuture;
+  std::promise<std::unique_ptr<PlaceholderBindings>> runPromise;
+  std::future<std::unique_ptr<PlaceholderBindings>> runFuture;
 
-  std::tie(runPromise, runFuture) = getFutureHelper<std::unique_ptr<Context>>();
-  device->runFunction("main", std::move(ctx),
-                      [&runPromise](RunIdentifierTy, ResultCode result,
-                                    std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runPromise, std::move(ctx_), result,
-                                       ResultCode::Executed);
-                      });
+  std::tie(runPromise, runFuture) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
+  device->runFunction(
+      "main", std::move(bindings),
+      [&runPromise](RunIdentifierTy, ResultCode result,
+                    std::unique_ptr<PlaceholderBindings> bindings_) {
+        callbackHelper(runPromise, std::move(bindings_), result,
+                       ResultCode::Executed);
+      });
 
   runFuture.wait_for(std::chrono::seconds(2));
-  ctx = runFuture.get();
-  ASSERT_TRUE(ctx);
-  Tensor *result1 = ctx->get(module->getPlaceholderByName("main_output"));
+  bindings = runFuture.get();
+  ASSERT_TRUE(bindings);
+  Tensor *result1 = bindings->get(module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 
@@ -158,10 +161,12 @@ TEST_P(DeviceManagerTest, MultiRun) {
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
-  ctx1->allocate(module->getPlaceholders());
-  ctx2->allocate(module->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings1 =
+      llvm::make_unique<PlaceholderBindings>();
+  std::unique_ptr<PlaceholderBindings> bindings2 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings1->allocate(module->getPlaceholders());
+  bindings2->allocate(module->getPlaceholders());
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor input2(ElemKind::FloatTy, {1});
@@ -173,38 +178,40 @@ TEST_P(DeviceManagerTest, MultiRun) {
   output1.getHandle().clear(4.0f);
   output2.getHandle().clear(9.0f);
 
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("main_input")},
-                          {&input1});
-  updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("main_input")},
-                          {&input2});
+  updateInputPlaceholders(
+      *bindings1, {module->getPlaceholderByName("main_input")}, {&input1});
+  updateInputPlaceholders(
+      *bindings2, {module->getPlaceholderByName("main_input")}, {&input2});
 
-  std::promise<std::unique_ptr<Context>> runP1, runP2;
-  std::future<std::unique_ptr<Context>> runF1, runF2;
-  std::tie(runP1, runF1) = getFutureHelper<std::unique_ptr<Context>>();
-  std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<Context>>();
+  std::promise<std::unique_ptr<PlaceholderBindings>> runP1, runP2;
+  std::future<std::unique_ptr<PlaceholderBindings>> runF1, runF2;
+  std::tie(runP1, runF1) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
+  std::tie(runP2, runF2) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
 
-  device->runFunction("main", std::move(ctx1),
+  device->runFunction("main", std::move(bindings1),
                       [&runP1](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP1, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP1, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  device->runFunction("main", std::move(ctx2),
+  device->runFunction("main", std::move(bindings2),
                       [&runP2](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP2, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP2, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  ctx1 = runF1.get();
-  ctx2 = runF2.get();
-  ASSERT_TRUE(ctx1);
-  ASSERT_TRUE(ctx2);
-  EXPECT_NE(ctx1, ctx2);
+  bindings1 = runF1.get();
+  bindings2 = runF2.get();
+  ASSERT_TRUE(bindings1);
+  ASSERT_TRUE(bindings2);
+  EXPECT_NE(bindings1, bindings2);
 
-  Tensor *result1 = ctx1->get(module->getPlaceholderByName("main_output"));
-  Tensor *result2 = ctx2->get(module->getPlaceholderByName("main_output"));
+  Tensor *result1 = bindings1->get(module->getPlaceholderByName("main_output"));
+  Tensor *result2 = bindings2->get(module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
@@ -218,9 +225,11 @@ TEST_P(DeviceManagerTest, MultiRun) {
 TEST_P(DeviceManagerTest, MultiFunction) {
   auto module = makeBasicModule("func1");
 
-  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
-  ctx1->allocate(module->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings1 =
+      llvm::make_unique<PlaceholderBindings>();
+  std::unique_ptr<PlaceholderBindings> bindings2 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
   auto *inP = module->getPlaceholderByName("func1_input");
@@ -229,8 +238,8 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   auto *p = F->createPow("pow3", inP, 3.0f);
   F->createSave("ret2", p, outP);
 
-  ctx2->allocate(inP);
-  ctx2->allocate(outP);
+  bindings2->allocate(inP);
+  bindings2->allocate(outP);
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
@@ -258,38 +267,42 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   Tensor output2(ElemKind::FloatTy, {1});
   output2.getHandle().clear(8.0f);
 
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
-                          {&input});
-  updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders(
+      *bindings1, {module->getPlaceholderByName("func1_input")}, {&input});
+  updateInputPlaceholders(
+      *bindings2, {module->getPlaceholderByName("func1_input")}, {&input});
 
-  std::promise<std::unique_ptr<Context>> runP1, runP2;
-  std::future<std::unique_ptr<Context>> runF1, runF2;
-  std::tie(runP1, runF1) = getFutureHelper<std::unique_ptr<Context>>();
-  std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<Context>>();
+  std::promise<std::unique_ptr<PlaceholderBindings>> runP1, runP2;
+  std::future<std::unique_ptr<PlaceholderBindings>> runF1, runF2;
+  std::tie(runP1, runF1) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
+  std::tie(runP2, runF2) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
 
-  device->runFunction("func1", std::move(ctx1),
+  device->runFunction("func1", std::move(bindings1),
                       [&runP1](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP1, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP1, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  device->runFunction("func2", std::move(ctx2),
+  device->runFunction("func2", std::move(bindings2),
                       [&runP2](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP2, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP2, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  ctx1 = runF1.get();
-  ctx2 = runF2.get();
-  ASSERT_TRUE(ctx1);
-  ASSERT_TRUE(ctx2);
-  EXPECT_NE(ctx1, ctx2);
+  bindings1 = runF1.get();
+  bindings2 = runF2.get();
+  ASSERT_TRUE(bindings1);
+  ASSERT_TRUE(bindings2);
+  EXPECT_NE(bindings1, bindings2);
 
-  Tensor *result1 = ctx1->get(module->getPlaceholderByName("func1_output"));
-  Tensor *result2 = ctx2->get(module->getPlaceholderByName("func2_output"));
+  Tensor *result1 =
+      bindings1->get(module->getPlaceholderByName("func1_output"));
+  Tensor *result2 =
+      bindings2->get(module->getPlaceholderByName("func2_output"));
   ASSERT_TRUE(result1);
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
@@ -333,51 +346,57 @@ TEST_P(DeviceManagerTest, MultiModule) {
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
 
-  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
-  ctx1->allocate(module1->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings1 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings1->allocate(module1->getPlaceholders());
   Tensor input(ElemKind::FloatTy, {1});
   input.getHandle().clear(2.0f);
   Tensor output(ElemKind::FloatTy, {1});
   output.getHandle().clear(4.0f);
 
-  updateInputPlaceholders(*ctx1, {module1->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders(
+      *bindings1, {module1->getPlaceholderByName("func1_input")}, {&input});
 
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
-  ctx2->allocate(module2->getPlaceholders());
-  updateInputPlaceholders(*ctx2, {module2->getPlaceholderByName("func2_input")},
-                          {&input});
+  std::unique_ptr<PlaceholderBindings> bindings2 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings2->allocate(module2->getPlaceholders());
+  updateInputPlaceholders(
+      *bindings2, {module2->getPlaceholderByName("func2_input")}, {&input});
 
-  std::promise<std::unique_ptr<Context>> runP1, runP2;
-  std::future<std::unique_ptr<Context>> runF1, runF2;
-  std::tie(runP1, runF1) = getFutureHelper<std::unique_ptr<Context>>();
-  std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<Context>>();
+  std::promise<std::unique_ptr<PlaceholderBindings>> runP1, runP2;
+  std::future<std::unique_ptr<PlaceholderBindings>> runF1, runF2;
+  std::tie(runP1, runF1) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
+  std::tie(runP2, runF2) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
 
-  device->runFunction("func1", std::move(ctx1),
+  device->runFunction("func1", std::move(bindings1),
                       [&runP1](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP1, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP1, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  device->runFunction("func2", std::move(ctx2),
+  device->runFunction("func2", std::move(bindings2),
                       [&runP2](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP2, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP2, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  ctx1 = runF1.get();
-  ctx2 = runF2.get();
-  ASSERT_TRUE(ctx1);
-  ASSERT_TRUE(ctx2);
-  EXPECT_NE(ctx1, ctx2);
+  bindings1 = runF1.get();
+  bindings2 = runF2.get();
+  ASSERT_TRUE(bindings1);
+  ASSERT_TRUE(bindings2);
+  EXPECT_NE(bindings1, bindings2);
 
-  Tensor *result1 = ctx1->get(module1->getPlaceholderByName("func1_output"));
+  Tensor *result1 =
+      bindings1->get(module1->getPlaceholderByName("func1_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output));
 
-  Tensor *result2 = ctx2->get(module2->getPlaceholderByName("func2_output"));
+  Tensor *result2 =
+      bindings2->get(module2->getPlaceholderByName("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output));
 
@@ -389,9 +408,11 @@ TEST_P(DeviceManagerTest, MultiModule) {
 TEST_P(DeviceManagerTest, ReuseModule) {
   auto module = makeBasicModule("func1");
 
-  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
-  std::unique_ptr<Context> ctx2 = llvm::make_unique<Context>();
-  ctx1->allocate(module->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings1 =
+      llvm::make_unique<PlaceholderBindings>();
+  std::unique_ptr<PlaceholderBindings> bindings2 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings1->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
   auto *inP = module->getPlaceholderByName("func1_input");
@@ -400,8 +421,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   auto *p = F->createPow("pow3", inP, 3.0f);
   F->createSave("ret2", p, outP);
 
-  ctx2->allocate(inP);
-  ctx2->allocate(outP);
+  bindings2->allocate(inP);
+  bindings2->allocate(outP);
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
@@ -445,41 +466,45 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   Tensor output2(ElemKind::FloatTy, {1});
   output2.getHandle().clear(8.0f);
 
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("func1_input")},
-                          {&input});
-  updateInputPlaceholders(*ctx2, {module->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders(
+      *bindings1, {module->getPlaceholderByName("func1_input")}, {&input});
+  updateInputPlaceholders(
+      *bindings2, {module->getPlaceholderByName("func1_input")}, {&input});
 
-  std::promise<std::unique_ptr<Context>> runP1, runP2;
-  std::future<std::unique_ptr<Context>> runF1, runF2;
-  std::tie(runP1, runF1) = getFutureHelper<std::unique_ptr<Context>>();
-  std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<Context>>();
+  std::promise<std::unique_ptr<PlaceholderBindings>> runP1, runP2;
+  std::future<std::unique_ptr<PlaceholderBindings>> runF1, runF2;
+  std::tie(runP1, runF1) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
+  std::tie(runP2, runF2) =
+      getFutureHelper<std::unique_ptr<PlaceholderBindings>>();
 
-  device->runFunction("func1", std::move(ctx1),
+  device->runFunction("func1", std::move(bindings1),
                       [&runP1](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP1, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP1, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  device->runFunction("func2", std::move(ctx2),
+  device->runFunction("func2", std::move(bindings2),
                       [&runP2](RunIdentifierTy, ResultCode result,
-                               std::unique_ptr<Context> ctx_) {
-                        callbackHelper(runP2, std::move(ctx_), result,
+                               std::unique_ptr<PlaceholderBindings> bindings_) {
+                        callbackHelper(runP2, std::move(bindings_), result,
                                        ResultCode::Executed);
                       });
 
-  ctx1 = runF1.get();
-  ctx2 = runF2.get();
-  ASSERT_TRUE(ctx1);
-  ASSERT_TRUE(ctx2);
-  EXPECT_NE(ctx1, ctx2);
+  bindings1 = runF1.get();
+  bindings2 = runF2.get();
+  ASSERT_TRUE(bindings1);
+  ASSERT_TRUE(bindings2);
+  EXPECT_NE(bindings1, bindings2);
 
-  Tensor *result1 = ctx1->get(module->getPlaceholderByName("func1_output"));
+  Tensor *result1 =
+      bindings1->get(module->getPlaceholderByName("func1_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 
-  Tensor *result2 = ctx2->get(module->getPlaceholderByName("func2_output"));
+  Tensor *result2 =
+      bindings2->get(module->getPlaceholderByName("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output2));
 
@@ -586,25 +611,28 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   // no need to wait.
   EXPECT_EQ(future.get(), module.get());
 
-  std::unique_ptr<Context> ctx1 = llvm::make_unique<Context>();
-  ctx1->allocate(module->getPlaceholders());
+  std::unique_ptr<PlaceholderBindings> bindings1 =
+      llvm::make_unique<PlaceholderBindings>();
+  bindings1->allocate(module->getPlaceholders());
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(2.0f);
   output1.getHandle().clear(4.0f);
 
-  updateInputPlaceholders(*ctx1, {module->getPlaceholderByName("main_input")},
-                          {&input1});
+  updateInputPlaceholders(
+      *bindings1, {module->getPlaceholderByName("main_input")}, {&input1});
 
   deviceManager.runFunction(
-      "main", std::move(ctx1),
-      [&ctx1](RunIdentifierTy, ResultCode result,
-              std::unique_ptr<Context> ctx_) { ctx1 = std::move(ctx_); });
+      "main", std::move(bindings1),
+      [&bindings1](RunIdentifierTy, ResultCode result,
+                   std::unique_ptr<PlaceholderBindings> bindings_) {
+        bindings1 = std::move(bindings_);
+      });
 
-  ASSERT_TRUE(ctx1);
+  ASSERT_TRUE(bindings1);
 
-  Tensor *result1 = ctx1->get(module->getPlaceholderByName("main_output"));
+  Tensor *result1 = bindings1->get(module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 

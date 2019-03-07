@@ -57,18 +57,20 @@ private:
 class ExecutionState final {
 public:
   /// Constructor.
-  explicit ExecutionState(RunIdentifierTy id, const DAGNode *root,
-                          std::unique_ptr<Context> resultContext,
-                          ResultCBTy doneCb);
+  explicit ExecutionState(
+      RunIdentifierTy id, const DAGNode *root,
+      std::unique_ptr<PlaceholderBindings> resultPlaceholderBindings,
+      ResultCBTy doneCb);
 
-  /// Insert the placeholder-tensor pair (\p P, \p T) into the input context
+  /// Insert the placeholder-tensor pair (\p P, \p T) into the input bindings
   /// for \p node. This should not be called at the same time as
-  /// getUniqueNodeContextPtr().
+  /// getUniqueNodePlaceholderBindingsPtr().
   void insertIntoNodeCtx(const DAGNode *node, Placeholder *P, Tensor &&T);
 
-  /// \returns a unique pointer to an input context for \p node. This should not
-  /// be called at the same time as insertIntoNodeCtx().
-  std::unique_ptr<Context> getUniqueNodeContextPtr(const DAGNode *node);
+  /// \returns a unique pointer to an input bindings for \p node. This should
+  /// not be called at the same time as insertIntoNodeCtx().
+  std::unique_ptr<PlaceholderBindings>
+  getUniqueNodePlaceholderBindingsPtr(const DAGNode *node);
 
   /// Increment the count of inflight nodes by \p increment (default is 1).
   void incrementInflightNodes(unsigned increment = 1);
@@ -83,18 +85,19 @@ public:
   /// otherwise.
   bool incrementNodeParentsDone(const DAGNode *node, unsigned increment = 1);
 
-  /// Insert the placeholder-tensor pair (\p P, \p T) into the result context.
-  /// This should not be called at the same time as getUniqueResultContextPtr().
+  /// Insert the placeholder-tensor pair (\p P, \p T) into the result bindings.
+  /// This should not be called at the same time as
+  /// getUniqueResultPlaceholderBindingsPtr().
   void insertIntoResultCtx(Placeholder *P, Tensor &&T);
 
-  /// \returns a unique pointer to the result context. This should not be
-  /// called at the same time as getRawResultContextPtr() or
+  /// \returns a unique pointer to the result bindings. This should not be
+  /// called at the same time as getRawResultPlaceholderBindingsPtr() or
   /// insertIntoResultCtx().
-  std::unique_ptr<Context> getUniqueResultContextPtr();
+  std::unique_ptr<PlaceholderBindings> getUniqueResultPlaceholderBindingsPtr();
 
-  /// \returns a raw pointer to the result context. This should be not called
-  /// at the same time as getUniqueResultContextPtr().
-  Context *getRawResultContextPtr() const;
+  /// \returns a raw pointer to the result bindings. This should be not called
+  /// at the same time as getUniqueResultPlaceholderBindingsPtr().
+  PlaceholderBindings *getRawResultPlaceholderBindingsPtr() const;
 
   /// \returns the callback for this execution.
   ResultCBTy getCallback() { return cb_; }
@@ -113,23 +116,24 @@ private:
   RunIdentifierTy runId_;
   /// The callback that should be called when execution is done.
   ResultCBTy cb_;
-  /// The Context object containing the results of the execution (i.e. the
-  /// outputs of the DAGNodes that have no children).
-  std::unique_ptr<Context> resultCtx_;
+  /// The PlaceholderBindings object containing the results of the execution
+  /// (i.e. the outputs of the DAGNodes that have no children).
+  std::unique_ptr<PlaceholderBindings> resultCtx_;
   /// Counters for how many of each nodes parents are done. These are needed
   /// in order to determine when a node is ready to be executed.
   std::unordered_map<const DAGNode *, std::atomic<unsigned>> nodeParentsDone_;
-  /// Input Contexts for all of the nodes. These are gradually populated as
-  /// a node's parents finish.
-  std::unordered_map<const DAGNode *, std::unique_ptr<Context>> inputCtxs_;
+  /// Input PlaceholderBindingss for all of the nodes. These are gradually
+  /// populated as a node's parents finish.
+  std::unordered_map<const DAGNode *, std::unique_ptr<PlaceholderBindings>>
+      inputCtxs_;
   /// The set of currently executing nodes. This is populated with the roots
   /// when a run starts, and does not become empty until execution finishes.
   std::atomic<unsigned> inflightNodes_;
   /// Flag that is used to track if a non-success error code was received.
   std::atomic<ResultCode> resultCode_;
-  /// Mutex used by context insertion functions to make sure only one thread
-  /// writes to a Context at a time.
-  std::mutex contextMtx_;
+  /// Mutex used by bindings insertion functions to make sure only one thread
+  /// writes to a PlaceholderBindings at a time.
+  std::mutex bindingsMtx_;
 };
 
 /// This implementation of the Executor interface uses a thread pool to
@@ -142,8 +146,8 @@ public:
       : threadPool_(numWorkers), deviceManagers_(deviceManagers) {}
 
   /// See Executor::run. A particular invocation is specified completely by
-  /// the triple (roots, context, runId).
-  void run(const DAGNode *root, std::unique_ptr<Context> context,
+  /// the triple (roots, bindings, runId).
+  void run(const DAGNode *root, std::unique_ptr<PlaceholderBindings> bindings,
            RunIdentifierTy runId, ResultCBTy cb) override;
 
   ~ThreadPoolExecutor() override { shutdown(); }
@@ -151,17 +155,19 @@ public:
   void shutdown() override;
 
 private:
-  /// Propagate Placeholders from \p ctx into the final output Context for the
-  /// run corresponding to \p executionState.
+  /// Propagate Placeholders from \p ctx into the final output
+  /// PlaceholderBindings for the run corresponding to \p executionState.
   void
   propagateOutputPlaceholders(std::shared_ptr<ExecutionState> executionState,
-                              std::unique_ptr<Context> ctx);
+                              std::unique_ptr<PlaceholderBindings> ctx);
 
   /// Propagate Placeholders needed by \p node from \p ctx into
-  /// the Context for \p node within the run corresponding to \p executionState.
+  /// the PlaceholderBindings for \p node within the run corresponding to \p
+  /// executionState.
   void
   propagatePlaceholdersForNode(std::shared_ptr<ExecutionState> executionState,
-                               const DAGNode *node, const Context *ctx);
+                               const DAGNode *node,
+                               const PlaceholderBindings *ctx);
 
   /// Execute the DAG node specified by \p node within the run corresponding to
   /// \p executionState.
@@ -171,14 +177,14 @@ private:
   /// Handle the result returned asynchronously by the DeviceManager.
   /// \p executionState is tracks the state of the run that the node that
   /// finished executing belongs to, \p is the resultCode returned by the
-  /// DeviceManager, \p ctx is the Context that contains the outputs produced by
-  /// \p node during the run.
+  /// DeviceManager, \p ctx is the PlaceholderBindings that contains the outputs
+  /// produced by \p node during the run.
   ///
   /// The main purpose of this function is to help move computation off of the
   /// DeviceManager thread pool on onto the one owned by this class.
   void handleDeviceManagerResult(std::shared_ptr<ExecutionState> executionState,
                                  ResultCode resultCode,
-                                 std::unique_ptr<Context> ctx,
+                                 std::unique_ptr<PlaceholderBindings> ctx,
                                  const DAGNode *node);
 
   /// The default number of workers in the thread pool.

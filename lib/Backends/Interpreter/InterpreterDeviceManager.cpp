@@ -92,25 +92,24 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
   }
 }
 
-void InterpreterDeviceManager::runFunctionImpl(RunIdentifierTy id,
-                                               std::string function,
-                                               std::unique_ptr<Context> ctx,
-                                               ResultCBTy resultCB) {
+void InterpreterDeviceManager::runFunctionImpl(
+    RunIdentifierTy id, std::string function,
+    std::unique_ptr<PlaceholderBindings> bindings, ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     llvm::errs() << "Failed to run function: name " << function
                  << " not found.\n";
-    resultCB(id, ResultCode::Failed, std::move(ctx));
+    resultCB(id, ResultCode::Failed, std::move(bindings));
     return;
   }
 
   CompiledFunction *func = funcIt->second;
 
   // Run that function.
-  func->execute(ctx.get());
+  func->execute(bindings.get());
 
   // Fire the resultCB.
-  resultCB(id, ResultCode::Executed, std::move(ctx));
+  resultCB(id, ResultCode::Executed, std::move(bindings));
 }
 
 } // namespace runtime

@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
@@ -2404,7 +2404,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
   return changed;
 }
 
-void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
+void glow::convertPlaceholdersToConstants(Function *F,
+                                          const PlaceholderBindings &bindings,
                                           llvm::ArrayRef<Placeholder *> phs) {
   auto *M = F->getParent();
   auto &placeholders = M->getPlaceholders();
@@ -2412,7 +2413,7 @@ void glow::convertPlaceholdersToConstants(Function *F, const Context &ctx,
     if (std::find(phs.begin(), phs.end(), PH) != phs.end()) {
       continue;
     }
-    auto *tensor = ctx.get(PH);
+    auto *tensor = bindings.get(PH);
     if (!tensor) {
       continue;
     }

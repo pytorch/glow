@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "glow/Graph/Graph.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
@@ -1626,19 +1626,19 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
 }
 
 QuantizationProfileNode *
-Function::createQuantizationProfile(Context &ctx, llvm::StringRef name,
-                                    NodeValue input) {
+Function::createQuantizationProfile(PlaceholderBindings &bindings,
+                                    llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
   const size_t numberOfBuckets = 2000U;
   auto *histogram = getParent()->createPlaceholder(
       ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
-  ctx.allocate(histogram);
+  bindings.allocate(histogram);
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
   auto *computationInfo = getParent()->createPlaceholder(
       ElemKind::FloatTy, {2}, "CI_" + name.str(), false);
-  ctx.allocate(computationInfo);
+  bindings.allocate(computationInfo);
   return addNode(new QuantizationProfileNode(
       "QI_" + name.str(), input, histogram, computationInfo,
       input.getNode()->getName().str(), input.getResNo()));
@@ -1929,10 +1929,9 @@ Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
 
-BatchNormalizationNode *
-Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
-                                   NodeValue input, unsigned_t channelIdx,
-                                   float epsilon, float momentum) {
+BatchNormalizationNode *Function::createBatchNormalization(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    unsigned_t channelIdx, float epsilon, float momentum) {
   // Figure out how many channels are in the tensor.
   size_t channels = input.dims()[channelIdx];
 
@@ -1941,27 +1940,29 @@ Function::createBatchNormalization(Context &ctx, llvm::StringRef name,
   // Allocate the learnable parameters beta and gamma.
   auto *beta =
       getParent()->createPlaceholder(inputTy, {channels}, "beta", true);
-  ctx.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+  bindings.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
 
   auto *gamma =
       getParent()->createPlaceholder(inputTy, {channels}, "gamma", true);
 
-  ctx.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0, getPRNG());
+  bindings.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0,
+                                 getPRNG());
 
   auto *mean =
       getParent()->createPlaceholder(inputTy, {channels}, "mean", false);
-  ctx.allocate(mean)->zero();
+  bindings.allocate(mean)->zero();
 
   auto *variance =
       getParent()->createPlaceholder(inputTy, {channels}, "variance", false);
-  ctx.allocate(variance)->zero();
+  bindings.allocate(variance)->zero();
 
   return createBatchNormalization(name, input, beta, gamma, mean, variance,
                                   channelIdx, epsilon, momentum);
 }
 
-ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
-                                      NodeValue input, size_t outChannels,
+ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
+                                      llvm::StringRef name, NodeValue input,
+                                      size_t outChannels,
                                       llvm::ArrayRef<unsigned_t> kernels,
                                       llvm::ArrayRef<unsigned_t> strides,
                                       llvm::ArrayRef<unsigned_t> pads,
@@ -1994,11 +1995,13 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
          "Convolution on non-floating point type?");
   auto *filter =
       getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
-  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+  bindings.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn,
+                                  getPRNG());
 
   auto *bias =
       getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
-  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+  bindings.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1,
+                                getPRNG());
 
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
@@ -2006,19 +2009,21 @@ ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
                                      strides, pads, group));
 }
 
-ConvolutionNode *Function::createConv(Context &ctx, llvm::StringRef name,
-                                      NodeValue input, size_t outChannels,
-                                      unsigned_t kernel, unsigned_t stride,
-                                      unsigned_t pad, unsigned_t group) {
+ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
+                                      llvm::StringRef name, NodeValue input,
+                                      size_t outChannels, unsigned_t kernel,
+                                      unsigned_t stride, unsigned_t pad,
+                                      unsigned_t group) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createConv(ctx, name, input, outChannels, kernels, strides, pads,
+  return createConv(bindings, name, input, outChannels, kernels, strides, pads,
                     group);
 }
 
-Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
-                                          NodeValue input, size_t outChannels,
+Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
+                                          llvm::StringRef name, NodeValue input,
+                                          size_t outChannels,
                                           llvm::ArrayRef<unsigned_t> kernels,
                                           llvm::ArrayRef<unsigned_t> strides,
                                           llvm::ArrayRef<unsigned_t> pads,
@@ -2047,11 +2052,13 @@ Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
          "Convolution3D on non-floating point type?");
   auto *filter =
       getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
-  ctx.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn, getPRNG());
+  bindings.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn,
+                                  getPRNG());
 
   auto *bias =
       getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
-  ctx.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1, getPRNG());
+  bindings.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1,
+                                getPRNG());
 
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
@@ -2061,15 +2068,16 @@ Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
                                        strides, pads, group));
 }
 
-Convolution3DNode *Function::createConv3D(Context &ctx, llvm::StringRef name,
-                                          NodeValue input, size_t outChannels,
-                                          unsigned_t kernel, unsigned_t stride,
-                                          unsigned_t pad, unsigned_t group) {
+Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
+                                          llvm::StringRef name, NodeValue input,
+                                          size_t outChannels, unsigned_t kernel,
+                                          unsigned_t stride, unsigned_t pad,
+                                          unsigned_t group) {
   llvm::SmallVector<unsigned_t, 6> pads = {pad, pad, pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
   llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
-  return createConv3D(ctx, name, input, outChannels, kernels, strides, pads,
-                      group);
+  return createConv3D(bindings, name, input, outChannels, kernels, strides,
+                      pads, group);
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
@@ -2077,10 +2085,10 @@ ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
   return addNode(new ConvertToNode(name, outTy, input));
 }
 
-FullyConnectedNode *Function::createFullyConnected(Context &ctx,
-                                                   llvm::StringRef name,
-                                                   NodeValue input,
-                                                   size_t outDepth) {
+FullyConnectedNode *
+Function::createFullyConnected(PlaceholderBindings &bindings,
+                               llvm::StringRef name, NodeValue input,
+                               size_t outDepth) {
   TypeRef T = input.getType();
   auto idim = flattenCdr(input.dims());
   size_t fanIn = idim.second;
@@ -2090,8 +2098,8 @@ FullyConnectedNode *Function::createFullyConnected(Context &ctx,
   auto *B = getParent()->createPlaceholder(T->getElementType(), {outDepth},
                                            "bias", true);
 
-  ctx.allocate(W)->init(Tensor::InitKind::Xavier, fanIn, getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Broadcast, .1, getPRNG());
+  bindings.allocate(W)->init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Broadcast, .1, getPRNG());
 
   auto OT =
       getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
@@ -2153,7 +2161,8 @@ Node *Function::createElementwiseLinear(llvm::StringRef name, NodeValue X,
   return out;
 }
 
-void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
+void Function::createGRU(PlaceholderBindings &bindings,
+                         llvm::StringRef namePrefix,
                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,
                          std::vector<NodeValue> &outputs) {
@@ -2166,7 +2175,7 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   // Initialize the state to zero.
   Placeholder *HInit = getParent()->createPlaceholder(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_state", false);
-  ctx.allocate(HInit)->zero();
+  bindings.allocate(HInit)->zero();
   Node *Ht = HInit;
 
   // Update gate:
@@ -2187,13 +2196,14 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bz2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bz2", true);
 
-  ctx.allocate(Wxz)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whz)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bz1)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
-                          getPRNG());
-  ctx.allocate(Bz2)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
-                          getPRNG());
+  bindings.allocate(Wxz)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whz)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bz1)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
+                               getPRNG());
+  bindings.allocate(Bz2)->init(glow::Tensor::InitKind::Broadcast, bUpdate,
+                               getPRNG());
 
   // Reset gate.
   float bReset = -1.0;
@@ -2206,11 +2216,14 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Br2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".br2", true);
 
-  ctx.allocate(Wxr)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whr)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Br1)->init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
-  ctx.allocate(Br2)->init(glow::Tensor::InitKind::Broadcast, bReset, getPRNG());
+  bindings.allocate(Wxr)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whr)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Br1)->init(glow::Tensor::InitKind::Broadcast, bReset,
+                               getPRNG());
+  bindings.allocate(Br2)->init(glow::Tensor::InitKind::Broadcast, bReset,
+                               getPRNG());
 
   // hidden state
   float b = 0.1;
@@ -2223,11 +2236,12 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bh2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bh2", true);
 
-  ctx.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bh1)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
-  ctx.allocate(Bh2)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bh1)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Bh2)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   // Output Layer.
   Placeholder *Why = getParent()->createPlaceholder(
@@ -2235,9 +2249,9 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *By = getParent()->createPlaceholder(
       ElemKind::FloatTy, {outputSize}, nameBase + ".by", true);
 
-  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   auto ty = getParent()->uniqueType(ElemKind::FloatTy, {batchSize, hiddenSize});
   auto *Ones = createSplat(nameBase + ".ones", ty, 1.0);
@@ -2295,7 +2309,8 @@ void Function::createGRU(Context &ctx, llvm::StringRef namePrefix,
   }
 }
 
-void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
+void Function::createSimpleRNN(PlaceholderBindings &bindings,
+                               llvm::StringRef namePrefix,
                                llvm::ArrayRef<Node *> inputs,
                                unsigned batchSize, unsigned hiddenSize,
                                unsigned outputSize,
@@ -2310,7 +2325,7 @@ void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *HInit =
       getParent()->createPlaceholder(ElemKind::FloatTy, {batchSize, hiddenSize},
                                      nameBase + ".initial_state", false);
-  ctx.allocate(HInit)->zero();
+  bindings.allocate(HInit)->zero();
   Node *Ht = HInit;
 
   float b = 0.1;
@@ -2328,14 +2343,15 @@ void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bhy = getParent()->createPlaceholder(
       ElemKind::FloatTy, {outputSize}, nameBase + ".Bhy", true);
 
-  ctx.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bhh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
-  ctx.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Bxh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
-  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bhy)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Whh)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bhh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Wxh)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Bxh)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bhy)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   // Un-roll backpropogation through time as a loop with the shared
   // parameters.
@@ -2356,7 +2372,8 @@ void Function::createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
   };
 }
 
-void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
+void Function::createLSTM(PlaceholderBindings &bindings,
+                          llvm::StringRef namePrefix,
                           llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                           unsigned hiddenSize, unsigned outputSize,
                           std::vector<NodeValue> &outputs) {
@@ -2370,12 +2387,12 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *HInit =
       getParent()->createPlaceholder(ElemKind::FloatTy, {batchSize, hiddenSize},
                                      "initial_hidden_state", false);
-  ctx.allocate(HInit)->zero();
+  bindings.allocate(HInit)->zero();
   Node *Ht = HInit;
 
   Placeholder *CInit = getParent()->createPlaceholder(
       ElemKind::FloatTy, {batchSize, hiddenSize}, "initial_cell_state", false);
-  ctx.allocate(CInit)->zero();
+  bindings.allocate(CInit)->zero();
   Node *Ct = CInit;
 
   // Forget gate:
@@ -2399,13 +2416,14 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf1", true);
   Placeholder *Bf2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bf2", true);
-  ctx.allocate(Wxf)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whf)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bf1)->init(glow::Tensor::InitKind::Broadcast, bForget,
-                          getPRNG());
-  ctx.allocate(Bf2)->init(glow::Tensor::InitKind::Broadcast, bForget,
-                          getPRNG());
+  bindings.allocate(Wxf)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whf)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bf1)->init(glow::Tensor::InitKind::Broadcast, bForget,
+                               getPRNG());
+  bindings.allocate(Bf2)->init(glow::Tensor::InitKind::Broadcast, bForget,
+                               getPRNG());
 
   // input gate
   float bInput = 0.1;
@@ -2418,11 +2436,14 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bi2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bi2", true);
 
-  ctx.allocate(Wxi)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whi)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bi1)->init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
-  ctx.allocate(Bi2)->init(glow::Tensor::InitKind::Broadcast, bInput, getPRNG());
+  bindings.allocate(Wxi)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whi)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bi1)->init(glow::Tensor::InitKind::Broadcast, bInput,
+                               getPRNG());
+  bindings.allocate(Bi2)->init(glow::Tensor::InitKind::Broadcast, bInput,
+                               getPRNG());
 
   // output gate
   float bOutput = 0.1;
@@ -2435,13 +2456,14 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bo2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bo2", true);
 
-  ctx.allocate(Wxo)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Who)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bo1)->init(glow::Tensor::InitKind::Broadcast, bOutput,
-                          getPRNG());
-  ctx.allocate(Bo2)->init(glow::Tensor::InitKind::Broadcast, bOutput,
-                          getPRNG());
+  bindings.allocate(Wxo)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Who)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bo1)->init(glow::Tensor::InitKind::Broadcast, bOutput,
+                               getPRNG());
+  bindings.allocate(Bo2)->init(glow::Tensor::InitKind::Broadcast, bOutput,
+                               getPRNG());
 
   // cell state
   float bCell = 0.1;
@@ -2454,11 +2476,14 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *Bc2 = getParent()->createPlaceholder(
       ElemKind::FloatTy, {hiddenSize}, nameBase + ".bc2", true);
 
-  ctx.allocate(Wxc)->init(glow::Tensor::InitKind::Xavier, inputSize, getPRNG());
-  ctx.allocate(Whc)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(Bc1)->init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
-  ctx.allocate(Bc2)->init(glow::Tensor::InitKind::Broadcast, bCell, getPRNG());
+  bindings.allocate(Wxc)->init(glow::Tensor::InitKind::Xavier, inputSize,
+                               getPRNG());
+  bindings.allocate(Whc)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(Bc1)->init(glow::Tensor::InitKind::Broadcast, bCell,
+                               getPRNG());
+  bindings.allocate(Bc2)->init(glow::Tensor::InitKind::Broadcast, bCell,
+                               getPRNG());
 
   // output layer
   float b = 0.1;
@@ -2467,9 +2492,9 @@ void Function::createLSTM(Context &ctx, llvm::StringRef namePrefix,
   Placeholder *By = getParent()->createPlaceholder(
       ElemKind::FloatTy, {outputSize}, nameBase + ".by", true);
 
-  ctx.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
-                          getPRNG());
-  ctx.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
+  bindings.allocate(Why)->init(glow::Tensor::InitKind::Xavier, hiddenSize,
+                               getPRNG());
+  bindings.allocate(By)->init(glow::Tensor::InitKind::Broadcast, b, getPRNG());
 
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {

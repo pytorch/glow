@@ -226,15 +226,14 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
   }
 }
 
-void OpenCLDeviceManager::runFunctionImpl(RunIdentifierTy id,
-                                          std::string function,
-                                          std::unique_ptr<Context> ctx,
-                                          ResultCBTy resultCB) {
+void OpenCLDeviceManager::runFunctionImpl(
+    RunIdentifierTy id, std::string function,
+    std::unique_ptr<PlaceholderBindings> bindings, ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     llvm::errs() << "Failed to run function: name " << function
                  << " not found.\n";
-    resultCB(id, ResultCode::Failed, std::move(ctx));
+    resultCB(id, ResultCode::Failed, std::move(bindings));
     return;
   }
 
@@ -244,10 +243,10 @@ void OpenCLDeviceManager::runFunctionImpl(RunIdentifierTy id,
   // Until we have executionInfo object need to call setup/teardown and pin to
   // single device.
   func->setupRuns();
-  func->beforeRun(*ctx.get());
-  func->execute(ctx.get());
-  func->afterRun(*ctx.get());
+  func->beforeRun(*bindings.get());
+  func->execute(bindings.get());
+  func->afterRun(*bindings.get());
 
   // Fire the resultCB.
-  resultCB(id, ResultCode::Executed, std::move(ctx));
+  resultCB(id, ResultCode::Executed, std::move(bindings));
 }

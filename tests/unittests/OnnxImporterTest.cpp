@@ -15,9 +15,9 @@
  */
 #include "ImporterTestUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "gtest/gtest.h"
 
@@ -39,7 +39,7 @@ importArithMultiBroadcastTest(std::string fileName,
 
   std::string NetFilename =
       std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -49,8 +49,8 @@ importArithMultiBroadcastTest(std::string fileName,
                 inputShape[3]);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
   }
 
   // ONNX importer loads an arithmetic node and inserts:
@@ -90,8 +90,8 @@ importArithMultiBroadcastTest(std::string fileName,
 
   // Compile&run the graph, and check the output
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-  auto result = ctx.get(graphOutputVar)->getHandle();
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 3, 4, 2};
   std::vector<float> expectedValues;
 
@@ -210,7 +210,7 @@ TEST(onnx, importConv) {
   std::string NetFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/simpleConv.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -219,8 +219,8 @@ TEST(onnx, importConv) {
     getNCHWData(&data, 1, 1, 3, 3);
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
   }
 
   // ONNX importer loads a conv node and converts it to 4 ops:
@@ -250,8 +250,8 @@ TEST(onnx, importConv) {
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-  auto result = ctx.get(graphOutputVar)->getHandle();
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
@@ -286,7 +286,7 @@ TEST(onnx, reduceMean4Dto3D) {
 
   std::string netFilename("tests/models/onnxModels/reduceMean4Dto3D.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
@@ -294,14 +294,14 @@ TEST(onnx, reduceMean4Dto3D) {
 
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2, 2};
@@ -324,7 +324,7 @@ TEST(onnx, reduceMean4Dto4D) {
 
   std::string netFilename("tests/models/onnxModels/reduceMean4Dto4D.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
@@ -332,14 +332,14 @@ TEST(onnx, reduceMean4Dto4D) {
 
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2, 2, 1};
@@ -362,7 +362,7 @@ TEST(onnx, reduceSum4D) {
 
   std::string netFilename("tests/models/onnxModels/reduceSum4D.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
@@ -370,14 +370,14 @@ TEST(onnx, reduceSum4D) {
 
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2, 2, 1};
   std::vector<float> expectedValues = {3, 7, 11, 15, 19, 23, 27, 31};
@@ -398,7 +398,7 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
 
   std::string netFilename("tests/models/onnxModels/reduceMean2AvgPool.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
@@ -406,14 +406,14 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
 
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2, 1, 1};
@@ -441,7 +441,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
   std::string netFilename(
       "tests/models/onnxModels/reduceMean2AvgPoolNoKeep.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
@@ -449,14 +449,14 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
 
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2};
@@ -483,21 +483,21 @@ TEST(onnx, importClip) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/clip.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {3, 3});
     x.getHandle() = {1, 2, 3, 40, 5, 6, 7, 8, 90};
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3, 3};
@@ -517,7 +517,7 @@ TEST(onnx, importBatchMatMul) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/batch_matmul.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor inputs_0(ElemKind::FloatTy, {20, 7, 40});
@@ -526,11 +526,11 @@ TEST(onnx, importBatchMatMul) {
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
   }
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {20, 7, 7};
@@ -577,7 +577,7 @@ TEST(onnx, importBatchBoxCox) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/batchBoxCox.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
 
   // Make input tensors.
@@ -605,15 +605,16 @@ TEST(onnx, importBatchBoxCox) {
         netFilename, {"data", "lambda1", "lambda2"},
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"data", "lambda1", "lambda2"},
                                   {&data, &lambda1, &lambda2});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
 
@@ -681,7 +682,7 @@ TEST(onnx, importSumN) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/sumN.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor i0(ElemKind::FloatTy, {3});
@@ -695,14 +696,14 @@ TEST(onnx, importSumN) {
                            {&i0.getType(), &i1.getType(), &i2.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"i0", "i1", "i2"},
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"i0", "i1", "i2"},
                                   {&i0, &i1, &i2});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3};
@@ -738,7 +739,7 @@ TEST(onnx, importSum1) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/sum1.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   {
     Tensor x(ElemKind::FloatTy, {3});
@@ -746,13 +747,13 @@ TEST(onnx, importSum1) {
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {3};
@@ -802,15 +803,15 @@ TEST(onnx, importReplaceNaN) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/replaceNaN.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor x(ElemKind::FloatTy, {3, 3});
 
   {
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"x"}, {&x});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
   // Verify structure: Input, IsNan, Splat -> Select -> Save.
@@ -836,7 +837,7 @@ TEST(onnx, importSparseToDense) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/sparseToDense.onnxtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
 
   // Create inputs.
@@ -1062,7 +1063,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
 
   std::string NetFilename =
       std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -1072,8 +1073,8 @@ static void importSliceTest(std::string fileName, const char *inputName,
                 inputShape[3]);
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {inputName}, {&data});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
   }
 
   // ONNX importer loads an Slice operator and adds to the IR:
@@ -1087,8 +1088,8 @@ static void importSliceTest(std::string fileName, const char *inputName,
 
   // Compile&run the graph, and check the output.
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
-  auto result = ctx.get(graphOutputVar)->getHandle();
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
   EXPECT_TRUE(result.dims().vec() == outputShape.vec());
   size_t wSliceSize = inputShape[3];
   size_t hSliceSize = inputShape[2] * wSliceSize;
@@ -1151,7 +1152,7 @@ static void importPad(std::string fileName, const char *inputName,
 
   std::string NetFilename =
       std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -1167,8 +1168,8 @@ static void importPad(std::string fileName, const char *inputName,
     }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {inputName}, {&data});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
   }
 
   // ONNX importer loads a Pad operator and adds to the IR:
@@ -1198,8 +1199,8 @@ static void importPad(std::string fileName, const char *inputName,
   if (testOutput && mode == PaddingMode::CONSTANT) {
     // Compile&run the graph, and check the output.
     EE.compile(CompilationMode::Infer, F);
-    EE.run(ctx);
-    auto result = ctx.get(graphOutputVar)->getHandle();
+    EE.run(bindings);
+    auto result = bindings.get(graphOutputVar)->getHandle();
     EXPECT_TRUE(result.dims().vec() == expectedOutputShape);
     size_t indexOutput = 0;
     size_t indexinput = 0;

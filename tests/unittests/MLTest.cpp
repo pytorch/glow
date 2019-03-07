@@ -39,7 +39,7 @@ class MLTest : public TestRunnerBase {};
 /// Use placeholders (and not variables) to learn the square root of two.
 TEST_P(MLTest, learnSqrt2Placeholder) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TC.learningRate = 0.03;
 
@@ -47,27 +47,27 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
   Function *F = mod.createFunction("Square root of 2");
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1}, "A", true);
-  auto *inputTensor = ctx.allocate(A);
+  auto *inputTensor = bindings.allocate(A);
   inputTensor->init(Tensor::InitKind::Broadcast, 1, mod.getPRNG());
 
   auto *E = mod.createPlaceholder(ElemKind::FloatTy, {1}, "Ex", false);
-  ctx.allocate(E)->getHandle() = {2};
+  bindings.allocate(E)->getHandle() = {2};
 
   auto *O = mod.createPlaceholder(ElemKind::FloatTy, {1}, "output", false);
-  ctx.allocate(O);
+  bindings.allocate(O);
 
   Node *M = F->createMul("Mult", A, A);
   M = F->createRegression("reg", M, E);
   SaveNode *SN = F->createSave("ret", M);
 
-  ctx.allocate(SN->getPlaceholder());
+  bindings.allocate(SN->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
   for (int i = 0; i < 100; i++) {
-    EE_.run(ctx);
+    EE_.run(bindings);
   }
 
   float res = inputTensor->getHandle().at({0});
@@ -76,7 +76,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 
 TEST_P(MLTest, trainASimpleNetwork) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -91,15 +91,15 @@ TEST_P(MLTest, trainASimpleNetwork) {
   // Create a variable with 1 input, which is a vector of 4 elements.
   Placeholder *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
   Placeholder *E = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
-  Node *O = F->createFullyConnected(ctx, "fc1", A, 10);
+  Node *O = F->createFullyConnected(bindings, "fc1", A, 10);
   O = F->createSigmoid("sig1", O);
-  O = F->createFullyConnected(ctx, "fc2", O, 4);
+  O = F->createFullyConnected(bindings, "fc2", O, 4);
   O = F->createRegression("reg", O, E);
   SaveNode *result = F->createSave("return", O);
 
-  ctx.allocate(A);
-  ctx.allocate(E);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(E);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -111,13 +111,13 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE_, ctx, 1000, sampleCounter, {A, E}, {&inputs, &expected});
+  runBatch(EE_, bindings, 1000, sampleCounter, {A, E}, {&inputs, &expected});
 
   // Testing the output vector.
 
   EE_.compile(CompilationMode::Infer, F);
-  updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&inputs});
+  EE_.run(bindings);
 
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -128,7 +128,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
 
 TEST_P(MLTest, simpleRegression) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -151,14 +151,14 @@ TEST_P(MLTest, simpleRegression) {
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputs}, "A", false);
   Placeholder *Ex =
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputs}, "E", false);
-  Node *O = F->createFullyConnected(ctx, "fc", A, 4);
+  Node *O = F->createFullyConnected(bindings, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("result", O);
 
-  ctx.allocate(A);
-  ctx.allocate(Ex);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(Ex);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
@@ -171,7 +171,7 @@ TEST_P(MLTest, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    runBatch(EE_, ctx, 1, sampleCounter, {A, Ex}, {&inputs, &expected});
+    runBatch(EE_, bindings, 1, sampleCounter, {A, Ex}, {&inputs, &expected});
   }
 
   // Verify the result of the regression layer.
@@ -181,8 +181,8 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    updateInputPlaceholders(ctx, {A}, {&inputs});
-    EE_.run(ctx);
+    updateInputPlaceholders(bindings, {A}, {&inputs});
+    EE_.run(bindings);
 
     auto resH = res->getHandle<>();
     (void)resH;
@@ -193,7 +193,7 @@ TEST_P(MLTest, simpleRegression) {
 
 TEST_P(MLTest, learnXor) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   unsigned numInputs = 10;
 
@@ -213,15 +213,15 @@ TEST_P(MLTest, learnXor) {
   Placeholder *Ex =
       mod.createPlaceholder(ElemKind::FloatTy, {numInputs, 1}, "Ex", false);
 
-  Node *O = F->createFullyConnected(ctx, "fc1", A, 6);
+  Node *O = F->createFullyConnected(bindings, "fc1", A, 6);
   O = F->createTanh("tanh1", O);
-  O = F->createFullyConnected(ctx, "fc2", O, 1);
+  O = F->createFullyConnected(bindings, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
-  ctx.allocate(A);
-  ctx.allocate(Ex);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(Ex);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -243,7 +243,7 @@ TEST_P(MLTest, learnXor) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, ctx, 2500, sampleCounter, {A, Ex},
+  runBatch(EE_, bindings, 2500, sampleCounter, {A, Ex},
            {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
@@ -256,8 +256,8 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
 
-  updateInputPlaceholders(ctx, {A}, {&trainingSet});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&trainingSet});
+  EE_.run(bindings);
 
   auto resH = res->getHandle<>();
 
@@ -272,7 +272,7 @@ TEST_P(MLTest, learnXor) {
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -291,15 +291,15 @@ TEST_P(MLTest, learnLog) {
   Placeholder *Ex =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 1}, "Ex", false);
 
-  Node *O = F->createFullyConnected(ctx, "fc1", A, 4);
+  Node *O = F->createFullyConnected(bindings, "fc1", A, 4);
   O = F->createTanh("tanh1", O);
-  O = F->createFullyConnected(ctx, "fc2", O, 1);
+  O = F->createFullyConnected(bindings, "fc2", O, 1);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
-  ctx.allocate(A);
-  ctx.allocate(Ex);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(Ex);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   // Set the training data.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
@@ -322,7 +322,7 @@ TEST_P(MLTest, learnLog) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, ctx, 1000, sampleCounter, {A, Ex},
+  runBatch(EE_, bindings, 1000, sampleCounter, {A, Ex},
            {&trainingSet, &trainingLabels});
 
   EE_.compile(CompilationMode::Infer, F);
@@ -341,8 +341,8 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
 
-  updateInputPlaceholders(ctx, {A}, {&testSet});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&testSet});
+  EE_.run(bindings);
 
   auto resH = res->getHandle<>();
 
@@ -387,7 +387,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -408,15 +408,15 @@ TEST_P(MLTest, circle) {
   Placeholder *S =
       mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1}, "S", false);
 
-  auto *FCL0 = F->createFullyConnected(ctx, "fc1", A, 8);
+  auto *FCL0 = F->createFullyConnected(bindings, "fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
-  auto *FCL1 = F->createFullyConnected(ctx, "fc2", T0, 2);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc2", T0, 2);
   auto *SM = F->createSoftMax("soft", FCL1, S);
   auto *result = F->createSave("ret", SM);
 
-  ctx.allocate(A);
-  ctx.allocate(S);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(S);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
@@ -426,7 +426,7 @@ TEST_P(MLTest, circle) {
   generateCircleData(coordinates, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, ctx, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
+  runBatch(EE_, bindings, 4000, sampleCounter, {A, S}, {&coordinates, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -439,8 +439,8 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      updateInputPlaceholders(ctx, {A}, {&sample});
-      EE_.run(ctx);
+      updateInputPlaceholders(bindings, {A}, {&sample});
+      EE_.run(bindings);
 
       auto SMH = res->getHandle<>();
       auto A = SMH.at({0, 0});
@@ -463,8 +463,8 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    updateInputPlaceholders(ctx, {A}, {&sample});
-    EE_.run(ctx);
+    updateInputPlaceholders(bindings, {A}, {&sample});
+    EE_.run(bindings);
 
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
@@ -476,8 +476,8 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    updateInputPlaceholders(ctx, {A}, {&sample});
-    EE_.run(ctx);
+    updateInputPlaceholders(bindings, {A}, {&sample});
+    EE_.run(bindings);
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
     auto B = SMH.at({0, 1});
@@ -487,7 +487,7 @@ TEST_P(MLTest, circle) {
 
 TEST_P(MLTest, learnSingleValueConcat) {
   unsigned width = 6;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -507,12 +507,12 @@ TEST_P(MLTest, learnSingleValueConcat) {
   // Left side of the network:
   Placeholder *A =
       mod.createPlaceholder(ElemKind::FloatTy, {1, width}, "A", false);
-  Node *L = F->createFullyConnected(ctx, "fc1", A, width);
+  Node *L = F->createFullyConnected(bindings, "fc1", A, width);
   L = F->createSigmoid("", L);
 
   // Right side of the network:
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, width}, "B", false);
-  Node *R = F->createFullyConnected(ctx, "fc2", B, width);
+  Node *R = F->createFullyConnected(bindings, "fc2", B, width);
   R = F->createSigmoid("sig", R);
 
   // Concat:
@@ -520,10 +520,10 @@ TEST_P(MLTest, learnSingleValueConcat) {
   auto *RN = F->createRegression("reg", C, Ex);
   auto *result = F->createSave("ret", RN);
 
-  ctx.allocate(A);
-  ctx.allocate(B);
-  ctx.allocate(Ex);
-  auto *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(B);
+  bindings.allocate(Ex);
+  auto *res = bindings.allocate(result->getPlaceholder());
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
@@ -534,14 +534,14 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
-  runBatch(EE_, ctx, 1000, sampleCounter, {A, B, Ex},
+  runBatch(EE_, bindings, 1000, sampleCounter, {A, B, Ex},
            {&inputs, &inputs, &expected});
 
   EE_.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&inputs});
+  EE_.run(bindings);
   auto RNWH = res->getHandle<>();
   (void)RNWH;
 
@@ -549,27 +549,28 @@ TEST_P(MLTest, learnSingleValueConcat) {
   EXPECT_NEAR(RNWH.at({0, 0}), 0.9, 0.1);
 }
 
-void buildGRU(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
-              unsigned hiddenSize, unsigned outputSize,
-              std::vector<NodeValue> &outputs) {
-  return F->createGRU(ctx, "GRU", slicesX, 1, hiddenSize, outputSize, outputs);
+void buildGRU(PlaceholderBindings &bindings, Function *F,
+              const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              unsigned outputSize, std::vector<NodeValue> &outputs) {
+  return F->createGRU(bindings, "GRU", slicesX, 1, hiddenSize, outputSize,
+                      outputs);
 };
 
-void buildRNN(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
-              unsigned hiddenSize, unsigned outputSize,
-              std::vector<NodeValue> &outputs) {
-  return F->createSimpleRNN(ctx, "SimpleRNN", slicesX, 1, hiddenSize,
+void buildRNN(PlaceholderBindings &bindings, Function *F,
+              const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              unsigned outputSize, std::vector<NodeValue> &outputs) {
+  return F->createSimpleRNN(bindings, "SimpleRNN", slicesX, 1, hiddenSize,
                             outputSize, outputs);
 };
 
-void buildLSTM(Context &ctx, Function *F, const std::vector<Node *> &slicesX,
-               unsigned hiddenSize, unsigned outputSize,
-               std::vector<NodeValue> &outputs) {
-  return F->createLSTM(ctx, "LSTM", slicesX, 1, hiddenSize, outputSize,
+void buildLSTM(PlaceholderBindings &bindings, Function *F,
+               const std::vector<Node *> &slicesX, unsigned hiddenSize,
+               unsigned outputSize, std::vector<NodeValue> &outputs) {
+  return F->createLSTM(bindings, "LSTM", slicesX, 1, hiddenSize, outputSize,
                        outputs);
 };
 
-using TCellGenerator = void (*)(Context &, Function *,
+using TCellGenerator = void (*)(PlaceholderBindings &, Function *,
                                 const std::vector<Node *> &, unsigned, unsigned,
                                 std::vector<NodeValue> &);
 
@@ -580,7 +581,7 @@ void testRNNCell(TCellGenerator cell) {
   // training.
   size_t sampleCounter = 0;
 
-  Context ctx;
+  PlaceholderBindings bindings;
   ExecutionEngine EE;
   // Learning a single input vector.
   TC.learningRate = 0.05;
@@ -596,8 +597,8 @@ void testRNNCell(TCellGenerator cell) {
       ElemKind::FloatTy, {1, NumVectors, NumElements}, "X", false);
   Placeholder *Y =
       mod.createPlaceholder(ElemKind::FloatTy, {1, NumVectors}, "Y", false);
-  ctx.allocate(X);
-  ctx.allocate(Y);
+  bindings.allocate(X);
+  bindings.allocate(Y);
 
   // Extract a slice for each input.
   std::vector<Node *> XSliced;
@@ -621,7 +622,7 @@ void testRNNCell(TCellGenerator cell) {
   const unsigned outputSize = 1;
 
   std::vector<NodeValue> outputNodes;
-  cell(ctx, F, XSliced, hiddenSize, outputSize, outputNodes);
+  cell(bindings, F, XSliced, hiddenSize, outputSize, outputNodes);
 
   std::vector<NodeValue> regressionNodes;
   for (unsigned t = 0; t < NumVectors; t++) {
@@ -632,7 +633,7 @@ void testRNNCell(TCellGenerator cell) {
   auto *R = F->createConcat("O", regressionNodes, 1);
   SaveNode *result = F->createSave("result", R);
 
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
@@ -648,13 +649,13 @@ void testRNNCell(TCellGenerator cell) {
   }
 
   // Train the network. Learn 1000 batches.
-  runBatch(EE, ctx, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
+  runBatch(EE, bindings, 1000, sampleCounter, {X, Y}, {&inputs, &expected});
 
   // Testing the output vector.
   EE.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(ctx, {X}, {&inputs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {X}, {&inputs});
+  EE.run(bindings);
 
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -673,7 +674,7 @@ TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Given 1-D vectors x and y, find real numbers m and b such that
   // m * x + b is approximately equal to y.
@@ -709,13 +710,13 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   Placeholder *expectedY = mod.createPlaceholder(
       ElemKind::FloatTy, {numSamples, 1}, "expected", false);
 
-  FullyConnectedNode *FC = F->createFullyConnected(ctx, "fc", inputX, 1);
+  FullyConnectedNode *FC = F->createFullyConnected(bindings, "fc", inputX, 1);
   Node *R = F->createRegression("reg", FC, expectedY);
   SaveNode *SN = F->createSave("return", R);
 
-  ctx.allocate(inputX);
-  ctx.allocate(expectedY);
-  ctx.allocate(SN->getPlaceholder());
+  bindings.allocate(inputX);
+  bindings.allocate(expectedY);
+  bindings.allocate(SN->getPlaceholder());
 
   Placeholder *M = llvm::cast<Placeholder>(FC->getWeights());
   Placeholder *B = llvm::cast<Placeholder>(FC->getBias());
@@ -724,12 +725,12 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  runBatch(EE_, ctx, 100, sampleCounter, {inputX, expectedY},
+  runBatch(EE_, bindings, 100, sampleCounter, {inputX, expectedY},
            {&tensorX, &tensorY});
 
   // Testing trained m and b:
-  EXPECT_NEAR(ctx.get(M)->getHandle<>().at({0, 0}), referenceM, 0.01);
-  EXPECT_NEAR(ctx.get(B)->getHandle<>().at({0}), referenceB, 0.01);
+  EXPECT_NEAR(bindings.get(M)->getHandle<>().at({0, 0}), referenceM, 0.01);
+  EXPECT_NEAR(bindings.get(B)->getHandle<>().at({0}), referenceB, 0.01);
 }
 
 enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
@@ -768,7 +769,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   const size_t numClasses = 2;
 
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -785,13 +786,13 @@ TEST_P(MLTest, classifyPlayerSport) {
   Placeholder *S = mod.createPlaceholder(ElemKind::Int64ITy,
                                          {numTrainPlayers, 1}, "S", false);
 
-  auto *FC = F->createFullyConnected(ctx, "fc", A, numClasses);
+  auto *FC = F->createFullyConnected(bindings, "fc", A, numClasses);
   auto *SM = F->createSoftMax("softmax", FC, S);
   SaveNode *result = F->createSave("result", SM);
 
-  ctx.allocate(A);
-  ctx.allocate(S);
-  ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(S);
+  bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
@@ -801,7 +802,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   generatePlayerData(players, labels, numTrainPlayers, mod.getPRNG());
 
   // Training:
-  runBatch(EE_, ctx, 2000, sampleCounter, {A, S}, {&players, &labels});
+  runBatch(EE_, bindings, 2000, sampleCounter, {A, S}, {&players, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -819,10 +820,10 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  updateInputPlaceholders(ctx, {A}, {&testPlayersTensor});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&testPlayersTensor});
+  EE_.run(bindings);
 
-  auto SMH = ctx.get(result->getPlaceholder())->getHandle<>();
+  auto SMH = bindings.get(result->getPlaceholder())->getHandle<>();
   for (size_t i = 0; i < testPlayers.size(); i++) {
     const size_t sport = static_cast<size_t>(std::get<2>(testPlayers[i]));
     EXPECT_NEAR(SMH.at({i, sport}), 1.0, 0.1);
@@ -831,7 +832,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 
 TEST_P(MLTest, learnSinus) {
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -871,21 +872,22 @@ TEST_P(MLTest, learnSinus) {
   Placeholder *expectedY = mod.createPlaceholder(
       ElemKind::FloatTy, {numSamples, 1}, "expected", false);
 
-  FullyConnectedNode *FC1 = F->createFullyConnected(ctx, "fc1", inputX, 10);
+  FullyConnectedNode *FC1 =
+      F->createFullyConnected(bindings, "fc1", inputX, 10);
   Node *O = F->createSigmoid("sigmoid1", FC1);
-  FullyConnectedNode *FC2 = F->createFullyConnected(ctx, "fc2", O, 1);
+  FullyConnectedNode *FC2 = F->createFullyConnected(bindings, "fc2", O, 1);
   Node *R = F->createRegression("reg", FC2, expectedY);
   SaveNode *result = F->createSave("return", R);
 
-  ctx.allocate(inputX);
-  ctx.allocate(expectedY);
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(inputX);
+  bindings.allocate(expectedY);
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
-  runBatch(EE_, ctx, 2700, sampleCounter, {inputX, expectedY},
+  runBatch(EE_, bindings, 2700, sampleCounter, {inputX, expectedY},
            {&tensorX, &tensorY});
 
   // Create a test set, which is similar, but different from the training set.
@@ -899,8 +901,8 @@ TEST_P(MLTest, learnSinus) {
   }
 
   EE_.compile(CompilationMode::Infer, F);
-  updateInputPlaceholders(ctx, {inputX}, {&tensorX});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {inputX}, {&tensorX});
+  EE_.run(bindings);
   auto resH = res->getHandle<>();
 
   for (size_t i = 0; i < numSamples; i++) {
@@ -919,7 +921,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   // training.
   size_t sampleCounter = 0;
 
-  Context ctx;
+  PlaceholderBindings bindings;
   TrainingConfig TC;
   TC.learningRate = 0.01;
   TC.momentum = 0.9;
@@ -933,17 +935,17 @@ TEST_P(MLTest, nonLinearClassifier) {
   Placeholder *S =
       mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "S", false);
 
-  auto *FCL0 = F->createFullyConnected(ctx, "fc1", A, 8);
+  auto *FCL0 = F->createFullyConnected(bindings, "fc1", A, 8);
   auto *T0 = F->createTanh("tanh1", FCL0);
-  auto *FCL1 = F->createFullyConnected(ctx, "fc2", T0, 8);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc2", T0, 8);
   auto *T1 = F->createTanh("tanh2", FCL1);
-  auto *FCL2 = F->createFullyConnected(ctx, "fc2", T1, 2);
+  auto *FCL2 = F->createFullyConnected(bindings, "fc2", T1, 2);
   auto *SM = F->createSoftMax("soft", FCL2, S);
   SaveNode *result = F->createSave("ret", SM);
 
-  ctx.allocate(A);
-  ctx.allocate(S);
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(A);
+  bindings.allocate(S);
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE_.compile(CompilationMode::Train, TF);
@@ -960,7 +962,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
-  runBatch(EE_, ctx, 500, sampleCounter, {A, S}, {&samples, &labels});
+  runBatch(EE_, bindings, 500, sampleCounter, {A, S}, {&samples, &labels});
 
   EE_.compile(CompilationMode::Infer, F);
 
@@ -974,8 +976,8 @@ TEST_P(MLTest, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    updateInputPlaceholders(ctx, {A}, {&T});
-    EE_.run(ctx);
+    updateInputPlaceholders(bindings, {A}, {&T});
+    EE_.run(bindings);
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
 }
@@ -1011,7 +1013,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   ExecutionEngine EE{BackendKind::Interpreter};
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -1031,15 +1033,15 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Placeholder *ex =
       mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "exp", false);
 
-  auto *CV = F->createConv(ctx, "conv", input, 1, 3, 1, 0, 1);
+  auto *CV = F->createConv(bindings, "conv", input, 1, 3, 1, 0, 1);
   auto *TANH = F->createTanh("tanh", CV);
-  auto *FCL = F->createFullyConnected(ctx, "fc", TANH, 2);
+  auto *FCL = F->createFullyConnected(bindings, "fc", TANH, 2);
   auto *SM = F->createSoftMax("sm", FCL, ex);
   SaveNode *result = F->createSave("ret", SM);
 
-  ctx.allocate(input);
-  ctx.allocate(ex);
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(input);
+  bindings.allocate(ex);
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
@@ -1049,7 +1051,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   generateImageData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, ctx, 500, sampleCounter, {input, ex}, {&images, &labels});
+  runBatch(EE, bindings, 500, sampleCounter, {input, ex}, {&images, &labels});
 
   // Lower everything before profiling. The loweredMap will be used when
   // generating the profile to ensure all lowered components' profiles are
@@ -1059,13 +1061,14 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   lower(PF, &loweredMapForProf);
 
   // Profiling:
-  PF = glow::profileQuantization(ctx, PF);
+  PF = glow::profileQuantization(bindings, PF);
   EE.compile(CompilationMode::Infer, PF);
-  runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
+  runBatch(EE, bindings, 100, sampleCounter, {input}, {&images});
 
   // Get the quantization info and build the new quantized graph.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMapForProf);
+      quantization::generateNodeQuantizationInfos(bindings, PF,
+                                                  loweredMapForProf);
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
@@ -1083,8 +1086,8 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod.getPRNG());
-  updateInputPlaceholders(ctx, {input}, {&testImages});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {input}, {&testImages});
+  EE.run(bindings);
   auto SMH = res->getHandle<>();
   for (size_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
@@ -1118,7 +1121,7 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels,
 /// network reports the coordinate of the pixel.
 TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   ExecutionEngine EE{BackendKind::Interpreter};
-  Context ctx;
+  PlaceholderBindings bindings;
 
   const unsigned numSamples = 1000;
   const unsigned batchSize = 10;
@@ -1143,15 +1146,15 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // A simple single-layer FC network could solve this program but we use a two
   // layer FC network to give the compiler something slightly more complex to
   // work with so we are adding another FC layer.
-  auto *FC0 = F->createFullyConnected(ctx, "fc0", input, 6);
+  auto *FC0 = F->createFullyConnected(bindings, "fc0", input, 6);
   auto *RL0 = F->createRELU("relu0", FC0);
-  auto *FC1 = F->createFullyConnected(ctx, "fc1", RL0, 2);
+  auto *FC1 = F->createFullyConnected(bindings, "fc1", RL0, 2);
   auto *R = F->createRegression("regression", FC1, ex);
   SaveNode *result = F->createSave("ret", R);
 
-  ctx.allocate(input);
-  ctx.allocate(ex);
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(input);
+  bindings.allocate(ex);
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
@@ -1162,7 +1165,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(images, labels, mod.getPRNG());
 
   // Training:
-  runBatch(EE, ctx, 400, sampleCounter, {input, ex}, {&images, &labels});
+  runBatch(EE, bindings, 400, sampleCounter, {input, ex}, {&images, &labels});
 
   // -- STEP2 - Profile and quantize the network. --
 
@@ -1174,15 +1177,16 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   lower(PF, &loweredMapForProf);
 
   // Profile the fully lowered 'F', 'PF'.
-  PF = glow::profileQuantization(ctx, PF);
+  PF = glow::profileQuantization(bindings, PF);
   EE.compile(CompilationMode::Infer, PF);
 
   // Run the graph to capture the profile.
-  runBatch(EE, ctx, 100, sampleCounter, {input}, {&images});
+  runBatch(EE, bindings, 100, sampleCounter, {input}, {&images});
 
   // Get quantization infos.
   std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(ctx, PF, loweredMapForProf);
+      quantization::generateNodeQuantizationInfos(bindings, PF,
+                                                  loweredMapForProf);
 
   // -- STEP3 - evaluate the quantized function. --
 
@@ -1203,8 +1207,8 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod.getPRNG());
 
   // Run the inference:
-  updateInputPlaceholders(ctx, {input}, {&testImages});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {input}, {&testImages});
+  EE.run(bindings);
 
   // A handle to the projected result.
   auto RH = res->getHandle<>();
@@ -1307,7 +1311,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   TrainingConfig TC;
   TC.learningRate = 0.15;
   TC.batchSize = 17;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -1327,22 +1331,22 @@ TEST_P(MLTest, matrixRotationRecognition) {
   // but we want to build something more complex than a straight chain of
   // operators to stress the scheduler.
   auto *FCA =
-      F->createFullyConnected(ctx, "hidden_matrixA_fc", varMatricesA, 10);
+      F->createFullyConnected(bindings, "hidden_matrixA_fc", varMatricesA, 10);
   auto *FCB =
-      F->createFullyConnected(ctx, "hidden_matrixB_fc", varMatricesB, 10);
+      F->createFullyConnected(bindings, "hidden_matrixB_fc", varMatricesB, 10);
   auto *ReLUA = F->createRELU("hidden_matrixA_ReLU", FCA);
   auto *ReLUB = F->createRELU("hidden_matrixB_ReLU", FCB);
   auto *concat = F->createConcat("hidden_concat_A_B", {ReLUA, ReLUB}, 1);
-  auto *hiddenFC = F->createFullyConnected(ctx, "hidden_fc", concat, 30);
+  auto *hiddenFC = F->createFullyConnected(bindings, "hidden_fc", concat, 30);
   auto *finalReLU = F->createRELU("hidden_concat_ReLU", hiddenFC);
-  auto *finalFC = F->createFullyConnected(ctx, "output_fc", finalReLU, 2);
+  auto *finalFC = F->createFullyConnected(bindings, "output_fc", finalReLU, 2);
   auto *softMax = F->createSoftMax("output", finalFC, varExpected);
   SaveNode *result = F->createSave("result", softMax);
 
-  ctx.allocate(varMatricesA);
-  ctx.allocate(varMatricesB);
-  ctx.allocate(varExpected);
-  Tensor *res = ctx.allocate(result->getPlaceholder());
+  bindings.allocate(varMatricesA);
+  bindings.allocate(varMatricesB);
+  bindings.allocate(varExpected);
+  Tensor *res = bindings.allocate(result->getPlaceholder());
 
   Function *trainingGradientFunction = glow::differentiate(F, TC);
 
@@ -1355,7 +1359,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   EE_.compile(CompilationMode::Train, trainingGradientFunction);
   // Training:
-  runBatch(EE_, ctx, 200, sampleCounter,
+  runBatch(EE_, bindings, 200, sampleCounter,
            {varMatricesA, varMatricesB, varExpected},
            {&matricesA, &matricesB, &expected});
 
@@ -1373,9 +1377,9 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  updateInputPlaceholders(ctx, {varMatricesA, varMatricesB},
+  updateInputPlaceholders(bindings, {varMatricesA, varMatricesB},
                           {&batchMatricesA, &batchMatricesB});
-  EE_.run(ctx);
+  EE_.run(bindings);
 
   unsigned errors = 0;
   // Check each output in the batch.

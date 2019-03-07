@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/Optimizer.h"
 
@@ -32,7 +32,7 @@ public:
 protected:
   Module mod_;
   Function *F_;
-  Context ctx_;
+  PlaceholderBindings bindings_;
 };
 
 /// \returns the number of nodes in \p F of kind \p kind.
@@ -122,13 +122,14 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -145,9 +146,9 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
   Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  ConvolutionNode *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  ConvolutionNode *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   BatchNormalizationNode *BN =
-      F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
   // Adding these saves means the filter and bias have multiple uses. This
@@ -158,7 +159,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
   // Three Saves, one Conv, and one BatchNorm.
   EXPECT_EQ(F_->getNodes().size(), 5);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
 
   // Conv's Filter and Bias, plus BN's Scale, Bias, Mean, and Var.
   EXPECT_EQ(mod_.getConstants().size(), 6);
@@ -187,13 +188,14 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   Node *A =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "A", false);
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -218,13 +220,14 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   auto *CV = F_->createConv("conv", input, TN, bias,
                             mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}),
                             5, 1, 2, 1);
-  auto *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  auto *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
   // Initialize to ensure that constant tensors are not optimized out.
-  ctx_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ctx_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {input});
+  bindings_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -241,15 +244,16 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
   Node *pred2 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   CV->setPredicate(pred1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
@@ -285,7 +289,7 @@ TEST_F(GraphOptz, cseRespectsPredicates) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 2);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // Two RELUS and two Saves should still be there.
@@ -297,8 +301,9 @@ TEST_F(GraphOptz, cseRespectsPredicates) {
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   SaveNode *ret = F_->createSave("ret", BN);
   SaveNode *convSave = F_->createSave("convSave", CV);
 
@@ -359,14 +364,14 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
 TEST_F(GraphOptz, transposeConstant) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  ctx_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  bindings_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
-  ctx_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
+  bindings_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   SaveNode *save = F_->createSave("ret", T);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   ASSERT_EQ(F_->getNodes().size(), 1);
   EXPECT_EQ(&*F_->getNodes().begin(), save);
@@ -382,9 +387,9 @@ TEST_F(GraphOptz, transposeConstantWithPredicate) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   auto *pred = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  ctx_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
+  bindings_.allocate(A)->getHandle().randomize(-7.0, 12.0, mod_.getPRNG());
   Tensor transposedA;
-  ctx_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
+  bindings_.get(A)->transpose(&transposedA, {0, 3, 1, 2});
   // Arguably, if the transpose doesn't happen because the predicate is false
   // the value of A should be unchanged. However, the semantic of our
   // predicate is that they can be ignored and the program would still
@@ -395,7 +400,7 @@ TEST_F(GraphOptz, transposeConstantWithPredicate) {
   save->setPredicate(pred);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
   ASSERT_EQ(F_->getNodes().size(), 1);
   EXPECT_EQ(&*F_->getNodes().begin(), save);
@@ -411,8 +416,9 @@ TEST_F(GraphOptz, transposeConstantWithPredicate) {
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -435,8 +441,9 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   Node *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
 
-  Node *CV = F_->createConv(ctx_, "conv", A, 16, 5, 1, 2, 1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", CV, 3, 0.0001, 0.9);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   SaveNode *convSave = F_->createSave("ret", CV);
   SaveNode *ret = F_->createSave("ret", BN);
 
@@ -462,7 +469,8 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNorm) {
   const size_t transposedDims[] = {1, 15, 5, 10};
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9);
   SaveNode *O = F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -493,7 +501,8 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   T->setPredicate(pred1);
-  Node *BN = F_->createBatchNormalization(ctx_, "batch", T, 3, 0.0001, 0.9);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
   SaveNode *O = F_->createSave("ret", BN);
   O->setPredicate(pred3);
@@ -1551,14 +1560,14 @@ TEST_F(GraphOptz, DCEPublicVars) {
 
 TEST_F(GraphOptz, foldQuantizeIntoVar) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
-  *ctx_.allocate(input) = {10, 10, 10, 10};
+  *bindings_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto *Q = F_->createQuantize("quantize", input, qType);
   auto *S = F_->createSave("save", Q);
 
   EXPECT_EQ(2, F_->getNodes().size());
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {S->getPlaceholder()});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {S->getPlaceholder()});
   ::glow::optimize(F_, CompilationMode::Infer);
   // Quantization node was merged into input var.
   EXPECT_EQ(1, F_->getNodes().size());
@@ -1572,7 +1581,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 
 TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
-  *ctx_.allocate(input) = {10, 10, 10, 10};
+  *bindings_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
 
   auto *Q = F_->createQuantize("quantize", input, qType);
@@ -1580,14 +1589,14 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   auto clonedF = F_->clone("cloned");
 
   EXPECT_EQ(2, clonedF->getNodes().size());
-  ::glow::convertPlaceholdersToConstants(clonedF, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(clonedF, bindings_, {});
   ::glow::optimize(clonedF, CompilationMode::Infer);
   // F_ function should not be affected.
   EXPECT_EQ(2, F_->getNodes().size());
 
   // Check original var.
   for (unsigned i = 0; i < 4; ++i) {
-    EXPECT_EQ(10, ctx_.get(input)->getHandle().raw(i));
+    EXPECT_EQ(10, bindings_.get(input)->getHandle().raw(i));
   }
 
   // Quantization node was merged into input var.
@@ -2405,7 +2414,7 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   const size_t reshape2[] = {200};
   auto *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
                                                    "input", true);
-  ctx_.allocate(input);
+  bindings_.allocate(input);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave("ret", R2);
@@ -2413,7 +2422,7 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
   ::glow::optimize(F_, CompilationMode::Infer);
 
   // After optimization, we expect to see just a Save.
@@ -2508,10 +2517,10 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
 
   // Allocate two of the three inputs, but mark input2 of them as
   // non-constant.
-  ctx_.allocate(input1);
-  ctx_.allocate(input2);
+  bindings_.allocate(input1);
+  bindings_.allocate(input2);
   // Don't allocate input3; keep it as a placeholder instead.
-  ::glow::convertPlaceholdersToConstants(F_, ctx_, {input2});
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input2});
 
   // input1 becomes a variable.
   EXPECT_EQ(mod_.getConstants().size(), 1);
@@ -2627,12 +2636,12 @@ TEST_F(GraphOptz, QuantizedFC) {
   auto *fc = F_->createFullyConnected("fc", input, weights, bias);
   F_->createSave("save", fc, output);
 
-  ctx_.allocate(input);
-  ctx_.allocate(weights);
-  ctx_.allocate(bias);
-  ctx_.allocate(output);
+  bindings_.allocate(input);
+  bindings_.allocate(weights);
+  bindings_.allocate(bias);
+  bindings_.allocate(output);
 
-  glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
+  glow::convertPlaceholdersToConstants(F_, bindings_, {input, output});
   // Two constants: weight and bias
   EXPECT_EQ(mod_.getConstants().size(), 2);
   // All four placeholders still exist in the module.  The old weight and bias

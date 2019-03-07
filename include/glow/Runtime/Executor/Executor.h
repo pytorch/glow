@@ -24,7 +24,7 @@
 
 namespace glow {
 
-class Context;
+class PlaceholderBindings;
 class DeviceManager;
 
 namespace runtime {
@@ -41,14 +41,15 @@ public:
   /// Destructor.
   virtual ~Executor() = default;
 
-  /// Run the DAG specified by \p root using \p context and call \cb with the
+  /// Run the DAG specified by \p root using \p bindings and call \cb with the
   /// results. \p runId is used to identify the run for logging and metrics
   /// purposes.
-  /// cb will be called with a result code, the run ID and a Context containing
-  /// placeholder-tensor mappings for the nodes in the DAG that have
+  /// cb will be called with a result code, the run ID and a PlaceholderBindings
+  /// containing placeholder-tensor mappings for the nodes in the DAG that have
   /// no postrequisites (i.e. the final results) in addition to the mappings
-  /// present in \p context.
-  virtual void run(const DAGNode *root, std::unique_ptr<Context> context,
+  /// present in \p bindings.
+  virtual void run(const DAGNode *root,
+                   std::unique_ptr<PlaceholderBindings> bindings,
                    RunIdentifierTy runId, ResultCBTy cb) = 0;
 
   /// Shutdown the Executor. Should block until all active requests are complete

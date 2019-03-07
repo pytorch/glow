@@ -28,7 +28,7 @@ class IRFunction;
 class Function;
 class Backend;
 class Module;
-class Context;
+class PlaceholderBindings;
 class Placeholder;
 
 /// Perform optimizations on the IR representation.
@@ -52,16 +52,17 @@ void lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B = nullptr,
 void DCE(Function *F);
 
 /// Convert placeholders in Module \p M to constants based on the values in \p
-/// ctx.  Do not convert any placeholders explicitly listed in \p vars.
-void convertPlaceholdersToConstants(Function *F, const Context &ctx,
+/// bindings.  Do not convert any placeholders explicitly listed in \p vars.
+void convertPlaceholdersToConstants(Function *F,
+                                    const PlaceholderBindings &bindings,
                                     llvm::ArrayRef<Placeholder *> vars);
 
 /// Instrument function \p F by inserting quantization profile nodes for
 /// capturing stats for quantization. The nodes will refer to tensors allocate
-/// in in context \p ctx. The new quantized function is called \p
+/// in in context \p bindings. The new quantized function is called \p
 /// newFuncName. If no name is given the method will generate a name.  \returns
 /// a new function with the added quantization nodes.
-Function *profileQuantization(Context &ctx, Function *F,
+Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
                               llvm::StringRef newFuncName = "");
 
 /// Helper to generate and optimize IR from given Function \p F. \p

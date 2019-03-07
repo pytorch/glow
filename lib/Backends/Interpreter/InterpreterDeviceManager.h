@@ -63,7 +63,8 @@ protected:
   void evictNetworkImpl(std::string functionName,
                         EvictFunctionCBTy evictCB) override;
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
-                       std::unique_ptr<Context> ctx, ResultCBTy cb) override;
+                       std::unique_ptr<PlaceholderBindings> bindings,
+                       ResultCBTy cb) override;
 };
 
 } // namespace runtime

@@ -15,7 +15,7 @@
  */
 #include "CPUFunction.h"
 
-#include "glow/Graph/Context.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
 
@@ -25,4 +25,6 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          const runtime::RuntimeBundle &runtimeBundle)
     : LLVMCompiledFunction(std::move(JIT), runtimeBundle) {}
 
-void CPUFunction::execute(Context *ctx) { LLVMCompiledFunction::execute(ctx); }
+void CPUFunction::execute(PlaceholderBindings *bindings) {
+  LLVMCompiledFunction::execute(bindings);
+}

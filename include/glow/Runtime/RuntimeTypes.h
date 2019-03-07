@@ -41,8 +41,9 @@ enum class ResultCode { Ready, Executed, Failed, Canceled };
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy = std::function<void(
-    runtime::RunIdentifierTy, runtime::ResultCode, std::unique_ptr<Context>)>;
+using ResultCBTy =
+    std::function<void(runtime::RunIdentifierTy, runtime::ResultCode,
+                       std::unique_ptr<PlaceholderBindings>)>;
 
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.

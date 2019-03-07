@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BASE_CONTEXT_H
-#define GLOW_BASE_CONTEXT_H
+#ifndef GLOW_BASE_PLACEHOLDERBINDINGS_H
+#define GLOW_BASE_PLACEHOLDERBINDINGS_H
 
 #include "glow/Backends/TraceEvents.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -29,12 +29,13 @@ class Placeholder;
 
 /// This class provides a mapping between some graph nodes, which are a symbolic
 /// representation of some computation, and concrete tensors that represent the
-/// inputs and outputs to the graph. The context owns the tensors and the graph
-/// uses these values as runtime. This is useful for the multi-threaded
-/// execution of code, where each thread has a different execution context. The
-/// difference between this class and a regular map is that the Context owns the
-/// Tensors (not only the pointers) and manages their lifetime.
-class Context final {
+/// inputs and outputs to the graph. The PlaceholderBindings owns the tensors
+/// and the graph uses these values as runtime. This is useful for the
+/// multi-threaded execution of code, where each thread has a different
+/// execution context. The difference between this class and a regular map is
+/// that the PlaceholderBindings owns the Tensors (not only the pointers) and
+/// manages their lifetime.
+class PlaceholderBindings final {
 public:
   /// Maps placeholders to the tensors that back them.
   using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
@@ -55,7 +56,8 @@ private:
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
   /// equivalent Tensors.
-  static bool compare(const Context *A, const Context *B);
+  static bool compare(const PlaceholderBindings *A,
+                      const PlaceholderBindings *B);
 
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
@@ -73,12 +75,12 @@ public:
   Tensor *allocate(Placeholder *P);
 
   /// Allocates zero-initialized backing tensors to all placeholders in \p lst
-  /// that are not currently allocated in the context.
+  /// that are not currently allocated in the bindings.
   /// \returns the number of tensors that were allocated.
   unsigned allocate(std::list<Placeholder *> &lst);
 
   /// \returns the first placeholder in \p list that is not allocated by this
-  /// context. This method returns null if all placeholders in the list are
+  /// bindings. This method returns null if all placeholders in the list are
   /// allocated.
   Placeholder *getFirstUnallocated(std::list<Placeholder *> &lst) const;
 
@@ -89,36 +91,37 @@ public:
   /// tensors.
   void clear();
 
-  /// \returns a copy of the Context, with each placeholder mapped to a new
-  /// Tensor, with their own memory.
-  Context clone() const;
+  /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
+  /// to a new Tensor, with their own memory.
+  PlaceholderBindings clone() const;
 
   /// \returns the mapping between placeholder to tensors.
   const PlaceholderMap &pairs() const { return map_; }
 
-  /// \returns the size in bytes of allocated Tensors owned by Context.
+  /// \returns the size in bytes of allocated Tensors owned by
+  /// PlaceholderBindings.
   uint64_t getDataSize() const;
 
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
-  Context() = default;
+  PlaceholderBindings() = default;
 
-  /// Construct the Context with an initial mapping between \p placeholders
-  /// and \p inputs;
-  Context(llvm::ArrayRef<Placeholder *> placeholders,
-          llvm::ArrayRef<Tensor *> inputs);
+  /// Construct the PlaceholderBindings with an initial mapping between \p
+  /// placeholders and \p inputs;
+  PlaceholderBindings(llvm::ArrayRef<Placeholder *> placeholders,
+                      llvm::ArrayRef<Tensor *> inputs);
 
-  Context(Context &&other)
+  PlaceholderBindings(PlaceholderBindings &&other)
       : map_(std::move(other.map_)), nameMap_(std::move(other.nameMap_)) {}
 
-  ~Context() { clear(); };
+  ~PlaceholderBindings() { clear(); };
 
   // Don't copy this class around.
-  Context(const Context &other) = delete;
-  Context &operator=(const Context &other) = delete;
+  PlaceholderBindings(const PlaceholderBindings &other) = delete;
+  PlaceholderBindings &operator=(const PlaceholderBindings &other) = delete;
 };
 
 } // namespace glow
 
-#endif // GLOW_BASE_CONTEXT_H
+#endif // GLOW_BASE_PLACEHOLDERBINDINGS_H

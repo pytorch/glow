@@ -63,44 +63,49 @@ public:
   }
 
   /// Look up the previously registered response for \p functionName and
-  /// call \p resultCB with it after checking that \ctx contains the
+  /// call \p resultCB with it after checking that \bindings contains the
   /// expected Placeholder-Tensor mappings.
-  void doRunFunction(std::string functionName, std::shared_ptr<Context> ctx,
+  void doRunFunction(std::string functionName,
+                     std::shared_ptr<PlaceholderBindings> bindings,
                      ResultCBTy resultCB) {
     RunIdentifierTy runId = 0;
     ResultCode resultCode = ResultCode::Failed;
-    std::unique_ptr<Context> resultContext = nullptr;
+    std::unique_ptr<PlaceholderBindings> resultPlaceholderBindings = nullptr;
 
     // Retrieve the registered response for the function if there is one.
-    if (ctx && resultCB && resultMap_.count(functionName)) {
+    if (bindings && resultCB && resultMap_.count(functionName)) {
       std::unique_ptr<RunFunctionResult> registeredResult =
           std::move(resultMap_[functionName]);
 
-      // Check that ctx contains the expected Placeholder-Tensor mappings.
-      std::unique_ptr<Context> inputContext =
-          std::move(registeredResult->inputContext);
+      // Check that bindings contains the expected Placeholder-Tensor mappings.
+      std::unique_ptr<PlaceholderBindings> inputPlaceholderBindings =
+          std::move(registeredResult->inputPlaceholderBindings);
 
-      if (Context::compare(ctx.get(), inputContext.get())) {
-        // If ctx contains all expected mappings, overwrite the default
-        // runId, resultCode and resultContext with the registered ones.
+      if (PlaceholderBindings::compare(bindings.get(),
+                                       inputPlaceholderBindings.get())) {
+        // If bindings contains all expected mappings, overwrite the default
+        // runId, resultCode and resultPlaceholderBindings with the registered
+        // ones.
         runId = registeredResult->runId;
         resultCode = registeredResult->resultCode;
-        resultContext = std::move(registeredResult->resultContext);
+        resultPlaceholderBindings =
+            std::move(registeredResult->resultPlaceholderBindings);
       }
     }
 
-    resultCB(runId, resultCode, std::move(resultContext));
+    resultCB(runId, resultCode, std::move(resultPlaceholderBindings));
   }
 
   /// Do not call this at the same time as registerResult().
-  runtime::RunIdentifierTy runFunction(std::string functionName,
-                                       std::unique_ptr<Context> ctx,
-                                       ResultCBTy resultCB) override {
+  runtime::RunIdentifierTy
+  runFunction(std::string functionName,
+              std::unique_ptr<PlaceholderBindings> bindings,
+              ResultCBTy resultCB) override {
     // Give the call to the thread pool to process to make the tests
     // multithreaded if needed.
-    std::shared_ptr<Context> sharedCtx = std::move(ctx);
-    this->threadPool_.submit([this, functionName, sharedCtx, resultCB]() {
-      this->doRunFunction(functionName, sharedCtx, resultCB);
+    std::shared_ptr<PlaceholderBindings> sharedbindings = std::move(bindings);
+    this->threadPool_.submit([this, functionName, sharedbindings, resultCB]() {
+      this->doRunFunction(functionName, sharedbindings, resultCB);
     });
     return 0;
   }
@@ -118,22 +123,25 @@ public:
   /// Register a result that should be returned by the subsequent call to
   /// runFunction with the same \p functionName. The callback for that call
   /// to runFunction will be called with \p runId, \p resultCode, and \p
-  /// \p resultContext if the context passed in to runFunction matches \p
-  /// inputContext. \returns true if registration was successful, false if not.
-  /// Do not call this at the same time as runFunction().
-  bool registerResult(const std::string &functionName, RunIdentifierTy runId,
-                      ResultCode resultCode,
-                      std::unique_ptr<Context> inputContext,
-                      std::unique_ptr<Context> resultContext) {
+  /// \p resultPlaceholderBindings if the bindings passed in to runFunction
+  /// matches \p inputPlaceholderBindings. \returns true if registration was
+  /// successful, false if not. Do not call this at the same time as
+  /// runFunction().
+  bool registerResult(
+      const std::string &functionName, RunIdentifierTy runId,
+      ResultCode resultCode,
+      std::unique_ptr<PlaceholderBindings> inputPlaceholderBindings,
+      std::unique_ptr<PlaceholderBindings> resultPlaceholderBindings) {
     bool registered = false;
 
     if (!resultMap_.count(functionName)) {
       // If the function name has not already been registered, insert it into
       // resultMap_.
       std::tie(std::ignore, registered) = resultMap_.insert(std::make_pair(
-          functionName, llvm::make_unique<RunFunctionResult>(
-                            runId, resultCode, std::move(inputContext),
-                            std::move(resultContext))));
+          functionName,
+          llvm::make_unique<RunFunctionResult>(
+              runId, resultCode, std::move(inputPlaceholderBindings),
+              std::move(resultPlaceholderBindings))));
     }
 
     return registered;
@@ -147,17 +155,18 @@ private:
     RunIdentifierTy runId;
     /// The result code that should be returned.
     ResultCode resultCode;
-    /// The expected input Context for the invocation.
-    std::unique_ptr<Context> inputContext;
-    /// The result Context that should be returned.
-    std::unique_ptr<Context> resultContext;
+    /// The expected input PlaceholderBindings for the invocation.
+    std::unique_ptr<PlaceholderBindings> inputPlaceholderBindings;
+    /// The result PlaceholderBindings that should be returned.
+    std::unique_ptr<PlaceholderBindings> resultPlaceholderBindings;
 
     /// Constructor.
     RunFunctionResult(RunIdentifierTy run, ResultCode result,
-                      std::unique_ptr<Context> inputCtx,
-                      std::unique_ptr<Context> resultCtx)
-        : runId(run), resultCode(result), inputContext(std::move(inputCtx)),
-          resultContext(std::move(resultCtx)) {}
+                      std::unique_ptr<PlaceholderBindings> inputbindings,
+                      std::unique_ptr<PlaceholderBindings> resultbindings)
+        : runId(run), resultCode(result),
+          inputPlaceholderBindings(std::move(inputbindings)),
+          resultPlaceholderBindings(std::move(resultbindings)) {}
   };
 
   /// Map of function name -> RunFunctionResult instance containing the
@@ -185,13 +194,14 @@ public:
   ExecutorTest(const std::shared_ptr<Executor> &executor,
                std::unique_ptr<DAGNode> root, std::unique_ptr<Type> type,
                DAGNodeNameMapTy nodes, PlaceholderNameMapTy placeholders,
-               std::unique_ptr<Context> inputCtx,
-               std::unique_ptr<Context> outputCtx, RunIdentifierTy runId,
-               ResultCode resultCode)
+               std::unique_ptr<PlaceholderBindings> inputbindings,
+               std::unique_ptr<PlaceholderBindings> outputbindings,
+               RunIdentifierTy runId, ResultCode resultCode)
       : executor_(executor), root_(std::move(root)), type_(std::move(type)),
         nodes_(std::move(nodes)), placeholders_(std::move(placeholders)),
-        inputCtx_(std::move(inputCtx)), outputCtx_(std::move(outputCtx)),
-        runId_(runId), resultCode_(resultCode), testRun_(false) {}
+        inputbindings_(std::move(inputbindings)),
+        outputbindings_(std::move(outputbindings)), runId_(runId),
+        resultCode_(resultCode), testRun_(false) {}
 
   /// Run the test.
   bool run() {
@@ -203,18 +213,19 @@ public:
     // Executor::run() via its callback.
     RunIdentifierTy executorRunId;
     ResultCode executorResultCode;
-    std::unique_ptr<Context> executorOutputCtx;
+    std::unique_ptr<PlaceholderBindings> executorOutputbindings;
 
     // Call Executor::run().
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
-    executor_->run(root_.get(), std::move(inputCtx_), runId_,
+    executor_->run(root_.get(), std::move(inputbindings_), runId_,
                    [&promise, &executorRunId, &executorResultCode,
-                    &executorOutputCtx](RunIdentifierTy runId, ResultCode code,
-                                        std::unique_ptr<Context> context) {
+                    &executorOutputbindings](
+                       RunIdentifierTy runId, ResultCode code,
+                       std::unique_ptr<PlaceholderBindings> bindings) {
                      executorRunId = runId;
                      executorResultCode = code;
-                     executorOutputCtx = std::move(context);
+                     executorOutputbindings = std::move(bindings);
                      promise.set_value();
                    });
 
@@ -225,12 +236,12 @@ public:
     bool runIdsMatch = executorRunId == runId_;
     bool resultCodesMatch = executorResultCode == resultCode_;
     bool runFailed = executorResultCode == ResultCode::Failed;
-    bool contextsMatch =
-        Context::compare(executorOutputCtx.get(), outputCtx_.get());
+    bool bindingssMatch = PlaceholderBindings::compare(
+        executorOutputbindings.get(), outputbindings_.get());
 
-    // If the run failed, we shouldn't expect contextsMatch to be true.
+    // If the run failed, we shouldn't expect bindingssMatch to be true.
     bool testPassed =
-        runIdsMatch && resultCodesMatch && (runFailed || contextsMatch);
+        runIdsMatch && resultCodesMatch && (runFailed || bindingssMatch);
 
     testRun_ = true;
 
@@ -248,11 +259,11 @@ private:
   DAGNodeNameMapTy nodes_;
   /// All Placeholders that will be used during execution.
   PlaceholderNameMapTy placeholders_;
-  /// The input Context that should be passed to Executor::run() when running
-  /// the test.
-  std::unique_ptr<Context> inputCtx_;
-  /// The expected Context that the Executor should return.
-  std::unique_ptr<Context> outputCtx_;
+  /// The input PlaceholderBindings that should be passed to Executor::run()
+  /// when running the test.
+  std::unique_ptr<PlaceholderBindings> inputbindings_;
+  /// The expected PlaceholderBindings that the Executor should return.
+  std::unique_ptr<PlaceholderBindings> outputbindings_;
   /// The run ID that should be passed to Executor::run() when running
   /// the test.
   RunIdentifierTy runId_;
@@ -267,18 +278,18 @@ private:
 /// by specifying its parents, device ID, and named inputs and outputs. This
 /// builder class takes care of all of the work needed to actually run this DAG:
 /// creation of Placeholders and Tensors for all inputs and outputs; creation of
-/// input/output Context for each node to verify that each one receives the
-/// correct input and produces the correct output; and registration with
-/// the TestDeviceManager.
+/// input/output PlaceholderBindings for each node to verify that each one
+/// receives the correct input and produces the correct output; and registration
+/// with the TestDeviceManager.
 class ExecutorTestBuilder final {
 public:
   /// Constructor. The exact value of type_ doesn't really matter since the
   /// important thing to test is that that Placeholder values are propagated
-  /// between Contexts correctly.
+  /// between PlaceholderBindingss correctly.
   ExecutorTestBuilder(const std::shared_ptr<Executor> &executor,
                       const DeviceManagerMapTy &deviceManagers)
       : executor_(executor), root_(llvm::make_unique<DAGNode>()),
-        ctx_(llvm::make_unique<Context>()),
+        bindings_(llvm::make_unique<PlaceholderBindings>()),
         type_(
             std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {32, 64, 128}))),
         resultCode_(ResultCode::Executed), deviceManagers_(deviceManagers) {}
@@ -333,18 +344,19 @@ public:
     // Iterate through inputs and outputs and:
     // 1) Create Placeholders and Tensors for inputs/output names that have not
     //    been mapped to a Placeholder yet.
-    // 2) Assemble the input Context that the node is expected to be called with
-    //    and the Context that the node should produce as output.
+    // 2) Assemble the input PlaceholderBindings that the node is expected to be
+    // called with
+    //    and the PlaceholderBindings that the node should produce as output.
     // 3) Generate the symbol table for the new node by generating
     //    RuntimeSymbolInfo objects for each input and output.
     SymbolTableTy symbolTable;
     size_t offset = 0;
 
-    auto nodeInputCtx = llvm::make_unique<Context>();
-    auto nodeOutputCtx = llvm::make_unique<Context>();
+    auto nodeInputbindings = llvm::make_unique<PlaceholderBindings>();
+    auto nodeOutputbindings = llvm::make_unique<PlaceholderBindings>();
 
     for (const auto &input : inputs) {
-      insertSymbolIntoContext(input, nodeInputCtx.get());
+      insertSymbolIntoPlaceholderBindings(input, nodeInputbindings.get());
 
       RuntimeSymbolInfo runtimeSymbolInfo{
           /*size=*/type_->getSizeInBytes(), /*offset=*/offset,
@@ -354,7 +366,7 @@ public:
     }
 
     for (const auto &output : outputs) {
-      insertSymbolIntoContext(output, nodeOutputCtx.get());
+      insertSymbolIntoPlaceholderBindings(output, nodeOutputbindings.get());
 
       RuntimeSymbolInfo runtimeSymbolInfo{
           /*size=*/type_->getSizeInBytes(), /*offset=*/offset,
@@ -382,8 +394,8 @@ public:
         static_cast<TestDeviceManager *>(deviceManagerPtr);
 
     bool registered = testDeviceManagerPtr->registerResult(
-        name, runId, resultCode, std::move(nodeInputCtx),
-        std::move(nodeOutputCtx));
+        name, runId, resultCode, std::move(nodeInputbindings),
+        std::move(nodeOutputbindings));
 
     (void)registered;
     assert(registered && "Node registration was not successful");
@@ -399,41 +411,42 @@ public:
     std::vector<std::string> inputSymbols = gatherInputSymbols();
     std::vector<std::string> outputSymbols = gatherOutputSymbols();
 
-    // Generate the input and output Contexts for the test. This input Context
-    // contains the input Placeholders of all root nodes and output Placeholders
-    // of all leaves (but backed by zero tensors). This is the Context that
-    // needs to be passed to Executor::run() to run the test. The output Context
-    // contains the same Placeholders as the input Context, but the leaves'
+    // Generate the input and output PlaceholderBindingss for the test. This
+    // input PlaceholderBindings contains the input Placeholders of all root
+    // nodes and output Placeholders of all leaves (but backed by zero tensors).
+    // This is the PlaceholderBindings that needs to be passed to
+    // Executor::run() to run the test. The output PlaceholderBindings contains
+    // the same Placeholders as the input PlaceholderBindings, but the leaves'
     // output Placeholders are mapped to their expected output Tensors. This
-    // Context is used to verify that the one returned by the Executor is
-    // correct.
-    auto inputCtx = llvm::make_unique<Context>();
-    auto outputCtx = llvm::make_unique<Context>();
+    // PlaceholderBindings is used to verify that the one returned by the
+    // Executor is correct.
+    auto inputbindings = llvm::make_unique<PlaceholderBindings>();
+    auto outputbindings = llvm::make_unique<PlaceholderBindings>();
 
     for (const auto &symbol : inputSymbols) {
-      insertSymbolIntoContext(symbol, inputCtx.get());
-      insertSymbolIntoContext(symbol, outputCtx.get());
+      insertSymbolIntoPlaceholderBindings(symbol, inputbindings.get());
+      insertSymbolIntoPlaceholderBindings(symbol, outputbindings.get());
     }
 
     for (const auto &symbol : outputSymbols) {
-      auto *placeholder = ctx_->getPlaceholderByName(symbol);
+      auto *placeholder = bindings_->getPlaceholderByName(symbol);
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }
-      inputCtx->allocate(placeholder)->zero();
-      insertSymbolIntoContext(symbol, outputCtx.get());
+      inputbindings->allocate(placeholder)->zero();
+      insertSymbolIntoPlaceholderBindings(symbol, outputbindings.get());
     }
 
     // Create the test object.
     ExecutorTest test(executor_, std::move(root_), std::move(type_),
                       std::move(nodes_), std::move(placeholders_),
-                      std::move(inputCtx), std::move(outputCtx), runId_,
-                      resultCode_);
+                      std::move(inputbindings), std::move(outputbindings),
+                      runId_, resultCode_);
 
     // Reset builder state to allow a new test to be constructed with this
     // instance.
     root_ = llvm::make_unique<DAGNode>();
-    ctx_->clear();
+    bindings_->clear();
     type_ = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
     nodes_.clear();
     leaves_.clear();
@@ -490,10 +503,11 @@ private:
     return outputSymbols;
   }
 
-  /// Insert a Placeholder named \p name with type type_ into \p context
+  /// Insert a Placeholder named \p name with type type_ into \p bindings
   /// and generate a random Tensor for it. If this Placeholder has already been
   /// mapped for the test being created, reuse the existing value.
-  void insertSymbolIntoContext(llvm::StringRef name, Context *context) {
+  void insertSymbolIntoPlaceholderBindings(llvm::StringRef name,
+                                           PlaceholderBindings *bindings) {
     auto it = placeholders_.find(name);
 
     if (it == placeholders_.end()) {
@@ -501,16 +515,16 @@ private:
       // Tensor for it.
       auto placeholder = llvm::make_unique<Placeholder>(name, type_.get(),
                                                         /*trainable=*/false);
-      auto *tensor = ctx_->allocate(placeholder.get());
+      auto *tensor = bindings_->allocate(placeholder.get());
       tensor->init(Tensor::InitKind::Xavier, 1.0, rng_);
-      context->insert(placeholder.get(), tensor->clone());
+      bindings->insert(placeholder.get(), tensor->clone());
       placeholders_[name] = std::move(placeholder);
     } else {
       // This is a symbol that already has an associated Placeholder and Tensor.
       // Copy that Tensor.
       auto *placeholder = (it->second).get();
-      const auto *tensor = ctx_->get(placeholder);
-      context->insert(placeholder, tensor->clone());
+      const auto *tensor = bindings_->get(placeholder);
+      bindings->insert(placeholder, tensor->clone());
     }
   }
 
@@ -518,8 +532,9 @@ private:
   std::shared_ptr<Executor> executor_;
   /// The root of the DAG being constructed.
   std::unique_ptr<DAGNode> root_;
-  /// This Context holds all created and initialized Placeholders for the test.
-  std::unique_ptr<Context> ctx_;
+  /// This PlaceholderBindings holds all created and initialized Placeholders
+  /// for the test.
+  std::unique_ptr<PlaceholderBindings> bindings_;
   /// The Type for all Placeholders and Tensors in the test. The exact value
   /// is not important; the main thing being tested is the propagation of
   /// Placeholders and Tensors as the DAG executes.
@@ -564,44 +579,46 @@ protected:
 TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   constexpr RunIdentifierTy testRunId = 10;
 
-  // Make a Context with one Placeholder in it to make sure Executor::run()
-  // doesn't modify it when the root given to it is null. Make two identical
-  // copies; one to give to Executor::run(), and another to compare the
-  // returned Context with.
+  // Make a PlaceholderBindings with one Placeholder in it to make sure
+  // Executor::run() doesn't modify it when the root given to it is null. Make
+  // two identical copies; one to give to Executor::run(), and another to
+  // compare the returned PlaceholderBindings with.
   PseudoRNG rng;
   auto type = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
   auto placeholder = llvm::make_unique<Placeholder>("a", type.get(),
                                                     /*trainable=*/false);
-  auto testCtx = llvm::make_unique<Context>();
-  auto refCtx = llvm::make_unique<Context>();
-  auto *tensor = testCtx->allocate(placeholder.get());
+  auto testbindings = llvm::make_unique<PlaceholderBindings>();
+  auto refbindings = llvm::make_unique<PlaceholderBindings>();
+  auto *tensor = testbindings->allocate(placeholder.get());
   tensor->init(Tensor::InitKind::Xavier, 1.0, rng);
-  refCtx->insert(placeholder.get(), tensor->clone());
+  refbindings->insert(placeholder.get(), tensor->clone());
 
   // Variables for storing runId and resultCode actually returned by
   // Executor::run() via its callback.
   RunIdentifierTy executorRunId;
   ResultCode executorResultCode;
-  std::unique_ptr<Context> executorOutputCtx;
+  std::unique_ptr<PlaceholderBindings> executorOutputbindings;
 
   // Call Executor::run().
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  executor_->run(nullptr, std::move(testCtx), testRunId,
-                 [&promise, &executorRunId, &executorResultCode,
-                  &executorOutputCtx](RunIdentifierTy runId, ResultCode code,
-                                      std::unique_ptr<Context> context) {
-                   executorRunId = runId;
-                   executorResultCode = code;
-                   executorOutputCtx = std::move(context);
-                   promise.set_value();
-                 });
+  executor_->run(
+      nullptr, std::move(testbindings), testRunId,
+      [&promise, &executorRunId, &executorResultCode,
+       &executorOutputbindings](RunIdentifierTy runId, ResultCode code,
+                                std::unique_ptr<PlaceholderBindings> bindings) {
+        executorRunId = runId;
+        executorResultCode = code;
+        executorOutputbindings = std::move(bindings);
+        promise.set_value();
+      });
 
   future.wait();
 
   EXPECT_EQ(executorRunId, testRunId);
   EXPECT_EQ(executorResultCode, ResultCode::Executed);
-  EXPECT_TRUE(Context::compare(refCtx.get(), executorOutputCtx.get()));
+  EXPECT_TRUE(PlaceholderBindings::compare(refbindings.get(),
+                                           executorOutputbindings.get()));
 }
 
 /// Tests that a single node can run correctly.

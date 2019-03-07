@@ -16,8 +16,8 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Backends/Backend.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -79,7 +79,7 @@ void ExecutionEngine::clear() {
   compiledFunctions_.clear();
 }
 
-void glow::updateInputPlaceholders(Context &ctx,
+void glow::updateInputPlaceholders(PlaceholderBindings &bindings,
                                    llvm::ArrayRef<Placeholder *> ph,
                                    llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
@@ -87,7 +87,7 @@ void glow::updateInputPlaceholders(Context &ctx,
 
   for (int i = 0, e = ph.size(); i < e; i++) {
     assert(ph[i] && "Invalid value");
-    auto *backingTensor = ctx.get(ph[i]);
+    auto *backingTensor = bindings.get(ph[i]);
     assert(backingTensor && "Can't find the placeholder");
     auto dim = inputs[i]->dims();
     (void)dim;
@@ -97,7 +97,8 @@ void glow::updateInputPlaceholders(Context &ctx,
   }
 }
 
-void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
+void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
+                                         Module *mod,
                                          llvm::ArrayRef<llvm::StringRef> ph,
                                          llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
@@ -108,40 +109,42 @@ void glow::updateInputPlaceholdersByName(Context &ctx, Module *mod,
     Tensor *t = inputs[i];
     assert(t && "Invalid tensor.");
     assert(p && "Invalid placeholder.");
-    updateInputPlaceholders(ctx, {p}, {t});
+    updateInputPlaceholders(bindings, {p}, {t});
   }
 }
 
-void ExecutionEngine::runInternal(Context &ctx, llvm::StringRef name,
+void ExecutionEngine::runInternal(PlaceholderBindings &bindings,
+                                  llvm::StringRef name,
                                   CompiledFunction &compiledFunction) {
-  // Make sure that the context has backing tensors for all placeholders.
-  ctx.allocate(M_.getPlaceholders());
+  // Make sure that the bindings have backing tensors for all placeholders.
+  bindings.allocate(M_.getPlaceholders());
 
-  std::unique_ptr<Context> ctxPtr(&ctx);
+  std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
   std::promise<runtime::ResultCode> runPromise;
   auto fut = runPromise.get_future();
-  device_->runFunction(name, std::move(ctxPtr),
-                       [&runPromise](runtime::RunIdentifierTy,
-                                     runtime::ResultCode code,
-                                     std::unique_ptr<Context> ctxPtr) {
-                         // Don't delete context
-                         ctxPtr.release();
-                         runPromise.set_value(code);
-                       });
+  device_->runFunction(
+      name, std::move(bindingsPtr),
+      [&runPromise](runtime::RunIdentifierTy, runtime::ResultCode code,
+                    std::unique_ptr<PlaceholderBindings> bindingsPtr) {
+        // Don't delete bindings
+        bindingsPtr.release();
+        runPromise.set_value(code);
+      });
 
   fut.wait();
   assert(fut.get() == runtime::ResultCode::Executed &&
          "Function failed to execute");
 }
 
-void ExecutionEngine::run(Context &ctx) {
+void ExecutionEngine::run(PlaceholderBindings &bindings) {
   assert(compiledFunctions_.size() == 1 &&
          "Expected exactly one compiled function.");
-  runInternal(ctx, *compiledFunctions_.keys().begin(), getCompiledFunction());
+  runInternal(bindings, *compiledFunctions_.keys().begin(),
+              getCompiledFunction());
 }
 
-void ExecutionEngine::run(Context &ctx, llvm::StringRef name) {
-  runInternal(ctx, name, getCompiledFunction(name));
+void ExecutionEngine::run(PlaceholderBindings &bindings, llvm::StringRef name) {
+  runInternal(bindings, name, getCompiledFunction(name));
 }
 
 CompiledFunction &ExecutionEngine::getCompiledFunction() {
@@ -176,8 +179,9 @@ void ExecutionEngine::insertCompiledFunction(
          "Compiled function failed to be added to device");
 }
 
-void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
-                    size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
+void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
+                    size_t iterations, size_t &sampleCounter,
+                    llvm::ArrayRef<Placeholder *> ph,
                     llvm::ArrayRef<Tensor *> inputs) {
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = ph[0]->getType()->dims()[0];
@@ -192,7 +196,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
     // Update the input placeholders.
     for (int i = 0, e = ph.size(); i < e; i++) {
       assert(ph[i] && "Invalid value");
-      auto *backingTensor = ctx.get(ph[i]);
+      auto *backingTensor = bindings.get(ph[i]);
       assert(backingTensor && "Can't find the backing tensor");
 
       auto dim = inputs[i]->dims();
@@ -206,7 +210,7 @@ void glow::runBatch(ExecutionEngine &EE, Context &ctx, size_t iterations,
     }
 
     // Run the network.
-    EE.run(ctx);
+    EE.run(bindings);
     sampleCounter += batchSize;
   }
 }

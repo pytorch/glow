@@ -19,8 +19,8 @@
 
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
 

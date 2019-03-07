@@ -17,8 +17,8 @@
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -204,8 +204,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   auto *var =
       mod.createPlaceholder(glow::ElemKind::FloatTy, {2}, "output", false);
-  Context ctx;
-  auto *outputTensor = ctx.allocate(var);
+  PlaceholderBindings bindings;
+  auto *outputTensor = bindings.allocate(var);
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at
     // destruction.
@@ -252,9 +252,9 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
   function->setupRuns();
-  function->beforeRun(ctx);
-  function->execute(&ctx);
-  function->afterRun(ctx);
+  function->beforeRun(bindings);
+  function->execute(&bindings);
+  function->afterRun(bindings);
   function->tearDownRuns();
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);

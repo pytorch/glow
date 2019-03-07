@@ -27,7 +27,7 @@
 using namespace glow;
 
 int main(int argc, char **argv) {
-  Context ctx;
+  PlaceholderBindings bindings;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -43,15 +43,15 @@ int main(int argc, char **argv) {
                                  *loader.getFunction()));
   }
   Placeholder *output = EXIT_ON_ERR(LD->getSingleOutput());
-  auto *outputT = ctx.allocate(output);
+  auto *outputT = bindings.allocate(output);
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile(ctx);
+  loader.compile(bindings);
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
-    loader.runInference(ctx);
+    loader.runInference(bindings);
 
     llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     // If profiling, generate and serialize the quantization infos now that we
     // have run inference to gather the profile.
     if (profilingGraph()) {
-      loader.generateAndSerializeQuantizationInfos(ctx);
+      loader.generateAndSerializeQuantizationInfos(bindings);
     }
   }
 
