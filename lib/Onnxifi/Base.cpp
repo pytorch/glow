@@ -193,7 +193,7 @@ Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
 Graph::~Graph() {
   // Remove network from hostmanager
-  // backendPtr_->getHostManager().removeNetwork(netName_);
+  backendPtr_->getHostManager().removeNetwork(netName_);
 }
 
 onnxStatus Graph::setIOAndRunAsync(
