@@ -15,7 +15,6 @@
  */
 
 #include "glow/Support/Error.h"
-#include "llvm/Support/FormatVariadic.h"
 
 namespace glow {
 llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");

@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace glow {
 /// NOTE This should not be used directly, instead use EXIT_ON_ERR or
@@ -65,6 +66,10 @@ public:
     MODEL_LOADER_UNSUPPORTED_ONNX_VERSION,
     // Model loader encountered an invalid protobuf.
     MODEL_LOADER_INVALID_PROTOBUF,
+    // Runtime error, out of device memory.
+    RUNTIME_OUT_OF_DEVICE_MEMORY,
+    // Runtime error, could not find the specified model network.
+    RUNTIME_NET_NOT_FOUND,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -120,7 +125,12 @@ private:
       return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
     case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
       return "MODEL_LOADER_INVALID_PROTOBUF";
+    case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:
+      return "RUNTIME_OUT_OF_DEVICE_MEMORY";
+    case ErrorCode::RUNTIME_NET_NOT_FOUND:
+      return "RUNTIME_NET_NOT_FOUND";
     };
+
     llvm_unreachable("unsupported ErrorCode");
   }
 
@@ -132,7 +142,7 @@ private:
   std::string message_;
   /// Optional error code associated with the error.
   ErrorCode ec_ = ErrorCode::UNKNOWN;
-};
+}; // namespace glow
 
 /// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
 /// an error, the program will exit.

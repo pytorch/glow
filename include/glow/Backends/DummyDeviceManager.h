@@ -50,7 +50,9 @@ public:
                   ReadyCBTy callback) override {
     for (const auto &func : functions) {
       if (functions_.count(func.first) != 0) {
-        callback(module, ResultCode::Failed);
+        callback(
+            module,
+            MAKE_ERR(llvm::formatv("Function {} not found", func.first).str()));
         return;
       }
     }
@@ -63,7 +65,7 @@ public:
     }
 
     // Fire the ready CB.
-    callback(module, ResultCode::Ready);
+    callback(module, llvm::Error::success());
   }
 
   /// Remove (and delete) the provided function, freeing
@@ -71,7 +73,7 @@ public:
   void evictNetwork(std::string functionName,
                     EvictFunctionCBTy evictCB) override {
     functions_.erase(functionName);
-    evictCB(functionName, ResultCode::Executed);
+    evictCB(functionName, llvm::Error::success());
   }
 
   /// Execute the named Function in an already provided network on the device.

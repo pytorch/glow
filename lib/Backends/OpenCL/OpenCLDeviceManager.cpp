@@ -56,7 +56,7 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
 OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
     : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
 
-ResultCode OpenCLDeviceManager::init() {
+llvm::Error OpenCLDeviceManager::init() {
   // The OpenCl Backend defines three command line options: doProfile, deviceId,
   // and platformId. If an OpenCLDeviceConfig is not provided we use the CL
   // options from the OpenCl Backend.
@@ -72,13 +72,13 @@ ResultCode OpenCLDeviceManager::init() {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
   if (err != CL_SUCCESS) {
-    llvm::outs() << "clGetPlatformIDs Failed. \n";
-    return ResultCode::Failed;
+    RETURN_ERR("clGetPlatformIDs Failed.");
   }
+
   if (numPlatforms < clPlatformId) {
-    llvm::outs() << "Should have at least one platform for running OpenCL \n";
-    return ResultCode::Failed;
+    RETURN_ERR("Should have at least one platform for running OpenCL");
   }
+
   std::vector<cl_platform_id> platform_ids(numPlatforms);
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
 
@@ -86,42 +86,36 @@ ResultCode OpenCLDeviceManager::init() {
   cl_uint num{0};
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
   if (err != CL_SUCCESS) {
-    llvm::outs() << "clGetDeviceIDs Failed.\n";
-    return ResultCode::Failed;
+    RETURN_ERR("clGetDeviceIDs Failed");
   }
   if (num < clDeviceId) {
-    llvm::outs()
-        << "Should have at least one GPU/CPU/FPGA for running OpenCL\n";
-    return ResultCode::Failed;
+    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
   }
   std::vector<cl_device_id> devices(num);
   err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
                        devices.data(), nullptr);
   if (err != CL_SUCCESS) {
-    llvm::outs() << "clGetDeviceIDs Failed.\n";
-    return ResultCode::Failed;
+    RETURN_ERR("clGetDeviceIDs Failed");
   }
   deviceId_ = devices[clDeviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
-    llvm::outs() << "clCreateContext Failed.\n";
-    return ResultCode::Failed;
+    RETURN_ERR("clCreateContext Failed");
   }
   commands_ = clCreateCommandQueue(
       context_, deviceId_, (clDoProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
   if (!commands_) {
-    llvm::outs() << "clCreateCommandQueue Failed.\n";
-    return ResultCode::Failed;
+    RETURN_ERR("clCreateCommandQueue Failed");
   }
   cl_ulong mem_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong),
                         &mem_size, NULL);
   if (err != CL_SUCCESS) {
-    llvm::outs() << "Error getting device memory limit.\n";
-    return ResultCode::Failed;
+    RETURN_ERR("Error getting device memory limit");
   }
   maxMemoryBytes_ = mem_size;
-  return ResultCode::Executed;
+
+  return llvm::Error::success();
 }
 
 OpenCLDeviceManager::~OpenCLDeviceManager() {
@@ -147,16 +141,24 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
-      llvm::errs() << "Failed to add network: already have a function called "
-                   << func.first << ".\n";
-      readyCB(module, ResultCode::Failed);
+      readyCB(
+          module,
+          MAKE_ERR(
+              llvm::formatv(
+                  "Failed to add network: already have a function called {}",
+                  func.first)
+                  .str()));
       return;
     }
 
     if (func.second->getCompileBackendKind() != BackendKind::OpenCL) {
-      llvm::errs() << "Failed to add network: function " << func.first
-                   << " is not an OpenCL Function.\n";
-      readyCB(module, ResultCode::Failed);
+      readyCB(
+          module,
+          MAKE_ERR(
+              llvm::formatv(
+                  "Failed to add network: function {} is not a OpenCL Function",
+                  func.first)
+                  .str()));
     }
   }
   // Collect constants once, since currently the bundle grabs everything in the
@@ -167,10 +169,10 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   }
   size_t sizeInBytes = bundle.getConstantWeightSize();
   if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
-    llvm::errs() << "Failed to add network: not enough memory.\n";
     // Free the constants.
     bundle.freeConstants();
-    readyCB(module, ResultCode::Failed);
+    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                             "Failed to add network: not enough memory"));
     return;
   }
 
@@ -203,12 +205,12 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
   // Fire the ready CB.
-  readyCB(module, ResultCode::Ready);
+  readyCB(module, llvm::Error::success());
 }
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                            EvictFunctionCBTy evictCB) {
-  ResultCode resultCode = ResultCode::Failed;
+  llvm::Error err = llvm::Error::success();
 
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
@@ -219,11 +221,18 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
       assert(usedMemoryBytes_ >= size);
       usedMemoryBytes_ -= size;
     }
-    resultCode = ResultCode::Executed;
+  } else {
+    err =
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                 llvm::formatv("Could not find function with name {} to evict",
+                               functionName)
+                     .str());
   }
 
   if (evictCB) {
-    evictCB(functionName, resultCode);
+    evictCB(functionName, std::move(err));
+  } else {
+    llvm::errs() << llvm::toString(std::move(err));
   }
 }
 

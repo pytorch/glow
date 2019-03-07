@@ -51,14 +51,20 @@ public:
                     EvictFunctionCBTy evictCB) override {
     // Erase the entry so that the same function name can be used to register
     // another result.
-    ResultCode resultCode = ResultCode::Failed;
+    llvm::Error err = llvm::Error::success();
 
-    if (resultMap_.erase(functionName)) {
-      resultCode = ResultCode::Executed;
+    if (!resultMap_.erase(functionName)) {
+      err = MAKE_ERR(
+          GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+          llvm::formatv("Could not find function with name {} to evict",
+                        functionName)
+              .str());
     }
 
     if (evictCB) {
-      evictCB(functionName, resultCode);
+      evictCB(functionName, std::move(err));
+    } else {
+      llvm::errs() << llvm::toString(std::move(err));
     }
   }
 

@@ -52,7 +52,7 @@ bool sortMostMemory(const std::pair<DeviceIDTy, uint64_t> &a,
                     const std::pair<DeviceIDTy, uint64_t> &b) {
   return (a.second > b.second);
 }
-ResultCode
+llvm::Error
 Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
                        Module &module) {
   // Walk the networks and group by logicalDeviceId.
@@ -63,10 +63,10 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
       walkNetwork(child, logicalDevices);
     }
   }
-  // Check if there are more logical devices than physical devices.
-  if (logicalDevices.size() > devices_.size()) {
-    return ResultCode::Failed;
-  }
+
+  RETURN_ERR_IF_NOT(
+      logicalDevices.size() <= devices_.size(),
+      "Provisioner found more logical devices than physical devices.");
 
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   std::map<DeviceIDTy, FunctionMapTy> functionMaps;
@@ -102,28 +102,25 @@ Provisioner::provision(std::vector<std::unique_ptr<DAGNode>> &networks,
 
   // Try to add functions to devices in order from largest to smallest.
   for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
-    if (logicalDeviceSize[i].second * NETWORK_PADDING_FACTOR >=
-        deviceMemory[i].second) {
-      return ResultCode::Failed;
-    }
+    RETURN_ERR_IF_NOT(logicalDeviceSize[i].second * NETWORK_PADDING_FACTOR <
+                          deviceMemory[i].second,
+                      "Not enough memory to provision functions onto devices");
+
     // Load functions on device.
     DeviceIDTy logicalID = logicalDeviceSize[i].first;
     DeviceIDTy deviceID = deviceMemory[i].first;
-    std::promise<bool> addNetwork;
+    std::promise<llvm::Error> addNetwork;
     auto ready = addNetwork.get_future();
     devices_[deviceID]->addNetwork(
         &module, functionMaps[logicalID],
-        [&addNetwork](const Module *, ResultCode result) {
-          addNetwork.set_value(result == ResultCode::Ready);
+        [&addNetwork](const Module *, llvm::Error err) {
+          addNetwork.set_value(std::move(err));
         });
-    auto result = ready.get();
-    if (!result) {
-      return ResultCode::Failed;
-    }
+    RETURN_IF_ERR(ready.get());
     // Set deviceID for each node added
     for (auto &node : logicalDevices[logicalID]) {
       node->deviceID = deviceID;
     }
   }
-  return ResultCode::Ready;
+  return llvm::Error::success();
 };

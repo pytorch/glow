@@ -29,6 +29,11 @@ using namespace glow;
 using namespace runtime;
 
 HostManager::HostManager(const std::vector<DeviceManagerConfig> &configs) {
+  // TODO: move all initialization out of constructor.
+  TEMP_EXIT_ON_ERR(init(configs));
+}
+
+llvm::Error HostManager::init(const std::vector<DeviceManagerConfig> &configs) {
   DeviceIDTy deviceCount = 0;
 
   if (configs.size() > 0) {
@@ -37,13 +42,15 @@ HostManager::HostManager(const std::vector<DeviceManagerConfig> &configs) {
   for (auto &config : configs) {
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
         DeviceManager::createDeviceManager(config.backendKind, nullptr));
-    ResultCode response = devices_[deviceCount]->init();
-    assert(response == ResultCode::Executed && "Failed to initialize device.");
-    (void)response;
+
+    RETURN_IF_ERR(devices_[deviceCount]->init());
+
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(createExecutor(devices_));
+
+  return llvm::Error::success();
 }
 
 HostManager::~HostManager() { clearHost(); }
@@ -67,7 +74,8 @@ ResultCode HostManager::addNetwork(Module *M) {
   }
   auto partitioner = Partitioner(M, deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
-  auto result = provisioner_->provision(nodeList.roots, *M);
+  // TODO: pass any errors up the stack.
+  bool result = glow::errorToBool(provisioner_->provision(nodeList.roots, *M));
 
   for (auto &node : nodeList.roots) {
     roots_.emplace(node->name, std::move(node));
@@ -75,7 +83,12 @@ ResultCode HostManager::addNetwork(Module *M) {
   for (auto &node : nodeList.nodes) {
     networks_.emplace(node->name, std::move(node));
   }
-  return result;
+
+  if (!result) {
+    return ResultCode::Failed;
+  }
+
+  return ResultCode::Ready;
 }
 
 void HostManager::removeNetwork(llvm::StringRef networkName) {

@@ -70,6 +70,7 @@ TEST_F(ProvisionerTest, provisionDag) {
     devices.emplace(i, std::move(device));
   }
   auto provisioner = Provisioner(devices);
-  auto result = provisioner.provision(networks.first, *mod.get());
-  EXPECT_EQ(result, ResultCode::Ready);
+  auto err = provisioner.provision(networks.first, *mod.get());
+  // Expect that there was no Error when provisioning
+  EXPECT_FALSE(glow::errorToBool(std::move(err)));
 }
