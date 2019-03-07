@@ -9,8 +9,13 @@ add_library(BackendTestUtils
             BackendTestUtils.cpp)
 target_link_libraries(BackendTestUtils
                       PRIVATE
+                        Base
                         Converter
+                        ExecutionEngine
+                        Graph
+                        Optimizer
                         Quantization
+                        QuantizationBase
                         LLVMSupport
                         gtest)
 
