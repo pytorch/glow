@@ -18,8 +18,8 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Backends/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
-#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include <functional>
@@ -79,11 +79,12 @@ public:
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
-  /// PlaceholderBindings should have all Placeholders allocated. resultCB will
-  /// be called with the PlaceholderBindings results filled.
+  /// The ExecutionContext's PlaceholderBindings should have all Placeholders
+  /// allocated. resultCB will be called with the ExecutionContext containing
+  /// output tensors filled, and any generated TraceEvents.
   virtual runtime::RunIdentifierTy
   runFunction(std::string functionName,
-              std::unique_ptr<PlaceholderBindings> bindings,
+              std::unique_ptr<ExecutionContext> context,
               runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.

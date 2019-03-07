@@ -65,23 +65,24 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
 }
 
 /// Starts a run of resnet50 on the given image. The image must be already
-/// loaded into the input placeholder in /p bindings.
+/// loaded into the input placeholder in /p context.
 /// If, at the end of the run the number of \p returned results is equal to
 /// maxImages, the \p finished promise is set.
 void dispatchClassify(unsigned int id, HostManager *hostManager,
                       std::string path,
-                      std::unique_ptr<PlaceholderBindings> bindings,
+                      std::unique_ptr<ExecutionContext> context,
                       std::atomic<size_t> &returned,
                       std::promise<void> &finished) {
   auto runid = hostManager->runNetwork(
-      "resnet50" + std::to_string(id), std::move(bindings),
+      "resnet50" + std::to_string(id), std::move(context),
       [id, path, &returned,
        &finished](RunIdentifierTy, ResultCode r,
-                  std::unique_ptr<PlaceholderBindings> bindings) {
+                  std::unique_ptr<ExecutionContext> context) {
         if (r == ResultCode::Canceled) {
           llvm::outs() << "(" << id << ") "
                        << "Too Many Active Requests.\n";
         } else {
+          auto *bindings = context->getPlaceholderBindings();
           size_t maxIdx =
               bindings
                   ->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
@@ -170,15 +171,17 @@ int main(int argc, char **argv) {
         readPngImageAndPreprocess(path, ImageNormalizationMode::k0to1,
                                   ImageChannelOrder::BGR, ImageLayout::NCHW,
                                   /* useImagenetNormalization */ true);
-    std::unique_ptr<PlaceholderBindings> bindings =
-        llvm::make_unique<PlaceholderBindings>();
+    std::unique_ptr<ExecutionContext> context =
+        llvm::make_unique<ExecutionContext>();
 
-    bindings->allocate(modules[index]->getPlaceholders());
+    context->getPlaceholderBindings()->allocate(
+        modules[index]->getPlaceholders());
     Tensor batch = image.getUnowned(inputType->dims());
-    updateInputPlaceholders(*bindings, {inputs[index]}, {&batch});
+    updateInputPlaceholders(*(context->getPlaceholderBindings()),
+                            {inputs[index]}, {&batch});
 
     dispatchClassify(index, hostManager.get(), std::move(path),
-                     std::move(bindings), returned, finished);
+                     std::move(context), returned, finished);
 
     dirIt.increment(code);
     currDevice++;

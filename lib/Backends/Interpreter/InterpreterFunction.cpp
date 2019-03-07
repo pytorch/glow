@@ -51,18 +51,20 @@ void InterpreterFunction::collectConstants(Module *module) {
   }
 }
 
-void InterpreterFunction::execute(PlaceholderBindings *bindings) {
+void InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
-  boundFunc.execute(F_.get(), bindings);
-  translateTraceEvents(bindings);
+  boundFunc.execute(F_.get(), context);
+  translateTraceEvents(context);
 }
 
 void InterpreterFunction::translateTraceEvents(
-    PlaceholderBindings *bindings) const {
+    ExecutionContext *context) const {
   auto &traceInfo = getTraceInfo();
   if (!traceInfo.enabled) {
     return;
   }
+
+  PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
   int tid = 0;
   for (auto &backing : traceInfo.events) {
@@ -70,7 +72,7 @@ void InterpreterFunction::translateTraceEvents(
     Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);
 
-    auto &traceEvents = bindings->getTraceEvents();
+    auto &traceEvents = context->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
       uint64_t ts{0};
       memcpy(&ts,
@@ -154,9 +156,9 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
 }
 
 void BoundInterpreterFunction::execute(IRFunction *F,
-                                       PlaceholderBindings *bindings) {
+                                       ExecutionContext *context) {
   // Register the concrete tensors that back the placeholder tensors.
-  for (auto &ph : bindings->pairs()) {
+  for (auto &ph : context->getPlaceholderBindings()->pairs()) {
     auto *w = F->getWeightForNode(ph.first);
     // If the Placeholder has been aliased to the same Weight, just skip it.
     if (externalTensors_.count(w)) {
@@ -185,7 +187,7 @@ void BoundInterpreterFunction::execute(IRFunction *F,
   }
 
   // Remove the concrete tensors that back the placeholder tensors.
-  for (auto &ph : bindings->pairs()) {
+  for (auto &ph : context->getPlaceholderBindings()->pairs()) {
     auto *w = F->getWeightForNode(ph.first);
     externalTensors_.erase(w);
   }

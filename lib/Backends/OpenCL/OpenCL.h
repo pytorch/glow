@@ -19,10 +19,10 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Backends/ExecutionContext.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Node.h"
-#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "llvm/ADT/ArrayRef.h"
 
@@ -96,7 +96,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute(PlaceholderBindings *bindings) override;
+  void execute(ExecutionContext *context) override;
   /// Allocates on device buffer and copies Constant weights to device.
   void setupRuns() override;
   /// Per run setup, copies Inputs from \p bindings to on device memory.

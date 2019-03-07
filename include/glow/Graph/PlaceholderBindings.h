@@ -50,9 +50,6 @@ private:
   /// Maps Placeholder names to Placeholders.
   PlaceholderNameMap nameMap_;
 
-  /// Trace Events recorded during this run.
-  std::vector<TraceEvent> traceEvents_;
-
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
   /// equivalent Tensors.
@@ -101,9 +98,6 @@ public:
   /// \returns the size in bytes of allocated Tensors owned by
   /// PlaceholderBindings.
   uint64_t getDataSize() const;
-
-  /// \returns TraceEvents for the last run.
-  std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
   PlaceholderBindings() = default;
 

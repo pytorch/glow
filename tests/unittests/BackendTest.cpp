@@ -149,11 +149,11 @@ TEST_P(BackendTest, simpleInference) {
 TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
-  PlaceholderBindings ctx;
+  auto ctx = llvm::make_unique<ExecutionContext>();
   Function *F = mod.createFunction("main");
   auto *IV = mod.createPlaceholder(input.getElementType(), input.dims(),
                                    "input", false);
-  auto *IVTensor = ctx.allocate(IV);
+  auto *IVTensor = ctx->getPlaceholderBindings()->allocate(IV);
   IVTensor->assign(&input);
 
   std::unique_ptr<BackendUsingGlowIR> backend(
@@ -164,9 +164,9 @@ TEST_P(BackendTest, debugPrint) {
 
   auto function = backend->compileIR(std::move(IR));
   function->setupRuns();
-  function->beforeRun(ctx);
-  function->execute(&ctx);
-  function->afterRun(ctx);
+  function->beforeRun(*ctx->getPlaceholderBindings());
+  function->execute(ctx.get());
+  function->afterRun(*ctx->getPlaceholderBindings());
   function->tearDownRuns();
 }
 

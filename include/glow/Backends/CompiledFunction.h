@@ -17,7 +17,7 @@
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
 #include "glow/Backends/BackendUtils.h"
-#include "glow/Backends/TraceEvents.h"
+#include "glow/Backends/ExecutionContext.h"
 #include "glow/Graph/Nodes.h"
 
 #include <unordered_map>
@@ -39,7 +39,7 @@ public:
   virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
   /// \p bindings providing mapping between Placeholder and populated tensor.
-  virtual void execute(PlaceholderBindings *bindings) = 0;
+  virtual void execute(ExecutionContext *context) = 0;
 
   /// Does any needed initialization work for the Backend.
   /// This includes device init constant memory allocation and copying to
@@ -69,7 +69,7 @@ public:
   const TraceInfo &getTraceInfo() const { return traceInfo_; }
 
   /// Read trace events out of this func and write them into /p bindings
-  virtual void translateTraceEvents(PlaceholderBindings *bindings) const {}
+  virtual void translateTraceEvents(ExecutionContext *bindings) const {}
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const = 0;

@@ -63,7 +63,7 @@ protected:
   void evictNetworkImpl(std::string functionName,
                         EvictFunctionCBTy evictCb) override;
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
-                       std::unique_ptr<PlaceholderBindings> bindings,
+                       std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
 };
 

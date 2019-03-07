@@ -143,26 +143,26 @@ void HostManager::clearHost() {
 
 RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
-                        std::unique_ptr<PlaceholderBindings> bindings,
+                        std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
 
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (roots_.find(networkName) == roots_.end()) {
-    callback(currentRun, ResultCode::Failed, std::move(bindings));
+    callback(currentRun, ResultCode::Failed, std::move(context));
     return currentRun;
   }
   if (activeRequestCount_ >= activeRequestLimit_) {
-    callback(currentRun, ResultCode::Canceled, std::move(bindings));
+    callback(currentRun, ResultCode::Canceled, std::move(context));
     return currentRun;
   }
   activeRequestCount_++;
-  executor_->run(roots_[networkName].get(), std::move(bindings), currentRun,
+  executor_->run(roots_[networkName].get(), std::move(context), currentRun,
                  [&activeRequest = this->activeRequestCount_,
                   callback](RunIdentifierTy runID, ResultCode result,
-                            std::unique_ptr<PlaceholderBindings> bindings) {
+                            std::unique_ptr<ExecutionContext> context) {
                    --activeRequest;
-                   callback(runID, result, std::move(bindings));
+                   callback(runID, result, std::move(context));
                  });
   return currentRun;
 }

@@ -19,8 +19,8 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Backends/CompiledFunction.h"
+#include "glow/Backends/ExecutionContext.h"
 #include "glow/Base/Tensor.h"
-#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -30,7 +30,6 @@
 
 namespace glow {
 
-class PlaceholderBindings;
 class IRFunction;
 class Value;
 class Tensor;
@@ -58,7 +57,7 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  void execute(PlaceholderBindings *bindings) override;
+  void execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
   void collectConstants(Module *module) override;
@@ -66,8 +65,8 @@ public:
   /// Get reference to IR function.
   IRFunction *getIR() { return F_.get(); }
 
-  /// Read trace events out of this func and write them into /p bindings
-  void translateTraceEvents(PlaceholderBindings *bindings) const override;
+  /// Read trace events out of this func and write them into /p context
+  void translateTraceEvents(ExecutionContext *context) const override;
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const override {
@@ -94,7 +93,7 @@ public:
 
   ~BoundInterpreterFunction();
 
-  void execute(IRFunction *F, PlaceholderBindings *bindings);
+  void execute(IRFunction *F, ExecutionContext *context);
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.
