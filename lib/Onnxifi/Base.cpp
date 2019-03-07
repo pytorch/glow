@@ -220,6 +220,9 @@ onnxStatus Graph::setIOAndRunAsync(
     ctx->insert(inPhPtr, std::move(t));
   }
 
+  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
+      phNameToOnnxTensorOutputs;
+
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
@@ -232,7 +235,9 @@ onnxStatus Graph::setIOAndRunAsync(
 
     auto &outPhPtr = outPhIt->getValue();
 
-    Tensor t(outOnnxBuffer, outPhPtr->getType());
+    phNameToOnnxTensorOutputs[outPhPtr] = outOnnxTensor;
+
+    Tensor t(outPhPtr->getType());
 
     ctx->insert(outPhPtr, std::move(t));
   }
@@ -240,8 +245,23 @@ onnxStatus Graph::setIOAndRunAsync(
   // Run
   getHostManager().runNetwork(
       netName_, std::move(ctx),
-      [outputEvent](runtime::RunIdentifierTy runId, runtime::ResultCode result,
-                    std::unique_ptr<Context> ctx) { outputEvent->signal(); });
+      [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
+       outputEvent](runtime::RunIdentifierTy runId, runtime::ResultCode result,
+                    std::unique_ptr<Context> ctx) {
+        for (auto &ph : ctx->pairs()) {
+          if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
+            continue;
+          }
+
+          auto &outOnnxTensor = phNameToOnnxTensorOutputs.at(ph.first);
+
+          void *outputAddress = reinterpret_cast<void *>(outOnnxTensor.buffer);
+          Tensor *res = ph.second;
+          memcpy(outputAddress, res->getUnsafePtr(),
+                 res->size() * res->getType().getElementSize());
+        }
+        outputEvent->signal();
+      });
 
   return ONNXIFI_STATUS_SUCCESS;
 }
