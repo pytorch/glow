@@ -106,7 +106,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
 
   auto id = makeUniqueGraphId();
-  netName_ = llvm::formatv("inference_function_%d", id);
+  netName_ = llvm::formatv("inference_function_{}", id).str();
 
   Function *function = m_.createFunction(netName_);
 
