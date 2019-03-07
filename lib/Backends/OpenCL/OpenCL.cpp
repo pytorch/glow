@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "opencl"
 
 // Silence Apple's warning about the deprecation of OpenCL.
 #define CL_SILENCE_DEPRECATION
@@ -38,6 +37,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "opencl"
 
 using namespace glow;
 using llvm::format;
