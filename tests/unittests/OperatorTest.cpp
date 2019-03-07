@@ -52,16 +52,17 @@ public:
   PlaceholderBindings bindings_;
 };
 
-// The parameterized test suite is instantiated with all available backends.
-INSTANTIATE_TEST_CASE_P(AllOperatorTest, Operator,
-                        ::testing::Values(
+auto valType = ::testing::Values(
 #ifdef GLOW_WITH_CPU
-                            BackendKind::CPU,
+    BackendKind::CPU,
 #endif // GLOW_WITH_CPU
 #ifdef GLOW_WITH_OPENCL
-                            BackendKind::OpenCL,
+    BackendKind::OpenCL,
 #endif // GLOW_WITHOPENCL
-                            BackendKind::Interpreter));
+    BackendKind::Interpreter);
+
+// The parameterized test suite is instantiated with all available backends.
+INSTANTIATE_TEST_CASE_P(AllOperatorTest, Operator, valType);
 
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
