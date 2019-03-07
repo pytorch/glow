@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "ir-function-specializer"
 
 #include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
@@ -26,6 +25,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+
+#define DEBUG_TYPE "ir-function-specializer"
 
 using namespace glow;
 

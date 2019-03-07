@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "ir-optimizer"
 
 #include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
@@ -33,6 +32,8 @@
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+
+#define DEBUG_TYPE "ir-optimizer"
 
 namespace {
 static llvm::cl::opt<bool>

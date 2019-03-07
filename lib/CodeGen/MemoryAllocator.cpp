@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#define DEBUG_TYPE "memory-allocator"
-
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Support/Debug.h"
 #include "glow/Support/Memory.h"
@@ -25,6 +23,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "memory-allocator"
 
 using namespace glow;
 

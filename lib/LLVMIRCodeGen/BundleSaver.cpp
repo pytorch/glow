@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "jit"
 
 #include "BundleSaver.h"
 
@@ -33,6 +32,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "jit"
 
 using namespace glow;
 using llvm::cast;
