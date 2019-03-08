@@ -117,7 +117,7 @@ protected:
   /// Run the function on the device, there is a single thread of execution so
   /// only one function can execute at a time.
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
-                       std::unique_ptr<PlaceholderBindings> bindings,
+                       std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
 };
 /// OpenCL Device Manager config object. This contains the information needed to

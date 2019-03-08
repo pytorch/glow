@@ -49,7 +49,7 @@ public:
   /// no postrequisites (i.e. the final results) in addition to the mappings
   /// present in \p bindings.
   virtual void run(const DAGNode *root,
-                   std::unique_ptr<PlaceholderBindings> bindings,
+                   std::unique_ptr<ExecutionContext> context,
                    RunIdentifierTy runId, ResultCBTy cb) = 0;
 
   /// Shutdown the Executor. Should block until all active requests are complete

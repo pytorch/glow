@@ -622,8 +622,8 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-void OpenCLFunction::execute(PlaceholderBindings *bindings) {
-  (void)bindings;
+void OpenCLFunction::execute(ExecutionContext *context) {
+  (void)context;
 
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.

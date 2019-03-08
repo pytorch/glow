@@ -56,7 +56,7 @@ class ExecutionEngine final {
 
   /// Single execution of the given \compiledFunction with the given context
   /// \bindings.
-  void runInternal(PlaceholderBindings &bindings, llvm::StringRef name,
+  void runInternal(ExecutionContext &context, llvm::StringRef name,
                    CompiledFunction &compiledFunction);
 
 public:
@@ -121,12 +121,21 @@ public:
   void save(Function *F, const CompilationOptions &opts,
             llvm::StringRef outputDir, llvm::StringRef networkName);
 
-  /// PlaceholderBindings aware single execution of a function. If more than one
+  /// Context aware single execution of a function. If more than one
+  /// function has been compiled by this ExecutionEngine then a name must be
+  /// supplied to specify which function to run.
+  void run(ExecutionContext &context);
+
+  /// Context aware single execution of a function with the given \p
+  /// name.
+  void run(ExecutionContext &context, llvm::StringRef name);
+
+  /// Context aware single execution of a function. If more than one
   /// function has been compiled by this ExecutionEngine then a name must be
   /// supplied to specify which function to run.
   void run(PlaceholderBindings &bindings);
 
-  /// PlaceholderBindings aware single execution of a function with the given \p
+  /// Context aware single execution of a function with the given \p
   /// name.
   void run(PlaceholderBindings &bindings, llvm::StringRef name);
 };

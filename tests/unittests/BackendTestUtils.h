@@ -31,7 +31,7 @@ namespace glow {
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
-    void execute(PlaceholderBindings *) override {}
+    void execute(ExecutionContext *) override {}
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;
@@ -58,7 +58,7 @@ class MockBackend : public Backend {
 /// from Node to Instruction IR.
 class MockBackendCustomIRGen : public Backend {
   class MockFunction : public CompiledFunction {
-    void execute(PlaceholderBindings *) override {}
+    void execute(ExecutionContext *) override {}
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;

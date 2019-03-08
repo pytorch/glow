@@ -26,6 +26,9 @@
 #include <vector>
 
 namespace glow {
+
+class ExecutionContext;
+
 namespace runtime {
 
 class DeviceManager;
@@ -43,7 +46,7 @@ enum class ResultCode { Ready, Executed, Failed, Canceled };
 /// an inference request back to the caller.
 using ResultCBTy =
     std::function<void(runtime::RunIdentifierTy, runtime::ResultCode,
-                       std::unique_ptr<PlaceholderBindings>)>;
+                       std::unique_ptr<ExecutionContext>)>;
 
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.

@@ -15,7 +15,7 @@
  */
 
 #include "glow/Runtime/HostManager/HostManager.h"
-#include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Backends/ExecutionContext.h"
 
 #include "gtest/gtest.h"
 
@@ -74,30 +74,31 @@ TEST_F(HostManagerTest, addNetwork) {
 
 TEST_F(HostManagerTest, runNetwork) {
   Module mod;
-  std::unique_ptr<PlaceholderBindings> bindings =
-      llvm::make_unique<PlaceholderBindings>();
+  std::unique_ptr<ExecutionContext> context =
+      llvm::make_unique<ExecutionContext>();
 
   Function *F = mod.createFunction("main");
   auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
-  auto *XTensor = bindings->allocate(X);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
-  auto *saveTensor = bindings->allocate(save->getPlaceholder());
+  auto *saveTensor =
+      context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   auto hostManager = createHostManager(BackendKind::CPU);
   hostManager->addNetwork(&mod);
   std::promise<ResultCode> runNetwork;
   auto ready = runNetwork.get_future();
-  hostManager->runNetwork("main", std::move(bindings),
-                          [&runNetwork, &saveTensor, &bindings](
+  hostManager->runNetwork("main", std::move(context),
+                          [&runNetwork, &saveTensor, &context](
                               RunIdentifierTy runID, ResultCode result,
-                              std::unique_ptr<PlaceholderBindings> bindings_) {
+                              std::unique_ptr<ExecutionContext> context_) {
                             auto HX = saveTensor->getHandle();
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-                            bindings = std::move(bindings_);
+                            context = std::move(context_);
                             runNetwork.set_value(result);
                           });
   auto result = ready.get();
@@ -106,9 +107,9 @@ TEST_F(HostManagerTest, runNetwork) {
   std::promise<ResultCode> newRun;
   ready = newRun.get_future();
   hostManager->runNetwork(
-      "main", std::move(bindings),
+      "main", std::move(context),
       [&newRun, &saveTensor](RunIdentifierTy runID, ResultCode result,
-                             std::unique_ptr<PlaceholderBindings> bindings) {
+                             std::unique_ptr<ExecutionContext> context_) {
         auto HX = saveTensor->getHandle();
         EXPECT_NEAR(HX.at({0}), 1, 1E-5);
         EXPECT_NEAR(HX.at({1}), 4, 1E-5);

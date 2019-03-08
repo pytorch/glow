@@ -31,13 +31,12 @@ public:
   /// \name CompiledFunction interface
   ///@{
   virtual ~LLVMCompiledFunction() override;
-  virtual void execute(PlaceholderBindings *bindings) override;
+  virtual void execute(ExecutionContext *context) override;
 
   virtual void collectConstants(Module *module) override;
 
   /// Read trace events out of this func and write them into /p bindings
-  virtual void
-  translateTraceEvents(PlaceholderBindings *bindings) const override;
+  virtual void translateTraceEvents(ExecutionContext *context) const override;
   ///@}
   //
 

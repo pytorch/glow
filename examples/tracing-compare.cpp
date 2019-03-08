@@ -142,25 +142,26 @@ int main(int argc, char **argv) {
   Tensor batch = image.getUnowned(inputType->dims());
 
   llvm::outs() << "Starting Run.\n";
-  std::array<std::promise<std::unique_ptr<PlaceholderBindings>>,
+  std::array<std::promise<std::unique_ptr<ExecutionContext>>,
              supportedBackends.size()>
       promises;
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
-    auto bindings = llvm::make_unique<PlaceholderBindings>();
-    bindings->allocate(module.getPlaceholders());
-    updateInputPlaceholders(*bindings, {input}, {&batch});
+    auto context = llvm::make_unique<ExecutionContext>();
+    context->getPlaceholderBindings()->allocate(module.getPlaceholders());
+    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
+                            {&batch});
 
     devices[i]->runFunction(
-        "resnet50", std::move(bindings),
+        "resnet50", std::move(context),
         [&promises, i](RunIdentifierTy, ResultCode r,
-                       std::unique_ptr<PlaceholderBindings> bindings) {
-          promises[i].set_value(std::move(bindings));
+                       std::unique_ptr<ExecutionContext> context) {
+          promises[i].set_value(std::move(context));
         });
   }
 
-  auto bindings = llvm::make_unique<PlaceholderBindings>();
-  auto &allEvents = bindings->getTraceEvents();
+  auto context = llvm::make_unique<ExecutionContext>();
+  auto &allEvents = context->getTraceEvents();
 
   allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "Interpreter"}}});
   allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "CPU"}}});

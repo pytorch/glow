@@ -94,22 +94,22 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
 
 void InterpreterDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
-    std::unique_ptr<PlaceholderBindings> bindings, ResultCBTy resultCB) {
+    std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     llvm::errs() << "Failed to run function: name " << function
                  << " not found.\n";
-    resultCB(id, ResultCode::Failed, std::move(bindings));
+    resultCB(id, ResultCode::Failed, std::move(context));
     return;
   }
 
   CompiledFunction *func = funcIt->second;
 
   // Run that function.
-  func->execute(bindings.get());
+  func->execute(context.get());
 
   // Fire the resultCB.
-  resultCB(id, ResultCode::Executed, std::move(bindings));
+  resultCB(id, ResultCode::Executed, std::move(context));
 }
 
 } // namespace runtime

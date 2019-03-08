@@ -58,7 +58,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   }
 }
 
-void LLVMCompiledFunction::execute(PlaceholderBindings *bindings) {
+void LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -74,7 +74,8 @@ void LLVMCompiledFunction::execute(PlaceholderBindings *bindings) {
         runtimeBundle_.getMutableWeightSize(), TensorAlignment);
   }
 
-  loadPlaceholders(bindings, baseMutableWeightVarsAddress);
+  loadPlaceholders(context->getPlaceholderBindings(),
+                   baseMutableWeightVarsAddress);
 
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
@@ -90,20 +91,23 @@ void LLVMCompiledFunction::execute(PlaceholderBindings *bindings) {
     GLOW_UNREACHABLE("Error getting address");
   }
 
-  updatePlaceholders(bindings, baseMutableWeightVarsAddress);
+  updatePlaceholders(context->getPlaceholderBindings(),
+                     baseMutableWeightVarsAddress);
 
   alignedFree(baseMutableWeightVarsAddress);
   alignedFree(baseActivationsAddress);
 
-  translateTraceEvents(bindings);
+  translateTraceEvents(context);
 }
 
 void LLVMCompiledFunction::translateTraceEvents(
-    PlaceholderBindings *bindings) const {
+    ExecutionContext *context) const {
   auto &traceInfo = getTraceInfo();
   if (!traceInfo.enabled) {
     return;
   }
+
+  PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
   int tid = 0;
   for (auto &backing : traceInfo.events) {
@@ -111,7 +115,7 @@ void LLVMCompiledFunction::translateTraceEvents(
     Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);
 
-    auto &traceEvents = bindings->getTraceEvents();
+    auto &traceEvents = context->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
       uint64_t ts{0};
       memcpy(&ts,

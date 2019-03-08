@@ -113,21 +113,21 @@ void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
   }
 }
 
-void ExecutionEngine::runInternal(PlaceholderBindings &bindings,
+void ExecutionEngine::runInternal(ExecutionContext &context,
                                   llvm::StringRef name,
                                   CompiledFunction &compiledFunction) {
   // Make sure that the bindings have backing tensors for all placeholders.
-  bindings.allocate(M_.getPlaceholders());
+  context.getPlaceholderBindings()->allocate(M_.getPlaceholders());
 
-  std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
+  std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<runtime::ResultCode> runPromise;
   auto fut = runPromise.get_future();
   device_->runFunction(
-      name, std::move(bindingsPtr),
+      name, std::move(contextPtr),
       [&runPromise](runtime::RunIdentifierTy, runtime::ResultCode code,
-                    std::unique_ptr<PlaceholderBindings> bindingsPtr) {
-        // Don't delete bindings
-        bindingsPtr.release();
+                    std::unique_ptr<ExecutionContext> contextPtr) {
+        // Don't delete context.
+        contextPtr.release();
         runPromise.set_value(code);
       });
 
@@ -136,15 +136,34 @@ void ExecutionEngine::runInternal(PlaceholderBindings &bindings,
          "Function failed to execute");
 }
 
-void ExecutionEngine::run(PlaceholderBindings &bindings) {
+void ExecutionEngine::run(ExecutionContext &context) {
   assert(compiledFunctions_.size() == 1 &&
          "Expected exactly one compiled function.");
-  runInternal(bindings, *compiledFunctions_.keys().begin(),
+  runInternal(context, *compiledFunctions_.keys().begin(),
               getCompiledFunction());
 }
 
+void ExecutionEngine::run(ExecutionContext &context, llvm::StringRef name) {
+  runInternal(context, name, getCompiledFunction(name));
+}
+
+void ExecutionEngine::run(PlaceholderBindings &bindings) {
+  assert(compiledFunctions_.size() == 1 &&
+         "Expected exactly one compiled function.");
+  std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
+  ExecutionContext context(std::move(bindingsPtr));
+  runInternal(context, *compiledFunctions_.keys().begin(),
+              getCompiledFunction());
+  // don't delete bindings
+  context.movePlaceholderBindings().release();
+}
+
 void ExecutionEngine::run(PlaceholderBindings &bindings, llvm::StringRef name) {
-  runInternal(bindings, name, getCompiledFunction(name));
+  std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
+  ExecutionContext context(std::move(bindingsPtr));
+  runInternal(context, name, getCompiledFunction(name));
+  // don't delete bindings
+  context.movePlaceholderBindings().release();
 }
 
 CompiledFunction &ExecutionEngine::getCompiledFunction() {

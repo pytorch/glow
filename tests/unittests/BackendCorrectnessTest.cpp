@@ -204,8 +204,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   auto *var =
       mod.createPlaceholder(glow::ElemKind::FloatTy, {2}, "output", false);
-  PlaceholderBindings bindings;
-  auto *outputTensor = bindings.allocate(var);
+  auto ctx = llvm::make_unique<ExecutionContext>();
+  auto *outputTensor = ctx->getPlaceholderBindings()->allocate(var);
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at
     // destruction.
@@ -252,9 +252,9 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
   function->setupRuns();
-  function->beforeRun(bindings);
-  function->execute(&bindings);
-  function->afterRun(bindings);
+  function->beforeRun(*ctx->getPlaceholderBindings());
+  function->execute(ctx.get());
+  function->afterRun(*ctx->getPlaceholderBindings());
   function->tearDownRuns();
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);

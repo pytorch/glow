@@ -65,16 +65,17 @@ public:
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
-  /// PlaceholderBindings \p bindings should have all Placeholders allocated.
-  /// resultCB will be called with the bindings results filled.
+  /// The ExecutionContext's PlaceholderBindings should have all Placeholders
+  /// allocated. resultCB will be called with the ExecutionContext containing
+  /// output tensors filled, and any generated TraceEvents.
   RunIdentifierTy runFunction(std::string functionName,
-                              std::unique_ptr<PlaceholderBindings> bindings,
+                              std::unique_ptr<ExecutionContext> context,
                               ResultCBTy callback) override {
     RunIdentifierTy id = nextIdentifier_++;
     workThread_.submit([this, id, functionName = std::move(functionName),
-                        bindings = std::move(bindings),
+                        context = std::move(context),
                         callback = std::move(callback)]() mutable {
-      runFunctionImpl(id, std::move(functionName), std::move(bindings),
+      runFunctionImpl(id, std::move(functionName), std::move(context),
                       std::move(callback));
     });
     return id;
@@ -99,7 +100,7 @@ protected:
 
   /// Execute provided Function.
   virtual void runFunctionImpl(RunIdentifierTy, std::string,
-                               std::unique_ptr<PlaceholderBindings>,
+                               std::unique_ptr<ExecutionContext>,
                                ResultCBTy) = 0;
 };
 } // namespace runtime
