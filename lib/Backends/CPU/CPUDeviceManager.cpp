@@ -46,22 +46,30 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
-      llvm::errs() << "Failed to add network: already have a function called "
-                   << func.first << ".\n";
-      readyCB(module, ResultCode::Failed);
+      readyCB(
+          module,
+          MAKE_ERR(
+              llvm::formatv(
+                  "Failed to add network: already have a function called {}",
+                  func.first)
+                  .str()));
       return;
     }
 
     if (func.second->getCompileBackendKind() != BackendKind::CPU) {
-      llvm::errs() << "Failed to add network: function " << func.first
-                   << " is not a CPUFunction.\n";
-      readyCB(module, ResultCode::Failed);
+      readyCB(module,
+              MAKE_ERR(
+                  llvm::formatv(
+                      "Failed to add network: function {} is not a CPUFunction",
+                      func.first)
+                      .str()));
+      return;
     }
   }
 
   if (usedMemoryBytes_ + functionCost_ > maxMemoryBytes_) {
-    llvm::errs() << "Failed to add network: not enough memory.\n";
-    readyCB(module, ResultCode::Failed);
+    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                             "Failed to add network: not enough memory"));
     return;
   }
 
@@ -77,20 +85,27 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
   // Fire the ready CB.
-  readyCB(module, ResultCode::Ready);
+  readyCB(module, llvm::Error::success());
 }
 
 void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                         EvictFunctionCBTy evictCB) {
-  ResultCode resultCode = ResultCode::Failed;
+  llvm::Error err = llvm::Error::success();
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
-    resultCode = ResultCode::Executed;
+  } else {
+    err =
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                 llvm::formatv("Could not find function with name {} to evict",
+                               functionName)
+                     .str());
   }
 
   if (evictCB) {
-    evictCB(functionName, resultCode);
+    evictCB(functionName, std::move(err));
+  } else {
+    llvm::errs() << llvm::toString(std::move(err));
   }
 }
 

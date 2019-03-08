@@ -21,6 +21,7 @@
 #include "glow/Backends/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/Error.h"
 
 #include <functional>
 #include <map>
@@ -31,10 +32,10 @@ namespace runtime {
 
 /// Callback signalling success/failure of evicting a function from a Device.
 using EvictFunctionCBTy =
-    std::function<void(std::string functionName, runtime::ResultCode)>;
+    std::function<void(std::string functionName, llvm::Error)>;
 
 /// Callback signalling success/failure of loading a Module onto a device.
-using ReadyCBTy = std::function<void(const Module *, runtime::ResultCode)>;
+using ReadyCBTy = std::function<void(const Module *, llvm::Error)>;
 
 /// Map of Function name -> CompiledFunction, used when loading a network onto a
 /// device.
@@ -62,7 +63,7 @@ public:
                       std::unique_ptr<DeviceConfig> config = nullptr);
 
   /// Initialize the device.
-  virtual ResultCode init() { return ResultCode::Executed; }
+  virtual llvm::Error init() { return llvm::Error::success(); }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.

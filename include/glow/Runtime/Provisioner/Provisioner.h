@@ -19,6 +19,7 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/Error.h"
 
 #include <map>
 
@@ -34,10 +35,10 @@ public:
 
   /// Walks \p networks and assigns each function to a DeviceManager in \p
   /// devices. The Provisioner calls the addNetwork method for each
-  /// DeviceManager. Returns a ResultCode indicating if the operation was a
+  /// DeviceManager. Returns a GlowErr indicating if the operation was a
   /// success.
-  ResultCode provision(std::vector<std::unique_ptr<DAGNode>> &networks,
-                       Module &module);
+  llvm::Error provision(std::vector<std::unique_ptr<DAGNode>> &networks,
+                        Module &module);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per

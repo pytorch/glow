@@ -112,6 +112,11 @@ public:
                              std::unique_ptr<ExecutionContext> context,
                              ResultCBTy callback);
   HostManager(const std::vector<DeviceManagerConfig> &configs);
+
+  /// Initialize the HostManager with the given \p configs creating one
+  /// DeviceManager for each config listed.
+  llvm::Error init(const std::vector<DeviceManagerConfig> &configs);
+
   ~HostManager();
 };
 } // namespace runtime

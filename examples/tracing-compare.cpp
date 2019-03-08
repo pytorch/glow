@@ -79,22 +79,21 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   return backend->compile(F, opts);
 }
 
-std::future<ResultCode> addToDevice(unsigned int id, DeviceManager *device,
-                                    Module &module, FunctionMapTy functions) {
-  std::shared_ptr<std::promise<ResultCode>> compilePromise(
-      new std::promise<ResultCode>);
+std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
+                                     Module &module, FunctionMapTy functions) {
+  auto compilePromise = std::make_shared<std::promise<llvm::Error>>();
   auto future = compilePromise->get_future();
 
   device->addNetwork(&module, functions,
-                     [compilePromise, id](const Module *, ResultCode code) {
-                       if (code != ResultCode::Ready) {
+                     [compilePromise, id](const Module *, llvm::Error err) {
+                       if (err) {
                          llvm::errs() << "Failed to compile model for device "
                                       << id << ".\n";
                        } else {
                          llvm::outs()
                              << "Successfully added to Device " << id << ".\n";
                        }
-                       compilePromise->set_value(code);
+                       compilePromise->set_value(std::move(err));
                      });
 
   return future;
@@ -107,7 +106,7 @@ int main(int argc, char **argv) {
   std::array<DeviceManager *, supportedBackends.size()> devices;
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     devices[i] = DeviceManager::createDeviceManager(supportedBackends[i]);
-    devices[i]->init();
+    EXIT_ON_ERR(devices[i]->init());
   }
 
   // Load and compile model.
@@ -129,9 +128,7 @@ int main(int argc, char **argv) {
 
     auto f = addToDevice(i, devices[i], module, functions);
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
-    if (f.get() != ResultCode::Ready) {
-      return 1;
-    }
+    EXIT_ON_ERR(f.get());
   }
 
   auto image =

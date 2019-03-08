@@ -89,13 +89,13 @@ public:
 
   ~OpenCLDeviceManager();
 
-  ResultCode init() override;
+  llvm::Error init() override;
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.
   uint64_t getMaximumMemory() const override;
 
-  /// Returns the amount of memory in bytes currently availbe on the device.
+  /// Returns the amount of memory in bytes currently available on the device.
   uint64_t getAvailableMemory() const override;
 
   /// Returns true if a function requiring the \p estimate size will fit on the

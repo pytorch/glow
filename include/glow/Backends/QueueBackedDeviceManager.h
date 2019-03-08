@@ -42,7 +42,7 @@ public:
   }
 
   /// Initialize the device.
-  ResultCode init() override { return ResultCode::Executed; }
+  llvm::Error init() override { return llvm::Error::success(); }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use

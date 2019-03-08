@@ -76,9 +76,15 @@ std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
 
 template <typename ResultType>
 void callbackHelper(std::promise<ResultType> &promise, ResultType res,
-
                     ResultCode result, ResultCode expected) {
   promise.set_value(result == expected ? std::move(res) : ResultType());
+}
+
+template <typename ResultType>
+void callbackHelper(std::promise<ResultType> &promise, ResultType res,
+                    llvm::Error err) {
+  promise.set_value(!glow::errorToBool(std::move(err)) ? std::move(res)
+                                                       : ResultType());
 }
 
 TEST_P(DeviceManagerTest, Basic) {
@@ -88,17 +94,15 @@ TEST_P(DeviceManagerTest, Basic) {
       compileFunctions(backendKind, module.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ResultCode initResult = device->init();
-  EXPECT_EQ(initResult, ResultCode::Executed);
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
 
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
 
   future.wait_for(std::chrono::seconds(2));
@@ -148,16 +152,14 @@ TEST_P(DeviceManagerTest, MultiRun) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ResultCode initResult = device->init();
-  EXPECT_EQ(initResult, ResultCode::Executed);
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
@@ -249,16 +251,14 @@ TEST_P(DeviceManagerTest, MultiFunction) {
       compileFunctions(backendKind, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ResultCode initResult = device->init();
-  EXPECT_EQ(initResult, ResultCode::Executed);
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
@@ -326,25 +326,22 @@ TEST_P(DeviceManagerTest, MultiModule) {
   FunctionMapTy functions2 =
       compileFunctions(backendKind, module2.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ResultCode initResult = device->init();
-  EXPECT_EQ(initResult, ResultCode::Executed);
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module1.get(), std::move(functions1),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module1.get());
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module2.get(), std::move(functions2),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
@@ -439,25 +436,22 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_EQ(functions.size(), 1);
   EXPECT_EQ(functions2.size(), 1);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ResultCode initResult = device->init();
-  EXPECT_EQ(initResult, ResultCode::Executed);
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions2),
-                     [&promise](const Module *module, ResultCode result) {
-                       callbackHelper(promise, module, result,
-                                      ResultCode::Ready);
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
@@ -523,7 +517,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   CPUDeviceManager cpuCoreDevice(nullptr, 1);
-  cpuCoreDevice.init();
+  ASSERT_FALSE(glow::errorToBool(cpuCoreDevice.init()));
 
   uint64_t expectedBytes = 1;
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
@@ -535,8 +529,8 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
       module.get(), compileFunctions(BackendKind::CPU, module.get(), backing),
-      [&promise](const Module *module, ResultCode result) {
-        callbackHelper(promise, module, result, ResultCode::Ready);
+      [&promise](const Module *module, llvm::Error err) {
+        callbackHelper(promise, module, std::move(err));
       });
 
   future.wait_for(std::chrono::seconds(2));
@@ -552,8 +546,8 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
       module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
-      [&promise](const Module *module, ResultCode result) {
-        callbackHelper(promise, module, result, ResultCode::Ready);
+      [&promise](const Module *module, llvm::Error err) {
+        callbackHelper(promise, module, std::move(err));
       });
 
   future.wait_for(std::chrono::seconds(2));
@@ -569,10 +563,10 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<std::string> evictPromise;
   std::future<std::string> evictFuture;
   std::tie(evictPromise, evictFuture) = getFutureHelper<std::string>();
-  cpuCoreDevice.evictNetwork("main", [&evictPromise](std::string functionName,
-                                                     ResultCode result) {
-    callbackHelper(evictPromise, functionName, result, ResultCode::Executed);
-  });
+  cpuCoreDevice.evictNetwork(
+      "main", [&evictPromise](std::string functionName, llvm::Error err) {
+        callbackHelper(evictPromise, functionName, std::move(err));
+      });
   evictFuture.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(evictFuture.get(), "main");
 
@@ -580,8 +574,8 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(
       module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
-      [&promise](const Module *module, ResultCode result) {
-        callbackHelper(promise, module, result, ResultCode::Ready);
+      [&promise](const Module *module, llvm::Error err) {
+        callbackHelper(promise, module, std::move(err));
       });
 
   future.wait_for(std::chrono::seconds(2));
@@ -596,7 +590,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
   DummyDeviceManager deviceManager(BackendKind::Interpreter);
-  deviceManager.init();
+  ASSERT_FALSE(glow::errorToBool(deviceManager.init()));
 
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
@@ -607,9 +601,8 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   deviceManager.addNetwork(module.get(), std::move(functions),
-                           [&promise](const Module *module, ResultCode result) {
-                             callbackHelper(promise, module, result,
-                                            ResultCode::Ready);
+                           [&promise](const Module *module, llvm::Error err) {
+                             callbackHelper(promise, module, std::move(err));
                            });
   // no need to wait.
   EXPECT_EQ(future.get(), module.get());

@@ -84,22 +84,21 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module) {
 
 /// Loads the CompliedFunction into device \p device.
 /// Returns a future which is completed when the device is initialized.
-std::future<ResultCode> addToDevice(unsigned int id, DeviceManager *device,
-                                    Module &module, FunctionMapTy functions) {
-  std::shared_ptr<std::promise<ResultCode>> compilePromise(
-      new std::promise<ResultCode>);
+std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
+                                     Module &module, FunctionMapTy functions) {
+  auto compilePromise = std::make_shared<std::promise<llvm::Error>>();
   auto future = compilePromise->get_future();
 
   device->addNetwork(&module, functions,
-                     [compilePromise, id](const Module *, ResultCode code) {
-                       if (code != ResultCode::Ready) {
+                     [compilePromise, id](const Module *, llvm::Error err) {
+                       if (err) {
                          llvm::errs() << "Failed to compile model for device "
                                       << id << ".\n";
                        } else {
                          llvm::outs()
                              << "Successfully added to Device " << id << ".\n";
                        }
-                       compilePromise->set_value(code);
+                       compilePromise->set_value(std::move(err));
                      });
 
   return future;
@@ -141,7 +140,7 @@ int main(int argc, char **argv) {
   std::vector<std::unique_ptr<CPUDeviceManager>> devices;
   for (unsigned int i = 0; i < numDevices; ++i) {
     devices.emplace_back(llvm::make_unique<CPUDeviceManager>());
-    devices[i]->init();
+    EXIT_ON_ERR(devices[i]->init());
   }
 
   // Load and compile model.
@@ -156,7 +155,7 @@ int main(int argc, char **argv) {
   FunctionMapTy functions;
   functions.emplace("resnet50", compiledFunction.get());
 
-  std::vector<std::future<ResultCode>> compiles;
+  std::vector<std::future<llvm::Error>> compiles;
   compiles.reserve(numDevices);
 
   for (unsigned int i = 0; i < numDevices; ++i) {
@@ -165,10 +164,7 @@ int main(int argc, char **argv) {
 
   for (auto &f : compiles) {
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
-    ResultCode code = f.get();
-    if (code != ResultCode::Ready) {
-      return 1;
-    }
+    EXIT_ON_ERR(f.get());
   }
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";

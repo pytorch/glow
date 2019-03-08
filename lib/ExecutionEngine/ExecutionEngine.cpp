@@ -56,10 +56,7 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
       device_ = std::unique_ptr<runtime::DeviceManager>(
           runtime::DeviceManager::createDeviceManager(
               backend->getBackendKind()));
-      runtime::ResultCode initResult = device_->init();
-      (void)initResult;
-      assert(initResult == runtime::ResultCode::Executed &&
-             "Failed to init device");
+      EXIT_ON_ERR(device_->init());
     }
   }
 }
@@ -73,8 +70,9 @@ ExecutionEngine::~ExecutionEngine() {
 
 void ExecutionEngine::clear() {
   for (auto &func : compiledFunctions_) {
-    device_->evictNetwork(func.first(),
-                          [](std::string, runtime::ResultCode) {});
+    device_->evictNetwork(func.first(), [](std::string, llvm::Error err) {
+      EXIT_ON_ERR(std::move(err));
+    });
   }
   compiledFunctions_.clear();
 }
@@ -187,15 +185,13 @@ void ExecutionEngine::insertCompiledFunction(
   functionMap[name] = func.get();
   compiledFunctions_[name] = std::move(func);
 
-  std::promise<runtime::ResultCode> addPromise;
+  std::promise<llvm::Error> addPromise;
   auto fut = addPromise.get_future();
   device_->addNetwork(&M_, std::move(functionMap),
-                      [&addPromise](const Module *, runtime::ResultCode code) {
-                        addPromise.set_value(code);
+                      [&addPromise](const Module *, llvm::Error err) {
+                        addPromise.set_value(std::move(err));
                       });
-  fut.wait();
-  assert(fut.get() == runtime::ResultCode::Ready &&
-         "Compiled function failed to be added to device");
+  EXIT_ON_ERR(fut.get());
 }
 
 void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
