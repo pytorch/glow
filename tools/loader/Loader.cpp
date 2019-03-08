@@ -308,8 +308,8 @@ void Loader::compile(PlaceholderBindings &bindings) {
 
     // Quantize the graph based on the captured profile.
     auto *Q = quantization::quantizeFunction(
-        EE_, quantizationInfos, quantizationPrecision, F_, loweredMap_, oldName,
-        keepOriginalPrecisionForNodes, enableRowwiseOpt);
+        EE_, quantizationSchema, quantizationInfos, quantizationPrecision, F_,
+        loweredMap_, oldName, keepOriginalPrecisionForNodes, enableRowwiseOpt);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.

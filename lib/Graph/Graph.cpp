@@ -665,6 +665,7 @@ RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Constant *W,
                                                Node *B, TypeRef outTy,
+                                               quantization::Schema schema,
                                                bool transposeWeight) {
   // Since W is constant, quantize it in compilation time.
   // The quantized data is in qWeights, the scale of each row is in scales,
@@ -700,7 +701,8 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
   quantization::tensorRowwiseQuantization<int32_t>(
-      wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload());
+      wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload(),
+      schema);
 
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));
@@ -1452,7 +1454,7 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths) {
+    NodeValue indices, NodeValue lengths, quantization::Schema schema) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1466,32 +1468,31 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
 
   // Note: Using float offset here as that is what RWQ-SLWS expects.
-  quantization::tensorRowwiseQuantization<float>(data, rwqData->getPayload(),
-                                                 dataScales->getPayload(),
-                                                 dataOffsets->getPayload());
+  quantization::tensorRowwiseQuantization<float>(
+      data, rwqData->getPayload(), dataScales->getPayload(),
+      dataOffsets->getPayload(), schema);
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
-Function::createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                         Tensor &data,
-                                                         NodeValue weights,
-                                                         NodeValue indices,
-                                                         NodeValue lengths) {
+Function::createRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+    NodeValue lengths, quantization::Schema schema) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths);
+      this, name, data, weights, indices, lengths, schema);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                  Tensor &data,
                                                  NodeValue indices,
-                                                 NodeValue lengths) {
+                                                 NodeValue lengths,
+                                                 quantization::Schema schema) {
   auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths);
+      this, name, data, ones, indices, lengths, schema);
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *

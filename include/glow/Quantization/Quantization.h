@@ -103,7 +103,7 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
 /// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
 /// quantized function.
 Function *quantizeFunction(
-    const ExecutionEngine &EE,
+    const ExecutionEngine &EE, quantization::Schema schema,
     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
     ElemKind quantizationPrecision, Function *F,
     const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",

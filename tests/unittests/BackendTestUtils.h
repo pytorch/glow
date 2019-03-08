@@ -195,6 +195,7 @@ void compareAgainstInterpreter(BackendKind backendKind,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
                                ElemKind backendElemKind,
+                               quantization::Schema schema,
                                float allowedError = 0.0001,
                                bool enableRowwiseQuantization = false);
 

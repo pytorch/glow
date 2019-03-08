@@ -424,6 +424,8 @@ private:
   /// Execution engine used to check is a quantized operator is
   /// supported.
   const ExecutionEngine &EE_;
+  /// Quantization schema.
+  quantization::Schema schema_;
   /// Quantization precision.
   const ElemKind quantizationPrecision_;
   /// Set of node kinds that should not be quantized.
@@ -468,11 +470,12 @@ public:
   /// \p EE and \p doNotQuantizeKinds are used to check which
   /// nodes shouldn't be converted.
   FunctionQuantizer(Function &F, const ExecutionEngine &EE,
+                    quantization::Schema schema,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
                     const LoweredInfoMap &loweredMap)
-      : FunctionConverter(F), mod_(*F.getParent()), EE_(EE),
+      : FunctionConverter(F), mod_(*F.getParent()), EE_(EE), schema_(schema),
         quantizationPrecision_(quantizationPrecision),
         doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap) {
     // Build a mapping between node name and TensorQuantizatonParams.
@@ -557,7 +560,7 @@ public:
           // constant.
           if (Constant *wc = llvm::dyn_cast<Constant>(wq->getInput())) {
             auto *fcq = function_.createRowwiseQuantizedFullyConnected(
-                "rowwiseqfc", input, wc, bias, result.getType(),
+                "rowwiseqfc", input, wc, bias, result.getType(), schema_,
                 /* transposeWeight */ true);
             // Replace usages of quantized FC node (or its equivalent lowered
             // representation MM + BA) to RowwiseQuantizedFullyConnectedNode.
@@ -694,7 +697,7 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
 }
 
 Function *
-quantizeFunction(const ExecutionEngine &EE,
+quantizeFunction(const ExecutionEngine &EE, quantization::Schema schema,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  ElemKind quantizationPrecision, Function *F,
                  const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
@@ -710,8 +713,9 @@ quantizeFunction(const ExecutionEngine &EE,
 
   Function *G = F->clone(newFuncName);
 
-  FunctionQuantizer quantizer(*G, EE, quantizationInfos, quantizationPrecision,
-                              doNotQuantizeKinds, loweredMap);
+  FunctionQuantizer quantizer(*G, EE, schema, quantizationInfos,
+                              quantizationPrecision, doNotQuantizeKinds,
+                              loweredMap);
   quantizer.convert();
   if (enableRowwise) {
     quantizer.enableRowwise();
