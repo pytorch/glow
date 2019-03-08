@@ -94,7 +94,7 @@ TEST_P(DeviceManagerTest, Basic) {
       compileFunctions(backendKind, module.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  EXIT_ON_ERR(device->init());
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -152,7 +152,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  EXIT_ON_ERR(device->init());
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -251,7 +251,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
       compileFunctions(backendKind, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  EXIT_ON_ERR(device->init());
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -326,7 +326,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   FunctionMapTy functions2 =
       compileFunctions(backendKind, module2.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  EXIT_ON_ERR(device->init());
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -436,7 +436,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_EQ(functions.size(), 1);
   EXPECT_EQ(functions2.size(), 1);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  EXIT_ON_ERR(device->init());
+  ASSERT_FALSE(glow::errorToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -517,7 +517,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   CPUDeviceManager cpuCoreDevice(nullptr, 1);
-  EXIT_ON_ERR(cpuCoreDevice.init());
+  ASSERT_FALSE(glow::errorToBool(cpuCoreDevice.init()));
 
   uint64_t expectedBytes = 1;
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
@@ -590,7 +590,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
   DummyDeviceManager deviceManager(BackendKind::Interpreter);
-  EXIT_ON_ERR(deviceManager.init());
+  ASSERT_FALSE(glow::errorToBool(deviceManager.init()));
 
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
