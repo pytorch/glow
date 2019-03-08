@@ -50,12 +50,7 @@ namespace glow {
 //   // Regular test code.
 //   ...
 // }
-class BackendTest : public ::testing::TestWithParam<BackendKind> {
-public:
-  BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
-
-  ~BackendTest() override { mod_.clear(); }
-
+class BackendStatelessTest : public ::testing::TestWithParam<BackendKind> {
 protected:
   bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {
     return enabledBackends.find(GetParam()) != enabledBackends.end();
@@ -64,11 +59,18 @@ protected:
   const BackendKind Interpreter = BackendKind::Interpreter;
   const BackendKind CPU = BackendKind::CPU;
   const BackendKind OpenCL = BackendKind::OpenCL;
+};
 
+class BackendTest : public BackendStatelessTest {
+public:
+  BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+
+  ~BackendTest() override { mod_.clear(); }
+
+protected:
   ExecutionEngine EE_{GetParam()};
   Module &mod_;
   Function *F_;
-  Context ctx_;
 };
 
 static const auto all_backends = ::testing::Values(
