@@ -43,7 +43,7 @@ struct HostManager {
 
 // TODO use the actual type here once available.
 using ResultCBTy =
-    std::function<void(int, int, std::unique_ptr<glow::Context>)>;
+    std::function<void(int, int, std::unique_ptr<glow::PlaceholderBindings>)>;
 
 /// BackendId associated with the Glow backend.
 class BackendId {
@@ -86,12 +86,14 @@ public:
   /// \returns the glow Backend of this BackendId.
   glow::Backend *getGlowBackend() { return glowBackend_.get(); }
 
-  /// Run the network named by \p networkName using HostManager with context \p
-  /// ctx afterwhich the result callback \p cb will be called.
+  /// Run the network named by \p networkName using HostManager with bindings \p
+  /// bindings afterwhich the result callback \p cb will be called.
   void runOnHostManager(llvm::StringRef networkName,
-                        std::unique_ptr<Context> ctx, ResultCBTy cb) {
+                        std::unique_ptr<PlaceholderBindings> bindings,
+                        ResultCBTy cb) {
     // TODO enable once HostManager is landed.
-    // hostManager_->runNetwork(networkName, std::move(ctx), std::move(cb));
+    // hostManager_->runNetwork(networkName, std::move(bindings),
+    // std::move(cb));
   }
 
 private:
@@ -128,8 +130,10 @@ public:
 
   // Call BackendId::runOnHostManager
   void runOnHostManager(llvm::StringRef networkName,
-                        std::unique_ptr<Context> ctx, ResultCBTy cb) {
-    backendIdPtr_->runOnHostManager(networkName, std::move(ctx), std::move(cb));
+                        std::unique_ptr<PlaceholderBindings> bindings,
+                        ResultCBTy cb) {
+    backendIdPtr_->runOnHostManager(networkName, std::move(bindings),
+                                    std::move(cb));
   }
 
 private:

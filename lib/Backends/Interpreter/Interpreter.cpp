@@ -76,14 +76,17 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MaxPoolNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
+    // Note: Int8QTy Log, Tanh, and Sigmoid are lowered into a lookup
+    // table. However, we do not lower them until after they're quantized. So we
+    // need to return here that they are supported as Int8QTy.
+  case Kinded::Kind::LogNodeKind:
+  case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::PowNodeKind:
-  case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
-  case Kinded::Kind::SigmoidNodeKind:
-  case Kinded::Kind::TanhNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
 
@@ -186,7 +189,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::OffsetsIdx) ==
-            ElemKind::Int32ITy) &&
+            ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
             ElemKind::FloatTy) &&
@@ -203,7 +206,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::Int8FusedQTy) &&
+            ElemKind::UInt8FusedQTy) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                WeightsIdx) == ElemKind::FloatTy) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::

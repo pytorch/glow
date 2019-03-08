@@ -16,7 +16,7 @@
 
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Graph/Context.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -28,16 +28,15 @@
 using namespace glow;
 using namespace runtime;
 
-HostManager::HostManager(const std::vector<DeviceConfig> &configs) {
+HostManager::HostManager(const std::vector<DeviceManagerConfig> &configs) {
   DeviceIDTy deviceCount = 0;
 
   if (configs.size() > 0) {
     backend_.reset(createBackend(configs[0].backendKind));
   }
   for (auto &config : configs) {
-    devices_[deviceCount] =
-        std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
-            config.backendKind, config.deviceName));
+    devices_[deviceCount] = std::unique_ptr<DeviceManager>(
+        DeviceManager::createDeviceManager(config.backendKind, nullptr));
     ResultCode response = devices_[deviceCount]->init();
     assert(response == ResultCode::Executed && "Failed to initialize device.");
     (void)response;
@@ -142,27 +141,28 @@ void HostManager::clearHost() {
   roots_.clear();
 }
 
-RunIdentifierTy HostManager::runNetwork(llvm::StringRef networkName,
-                                        std::unique_ptr<Context> context,
-                                        ResultCBTy callback) {
+RunIdentifierTy
+HostManager::runNetwork(llvm::StringRef networkName,
+                        std::unique_ptr<PlaceholderBindings> bindings,
+                        ResultCBTy callback) {
 
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (roots_.find(networkName) == roots_.end()) {
-    callback(currentRun, ResultCode::Failed, std::move(context));
+    callback(currentRun, ResultCode::Failed, std::move(bindings));
     return currentRun;
   }
   if (activeRequestCount_ >= activeRequestLimit_) {
-    callback(currentRun, ResultCode::Canceled, std::move(context));
+    callback(currentRun, ResultCode::Canceled, std::move(bindings));
     return currentRun;
   }
   activeRequestCount_++;
-  executor_->run(roots_[networkName].get(), std::move(context), currentRun,
+  executor_->run(roots_[networkName].get(), std::move(bindings), currentRun,
                  [&activeRequest = this->activeRequestCount_,
                   callback](RunIdentifierTy runID, ResultCode result,
-                            std::unique_ptr<Context> context) {
+                            std::unique_ptr<PlaceholderBindings> bindings) {
                    --activeRequest;
-                   callback(runID, result, std::move(context));
+                   callback(runID, result, std::move(bindings));
                  });
   return currentRun;
 }

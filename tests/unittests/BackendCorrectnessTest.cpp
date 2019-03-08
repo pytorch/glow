@@ -17,8 +17,8 @@
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
@@ -38,83 +38,6 @@ protected:
 };
 
 class CPUOnly : public BackendCorrectnessTest {};
-
-namespace {
-
-/// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
-/// quantization parameters from the profile, given the lowered info passed in
-/// via \p loweredMap.
-static std::vector<NodeQuantizationInfo>
-profileAndGetNodeQuantizationInfo(Context &ctx, ExecutionEngine &EE,
-                                  Function *origF,
-                                  const LoweredInfoMap &loweredMap) {
-  Function *profileF = glow::profileQuantization(ctx, origF);
-  EE.compile(CompilationMode::Infer, profileF);
-
-  EE.run(ctx);
-
-  return quantization::generateNodeQuantizationInfos(ctx, profileF, loweredMap);
-}
-
-/// Signature of functions used to create and init a Function. Returns a pair of
-/// the Function created and the Placeholder of the output of the Function.
-using CreateAndInitFunction =
-    std::function<FunctionTensorPair(Context &, ExecutionEngine &)>;
-
-/// Given a method \p createAndInitFunction that creates and initializes a
-/// Function with a single output Tensor, \returns a bool representing if the
-/// output Tensor of executing the Function on the Interpreter backend is equal
-/// to executing it on a backend of kind \p backendKind. If \p quantize is true
-/// the Function will be profiled on the Interpreter, and then both Interpreter
-/// and backendKind Functions will be quantized with the resulting profile.
-static bool
-compareAgainstInterpreter(BackendKind backendKind,
-                          CreateAndInitFunction createAndInitFunction,
-                          bool quantize, float allowedError = 0.0001) {
-  ExecutionEngine IEE{BackendKind::Interpreter};
-  ExecutionEngine BEE{backendKind};
-  Context ICtx, BCtx;
-
-  // Create the same network on the interpreter and the backend being tested.
-  FunctionTensorPair IFT = createAndInitFunction(ICtx, IEE);
-  FunctionTensorPair BFT = createAndInitFunction(BCtx, BEE);
-
-  Function *IF = IFT.first;
-  Function *BF = BFT.first;
-
-  // Profile the graph on the interpreter to get quantization info, and then
-  // quantize both the Interpreter and Backend Functions with this info.
-  if (quantize) {
-    // Lower everything for profiling in a cloned PF, keeping track of lowered
-    // info in loweredMap, which is then used when generating QI.
-    Function *PF = IF->clone("profile");
-    LoweredInfoMap loweredMapForProf;
-    lower(PF, &loweredMapForProf);
-    std::vector<NodeQuantizationInfo> QI =
-        profileAndGetNodeQuantizationInfo(ICtx, IEE, PF, loweredMapForProf);
-
-    // Lower only as the backends prefer for actually quantizing the two
-    // functions of the Interpreter and Backend.
-    LoweredInfoMap loweredMapForQuantI;
-    LoweredInfoMap loweredMapForQuantB;
-    lower(IF, &loweredMapForQuantI, IEE.getBackend());
-    lower(BF, &loweredMapForQuantB, BEE.getBackend());
-    IF = quantization::quantizeFunction(IEE, QI, ElemKind::Int8QTy, IF,
-                                        loweredMapForQuantI);
-    BF = quantization::quantizeFunction(BEE, QI, ElemKind::Int8QTy, BF,
-                                        loweredMapForQuantB);
-  }
-
-  IEE.compile(CompilationMode::Infer, IF);
-  BEE.compile(CompilationMode::Infer, BF);
-
-  IEE.run(ICtx);
-  BEE.run(BCtx);
-
-  return IFT.second->isEqual(*BFT.second, allowedError);
-}
-
-} // namespace
 
 TEST_P(BackendCorrectnessTest, convTest) {
   PseudoRNG PRNG;
@@ -281,8 +204,8 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   auto *var =
       mod.createPlaceholder(glow::ElemKind::FloatTy, {2}, "output", false);
-  Context ctx;
-  auto *outputTensor = ctx.allocate(var);
+  PlaceholderBindings bindings;
+  auto *outputTensor = bindings.allocate(var);
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at
     // destruction.
@@ -329,9 +252,9 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
   function->setupRuns();
-  function->beforeRun(ctx);
-  function->execute(&ctx);
-  function->afterRun(ctx);
+  function->beforeRun(bindings);
+  function->execute(&bindings);
+  function->afterRun(bindings);
   function->tearDownRuns();
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
@@ -518,13 +441,13 @@ TEST_P(BackendCorrectnessTest, convOps) {
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
-  EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                                        /* quantize */ false, 0.0004));
+  compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
+                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0004);
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
-  EXPECT_TRUE(compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                                        /* quantize */ true));
+  compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
+                            ElemKind::Int8QTy, ElemKind::Int8QTy);
 }
 
 TEST_P(CPUOnly, complexNet1) {

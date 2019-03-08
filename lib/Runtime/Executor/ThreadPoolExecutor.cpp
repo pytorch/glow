@@ -17,7 +17,7 @@
 #include "ThreadPoolExecutor.h"
 
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Graph/Context.h"
+#include "glow/Graph/PlaceholderBindings.h"
 
 #include <queue>
 #include <unordered_set>
@@ -55,10 +55,11 @@ void InflightBarrier::wait() {
   cv_.wait(lock, [&] { return count_ == 0; });
 }
 
-ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
-                               std::unique_ptr<Context> resultContext,
-                               ResultCBTy doneCb)
-    : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
+ExecutionState::ExecutionState(
+    RunIdentifierTy id, const DAGNode *root,
+    std::unique_ptr<PlaceholderBindings> resultPlaceholderBindings,
+    ResultCBTy doneCb)
+    : runId_(id), cb_(doneCb), resultCtx_(std::move(resultPlaceholderBindings)),
       inflightNodes_(0), resultCode_(ResultCode::Ready) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
@@ -77,8 +78,9 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     // Make a counter for the number of node parents done.
     nodeParentsDone_[node] = 0;
 
-    // Make an (empty) input Context for the node.
-    inputCtxs_.insert(std::make_pair(node, llvm::make_unique<Context>()));
+    // Make an (empty) input PlaceholderBindings for the node.
+    inputCtxs_.insert(
+        std::make_pair(node, llvm::make_unique<PlaceholderBindings>()));
 
     // Push all unvisited children onto the BFS queue.
     for (const auto &child : node->children) {
@@ -93,29 +95,30 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
 
 void ExecutionState::insertIntoNodeCtx(const DAGNode *node, Placeholder *P,
                                        Tensor &&T) {
-  // Get a raw pointer to the input Context for the node. It should have
-  // been created in the constructor.
+  // Get a raw pointer to the input PlaceholderBindings for the node. It should
+  // have been created in the constructor.
   auto ctxIt = inputCtxs_.find(node);
 
   if (ctxIt == inputCtxs_.end()) {
-    assert(!"Input context not found but should exist!");
+    assert(!"Input bindings not found but should exist!");
   }
 
-  Context *ctx = (ctxIt->second).get();
-  assert(ctx && "Input context for node is null");
+  PlaceholderBindings *ctx = (ctxIt->second).get();
+  assert(ctx && "Input bindings for node is null");
 
   // Insert the placeholder-tensor pair.
-  std::lock_guard<std::mutex> lock(contextMtx_);
+  std::lock_guard<std::mutex> lock(bindingsMtx_);
   ctx->insert(P, std::move(T));
 }
 
-std::unique_ptr<Context>
-ExecutionState::getUniqueNodeContextPtr(const DAGNode *node) {
-  // The input Context for the node should have been created in the constructor.
+std::unique_ptr<PlaceholderBindings>
+ExecutionState::getUniqueNodePlaceholderBindingsPtr(const DAGNode *node) {
+  // The input PlaceholderBindings for the node should have been created in the
+  // constructor.
   auto ctxIt = inputCtxs_.find(node);
 
   if (ctxIt == inputCtxs_.end()) {
-    assert(!"Input context not found but should exist!");
+    assert(!"Input bindings not found but should exist!");
   }
 
   return std::move(ctxIt->second);
@@ -167,10 +170,11 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
 }
 
 void ExecutionState::insertIntoResultCtx(Placeholder *P, Tensor &&T) {
-  // The result Context should have been been created in the constructor
-  // and should not yet have been moved out if this function is being called.
-  assert(resultCtx_ && "Execution result context should exist!");
-  std::lock_guard<std::mutex> lock(contextMtx_);
+  // The result PlaceholderBindings should have been been created in the
+  // constructor and should not yet have been moved out if this function is
+  // being called.
+  assert(resultCtx_ && "Execution result bindings should exist!");
+  std::lock_guard<std::mutex> lock(bindingsMtx_);
   Tensor *tensor = resultCtx_->get(P);
 
   if (tensor) {
@@ -180,16 +184,20 @@ void ExecutionState::insertIntoResultCtx(Placeholder *P, Tensor &&T) {
   }
 }
 
-std::unique_ptr<Context> ExecutionState::getUniqueResultContextPtr() {
-  // The result Context should have been been created in the constructor.
-  assert(resultCtx_ && "Execution result context should exist!");
+std::unique_ptr<PlaceholderBindings>
+ExecutionState::getUniqueResultPlaceholderBindingsPtr() {
+  // The result PlaceholderBindings should have been been created in the
+  // constructor.
+  assert(resultCtx_ && "Execution result bindings should exist!");
   return std::move(resultCtx_);
 }
 
-Context *ExecutionState::getRawResultContextPtr() const {
-  // The result Context should have been been created in the constructor
-  // and should not yet have been moved out if this function is being called.
-  assert(resultCtx_ && "Execution result context should exist!");
+PlaceholderBindings *
+ExecutionState::getRawResultPlaceholderBindingsPtr() const {
+  // The result PlaceholderBindings should have been been created in the
+  // constructor and should not yet have been moved out if this function is
+  // being called.
+  assert(resultCtx_ && "Execution result bindings should exist!");
   return resultCtx_.get();
 }
 
@@ -213,18 +221,18 @@ void ThreadPoolExecutor::shutdown() {
 }
 
 void ThreadPoolExecutor::run(const DAGNode *root,
-                             std::unique_ptr<Context> context,
+                             std::unique_ptr<PlaceholderBindings> bindings,
                              RunIdentifierTy runId, ResultCBTy cb) {
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
-    cb(runId, ResultCode::Canceled, std::move(context));
+    cb(runId, ResultCode::Canceled, std::move(bindings));
     return;
   }
 
   // If list of roots is empty, there is nothing to do. Give back the
-  // context so the caller can reuse it.
+  // bindings so the caller can reuse it.
   if (!root) {
-    cb(runId, ResultCode::Executed, std::move(context));
+    cb(runId, ResultCode::Executed, std::move(bindings));
     return;
   }
 
@@ -233,16 +241,16 @@ void ThreadPoolExecutor::run(const DAGNode *root,
     std::lock_guard<std::mutex> lock(executionStatesMutex_);
 
     // If the given run ID corresponds to a run already in progress, there is
-    // also nothing to do, but return an error. Give back the context so the
+    // also nothing to do, but return an error. Give back the bindings so the
     // caller can reuse it.
     if (executionStates_.find(runId) != executionStates_.end()) {
-      cb(runId, ResultCode::Failed, std::move(context));
+      cb(runId, ResultCode::Failed, std::move(bindings));
       return;
     }
 
     // Otherwise, create execution state tracker object for this run ID.
     executionState = std::make_shared<ExecutionState>(
-        runId, root, std::move(context), std::move(cb));
+        runId, root, std::move(bindings), std::move(cb));
     executionStates_.insert(std::make_pair(runId, executionState));
   }
 
@@ -257,10 +265,11 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   inflightBarrier_.increment(numChildren);
 
   for (auto const &node : root->children) {
-    // Propagate placeholders from the given starter Context into the input
-    // Context for the current node being processed.
-    propagatePlaceholdersForNode(executionState, node,
-                                 executionState->getRawResultContextPtr());
+    // Propagate placeholders from the given starter PlaceholderBindings into
+    // the input PlaceholderBindings for the current node being processed.
+    propagatePlaceholdersForNode(
+        executionState, node,
+        executionState->getRawResultPlaceholderBindingsPtr());
 
     // Execute the node.
     executeDAGNode(executionState, node);
@@ -269,7 +278,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 
 void ThreadPoolExecutor::propagatePlaceholdersForNode(
     std::shared_ptr<ExecutionState> executionState, const DAGNode *node,
-    const Context *ctx) {
+    const PlaceholderBindings *ctx) {
   // Get the symbol table for the node.
   const SymbolTableTy &symbolTable = (node->runtimeBundle).getSymbolTable();
 
@@ -279,8 +288,8 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
 
     if (symbolInfo.input) {
       // If the symbol is an input, look for a Placeholder in ctx with
-      // the same name and copy the corresponding Tensor into the input Context
-      // being prepared for the node.
+      // the same name and copy the corresponding Tensor into the input
+      // PlaceholderBindings being prepared for the node.
       auto *placeholder = ctx->getPlaceholderByName(symbolName);
 
       if (placeholder) {
@@ -315,14 +324,15 @@ void ThreadPoolExecutor::executeDAGNode(
 
   auto &deviceManager = deviceManagerIt->second;
 
-  // Get the Context containing all of the inputs for the node.
-  std::unique_ptr<Context> nodeCtx =
-      executionState->getUniqueNodeContextPtr(node);
+  // Get the PlaceholderBindings containing all of the inputs for the node.
+  std::unique_ptr<PlaceholderBindings> nodeCtx =
+      executionState->getUniqueNodePlaceholderBindingsPtr(node);
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
-      [this, executionState, node](RunIdentifierTy id, ResultCode resultCode,
-                                   std::unique_ptr<Context> resultCtx) {
+      [this, executionState,
+       node](RunIdentifierTy id, ResultCode resultCode,
+             std::unique_ptr<PlaceholderBindings> resultCtx) {
         // Immediately move the handling of the result onto threadPool_ to
         // avoid doing work on the DeviceManager thread.
         this->threadPool_.submit([this, executionState, node, resultCode,
@@ -335,8 +345,9 @@ void ThreadPoolExecutor::executeDAGNode(
 
 void ThreadPoolExecutor::propagateOutputPlaceholders(
     std::shared_ptr<ExecutionState> executionState,
-    std::unique_ptr<Context> ctx) {
-  // Copy all of the Placeholders in ctx into the result Context for the run.
+    std::unique_ptr<PlaceholderBindings> ctx) {
+  // Copy all of the Placeholders in ctx into the result PlaceholderBindings for
+  // the run.
   for (const auto &phTensorPair : ctx->pairs()) {
     auto *placeholder = phTensorPair.first;
     auto *tensor = phTensorPair.second;
@@ -347,7 +358,7 @@ void ThreadPoolExecutor::propagateOutputPlaceholders(
 
 void ThreadPoolExecutor::handleDeviceManagerResult(
     std::shared_ptr<ExecutionState> executionState, ResultCode resultCode,
-    std::unique_ptr<Context> ctx, const DAGNode *node) {
+    std::unique_ptr<PlaceholderBindings> ctx, const DAGNode *node) {
   // If executionState is null, that means that the object was deleted
   // while a node was executing. That should never happen.
   assert(executionState && "Execution state should not be null");
@@ -356,15 +367,15 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   executionState->setResultCode(resultCode);
 
   // If the DeviceManager executed the node, propagate its output Placeholders
-  // to its children or the result Context as appropriate.
+  // to its children or the result PlaceholderBindings as appropriate.
   if (executionState->getResultCode() == ResultCode::Executed) {
     if ((node->children).empty()) {
       // If the node has no children, propagate its outputs to the result
-      // Context for the run.
+      // PlaceholderBindings for the run.
       propagateOutputPlaceholders(executionState, std::move(ctx));
     } else {
-      // If the node has children, propagate its outputs to the input Contexts
-      // for any of its children that need them as inputs.
+      // If the node has children, propagate its outputs to the input
+      // PlaceholderBindingss for any of its children that need them as inputs.
       for (auto &child : node->children) {
         propagatePlaceholdersForNode(executionState, child, ctx.get());
 
@@ -390,7 +401,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     // the callback and erase the state information.
     ResultCBTy cb = executionState->getCallback();
     cb(executionState->getRunId(), executionState->getResultCode(),
-       executionState->getUniqueResultContextPtr());
+       executionState->getUniqueResultPlaceholderBindingsPtr());
 
     // Clean up the state stored for the run.
     std::lock_guard<std::mutex> lock(executionStatesMutex_);

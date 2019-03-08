@@ -85,7 +85,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST() {
-  Context ctx;
+  PlaceholderBindings bindings;
   llvm::outs() << "Loading the mnist database.\n";
 
   Tensor imageInputs;
@@ -114,23 +114,23 @@ void testMNIST() {
   Placeholder *A = mod.createPlaceholder(
       ElemKind::FloatTy, {minibatchSize, 28, 28, 1}, "input", false);
 
-  auto *CV0 = F->createConv(ctx, "conv", A, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(bindings, "conv", A, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv(ctx, "conv", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv", MP0, 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP1, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP1, 10);
   Placeholder *selected = mod.createPlaceholder(
       ElemKind::Int64ITy, {minibatchSize, 1}, "selected", false);
   auto *SM = F->createSoftMax("sm", FCL1, selected);
   SaveNode *result = F->createSave("return", SM);
 
-  Tensor *inputTensor = ctx.allocate(A);
-  Tensor *resultTensor = ctx.allocate(result->getPlaceholder());
-  ctx.allocate(selected);
+  Tensor *inputTensor = bindings.allocate(A);
+  Tensor *resultTensor = bindings.allocate(result->getPlaceholder());
+  bindings.allocate(selected);
 
   Function *TF = glow::differentiate(F, TC);
 
@@ -152,14 +152,15 @@ void testMNIST() {
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    runBatch(EE, ctx, numIterations, sampleCounter, {A, selected},
+    runBatch(EE, bindings, numIterations, sampleCounter, {A, selected},
              {&imageInputs, &labelInputs});
 
     timer.stopTimer();
   }
   llvm::outs() << "Validating.\n";
 
-  ::glow::convertPlaceholdersToConstants(F, ctx, {A, result->getPlaceholder()});
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {A, result->getPlaceholder()});
   EE.compile(CompilationMode::Infer, F);
 
   auto LIH = labelInputs.getHandle<int64_t>();
@@ -170,7 +171,7 @@ void testMNIST() {
 
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
     inputTensor->copyConsecutiveSlices(&imageInputs, minibatchSize * iter);
-    EE.run(ctx);
+    EE.run(bindings);
 
     for (unsigned i = 0; i < minibatchSize; i++) {
       auto T = resultTensor->getHandle<>().extractSlice(i);

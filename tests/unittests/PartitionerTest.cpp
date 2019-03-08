@@ -28,11 +28,11 @@ public:
 protected:
   Module mod_;
   Function *F_;
-  Context ctx_;
+  PlaceholderBindings bindings_;
 };
 
 /// Execute a graph of functions based on the given DAG.
-static void executeDAG(DAGNode *G, Module &mod, Context &ctx,
+static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
                        llvm::ArrayRef<Placeholder *> vars,
                        llvm::ArrayRef<Tensor *> inputs) {
   std::unordered_map<std::string, Function *> name2func;
@@ -54,8 +54,8 @@ static void executeDAG(DAGNode *G, Module &mod, Context &ctx,
       ExecutionEngine EE;
       Function *func = name2func[dag->name];
       EE.compile(CompilationMode::Infer, func);
-      updateInputPlaceholders(ctx, vars, inputs);
-      EE.run(ctx);
+      updateInputPlaceholders(bindings, vars, inputs);
+      EE.run(bindings);
     }
     for (int i = 0, e = dag->children.size(); i < e; i++) {
       exeList.push_back(dag->children.at(i));
@@ -73,7 +73,7 @@ TEST_F(PartitionerTest, Basic1) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
-  ctx_.allocate(input);
+  bindings_.allocate(input);
   w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
   b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
 
@@ -112,15 +112,15 @@ TEST_F(PartitionerTest, Basic1) {
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
   auto *save = F_->createSave("ret", mul);
-  auto &res = *ctx_.allocate(save->getPlaceholder());
+  auto &res = *bindings_.allocate(save->getPlaceholder());
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
-  updateInputPlaceholders(ctx_, {input}, {&in});
-  EE.run(ctx_);
+  updateInputPlaceholders(bindings_, {input}, {&in});
+  EE.run(bindings_);
   Tensor ref = res.clone();
 
   std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
@@ -131,10 +131,10 @@ TEST_F(PartitionerTest, Basic1) {
   ASSERT_EQ(myList.roots.size(), 1);
 
   // Run the paritioned graph and compare the results.
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
-    ctx_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, ctx_, {input}, {&in});
+    bindings_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
@@ -148,8 +148,8 @@ TEST_F(PartitionerTest, Basic2) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input1", false);
-  ctx_.allocate(input);
-  ctx_.allocate(input1);
+  bindings_.allocate(input);
+  bindings_.allocate(input1);
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
@@ -181,15 +181,15 @@ TEST_F(PartitionerTest, Basic2) {
   // Join branches.
   auto *mul = F_->createMul("mul", L, R);
   auto *save = F_->createSave("ret", mul);
-  auto &res = *ctx_.allocate(save->getPlaceholder());
+  auto &res = *bindings_.allocate(save->getPlaceholder());
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
-  updateInputPlaceholders(ctx_, {input, input1}, {&in, &in});
-  EE.run(ctx_);
+  updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
+  EE.run(bindings_);
   Tensor ref = res.clone();
 
   std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
@@ -200,11 +200,112 @@ TEST_F(PartitionerTest, Basic2) {
   ASSERT_EQ(myList.roots.size(), 1);
 
   // Run the paritioned graph and compare the results.
-  ctx_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(mod_.getPlaceholders());
   for (auto it = myList.roots.begin(); it != myList.roots.end(); ++it) {
-    ctx_.allocate(mod_.getPlaceholders());
-    executeDAG((*it).get(), mod_, ctx_, {input}, {&in});
+    bindings_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
+}
+
+/// This one tests the roofline computed with compute, memory and communication
+/// costs
+TEST_F(PartitionerTest, Basic1Roofline) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+  auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+  auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
+  bindings_.allocate(input);
+  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+
+  // Initial FC.
+  Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
+  I = F_->createSigmoid("initial_sigmoid", I);
+
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
+  L = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
+  L = F_->createSigmoid("left_sigmoid2", L);
+
+  // Right branch.
+  auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
+  R = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
+  R = F_->createSigmoid("right_sigmoid2", R);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L, R);
+  auto *save = F_->createSave("ret", mul);
+  auto &res = *bindings_.allocate(save->getPlaceholder());
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 32});
+  ExecutionEngine EE;
+
+  EE.compile(CompilationMode::Infer, F_);
+  updateInputPlaceholders(bindings_, {input}, {&in});
+  EE.run(bindings_);
+  Tensor ref = res.clone();
+
+  std::unordered_map<Node *, std::string> nodeNamesMap;
+  for (auto &node : F_->getNodes()) {
+    nodeNamesMap[&node] = node.getName();
+  }
+
+  std::vector<DeviceInfo> devices = {{3072, 100, 10, 0.1, 1, 0.05},
+                                     {3072, 100, 10, 0.1, 1, 0.05},
+                                     {3072, 100, 10, 0.1, 1, 0.05}};
+  Partitioner myPartitioner(&mod_, devices);
+
+  DAGNodeList myList = std::move(myPartitioner.Partition());
+
+  // check compute costs
+  std::unordered_map<std::string, float> expectedComputeTime{
+      {"initial_sigmoid", 128},
+      {"left_sigmoid2", 64},
+      {"fc_add_bias3", 192},
+      {"right_sigmoid1", 128},
+      {"mul", 96},
+      {"fc_add_bias2", 96},
+      {"ret", 0},
+      {"fc_dot", 21760},
+      {"left_sigmoid1", 128},
+      {"fc_add_bias", 192},
+      {"fc_dot1", 10240},
+      {"right_sigmoid2", 64},
+      {"fc_add_bias1", 192},
+      {"fc_dot2", 5120},
+      {"fc_dot3", 10240},
+      {"fc_dot4", 5120},
+      {"fc_add_bias4", 96},
+  };
+  ASSERT_EQ(myPartitioner.getComputeTime().size(), expectedComputeTime.size());
+  for (auto &el : myPartitioner.getComputeTime()) {
+    Node *n = el.first;
+    float expected = expectedComputeTime[nodeNamesMap[n].c_str()];
+    float res = el.second;
+    ASSERT_EQ(expected, res);
+  }
+
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(myList.roots.size(), 1);
 }

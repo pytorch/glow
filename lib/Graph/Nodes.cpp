@@ -796,6 +796,15 @@ bool LengthsSumNode::verify() const {
                            getLengths().dims().size(), size_t(1), this);
 }
 
+bool BatchedReduceMeanNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
+}
+
 bool SparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), getData().getElementType(), this);
   isValid &= checkType(getWeights(), getData().getElementType(), this);
@@ -818,7 +827,7 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
   isValid &= checkType(getData(), ElemKind::Int8QTy, this);
   isValid &= checkType(getScales(), ElemKind::FloatTy, this);
-  isValid &= checkType(getOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getOffsets(), ElemKind::FloatTy, this);
   isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
   isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
@@ -846,7 +855,7 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
 
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
-  isValid &= checkType(getData(), ElemKind::Int8FusedQTy, this);
+  isValid &= checkType(getData(), ElemKind::UInt8FusedQTy, this);
   isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
   isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);

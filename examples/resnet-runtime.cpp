@@ -65,23 +65,26 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
 }
 
 /// Starts a run of resnet50 on the given image. The image must be already
-/// loaded into the input placeholder in /p ctx.
+/// loaded into the input placeholder in /p bindings.
 /// If, at the end of the run the number of \p returned results is equal to
 /// maxImages, the \p finished promise is set.
 void dispatchClassify(unsigned int id, HostManager *hostManager,
-                      std::string path, std::unique_ptr<Context> ctx,
+                      std::string path,
+                      std::unique_ptr<PlaceholderBindings> bindings,
                       std::atomic<size_t> &returned,
                       std::promise<void> &finished) {
   auto runid = hostManager->runNetwork(
-      "resnet50" + std::to_string(id), std::move(ctx),
-      [id, path, &returned, &finished](RunIdentifierTy, ResultCode r,
-                                       std::unique_ptr<Context> ctx) {
+      "resnet50" + std::to_string(id), std::move(bindings),
+      [id, path, &returned,
+       &finished](RunIdentifierTy, ResultCode r,
+                  std::unique_ptr<PlaceholderBindings> bindings) {
         if (r == ResultCode::Canceled) {
           llvm::outs() << "(" << id << ") "
                        << "Too Many Active Requests.\n";
         } else {
           size_t maxIdx =
-              ctx->get(ctx->getPlaceholderByName("save_gpu_0_softmax"))
+              bindings
+                  ->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
                   ->getHandle()
                   .minMaxArg()
                   .second;
@@ -102,12 +105,12 @@ int main(int argc, char **argv) {
   llvm::outs() << "Initializing " << numDevices
                << " CPU Devices on HostManager.\n";
 
-  std::vector<DeviceConfig> configs;
+  std::vector<DeviceManagerConfig> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = DeviceConfig();
-    config.deviceName = "CPU" + std::to_string(i);
+    auto config = DeviceManagerConfig();
+    config.deviceConfig = nullptr;
     config.backendKind = BackendKind::CPU;
-    configs.push_back(config);
+    configs.push_back(std::move(config));
   }
 
   std::unique_ptr<HostManager> hostManager =
@@ -167,14 +170,15 @@ int main(int argc, char **argv) {
         readPngImageAndPreprocess(path, ImageNormalizationMode::k0to1,
                                   ImageChannelOrder::BGR, ImageLayout::NCHW,
                                   /* useImagenetNormalization */ true);
-    std::unique_ptr<Context> ctx = llvm::make_unique<Context>();
+    std::unique_ptr<PlaceholderBindings> bindings =
+        llvm::make_unique<PlaceholderBindings>();
 
-    ctx->allocate(modules[index]->getPlaceholders());
+    bindings->allocate(modules[index]->getPlaceholders());
     Tensor batch = image.getUnowned(inputType->dims());
-    updateInputPlaceholders(*ctx, {inputs[index]}, {&batch});
+    updateInputPlaceholders(*bindings, {inputs[index]}, {&batch});
 
-    dispatchClassify(index, hostManager.get(), std::move(path), std::move(ctx),
-                     returned, finished);
+    dispatchClassify(index, hostManager.get(), std::move(path),
+                     std::move(bindings), returned, finished);
 
     dirIt.increment(code);
     currDevice++;

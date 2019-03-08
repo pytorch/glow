@@ -47,3 +47,16 @@ op {
     ints: 3
   }
 }
+op {
+  output: "tensor_string_to_uint8_fill"
+  type: "GivenTensorByteStringToUInt8Fill"
+  arg {
+    name: "shape"
+    ints: 2
+    ints: 2
+  }
+  arg {
+    name: "values"
+    strings: "\200\201\202\203"
+  }
+}

@@ -162,16 +162,16 @@ void Graph::run(
     phs.push_back(var);
   }
 
-  auto ctx = llvm::make_unique<Context>();
+  auto bindings = llvm::make_unique<PlaceholderBindings>();
 
   // Run inference.
   auto &mod = executionEngine_.getModule();
-  ctx->allocate(mod.getPlaceholders());
-  updateInputPlaceholders(*ctx, phs, tensors);
+  bindings->allocate(mod.getPlaceholders());
+  updateInputPlaceholders(*bindings, phs, tensors);
 
   // Lambda capturing work to do after the graph has finished running.
   auto afterRun = [tensors = std::move(tensors), outputPlaceholderToBuffer](
-                      std::unique_ptr<glow::Context> ctx) {
+                      std::unique_ptr<glow::PlaceholderBindings> bindings) {
     // Tensors do not own underlying memory for input buffer,
     // just delete memory allocated for the tensor object itself.
     for (size_t i = 0; i < tensors.size(); ++i) {
@@ -181,7 +181,7 @@ void Graph::run(
     // Copy output data from the graph to the onnxifi outputs.
     for (auto &outputVar : outputPlaceholderToBuffer) {
       void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-      Tensor *res = ctx->get(outputVar.first);
+      Tensor *res = bindings->get(outputVar.first);
       memcpy(outputAddress, res->getUnsafePtr(),
              res->size() * res->getType().getElementSize());
     }
@@ -189,14 +189,15 @@ void Graph::run(
 
   if (backendPtr_->getUseHostManager()) {
     backendPtr_->runOnHostManager(
-        inferenceFunctionName, std::move(ctx),
-        [afterRun = std::move(afterRun)](int runIdentifier, int resultCode,
-                                         std::unique_ptr<glow::Context> ctx) {
-          afterRun(std::move(ctx));
+        inferenceFunctionName, std::move(bindings),
+        [afterRun = std::move(afterRun)](
+            int runIdentifier, int resultCode,
+            std::unique_ptr<glow::PlaceholderBindings> bindings) {
+          afterRun(std::move(bindings));
         });
   } else {
-    executionEngine_.run(*ctx);
-    afterRun(std::move(ctx));
+    executionEngine_.run(*bindings);
+    afterRun(std::move(bindings));
   }
 }
 

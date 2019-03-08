@@ -188,7 +188,7 @@ void testPTB() {
                               minibatchSize, maxNumWords);
   llvm::outs() << "Loaded " << numWords << " words.\n";
   ExecutionEngine EE(executionBackend);
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Construct the network:
   TrainingConfig TC;
@@ -202,10 +202,10 @@ void testPTB() {
 
   auto *X = mod.createPlaceholder(
       ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input", false);
-  ctx.allocate(X);
+  bindings.allocate(X);
   auto *Y = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, numSteps},
                                   "selected", false);
-  ctx.allocate(Y);
+  bindings.allocate(Y);
 
   std::vector<Node *> slicesX;
 
@@ -217,8 +217,8 @@ void testPTB() {
   }
 
   std::vector<NodeValue> outputNodes;
-  F->createSimpleRNN(ctx, "rnn", slicesX, minibatchSize, hiddenSize, vocabSize,
-                     outputNodes);
+  F->createSimpleRNN(bindings, "rnn", slicesX, minibatchSize, hiddenSize,
+                     vocabSize, outputNodes);
 
   // O has a shape of {numSteps * minibatchSize, vocabSize}
   Node *O = F->createConcat("output", outputNodes, 0);
@@ -228,7 +228,7 @@ void testPTB() {
 
   auto *SM = F->createSoftMax("softmax", O, T);
   auto *save = F->createSave("result", SM);
-  auto *result = ctx.allocate(save->getPlaceholder());
+  auto *result = bindings.allocate(save->getPlaceholder());
 
   if (!dumpInitialGraphDAGFileOpt.empty()) {
     llvm::outs() << "Dumping initial graph\n";
@@ -273,7 +273,7 @@ void testPTB() {
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
-      runBatch(EE, ctx, 1, sampleCounter, {X, Y},
+      runBatch(EE, bindings, 1, sampleCounter, {X, Y},
                {&inputWordsBatch, &targetWordsBatch});
       for (size_t step = 0; step < numSteps; step++) {
         for (unsigned int i = 0; i < minibatchSize; i++) {

@@ -76,12 +76,12 @@ TEST(Graph, simpleTestConv) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   Node *K =
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
   Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
 
-  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  K = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
@@ -100,10 +100,10 @@ TEST(Graph, simpleTestConv3D) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3, 100},
                                  "input", true);
-  K = F->createConv3D(ctx, /* name */ "Conv3D", /* input */ K,
+  K = F->createConv3D(bindings, /* name */ "Conv3D", /* input */ K,
                       /* outChannels */ 16, /* kernel */ 3, /* stride */ 2,
                       /* pad */ 3, /* group */ 1);
   K = F->createRELU("Relu", K);
@@ -123,12 +123,12 @@ TEST(Graph, simpleTestConvCustomLower) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   Node *K =
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
   Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
 
-  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  K = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
@@ -155,10 +155,10 @@ TEST(Graph, simpleTestConvCustomLower) {
 TEST(Graph, float16Conv) {
   Module MD;
   Function *F = MD.createFunction("F");
-  Context ctx;
+  PlaceholderBindings bindings;
   Node *K = MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 3}, "input");
 
-  auto *conv = F->createConv(ctx, "Conv", K, 16, 3, 2, 3, 1);
+  auto *conv = F->createConv(bindings, "Conv", K, 16, 3, 2, 3, 1);
   F->createSave("Save", conv);
   EXPECT_TRUE(conv->verify());
   EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
@@ -187,11 +187,11 @@ TEST(Graph, float16Conv) {
 TEST(Graph, float16BatchNorm) {
   Module MD;
   Function *F = MD.createFunction("F");
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *input =
       MD.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "input", false);
   BatchNormalizationNode *BN =
-      F->createBatchNormalization(ctx, "batch", input, 3, 0.0001, 0.9);
+      F->createBatchNormalization(bindings, "batch", input, 3, 0.0001, 0.9);
 
   EXPECT_TRUE(BN->verify());
   EXPECT_EQ(BN->getResult().getElementType(), ElemKind::Float16Ty);
@@ -220,13 +220,13 @@ TEST(Graph, useList) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *K =
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
 
   EXPECT_EQ(K->getNumUsers(), 0);
 
-  ConvolutionNode *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  ConvolutionNode *conv = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
 
   EXPECT_TRUE(K->hasOneUse());
   EXPECT_EQ(K->getNumUsers(), 1);
@@ -305,9 +305,9 @@ TEST(Graph, useListIteration) {
 
   EXPECT_EQ(K->getNumUsers(), 0);
 
-  Context ctx;
-  ConvolutionNode *conv1 = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
-  ConvolutionNode *conv2 = F->createConv(ctx, "Conv2", K, 16, 3, 2, 3, 1);
+  PlaceholderBindings bindings;
+  ConvolutionNode *conv1 = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
+  ConvolutionNode *conv2 = F->createConv(bindings, "Conv2", K, 16, 3, 2, 3, 1);
   // Check the number of users for different nodes.
   EXPECT_EQ(K->getNumUsers(), 2);
   EXPECT_EQ(conv1->getNumUsers(), 0);
@@ -329,10 +329,10 @@ TEST(Graph, simpleTestFC) {
   auto *Ex =
       MD.createPlaceholder(ElemKind::FloatTy, {numInputs, 1}, "Ex", true);
 
-  Context ctx;
-  Node *O = F->createFullyConnected(ctx, "FC1", A, 6);
+  PlaceholderBindings bindings;
+  Node *O = F->createFullyConnected(bindings, "FC1", A, 6);
   O = F->createRELU("RELU1", O);
-  O = F->createFullyConnected(ctx, "FC2", O, 1);
+  O = F->createFullyConnected(bindings, "FC2", O, 1);
   O = F->createRELU("RELU2", O);
   O = F->createRegression("Regression", O, Ex);
   F->createSave("Save", O);
@@ -359,21 +359,21 @@ TEST(Graph, QuantizationProfileNodes) {
                                             {numInputs, 2}, 1.5, 6);
   auto *quantize = F->createQuantize("quantize", A, outQTy);
   // Make sure that quantize is not optimized away.
-  Context ctx;
+  PlaceholderBindings bindings;
   F->createSave("save", quantize);
 
   // Multiple nodes read from the same variable.
   // Only one Quantization Profile node should be created for the output
   // from the variable.
-  Node *O = F->createFullyConnected(ctx, "FC1", A, 6);
-  Node *C = F->createFullyConnected(ctx, "FC2", A, 6);
+  Node *O = F->createFullyConnected(bindings, "FC1", A, 6);
+  Node *C = F->createFullyConnected(bindings, "FC2", A, 6);
   O = F->createRELU("RELU1", O);
   F->createSave("save", O);
   F->createSave("save", C);
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
-  F = ::glow::profileQuantization(ctx, F);
+  F = ::glow::profileQuantization(bindings, F);
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Infer);
@@ -421,7 +421,7 @@ TEST(Graph, simpleQuant) {
   auto *fcBias =
       MD.createPlaceholder(ElemKind::Int32QTy, {6}, 0.4, 2, "B", true);
   Node *O = F->createFullyConnected("fc1", conv, fcFilter, fcBias);
-  Context ctx;
+  PlaceholderBindings bindings;
   F->createSave("ret", O);
   EE.compile(CompilationMode::Infer, F);
 }
@@ -441,7 +441,7 @@ TEST(Graph, quantizeDequantizeNodes) {
   auto *A = F->createRescaleQuantized("rescale", Q, transform);
 
   auto *D = F->createDequantize("dequantize", A);
-  Context ctx;
+  PlaceholderBindings bindings;
   F->createSave("ret", D);
   EE.compile(CompilationMode::Infer, F);
 }
@@ -454,20 +454,20 @@ TEST(Graph, quantizeGather) {
       mod.createPlaceholder(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input", true);
   auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
-  Context ctx;
+  PlaceholderBindings bindings;
   F->createSave("ret", gather);
   EE.compile(CompilationMode::Infer, F);
 }
 
 TEST(Graph, cloneTest) {
   Module M;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Function *F = M.createFunction("main");
   Node *K =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
   Node *S = M.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
-  Node *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  Node *conv = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *SM = F->createSoftMax("SoftMax", relu, S);
   F->createSave("Save", SM);
@@ -505,7 +505,7 @@ TEST(Graph, functionDependenciesTest) {
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V3", true);
   M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "V4", true);
 
-  Context ctx;
+  PlaceholderBindings bindings;
   auto sum = F1->createSub("1_sub_2", V1, V2);
   F1->createSave("sv", sum, V1);
   F2->createSave("sv", V3, V2);
@@ -518,13 +518,13 @@ TEST(Graph, functionDependenciesTest) {
 
 TEST(Graph, cloneTest2) {
   Module M;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto *F = M.createFunction("main");
   Node *K =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
   Node *S = M.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
-  Node *conv = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, 1);
+  Node *conv = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
 
@@ -544,19 +544,20 @@ TEST(Graph, NodeValue) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *inputX = mod.createPlaceholder(ElemKind::FloatTy, {1}, "input", true);
-  ctx.allocate(inputX)->init(Tensor::InitKind::Broadcast, 3.0, mod.getPRNG());
+  bindings.allocate(inputX)->init(Tensor::InitKind::Broadcast, 3.0,
+                                  mod.getPRNG());
 
   NodeValue a = F->createAdd("x2", inputX, inputX);
   a = F->createAdd("x4", a, a);
   a = F->createAdd("x8", a, a);
   auto *S = F->createSave("Save", a);
-  auto *res = ctx.allocate(S->getPlaceholder());
+  auto *res = bindings.allocate(S->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
   EXPECT_EQ(res->getHandle().raw(0), 24);
 }
@@ -588,17 +589,17 @@ TEST(Graph, nodesWithPredicates) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   F->setName("interpret");
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
   auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", true);
   auto *pred =
       mod.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
-  ctx.allocate(input);
-  ctx.allocate(ex);
-  ctx.allocate(pred);
+  bindings.allocate(input);
+  bindings.allocate(ex);
+  bindings.allocate(pred);
 
-  auto *CV0 = F->createConv(ctx, "conv1", input, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(bindings, "conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
@@ -606,16 +607,16 @@ TEST(Graph, nodesWithPredicates) {
   RL0->setPredicate(pred);
   MP0->setPredicate(pred);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP0, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP0, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
   auto *save = F->createSave("ret", SM);
-  ctx.allocate(save->getPlaceholder());
+  bindings.allocate(save->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(ctx, {input}, {&inputs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {input}, {&inputs});
+  EE.run(bindings);
 }
 
 // Return the number of ConvolutionNode after lower.
@@ -623,10 +624,10 @@ unsigned getConvNodeSize(BackendKind kind) {
   Module mod;
   Function *F = mod.createFunction("main");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 32}, "input", true);
-  ConvolutionNode *CN = F->createConv(ctx, "conv", input, 6, 1, 1, 0, 2);
+  ConvolutionNode *CN = F->createConv(bindings, "conv", input, 6, 1, 1, 0, 2);
   F->createSave("save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
@@ -675,26 +676,27 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   auto *B = mod.createPlaceholder(A->getType(), "B", true);
   auto *zero = mod.createPlaceholder(A->getType(), "zero", true);
 
-  Context ctx;
-  ctx.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  ctx.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
+  PlaceholderBindings bindings;
+  bindings.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  bindings.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0,
+                                mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
   auto *saveNode = F->createSave("ret", addAB);
-  ctx.allocate(saveNode->getPlaceholder());
+  bindings.allocate(saveNode->getPlaceholder());
   F->createSave("resetA", zero, A);
 
   // Copy the value of A.
-  Tensor AOrig = ctx.get(A)->clone();
+  Tensor AOrig = bindings.get(A)->clone();
 
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
-  auto *ret = ctx.get(saveNode->getPlaceholder());
+  EE.run(bindings);
+  auto *ret = bindings.get(saveNode->getPlaceholder());
   auto handleAOrig = AOrig.getHandle<>();
-  auto handleB = ctx.get(B)->getHandle<>();
+  auto handleB = bindings.get(B)->getHandle<>();
   auto handleRet = ret->getHandle<>();
   bool allEqual = true;
   for (unsigned row = 0; row != 3; ++row) {
@@ -703,7 +705,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
                   handleRet.at({row, column});
     }
   }
-  EXPECT_TRUE(ctx.get(A)->isEqual(*ctx.get(zero), 0.0));
+  EXPECT_TRUE(bindings.get(A)->isEqual(*bindings.get(zero), 0.0));
   EXPECT_TRUE(allEqual);
 }
 
@@ -713,7 +715,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 /// using only the order of the nodes in the list of nodes.
 TEST(Graph, schedulingOfSaves) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -722,25 +724,26 @@ TEST(Graph, schedulingOfSaves) {
   auto *zero = mod.createPlaceholder(A->getType(), "zero", true);
   F->createSave("resetA", zero, A);
 
-  ctx.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  ctx.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
-  ctx.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0, mod.getPRNG());
+  bindings.allocate(A)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  bindings.allocate(B)->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
+  bindings.allocate(zero)->init(Tensor::InitKind::Broadcast, 0.0,
+                                mod.getPRNG());
 
   auto *addAB = F->createAdd("addAB", A, B);
 
   auto *saveNode = F->createSave("ret", addAB);
-  ctx.allocate(saveNode->getPlaceholder());
+  bindings.allocate(saveNode->getPlaceholder());
 
   // Copy the value of A.
-  Tensor AOrig = ctx.get(A)->clone();
+  Tensor AOrig = bindings.get(A)->clone();
 
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   auto *ret = saveNode->getPlaceholder();
   auto handleAOrig = AOrig.getHandle<>();
-  auto handleB = ctx.get(B)->getHandle<>();
-  auto handleRet = ctx.get(ret)->getHandle<>();
+  auto handleB = bindings.get(B)->getHandle<>();
+  auto handleRet = bindings.get(ret)->getHandle<>();
   bool allEqual = true;
   for (unsigned row = 0; row != 3; ++row) {
     for (unsigned column = 0; column != 32; ++column) {
@@ -748,7 +751,7 @@ TEST(Graph, schedulingOfSaves) {
                   handleRet.at({row, column});
     }
   }
-  EXPECT_TRUE(ctx.get(A)->isEqual(*ctx.get(zero), 0.0));
+  EXPECT_TRUE(bindings.get(A)->isEqual(*bindings.get(zero), 0.0));
   EXPECT_TRUE(allEqual);
 }
 
@@ -850,7 +853,7 @@ hasAllTheseUses(const llvm::SmallPtrSetImpl<const Node *> &expectedUsers,
 /// Check that our uses lists are correct for nodes with multiple results.
 TEST(Graph, usesListsWithSeveralResult) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -927,7 +930,7 @@ TEST(Graph, usesListsWithSeveralResult) {
 /// NodeValue.
 TEST(Graph, usesListsThroughNodeValues) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -980,7 +983,7 @@ TEST(Graph, usesListsThroughNodeValues) {
 /// Verify that the pre-order visitor works correctly.
 TEST(Graph, PreOrderTest) {
   Module M;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *F = M.createFunction("main");
 
   auto *input1 =
@@ -1022,7 +1025,7 @@ TEST(Graph, PreOrderTest) {
 /// Verify that the post-order visitor works correctly.
 TEST(Graph, PostOrderTest) {
   Module M;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *F = M.createFunction("main");
 
   auto *input1 =
@@ -1063,14 +1066,14 @@ TEST(Graph, PostOrderTest) {
 
 TEST(Graph, placeholder) {
   Module MD;
-  Context ctx;
+  PlaceholderBindings bindings;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
   Node *K =
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", false);
   Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", false);
 
-  K = F->createFullyConnected(ctx, "FC", K, 10);
+  K = F->createFullyConnected(bindings, "FC", K, 10);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
@@ -1272,98 +1275,98 @@ TEST(Graph, moduleSize) {
 /// Check that getDataSize() returns the correct size of backing tensors.
 TEST(Graph, contextSize) {
   Module mod;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Placeholder *PH =
       mod.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
 
-  EXPECT_EQ(ctx.getDataSize(), 0);
-  ctx.allocate(PH);
-  EXPECT_EQ(ctx.get(PH)->size(), 4 * 320 * 200 * 3);
-  EXPECT_EQ(ctx.getDataSize(), sizeof(float) * ctx.get(PH)->size());
+  EXPECT_EQ(bindings.getDataSize(), 0);
+  bindings.allocate(PH);
+  EXPECT_EQ(bindings.get(PH)->size(), 4 * 320 * 200 * 3);
+  EXPECT_EQ(bindings.getDataSize(), sizeof(float) * bindings.get(PH)->size());
 }
 
 /// Check that clones of the context are distinct and share no references back
 /// to the original object.
-TEST(Graph, cloneContext) {
+TEST(Graph, clonePlaceholderBindings) {
   Module mod;
 
   Placeholder *PH1 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH1", false);
 
-  Context ctx1;
-  ctx1.allocate(PH1);
+  PlaceholderBindings bindings1;
+  bindings1.allocate(PH1);
 
-  Context ctx2 = ctx1.clone();
+  PlaceholderBindings bindings2 = bindings1.clone();
 
-  Tensor *t1 = ctx1.get(PH1);
-  Tensor *t2 = ctx2.get(PH1);
+  Tensor *t1 = bindings1.get(PH1);
+  Tensor *t2 = bindings2.get(PH1);
 
   EXPECT_NE(t1, nullptr);
   EXPECT_NE(t2, nullptr);
   EXPECT_NE(t1, t2);
 
-  // The new Context has no references back, and changing it does not affect
-  // ctx1
+  // The new PlaceholderBindings has no references back, and changing it does
+  // not affect bindings1
   Placeholder *PH2 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH2", false);
 
-  ctx2.allocate(PH2);
-  // now exists in ctx1 but not ctx2
-  EXPECT_EQ(ctx1.get(PH2), nullptr);
-  EXPECT_NE(ctx2.get(PH2), nullptr);
+  bindings2.allocate(PH2);
+  // now exists in bindings1 but not bindings2
+  EXPECT_EQ(bindings1.get(PH2), nullptr);
+  EXPECT_NE(bindings2.get(PH2), nullptr);
 
-  // Likewise changing ctx1 does not affect ctx2
-  ctx1.clear();
-  EXPECT_EQ(ctx1.count(PH1), 0);
-  EXPECT_EQ(ctx2.count(PH1), 1);
+  // Likewise changing bindings1 does not affect bindings2
+  bindings1.clear();
+  EXPECT_EQ(bindings1.count(PH1), 0);
+  EXPECT_EQ(bindings2.count(PH1), 1);
 
   // Adds are distinct
   Placeholder *PH3 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "PH3", false);
-  ctx1.allocate(PH3);
-  ctx2.allocate(PH3);
-  EXPECT_NE(ctx1.get(PH3), nullptr);
-  EXPECT_NE(ctx2.get(PH3), nullptr);
-  EXPECT_NE(ctx1.get(PH3), ctx2.get(PH3));
+  bindings1.allocate(PH3);
+  bindings2.allocate(PH3);
+  EXPECT_NE(bindings1.get(PH3), nullptr);
+  EXPECT_NE(bindings2.get(PH3), nullptr);
+  EXPECT_NE(bindings1.get(PH3), bindings2.get(PH3));
 }
 
-/// Check that running a function multiple times on cloned Contexts have
-/// distinct outputs.
-TEST(Graph, cloneContextRuns) {
+/// Check that running a function multiple times on cloned PlaceholderBindingss
+/// have distinct outputs.
+TEST(Graph, clonePlaceholderBindingsRuns) {
   ExecutionEngine EE;
   PseudoRNG PRNG;
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
 
-  ctx.allocate(input);
+  bindings.allocate(input);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", input, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", input, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *save = F->createSave("ret", RL3);
 
-  ctx.allocate(save->getPlaceholder());
+  bindings.allocate(save->getPlaceholder());
 
   // Compile once.
   EE.compile(CompilationMode::Infer, F);
 
   // Run with random inputs.
   inputs.getHandle<>().randomize(-3.0, 3.0, PRNG);
-  updateInputPlaceholders(ctx, {input}, {&inputs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {input}, {&inputs});
+  EE.run(bindings);
 
   // Clone the context.
-  Context ctx2 = ctx.clone();
+  PlaceholderBindings bindings2 = bindings.clone();
 
-  // Contexts are identical.
+  // PlaceholderBindingss are identical.
   Tensor *saveBacking1, *saveBacking2;
-  saveBacking1 = ctx.get(save->getPlaceholder());
-  saveBacking2 = ctx2.get(save->getPlaceholder());
+  saveBacking1 = bindings.get(save->getPlaceholder());
+  saveBacking2 = bindings2.get(save->getPlaceholder());
   EXPECT_NE(saveBacking1, saveBacking2);
   EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
   EXPECT_TRUE(saveBacking1->isEqual(*saveBacking2));
@@ -1371,10 +1374,10 @@ TEST(Graph, cloneContextRuns) {
   // Run again with different random inputs using the cloned context.
   Tensor inputs2(ElemKind::FloatTy, {1, 32, 32, 3});
   inputs2.getHandle<>().randomize(-3.0, 3.0, PRNG);
-  updateInputPlaceholders(ctx2, {input}, {&inputs2});
-  EE.run(ctx2);
+  updateInputPlaceholders(bindings2, {input}, {&inputs2});
+  EE.run(bindings2);
 
-  // Contexts are no longer identical.
+  // PlaceholderBindingss are no longer identical.
   EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
   EXPECT_FALSE(saveBacking1->isEqual(*saveBacking2));
 }
@@ -1384,7 +1387,7 @@ TEST(Graph, cloneContextRuns) {
 TEST(Graph, TestNodeEnums) {
   Module MD;
   Function *F = MD.createFunction("F");
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *I =
       MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
   Placeholder *O = MD.createPlaceholder(ElemKind::FloatTy, {3}, "output", true);
@@ -1459,12 +1462,12 @@ TEST(Graph, GroupTestConvNoLower) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
-  Context ctx;
+  PlaceholderBindings bindings;
   Node *K =
       MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 8}, "input", true);
   Node *S = MD.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
 
-  K = F->createConv(ctx, "Conv1", K, 16, 3, 2, 3, /* group */ 8);
+  K = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, /* group */ 8);
   K = F->createRELU("Relu", K);
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);

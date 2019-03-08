@@ -93,6 +93,15 @@ static llvm::StringRef getHostCpuName() {
   return cpu_name;
 }
 
+/// Query the TargetMachine to get the pointer size in bits
+static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
+#if LLVM_VERSION_MAJOR >= 7
+  return TM.getPointerSize(0) * 8;
+#else
+  return TM.getPointerSize() * 8;
+#endif
+}
+
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
@@ -132,12 +141,12 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
   // Load the base addresses at the beginning of the entry function once they
   // are set. They won't change after this point and all relative addressing
   // computations will simply use them.
-  baseActivationsAddr_ = builder.CreatePtrToInt(F->args().begin() + 2,
-                                                llvm::Type::getInt64Ty(ctx_));
+  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
+  baseActivationsAddr_ = builder.CreatePtrToInt(F->args().begin() + 2, sizeTTy);
   baseConstantWeightVarsAddr_ =
-      builder.CreatePtrToInt(F->args().begin(), llvm::Type::getInt64Ty(ctx_));
-  baseMutableWeightVarsAddr_ = builder.CreatePtrToInt(
-      F->args().begin() + 1, llvm::Type::getInt64Ty(ctx_));
+      builder.CreatePtrToInt(F->args().begin(), sizeTTy);
+  baseMutableWeightVarsAddr_ =
+      builder.CreatePtrToInt(F->args().begin() + 1, sizeTTy);
   offsetsArray_ = F->args().begin() + 3;
 }
 
@@ -194,7 +203,7 @@ void LLVMIRGen::initCodeGen() {
 
   // Create the entry function into the LLVM module.
   auto int8PtrTy = llvm::Type::getInt8PtrTy(ctx_);
-  auto sizeTPtrTy = llvm::Type::getIntNPtrTy(ctx_, sizeof(size_t) * 8);
+  auto sizeTPtrTy = llvm::Type::getIntNPtrTy(ctx_, getTargetSizeTWidth());
   // The entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t
   // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
@@ -231,7 +240,7 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::Int32ITy:
     return builder.getInt32Ty();
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
@@ -305,7 +314,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
                                          const glow::Value *val) {
   assert(allocationsInfo_.allocatedAddress_.count(val) &&
          "Value address was not allocated");
-  auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
+  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
   llvm::Type *T = nullptr;
 
   switch (val->getElementType()) {
@@ -324,7 +333,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int32ITy:
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::BoolTy:
@@ -365,7 +374,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 llvm::Value *
 LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                  const AllocationsInfo &allocationsInfo) {
-  auto sizeTType = builder.getIntNTy(sizeof(size_t) * 8);
+  auto sizeTType = builder.getIntNTy(getTargetSizeTWidth());
   std::vector<llvm::Constant *> elems(allocationsInfo.valueNumbers_.size());
   for (auto &I : allocationsInfo.valueNumbers_) {
     auto *V = I.first;
@@ -395,7 +404,7 @@ template <typename T>
 llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<T> vals) {
   assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
-  auto SizeTType = builder.getIntNTy(sizeof(size_t) * 8);
+  auto SizeTType = builder.getIntNTy(getTargetSizeTWidth());
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
     assert(I >= 0 && "Only allow casting positive values into size_t.");
@@ -439,7 +448,7 @@ llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
                                       const glow::Value *val) {
-  return builder.getIntN(sizeof(size_t) * 8, val->size());
+  return builder.getIntN(getTargetSizeTWidth(), val->size());
 }
 
 llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
@@ -455,7 +464,7 @@ llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
 }
 
 llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
-  return builder.getIntN(sizeof(size_t) * 8, val);
+  return builder.getIntN(getTargetSizeTWidth(), val);
 }
 
 llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
@@ -475,7 +484,7 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
-  case ElemKind::Int8FusedQTy:
+  case ElemKind::UInt8FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
@@ -539,14 +548,10 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   }
 }
 
-/// Create LLVM IR for the for loop with a loop count specified by the only
-/// parameter of the enclosing function.
-/// \returns a pair of basic blocks. The first BB is the BB of the loop body,
-/// the second BB is the loop exit BB.
-static std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
-createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
-           llvm::Value *numElements) {
-  auto sizeTTy = builder.getIntNTy(sizeof(size_t) * 8);
+std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
+LLVMIRGen::createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
+                      llvm::Value *numElements) const {
+  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
   auto *initVal = llvm::ConstantInt::get(sizeTTy, 0);
 
   // Make the new basic block for the loop header. Insert it after current
@@ -2312,4 +2317,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 #endif
     GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
   }
+}
+
+unsigned LLVMIRGen::getTargetSizeTWidth() const {
+  return getPointerNumBits(*TM_);
 }

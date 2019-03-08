@@ -64,10 +64,11 @@ Placeholder *getGrad(const VariableGradientsList &grads, Placeholder *V) {
   return nullptr;
 }
 
-void allocateGrads(Context &ctx, const VariableGradientsList &grads) {
+void allocateGrads(PlaceholderBindings &bindings,
+                   const VariableGradientsList &grads) {
   for (auto &p : grads) {
     auto grad = p.second;
-    ctx.allocate(grad);
+    bindings.allocate(grad);
   }
 }
 
@@ -77,25 +78,25 @@ void allocateGrads(Context &ctx, const VariableGradientsList &grads) {
 /// propagation.
 ///
 /// \param EE Execution engine to compile/run network.
-/// \param ctx Execution context.
+/// \param bindings Placeholder bindings.
 /// \param result Node that contains result of f(x).
 /// \param inputVar Placeholder which gradient is assessed.
 /// \param expVar Placeholder with expected value, only used during the
 /// training. \param inputs Tensor for \p inputVar placeholder. \param outputs
 /// Tensor for \p expVar placeholder. \param allowedError allowed delta between
 /// analytical and numerical gradients.
-void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
-                      Placeholder *inputVar, Placeholder *expVar,
-                      Tensor *inputs, Tensor *outputs, float delta,
-                      float allowedError) {
+void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
+                      SaveNode *result, Placeholder *inputVar,
+                      Placeholder *expVar, Tensor *inputs, Tensor *outputs,
+                      float delta, float allowedError) {
   TrainingConfig TC;
 
   auto &F = *EE.getModule().getFunction("main");
 
   // Allocate result, inputVar and expVar.
-  auto resultTensor = ctx.allocate(result->getPlaceholder());
-  ctx.allocate(inputVar);
-  ctx.allocate(expVar);
+  auto resultTensor = bindings.allocate(result->getPlaceholder());
+  bindings.allocate(inputVar);
+  bindings.allocate(expVar);
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -107,40 +108,43 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
-  runBatch(EE, ctx, 300, sampleCounter, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, bindings, 300, sampleCounter, {inputVar, expVar},
+           {inputs, outputs});
 
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
   VariableGradientsList varGrads;
   Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
-  allocateGrads(ctx, varGrads);
+  allocateGrads(bindings, varGrads);
   EE.compile(CompilationMode::Train, recordNet);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(varGrads, inputVar);
-  auto gradVarTensor = ctx.get(gradVar);
+  auto gradVarTensor = bindings.get(gradVar);
   gradVarTensor->zero();
 
   // Train the network just once to record the values of gradient for inputVar.
-  runBatch(EE, ctx, 1, sampleCounter, {inputVar, expVar}, {inputs, outputs});
+  runBatch(EE, bindings, 1, sampleCounter, {inputVar, expVar},
+           {inputs, outputs});
 
   // Compile the original network in inference mode.
   EE.compile(CompilationMode::Infer, &F);
 
   auto analyticalGradsH = gradVarTensor->getHandle();
   auto inputsH = inputs->getHandle<>();
+  bool allZeroGradients = true;
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    updateInputPlaceholders(ctx, {inputVar}, {inputs});
-    EE.run(ctx);
+    updateInputPlaceholders(bindings, {inputVar}, {inputs});
+    EE.run(bindings);
     auto plusLoss = computeL2Loss(outputs, resultTensor);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    updateInputPlaceholders(ctx, {inputVar}, {inputs});
-    EE.run(ctx);
+    updateInputPlaceholders(bindings, {inputVar}, {inputs});
+    EE.run(bindings);
 
     auto minusLoss = computeL2Loss(outputs, resultTensor);
 
@@ -149,54 +153,56 @@ void performGradCheck(ExecutionEngine &EE, Context &ctx, SaveNode *result,
 
     auto numericGrad = (plusLoss - minusLoss) / (2 * delta);
     auto analyticalGrad = analyticalGradsH.raw(i);
-
     auto err = gradDiff(analyticalGrad, numericGrad);
 
+    if (numericGrad != 0.0) {
+      allZeroGradients = false;
+    }
     // Make sure that the analytical and numerical gradients agree.
     EXPECT_LE(err, allowedError);
   }
+
+  // Make sure that some gradients are non-zero. If all gradients are zero,
+  // it means that the input doesn't affect the output, which also means
+  // that the operations being test is totally ignored.
+  EXPECT_FALSE(allZeroGradients);
 }
 
-TEST_P(InterpreterGrad, gradientCheckFCConcatRELU) {
-  Context ctx;
-  size_t numInputElem = 20;
-  size_t numOutputElem = 10;
+TEST_P(InterpreterGrad, gradientCheckConcat) {
+  PlaceholderBindings bindings;
+  size_t numOutputElem = 20;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
-  auto *A =
-      mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "A", false);
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem / 2},
+                                  "A", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem / 2},
+                                  "B", false);
+  bindings.allocate(B)->zero();
+
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "exp", false);
-
-  Node *FA = F->createFullyConnected(ctx, "fc1", A, numOutputElem / 2);
-  FA = F->createRELU("relu1", FA);
-
-  auto *B =
-      mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "B", true);
-  ctx.allocate(B);
-  Node *FB = F->createFullyConnected(ctx, "fc2", B, numOutputElem / 2);
-  FB = F->createRELU("relu2", FB);
-
-  Node *O = F->createConcat("concat", {FA, FB}, 1);
+  Node *O = F->createConcat("concat", {A, B}, 1);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
 
-  Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
+  Tensor inputs(ElemKind::FloatTy, {{1, numOutputElem / 2}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
 
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1, mod.getPRNG());
-  outputsH.initXavier(1, mod.getPRNG());
+  inputsH.randomize(-1, 1, mod.getPRNG());
+  outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.001,
+                   0.01);
 }
 
 static void gradientCheckGroupConv(size_t depth, size_t group,
                                    ExecutionEngine &EE_) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numDim = 10;
 
   auto &mod = EE_.getModule();
@@ -206,7 +212,7 @@ static void gradientCheckGroupConv(size_t depth, size_t group,
   auto *Ex = mod.createPlaceholder(
       ElemKind::FloatTy, {1, numDim + 1, numDim + 1, depth}, "exp", false);
 
-  Node *O = F->createConv(ctx, "conv", A, depth, 2, 1, 1, group);
+  Node *O = F->createConv(bindings, "conv", A, depth, 2, 1, 1, group);
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
 
@@ -219,7 +225,8 @@ static void gradientCheckGroupConv(size_t depth, size_t group,
   inputsH.randomize(-1, 1, mod.getPRNG());
   outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Ex, &inputs, &outputs, 0.001, 0.04);
+  performGradCheck(EE_, bindings, result, A, Ex, &inputs, &outputs, 0.001,
+                   0.04);
 }
 
 TEST_P(GradCheck, gradientCheckConv) { gradientCheckGroupConv(1, 1, EE_); }
@@ -231,7 +238,7 @@ TEST_P(GradCheck, gradientCheckDepthwiseConv) {
 TEST_P(GradCheck, gradientCheckGroupConv) { gradientCheckGroupConv(4, 2, EE_); }
 
 TEST_P(InterpreterGrad, gradientCheckAvgPool) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numDim = 10;
   size_t numOutputElem = 10;
 
@@ -244,7 +251,7 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
 
   Node *O = F->createAvgPool("pool", A, 3, 3, 1);
   O = F->createTanh("tanh", O);
-  O = F->createFullyConnected(ctx, "fc", O, numOutputElem);
+  O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
   O = F->createRegression("reg", O, Exp);
   auto *result = F->createSave("ret", O);
 
@@ -257,11 +264,12 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.001,
+                   0.004);
 }
 
 TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
 
@@ -272,7 +280,7 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
   auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "exp",
                                    false);
 
-  Node *O = F->createBatchNormalization(ctx, "batch", A, 3, 0.0001, 0.9);
+  Node *O = F->createBatchNormalization(bindings, "batch", A, 3, 0.0001, 0.9);
   O = F->createReshape("reshape", O, {1, numDim * numDim * 3});
   O = F->createRegression("reg", O, Ex);
   auto *result = F->createSave("ret", O);
@@ -290,14 +298,15 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
     elem = elem * 6 + 4;
   }
 
-  performGradCheck(EE_, ctx, result, A, Ex, &inputs, &outputs, 0.001, 0.004);
+  performGradCheck(EE_, bindings, result, A, Ex, &inputs, &outputs, 0.001,
+                   0.004);
 }
 
 TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
   // The test creates a net: A / B = Exp. Where A is trainable weight,
   // B and Exp are external data (initialized randomly once). SGD will find
   // correct value for A, and then gradient check will be performed.
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numDim = 10;
 
   auto &mod = EE_.getModule();
@@ -307,7 +316,7 @@ TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
   auto *Exp =
       mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "exp", false);
 
-  auto *ATensor = ctx.allocate(A);
+  auto *ATensor = bindings.allocate(A);
   ATensor->init(Tensor::InitKind::Xavier, 1.0, mod.getPRNG());
 
   Node *O = F->createDiv("div", A, B);
@@ -321,28 +330,28 @@ TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
   BValues.getHandle().randomize(0.1, 1, mod.getPRNG());
   ExpValues.getHandle().randomize(0.1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, B, Exp, &BValues, &ExpValues, 0.0001,
+  performGradCheck(EE_, bindings, result, B, Exp, &BValues, &ExpValues, 0.0001,
                    0.001);
 }
 
 TEST_P(InterpreterGrad, gradientCheckArithmetic) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numDim = 20;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "A", false);
-  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "B", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "B", true);
   auto *C = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "C", false);
   auto *D = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "D", false);
   auto *E = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "E", false);
-  ctx.allocate(B);
-  ctx.allocate(C);
-  ctx.allocate(D);
+  bindings.allocate(B);
+  bindings.allocate(C);
+  bindings.allocate(D);
 
   // Randomize E to avoid div by zero.
-  auto *ETensor = ctx.allocate(E);
-  ETensor->getHandle().initXavier(1, mod.getPRNG());
+  auto *ETensor = bindings.allocate(E);
+  ETensor->getHandle().randomize(-1, 1, mod.getPRNG());
 
   auto *Exp =
       mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "exp", false);
@@ -360,15 +369,16 @@ TEST_P(InterpreterGrad, gradientCheckArithmetic) {
   auto inputsH = inputs.getHandle<>();
   auto outputsH = outputs.getHandle<>();
 
-  inputsH.initXavier(1, mod.getPRNG());
-  outputsH.initXavier(1, mod.getPRNG());
+  inputsH.randomize(-1, 1, mod.getPRNG());
+  outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.01, 0.004);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.01,
+                   0.004);
 }
 
 TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
@@ -379,7 +389,7 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
 
-  Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
+  Node *FA = F->createFullyConnected(bindings, "fc", A, numOutputElem);
   FA = F->createTanh("tanh", FA);
   FA = F->createRegression("reg", FA, Exp);
   auto *result = F->createSave("ret", FA);
@@ -393,11 +403,12 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.0001,
+                   0.001);
 }
 
 TEST_P(InterpreterGrad, gradientCheckFC) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
 
@@ -408,7 +419,7 @@ TEST_P(InterpreterGrad, gradientCheckFC) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
 
-  Node *FA = F->createFullyConnected(ctx, "fc", A, numOutputElem);
+  Node *FA = F->createFullyConnected(bindings, "fc", A, numOutputElem);
   FA = F->createRegression("reg", FA, Exp);
   auto *result = F->createSave("ret", FA);
 
@@ -421,13 +432,14 @@ TEST_P(InterpreterGrad, gradientCheckFC) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.0001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.0001,
+                   0.0001);
 }
 
 TEST_P(InterpreterGrad, gradientCheckSigmoid) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numInputElem = 20;
-  size_t numOutputElem = 10;
+  size_t numOutputElem = 20;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -435,12 +447,10 @@ TEST_P(InterpreterGrad, gradientCheckSigmoid) {
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "A", false);
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
-  auto *result = F->createSave("ret", A);
-  ctx.allocate(result->getPlaceholder());
 
-  Node *FA = F->createSigmoid("sig", Exp);
+  Node *FA = F->createSigmoid("sig", A);
   FA = F->createRegression("reg", FA, Exp);
-  result = F->createSave("ret", FA);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -451,13 +461,14 @@ TEST_P(InterpreterGrad, gradientCheckSigmoid) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.001,
+                   0.01);
 }
 
 TEST_P(InterpreterGrad, gradientCheckRelu) {
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numInputElem = 20;
-  size_t numOutputElem = 10;
+  size_t numOutputElem = 20;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -465,12 +476,10 @@ TEST_P(InterpreterGrad, gradientCheckRelu) {
       mod.createPlaceholder(ElemKind::FloatTy, {1, numInputElem}, "A", false);
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "Exp", false);
-  auto *result = F->createSave("ret", A);
-  ctx.allocate(result->getPlaceholder());
 
-  Node *FA = F->createRELU("relu", Exp);
+  Node *FA = F->createRELU("relu", A);
   FA = F->createRegression("reg", FA, Exp);
-  result = F->createSave("ret", FA);
+  auto *result = F->createSave("ret", FA);
 
   Tensor inputs(ElemKind::FloatTy, {{1, numInputElem}});
   Tensor outputs(ElemKind::FloatTy, {{1, numOutputElem}});
@@ -481,12 +490,13 @@ TEST_P(InterpreterGrad, gradientCheckRelu) {
   inputsH.initXavier(1, mod.getPRNG());
   outputsH.initXavier(1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.001,
+                   0.01);
 }
 
 TEST_P(InterpreterGrad, gradientCheckTranspose) {
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
-  Context ctx;
+  PlaceholderBindings bindings;
   size_t numOutputElem = 10;
 
   auto &mod = EE_.getModule();
@@ -496,7 +506,7 @@ TEST_P(InterpreterGrad, gradientCheckTranspose) {
   auto *Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem},
                                     "exp", false);
   Node *TA = F->createTranspose("transpose", A, NHWC2NCHW);
-  TA = F->createFullyConnected(ctx, "fc", TA, numOutputElem);
+  TA = F->createFullyConnected(bindings, "fc", TA, numOutputElem);
   TA = F->createRegression("regress", TA, Exp);
   auto *result = F->createSave("ret", TA);
 
@@ -509,7 +519,8 @@ TEST_P(InterpreterGrad, gradientCheckTranspose) {
   inputsH.randomize(-1, 1, mod.getPRNG());
   outputsH.randomize(-1, 1, mod.getPRNG());
 
-  performGradCheck(EE_, ctx, result, A, Exp, &inputs, &outputs, 0.0001, 0.001);
+  performGradCheck(EE_, bindings, result, A, Exp, &inputs, &outputs, 0.0001,
+                   0.001);
 }
 
 TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
@@ -518,19 +529,19 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   const float stepSize = 1e-4;
   const float delta = 0.015;
   TrainingConfig TC;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *P =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 4}, "P", false);
-  ctx.allocate(P);
+  bindings.allocate(P);
   auto *Y =
       mod.createPlaceholder(ElemKind::Int64ITy, {batchSize}, "Labels", false);
-  ctx.allocate(Y);
+  bindings.allocate(Y);
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
   auto *result = F->createSave("ret", CE);
-  auto *LTensor = ctx.allocate(result->getPlaceholder());
+  auto *LTensor = bindings.allocate(result->getPlaceholder());
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
   Tensor outputs(ElemKind::Int64ITy, {batchSize});
@@ -545,33 +556,33 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
 
   VariableGradientsList varGrads;
   Function *TF = glow::differentiate(F, TC, "record", &varGrads);
-  allocateGrads(ctx, varGrads);
+  allocateGrads(bindings, varGrads);
   EE_.compile(CompilationMode::Train, TF);
 
   auto *gradPlaceholder = getGrad(varGrads, P);
-  auto gradTensorHandle = ctx.get(gradPlaceholder)->getHandle();
+  auto gradTensorHandle = bindings.get(gradPlaceholder)->getHandle();
 
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
-      EE_.run(ctx);
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
+      EE_.run(bindings);
       LTensor->zero();
       auto x = inputsH.raw(j);
       auto g = gradTensorHandle.raw(j);
       inputsH.raw(j) = x + stepSize;
-      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
-      EE_.run(ctx);
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
+      EE_.run(bindings);
       auto lp = LTensor->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       LTensor->zero();
-      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
-      EE_.run(ctx);
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
+      EE_.run(bindings);
       auto lm = LTensor->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      updateInputPlaceholders(ctx, {P, Y}, {&inputs, &outputs});
-      EE_.run(ctx);
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
+      EE_.run(bindings);
       EXPECT_NEAR(diff, g, delta);
     }
   }

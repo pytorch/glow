@@ -85,7 +85,7 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   std::string name_;
 
 public:
-  OpenCLDeviceManager(llvm::StringRef name = "unnamed");
+  OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 
   ~OpenCLDeviceManager();
 
@@ -117,8 +117,19 @@ protected:
   /// Run the function on the device, there is a single thread of execution so
   /// only one function can execute at a time.
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
-                       std::unique_ptr<Context> ctx, ResultCBTy cb) override;
+                       std::unique_ptr<PlaceholderBindings> bindings,
+                       ResultCBTy cb) override;
 };
+/// OpenCL Device Manager config object. This contains the information needed to
+/// target a specifc OpenCL device. This inherits from DeviceConfig and sets
+/// it's inherited member backendKind_ to OpenCL.
+struct OpenCLDeviceConfig : DeviceConfig {
+  OpenCLDeviceConfig() : DeviceConfig(BackendKind::OpenCL) {}
+  unsigned platformId;
+  unsigned deviceId;
+  bool doProfile;
+};
+
 } // namespace runtime
 } // namespace glow
 

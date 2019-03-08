@@ -24,7 +24,7 @@
 
 namespace glow {
 
-class Context;
+class PlaceholderBindings;
 enum class BackendKind;
 /// Interface for executing a compiled function.
 class CompiledFunction {
@@ -38,8 +38,8 @@ public:
   /// Dtor.
   virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
-  /// \p ctx providing mapping between Placeholder and populated tensor.
-  virtual void execute(Context *ctx) = 0;
+  /// \p bindings providing mapping between Placeholder and populated tensor.
+  virtual void execute(PlaceholderBindings *bindings) = 0;
 
   /// Does any needed initialization work for the Backend.
   /// This includes device init constant memory allocation and copying to
@@ -47,10 +47,10 @@ public:
   virtual void setupRuns() { runsSetup_ = true; }
 
   /// Per run setup. Copy inputs to device. \deprecated
-  virtual void beforeRun(const Context &ctx) {}
+  virtual void beforeRun(const PlaceholderBindings &bindings) {}
 
   /// Per run cleanup. Copy outputs from device. \deprecated
-  virtual void afterRun(const Context &ctx) {}
+  virtual void afterRun(const PlaceholderBindings &bindings) {}
 
   /// Final cleanup. Release memory, reset device. \deprecated
   virtual void tearDownRuns() { runsSetup_ = false; }
@@ -68,8 +68,8 @@ public:
   TraceInfo &getTraceInfo() { return traceInfo_; }
   const TraceInfo &getTraceInfo() const { return traceInfo_; }
 
-  /// Read trace events out of this func and write them into /p ctx
-  virtual void translateTraceEvents(Context *ctx) const {}
+  /// Read trace events out of this func and write them into /p bindings
+  virtual void translateTraceEvents(PlaceholderBindings *bindings) const {}
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const = 0;

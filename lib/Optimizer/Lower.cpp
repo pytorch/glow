@@ -732,6 +732,46 @@ static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, TN.getResult(), IN);
 }
 
+static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
+                                     const BatchedReduceMeanNode &BRM) {
+  auto input = BRM.getBatch();
+
+  assert((BRM.getAxes().size() == 1) && "Only supporting single reduction.");
+
+  auto axis = BRM.getAxes()[0];
+
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  ShapeVector redDims(input.dims().begin(), input.dims().end());
+  redDims.erase(redDims.begin() + axis);
+
+  auto outTy = F->getParent()->uniqueTypeWithNewShape(BRM.getResult().getType(),
+                                                      redDims);
+
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+
+  // Create a batched add to sum up the values in the provided axis.
+  auto outTyBRA =
+      F->getParent()->uniqueTypeWithNewShape(input.getType(), redDims);
+
+  auto *BRA = F->createBatchedReduceAdd(BRM.getName().str() + ".reduceAdd",
+                                        outTyBRA, input, axis);
+
+  // Create a splat of the same output type as the BRA, with value of the size
+  // of the original dimensions of the axis, to divide the BRA by.
+  auto *SN = F->createSplat(llvm::StringRef(BRM.getName().str() + ".splat"),
+                            outTyBRA, input.dims()[axis]);
+
+  // Element-wise divide to produce the reduced mean with outTy provided.
+  auto *DN = F->createDiv(BRM.getName().str() + ".div", outTy, BRA, SN);
+
+  replaceAllUsesOfWith(loweredMap, BRM.getResult(), DN);
+}
+
 /// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
 /// log the lowering info of what was replaced by what via output names.
 static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
@@ -771,6 +811,8 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
     lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
   } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
     lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
+  } else if (auto *RMN = dyn_cast<BatchedReduceMeanNode>(node)) {
+    lowerBatchReduceMeanNode(F, loweredMap, *RMN);
   } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
     if (CN->getGroup() > 1)
       lowerGroupConvolutionNode(F, loweredMap, *CN);

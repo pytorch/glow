@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "ir-function-specializer"
 
 #include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
@@ -26,6 +25,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+
+#define DEBUG_TYPE "ir-function-specializer"
 
 using namespace glow;
 
@@ -308,7 +309,8 @@ public:
     // Collect calls that were replaced by specialized calls and can be erased.
     // The removal should happen after all specializations are done, because
     // these call instructions are used by the keys in Specializations_ map.
-    llvm::SmallVector<llvm::Instruction *, 32> erasedInstructions;
+    llvm::DenseMap<llvm::Instruction *, llvm::Instruction *>
+        callToSpecializedCall;
     auto *F = entryF_;
     // Collect all eligable calls in the current function.
     llvm::SmallVector<llvm::CallInst *, 64> calls;
@@ -324,16 +326,21 @@ public:
     }
     // Try to specialize all the collected calls.
     for (auto *call : calls) {
-      if (specializeCall(call))
-        erasedInstructions.push_back(call);
+      if (auto *specializedCall = specializeCall(call)) {
+        callToSpecializedCall.insert(std::make_pair(call, specializedCall));
+      }
     }
 
     // Remove those calls that were successfully replaced by calls of
     // specialized functions. This needs to be done after all specializations,
     // because keys of Specializations_ use these Call instructions for the
     // duration of the whole specialization pass.
-    for (auto *I : erasedInstructions) {
-      I->eraseFromParent();
+    for (auto &kv : callToSpecializedCall) {
+      // Check if the original call returns a result and replace all its uses.
+      if (!kv.first->getType()->isVoidTy()) {
+        kv.first->replaceAllUsesWith(kv.second);
+      }
+      kv.first->eraseFromParent();
     }
     DEBUG_GLOW(llvm::dbgs() << "Number of specializations: "
                             << NumSpecializations << "\n";

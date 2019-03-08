@@ -24,7 +24,7 @@
 
 namespace glow {
 
-class Context;
+class PlaceholderBindings;
 
 /// An individual tracing event, such as the begin or end of an instruction.
 /// Designed to match the Google Trace Event Format for Chrome:

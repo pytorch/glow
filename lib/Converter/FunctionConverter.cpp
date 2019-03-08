@@ -15,10 +15,10 @@
  */
 #include "glow/Converter/FunctionConverter.h"
 
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h" // For Function.
 #include "glow/Graph/Node.h"  // For Node.
 #include "glow/Graph/Nodes.h" // For Placeholder and Constant.
+#include "glow/Graph/PlaceholderBindings.h"
 
 #include "llvm/ADT/DenseMap.h"
 
@@ -200,16 +200,16 @@ void FunctionConverter::convert() {
 }
 
 void FunctionConverter::convertPlaceholder(Placeholder &placeholder,
-                                           Context *context) {
+                                           PlaceholderBindings *bindings) {
   TypeRef destTy = getTargetTypeForOutput(placeholder.getOutput());
   if (!destTy || destTy == placeholder.getType()) {
     return;
   }
   convertOutputs(placeholder);
-  if (!context) {
+  if (!bindings) {
     return;
   }
-  Tensor *tensor = context->get(&placeholder);
+  Tensor *tensor = bindings->get(&placeholder);
   if (tensor) {
     convertTensor(*tensor, destTy);
   }

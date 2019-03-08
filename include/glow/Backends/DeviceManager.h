@@ -18,8 +18,8 @@
 
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/CompiledFunction.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include <functional>
@@ -46,18 +46,20 @@ protected:
   /// Type of Backend for this Device.
   BackendKind backend_;
 
-  /// Name or address of the device.
-  std::string name_;
+  /// Configuration object for the device.
+  std::unique_ptr<DeviceConfig> config_;
 
 public:
-  DeviceManager(BackendKind backend, llvm::StringRef name = "unnamed")
-      : backend_(backend), name_(name) {}
+  DeviceManager(BackendKind backend,
+                std::unique_ptr<DeviceConfig> config = nullptr)
+      : backend_(backend), config_(std::move(config)) {}
   virtual ~DeviceManager() {}
 
   /// Create a device of the type /p backend, with the backend specific
   /// name/addres /p name.
-  static DeviceManager *createDeviceManager(BackendKind backend,
-                                            llvm::StringRef name);
+  static DeviceManager *
+  createDeviceManager(BackendKind backend,
+                      std::unique_ptr<DeviceConfig> config = nullptr);
 
   /// Initialize the device.
   virtual ResultCode init() { return ResultCode::Executed; }
@@ -77,10 +79,11 @@ public:
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
-  /// Context should have all Placeholders allocated. resultCB will be called
-  /// with the Context results filled.
+  /// PlaceholderBindings should have all Placeholders allocated. resultCB will
+  /// be called with the PlaceholderBindings results filled.
   virtual runtime::RunIdentifierTy
-  runFunction(std::string functionName, std::unique_ptr<Context> ctx,
+  runFunction(std::string functionName,
+              std::unique_ptr<PlaceholderBindings> bindings,
               runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.

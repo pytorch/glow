@@ -16,10 +16,10 @@
 
 #include "../../lib/IR/GraphScheduler.h"
 
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 
 #include "gtest/gtest.h"
 
@@ -32,16 +32,16 @@ using namespace glow;
 /// they execute.
 TEST(GraphScheduler, testMaxSizeLessThanResultSize) {
   Module MD;
-  Context ctx;
+  PlaceholderBindings bindings;
   auto *smallTensorA =
       MD.createPlaceholder(ElemKind::FloatTy, {1, 4, 4}, "small_1", false);
-  ctx.allocate(smallTensorA);
+  bindings.allocate(smallTensorA);
   auto *smallTensorB =
       MD.createPlaceholder(ElemKind::FloatTy, {1, 4, 4}, "small_2", false);
-  ctx.allocate(smallTensorB);
+  bindings.allocate(smallTensorB);
   auto *bigTensor =
       MD.createPlaceholder(ElemKind::FloatTy, {100, 4, 4}, "big", false);
-  ctx.allocate(bigTensor);
+  bindings.allocate(bigTensor);
   Function *F = MD.createFunction("F");
   Node *transposeBig = F->createTranspose("transposeBig", bigTensor, {0, 2, 1});
   Node *sliceBig =

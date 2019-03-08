@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#include "glow/Graph/Context.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Nodes.h"
 
 using namespace glow;
 
-bool Context::compare(const Context *A, const Context *B) {
+bool PlaceholderBindings::compare(const PlaceholderBindings *A,
+                                  const PlaceholderBindings *B) {
   // Trivial cases.
   if (!A && !B) {
     return true;
@@ -28,11 +29,12 @@ bool Context::compare(const Context *A, const Context *B) {
     return false;
   }
 
-  // Get the map of Placeholder -> Tensor mappings within the two Contexts.
-  const Context::PlaceholderMap &phMapA = A->pairs();
-  const Context::PlaceholderMap &phMapB = B->pairs();
+  // Get the map of Placeholder -> Tensor mappings within the two
+  // PlaceholderBindingss.
+  const PlaceholderBindings::PlaceholderMap &phMapA = A->pairs();
+  const PlaceholderBindings::PlaceholderMap &phMapB = B->pairs();
 
-  // If the maps have different sizes, the Contexts cannot match.
+  // If the maps have different sizes, the PlaceholderBindingss cannot match.
   if (phMapA.size() != phMapB.size()) {
     return false;
   }
@@ -52,7 +54,7 @@ bool Context::compare(const Context *A, const Context *B) {
   return true;
 }
 
-Tensor *Context::get(Placeholder *P) const {
+Tensor *PlaceholderBindings::get(Placeholder *P) const {
   auto it = map_.find(P);
   if (it == map_.end()) {
     return nullptr;
@@ -61,7 +63,8 @@ Tensor *Context::get(Placeholder *P) const {
   return it->second;
 }
 
-Placeholder *Context::getPlaceholderByName(llvm::StringRef name) const {
+Placeholder *
+PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
   auto nameIt = nameMap_.find(name);
   if (nameIt == nameMap_.end()) {
     return nullptr;
@@ -70,21 +73,21 @@ Placeholder *Context::getPlaceholderByName(llvm::StringRef name) const {
   return nameIt->second;
 }
 
-void Context::insert(Placeholder *P, Tensor &&T) {
+void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
   assert(!map_.count(P) && "Placeholder already registered");
   // Take ownership over the tensor.
   map_[P] = new Tensor(std::move(T));
   nameMap_[P->getName()] = P;
 }
 
-size_t Context::count(Placeholder *P) const {
+size_t PlaceholderBindings::count(Placeholder *P) const {
   assert((map_.size() == nameMap_.size()) &&
          "Placeholder map and name map out of sync");
   return map_.count(P);
 }
 
-void Context::clear() {
-  // Delete all of the tensors that are owned by the context.
+void PlaceholderBindings::clear() {
+  // Delete all of the tensors that are owned by the bindings.
   for (auto PH : map_) {
     delete PH.second;
   }
@@ -93,8 +96,8 @@ void Context::clear() {
   nameMap_.clear();
 }
 
-Context Context::clone() const {
-  Context cloned;
+PlaceholderBindings PlaceholderBindings::clone() const {
+  PlaceholderBindings cloned;
   for (auto PH : map_) {
     Placeholder *P = PH.first;
     Tensor *T = PH.second;
@@ -104,7 +107,7 @@ Context Context::clone() const {
   return cloned;
 }
 
-Tensor *Context::allocate(Placeholder *P) {
+Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   assert(!map_.count(P) && "Placeholder already registered");
   Tensor *T = new Tensor(P->getType());
   map_[P] = T;
@@ -112,7 +115,7 @@ Tensor *Context::allocate(Placeholder *P) {
   return T;
 }
 
-unsigned Context::allocate(std::list<Placeholder *> &lst) {
+unsigned PlaceholderBindings::allocate(std::list<Placeholder *> &lst) {
   unsigned allocated = 0;
   // For each placeholder in the list:
   for (Placeholder *P : lst) {
@@ -128,7 +131,8 @@ unsigned Context::allocate(std::list<Placeholder *> &lst) {
   return allocated;
 }
 
-Placeholder *Context::getFirstUnallocated(std::list<Placeholder *> &lst) const {
+Placeholder *
+PlaceholderBindings::getFirstUnallocated(std::list<Placeholder *> &lst) const {
   // For each placeholder in the list:
   for (Placeholder *P : lst) {
     // If we found an unallocated placeholder then return it.
@@ -139,7 +143,7 @@ Placeholder *Context::getFirstUnallocated(std::list<Placeholder *> &lst) const {
   return nullptr;
 }
 
-uint64_t Context::getDataSize() const {
+uint64_t PlaceholderBindings::getDataSize() const {
   uint64_t size = 0;
   for (const auto &PH : map_) {
     Tensor *T = PH.second;
@@ -148,14 +152,16 @@ uint64_t Context::getDataSize() const {
   return size;
 }
 
-Context::Context(llvm::ArrayRef<Placeholder *> placeholders,
-                 llvm::ArrayRef<Tensor *> inputs) {
+PlaceholderBindings::PlaceholderBindings(
+    llvm::ArrayRef<Placeholder *> placeholders,
+    llvm::ArrayRef<Tensor *> inputs) {
   assert(placeholders.size() == inputs.size() &&
          "Invalid number of placeholders");
 
   for (size_t i = 0, e = placeholders.size(); i < e; i++) {
     auto *orig = inputs[i];
-    /// Create a reference to the original tensor and hand it to the Context.
+    /// Create a reference to the original tensor and hand it to the
+    /// PlaceholderBindings.
     Tensor ptrT = orig->getUnowned(orig->dims());
     insert(placeholders[i], std::move(ptrT));
   }

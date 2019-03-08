@@ -130,7 +130,7 @@ struct Model {
   Placeholder *input_;
   Placeholder *seqLength_;
   Placeholder *output_;
-  Context ctx;
+  PlaceholderBindings bindings;
   LoweredInfoMap loweredMap_;
 
   void loadLanguages();
@@ -156,7 +156,7 @@ struct Model {
       ::lower(F_, &loweredMap_);
 
       // Instrument the graph to capture profiles for nodes' outputs.
-      F_ = glow::profileQuantization(ctx, F_);
+      F_ = glow::profileQuantization(bindings, F_);
     }
 
     // Load the quantization profile and transform the graph.
@@ -184,7 +184,7 @@ struct Model {
     // Do not create constants if we're profiling; the newly allocate histogram
     // vars will erroneously become constants.
     if (dumpProfileFileOpt.empty()) {
-      ::glow::convertPlaceholdersToConstants(F_, ctx,
+      ::glow::convertPlaceholdersToConstants(F_, bindings,
                                              {input_, seqLength_, output_});
     }
     EE_.compile(CompilationMode::Infer, F_);
@@ -200,7 +200,7 @@ private:
         mod.createPlaceholder(ElemKind::FloatTy, {langSize, EMBEDDING_SIZE},
                               "embedding." + langPrefix.str(), false);
     loadMatrixFromFile("fr2en/" + langPrefix.str() + "_embedding.bin",
-                       *ctx.allocate(result));
+                       *bindings.allocate(result));
 
     return result;
   }
@@ -257,15 +257,15 @@ void Model::loadEncoder() {
   auto &mod = EE_.getModule();
   input_ = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_, MAX_LENGTH},
                                  "encoder.inputsentence", false);
-  ctx.allocate(input_);
+  bindings.allocate(input_);
   seqLength_ = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_},
                                      "encoder.seqLength", false);
-  ctx.allocate(seqLength_);
+  bindings.allocate(seqLength_);
 
   auto *hiddenInit =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize_, EMBEDDING_SIZE},
                             "encoder.hiddenInit", false);
-  auto *hiddenInitTensor = ctx.allocate(hiddenInit);
+  auto *hiddenInitTensor = bindings.allocate(hiddenInit);
   hiddenInitTensor->zero();
 
   Node *hidden = hiddenInit;
@@ -279,10 +279,10 @@ void Model::loadEncoder() {
   auto *bHh = mod.createPlaceholder(ElemKind::FloatTy, {HIDDEN_SIZE},
                                     "encoder.b_hh", false);
 
-  loadMatrixFromFile("fr2en/encoder_w_ih.bin", *ctx.allocate(wIh));
-  loadMatrixFromFile("fr2en/encoder_b_ih.bin", *ctx.allocate(bIh));
-  loadMatrixFromFile("fr2en/encoder_w_hh.bin", *ctx.allocate(wHh));
-  loadMatrixFromFile("fr2en/encoder_b_hh.bin", *ctx.allocate(bHh));
+  loadMatrixFromFile("fr2en/encoder_w_ih.bin", *bindings.allocate(wIh));
+  loadMatrixFromFile("fr2en/encoder_b_ih.bin", *bindings.allocate(bIh));
+  loadMatrixFromFile("fr2en/encoder_w_hh.bin", *bindings.allocate(wHh));
+  loadMatrixFromFile("fr2en/encoder_b_hh.bin", *bindings.allocate(bHh));
 
   Node *inputEmbedded =
       F_->createGather("encoder.embedding", embedding_fr_, input_);
@@ -315,7 +315,7 @@ void Model::loadDecoder() {
   auto &mod = EE_.getModule();
   auto *input = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize_},
                                       "decoder.input", false);
-  auto *inputTensor = ctx.allocate(input);
+  auto *inputTensor = bindings.allocate(input);
   for (size_t i = 0; i < batchSize_; i++) {
     inputTensor->getHandle<int64_t>().at({i}) = en_.word2index_["SOS"];
   }
@@ -333,12 +333,12 @@ void Model::loadDecoder() {
                                      "decoder.out_w", false);
   auto *outB = mod.createPlaceholder(
       ElemKind::FloatTy, {en_.index2word_.size()}, "decoder.out_b", false);
-  loadMatrixFromFile("fr2en/decoder_w_ih.bin", *ctx.allocate(wIh));
-  loadMatrixFromFile("fr2en/decoder_b_ih.bin", *ctx.allocate(bIh));
-  loadMatrixFromFile("fr2en/decoder_w_hh.bin", *ctx.allocate(wHh));
-  loadMatrixFromFile("fr2en/decoder_b_hh.bin", *ctx.allocate(bHh));
-  loadMatrixFromFile("fr2en/decoder_out_w.bin", *ctx.allocate(outW));
-  loadMatrixFromFile("fr2en/decoder_out_b.bin", *ctx.allocate(outB));
+  loadMatrixFromFile("fr2en/decoder_w_ih.bin", *bindings.allocate(wIh));
+  loadMatrixFromFile("fr2en/decoder_b_ih.bin", *bindings.allocate(bIh));
+  loadMatrixFromFile("fr2en/decoder_w_hh.bin", *bindings.allocate(wHh));
+  loadMatrixFromFile("fr2en/decoder_b_hh.bin", *bindings.allocate(bHh));
+  loadMatrixFromFile("fr2en/decoder_out_w.bin", *bindings.allocate(outW));
+  loadMatrixFromFile("fr2en/decoder_out_b.bin", *bindings.allocate(outB));
 
   Node *hidden = encoderHiddenOutput_;
   Node *lastWordIdx = input;
@@ -368,7 +368,7 @@ void Model::loadDecoder() {
                                     {MAX_LENGTH, batchSize_});
   auto *save = F_->createSave("decoder.output", reshape);
   output_ = save->getPlaceholder();
-  ctx.allocate(output_);
+  bindings.allocate(output_);
 }
 
 /// Translation has 2 stages:
@@ -399,10 +399,10 @@ void Model::translate(const std::vector<std::string> &batch) {
         (words.size() - 1) + j * MAX_LENGTH;
   }
 
-  updateInputPlaceholders(ctx, {input_, seqLength_}, {&input, &seqLength});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {input_, seqLength_}, {&input, &seqLength});
+  EE_.run(bindings);
 
-  auto OH = ctx.get(output_)->getHandle<int64_t>();
+  auto OH = bindings.get(output_)->getHandle<int64_t>();
   for (unsigned j = 0; j < batch.size(); j++) {
     for (unsigned i = 0; i < MAX_LENGTH; i++) {
       int64_t wordIdx = OH.at({i, j});
@@ -418,7 +418,7 @@ void Model::translate(const std::vector<std::string> &batch) {
 
   if (!dumpProfileFileOpt.empty()) {
     std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(ctx, F_, loweredMap_);
+        quantization::generateNodeQuantizationInfos(bindings, F_, loweredMap_);
     serializeToYaml(dumpProfileFileOpt, QI);
   }
 }

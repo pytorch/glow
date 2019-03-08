@@ -29,7 +29,7 @@
 #include <vector>
 
 namespace glow {
-class Context;
+class PlaceholderBindings;
 
 /// List of Types.
 using TypesList = std::list<Type>;
@@ -189,8 +189,8 @@ public:
   // the original Module only dangling pointers.
   Module(const Module &) = delete;
   Module(Module &&) = delete;
-  Module &operator=(const Context &) = delete;
-  Module &operator=(Context &&) = delete;
+  Module &operator=(const PlaceholderBindings &) = delete;
+  Module &operator=(PlaceholderBindings &&) = delete;
 };
 
 /// Represents the compute graph.
@@ -564,27 +564,31 @@ public:
   Node *createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
                                   NodeValue rhs);
 
+  /// Create a node, performing BatchedReduceAdd operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                NodeValue batch,
-                                               unsigned_t axis);
+                                               llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceAdd operation. Output type
+  /// matches input \p outTy type.
   BatchedReduceAddNode *createBatchedReduceAdd(llvm::StringRef name,
                                                TypeRef outTy, NodeValue batch,
-                                               unsigned_t axis);
+                                               llvm::ArrayRef<unsigned_t> axes);
 
-  /// Implements a batched reduce mean of the \p batch on the provided \p axis
-  /// with output type \p outTy with three nodes: a BatchedReduceAdd followed by
-  /// a DivNode with a SplatNode of the length of the \p axis
-  /// dimension. \returns the final DivNode.
-  DivNode *createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, unsigned_t axis);
+  /// Create a node, performing BatchedReduceMean operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceMeanNode *
+  createBatchedReduceMean(llvm::StringRef name, TypeRef outTy, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
 
-  /// Implements a batched reduce mean of the \p batch on the provided \p axis
-  /// with three nodes: a BatchedReduceAdd followed by a DivNode with a
-  /// SplatNode of the length of the \p axis dimension. \returns the final
-  /// DivNode.
-  DivNode *createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
-                                   unsigned_t axis);
+  /// Create a node, performing BatchedReduceMean operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceMeanNode *
+  createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
+                          llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
                                    NodeValue sample);
@@ -663,11 +667,11 @@ public:
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
   /// the scales and offsets are fused inline with each row of data. \p data
-  /// must be ElemKind::Int8FusedQTy. Gathers slices of the outer-most dimension
-  /// of data indexed by the \p indices vector, and then accumulates them into
-  /// len(\p lengths) entries: first Lengths[0] slices are aggregated to
-  /// Result[0], next Lengths[1] slices are aggregated to Result[1],
-  /// etc. I.e. sum(Lengths) must be equal to len(Indices).
+  /// must be ElemKind::UInt8FusedQTy. Gathers slices of the outer-most
+  /// dimension of data indexed by the \p indices vector, and then accumulates
+  /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
+  /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
+  /// I.e. sum(Lengths) must be equal to len(Indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Constant *data, NodeValue indices,
@@ -735,11 +739,12 @@ public:
                        Placeholder *output);
 
   /// Create quantization profile node named \p name for the output tensor from
-  /// \p input in context \p ctx. Capture observed node name in quantization
-  /// profile node as original node can be replaced during lowering phase.
-  QuantizationProfileNode *createQuantizationProfile(Context &ctx,
-                                                     llvm::StringRef name,
-                                                     NodeValue input);
+  /// \p input in PlaceholderBindings \p bindings. Capture observed node name in
+  /// quantization profile node as original node can be replaced during lowering
+  /// phase.
+  QuantizationProfileNode *
+  createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
+                            NodeValue input);
 
   /// Create lookup table for mapping between quantized numbers.
   /// \p input and \p outTy must have quantized type.
@@ -852,16 +857,16 @@ public:
 
   /// @name The builder functions below are identical to the builder functions
   /// above except that they create nodes that use Placeholder instead of
-  /// Variables. The methods create and initialize the tensors in the context.
-  /// As soon as we finish the Placeholder migration we'll delete these methods
-  /// and merge them with the builder methods above.
-  /// See issue #1334.
+  /// Variables. The methods create and initialize the tensors in the
+  /// PlaceholderBindings. As soon as we finish the Placeholder migration we'll
+  /// delete these methods and merge them with the builder methods above. See
+  /// issue #1334.
   ///@{
 
   BatchNormalizationNode *
-  createBatchNormalization(Context &ctx, llvm::StringRef name, NodeValue input,
-                           unsigned_t channelIdx = 0, float epsilon = 1e-5,
-                           float momentum = 0.9);
+  createBatchNormalization(PlaceholderBindings &bindings, llvm::StringRef name,
+                           NodeValue input, unsigned_t channelIdx = 0,
+                           float epsilon = 1e-5, float momentum = 0.9);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernels defines the size of the height and width dimensions
@@ -870,8 +875,9 @@ public:
   /// padding cells should be added to the input during convolution. \p group
   /// defines the number of groups the input and output channels should be
   /// divided into and convolved separately.
-  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t outChannels,
+  ConvolutionNode *createConv(PlaceholderBindings &bindings,
+                              llvm::StringRef name, NodeValue input,
+                              size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads,
@@ -884,10 +890,11 @@ public:
   /// padding cells should be added to the input during convolution. \p group
   /// defines the number of groups the input and output channels should be
   /// divided into and convolved separately.
-  ConvolutionNode *createConv(Context &ctx, llvm::StringRef name,
-                              NodeValue input, size_t outChannels,
-                              unsigned_t kernel, unsigned_t stride,
-                              unsigned_t pad, unsigned_t group);
+  ConvolutionNode *createConv(PlaceholderBindings &bindings,
+                              llvm::StringRef name, NodeValue input,
+                              size_t outChannels, unsigned_t kernel,
+                              unsigned_t stride, unsigned_t pad,
+                              unsigned_t group);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input. \p kernels defines the size of the height, width, and time
@@ -896,8 +903,9 @@ public:
   /// many zero padding cells should be added to the input during convolution.
   /// \p group defines the number of groups the input and output channels should
   /// be divided into and convolved separately.
-  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
-                                  NodeValue input, size_t outChannels,
+  Convolution3DNode *createConv3D(PlaceholderBindings &bindings,
+                                  llvm::StringRef name, NodeValue input,
+                                  size_t outChannels,
                                   llvm::ArrayRef<unsigned_t> kernels,
                                   llvm::ArrayRef<unsigned_t> strides,
                                   llvm::ArrayRef<unsigned_t> pads,
@@ -910,14 +918,16 @@ public:
   /// many zero padding cells should be added to the input during convolution.
   /// \p group defines the number of groups the input and output channels should
   /// be divided into and convolved separately.
-  Convolution3DNode *createConv3D(Context &ctx, llvm::StringRef name,
-                                  NodeValue input, size_t outChannels,
-                                  unsigned_t kernel, unsigned_t stride,
-                                  unsigned_t pad, unsigned_t group);
+  Convolution3DNode *createConv3D(PlaceholderBindings &bindings,
+                                  llvm::StringRef name, NodeValue input,
+                                  size_t outChannels, unsigned_t kernel,
+                                  unsigned_t stride, unsigned_t pad,
+                                  unsigned_t group);
 
   /// Create a fully connected node with the given \p name, \p input and \p
   /// output depth. Trainable weight and bias variables are created implicitly.
-  FullyConnectedNode *createFullyConnected(Context &ctx, llvm::StringRef name,
+  FullyConnectedNode *createFullyConnected(PlaceholderBindings &bindings,
+                                           llvm::StringRef name,
                                            NodeValue input, size_t outDepth);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
@@ -928,7 +938,8 @@ public:
   /// The output variables are written to \p outputs, they represent the
   /// activations of the output layer, unrolled over time.
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
-  void createSimpleRNN(Context &ctx, llvm::StringRef namePrefix,
+  void createSimpleRNN(PlaceholderBindings &bindings,
+                       llvm::StringRef namePrefix,
                        const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                        unsigned hiddenSize, unsigned outputSize,
                        std::vector<NodeValue> &outputs);
@@ -941,7 +952,7 @@ public:
   /// The output variables are written to \p outputs, they represent the
   /// activation of the output layer, unrolled over time.
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
-  void createGRU(Context &ctx, llvm::StringRef namePrefix,
+  void createGRU(PlaceholderBindings &bindings, llvm::StringRef namePrefix,
                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                  unsigned hiddenSize, unsigned outputSize,
                  std::vector<NodeValue> &outputs);
@@ -954,7 +965,7 @@ public:
   /// The output variables are written to \p outputs, they represent the
   /// activation of the output layer, unrolled over time.
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
-  void createLSTM(Context &ctx, llvm::StringRef namePrefix,
+  void createLSTM(PlaceholderBindings &bindings, llvm::StringRef namePrefix,
                   const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);

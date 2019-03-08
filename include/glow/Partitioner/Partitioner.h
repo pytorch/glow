@@ -25,6 +25,7 @@ namespace glow {
 using namespace runtime;
 
 using MemUsageMapTy = std::unordered_map<Node *, size_t>;
+using ComputeTimeMapTy = std::unordered_map<Node *, float>;
 using NodesSetTy = std::set<Node *>;
 using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
@@ -97,6 +98,9 @@ class Partitioner {
   /// The map of each operator and the corresponding memory size.
   MemUsageMapTy memUsage_;
 
+  /// The map of each operator and the compute runtime.
+  ComputeTimeMapTy computeTime_;
+
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, size_t &memSize);
@@ -104,6 +108,9 @@ class Partitioner {
   /// Get the minimal memory requirement for each op in the representive
   /// function.
   void initOpMemUsage();
+
+  /// Inititalize the minimal compute time for each op in the function.
+  void initOpComputeTime();
 
   /// Combine the partitions if necessary : if all outside uses of the nodes in
   /// /// partition1 is in partition2, and the sum of memory consumption of
@@ -140,6 +147,9 @@ public:
 
   /// Decompose each function in a module and return a list of DAGNodes.
   DAGNodeList &Partition();
+
+  /// Get function for computeTime_
+  ComputeTimeMapTy getComputeTime() const { return computeTime_; }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H

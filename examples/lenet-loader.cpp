@@ -23,7 +23,7 @@ using namespace glow;
 /// A stripped-down example of how to load a Caffe2 protobuf and perform
 /// inference.
 int main() {
-  glow::Context ctx;
+  glow::PlaceholderBindings bindings;
   glow::ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("lenet_mnist");
@@ -50,14 +50,14 @@ int main() {
   batch.getHandle<>().insertSlice(image, 0);
 
   // Allocate memory for input and bind it to the placeholders.
-  ctx.allocate(mod.getPlaceholders());
-  glow::updateInputPlaceholders(ctx, {input}, {&batch});
+  bindings.allocate(mod.getPlaceholders());
+  glow::updateInputPlaceholders(bindings, {input}, {&batch});
 
   // Perform inference.
-  EE.run(ctx);
+  EE.run(bindings);
 
   // Read output and find argmax.
-  auto out = ctx.get(output)->getHandle<float>();
+  auto out = bindings.get(output)->getHandle<float>();
   printf("digit: %zu\n", out.minMaxArg().second);
   return 0;
 }

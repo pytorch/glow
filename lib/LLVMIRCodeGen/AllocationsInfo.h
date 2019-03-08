@@ -26,7 +26,7 @@ class Value;
 class IRFunction;
 class WeightVar;
 class Constant;
-class Context;
+class PlaceholderBindings;
 
 namespace runtime {
 class RuntimeBundle;

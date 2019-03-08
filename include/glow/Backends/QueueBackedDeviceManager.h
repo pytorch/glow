@@ -33,8 +33,9 @@ protected:
   std::atomic<RunIdentifierTy> nextIdentifier_{1};
 
 public:
-  QueueBackedDeviceManager(BackendKind backend, llvm::StringRef name)
-      : DeviceManager(backend, name), workThread_(1) {}
+  QueueBackedDeviceManager(BackendKind backend,
+                           std::unique_ptr<DeviceConfig> config)
+      : DeviceManager(backend, std::move(config)), workThread_(1) {}
 
   virtual ~QueueBackedDeviceManager() {
     stop(true); // will join workThread_
@@ -64,17 +65,16 @@ public:
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
-  /// Context should have all Placeholders allocated. resultCB will be called
-  /// with the Context results filled.
+  /// PlaceholderBindings \p bindings should have all Placeholders allocated.
+  /// resultCB will be called with the bindings results filled.
   RunIdentifierTy runFunction(std::string functionName,
-                              std::unique_ptr<Context> ctx,
+                              std::unique_ptr<PlaceholderBindings> bindings,
                               ResultCBTy callback) override {
-
     RunIdentifierTy id = nextIdentifier_++;
     workThread_.submit([this, id, functionName = std::move(functionName),
-                        ctx = std::move(ctx),
+                        bindings = std::move(bindings),
                         callback = std::move(callback)]() mutable {
-      runFunctionImpl(id, std::move(functionName), std::move(ctx),
+      runFunctionImpl(id, std::move(functionName), std::move(bindings),
                       std::move(callback));
     });
     return id;
@@ -99,7 +99,8 @@ protected:
 
   /// Execute provided Function.
   virtual void runFunctionImpl(RunIdentifierTy, std::string,
-                               std::unique_ptr<Context>, ResultCBTy) = 0;
+                               std::unique_ptr<PlaceholderBindings>,
+                               ResultCBTy) = 0;
 };
 } // namespace runtime
 } // namespace glow

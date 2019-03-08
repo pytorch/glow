@@ -15,8 +15,8 @@
  */
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRBuilder.h"
 
 #include "gtest/gtest.h"
@@ -35,7 +35,7 @@ TEST(Interpreter, NotImplementedSave) {
   // Interpreter backend does not support a save method.
   // Exercise it and make sure that it fails.
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings ctx;
   auto &mod = EE.getModule();
 
   // Create a few nodes to make sure IR can be normally generated.
@@ -50,7 +50,7 @@ TEST(Interpreter, NotImplementedSave) {
 
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
-  Context ctx;
+  PlaceholderBindings ctx;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -107,7 +107,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
 TEST_P(BackendTest, simpleInference) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
-  Context ctx;
+  PlaceholderBindings ctx;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -149,7 +149,7 @@ TEST_P(BackendTest, simpleInference) {
 TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   Module mod;
-  Context ctx;
+  PlaceholderBindings ctx;
   Function *F = mod.createFunction("main");
   auto *IV = mod.createPlaceholder(input.getElementType(), input.dims(),
                                    "input", false);
@@ -174,7 +174,7 @@ TEST_P(BackendTest, debugPrint) {
 /// collectConstants is false.
 TEST_P(BackendTest, CompileWithoutConstants) {
   Module mod;
-  Context ctx;
+  PlaceholderBindings ctx;
   Function *F = mod.createFunction("main");
   auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *XTensor = ctx.allocate(X);
@@ -193,7 +193,7 @@ TEST_P(BackendTest, CompileWithoutConstants) {
 /// Later we execute the code and check that things work.
 TEST_P(BackendTest, decoupleCodegenFromGraph) {
   Module mod;
-  Context ctx;
+  PlaceholderBindings ctx;
 
   Function *F = mod.createFunction("main");
   auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
@@ -228,7 +228,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", false);
-  Context ctx({input}, {&data});
+  PlaceholderBindings ctx({input}, {&data});
   SaveNode *S = F->createSave("ret", input);
   auto *STensor = ctx.allocate(S->getPlaceholder());
 
@@ -237,15 +237,15 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   EXPECT_TRUE(STensor->isEqual(data));
 }
 
-/// Test the basic functionality of the context.
-TEST(Context, basicContextTest) {
+/// Test the basic functionality of the bindings.
+TEST(PlaceholderBindings, basicPlaceholderBindingsTest) {
   Module mod;
   TypeRef ty = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
 
   Tensor T1(ty);
 
-  // Create a context for some threaded execution.
-  Context C;
+  // Create a bindings for some threaded execution.
+  PlaceholderBindings C;
 
   // Create a simple graph, just to have a few placeholders.
   Function *F = mod.createFunction("main");
@@ -277,7 +277,7 @@ TEST(Context, basicContextTest) {
   EXPECT_NE(S, nullptr);
 
   // The tensor that we got while allocating T2 is the same one that we got
-  // while searching the context.
+  // while searching the bindings.
   EXPECT_EQ(I2, V2);
 
   // Check that all of the placeholders are allocated.

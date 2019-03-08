@@ -29,46 +29,52 @@ namespace runtime {
 /// when you define a new DeviceManager.
 
 /// Create a new instance of the interpreter Device.
-DeviceManager *createInterpreterDeviceManager(llvm::StringRef name);
+DeviceManager *
+createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend DeviceManager.
-DeviceManager *createCPUDeviceManager(llvm::StringRef name);
+DeviceManager *
+createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 #else
-DeviceManager *createCPUDeviceManager(llvm::StringRef name) {
-  (void)name;
+DeviceManager *
+createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+  (void)config;
   GLOW_UNREACHABLE("Must compile with CPU support");
 }
 #endif
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
-DeviceManager *createOCLDeviceManager(llvm::StringRef name);
+DeviceManager *
+createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 #else
-DeviceManager *createOCLDeviceManager(llvm::StringRef name) {
-  (void)name;
+DeviceManager *
+createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+  (void)config;
   GLOW_UNREACHABLE("Must compile with OpenCL support");
 }
 #endif
 } // namespace runtime
 } // namespace glow
 
-DeviceManager *DeviceManager::createDeviceManager(BackendKind backendKind,
-                                                  llvm::StringRef name) {
+DeviceManager *
+DeviceManager::createDeviceManager(BackendKind backendKind,
+                                   std::unique_ptr<DeviceConfig> config) {
   switch (backendKind) {
   case BackendKind::Interpreter:
-    return createInterpreterDeviceManager(name);
+    return createInterpreterDeviceManager(std::move(config));
   case BackendKind::OpenCL:
-    return createOCLDeviceManager(name);
+    return createOCLDeviceManager(std::move(config));
   case BackendKind::CPU:
-    return createCPUDeviceManager(name);
+    return createCPUDeviceManager(std::move(config));
   default:
     // As a fallback to make developing new Backends easier we'll create a
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
     // device.
     llvm::errs() << "Warning: Creating a DummyDeviceManager.\n";
-    return new DummyDeviceManager(backendKind, name);
+    return new DummyDeviceManager(backendKind, std::move(config));
   }
 
   // This is to make compiler happy. It can never reach this point as switch

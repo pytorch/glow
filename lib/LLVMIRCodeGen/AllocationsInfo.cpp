@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define DEBUG_TYPE "jit-allocations"
 
 #include "AllocationsInfo.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
@@ -28,6 +27,8 @@
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "jit-allocations"
 
 using namespace glow;
 using llvm::cast;

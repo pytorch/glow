@@ -256,16 +256,22 @@ inline bool operator==(const ShapeNHWCT &LHS, const ShapeNHWCT &RHS) {
 /// An enum representing the type used by the elements of a tensor. The types of
 /// Handles for these tensors should match the element kind.
 enum class ElemKind : unsigned char {
-  FloatTy,      // 32-bit float type (float)
-  Float16Ty,    // 16-bit float type (half, fp16)
-  Int8QTy,      // 8-bit quantized type (int8_t)
-  Int16QTy,     // 16-bit quantized type (int16_t)
-  Int32QTy,     // 32-bit quantized type (int32_t)
-  Int32ITy,     // 32-bit index type (int32_t)
-  Int64ITy,     // 64-bit index type (int64_t)
-  Int8FusedQTy, // 8-bit quantized type with fused scale/offset (int8_t)
-  BoolTy,       // Bool type (bool)
+  FloatTy,       // 32-bit float type (float)
+  Float16Ty,     // 16-bit float type (half, fp16)
+  Int8QTy,       // 8-bit quantized type (int8_t)
+  Int16QTy,      // 16-bit quantized type (int16_t)
+  Int32QTy,      // 32-bit quantized type (int32_t)
+  Int32ITy,      // 32-bit index type (int32_t)
+  Int64ITy,      // 64-bit index type (int64_t)
+  UInt8FusedQTy, // 8-bit quantized type with fused scale/offset (uint8_t)
+  BoolTy,        // Bool type (bool)
 };
+
+/// \returns whether \p e is a quantized ElemKind.
+inline bool isQuantizedElemKind(ElemKind e) {
+  return e == ElemKind::Int8QTy || e == ElemKind::Int16QTy ||
+         e == ElemKind::Int32QTy || e == ElemKind::UInt8FusedQTy;
+}
 
 /// A class that represents a type of a tensor.
 struct Type final {
@@ -433,8 +439,8 @@ struct Type final {
       return std::is_same<ElemTy, int32_t>::value;
     case ElemKind::Int64ITy:
       return std::is_same<ElemTy, int64_t>::value;
-    case ElemKind::Int8FusedQTy:
-      return std::is_same<ElemTy, int8_t>::value;
+    case ElemKind::UInt8FusedQTy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
@@ -442,12 +448,7 @@ struct Type final {
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.
-  bool isQuantizedType() const {
-    return elementType_ == ElemKind::Int8QTy ||
-           elementType_ == ElemKind::Int16QTy ||
-           elementType_ == ElemKind::Int32QTy ||
-           elementType_ == ElemKind::Int8FusedQTy;
-  }
+  bool isQuantizedType() const { return isQuantizedElemKind(elementType_); }
 
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.
@@ -479,8 +480,8 @@ struct Type final {
       return sizeof(int32_t);
     case ElemKind::Int64ITy:
       return sizeof(int64_t);
-    case ElemKind::Int8FusedQTy:
-      return sizeof(int8_t);
+    case ElemKind::UInt8FusedQTy:
+      return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);
     }
@@ -495,8 +496,8 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",   "float16", "i8",      "i16",  "i32",
-        "index32", "index64", "i8fused", "bool",
+        "float",   "float16", "i8",       "i16",  "i32",
+        "index32", "index64", "ui8fused", "bool",
     };
     return names[(int)Ty];
   }

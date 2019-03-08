@@ -15,8 +15,8 @@
  */
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
-#include "glow/Graph/Context.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"
@@ -34,26 +34,26 @@ protected:
 /// Create a simple network that has a single fp convolution.
 void singleConvNet(Tensor *input, Tensor *out, BackendKind kind,
                    size_t convDepth, size_t kernel, size_t stride, size_t pad) {
-  Context ctx;
+  PlaceholderBindings bindings;
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = mod.createPlaceholder(input->getElementType(), input->dims(),
                                     "var", false);
-  ctx.allocate(var)->assign(input);
+  bindings.allocate(var)->assign(input);
 
   auto *conv =
-      F->createConv(ctx, "conv", var, convDepth, kernel, stride, pad, 1);
-  ctx.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(0.1);
-  ctx.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(0.1);
+      F->createConv(bindings, "conv", var, convDepth, kernel, stride, pad, 1);
+  bindings.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(0.1);
+  bindings.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(0.1);
   auto *result = F->createSave("ret", conv);
-  auto *resultTensor = ctx.allocate(result->getPlaceholder());
-  convertPlaceholdersToConstants(F, ctx, {var, result->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(result->getPlaceholder());
+  convertPlaceholdersToConstants(F, bindings, {var, result->getPlaceholder()});
 
   EE.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(ctx, {var}, {input});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {var}, {input});
+  EE.run(bindings);
   out->assign(resultTensor);
 }
 

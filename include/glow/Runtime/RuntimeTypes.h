@@ -16,6 +16,7 @@
 #ifndef GLOW_RUNTIME_RUNTIMETYPES_H
 #define GLOW_RUNTIME_RUNTIMETYPES_H
 
+#include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 
@@ -40,14 +41,26 @@ enum class ResultCode { Ready, Executed, Failed, Canceled };
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy = std::function<void(
-    runtime::RunIdentifierTy, runtime::ResultCode, std::unique_ptr<Context>)>;
+using ResultCBTy =
+    std::function<void(runtime::RunIdentifierTy, runtime::ResultCode,
+                       std::unique_ptr<PlaceholderBindings>)>;
 
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.
 struct DeviceInfo {
   /// Available memory on device in bytes.
   size_t availableMemory;
+  /// Available SRAM capacity in bytes.
+  size_t sramCapacity;
+  /// Peak compute on device in ops/second. Assumes all ops are in int8.
+  /// TODO: distinguish between data types with different peak flops.
+  float peakCompute;
+  /// Peak memory bandwidth from DRAM on device in bytes/second.
+  float peakDramBw;
+  /// Peak memory bandwidth from SRAM on device in bytes/second.
+  float peakSramBw;
+  /// Peak ingress/egress PCI-E bandwidth from device in bytes/second.
+  float peakPCIeBw;
 };
 
 /// Individual Node in the DAG for a given network. This contains all the
@@ -79,6 +92,20 @@ struct DAGNodeList {
   std::vector<std::unique_ptr<DAGNode>> roots;
   /// The non-root DAGNode pointers.
   std::vector<std::unique_ptr<DAGNode>> nodes;
+};
+
+/// This is the base class for DeviceManager configurations. Any specific
+/// device can extend this class to contain information to identify
+/// and configure the device manager. Additionally it needs to set it's kind_
+/// member variable to it's correct BackendKind.
+class DeviceConfig {
+  const BackendKind backendKind_;
+
+protected:
+  DeviceConfig(BackendKind kind) : backendKind_(kind) {}
+
+public:
+  BackendKind getBackendKind() { return backendKind_; }
 };
 
 } // namespace runtime

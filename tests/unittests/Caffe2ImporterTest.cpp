@@ -39,7 +39,7 @@ TEST(caffe2, importConv) {
                                 "tests/models/caffe2Models/init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -50,14 +50,14 @@ TEST(caffe2, importConv) {
                                {&data.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"data"}, {&data});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
   }
 
-  auto res = ctx.get(output);
+  auto res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
@@ -81,7 +81,7 @@ TEST(caffe2, convNHWC) {
       GLOW_DATA_PATH "tests/models/caffe2Models/conv_nhwc_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
@@ -119,7 +119,7 @@ TEST(caffe2, maxPoolNHWC) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
@@ -156,7 +156,7 @@ TEST(caffe2, maxPool) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
@@ -201,7 +201,7 @@ TEST(caffe2, avgPoolNHWC) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
@@ -238,7 +238,7 @@ TEST(caffe2, avgPool) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
@@ -291,7 +291,7 @@ TEST(caffe2, concatAddAxis) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
@@ -309,8 +309,8 @@ TEST(caffe2, concatAddAxis) {
         {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod,
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
                                   {"inputs_0", "inputs_1", "inputs_2"},
                                   {&inputs_0, &inputs_1, &inputs_2});
   }
@@ -319,10 +319,10 @@ TEST(caffe2, concatAddAxis) {
   std::vector<size_t> expectedDims = {10, 3, 7};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
-  auto res = ctx.get(output);
+  auto res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   // High level check on the content of the graph.
   // We have 1 reshape, 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -368,7 +368,7 @@ TEST(caffe2, concat) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {10, 7});
   Tensor inputs_1(ElemKind::FloatTy, {10, 12});
@@ -385,8 +385,8 @@ TEST(caffe2, concat) {
         {&inputs_0.getType(), &inputs_1.getType(), &inputs_2.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod,
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
                                   {"inputs_0", "inputs_1", "inputs_2"},
                                   {&inputs_0, &inputs_1, &inputs_2});
   }
@@ -395,11 +395,11 @@ TEST(caffe2, concat) {
   std::vector<size_t> expectedDims = {10, 24};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
-  ctx.allocate(mod.getPlaceholders());
-  auto res = ctx.get(output);
+  bindings.allocate(mod.getPlaceholders());
+  auto res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
   // High level check on the content of the graph.
   // We have 1 concat, and 1 save.
   EXPECT_EQ(F->getNodes().size(), 2);
@@ -588,7 +588,7 @@ TEST(caffe2, FC) {
                                 "tests/models/caffe2Models/fc_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
   {
@@ -601,8 +601,8 @@ TEST(caffe2, FC) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 FC node and 1 save.
@@ -661,7 +661,7 @@ TEST(caffe2, FCWithFlatten) {
                                 "tests/models/caffe2Models/fc_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   {
     Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
@@ -673,8 +673,8 @@ TEST(caffe2, FCWithFlatten) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 reshape, 1 FC,
@@ -736,7 +736,7 @@ TEST(caffe2, FCTransposed) {
       GLOW_DATA_PATH "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anyting from the loader.
@@ -750,8 +750,8 @@ TEST(caffe2, FCTransposed) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 FC and 1 save,
@@ -810,7 +810,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
       GLOW_DATA_PATH "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   {
     Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
@@ -822,8 +822,8 @@ TEST(caffe2, FCTransposedWithFlatten) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs"}, {&inputs});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 reshape, 1 FC,
@@ -884,7 +884,7 @@ TEST(caffe2, importClip) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
   // Destroy the loader after the graph is loaded since the following execution
@@ -893,8 +893,8 @@ TEST(caffe2, importClip) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
 
   EXPECT_EQ(F->getNodes().size(), 5);
@@ -928,7 +928,7 @@ TEST(caffe2, importClipDefault) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
 
@@ -938,8 +938,8 @@ TEST(caffe2, importClipDefault) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"inputs_0"}, {&inputs_0});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
   EXPECT_EQ(F->getNodes().size(), 5);
   auto *saveNode = getSaveNodeFromDest(output);
@@ -970,7 +970,7 @@ TEST(caffe2, replaceNaN) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor input(ElemKind::FloatTy, {10, 10});
 
@@ -980,8 +980,8 @@ TEST(caffe2, replaceNaN) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"input"}, {&input});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
   }
 
   // Check that the shape of the output matches the input.
@@ -1106,7 +1106,7 @@ TEST(caffe2, batchBoxCox) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
 
   // Input tensors.
@@ -1157,8 +1157,9 @@ TEST(caffe2, batchBoxCox) {
         NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"data", "lambda1", "lambda2"},
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"data", "lambda1", "lambda2"},
                                   {&data, &lambda1, &lambda2});
   }
 
@@ -1242,9 +1243,9 @@ TEST(caffe2, batchBoxCox) {
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
 
   // Compile and run the model.
-  auto *res = ctx.get(output);
+  auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer, F);
-  EE.run(ctx);
+  EE.run(bindings);
 
   auto result = res->getHandle();
 
@@ -1266,7 +1267,7 @@ TEST(caffe2, EQ1D) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Input tensors.
   const size_t kDataSize = 10;
@@ -1377,7 +1378,7 @@ TEST(caffe2, sparseToDense) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Create inputs.
   constexpr size_t kNumIndices = 5;
@@ -1396,8 +1397,8 @@ TEST(caffe2, sparseToDense) {
         {"indices", "values", "dataToInferDim"},
         {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(ctx, &mod, {"indices", "values"},
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"indices", "values"},
                                   {&indices, &values});
   }
 
@@ -1430,7 +1431,7 @@ TEST(caffe2, SparseToDenseMask) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor indices(ElemKind::Int64ITy, {4});
   Tensor values(ElemKind::FloatTy, {4, 10, 20, 30});
@@ -1482,7 +1483,7 @@ TEST(caffe2, testNCHW2NHWC) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 2, 3, 4});
 
@@ -1492,11 +1493,11 @@ TEST(caffe2, testNCHW2NHWC) {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-    ctx.allocate(mod.getPlaceholders());
+    bindings.allocate(mod.getPlaceholders());
   }
 
   // Check output shape.
-  auto res = ctx.get(output);
+  auto res = bindings.get(output);
   std::vector<size_t> expectedDims = {1, 3, 4, 2};
   EXPECT_TRUE(res->getHandle<float>().dims().vec() == expectedDims);
 
@@ -1526,7 +1527,7 @@ TEST(caffe2, lengthsSum) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   // Create inputs.
   Tensor data(ElemKind::Int64ITy, {10, 2, 3});
@@ -1603,7 +1604,8 @@ TEST(caffe2, tensorFillsTest) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
-  Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill;
+  Constant *tensorFillFloat, *tensorIntFill, *tensorInt64Fill,
+      *tensorStringToUInt8Fill;
 
   // Destroy the loader after the graph is loaded since the following execution
   // will not depend on anything from the loader.
@@ -1620,27 +1622,37 @@ TEST(caffe2, tensorFillsTest) {
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill")));
     tensorInt64Fill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
         caffe2LD.getNodeValueOrCreateConstantByName("tensor_int64_fill")));
+    tensorStringToUInt8Fill = llvm::dyn_cast<Constant>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueOrCreateConstantByName(
+            "tensor_string_to_uint8_fill")));
   }
 
   ASSERT_TRUE(tensorFillFloat);
   ASSERT_TRUE(tensorIntFill);
   ASSERT_TRUE(tensorInt64Fill);
+  ASSERT_TRUE(tensorStringToUInt8Fill);
 
   // All fills in fill_test_init_net.pbtxt use shape {2, 2}.
   const std::vector<size_t> expectedDims = {2, 2};
   ASSERT_TRUE(tensorFillFloat->dims().equals(expectedDims));
   ASSERT_TRUE(tensorIntFill->dims().equals(expectedDims));
   ASSERT_TRUE(tensorInt64Fill->dims().equals(expectedDims));
+  ASSERT_TRUE(tensorStringToUInt8Fill->dims().equals(expectedDims));
 
   auto tensorFillFloatH = tensorFillFloat->getPayload().getHandle<float>();
   auto tensorIntFillH = tensorIntFill->getPayload().getHandle<int32_t>();
   auto tensorInt64FillH = tensorInt64Fill->getPayload().getHandle<int64_t>();
+  // We load GivenTensorByteStringToUInt8Fill as Int8QTy with dummy scale/offset
+  // for now, because it's only used for rowwise-quantized tensors.
+  auto tensorStringToUInt8FillH =
+      tensorStringToUInt8Fill->getPayload().getHandle<int8_t>();
 
   // All fills in fill_test_init_net.pbtxt are set to 0 through 3.
   for (size_t i = 0; i < 4; i++) {
     EXPECT_FLOAT_EQ(tensorFillFloatH.raw(i), (float)i);
     EXPECT_EQ(tensorIntFillH.raw(i), (int32_t)i);
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);
+    EXPECT_EQ(tensorStringToUInt8FillH.raw(i), (int8_t)i);
   }
 }
 
@@ -1655,7 +1667,7 @@ TEST(caffe2, Alias) {
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor input(ElemKind::FloatTy, {1, 2, 3, 4});
 
@@ -1691,7 +1703,7 @@ TEST(caffe2, Modulo) {
       GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
   Placeholder *output;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   Tensor data(ElemKind::Int64ITy, {7});
 
@@ -1731,7 +1743,7 @@ TEST(caffe2, elementwiseLinear) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
   Tensor X(ElemKind::FloatTy, {10, 5});
   Tensor w(ElemKind::FloatTy, {10}), b(ElemKind::FloatTy, {10});
@@ -1808,7 +1820,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Context ctx;
+  PlaceholderBindings bindings;
   Placeholder *output;
 
   // Since the loader will assume that axis = 1, the 0th dim of the shapes of w
@@ -1902,7 +1914,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
       "rowwise_quantized_sparse_lengths_weighted_sum_init_net.pbtxt");
 
   Placeholder *output, *indices, *lengths;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
@@ -1924,10 +1936,10 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  ctx.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -1959,10 +1971,10 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   // Constant, as it is no longer used.
   EXPECT_EQ(mod.getConstants().size(), 4);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
-  Tensor &result = *ctx.get(output);
-  Tensor expected(ElemKind::FloatTy, {4});
+  Tensor &result = *bindings.get(output);
+  Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle() = {
       0.5,
       0,
@@ -1970,7 +1982,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+  EXPECT_TRUE(expected.isEqual(result, 0.03f));
 }
 
 /// Test loading SparseLengthsSum8BitsRowwise. This is created as a
@@ -2006,7 +2018,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
                      "rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
 
   Placeholder *output, *indices, *lengths;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
@@ -2028,10 +2040,10 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  ctx.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -2061,9 +2073,9 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   // Constant, as it is no longer used.
   EXPECT_EQ(mod.getConstants().size(), 3);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
-  Tensor &result = *ctx.get(output);
+  Tensor &result = *bindings.get(output);
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
@@ -2096,7 +2108,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
       "fused_rowwise_quantized_sparse_lengths_weighted_sum_init_net.pbtxt");
 
   Placeholder *output, *indices, *lengths;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
@@ -2118,10 +2130,10 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  ctx.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  ctx.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
@@ -2143,7 +2155,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLWS->getData().getNode());
   ASSERT_TRUE(data);
-  EXPECT_TRUE(data->getElementType() == ElemKind::Int8FusedQTy);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
 
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
@@ -2153,9 +2165,9 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
 
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
-  Tensor &result = *ctx.get(output);
+  Tensor &result = *bindings.get(output);
   Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle() = {
       0.5,
@@ -2200,7 +2212,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
       "fused_rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
 
   Placeholder *output, *indices, *lengths;
-  Context ctx;
+  PlaceholderBindings bindings;
 
   TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
@@ -2222,10 +2234,10 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  ctx.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  ctx.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
@@ -2244,7 +2256,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
   ASSERT_TRUE(data);
-  EXPECT_TRUE(data->getElementType() == ElemKind::Int8FusedQTy);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
 
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
@@ -2254,9 +2266,9 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
 
   EE.compile(CompilationMode::Infer, F);
 
-  EE.run(ctx);
+  EE.run(bindings);
 
-  Tensor &result = *ctx.get(output);
+  Tensor &result = *bindings.get(output);
   Tensor expected(ElemKind::FloatTy, {5, 2});
   expected.getHandle() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,

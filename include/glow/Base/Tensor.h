@@ -77,6 +77,14 @@ public:
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
 
+  /// Set the type of the Tensor to \p t.
+  void setType(const TypeRef t) {
+    assert(type_.dims() == t->dims() && "New type must retain the same shape.");
+    assert(type_.getSizeInBytes() == t->getSizeInBytes() &&
+           "New type must retain the same size in bytes.");
+    type_ = *t;
+  }
+
   /// \return the element type of the tensor.
   ElemKind getElementType() const { return type_.getElementType(); }
 
@@ -91,8 +99,9 @@ public:
     return true;
   }
 
-  /// Set the content of the tensor to zero.
-  void zero() {
+  /// Set the content of the tensor to zero. If \p resetFusedScalesOffsets, then
+  /// fused scales/offsets will be set to 1.0/0.0 as well.
+  void zero(bool resetFusedScalesOffsets = false) {
     // Quantized tensors should go to their offset.
     switch (type_.getElementType()) {
     case ElemKind::Int8QTy: {
@@ -107,16 +116,26 @@ public:
       auto *data = reinterpret_cast<int32_t *>(getData());
       std::fill(&data[0], &data[0] + size(), (int32_t)type_.getOffset());
     } break;
-    case ElemKind::Int8FusedQTy: {
+    case ElemKind::UInt8FusedQTy: {
       assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
       assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
       const size_t width = dims()[1];
-      auto *data = reinterpret_cast<int8_t *>(getData());
+      auto *data = reinterpret_cast<uint8_t *>(getData());
       for (size_t i = 0, e = dims()[0]; i < e; i++) {
-        int8_t *scaleOffsetPtr = &data[(i + 1) * width] - 8;
-        int32_t offset;
-        memcpy(&offset, scaleOffsetPtr + 4, 4);
-        std::fill(&data[i * width], scaleOffsetPtr, (int8_t)offset);
+        uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(float);
+        float scale, offset;
+        if (resetFusedScalesOffsets) {
+          // Use these as defaults, and copy them into each row.
+          scale = 1.0;
+          offset = 0.0;
+          memcpy(scaleOffsetPtr, &scale, sizeof(float));
+          memcpy(scaleOffsetPtr + sizeof(float), &offset, sizeof(float));
+        } else {
+          memcpy(&scale, scaleOffsetPtr, sizeof(float));
+          memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
+        }
+        float zero = nearbyintf(-offset / scale);
+        std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero));
       }
     } break;
     default:
@@ -187,7 +206,7 @@ public:
 
   /// Initialize the content of the tensor using the \p init method. The value
   /// \p val is the initialization parameter. \p PRNG is used to generate random
-  /// numbers. Note that if the tensor's kind is Int8FusedQTy, then the fused
+  /// numbers. Note that if the tensor's kind is UInt8FusedQTy, then the fused
   /// scaled/offsets will not be modified.
   void init(InitKind init, float val, PseudoRNG &PRNG);
 
@@ -270,7 +289,7 @@ public:
     assert(size() > 0 && "Tensors must always have positive size.");
     size_t count = size() * type_.getElementSize();
     data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
-    zero();
+    zero(getElementType() == ElemKind::UInt8FusedQTy);
   }
 
   ~Tensor() {
@@ -302,15 +321,15 @@ public:
     }
 
     // For now, make sure that either both or neither of the tensors have
-    // Int8FusedQTy. While it is possible for an Int8QTy tensor to equal a
-    // Int8FusedQTy tensor if the Int8FusedQTy tensor has the same scale/offset
-    // on all of its rows, and that scale/offset match that of the Int8QTy, we
-    // do not support checking this for now.
-    assert(((getElementType() == ElemKind::Int8FusedQTy &&
-             other.getElementType() == ElemKind::Int8FusedQTy) ||
-            (getElementType() != ElemKind::Int8FusedQTy &&
-             other.getElementType() != ElemKind::Int8FusedQTy)) &&
-           "Int8FusedQTy only supports comparing against same ElemKind.");
+    // UInt8FusedQTy. While it is possible for an Int8QTy tensor to equal a
+    // UInt8FusedQTy tensor if the UInt8FusedQTy tensor has the same
+    // scale/offset on all of its rows, and that scale/offset match that of the
+    // Int8QTy, we do not support checking this for now.
+    assert(((getElementType() == ElemKind::UInt8FusedQTy &&
+             other.getElementType() == ElemKind::UInt8FusedQTy) ||
+            (getElementType() != ElemKind::UInt8FusedQTy &&
+             other.getElementType() != ElemKind::UInt8FusedQTy)) &&
+           "UInt8FusedQTy only supports comparing against same ElemKind.");
 
     switch (getElementType()) {
     case ElemKind::FloatTy:
@@ -342,8 +361,8 @@ public:
       // Note: We can use isEqualImpl() here because the scales/offsets will be
       // compared as if they were data, so we will return false if any rowwise
       // scale/offset do not match.
-    case ElemKind::Int8FusedQTy:
-      return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::UInt8FusedQTy:
+      return isEqualImpl<uint8_t>(other, allowedError);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError);
     }
@@ -714,7 +733,28 @@ public:
   }
 
   /// \returns true if tensor contains only elements equal to zero.
-  bool isZero() const {
+  /// \p allowedError represents the delta from zero that is allowed before
+  /// returning false.
+  bool isZero(float allowedError = 0.0) const {
+    if (getElementType() == ElemKind::UInt8FusedQTy) {
+      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
+      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
+      const size_t width = dims()[1];
+      auto *data = reinterpret_cast<uint8_t *>(tensor_->getUnsafePtr());
+      for (size_t i = 0, e = dims()[0]; i < e; i++) {
+        uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(float);
+        float scale, offset;
+        memcpy(&scale, scaleOffsetPtr, sizeof(float));
+        memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
+        for (size_t j = 0, e = width - 2 * sizeof(float); j < e; j++) {
+          float currVal = (at({i, j}) * scale) + offset;
+          if (std::abs(currVal) > allowedError) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
     int32_t trueZero = getType().isQuantizedType() ? getType().getOffset() : 0;
     return std::all_of(begin(), end(), [=](ElemTy e) { return e == trueZero; });
   }
@@ -741,12 +781,13 @@ public:
       }
       return;
     }
-    case ElemKind::Int8FusedQTy: {
+    case ElemKind::UInt8FusedQTy: {
       assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
       assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
       for (size_t i = 0, e = dims()[0]; i < e; i++) {
         for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
-          at({i, j}) = dist(PRNG);
+          auto v = dist(PRNG);
+          memcpy(&at({i, j}), &v, sizeof(uint8_t));
         }
       }
       return;

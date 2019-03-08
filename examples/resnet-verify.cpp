@@ -26,7 +26,7 @@ using namespace glow;
 const char inputName[] = "gpu_0/data";
 
 class Tester {
-  Context ctx;
+  PlaceholderBindings bindings;
   ExecutionEngine EE;
   Module &mod;
   Function *F;
@@ -48,8 +48,8 @@ public:
 
   void bindInput(Tensor *batch) {
     // Allocate memory for input and bind it to the placeholders.
-    ctx.allocate(mod.getPlaceholders());
-    updateInputPlaceholders(ctx, {input}, {batch});
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholders(bindings, {input}, {batch});
   }
 
   TypeRef getInputType() const { return inputType; }
@@ -58,9 +58,9 @@ public:
 
   Tensor *hookAndRun(llvm::StringRef name) {
     auto hook = hookOutput(F, name);
-    auto *out = ctx.allocate(hook.output);
+    auto *out = bindings.allocate(hook.output);
     EE.compile(CompilationMode::Infer, hook.function);
-    EE.run(ctx);
+    EE.run(bindings);
     mod.eraseFunction(hook.function);
     return out;
   }
