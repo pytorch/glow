@@ -151,8 +151,9 @@ int main(int argc, char **argv) {
 
     devices[i]->runFunction(
         "resnet50", std::move(context),
-        [&promises, i](RunIdentifierTy, ResultCode r,
+        [&promises, i](RunIdentifierTy, llvm::Error err,
                        std::unique_ptr<ExecutionContext> context) {
+          EXIT_ON_ERR(std::move(err));
           promises[i].set_value(std::move(context));
         });
   }

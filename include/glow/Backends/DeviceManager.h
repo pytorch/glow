@@ -89,7 +89,9 @@ public:
               runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.
-  virtual ResultCode stop(bool block = true) { return ResultCode::Executed; };
+  virtual llvm::Error stop(bool block = true) {
+    return llvm::Error::success();
+  };
 
   /// \returns the type of Backend that powers this Device.
   BackendKind getBackendKind() { return backend_; }

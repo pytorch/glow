@@ -115,8 +115,9 @@ void dispatchClassify(unsigned int id, DeviceManager *device, std::string path,
                       std::promise<void> &finished) {
   device->runFunction("resnet50", std::move(context),
                       [id, path, output, &returned,
-                       &finished](RunIdentifierTy, ResultCode r,
+                       &finished](RunIdentifierTy, llvm::Error err,
                                   std::unique_ptr<ExecutionContext> context) {
+                        EXIT_ON_ERR(std::move(err));
                         size_t maxIdx = context->getPlaceholderBindings()
                                             ->get(output)
                                             ->getHandle<>()

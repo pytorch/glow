@@ -75,7 +75,7 @@ public:
                      std::shared_ptr<ExecutionContext> context,
                      ResultCBTy resultCB) {
     RunIdentifierTy runId = 0;
-    ResultCode resultCode = ResultCode::Failed;
+    bool successResult = false;
     std::unique_ptr<ExecutionContext> resultContext = nullptr;
 
     // Retrieve the registered response for the function if there is one.
@@ -91,15 +91,19 @@ public:
               context->getPlaceholderBindings(),
               inputContext->getPlaceholderBindings())) {
         // If bindings contains all expected mappings, overwrite the default
-        // runId, resultCode and resultContext with the registered
+        // runId, result and resultContext with the registered
         // ones.
         runId = registeredResult->runId;
-        resultCode = registeredResult->resultCode;
+        successResult = registeredResult->success;
         resultContext = std::move(registeredResult->resultContext);
       }
     }
 
-    resultCB(runId, resultCode, std::move(resultContext));
+    if (successResult) {
+      resultCB(runId, llvm::Error::success(), std::move(resultContext));
+    } else {
+      resultCB(runId, MAKE_ERR("An error occurred"), std::move(resultContext));
+    }
   }
 
   /// Do not call this at the same time as registerResult().
@@ -128,13 +132,13 @@ public:
 
   /// Register a result that should be returned by the subsequent call to
   /// runFunction with the same \p functionName. The callback for that call
-  /// to runFunction will be called with \p runId, \p resultCode, and \p
+  /// to runFunction will be called with \p runId, \p success, and \p
   /// \p resultContext if the context passed in to runFunction
   /// matches \p inputContext. \returns true if registration was
   /// successful, false if not. Do not call this at the same time as
   /// runFunction().
   bool registerResult(const std::string &functionName, RunIdentifierTy runId,
-                      ResultCode resultCode,
+                      bool success,
                       std::unique_ptr<ExecutionContext> inputContext,
                       std::unique_ptr<ExecutionContext> resultContext) {
     bool registered = false;
@@ -144,7 +148,7 @@ public:
       // resultMap_.
       std::tie(std::ignore, registered) = resultMap_.insert(std::make_pair(
           functionName, llvm::make_unique<RunFunctionResult>(
-                            runId, resultCode, std::move(inputContext),
+                            runId, success, std::move(inputContext),
                             std::move(resultContext))));
     }
 
@@ -157,18 +161,20 @@ private:
   struct RunFunctionResult {
     /// The run ID that should be returned.
     RunIdentifierTy runId;
-    /// The result code that should be returned.
-    ResultCode resultCode;
+    /// If success then no error should be returned otherwise an Error should be
+    /// returned.
+    bool success;
     /// The expected input context for the invocation.
     std::unique_ptr<ExecutionContext> inputContext;
     /// The result context that should be returned.
     std::unique_ptr<ExecutionContext> resultContext;
 
     /// Constructor.
-    RunFunctionResult(RunIdentifierTy run, ResultCode result,
+    RunFunctionResult(RunIdentifierTy run, bool successParam,
                       std::unique_ptr<ExecutionContext> inputcontext,
                       std::unique_ptr<ExecutionContext> resultcontext)
-        : runId(run), resultCode(result), inputContext(std::move(inputcontext)),
+        : runId(run), success(successParam),
+          inputContext(std::move(inputcontext)),
           resultContext(std::move(resultcontext)) {}
   };
 
@@ -199,12 +205,12 @@ public:
                DAGNodeNameMapTy nodes, PlaceholderNameMapTy placeholders,
                std::unique_ptr<ExecutionContext> inputContext,
                std::unique_ptr<ExecutionContext> outputContext,
-               RunIdentifierTy runId, ResultCode resultCode)
+               RunIdentifierTy runId, bool expectSuccess)
       : executor_(executor), root_(std::move(root)), type_(std::move(type)),
         nodes_(std::move(nodes)), placeholders_(std::move(placeholders)),
         inputContext_(std::move(inputContext)),
         outputContext_(std::move(outputContext)), runId_(runId),
-        resultCode_(resultCode), testRun_(false) {}
+        expectSuccess_(expectSuccess), testRun_(false) {}
 
   /// Run the test.
   bool run() {
@@ -212,40 +218,37 @@ public:
       assert(!"Test has already been run!");
     }
 
-    // Variables for storing runId and resultCode actually returned by
+    // Variables for storing runId actually returned by
     // Executor::run() via its callback.
     RunIdentifierTy executorRunId;
-    ResultCode executorResultCode;
     std::unique_ptr<ExecutionContext> executorOutputContext;
 
     // Call Executor::run().
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    executor_->run(
-        root_.get(), std::move(inputContext_), runId_,
-        [&promise, &executorRunId, &executorResultCode,
-         &executorOutputContext](RunIdentifierTy runId, ResultCode code,
-                                 std::unique_ptr<ExecutionContext> context) {
-          executorRunId = runId;
-          executorResultCode = code;
-          executorOutputContext = std::move(context);
-          promise.set_value();
-        });
+    std::promise<bool> promise;
+    std::future<bool> future = promise.get_future();
+    executor_->run(root_.get(), std::move(inputContext_), runId_,
+                   [&promise, &executorRunId, &executorOutputContext](
+                       RunIdentifierTy runId, llvm::Error err,
+                       std::unique_ptr<ExecutionContext> context) {
+                     executorRunId = runId;
+                     executorOutputContext = std::move(context);
+                     promise.set_value(errToBool(std::move(err)));
+                   });
 
-    future.wait();
+    bool runSuccess = !future.get();
 
     // Check that the values returned in the Executor callback match
     // expectations.
     bool runIdsMatch = executorRunId == runId_;
-    bool resultCodesMatch = executorResultCode == resultCode_;
-    bool runFailed = executorResultCode == ResultCode::Failed;
-    bool bindingssMatch = PlaceholderBindings::compare(
+    bool resultsMatch = runSuccess == expectSuccess_;
+
+    bool bindingsMatch = PlaceholderBindings::compare(
         executorOutputContext->getPlaceholderBindings(),
         outputContext_->getPlaceholderBindings());
 
-    // If the run failed, we shouldn't expect bindingssMatch to be true.
+    // If the run failed, we shouldn't expect bindingsMatch to be true.
     bool testPassed =
-        runIdsMatch && resultCodesMatch && (runFailed || bindingssMatch);
+        runIdsMatch && resultsMatch && (!runSuccess || bindingsMatch);
 
     testRun_ = true;
 
@@ -271,8 +274,8 @@ private:
   /// The run ID that should be passed to Executor::run() when running
   /// the test.
   RunIdentifierTy runId_;
-  /// The expected result code that the Executor should return.
-  ResultCode resultCode_;
+  /// The expected result that the Executor should return.
+  bool expectSuccess_;
   /// Tracks whether or not the test has already been run.
   bool testRun_;
 };
@@ -296,19 +299,19 @@ public:
         bindings_(llvm::make_unique<PlaceholderBindings>()),
         type_(
             std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {32, 64, 128}))),
-        resultCode_(ResultCode::Executed), deviceManagers_(deviceManagers) {}
+        success_(true), deviceManagers_(deviceManagers) {}
 
   /// Add a node named \p name to the DAG with parents \p parents that runs on a
   /// device specified by \p deviceId. A RuntimeBundle is created for the node
   /// with runtime symbol information created from \p inputs and \p outputs.
-  /// \p runId is the run ID for the node and \p resultCode is the desired
+  /// \p runId is the run ID for the node and \p success is the desired
   /// execution status. If \p parents is empty, the new node is added as a child
   /// of the root.
   void addNode(const std::string &name, DeviceIDTy deviceId,
                llvm::ArrayRef<llvm::StringRef> parents,
                llvm::ArrayRef<llvm::StringRef> inputs,
                llvm::ArrayRef<llvm::StringRef> outputs, RunIdentifierTy runId,
-               ResultCode resultCode) {
+               bool success) {
     auto newNode = llvm::make_unique<DAGNode>();
     auto *newNodeRawPtr = newNode.get();
 
@@ -320,9 +323,9 @@ public:
       assert(runId == runId_ && "Node run ID does not match rest of graph!");
     }
 
-    // If the result code for this node is ResultCode::Failed, set the expected
-    // result code for the entire test to ResultCode::Failed.
-    resultCode_ = resultCode == ResultCode::Failed ? resultCode : resultCode_;
+    // If the result for this node is false, set the expected
+    // result for the entire test to false.
+    success_ &= success;
 
     // Add parents to the list of parents in the new node and add the newNode
     // to the list of children in the parents. If the parent list is empty,
@@ -400,7 +403,7 @@ public:
         static_cast<TestDeviceManager *>(deviceManagerPtr);
 
     bool registered = testDeviceManagerPtr->registerResult(
-        name, runId, resultCode, std::move(nodeInputContext),
+        name, runId, success, std::move(nodeInputContext),
         std::move(nodeOutputContext));
 
     (void)registered;
@@ -450,7 +453,7 @@ public:
     ExecutorTest test(executor_, std::move(root_), std::move(type_),
                       std::move(nodes_), std::move(placeholders_),
                       std::move(inputContext), std::move(outputContext), runId_,
-                      resultCode_);
+                      success_);
 
     // Reset builder state to allow a new test to be constructed with this
     // instance.
@@ -460,7 +463,7 @@ public:
     nodes_.clear();
     leaves_.clear();
     placeholders_.clear();
-    resultCode_ = ResultCode::Executed;
+    success_ = true;
 
     return test;
   }
@@ -559,8 +562,8 @@ private:
   PlaceholderNameMapTy placeholders_;
   /// The run ID for the DAG.
   RunIdentifierTy runId_;
-  /// The expected result code for the DAG.
-  ResultCode resultCode_;
+  /// The expected result for the DAG.
+  bool success_;
   /// Map from DeviceIDTy -> TestDeviceManager. This enables the construction of
   /// tests with nodes spread across devices.
   const DeviceManagerMapTy &deviceManagers_;
@@ -606,30 +609,27 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   refContext->getPlaceholderBindings()->insert(placeholder.get(),
                                                tensor->clone());
 
-  // Variables for storing runId and resultCode actually returned by
+  // Variables for storing runId actually returned by
   // Executor::run() via its callback.
   RunIdentifierTy executorRunId;
-  ResultCode executorResultCode;
   std::unique_ptr<ExecutionContext> executorOutputContext;
 
   // Call Executor::run().
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  executor_->run(
-      nullptr, std::move(testContext), testRunId,
-      [&promise, &executorRunId, &executorResultCode,
-       &executorOutputContext](RunIdentifierTy runId, ResultCode code,
-                               std::unique_ptr<ExecutionContext> context) {
-        executorRunId = runId;
-        executorResultCode = code;
-        executorOutputContext = std::move(context);
-        promise.set_value();
-      });
+  std::promise<llvm::Error> promise;
+  std::future<llvm::Error> future = promise.get_future();
+  executor_->run(nullptr, std::move(testContext), testRunId,
+                 [&promise, &executorRunId, &executorOutputContext](
+                     RunIdentifierTy runId, llvm::Error err,
+                     std::unique_ptr<ExecutionContext> context) {
+                   executorRunId = runId;
+                   executorOutputContext = std::move(context);
+                   promise.set_value(std::move(err));
+                 });
 
-  future.wait();
+  EXPECT_FALSE(errToBool(future.get()));
 
   EXPECT_EQ(executorRunId, testRunId);
-  EXPECT_EQ(executorResultCode, ResultCode::Executed);
+
   EXPECT_TRUE(PlaceholderBindings::compare(
       refContext->getPlaceholderBindings(),
       executorOutputContext->getPlaceholderBindings()));
@@ -658,7 +658,7 @@ TEST_F(ThreadPoolExecutorTest, SingleNode) {
 
   testBuilder_.addNode("net", testDeviceId,
                        /*parents=*/{}, {"netInput"}, {"netOutput"}, testRunId,
-                       ResultCode::Executed);
+                       true);
 
   ExecutorTest test = testBuilder_.emitTest();
   EXPECT_TRUE(test.run());
@@ -703,7 +703,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
     // on function name. The run IDs must also be distinct (hence the +i).
     testBuilder_.addNode(strFormat("net_%d", i), testDeviceId,
                          /*parents=*/{}, {"netInput"}, {"netOutput"},
-                         baseTestRunId + i, ResultCode::Executed);
+                         baseTestRunId + i, true);
     ExecutorTest t = testBuilder_.emitTest();
 
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,
@@ -753,7 +753,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
 }
 
 /// Tests that successive calls to ThreadPoolExecutor::run() with the same
-/// runId returns ResultCode::Failed.
+/// runId don't succeed.
 TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
   constexpr RunIdentifierTy testRunId = 10;
   constexpr DeviceIDTy testDeviceId = 111;
@@ -783,7 +783,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
 
     testBuilder_.addNode(strFormat("net_%d", i), testDeviceId,
                          /*parents=*/{}, {"netInput"}, {"netOutput"}, testRunId,
-                         ResultCode::Executed);
+                         true);
     tests.emplace_back(testBuilder_.emitTest());
   }
 
@@ -837,24 +837,20 @@ TEST_F(ThreadPoolExecutorTest, MultiNode) {
 
   testBuilder_.addNode("alpha", testDeviceId,
                        /*parents=*/{}, /*inputs=*/{"alphaIn"},
-                       /*outputs=*/{"alphaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"alphaOut"}, testRunId, true);
   testBuilder_.addNode("beta", testDeviceId,
                        /*parents=*/{}, /*inputs=*/{"betaIn"},
-                       /*outputs=*/{"betaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"betaOut"}, testRunId, true);
   testBuilder_.addNode("gamma", testDeviceId,
                        /*parents=*/{"alpha", "beta"},
                        /*inputs=*/{"alphaOut", "betaOut"},
-                       /*outputs=*/{"deltaIn", "epsIn"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"deltaIn", "epsIn"}, testRunId, true);
   testBuilder_.addNode("delta", testDeviceId,
                        /*parents=*/{"gamma"}, /*inputs=*/{"deltaIn"},
-                       /*outputs=*/{"deltaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"deltaOut"}, testRunId, true);
   testBuilder_.addNode("eps", testDeviceId,
                        /*parents=*/{"gamma"}, /*inputs=*/{"epsIn"},
-                       /*outputs=*/{"epsOut"}, testRunId, ResultCode::Executed);
+                       /*outputs=*/{"epsOut"}, testRunId, true);
 
   ExecutorTest test = testBuilder_.emitTest();
   EXPECT_TRUE(test.run());
@@ -889,28 +885,23 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeWithFailure) {
 
   testBuilder_.addNode("alpha", testDeviceId,
                        /*parents=*/{}, /*inputs=*/{"alphaIn"},
-                       /*outputs=*/{"alphaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"alphaOut"}, testRunId, true);
   testBuilder_.addNode("beta", testDeviceId,
                        /*parents=*/{"alpha"}, /*inputs=*/{"alphaOut"},
-                       /*outputs=*/{"betaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"betaOut"}, testRunId, true);
   testBuilder_.addNode("gamma", testDeviceId,
                        /*parents=*/{"beta"},
                        /*inputs=*/{"betaOut"},
-                       /*outputs=*/{"gammaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"gammaOut"}, testRunId, true);
   testBuilder_.addNode("delta", testDeviceId,
                        /*parents=*/{}, /*inputs=*/{"deltaIn"},
-                       /*outputs=*/{"deltaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"deltaOut"}, testRunId, true);
   testBuilder_.addNode("eps", testDeviceId,
                        /*parents=*/{"delta"}, /*inputs=*/{"deltaOut"},
-                       /*outputs=*/{"epsOut"}, testRunId, ResultCode::Failed);
+                       /*outputs=*/{"epsOut"}, testRunId, false);
   testBuilder_.addNode("zeta", testDeviceId,
                        /*parents=*/{"eps"}, /*inputs=*/{"epsOut"},
-                       /*outputs=*/{"zetaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"zetaOut"}, testRunId, true);
 
   ExecutorTest test = testBuilder_.emitTest();
   EXPECT_TRUE(test.run());
@@ -950,24 +941,20 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeMultiDevice) {
 
   testBuilder_.addNode("alpha", testDeviceIdA,
                        /*parents=*/{}, /*inputs=*/{"alphaIn"},
-                       /*outputs=*/{"alphaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"alphaOut"}, testRunId, true);
   testBuilder_.addNode("beta", testDeviceIdB,
                        /*parents=*/{}, /*inputs=*/{"betaIn"},
-                       /*outputs=*/{"betaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"betaOut"}, testRunId, true);
   testBuilder_.addNode("gamma", testDeviceIdC,
                        /*parents=*/{"alpha", "beta"},
                        /*inputs=*/{"alphaOut", "betaOut"},
-                       /*outputs=*/{"deltaIn", "epsIn"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"deltaIn", "epsIn"}, testRunId, true);
   testBuilder_.addNode("delta", testDeviceIdA,
                        /*parents=*/{"gamma"}, /*inputs=*/{"deltaIn"},
-                       /*outputs=*/{"deltaOut"}, testRunId,
-                       ResultCode::Executed);
+                       /*outputs=*/{"deltaOut"}, testRunId, true);
   testBuilder_.addNode("eps", testDeviceIdB,
                        /*parents=*/{"gamma"}, /*inputs=*/{"epsIn"},
-                       /*outputs=*/{"epsOut"}, testRunId, ResultCode::Executed);
+                       /*outputs=*/{"epsOut"}, testRunId, true);
 
   ExecutorTest test = testBuilder_.emitTest();
   EXPECT_TRUE(test.run());
@@ -1027,25 +1014,21 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
     // runs from each other.
     testBuilder_.addNode(alpha, testDeviceId,
                          /*parents=*/{}, /*inputs=*/{"alphaIn"},
-                         /*outputs=*/{"alphaOut"}, baseTestRunId + i,
-                         ResultCode::Executed);
+                         /*outputs=*/{"alphaOut"}, baseTestRunId + i, true);
     testBuilder_.addNode(beta, testDeviceId,
                          /*parents=*/{}, /*inputs=*/{"betaIn"},
-                         /*outputs=*/{"betaOut"}, baseTestRunId + i,
-                         ResultCode::Executed);
+                         /*outputs=*/{"betaOut"}, baseTestRunId + i, true);
     testBuilder_.addNode(gamma, testDeviceId,
                          /*parents=*/{alpha, beta},
                          /*inputs=*/{"alphaOut", "betaOut"},
                          /*outputs=*/{"deltaIn", "epsIn"}, baseTestRunId + i,
-                         ResultCode::Executed);
+                         true);
     testBuilder_.addNode(delta, testDeviceId,
                          /*parents=*/{gamma}, /*inputs=*/{"deltaIn"},
-                         /*outputs=*/{"deltaOut"}, baseTestRunId + i,
-                         ResultCode::Executed);
+                         /*outputs=*/{"deltaOut"}, baseTestRunId + i, true);
     testBuilder_.addNode(eps, testDeviceId,
                          /*parents=*/{gamma}, /*inputs=*/{"epsIn"},
-                         /*outputs=*/{"epsOut"}, baseTestRunId + i,
-                         ResultCode::Executed);
+                         /*outputs=*/{"epsOut"}, baseTestRunId + i, true);
 
     ExecutorTest t = testBuilder_.emitTest();
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,

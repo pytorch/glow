@@ -52,7 +52,8 @@ public:
       if (functions_.count(func.first) != 0) {
         callback(
             module,
-            MAKE_ERR(llvm::formatv("Function {} not found", func.first).str()));
+            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                     llvm::formatv("Function {} not found", func.first).str()));
         return;
       }
     }
@@ -86,7 +87,11 @@ public:
                               ResultCBTy callback) override {
     auto funcIt = functions_.find(functionName);
     if (funcIt == functions_.end()) {
-      callback(0, ResultCode::Failed, std::move(context));
+      callback(
+          0,
+          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   llvm::formatv("Function {} not found", functionName).str()),
+          std::move(context));
       return 0;
     }
 
@@ -100,7 +105,7 @@ public:
     func->afterRun(bindings);
 
     // Fire the resultCB.
-    callback(0, ResultCode::Executed, std::move(context));
+    callback(0, llvm::Error::success(), std::move(context));
 
     return 0;
   }

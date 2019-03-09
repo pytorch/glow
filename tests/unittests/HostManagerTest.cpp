@@ -60,7 +60,7 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   auto *pow = F->createPow("Pow" + std::to_string(functionNumber), X, 2.0);
   F->createSave("save" + std::to_string(functionNumber), pow);
 
-  manager->addNetwork(module.get());
+  ASSERT_FALSE(errToBool(manager->addNetwork(module.get())));
   manager->removeNetwork("function" + std::to_string(functionNumber));
 }
 
@@ -69,7 +69,7 @@ TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
 TEST_F(HostManagerTest, addNetwork) {
   auto mod = setupModule(6);
   auto hostManager = createHostManager(BackendKind::CPU);
-  hostManager->addNetwork(mod.get());
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(mod.get())));
 }
 
 TEST_F(HostManagerTest, runNetwork) {
@@ -87,37 +87,36 @@ TEST_F(HostManagerTest, runNetwork) {
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   auto hostManager = createHostManager(BackendKind::CPU);
-  hostManager->addNetwork(&mod);
-  std::promise<ResultCode> runNetwork;
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(&mod)));
+  std::promise<llvm::Error> runNetwork;
   auto ready = runNetwork.get_future();
   hostManager->runNetwork("main", std::move(context),
                           [&runNetwork, &saveTensor, &context](
-                              RunIdentifierTy runID, ResultCode result,
+                              RunIdentifierTy runID, llvm::Error err,
                               std::unique_ptr<ExecutionContext> context_) {
                             auto HX = saveTensor->getHandle();
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
                             context = std::move(context_);
-                            runNetwork.set_value(result);
+                            runNetwork.set_value(std::move(err));
                           });
-  auto result = ready.get();
-  EXPECT_EQ(result, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(ready.get()));
 
-  std::promise<ResultCode> newRun;
+  std::promise<llvm::Error> newRun;
   ready = newRun.get_future();
   hostManager->runNetwork(
       "main", std::move(context),
-      [&newRun, &saveTensor](RunIdentifierTy runID, ResultCode result,
+      [&newRun, &saveTensor](RunIdentifierTy runID, llvm::Error err,
                              std::unique_ptr<ExecutionContext> context_) {
         auto HX = saveTensor->getHandle();
         EXPECT_NEAR(HX.at({0}), 1, 1E-5);
         EXPECT_NEAR(HX.at({1}), 4, 1E-5);
         EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-        newRun.set_value(result);
+        newRun.set_value(std::move(err));
       });
-  result = ready.get();
-  EXPECT_EQ(result, ResultCode::Executed);
+
+  EXPECT_FALSE(errToBool(ready.get()));
 }
 // This test is currently disabled, ASAN complains because the compiled function
 // can be freed out from under the DeviceManager. There are plans to moved

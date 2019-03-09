@@ -38,7 +38,7 @@ public:
       : DeviceManager(backend, std::move(config)), workThread_(1) {}
 
   virtual ~QueueBackedDeviceManager() {
-    stop(true); // will join workThread_
+    llvm::toString(stop(true)); // will join workThread_
   }
 
   /// Initialize the device.
@@ -82,9 +82,9 @@ public:
   }
 
   /// Stops execution and shuts down the Device.
-  ResultCode stop(bool block = true) override {
+  llvm::Error stop(bool block = true) override {
     workThread_.stop(block);
-    return ResultCode::Executed;
+    return llvm::Error::success();
   }
 
 protected:

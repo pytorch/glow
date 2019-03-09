@@ -1163,7 +1163,7 @@ static void importPad(std::string fileName, const char *inputName,
     if (expectLoadError) {
       llvm::Error err = llvm::Error::success();
       ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
-      EXPECT_TRUE(glow::errorToBool(std::move(err)));
+      EXPECT_TRUE(errToBool(std::move(err)));
       return;
     }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);

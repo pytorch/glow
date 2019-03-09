@@ -53,9 +53,9 @@ llvm::Error HostManager::init(const std::vector<DeviceManagerConfig> &configs) {
   return llvm::Error::success();
 }
 
-HostManager::~HostManager() { clearHost(); }
+HostManager::~HostManager() { llvm::toString(clearHost()); }
 
-ResultCode HostManager::addNetwork(Module *M) {
+llvm::Error HostManager::addNetwork(Module *M) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
@@ -74,18 +74,14 @@ ResultCode HostManager::addNetwork(Module *M) {
   }
   auto partitioner = Partitioner(M, deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
-  // TODO: pass any errors up the stack.
-  bool failed = glow::errorToBool(provisioner_->provision(nodeList, *M));
 
-  if (failed) {
-    return ResultCode::Failed;
-  }
+  RETURN_IF_ERR(provisioner_->provision(nodeList, *M));
 
   for (auto &node : nodeList) {
     networks_.emplace((node.root)->name, std::move(node));
   }
 
-  return ResultCode::Ready;
+  return llvm::Error::success();
 }
 
 void HostManager::removeNetwork(llvm::StringRef networkName) {
@@ -102,7 +98,7 @@ bool HostManager::networkAdded(llvm::StringRef networkName) {
   return networks_.find(networkName) != networks_.end();
 }
 
-void HostManager::clearHost() {
+llvm::Error HostManager::clearHost() {
   // shutdown the executor, blocking on any current inflight and prevent new
   // requests from being serviced.
   executor_->shutdown();
@@ -110,8 +106,9 @@ void HostManager::clearHost() {
          "All requests should be finished when shutting down HostManager.");
 
   std::lock_guard<std::mutex> networkLock(networkLock_);
+  OneErrOnly errContainer;
   for (auto &it : devices_) {
-    it.second->stop();
+    errContainer.set(it.second->stop());
   }
 
   for (auto &network : networks_) {
@@ -120,6 +117,7 @@ void HostManager::clearHost() {
     }
   }
   networks_.clear();
+  return errContainer.get();
 }
 
 RunIdentifierTy
@@ -130,21 +128,28 @@ HostManager::runNetwork(llvm::StringRef networkName,
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (networks_.find(networkName) == networks_.end()) {
-    callback(currentRun, ResultCode::Failed, std::move(context));
+    callback(
+        currentRun,
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                 llvm::formatv("Function {} not found", networkName).str()),
+        std::move(context));
     return currentRun;
   }
   if (activeRequestCount_ >= activeRequestLimit_) {
-    callback(currentRun, ResultCode::Canceled, std::move(context));
+    callback(currentRun,
+             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                      "The number of allowed requests has been exceeded."),
+             std::move(context));
     return currentRun;
   }
   activeRequestCount_++;
   executor_->run(networks_[networkName].root.get(), std::move(context),
                  currentRun,
                  [&activeRequest = this->activeRequestCount_,
-                  callback](RunIdentifierTy runID, ResultCode result,
+                  callback](RunIdentifierTy runID, llvm::Error err,
                             std::unique_ptr<ExecutionContext> context) {
                    --activeRequest;
-                   callback(runID, result, std::move(context));
+                   callback(runID, std::move(err), std::move(context));
                  });
   return currentRun;
 }

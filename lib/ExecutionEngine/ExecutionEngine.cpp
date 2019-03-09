@@ -48,7 +48,7 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
 
   if (differentKinds) {
     if (device_) {
-      device_->stop();
+      EXIT_ON_ERR(device_->stop());
       device_.reset();
     }
 
@@ -118,20 +118,18 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   context.getPlaceholderBindings()->allocate(M_.getPlaceholders());
 
   std::unique_ptr<ExecutionContext> contextPtr(&context);
-  std::promise<runtime::ResultCode> runPromise;
+  std::promise<llvm::Error> runPromise;
   auto fut = runPromise.get_future();
   device_->runFunction(
       name, std::move(contextPtr),
-      [&runPromise](runtime::RunIdentifierTy, runtime::ResultCode code,
+      [&runPromise](runtime::RunIdentifierTy, llvm::Error err,
                     std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();
-        runPromise.set_value(code);
+        runPromise.set_value(std::move(err));
       });
 
-  fut.wait();
-  assert(fut.get() == runtime::ResultCode::Executed &&
-         "Function failed to execute");
+  EXIT_ON_ERR(fut.get());
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {

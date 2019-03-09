@@ -114,9 +114,10 @@ void CPUDeviceManager::runFunctionImpl(
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
-    llvm::errs() << "Failed to run function: name " << function
-                 << " not found.\n";
-    resultCB(id, ResultCode::Failed, std::move(context));
+    resultCB(id,
+             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                      llvm::formatv("Function {} not found", function).str()),
+             std::move(context));
     return;
   }
 
@@ -126,5 +127,5 @@ void CPUDeviceManager::runFunctionImpl(
   func->execute(context.get());
 
   // Fire the resultCB.
-  resultCB(id, ResultCode::Executed, std::move(context));
+  resultCB(id, llvm::Error::success(), std::move(context));
 }
