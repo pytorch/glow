@@ -75,17 +75,17 @@ ResultCode HostManager::addNetwork(Module *M) {
   auto partitioner = Partitioner(M, deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
   // TODO: pass any errors up the stack.
-  bool result = glow::errorToBool(provisioner_->provision(nodeList.roots, *M));
+  bool failed = glow::errorToBool(provisioner_->provision(nodeList.roots, *M));
+
+  if (failed) {
+    return ResultCode::Failed;
+  }
 
   for (auto &node : nodeList.roots) {
     roots_.emplace(node->name, std::move(node));
   }
   for (auto &node : nodeList.nodes) {
     networks_.emplace(node->name, std::move(node));
-  }
-
-  if (!result) {
-    return ResultCode::Failed;
   }
 
   return ResultCode::Ready;
