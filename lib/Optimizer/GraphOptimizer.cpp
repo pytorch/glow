@@ -549,33 +549,38 @@ static bool sinkCode(Function *F) {
 
     // Sink Transpose below concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      if (CN->getInputs().size() != 2) {
-        continue;
-      }
-      auto LInput = CN->getInputs()[0];
-      auto RInput = CN->getInputs()[1];
-      auto *L = dyn_cast<TransposeNode>(LInput);
-      auto *R = dyn_cast<TransposeNode>(RInput);
-
-      // Both sides must be a transpose instruction.
-      if (!L || !R) {
+      llvm::SmallVector<NodeValue, 6> transVector;
+      auto inputIter = CN->getInputs().begin();
+      auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
+      if (!firstInput) {
         continue;
       }
 
-      // If the shuffle masks don't agree then bail out.
-      if (L->getShuffle() != R->getShuffle()) {
+      transVector.push_back(firstInput->getInput());
+      auto shuffle = firstInput->getShuffle();
+      // If the shuffle masks don't agree or not all inputs are Transpose then
+      // bail out.
+      for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
+        auto *tTR = dyn_cast<TransposeNode>(*inputIter);
+        if (!tTR || tTR->getShuffle() != shuffle) {
+          break;
+        }
+        transVector.push_back(tTR->getInput());
+      }
+
+      if (transVector.size() != CN->getNumInputs()) {
         continue;
       }
 
       // Figure out where we transposed the channel index for batch
       // normalization.
       unsigned_t idx = CN->getDim();
-      unsigned_t newChannelIdx = L->getShuffle()[idx];
+      unsigned_t newChannelIdx = shuffle[idx];
 
-      auto *newCN = F->createConcat(
-          CN->getName(), {L->getInput(), R->getInput()}, newChannelIdx);
+      auto *newCN = F->createConcat(CN->getName(), transVector, newChannelIdx);
       newCN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(L->getName(), newCN, L->getShuffle());
+      auto *newTR = F->createTranspose(firstInput->getName(), newCN,
+                                       firstInput->getShuffle());
       newTR->setPredicate(node->getPredicate());
       CN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
