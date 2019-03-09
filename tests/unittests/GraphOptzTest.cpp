@@ -527,6 +527,47 @@ TEST_F(GraphOptz, sinkTransposeBelowOptimizeBatchNormWithPredicate) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+/// Sinks Transpose below Rescale potentially exposing futher optimizations.
+/// For example folding Rescale in to Convolution.
+TEST_F(GraphOptz, sinkTransposeBelowRescale) {
+  // Inputs.
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, origDims, 0.1, 0,
+                                       "input", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::Int8QTy, {15, 1, 1, 15}, 0.1,
+                                        0, "filter", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {15}, 0.01, 0, "bias", false);
+
+  // Graph.
+  ConvolutionNode *conv =
+      F_->createConv("conv", input, filter, bias, input->getType(), {1, 1},
+                     {1, 1}, {0, 0, 0, 0}, 1);
+
+  auto *T = F_->createTranspose("transpose", conv, NHWC2NCHW);
+  auto *RT = mod_.uniqueType(ElemKind::Int8QTy, T->getResult().dims(), 0.2, 0);
+  auto *R = F_->createRescaleQuantized("rescale", T, RT);
+  SaveNode *O = F_->createSave("ret", R);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(RT->dims(), llvm::makeArrayRef(transposedDims));
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Rescale->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  ASSERT_TRUE(llvm::isa<ConvolutionNode>(transpose->getInput()));
+  auto &convTRInput = transpose->getInput();
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(convTRInput.dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(convTRInput.getNode()->getNthInput(0).dims(),
+            llvm::makeArrayRef(origDims));
+  EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
 TEST_F(GraphOptz, sinkTransposeBelowRELU) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
