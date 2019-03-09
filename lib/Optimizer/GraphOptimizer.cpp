@@ -528,22 +528,23 @@ static bool sinkCode(Function *F) {
 
     // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      if (CN->getInputs().size() != 2) {
-        continue;
+      llvm::SmallVector<NodeValue, 6> CNInputs;
+      for (auto input : CN->getInputs()) {
+        auto *inputRL = dyn_cast<ReluNode>(input);
+        if (!inputRL) {
+          break;
+        }
+        CNInputs.push_back(inputRL->getInput());
       }
-      auto LInput = CN->getInputs()[0];
-      auto RInput = CN->getInputs()[1];
-      auto *L = dyn_cast<ReluNode>(LInput);
-      auto *R = dyn_cast<ReluNode>(RInput);
 
-      if (L && R) {
-        auto *newCN = F->createConcat(
-            CN->getName(), {L->getInput(), R->getInput()}, CN->getDim());
+      if (CNInputs.size() == CN->getNumInputs()) {
+        auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
         newCN->setPredicate(node->getPredicate());
-        auto *newRL =
-            F->createRELU(L->getName(), newCN, CN->getResult().getType());
+        auto name = CN->getNthInput(0).getNode()->getName();
+        auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
         newRL->setPredicate(node->getPredicate());
         CN->getResult().replaceAllUsesOfWith(newRL);
+        changed = true;
       }
     }
 
