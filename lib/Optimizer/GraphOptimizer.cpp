@@ -526,6 +526,24 @@ static bool sinkCode(Function *F) {
       node->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(newTR);
     }
 
+    // Sink Transpose below RescaleQuantized.
+    // Potentially exposes opportunity to be combined up with Convolution.
+    // If it doesn't work out it will be re-sinked later.
+    if (auto *RQ = dyn_cast<RescaleQuantizedNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(RQ->getInput());
+      if (!TR) {
+        continue;
+      }
+
+      auto newRQType = F->getParent()->uniqueTypeWithNewShape(
+          RQ->getResult().getType(), TR->getInput().getType()->dims());
+      auto *newRQ =
+          F->createRescaleQuantized(RQ->getName(), TR->getInput(), newRQType);
+      auto *newTR = F->createTranspose(TR->getName(), newRQ, TR->getShuffle());
+      RQ->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+    }
+
     // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
       llvm::SmallVector<NodeValue, 6> CNInputs;
