@@ -339,8 +339,8 @@ TypeRef Module::getVoidTy() { return uniqueType(Type()); }
 /// where the provided \p axes dimensions are removed from the shape.
 static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
                                           llvm::ArrayRef<unsigned_t> axes) {
-  assert(axes.size() < dims.size() &&
-         "Axes to remove must fit inside dimensions of the provided dims.");
+  assert(axes.size() <= dims.size() &&
+         "Cannot remove more dimensions than exist.");
   ShapeVector newDims(dims.begin(), dims.end());
   ShapeVector shapeAxes(axes.begin(), axes.end());
 
