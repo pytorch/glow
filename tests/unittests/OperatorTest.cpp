@@ -390,6 +390,29 @@ TEST_P(OperatorTest, batchedReduceAdd) {
   EXPECT_NEAR(H.at({3}), 44, 0.001);
 }
 
+/// Test reduction down to a zero-dim tensor.
+TEST_P(OperatorTest, batchedReduceZeroDimResult) {
+  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "batch",
+                                       /* isTrainable */ false);
+  bindings_.allocate(batch)->getHandle() = {1, 2, 3, 4};
+
+  auto *RA = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+  auto *RM = F_->createBatchedReduceMean("reduce.mean", batch, /* axis */ 0);
+  auto *saveRA = F_->createSave("saveRA", RA);
+  auto *saveRM = F_->createSave("saveRM", RM);
+  auto *resultRA = bindings_.allocate(saveRA->getPlaceholder());
+  auto *resultRM = bindings_.allocate(saveRM->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto RAH = resultRA->getHandle();
+  EXPECT_NEAR(RAH.at({}), 10, 0.001);
+
+  auto RMH = resultRM->getHandle();
+  EXPECT_NEAR(RMH.at({}), 2.5, 0.001);
+}
+
 TEST_P(OperatorTest, batchedReduceAddWithAxis) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
