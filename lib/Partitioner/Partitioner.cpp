@@ -491,9 +491,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   }
 
   // Push the DAG {root, nodes} into partitions_.
-  //  DAG newDag = {.root = std::move(DAGRoot), .nodes = std::move(nodes)};
-  partitions_.push_back(
-      {.root = std::move(DAGRoot), .nodes = std::move(nodes)});
+  partitions_.emplace_back(std::move(DAGRoot), std::move(nodes));
 
   // Update links between nodes in the cloned functions. Add placeholders (and
   // save nodes) where a link crosses a partition boundary.
