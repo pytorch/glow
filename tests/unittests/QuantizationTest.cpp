@@ -333,6 +333,59 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   EE.run(bindings);
 }
 
+/// Check that SLWS is correctly fused rowwise-quantized by the quantizer.
+TEST(Quantization, enableRowwiseQuantizedSLWS) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+
+  auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3, 1}, "data", false);
+  auto *weights =
+      mod.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
+
+  // Don't worry about allocating them as we are not going to run anyway.
+  bindings.allocate(data);
+  bindings.allocate(weights);
+  bindings.allocate(indices);
+  bindings.allocate(lengths);
+
+  auto *SLWS = F->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                                 lengths);
+  auto *res = F->createSave("save", SLWS);
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings, {indices, lengths, res->getPlaceholder()});
+  bindings.allocate(res->getPlaceholder());
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(
+           SLWS->getData().getNode()->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(
+           SLWS->getWeights().getNode()->getName()),
+       {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(SLWS->getName()),
+       {0.4f, 0}},
+  };
+
+  F = quantization::quantizeFunction(EE, QI, ElemKind::Int8QTy, F, {}, "", {},
+                                     /* enableRowwiseQuantization */ true);
+
+  EE.compile(CompilationMode::Infer, F);
+
+  // Check the graph structure after quantization.
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
+  ASSERT_TRUE(saveNode);
+  auto *FRWQSLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          saveNode->getInput().getNode());
+  ASSERT_TRUE(FRWQSLWS);
+}
+
 /// Quantize ReLU node and make sure that quantized version
 /// has quantization parameters mapping to non-negative floating
 /// point range.
