@@ -476,14 +476,19 @@ public:
     lastMorphedNodeWithTypeChanges = nullptr;
   }
 
-  /// Traverse all nodes to find quantized FullyConnected nodes, and convert it
-  /// to RowwiseQuantizedFullyConnected if the weights is constant.
+  /// Traverse all nodes to find applicable quantized nodes, and convert them
+  /// to RowwiseQuantized versions if required inputs are Constant.
   void enableRowwise() {
     auto nodeIt = function_.getNodes().end();
     auto stopIt = function_.getNodes().begin();
     do {
       --nodeIt;
       Node &node = *nodeIt;
+      auto *Q = llvm::dyn_cast<DequantizeNode>(&node);
+      if (!Q) {
+        continue;
+      }
+
       // After function "convert()" is called, one FullyConnectedNode is
       // converted into:
       // [fp32 input] [fp32 weights] [fp32 bias]
@@ -502,31 +507,78 @@ public:
       // [         RowwiseQuantizedFullyConnectedNode            ]
       //                              |
       //                       [DequantizeNode]
-      if (auto *Q = llvm::dyn_cast<DequantizeNode>(&node)) {
-        if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
-          NodeValue input = fcN->getInput();
-          NodeValue weights = fcN->getWeights();
-          NodeValue bias = fcN->getBias();
-          NodeValue result = fcN->getResult();
-          // Only convert quantized FullyConnected Node.
-          if (input.getType()->isQuantizedType() &&
-              llvm::isa<QuantizeNode>(weights.getNode()) &&
-              bias.getType()->isQuantizedType() &&
-              result.getType()->isQuantizedType()) {
-            auto *wq = llvm::dyn_cast<QuantizeNode>(weights.getNode());
-            // For RowwiseQuantizedFullyConnected, the weights need to be
-            // constant.
-            if (Constant *wc = llvm::dyn_cast<Constant>(wq->getInput())) {
-              auto *fcq = function_.createRowwiseQuantizedFullyConnected(
-                  "rowwiseqfc", input, wc, bias, result.getType(),
-                  /* transposeWeight */ true);
-              // Replace the usages of quantized FC node to
-              // RowwiseQuantizedFullyConnected Node.
-              result.replaceAllUsesOfWith(fcq->getResult());
-            }
+      if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
+        NodeValue input = fcN->getInput();
+        NodeValue weights = fcN->getWeights();
+        NodeValue bias = fcN->getBias();
+        NodeValue result = fcN->getResult();
+        // Only convert quantized FullyConnected Node.
+        if (input.getType()->isQuantizedType() &&
+            llvm::isa<QuantizeNode>(weights.getNode()) &&
+            bias.getType()->isQuantizedType() &&
+            result.getType()->isQuantizedType()) {
+          auto *wq = llvm::dyn_cast<QuantizeNode>(weights.getNode());
+          // For RowwiseQuantizedFullyConnected, the weights need to be
+          // constant.
+          if (Constant *wc = llvm::dyn_cast<Constant>(wq->getInput())) {
+            auto *fcq = function_.createRowwiseQuantizedFullyConnected(
+                "rowwiseqfc", input, wc, bias, result.getType(),
+                /* transposeWeight */ true);
+            // Replace the usages of quantized FC node to
+            // RowwiseQuantizedFullyConnected Node.
+            result.replaceAllUsesOfWith(fcq->getResult());
           }
         }
       }
+
+      // Convert SLWS from normal quantized version to fused rowwise-quantized
+      // version if applicable. Data must be Constant for this to occur. We also
+      // will not quantize the weights as we do for the default normal quantized
+      // SLWS, as the rowwise version uses float weights.
+      if (auto *SLWS =
+              llvm::dyn_cast<SparseLengthsWeightedSumNode>(Q->getInput())) {
+        NodeValue data = SLWS->getData();
+
+        // It's possible we skipped quantizing this node due to
+        // doNotQuantizeKinds, and so may not need to process it.
+        auto *dataQN = llvm::dyn_cast<QuantizeNode>(data.getNode());
+        if (!dataQN) {
+          continue;
+        }
+
+        // Can only convert to rowwise-quantized version if the data input is
+        // Constant.
+        auto *dataC = llvm::dyn_cast<Constant>(dataQN->getInput());
+        if (!dataC) {
+          continue;
+        }
+
+        // Right now we quantize the weights input for SLWS. However, the
+        // rowwise-quantized version does not, so we will skip the QN. At this
+        // point we know the SLWS was quantized, so the weights input must be a
+        // quantize node.
+        auto *weightsQN = llvm::dyn_cast<QuantizeNode>(SLWS->getWeights());
+        assert(weightsQN && "Weights should have been quantized");
+        NodeValue weightsF = weightsQN->getInput();
+
+        auto *FRWQSLWS =
+            function_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+                SLWS->getName(), dataC->getPayload(), weightsF,
+                SLWS->getIndices(), SLWS->getLengths());
+
+        // Fused RWQSLWS stores the fused scales and offsets in trailing
+        // columns. If the input was single dimensional then it adds extra
+        // dimensions to both input and output. Therefore reshape back to the
+        // expected output shape in case the input to the SLWS did not have a
+        // second dimension but the fused version added one to insert columns.
+        auto *RN = function_.createReshape("reshape", FRWQSLWS,
+                                           SLWS->getResult().dims());
+
+        // Replace the dequantize node of the original SLWS with the FRWQSLWS,
+        // as its output is already in float.
+        Q->getResult().replaceAllUsesOfWith(RN->getResult());
+      }
+
     } while (nodeIt != stopIt);
 
     cleanUp();

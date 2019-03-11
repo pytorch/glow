@@ -4939,6 +4939,63 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
                             /* enableRowwiseQuantization */ true);
 }
 
+static FunctionTensorPair
+createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  /*
+    DATA  =   [2.0, -0.5, 13]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3}, "data", false);
+  auto *weights =
+      mod.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
+
+  bindings.allocate(data)->getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+  bindings.allocate(weights)->getHandle() = {
+      3, 1, 0, 0, 0, 0, 2, -0.5,
+  };
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto *SLWS = F->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                                 lengths);
+  auto *res = F->createSave("save", SLWS);
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings, {indices, lengths, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test RowwiseQuantizedSLWS Node.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicSLWSTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
+                            /* enableRowwiseQuantization */ true);
+}
+
 /// Check the correctness of the SoftMax operator.
 /// The semantic of SoftMax is
 /// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).
