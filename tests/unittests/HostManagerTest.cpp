@@ -88,10 +88,14 @@ TEST_F(HostManagerTest, runNetwork) {
 
   auto hostManager = createHostManager(BackendKind::CPU);
   ASSERT_FALSE(errToBool(hostManager->addNetwork(&mod)));
-  std::promise<llvm::Error> runNetwork;
+
+  std::promise<void> runNetwork;
   auto ready = runNetwork.get_future();
+
+  llvm::Error runErr = llvm::Error::success();
+
   hostManager->runNetwork("main", std::move(context),
-                          [&runNetwork, &saveTensor, &context](
+                          [&runNetwork, &saveTensor, &context, &runErr](
                               RunIdentifierTy runID, llvm::Error err,
                               std::unique_ptr<ExecutionContext> context_) {
                             auto HX = saveTensor->getHandle();
@@ -99,24 +103,32 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
                             context = std::move(context_);
-                            runNetwork.set_value(std::move(err));
+                            runErr = std::move(err);
+                            runNetwork.set_value();
                           });
-  EXPECT_FALSE(errToBool(ready.get()));
 
-  std::promise<llvm::Error> newRun;
+  ready.wait();
+  EXPECT_FALSE(errToBool(std::move(runErr)));
+
+  // reset runErr
+  runErr = llvm::Error::success();
+
+  std::promise<void> newRun;
   ready = newRun.get_future();
-  hostManager->runNetwork(
-      "main", std::move(context),
-      [&newRun, &saveTensor](RunIdentifierTy runID, llvm::Error err,
-                             std::unique_ptr<ExecutionContext> context_) {
-        auto HX = saveTensor->getHandle();
-        EXPECT_NEAR(HX.at({0}), 1, 1E-5);
-        EXPECT_NEAR(HX.at({1}), 4, 1E-5);
-        EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-        newRun.set_value(std::move(err));
-      });
+  hostManager->runNetwork("main", std::move(context),
+                          [&newRun, &saveTensor, &runErr](
+                              RunIdentifierTy runID, llvm::Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+                            runErr = std::move(err);
+                            newRun.set_value();
+                          });
 
-  EXPECT_FALSE(errToBool(ready.get()));
+  ready.wait();
+  EXPECT_FALSE(errToBool(std::move(runErr)));
 }
 // This test is currently disabled, ASAN complains because the compiled function
 // can be freed out from under the DeviceManager. There are plans to moved

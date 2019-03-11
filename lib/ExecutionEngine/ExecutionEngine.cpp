@@ -118,18 +118,21 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   context.getPlaceholderBindings()->allocate(M_.getPlaceholders());
 
   std::unique_ptr<ExecutionContext> contextPtr(&context);
-  std::promise<llvm::Error> runPromise;
+  std::promise<void> runPromise;
   auto fut = runPromise.get_future();
+  llvm::Error runErr = llvm::Error::success();
   device_->runFunction(
       name, std::move(contextPtr),
-      [&runPromise](runtime::RunIdentifierTy, llvm::Error err,
-                    std::unique_ptr<ExecutionContext> contextPtr) {
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();
-        runPromise.set_value(std::move(err));
+        runErr = std::move(err);
+        runPromise.set_value();
       });
 
-  EXIT_ON_ERR(fut.get());
+  fut.wait();
+  EXIT_ON_ERR(std::move(runErr));
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {
