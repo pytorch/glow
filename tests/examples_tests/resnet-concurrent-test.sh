@@ -20,4 +20,4 @@ set -euxo pipefail
 # cat_285.png is wrongly classified as 281
 # CHECK: dog_207\.png: 207$
 cd $MODELS_DIR
-$BIN/resnet-concurrent
+$BIN/resnet-concurrent $IMAGES_DIR/imagenet
