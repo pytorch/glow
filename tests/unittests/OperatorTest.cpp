@@ -1685,6 +1685,12 @@ TEST_P(OperatorStatelessTest, BasicAddNetFloat16VsInt8) {
                             ElemKind::Float16Ty, ElemKind::Int8QTy, 0.02f);
 }
 
+TEST_P(OperatorStatelessTest, BasicAddNetFloatVsInt16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
+                            ElemKind::FloatTy, ElemKind::Int16QTy, 0.02f);
+}
+
 TEST_P(OperatorTest, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
