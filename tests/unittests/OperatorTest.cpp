@@ -1816,7 +1816,7 @@ createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth10) {
   compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f);
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
 }
 
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth10) {
@@ -1838,13 +1838,13 @@ TEST_P(OperatorStatelessTest, Int16ConvolutionDepth8) {
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
   compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
   compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f);
 }
 
 static FunctionTensorPair
@@ -2164,7 +2164,7 @@ createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, QuantizedTranspose) {
   compareAgainstInterpreter(GetParam(), createAndInitTransposeNet,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.004f);
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.0045f);
 }
 
 TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
