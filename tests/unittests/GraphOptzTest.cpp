@@ -1636,6 +1636,32 @@ TEST_F(GraphOptz, foldQuantizeIntoSplat) {
   EXPECT_EQ(qType, newSN->getResult().getType());
 }
 
+/// Check that the Dequantize(Splat) -> Splat' optimization works.
+TEST_F(GraphOptz, foldDequantizeIntoSplat) {
+  TypeRef fType = mod_.uniqueType(ElemKind::FloatTy, {4});
+  TypeRef qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
+
+  const float splatVal = 6.0;
+  SplatNode *SN = F_->createSplat("splat", qType, splatVal);
+
+  DequantizeNode *Q = F_->createDequantize("dequantize", SN);
+  SaveNode *S = F_->createSave("save", Q);
+
+  // Splat, dequantize, save.
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Dequantization node was merged into input splat.
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  // New quantized splat should exist with same value.
+  SplatNode *newSN = llvm::dyn_cast<SplatNode>(S->getInput());
+  ASSERT_TRUE(newSN);
+  EXPECT_EQ(splatVal, newSN->getValue());
+  EXPECT_EQ(fType, newSN->getResult().getType());
+}
+
 /// Check that the Quantize(Splat) -> Splat' optimization works when the Splat
 /// has multiple users.
 TEST_F(GraphOptz, foldQuantizeIntoSplatMultipleUsers) {

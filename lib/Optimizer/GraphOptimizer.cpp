@@ -2105,6 +2105,13 @@ static void optimizeQuantization(Function *F) {
         worklist.push_back(newRS);
         continue;
       }
+      if (auto *SN = dyn_cast<SplatNode>(DQ->getInput())) {
+        // Dequantize(Splat) -> Splat'
+        SplatNode *newSN = F->createSplat(
+            SN->getName(), DQ->getResult().getType(), SN->getValue());
+        DQ->getResult().replaceAllUsesOfWith(newSN);
+        continue;
+      }
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
