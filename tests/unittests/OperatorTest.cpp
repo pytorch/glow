@@ -3294,10 +3294,12 @@ TEST_P(InterpOnly, BatchBoxCox) {
   auto lambda1H = ctx_.allocate(lambda1)->getHandle();
   auto lambda2H = ctx_.allocate(lambda2)->getHandle();
 
+  // Fill inputs with random values.
   dataH.randomize(1.0, 2.0, mod_.getPRNG());
   lambda1H.randomize(1.0, 2.0, mod_.getPRNG());
   lambda2H.randomize(1.0, 2.0, mod_.getPRNG());
 
+  // Zero out every other element to lambda1 to test that case of the transform.
   for (size_t i = 0; i < kCols; i += 2) {
       lambda1H.at({i}) = 0;
   }
