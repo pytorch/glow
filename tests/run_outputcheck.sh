@@ -14,6 +14,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -euxo pipefail
+set -uxo pipefail
 
-$1 | $OUTPUTCHECK $1
+# Make a temporary file to store the program output in
+TEMP_FILE="$(mktemp)"
+
+# Save the output of the program to TEMP_FILE
+$1 > $TEMP_FILE
+RUN_RESULT=$?
+
+# If the program failed then print the output and quit
+if [ $RUN_RESULT != 0 ]
+then
+  cat $TEMP_FILE
+  rm $TEMP_FILE
+  exit $RUN_RESULT
+fi
+
+# Run OutputCheck on the output of the program
+cat $TEMP_FILE | $OUTPUTCHECK $1
+CHECK_RESULT=$?
+
+# If the check failed then print the output and quit
+if [ $CHECK_RESULT != 0 ]
+then
+  cat $TEMP_FILE
+  rm $TEMP_FILE
+  exit $CHECK_RESULT
+fi
