@@ -560,12 +560,16 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
-    if (in.getType()->dims().size() > 2) {
-      size_t axis = 1;
-      if (dict.count("axis")) {
-        ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-      }
 
+    auto originalInputDims = in.getType()->dims();
+
+    size_t axis = 1;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+    }
+
+    // If number of input dims is greater then 2 flatten on axis.
+    if (in.getType()->dims().size() > 2) {
       in = G_.createFlatten("fc.in", in, axis);
     }
 
@@ -580,10 +584,10 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a 2D
-    // matrix size if necessay and then transpose it back.
+    // matrix size if necessary and then transpose it back.
     Tensor tmp;
+    auto wDims = flattenCdr(w->dims(), axis_w);
     if (w->dims().size() > 2) {
-      auto wDims = flattenCdr(w->dims(), axis_w);
       if (typeName == "FC" || typeName == "FCTransposed") {
         tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
       } else {
@@ -622,6 +626,30 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       node = G_.createFullyConnected(opName, in, W, B, outTy);
     } else {
       node = G_.createFullyConnected(opName, in, W, B);
+    }
+
+    // If number of original input dims is greater than 2, expand the output
+    // dims back with the same axis.
+    if (axis != 1) {
+      llvm::SmallVector<size_t, max_tensor_dimensions> reshapeDims;
+      size_t totalReshapeSize = 1;
+      for (size_t i = 0; i < axis; ++i) {
+        auto d = originalInputDims[i];
+        reshapeDims.push_back(d);
+        totalReshapeSize *= static_cast<size_t>(d);
+      }
+
+      size_t finalDim = typeName == "FCTransposed" ? wDims.second : wDims.first;
+
+      reshapeDims.push_back(finalDim);
+      totalReshapeSize *= finalDim;
+
+      size_t totalOriginalOutputSize = node->getNthResult(0).getType()->size();
+      RETURN_ERR_IF_NOT(totalReshapeSize == totalOriginalOutputSize,
+                        strFormat("Cannot reshape from size %lu to size %lu",
+                                  totalOriginalOutputSize, totalReshapeSize));
+
+      node = G_.createReshape("fc.out", node, reshapeDims);
     }
 
     // Save the outputs:
