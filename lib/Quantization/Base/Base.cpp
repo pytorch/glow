@@ -389,8 +389,13 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     min = std::min(min, 0.0f);
     max = std::max(max, 0.0f);
 
-    float scale = ((double)max - (double)min) / 255.0;
-    float offset = min;
+    // This matches the Caffe2 implementation for FloatToRowwiseQuantized8BitsOp
+    // found in operators/lengths_reducer_rowwise_8bit_ops.h.
+    constexpr float kEqualityThreshold = 1e-10f;
+    const float scale = ((max - min) < kEqualityThreshold)
+                            ? 1.0
+                            : ((double)max - (double)min) / 255.0;
+    const float offset = min;
 
     for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
       destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(

@@ -134,6 +134,8 @@ public:
           memcpy(&scale, scaleOffsetPtr, sizeof(float));
           memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
         }
+        assert(scale != 0.0 &&
+               "Disallow scale = 0.0 for UInt8FusedQTy; causes div by zero.");
         float zero = nearbyintf(-offset / scale);
         std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero));
       }
