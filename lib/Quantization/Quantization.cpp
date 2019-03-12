@@ -118,42 +118,28 @@ protected:
       // Check if this BatchedAdd was lowered from a FullyConnectedNode. If so
       // then we need to calculate the Int32QTy scale/offset and use that
       // instead of Int8QTy.
-      auto *baN = llvm::cast<BatchedAddNode>(&use);
-      NodeValue batch = baN->getBatch();
-
-      // Look for the set of NodeNameAndKinds corresponding to the
-      // BatchedAdd. If one exists, this means it was lowered.
-      auto it = loweredMap_.find(NodeQuantizationInfo::generateNodeOutputName(
-          baN->getName(), BatchedAddNode::ResultIdx));
-      if (it != loweredMap_.end()) {
-        // Look through the set looking to see if the BatchedAdd was lowered
-        // from a FullyConnectedNode.
-        auto &set = it->getValue();
-        for (auto i = set.begin(), e = set.end(); i != e; ++i) {
-          // If it came from a FullyConnected node, then we need to backtrack to
-          // the matrix multiplication to calculate the new scale for the
-          // batched add slice.
-          if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
-            // Slice must be a MatMul if this was lowered from a FullyConnected.
-            // Batch may have already been quantized.
-            assert((llvm::isa<MatMulNode>(batch) ||
-                    llvm::isa<QuantizeNode>(batch)) &&
-                   "Batch must be either a MatMul or a Quantize.");
-            MatMulNode *MM = llvm::dyn_cast<MatMulNode>(batch);
-            if (!MM) {
-              QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
-              assert(llvm::isa<MatMulNode>(QN->getInput()) &&
-                     "MM must be input of BA if lowered from FC.");
-              MM = llvm::cast<MatMulNode>(QN->getInput());
-            }
-
-            float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
-            float scaleWeights =
-                getTargetTypeForOutput(MM->getRHS())->getScale();
-            return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                                   scaleInput * scaleWeights, TQP.offset);
-          }
+      const auto *baN = llvm::cast<BatchedAddNode>(&use);
+      if (isBAFromLoweredFC(baN)) {
+        NodeValue batch = baN->getBatch();
+        // If it came from a FullyConnected node then we need to backtrack to
+        // the matrix multiplication to calculate the new scale for the batched
+        // add slice. Slice must be a MatMul if this was lowered from a
+        // FullyConnected. Batch may have already been quantized.
+        assert(
+            (llvm::isa<MatMulNode>(batch) || llvm::isa<QuantizeNode>(batch)) &&
+            "Batch must be either a MatMul or a Quantize.");
+        MatMulNode *MM = llvm::dyn_cast<MatMulNode>(batch);
+        if (!MM) {
+          QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
+          assert(llvm::isa<MatMulNode>(QN->getInput()) &&
+                 "MM must be input of BA if lowered from FC.");
+          MM = llvm::cast<MatMulNode>(QN->getInput());
         }
+
+        float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
+        float scaleWeights = getTargetTypeForOutput(MM->getRHS())->getScale();
+        return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
+                               scaleInput * scaleWeights, TQP.offset);
       }
     }
     return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
@@ -453,6 +439,28 @@ private:
   /// replaced them.
   const LoweredInfoMap &loweredMap_;
 
+  /// \returns whether BatchedAddNode \p baN was originally lowered from a
+  /// FullyConnectedNode based on loweredMap_.
+  bool isBAFromLoweredFC(const BatchedAddNode *baN) const {
+    // Look for the set of NodeNameAndKinds corresponding to the
+    // BatchedAdd. If one exists, this means it was lowered.
+    auto it = loweredMap_.find(NodeQuantizationInfo::generateNodeOutputName(
+        baN->getName(), BatchedAddNode::ResultIdx));
+    if (it == loweredMap_.end()) {
+      return false;
+    }
+
+    // Look through the set looking to see if the BatchedAdd was lowered
+    // from a FullyConnectedNode.
+    auto &set = it->getValue();
+    for (auto i = set.begin(), e = set.end(); i != e; ++i) {
+      if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 public:
   /// Creates a function quantizer for \p F using the quantization
   /// parameters defined by \p quantizationInfos and target quantization
@@ -507,12 +515,39 @@ public:
       // [         RowwiseQuantizedFullyConnectedNode            ]
       //                              |
       //                       [DequantizeNode]
+      bool foundFC = false;
+      NodeValue input, weights, bias, result;
       if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
-        NodeValue input = fcN->getInput();
-        NodeValue weights = fcN->getWeights();
-        NodeValue bias = fcN->getBias();
-        NodeValue result = fcN->getResult();
-        // Only convert quantized FullyConnected Node.
+        foundFC = true;
+        input = fcN->getInput();
+        weights = fcN->getWeights();
+        bias = fcN->getBias();
+        result = fcN->getResult();
+      } else if (const auto *baN =
+                     llvm::dyn_cast<BatchedAddNode>(Q->getInput())) {
+        if (isBAFromLoweredFC(baN)) {
+          foundFC = true;
+          NodeValue batch = baN->getBatch();
+
+          // All quantization has occurred at this point, but optimizations
+          // haven't eliminated extra quantize/dequantize nodes. Look
+          // backwards through them to find the MatMul of the FC.
+          assert(llvm::isa<QuantizeNode>(batch));
+          QuantizeNode *QN = llvm::cast<QuantizeNode>(batch);
+          assert(llvm::isa<DequantizeNode>(QN->getInput()));
+          DequantizeNode *DQN = llvm::cast<DequantizeNode>(QN->getInput());
+          assert(llvm::isa<MatMulNode>(DQN->getInput()));
+          MatMulNode *MM = llvm::cast<MatMulNode>(DQN->getInput());
+
+          input = MM->getLHS();
+          weights = MM->getRHS();
+          bias = baN->getSlice();
+          result = baN->getResult();
+        }
+      }
+      if (foundFC) {
+        // Only convert quantized FullyConnected Node (or its equivalent lowered
+        // representation in MatMul + BatchedAdd form).
         if (input.getType()->isQuantizedType() &&
             llvm::isa<QuantizeNode>(weights.getNode()) &&
             bias.getType()->isQuantizedType() &&
@@ -524,8 +559,8 @@ public:
             auto *fcq = function_.createRowwiseQuantizedFullyConnected(
                 "rowwiseqfc", input, wc, bias, result.getType(),
                 /* transposeWeight */ true);
-            // Replace the usages of quantized FC node to
-            // RowwiseQuantizedFullyConnected Node.
+            // Replace usages of quantized FC node (or its equivalent lowered
+            // representation MM + BA) to RowwiseQuantizedFullyConnectedNode.
             result.replaceAllUsesOfWith(fcq->getResult());
           }
         }
