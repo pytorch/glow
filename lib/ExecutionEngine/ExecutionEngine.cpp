@@ -186,13 +186,16 @@ void ExecutionEngine::insertCompiledFunction(
   functionMap[name] = func.get();
   compiledFunctions_[name] = std::move(func);
 
-  std::promise<llvm::Error> addPromise;
+  std::promise<void> addPromise;
   auto fut = addPromise.get_future();
+  llvm::Error addErr = llvm::Error::success();
   device_->addNetwork(&M_, std::move(functionMap),
-                      [&addPromise](const Module *, llvm::Error err) {
-                        addPromise.set_value(std::move(err));
+                      [&addPromise, &addErr](const Module *, llvm::Error err) {
+                        addErr = std::move(err);
+                        addPromise.set_value();
                       });
-  EXIT_ON_ERR(fut.get());
+  fut.wait();
+  EXIT_ON_ERR(std::move(addErr));
 }
 
 void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,

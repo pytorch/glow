@@ -79,9 +79,9 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   return backend->compile(F, opts);
 }
 
-std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
-                                     Module &module, FunctionMapTy functions) {
-  auto compilePromise = std::make_shared<std::promise<llvm::Error>>();
+std::future<void> addToDevice(unsigned int id, DeviceManager *device,
+                              Module &module, FunctionMapTy functions) {
+  auto compilePromise = std::make_shared<std::promise<void>>();
   auto future = compilePromise->get_future();
 
   device->addNetwork(&module, functions,
@@ -89,11 +89,12 @@ std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
                        if (err) {
                          llvm::errs() << "Failed to compile model for device "
                                       << id << ".\n";
+                         EXIT_ON_ERR(std::move(err));
                        } else {
                          llvm::outs()
                              << "Successfully added to Device " << id << ".\n";
                        }
-                       compilePromise->set_value(std::move(err));
+                       compilePromise->set_value();
                      });
 
   return future;
@@ -128,7 +129,6 @@ int main(int argc, char **argv) {
 
     auto f = addToDevice(i, devices[i], module, functions);
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
-    EXIT_ON_ERR(f.get());
   }
 
   auto image =

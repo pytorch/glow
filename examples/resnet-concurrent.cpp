@@ -84,9 +84,9 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module) {
 
 /// Loads the CompliedFunction into device \p device.
 /// Returns a future which is completed when the device is initialized.
-std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
-                                     Module &module, FunctionMapTy functions) {
-  auto compilePromise = std::make_shared<std::promise<llvm::Error>>();
+std::future<void> addToDevice(unsigned int id, DeviceManager *device,
+                              Module &module, FunctionMapTy functions) {
+  auto compilePromise = std::make_shared<std::promise<void>>();
   auto future = compilePromise->get_future();
 
   device->addNetwork(&module, functions,
@@ -94,11 +94,12 @@ std::future<llvm::Error> addToDevice(unsigned int id, DeviceManager *device,
                        if (err) {
                          llvm::errs() << "Failed to compile model for device "
                                       << id << ".\n";
+                         EXIT_ON_ERR(std::move(err));
                        } else {
                          llvm::outs()
                              << "Successfully added to Device " << id << ".\n";
                        }
-                       compilePromise->set_value(std::move(err));
+                       compilePromise->set_value();
                      });
 
   return future;
@@ -156,7 +157,7 @@ int main(int argc, char **argv) {
   FunctionMapTy functions;
   functions.emplace("resnet50", compiledFunction.get());
 
-  std::vector<std::future<llvm::Error>> compiles;
+  std::vector<std::future<void>> compiles;
   compiles.reserve(numDevices);
 
   for (unsigned int i = 0; i < numDevices; ++i) {
@@ -165,7 +166,6 @@ int main(int argc, char **argv) {
 
   for (auto &f : compiles) {
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
-    EXIT_ON_ERR(f.get());
   }
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";
