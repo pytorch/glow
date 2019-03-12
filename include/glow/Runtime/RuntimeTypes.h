@@ -19,6 +19,7 @@
 #include "glow/Backends/Backend.h"
 #include "glow/Backends/BackendUtils.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Support/Error.h"
 
 #include <map>
 #include <string>
@@ -38,15 +39,10 @@ using RunIdentifierTy = size_t;
 /// Map of DeviceIDTy -> DeviceManager.
 using DeviceManagerMapTy = std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
 
-/// Enum to communicate results when communicating with device at initialization
-/// and runtime.
-enum class ResultCode { Ready, Executed, Failed, Canceled };
-
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy =
-    std::function<void(runtime::RunIdentifierTy, runtime::ResultCode,
-                       std::unique_ptr<ExecutionContext>)>;
+using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
+                                      std::unique_ptr<ExecutionContext>)>;
 
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.

@@ -20,6 +20,7 @@
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -76,21 +77,17 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
   auto runid = hostManager->runNetwork(
       "resnet50" + std::to_string(id), std::move(context),
       [id, path, &returned,
-       &finished](RunIdentifierTy, ResultCode r,
+       &finished](RunIdentifierTy, llvm::Error err,
                   std::unique_ptr<ExecutionContext> context) {
-        if (r == ResultCode::Canceled) {
-          llvm::outs() << "(" << id << ") "
-                       << "Too Many Active Requests.\n";
-        } else {
-          auto *bindings = context->getPlaceholderBindings();
-          size_t maxIdx =
-              bindings
-                  ->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
-                  ->getHandle()
-                  .minMaxArg()
-                  .second;
-          llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
-        }
+        EXIT_ON_ERR(std::move(err));
+        auto *bindings = context->getPlaceholderBindings();
+        size_t maxIdx =
+            bindings->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
+                ->getHandle()
+                .minMaxArg()
+                .second;
+        llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
+
         if (++returned == maxImages) {
           finished.set_value();
         }
@@ -128,11 +125,7 @@ int main(int argc, char **argv) {
     input = loadResnet50Model(inputType, module.get(), i);
     inputs.push_back(input);
     llvm::outs() << "Adding to HostManager\n";
-    auto result = hostManager->addNetwork(module.get());
-    if (result != ResultCode::Ready) {
-      llvm::outs() << "failed to add\n";
-      return -1;
-    }
+    EXIT_ON_ERR(hostManager->addNetwork(module.get()));
     modules.push_back(std::move(module));
   }
 

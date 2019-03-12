@@ -70,5 +70,5 @@ TEST_F(ProvisionerTest, provisionDag) {
   auto provisioner = Provisioner(devices);
   auto err = provisioner.provision(networks, *mod.get());
   // Expect that there was no Error when provisioning
-  EXPECT_FALSE(glow::errorToBool(std::move(err)));
+  EXPECT_FALSE(errToBool(std::move(err)));
 }

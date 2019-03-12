@@ -76,15 +76,8 @@ std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
 
 template <typename ResultType>
 void callbackHelper(std::promise<ResultType> &promise, ResultType res,
-                    ResultCode result, ResultCode expected) {
-  promise.set_value(result == expected ? std::move(res) : ResultType());
-}
-
-template <typename ResultType>
-void callbackHelper(std::promise<ResultType> &promise, ResultType res,
                     llvm::Error err) {
-  promise.set_value(!glow::errorToBool(std::move(err)) ? std::move(res)
-                                                       : ResultType());
+  promise.set_value(!errToBool(std::move(err)) ? std::move(res) : ResultType());
 }
 
 TEST_P(DeviceManagerTest, Basic) {
@@ -94,7 +87,7 @@ TEST_P(DeviceManagerTest, Basic) {
       compileFunctions(backendKind, module.get(), backing);
 
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(glow::errorToBool(device->init()));
+  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -127,10 +120,10 @@ TEST_P(DeviceManagerTest, Basic) {
   std::tie(runPromise, runFuture) =
       getFutureHelper<std::unique_ptr<ExecutionContext>>();
   device->runFunction("main", std::move(context),
-                      [&runPromise](RunIdentifierTy, ResultCode result,
+                      [&runPromise](RunIdentifierTy, llvm::Error err,
                                     std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runPromise, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runPromise, std::move(context),
+                                       std::move(err));
                       });
 
   runFuture.wait_for(std::chrono::seconds(2));
@@ -141,8 +134,7 @@ TEST_P(DeviceManagerTest, Basic) {
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 
-  ResultCode stopResult = device->stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(device->stop()));
   delete device;
 }
 
@@ -152,7 +144,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(glow::errorToBool(device->init()));
+  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -194,17 +186,17 @@ TEST_P(DeviceManagerTest, MultiRun) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("main", std::move(context1),
-                      [&runP1](RunIdentifierTy, ResultCode result,
+                      [&runP1](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP1, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP1, std::move(context),
+                                       std::move(err));
                       });
 
   device->runFunction("main", std::move(context2),
-                      [&runP2](RunIdentifierTy, ResultCode result,
+                      [&runP2](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP2, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP2, std::move(context),
+                                       std::move(err));
                       });
 
   context1 = runF1.get();
@@ -222,8 +214,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   EXPECT_TRUE(result1->isEqual(output1));
   EXPECT_TRUE(result2->isEqual(output2));
 
-  ResultCode stopResult = device->stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(device->stop()));
   delete device;
 }
 
@@ -251,7 +242,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
       compileFunctions(backendKind, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(glow::errorToBool(device->init()));
+  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -283,17 +274,17 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, ResultCode result,
+                      [&runP1](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP1, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP1, std::move(context),
+                                       std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, ResultCode result,
+                      [&runP2](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP2, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP2, std::move(context),
+                                       std::move(err));
                       });
 
   context1 = runF1.get();
@@ -311,8 +302,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   EXPECT_TRUE(result1->isEqual(output1));
   EXPECT_TRUE(result2->isEqual(output2));
 
-  ResultCode stopResult = device->stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(device->stop()));
   delete device;
 }
 
@@ -326,7 +316,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   FunctionMapTy functions2 =
       compileFunctions(backendKind, module2.get(), backing);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(glow::errorToBool(device->init()));
+  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -371,17 +361,17 @@ TEST_P(DeviceManagerTest, MultiModule) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, ResultCode result,
+                      [&runP1](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP1, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP1, std::move(context),
+                                       std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, ResultCode result,
+                      [&runP2](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP2, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP2, std::move(context),
+                                       std::move(err));
                       });
 
   context1 = runF1.get();
@@ -400,8 +390,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output));
 
-  ResultCode stopResult = device->stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(device->stop()));
   delete device;
 }
 
@@ -436,7 +425,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_EQ(functions.size(), 1);
   EXPECT_EQ(functions2.size(), 1);
   auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(glow::errorToBool(device->init()));
+  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -476,17 +465,17 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, ResultCode result,
+                      [&runP1](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP1, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP1, std::move(context),
+                                       std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, ResultCode result,
+                      [&runP2](RunIdentifierTy, llvm::Error err,
                                std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runP2, std::move(context), result,
-                                       ResultCode::Executed);
+                        callbackHelper(runP2, std::move(context),
+                                       std::move(err));
                       });
 
   context1 = runF1.get();
@@ -505,8 +494,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output2));
 
-  ResultCode stopResult = device->stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(device->stop()));
   delete device;
 }
 
@@ -517,7 +505,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   CPUDeviceManager cpuCoreDevice(nullptr, 1);
-  ASSERT_FALSE(glow::errorToBool(cpuCoreDevice.init()));
+  ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
 
   uint64_t expectedBytes = 1;
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
@@ -584,13 +572,12 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 
-  ResultCode stopResult = cpuCoreDevice.stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(cpuCoreDevice.stop()));
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
   DummyDeviceManager deviceManager(BackendKind::Interpreter);
-  ASSERT_FALSE(glow::errorToBool(deviceManager.init()));
+  ASSERT_FALSE(errToBool(deviceManager.init()));
 
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
@@ -622,7 +609,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 
   deviceManager.runFunction(
       "main", std::move(context1),
-      [&context1](RunIdentifierTy, ResultCode result,
+      [&context1](RunIdentifierTy, llvm::Error err,
                   std::unique_ptr<ExecutionContext> context) {
         context1 = std::move(context);
       });
@@ -634,8 +621,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 
-  ResultCode stopResult = deviceManager.stop();
-  EXPECT_EQ(stopResult, ResultCode::Executed);
+  EXPECT_FALSE(errToBool(deviceManager.stop()));
 }
 
 #endif // GLOW_WITH_CPU

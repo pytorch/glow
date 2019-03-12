@@ -85,8 +85,8 @@ public:
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing
   /// backends. Additionally DAGs are created for each function and stored in
-  /// networks_. Returns a result code to indicate success.
-  ResultCode addNetwork(Module *M);
+  /// networks_. Returns an llvm::Error containing the results of the operation.
+  llvm::Error addNetwork(Module *M);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.
@@ -96,7 +96,7 @@ public:
   bool networkAdded(llvm::StringRef networkName);
 
   /// Removes all networks from the host, and stops execution on all devices.
-  void clearHost();
+  llvm::Error clearHost();
 
   /// Runs the network specified by \p networkName using
   /// the provided \p context, returns a runIdentifier which refers to the

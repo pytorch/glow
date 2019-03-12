@@ -59,7 +59,7 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0), resultCode_(ResultCode::Ready) {
+      inflightNodes_(0) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
 
@@ -199,15 +199,6 @@ ExecutionContext *ExecutionState::getRawResultContextPtr() const {
   return resultCtx_.get();
 }
 
-void ExecutionState::setResultCode(const ResultCode resultCode) {
-  // If resultCode_ is ResultCode::Failed, that should "stick". In other words,
-  // once a run has failed due to one node, the fact that the other nodes
-  // executed successfully does not change the result code of the run.
-  if (resultCode_ != ResultCode::Failed) {
-    resultCode_ = resultCode;
-  }
-}
-
 void ThreadPoolExecutor::shutdown() {
   // Prevent more requests from being processed.
   shuttingDown_ = true;
@@ -223,14 +214,17 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                              RunIdentifierTy runId, ResultCBTy cb) {
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
-    cb(runId, ResultCode::Canceled, std::move(context));
+    cb(runId,
+       MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                "ThreadPoolExecutor is shutting down"),
+       std::move(context));
     return;
   }
 
   // If list of roots is empty, there is nothing to do. Give back the
   // bindings so the caller can reuse it.
   if (!root) {
-    cb(runId, ResultCode::Executed, std::move(context));
+    cb(runId, llvm::Error::success(), std::move(context));
     return;
   }
 
@@ -242,7 +236,11 @@ void ThreadPoolExecutor::run(const DAGNode *root,
     // also nothing to do, but return an error. Give back the bindings so the
     // caller can reuse it.
     if (executionStates_.find(runId) != executionStates_.end()) {
-      cb(runId, ResultCode::Failed, std::move(context));
+      cb(runId,
+         MAKE_ERR(
+             GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+             "ThreadPoolExecutor found another run with the same request id"),
+         std::move(context));
       return;
     }
 
@@ -302,7 +300,7 @@ void ThreadPoolExecutor::executeDAGNode(
     std::shared_ptr<ExecutionState> executionState, const DAGNode *node) {
   // If execution has already failed due to another node, don't bother running
   // this one.
-  if (executionState->getResultCode() == ResultCode::Failed) {
+  if (executionState->getErrorContainer().containsErr()) {
     // Mark the node as no longer executing.
     executionState->decrementInflightNodes();
     inflightBarrier_.decrement();
@@ -314,7 +312,9 @@ void ThreadPoolExecutor::executeDAGNode(
 
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
-    executionState->setResultCode(ResultCode::Failed);
+    executionState->getErrorContainer().set(
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
+                 "Cannot find the DeviceManager specified."));
     executionState->decrementInflightNodes();
     inflightBarrier_.decrement();
     return;
@@ -329,13 +329,14 @@ void ThreadPoolExecutor::executeDAGNode(
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
       [this, executionState,
-       node](RunIdentifierTy id, ResultCode resultCode,
+       node](RunIdentifierTy id, llvm::Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
         // Immediately move the handling of the result onto threadPool_ to
         // avoid doing work on the DeviceManager thread.
-        this->threadPool_.submit([this, executionState, node, resultCode,
+        this->threadPool_.submit([this, executionState, node,
+                                  err = std::move(err),
                                   ctx = std::move(resultCtx)]() mutable {
-          this->handleDeviceManagerResult(executionState, resultCode,
+          this->handleDeviceManagerResult(executionState, std::move(err),
                                           std::move(ctx), node);
         });
       });
@@ -355,25 +356,27 @@ void ThreadPoolExecutor::propagateOutputPlaceholders(
 }
 
 void ThreadPoolExecutor::handleDeviceManagerResult(
-    std::shared_ptr<ExecutionState> executionState, ResultCode resultCode,
+    std::shared_ptr<ExecutionState> executionState, llvm::Error err,
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
   // If executionState is null, that means that the object was deleted
   // while a node was executing. That should never happen.
   assert(executionState && "Execution state should not be null");
 
+  auto runWasSuccess = !err;
+
   // Set the result code for the run.
-  executionState->setResultCode(resultCode);
+  executionState->getErrorContainer().set(std::move(err));
 
   // If the DeviceManager executed the node, propagate its output Placeholders
   // to its children or the result PlaceholderBindings as appropriate.
-  if (executionState->getResultCode() == ResultCode::Executed) {
+  if (runWasSuccess) {
     if ((node->children).empty()) {
       // If the node has no children, propagate its outputs to the result
       // PlaceholderBindings for the run.
       propagateOutputPlaceholders(executionState, std::move(ctx));
     } else {
       // If the node has children, propagate its outputs to the input
-      // PlaceholderBindingss for any of its children that need them as inputs.
+      // PlaceholderBindings for any of its children that need them as inputs.
       for (auto &child : node->children) {
         propagatePlaceholdersForNode(executionState, child, ctx.get());
 
@@ -398,7 +401,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     // If there are no nodes inflight, that means all nodes are done. Call
     // the callback and erase the state information.
     ResultCBTy cb = executionState->getCallback();
-    cb(executionState->getRunId(), executionState->getResultCode(),
+    cb(executionState->getRunId(), executionState->getErrorContainer().get(),
        executionState->getUniqueResultContextPtr());
 
     // Clean up the state stored for the run.

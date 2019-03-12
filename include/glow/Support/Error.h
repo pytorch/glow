@@ -16,6 +16,7 @@
 #ifndef GLOW_SUPPORT_ERROR_H
 #define GLOW_SUPPORT_ERROR_H
 
+#include <mutex>
 #include <type_traits>
 
 #include "llvm/Support/Error.h"
@@ -67,9 +68,15 @@ public:
     // Model loader encountered an invalid protobuf.
     MODEL_LOADER_INVALID_PROTOBUF,
     // Runtime error, out of device memory.
+    RUNTIME_ERROR,
+    // Runtime error, out of device memory.
     RUNTIME_OUT_OF_DEVICE_MEMORY,
     // Runtime error, could not find the specified model network.
     RUNTIME_NET_NOT_FOUND,
+    // Runtime error, runtime refusing to service request.
+    RUNTIME_REQUEST_REFUSED,
+    // Runtime error, device wasn't found.
+    RUNTIME_DEVICE_NOT_FOUND,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -125,10 +132,16 @@ private:
       return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
     case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
       return "MODEL_LOADER_INVALID_PROTOBUF";
+    case ErrorCode::RUNTIME_ERROR:
+      return "RUNTIME_ERROR";
     case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:
       return "RUNTIME_OUT_OF_DEVICE_MEMORY";
     case ErrorCode::RUNTIME_NET_NOT_FOUND:
       return "RUNTIME_NET_NOT_FOUND";
+    case ErrorCode::RUNTIME_REQUEST_REFUSED:
+      return "RUNTIME_REQUEST_REFUSED";
+    case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
+      return "RUNTIME_DEVICE_NOT_FOUND";
     };
 
     llvm_unreachable("unsupported ErrorCode");
@@ -154,10 +167,10 @@ private:
 /// potential errors up the stack.
 #define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
 
-/// Make a new llvm::StringError.
+/// Make a new GlowErr.
 #define MAKE_ERR(...) llvm::make_error<GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
 
-/// Makes a new llvm::StringError and returns it.
+/// Makes a new GlowErr and returns it.
 #define RETURN_ERR(...)                                                        \
   do {                                                                         \
     return MAKE_ERR(__VA_ARGS__);                                              \
@@ -188,7 +201,7 @@ private:
     }                                                                          \
   } while (0)
 
-/// Takes a predicate \p and if it is false then creates a new llvm::StringError
+/// Takes a predicate \p and if it is false then creates a new GlowErr
 /// and returns it.
 #define RETURN_ERR_IF_NOT(p, ...)                                              \
   do {                                                                         \
@@ -200,7 +213,7 @@ private:
 /// Marks the Error \p err as as checked. \returns true if it contains an
 /// error value and prints the message in the error value, returns false
 /// otherwise.
-inline bool errorToBool(llvm::Error err) {
+inline bool errToBool(llvm::Error err) {
   if (static_cast<bool>(err)) {
     llvm::errs() << "Converting error to boolean: "
                  << llvm::toString(std::move(err)) << "\n";
@@ -208,6 +221,29 @@ inline bool errorToBool(llvm::Error err) {
   }
   return false;
 }
+
+/// This class holds an llvm::Error provided via the add method. If an Error is
+/// added when the class already holds an Error, it will discard the new Error
+/// in favor of the original one. All methods in OneErrOnly are thread-safe.
+class OneErrOnly {
+private:
+  llvm::Error err_ = llvm::Error::success();
+  std::mutex m_;
+
+public:
+  /// Add a new llvm::Error \p err to be stored. If an existing Error has
+  /// already been added then the contents of the new error will be logged and
+  /// the new err will be discarded. \returns true if \p err was stored and
+  /// \returns false otherwise. If \p err is an empty Error then does nothing
+  /// and \returns false;
+  bool set(llvm::Error err);
+
+  /// \returns the stored llvm:Error clearing out the storage of the class.
+  llvm::Error get();
+
+  /// \returns true if contains an Error and false otherwise.
+  bool containsErr();
+};
 
 } // end namespace glow
 

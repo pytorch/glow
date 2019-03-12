@@ -21,4 +21,35 @@ llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");
 
 /// ID used by llvm::ErrorInfo::isA's dynamic typing.
 uint8_t const GlowErr::ID = 0;
+
+bool OneErrOnly::set(llvm::Error err) {
+  // Don't do anything in the case of empty Error.
+  if (!err) {
+    return false;
+  }
+
+  std::unique_lock<std::mutex> lock(m_);
+
+  if (!err_) {
+    err_ = std::move(err);
+    return true;
+  } else {
+    // No update happening so don't need the lock any more.
+    lock.unlock();
+    llvm::errs() << "OneErrOnly already has an Error, discarding new Error: "
+                 << llvm::toString(std::move(err)) << "\n";
+    return false;
+  }
+}
+
+llvm::Error OneErrOnly::get() {
+  std::unique_lock<std::mutex> lock(m_);
+  auto err = std::move(err_);
+  return err;
+}
+
+bool OneErrOnly::containsErr() {
+  std::unique_lock<std::mutex> lock(m_);
+  return static_cast<bool>(err_);
+}
 } // namespace glow

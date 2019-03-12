@@ -101,11 +101,8 @@ public:
   /// \returns the callback for this execution.
   ResultCBTy getCallback() { return cb_; }
 
-  /// \returns the result code for the execution.
-  ResultCode getResultCode() const { return resultCode_; }
-
-  /// Set result code for the execution.
-  void setResultCode(const ResultCode resultCode);
+  /// \returns the OneErrOnly Error container for the execution.
+  OneErrOnly &getErrorContainer() { return errContainer_; }
 
   /// \returns the run ID for the execution.
   RunIdentifierTy getRunId() const { return runId_; }
@@ -128,8 +125,8 @@ private:
   /// The set of currently executing nodes. This is populated with the roots
   /// when a run starts, and does not become empty until execution finishes.
   std::atomic<unsigned> inflightNodes_;
-  /// Flag that is used to track if a non-success error code was received.
-  std::atomic<ResultCode> resultCode_;
+  /// Value that is used to track if an Error was received.
+  OneErrOnly errContainer_;
   /// Mutex used by bindings insertion functions to make sure only one thread
   /// writes to an ExecutionContext at a time.
   std::mutex bindingsMtx_;
@@ -175,14 +172,14 @@ private:
 
   /// Handle the result returned asynchronously by the DeviceManager.
   /// \p executionState is tracks the state of the run that the node that
-  /// finished executing belongs to, \p is the resultCode returned by the
+  /// finished executing belongs to, \p err is the llvm::Error returned by the
   /// DeviceManager, \p ctx is the ExecutionContext that contains the outputs
   /// produced by \p node during the run.
   ///
   /// The main purpose of this function is to help move computation off of the
   /// DeviceManager thread pool on onto the one owned by this class.
   void handleDeviceManagerResult(std::shared_ptr<ExecutionState> executionState,
-                                 ResultCode resultCode,
+                                 llvm::Error err,
                                  std::unique_ptr<ExecutionContext> ctx,
                                  const DAGNode *node);
 
