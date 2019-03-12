@@ -345,6 +345,44 @@ static void lowerQuantizedSigmoidNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, SN->getResult(), rescaleOutputNode);
 }
 
+static void lowerAdagradNode(Function *F, LoweredInfoMap *loweredMap,
+                             const AdagradNode &adagrad) {
+  NodeValue weight = adagrad.getWeight();
+  NodeValue grad = adagrad.getGradient();
+  NodeValue momentum = adagrad.getMomentum();
+
+  assert(weight.dims() == grad.dims() && weight.dims() == momentum.dims() &&
+         "Invalid weight/gradient/momentum sizes for AdagradNode");
+
+  // Compute new momentum:
+  //   newMomentum = oldMomentum + (gradient)^2
+  auto *squareGrad = F->createPow("squareGrad", grad, /*exponent=*/2);
+  auto *newMomentum = F->createAdd("newMomentum", momentum, squareGrad);
+
+  // Compute weight update:
+  //   effectiveLr = learningRate / (sqrt(newMomentum) + epsilon)
+  //   weightUpdate = effectiveLr * gradient
+  auto *sqrtNewMomentum =
+      F->createPow("sqrtNewMomentum", newMomentum, /*exponent=*/0.5);
+  auto *epsSplat =
+      F->createSplat("epsSplat", grad.getType(), adagrad.getEpsilon());
+  auto *sqrtNewMomentumEps =
+      F->createAdd("sqrtNewMomentumEps", sqrtNewMomentum, epsSplat);
+  auto *negativeLrSplat = F->createSplat("negativelrSplat", grad.getType(),
+                                         -adagrad.getLearningRate());
+  auto *effectiveLr =
+      F->createDiv("effectiveLr", negativeLrSplat, sqrtNewMomentumEps);
+  auto *weightUpdate = F->createMul("weightUpdate", grad, effectiveLr);
+
+  // Compute new weights:
+  //   newWeight = oldWeight + weightUpdate
+  auto *newWeight = F->createAdd("newWeight", weight, weightUpdate);
+
+  // Connect lowered NodeValues for new weight and momentum.
+  replaceAllUsesOfWith(loweredMap, adagrad.getUpdatedWeight(), newWeight);
+  replaceAllUsesOfWith(loweredMap, adagrad.getUpdatedMomentum(), newMomentum);
+}
+
 static void lowerSGDNode(Function *F, LoweredInfoMap *loweredMap,
                          const SGDNode &SGD) {
   NodeValue W = SGD.getWeight();
@@ -803,6 +841,8 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
     lowerSigmoidGradNode(F, loweredMap, *SG);
   } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
     lowerSGDNode(F, loweredMap, *SGD);
+  } else if (auto *AGN = dyn_cast<AdagradNode>(node)) {
+    lowerAdagradNode(F, loweredMap, *AGN);
   } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
     lowerBatchNormalizationNode(F, loweredMap, *BN);
   } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {

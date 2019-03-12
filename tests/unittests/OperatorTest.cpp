@@ -2414,7 +2414,7 @@ TEST_P(OperatorTest, FCGradientCheck) {
   initA.getHandle() = {4.2f, 9.875f};
   initB.getHandle() = {-13.1f, 3.14f};
 
-  Function *DF = glow::differentiate(F_, TC, "d_main");
+  Function *DF = glow::differentiate(F_, TC, bindings_, "d_main");
   EE_.compile(CompilationMode::Train, DF);
   runBatch(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB});
 

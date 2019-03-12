@@ -63,7 +63,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 
   bindings.allocate(SN->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -109,7 +109,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   inputs.getHandle<>() = {0.15f, 0.15f, 0.15f, 0.15f};
   expected.getHandle<>() = {0.9f, 0.9f, 0.9f, 0.9f};
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network. Learn 1000 batches.
@@ -166,7 +166,7 @@ TEST_P(MLTest, simpleRegression) {
   auto I = inputs.getHandle<>();
   auto E = expected.getHandle<>();
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -243,7 +243,7 @@ TEST_P(MLTest, learnXor) {
     TL.at({i, 0}) = a ^ b;
   }
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -270,6 +270,92 @@ TEST_P(MLTest, learnXor) {
     int a = TS.at({i, 0});
     int b = TS.at({i, 1});
     EXPECT_NEAR(resH.at({i, 0}), (a ^ b), 0.1);
+  }
+}
+
+/// Learn the exponential function.
+TEST_P(InterpreterAndCPU, learnExp) {
+  TrainingConfig TC(TrainingAlgorithm::Adagrad);
+  PlaceholderBindings bindings;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
+  unsigned numInputs = 50;
+  unsigned batchSize = 5;
+
+  auto *trainingParams = TC.getParams<AdagradParameters>();
+  trainingParams->learningRate = 0.07;
+  trainingParams->batchSize = batchSize;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("learnExp");
+
+  Placeholder *A =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 1}, "A", false);
+  Placeholder *Ex =
+      mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 1}, "Ex", false);
+
+  Node *O = F->createFullyConnected(bindings, "fc1", A, 4);
+  O = F->createTanh("tanh1", O);
+  O = F->createFullyConnected(bindings, "fc2", O, 1);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
+
+  bindings.allocate(A);
+  bindings.allocate(Ex);
+  auto *res = bindings.allocate(result->getPlaceholder());
+
+  // Set the training data.
+  Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
+  Tensor trainingLabels(ElemKind::FloatTy, {numInputs, 1});
+
+  auto TS = trainingSet.getHandle<>();
+  auto TL = trainingLabels.getHandle<>();
+
+  // Set the training data as floating number from range [0.75, 1.5).
+  const float LO = -0.5; // Lower bound of training data.
+  const float HI = 0.5;  // Upper bound of training data.
+  for (size_t i = 0; i < numInputs; i++) {
+    // Generate a floating number in the range of [LO,HI).
+    float a = LO + i * (HI - LO) / numInputs;
+    TS.at({i, 0}) = a;
+    TL.at({i, 0}) = std::exp(a) - 1;
+  }
+
+  Function *TF = glow::differentiate(F, TC, bindings);
+  EE_.compile(CompilationMode::Train, TF);
+
+  // Train the network:
+  runBatch(EE_, bindings, 5000, sampleCounter, {A, Ex},
+           {&trainingSet, &trainingLabels});
+
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Set the testing data.
+  Tensor testSet(ElemKind::FloatTy, {batchSize, 1});
+
+  auto TES = testSet.getHandle<>();
+
+  const float LO_T = -0.4; // Lower bound of testing data.
+  const float HI_T = 0.4;  // Upper bound of testing data.
+
+  for (size_t i = 0; i < batchSize; i++) {
+    // Generate a floating number in the range of [LO_T,HI_T).
+    float a = mod.getPRNG().nextRandReal(LO_T, HI_T);
+    TES.at({i, 0}) = a;
+  }
+
+  updateInputPlaceholders(bindings, {A}, {&testSet});
+  EE_.run(bindings);
+
+  auto resH = res->getHandle<>();
+
+  // Test the output:
+  for (size_t i = 0; i < batchSize; i++) {
+    float a = TES.at({i, 0});
+    EXPECT_NEAR(resH.at({i, 0}), (std::exp(a) - 1), 0.02);
   }
 }
 
@@ -324,7 +410,7 @@ TEST_P(MLTest, learnLog) {
     TL.at({i, 0}) = std::log(a);
   }
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -425,7 +511,7 @@ TEST_P(MLTest, circle) {
   bindings.allocate(S);
   auto *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
@@ -538,7 +624,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   inputs.getHandle<>().clear(0.15);
   expected.getHandle<>().clear(0.9);
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network:
@@ -645,7 +731,7 @@ void testRNNCell(TCellGenerator cell) {
 
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   // Values for the input and output variables.
@@ -732,7 +818,7 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   Placeholder *M = llvm::cast<Placeholder>(FC->getWeights());
   Placeholder *B = llvm::cast<Placeholder>(FC->getBias());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Train the network doing 100 steps. Learn on 500 samples.
@@ -806,7 +892,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   bindings.allocate(S);
   bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
@@ -896,7 +982,7 @@ TEST_P(MLTest, learnSinus) {
   bindings.allocate(expectedY);
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   // Learn on numSamples samples.
@@ -961,7 +1047,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   bindings.allocate(S);
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE_.compile(CompilationMode::Train, TF);
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
@@ -1058,7 +1144,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   bindings.allocate(ex);
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
@@ -1172,7 +1258,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   bindings.allocate(ex);
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   // --  STEP1 - train the network. --
@@ -1365,7 +1451,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   bindings.allocate(varExpected);
   Tensor *res = bindings.allocate(result->getPlaceholder());
 
-  Function *trainingGradientFunction = glow::differentiate(F, TC);
+  Function *trainingGradientFunction = glow::differentiate(F, TC, bindings);
 
   // Train the network.
   const unsigned numSamples = 50;

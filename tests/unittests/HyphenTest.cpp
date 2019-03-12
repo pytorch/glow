@@ -280,7 +280,7 @@ struct HyphenNetwork {
     n = infer_->createSoftMax("output", n, expected_);
     result_ = infer_->createSave("result", n);
     bindings_.allocate(result_->getPlaceholder());
-    train_ = glow::differentiate(infer_, conf);
+    train_ = glow::differentiate(infer_, conf, bindings_);
   }
 
   // Run `inputs` through the inference function and check the results against

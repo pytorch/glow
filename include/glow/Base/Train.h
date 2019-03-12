@@ -27,7 +27,7 @@ namespace glow {
 class Tensor;
 
 /// These are all the supported training algorithms.
-enum class TrainingAlgorithm { None, StochasticGradientDescent };
+enum class TrainingAlgorithm { None, StochasticGradientDescent, Adagrad };
 
 /// This is a list of common parameters that all of the training algorithms use.
 struct TrainingParameters {
@@ -42,6 +42,11 @@ struct SGDParameters : public TrainingParameters {
   float momentum{0.0};
 };
 
+/// Additional training parameters used by Adagrad.
+struct AdagradParameters : public TrainingParameters {
+  float epsilon{1e-5};
+};
+
 /// Combination of training algorithm type and training parameters. Parameters
 /// should be casted to the appropriate type based on the algorithm type.
 struct TrainingConfig {
@@ -50,6 +55,8 @@ struct TrainingConfig {
       : algorithm(algo) {
     if (algorithm == TrainingAlgorithm::StochasticGradientDescent) {
       parameters = llvm::make_unique<SGDParameters>();
+    } else if (algorithm == TrainingAlgorithm::Adagrad) {
+      parameters = llvm::make_unique<AdagradParameters>();
     } else {
       llvm_unreachable("Invalid training algorithm.");
     }

@@ -186,7 +186,7 @@ void testCIFAR10() {
   auto *resultPH = createModel(bindings, F, A, E);
   auto *result = bindings.allocate(resultPH);
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   // Report progress every this number of training iterations.

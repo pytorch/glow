@@ -103,7 +103,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
   size_t sampleCounter = 0;
 
   // Create a function that trains the network.
-  Function *TF = glow::differentiate(&F, TC);
+  Function *TF = glow::differentiate(&F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
@@ -114,7 +114,8 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
   VariableGradientsList varGrads;
-  Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
+  Function *recordNet =
+      glow::differentiate(&F, TC, bindings, "record", &varGrads);
   allocateGrads(bindings, varGrads);
   EE.compile(CompilationMode::Train, recordNet);
 
@@ -555,7 +556,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   outputsH.at({2}) = 1;
 
   VariableGradientsList varGrads;
-  Function *TF = glow::differentiate(F, TC, "record", &varGrads);
+  Function *TF = glow::differentiate(F, TC, bindings, "record", &varGrads);
   allocateGrads(bindings, varGrads);
   EE_.compile(CompilationMode::Train, TF);
 

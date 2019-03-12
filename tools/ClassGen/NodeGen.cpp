@@ -599,6 +599,19 @@ int main(int argc, char **argv) {
                     "Produces the updated weight that needs to be used "
                     "instead of Weight for the next iteration.");
 
+  BB.newNode("Adagrad")
+      .addInput("Gradient")
+      .addInput("Weight")
+      .addInput("Momentum")
+      .addMember(MemberType::Float, "LearningRate")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Weight.getType()", "UpdatedWeight")
+      .addResult("Momentum.getType()", "UpdatedMomentum")
+      .setDocstring(
+          "Adagrad node used during training. Produces the updated "
+          "weight and momentum that need to be used instead of Weight "
+          "and Momentum for the next iteration.");
+
   //===--------------------------------------------------------------------===//
   //             Nodes used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//

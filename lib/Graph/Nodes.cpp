@@ -933,6 +933,14 @@ bool SGDNode::verify() const {
   return checkSameType(getGradient(), getWeight(), this);
 }
 
+bool AdagradNode::verify() const {
+  // Make sure that the gradient, weight, and momentum tensors are all the same
+  // type.
+  bool isValid = checkSameType(getGradient(), getWeight(), this);
+  isValid &= checkSameType(getGradient(), getMomentum(), this);
+  return isValid;
+}
+
 bool QuantizationProfileNode::verify() const {
   // Make sure that input tensor is a floating point type.
   bool isValid = checkType(getInput(), ElemKind::FloatTy, this);

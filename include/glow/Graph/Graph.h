@@ -18,6 +18,7 @@
 
 #include "glow/Base/Type.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -29,8 +30,6 @@
 #include <vector>
 
 namespace glow {
-class PlaceholderBindings;
-
 /// List of Types.
 using TypesList = std::list<Type>;
 /// Intrusive list of Nodes.
@@ -1025,13 +1024,15 @@ using VariableGradientsList =
 
 /// Create a new Function that 'trains' the input Function. We differentiate the
 /// nodes and insert code to update the weights based on the \p config
-/// parameters.
+/// parameters. \p bindings is used to allocate any extra required Placeholders
+/// depending on the training algorithm used.
 /// If \p varGrads is set then instead of inserting code to update the weights,
 /// the procedure adds code to record the last gradient value: a list of
 /// (var, grad_var) pairs associating variables with their gradient variables.
 /// This feature is used by the gradient-check unit tests.
 /// \returns a new function with the name \p newFuncName.
 Function *differentiate(Function *F, const TrainingConfig &config,
+                        PlaceholderBindings &bindings,
                         llvm::StringRef newFuncName = "",
                         VariableGradientsList *varGrads = nullptr);
 

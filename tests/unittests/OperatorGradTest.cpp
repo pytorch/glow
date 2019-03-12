@@ -49,7 +49,8 @@ protected:
     // table instead of updating them.
     VariableGradientsList varGrads;
     TrainingConfig TC;
-    Function *recordNet = glow::differentiate(F_, TC, "record", &varGrads);
+    Function *recordNet =
+        glow::differentiate(F_, TC, bindings_, "record", &varGrads);
     allocateGrads(varGrads);
     EE_.compile(CompilationMode::Train, recordNet);
 

@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
   //// Train the network ////
   Function *F =
       createNetwork(mod, bindings, minibatchSize, numSteps, hiddenSize);
-  Function *TF = differentiate(F, TC);
+  Function *TF = differentiate(F, TC, bindings);
 
   auto *X = mod.getPlaceholderByName("input");
   auto *Y = mod.getPlaceholderByName("expected");

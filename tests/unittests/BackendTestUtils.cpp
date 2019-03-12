@@ -257,7 +257,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   runBatch(EE, bindings, 8, sampleCounter, {var1, var2}, {inputs, selected});
@@ -318,7 +318,7 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
   runBatch(EE, bindings, 8, sampleCounter, {var1, var2}, {inputs, selected});
 
@@ -359,7 +359,7 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   runBatch(EE, bindings, 10, sampleCounter, {var1, var2}, {inputs, selected});
@@ -401,7 +401,7 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
 
   runBatch(EE, bindings, 7, sampleCounter, {var1, var2}, {inputs, selected});
@@ -658,7 +658,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
 
   EE.compile(CompilationMode::Train, TF);
 

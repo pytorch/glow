@@ -133,7 +133,7 @@ void testMNIST() {
   Tensor *resultTensor = bindings.allocate(result->getPlaceholder());
   bindings.allocate(selected);
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
 
   EE.compile(CompilationMode::Train, TF);
 

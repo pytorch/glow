@@ -63,7 +63,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = F->createSave("return", SM);
   (void)result;
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
@@ -94,7 +94,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *result = F->createSave("return", SM);
   (void)result;
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
@@ -130,7 +130,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
   EXPECT_EQ(M.getPlaceholders().size(), 5);
 
-  auto *diffF = differentiate(F, TC);
+  auto *diffF = differentiate(F, TC, bindings);
 
   EXPECT_TRUE(diffF->verify());
 
@@ -176,7 +176,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   // Expect a single user to the trainable input placeholder.
   EXPECT_EQ(A->getNumUsers(), 1);
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 
@@ -208,7 +208,7 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   auto *result = F->createSave("save", convertTo);
   bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }

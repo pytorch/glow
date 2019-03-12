@@ -237,7 +237,7 @@ void testPTB() {
     F->dumpDAG(dumpInitialGraphDAGFileOpt.c_str());
   }
 
-  Function *TF = glow::differentiate(F, TC);
+  Function *TF = glow::differentiate(F, TC, bindings);
 
   EE.compile(CompilationMode::Train, TF);
 

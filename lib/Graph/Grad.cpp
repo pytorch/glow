@@ -54,6 +54,7 @@ NodeValue GraphGradMapper::getGradient(NodeValue activation) {
 //===----------------------------------------------------------------------===//
 
 Function *glow::differentiate(Function *F, const TrainingConfig &conf,
+                              PlaceholderBindings &bindings,
                               llvm::StringRef newFuncName,
                               VariableGradientsList *varGrads) {
   // Create a new name for the differentiated function, if none is given.
@@ -269,6 +270,29 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // Now update the weight with the value computed by SGD.
       auto *save = new SaveNode(PH->getName().str() + ".saveGrad", {X, 0}, PH);
       toAppend.push_back(save);
+    } else if (conf.algorithm == TrainingAlgorithm::Adagrad) {
+      auto params = conf.getParams<AdagradParameters>();
+      // Create a new Placeholder to store the momentum for each weight during
+      // the previous iteration.
+      auto *PHmomentumHistory = F->getParent()->createPlaceholder(
+          PH->getType(), PH->getName().str() + ".momentumHistory", false);
+      auto X = new AdagradNode(PH->getName(), map.getGradient(PH), PH,
+                               PHmomentumHistory, params->learningRate,
+                               params->epsilon);
+      toAppend.push_back(X);
+
+      // Create SaveNodes to update the weight and momentum with the values
+      // computed by Adagrad.
+      auto *saveWeight =
+          new SaveNode(PH->getName().str() + ".saveGrad", {X, 0}, PH);
+      auto *saveMomentum =
+          new SaveNode(PHmomentumHistory->getName().str() + ".save", {X, 1},
+                       PHmomentumHistory);
+      toAppend.push_back(saveWeight);
+      toAppend.push_back(saveMomentum);
+
+      // Allocate the momentum history tensor and initialize it to zero.
+      bindings.allocate(PHmomentumHistory)->zero();
     } else {
       llvm_unreachable("Invalid training algorithm.");
     }
