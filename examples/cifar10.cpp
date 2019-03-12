@@ -159,15 +159,16 @@ void testCIFAR10() {
   unsigned minibatchSize = 8;
 
   // Construct the network:
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
 
   ExecutionEngine EE(executionBackend);
   PlaceholderBindings bindings;
 
-  TC.learningRate = 0.001;
-  TC.momentum = 0.9;
-  TC.L2Decay = 0.0001;
-  TC.batchSize = minibatchSize;
+  trainingParams->learningRate = 0.001;
+  trainingParams->momentum = 0.9;
+  trainingParams->L2Decay = 0.0001;
+  trainingParams->batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

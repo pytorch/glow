@@ -191,10 +191,12 @@ void testPTB() {
   PlaceholderBindings bindings;
 
   // Construct the network:
-  TrainingConfig TC;
-  TC.learningRate = learningRate;
-  TC.momentum = 0;
-  TC.batchSize = minibatchSize;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+
+  trainingParams->learningRate = learningRate;
+  trainingParams->momentum = 0;
+  trainingParams->batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

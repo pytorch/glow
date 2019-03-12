@@ -38,10 +38,11 @@ class MLTest : public TestRunnerBase {};
 
 /// Use placeholders (and not variables) to learn the square root of two.
 TEST_P(MLTest, learnSqrt2Placeholder) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
-  TC.learningRate = 0.03;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.03;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("Square root of 2");
@@ -75,7 +76,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 }
 
 TEST_P(MLTest, trainASimpleNetwork) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -83,7 +84,8 @@ TEST_P(MLTest, trainASimpleNetwork) {
   size_t sampleCounter = 0;
 
   // Learning a single input vector.
-  TC.learningRate = 0.05;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.05;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("trainASimpleNetwork");
@@ -127,7 +129,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
 }
 
 TEST_P(MLTest, simpleRegression) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -140,7 +142,8 @@ TEST_P(MLTest, simpleRegression) {
   const size_t numInputs = 4;
 
   // Learning a single input vector.
-  TC.learningRate = 0.05;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.05;
 
   Tensor inputs(ElemKind::FloatTy, {1, numInputs});
   Tensor expected(ElemKind::FloatTy, {1, numInputs});
@@ -192,7 +195,7 @@ TEST_P(MLTest, simpleRegression) {
 }
 
 TEST_P(MLTest, learnXor) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   unsigned numInputs = 10;
@@ -202,8 +205,9 @@ TEST_P(MLTest, learnXor) {
   size_t sampleCounter = 0;
 
   // Learning a single input vector.
-  TC.learningRate = 0.05;
-  TC.batchSize = numInputs;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.05;
+  trainingParams->batchSize = numInputs;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnXor");
@@ -271,7 +275,7 @@ TEST_P(MLTest, learnXor) {
 
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -280,8 +284,10 @@ TEST_P(MLTest, learnLog) {
 
   unsigned numInputs = 50;
   unsigned batchSize = 5;
-  TC.learningRate = 0.07;
-  TC.batchSize = batchSize;
+
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.07;
+  trainingParams->batchSize = batchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnLog");
@@ -386,7 +392,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -397,9 +403,10 @@ TEST_P(MLTest, circle) {
 
   // Testing the softmax layer.
   // Learning a single input vector.
-  TC.momentum = 0.9;
-  TC.learningRate = 0.01;
-  TC.batchSize = minibatchSize;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->momentum = 0.9;
+  trainingParams->learningRate = 0.01;
+  trainingParams->batchSize = minibatchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("circle");
@@ -494,9 +501,10 @@ TEST_P(MLTest, learnSingleValueConcat) {
   size_t sampleCounter = 0;
 
   // Learning a single input vector.
-  TrainingConfig TC;
-  TC.momentum = 0.9;
-  TC.learningRate = 0.01;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->momentum = 0.9;
+  trainingParams->learningRate = 0.01;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("learnSingleValueConcat");
@@ -575,7 +583,7 @@ using TCellGenerator = void (*)(PlaceholderBindings &, Function *,
                                 std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
 
   // This variable records the number of the next sample to be used for
   // training.
@@ -583,8 +591,10 @@ void testRNNCell(TCellGenerator cell) {
 
   PlaceholderBindings bindings;
   ExecutionEngine EE;
+
   // Learning a single input vector.
-  TC.learningRate = 0.05;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.05;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("testRNNCell");
@@ -673,7 +683,7 @@ TEST_P(MLTest, trainGRU) { testRNNCell(buildGRU); };
 TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // Given 1-D vectors x and y, find real numbers m and b such that
@@ -684,8 +694,9 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.1;
-  TC.batchSize = numSamples;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.1;
+  trainingParams->batchSize = numSamples;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction(
@@ -768,15 +779,16 @@ TEST_P(MLTest, classifyPlayerSport) {
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
 
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.05;
-  TC.batchSize = numTrainPlayers;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.05;
+  trainingParams->batchSize = numTrainPlayers;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("classifyPlayers");
@@ -831,7 +843,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 }
 
 TEST_P(MLTest, learnSinus) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -842,8 +854,9 @@ TEST_P(MLTest, learnSinus) {
   float epsilon = 0.1;
   unsigned numSamples = 50;
 
-  TC.learningRate = 0.2;
-  TC.batchSize = numSamples;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.2;
+  trainingParams->batchSize = numSamples;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("Gradient descent solution for sin(x)");
@@ -922,10 +935,11 @@ TEST_P(MLTest, nonLinearClassifier) {
   size_t sampleCounter = 0;
 
   PlaceholderBindings bindings;
-  TrainingConfig TC;
-  TC.learningRate = 0.01;
-  TC.momentum = 0.9;
-  TC.batchSize = batchSize;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.01;
+  trainingParams->momentum = 0.9;
+  trainingParams->batchSize = batchSize;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("nonLinearClassifier");
@@ -1019,10 +1033,11 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // training.
   size_t sampleCounter = 0;
 
-  TrainingConfig TC;
-  TC.learningRate = 0.01;
-  TC.batchSize = batchSize;
-  TC.momentum = 0.9;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.01;
+  trainingParams->batchSize = batchSize;
+  trainingParams->momentum = 0.9;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("convNetForImageRecognition");
@@ -1130,10 +1145,11 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // training.
   size_t sampleCounter = 0;
 
-  TrainingConfig TC;
-  TC.learningRate = 0.01;
-  TC.batchSize = batchSize;
-  TC.momentum = 0.9;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.01;
+  trainingParams->batchSize = batchSize;
+  trainingParams->momentum = 0.9;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1308,9 +1324,10 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
 }
 
 TEST_P(MLTest, matrixRotationRecognition) {
-  TrainingConfig TC;
-  TC.learningRate = 0.15;
-  TC.batchSize = 17;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.15;
+  trainingParams->batchSize = 17;
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
@@ -1321,11 +1338,11 @@ TEST_P(MLTest, matrixRotationRecognition) {
   PseudoRNG &PRNG = mod.getPRNG();
   Function *F = mod.createFunction("MatrixRotationRecognition");
   Placeholder *varMatricesA = mod.createPlaceholder(
-      ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA", false);
+      ElemKind::FloatTy, {trainingParams->batchSize, 3, 3}, "matrixA", false);
   Placeholder *varMatricesB = mod.createPlaceholder(
-      ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB", false);
+      ElemKind::FloatTy, {trainingParams->batchSize, 3, 3}, "matrixB", false);
   Placeholder *varExpected = mod.createPlaceholder(
-      ElemKind::Int64ITy, {TC.batchSize, 1}, "expected", false);
+      ElemKind::Int64ITy, {trainingParams->batchSize, 1}, "expected", false);
 
   // Simply concatenating the matrices first would probability be as effective
   // but we want to build something more complex than a straight chain of
@@ -1369,7 +1386,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   // At this point we should have overfitted the data.
   // Take a random batch and check that the values match what we expect.
   auto RHtrain = res->getHandle<>();
-  auto batchSize = TC.batchSize;
+  auto batchSize = trainingParams->batchSize;
   unsigned numBatches = numSamples / batchSize;
   unsigned batchStartIdx = PRNG.nextRandInt(0, numBatches - 1) * batchSize;
 

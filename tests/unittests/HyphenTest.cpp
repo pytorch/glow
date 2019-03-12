@@ -263,9 +263,11 @@ struct HyphenNetwork {
   Function *train_;
 
   HyphenNetwork(Module &mod, TrainingConfig &conf)
-      : input_(mod.createPlaceholder(ElemKind::FloatTy, {conf.batchSize, 6, 27},
+      : input_(mod.createPlaceholder(ElemKind::FloatTy,
+                                     {(conf.getParams())->batchSize, 6, 27},
                                      "input", false)),
-        expected_(mod.createPlaceholder(ElemKind::Int64ITy, {conf.batchSize, 1},
+        expected_(mod.createPlaceholder(ElemKind::Int64ITy,
+                                        {(conf.getParams())->batchSize, 1},
                                         "expected", false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
     bindings_.allocate(input_);
@@ -290,7 +292,8 @@ struct HyphenNetwork {
     // Compile a clone of the inference function.
     EE.compile(CompilationMode::Infer, infer_->clone(name));
 
-    auto batchSize = TC.batchSize;
+    auto *trainingParams = TC.getParams<SGDParameters>();
+    auto batchSize = trainingParams->batchSize;
     auto numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
     auto resultHandle = bindings_.get(result_->getPlaceholder())->getHandle<>();
@@ -357,9 +360,11 @@ TEST(HyphenTest, network) {
   }
 
   // Now build the network.
-  TrainingConfig TC;
-  TC.learningRate = 0.8;
-  TC.batchSize = 50;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.8;
+  trainingParams->batchSize = 50;
+
   HyphenNetwork net(EE.getModule(), TC);
 
   // This variable records the number of the next sample to be used for

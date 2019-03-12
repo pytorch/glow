@@ -26,14 +26,42 @@ namespace glow {
 
 class Tensor;
 
-/// This is a list of parameters that the network trainers (such as sgd and
-/// adam) use for training the network.
-struct TrainingConfig {
+/// These are all the supported training algorithms.
+enum class TrainingAlgorithm { None, StochasticGradientDescent };
+
+/// This is a list of common parameters that all of the training algorithms use.
+struct TrainingParameters {
+  float learningRate{0.01f};
+  unsigned batchSize{1};
+};
+
+/// Additional training parameters used by stochastic gradient descent.
+struct SGDParameters : public TrainingParameters {
   float L1Decay{0};
   float L2Decay{0};
-  float learningRate{0.01f};
   float momentum{0.0};
-  unsigned batchSize{1};
+};
+
+/// Combination of training algorithm type and training parameters. Parameters
+/// should be casted to the appropriate type based on the algorithm type.
+struct TrainingConfig {
+  TrainingConfig(
+      TrainingAlgorithm algo = TrainingAlgorithm::StochasticGradientDescent)
+      : algorithm(algo) {
+    if (algorithm == TrainingAlgorithm::StochasticGradientDescent) {
+      parameters = llvm::make_unique<SGDParameters>();
+    } else {
+      llvm_unreachable("Invalid training algorithm.");
+    }
+  }
+
+  template <class ParametersTy = SGDParameters>
+  ParametersTy *getParams() const {
+    return static_cast<ParametersTy *>(parameters.get());
+  }
+
+  TrainingAlgorithm algorithm{TrainingAlgorithm::None};
+  std::unique_ptr<TrainingParameters> parameters{nullptr};
 };
 
 } // namespace glow

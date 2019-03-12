@@ -100,13 +100,14 @@ void testMNIST() {
   llvm::Timer timer("Training", "Training");
 
   /// The training configuration.
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
 
   // Construct the network:
-  TC.learningRate = 0.001;
-  TC.momentum = 0.9;
-  TC.L2Decay = 0.001;
-  TC.batchSize = minibatchSize;
+  trainingParams->learningRate = 0.001;
+  trainingParams->momentum = 0.9;
+  trainingParams->L2Decay = 0.001;
+  trainingParams->batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

@@ -259,13 +259,19 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
-    auto X = new SGDNode(PH->getName(), map.getGradient(PH), PH, conf.L1Decay,
-                         conf.L2Decay, conf.learningRate, conf.momentum,
-                         conf.batchSize);
-    toAppend.push_back(X);
-    // Now update the weight with the value computed by SGD.
-    auto *save = new SaveNode(PH->getName().str() + ".saveGrad", {X, 0}, PH);
-    toAppend.push_back(save);
+    if (conf.algorithm == TrainingAlgorithm::StochasticGradientDescent) {
+      auto params = conf.getParams<SGDParameters>();
+      auto X =
+          new SGDNode(PH->getName(), map.getGradient(PH), PH, params->L1Decay,
+                      params->L2Decay, params->learningRate, params->momentum,
+                      params->batchSize);
+      toAppend.push_back(X);
+      // Now update the weight with the value computed by SGD.
+      auto *save = new SaveNode(PH->getName().str() + ".saveGrad", {X, 0}, PH);
+      toAppend.push_back(save);
+    } else {
+      llvm_unreachable("Invalid training algorithm.");
+    }
   }
 
   // Add all of the new variables and instructions.

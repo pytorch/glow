@@ -228,16 +228,18 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.03;
-  TC.momentum = 0.3;
-  TC.L2Decay = 0.01;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.03;
+  trainingParams->momentum = 0.3;
+  trainingParams->L2Decay = 0.01;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs, "var1");
@@ -290,15 +292,17 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *out, BackendKind kind) {
   PlaceholderBindings bindings;
   ExecutionEngine EE(kind);
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.06;
-  TC.momentum = 0.1;
-  TC.L2Decay = 0.01;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.06;
+  trainingParams->momentum = 0.1;
+  trainingParams->L2Decay = 0.01;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs, "var1");
@@ -329,16 +333,18 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.01;
-  TC.momentum = 0.4;
-  TC.L2Decay = 0.01;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.01;
+  trainingParams->momentum = 0.4;
+  trainingParams->L2Decay = 0.01;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs, "var1");
@@ -369,16 +375,18 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      BackendKind kind) {
   ExecutionEngine EE(kind);
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.03;
-  TC.momentum = 0.3;
-  TC.L2Decay = 0.003;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.03;
+  trainingParams->momentum = 0.3;
+  trainingParams->L2Decay = 0.003;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs, "var1");
@@ -627,16 +635,18 @@ void inferConvDKKC8(Tensor *out, BackendKind kind) {
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, BackendKind kind) {
   ExecutionEngine EE(kind);
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
-  TC.learningRate = 0.003;
-  TC.momentum = 0.7;
-  TC.L2Decay = 0.001;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.003;
+  trainingParams->momentum = 0.7;
+  trainingParams->L2Decay = 0.001;
+
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs, "var1");

@@ -89,7 +89,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
                       SaveNode *result, Placeholder *inputVar,
                       Placeholder *expVar, Tensor *inputs, Tensor *outputs,
                       float delta, float allowedError) {
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
 
   auto &F = *EE.getModule().getFunction("main");
 
@@ -528,7 +528,7 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   const int testSamples = 5;
   const float stepSize = 1e-4;
   const float delta = 0.015;
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   auto &mod = EE_.getModule();

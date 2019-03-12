@@ -31,13 +31,14 @@ TEST(GraphAutoGrad, autoGrad) {
   ExecutionEngine EE;
   PlaceholderBindings bindings;
 
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
 
   // Construct the network:
-  TC.learningRate = 0.001;
-  TC.momentum = 0.9;
-  TC.L2Decay = 0.001;
-  TC.L1Decay = 0.001;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.001;
+  trainingParams->momentum = 0.9;
+  trainingParams->L2Decay = 0.001;
+  trainingParams->L1Decay = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -69,13 +70,14 @@ TEST(GraphAutoGrad, autoGrad) {
 
 TEST(GraphAutoGrad, checkLRNGen) {
   ExecutionEngine EE;
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // Construct the network:
-  TC.learningRate = 0.001;
-  TC.momentum = 0.9;
-  TC.L2Decay = 0.001;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.001;
+  trainingParams->momentum = 0.9;
+  trainingParams->L2Decay = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -100,7 +102,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
   ExecutionEngine EE;
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
   Module M;
 
@@ -156,11 +158,12 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 /// Check that we can differentiate functions that update Placeholder graphs.
 TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   ExecutionEngine EE;
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // Construct the network:
-  TC.learningRate = 0.001;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -185,11 +188,12 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
 /// Check that we can differentiate functions that use ConvertToNode.
 TEST(GraphAutoGrad, checkConvertToGradTest) {
   ExecutionEngine EE;
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
   PlaceholderBindings bindings;
 
   // Construct the network:
-  TC.learningRate = 0.001;
+  auto *trainingParams = TC.getParams<SGDParameters>();
+  trainingParams->learningRate = 0.001;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");

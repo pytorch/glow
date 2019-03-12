@@ -2387,7 +2387,7 @@ TEST_P(OperatorTest, FCGradientCheck) {
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
 
   // This variable records the number of the next sample to be used for
   // training.

@@ -218,12 +218,13 @@ int main(int argc, char **argv) {
   const size_t hiddenSize = 256;
 
   GLOW_ASSERT(text.size() > numSteps && "Text is too short");
-  TrainingConfig TC;
+  TrainingConfig TC(TrainingAlgorithm::StochasticGradientDescent);
+  auto *trainingParams = TC.getParams<SGDParameters>();
 
   ExecutionEngine EE(executionBackend);
-  TC.learningRate = 0.001;
-  TC.momentum = 0.9;
-  TC.batchSize = minibatchSize;
+  trainingParams->learningRate = 0.001;
+  trainingParams->momentum = 0.9;
+  trainingParams->batchSize = minibatchSize;
 
   auto &mod = EE.getModule();
 
