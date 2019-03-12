@@ -50,8 +50,8 @@ function(add_output_check_test)
   set(SETUP_OUTPUTCHECK_ENV ${CMAKE_COMMAND} -E env
     MODELS_DIR=${GLOW_MODELS_DIR}
     OUTPUTCHECK=${OUTPUTCHECK_PATH}
-    TEXT_TRANSLATOR=${GLOW_OUTPUT_DIR}/text-translator
-    BIN=${CMAKE_BINARY_DIR}/bin)
+    BIN=${GLOW_OUTPUT_DIR}
+    IMAGES_DIR=${CMAKE_BINARY_DIR}/tests/images)
 
   set(TEST_COMMAND ${SETUP_OUTPUTCHECK_ENV} ${OUTPUTCHECK_RUNNER_PATH} ${ARG_COMMAND})
 
@@ -61,7 +61,7 @@ function(add_output_check_test)
     NAME ${ARG_NAME}
     COMMAND ${TEST_COMMAND}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS text-translator)
+    DEPENDS text-translator resnet-runtime resnet-concurrent)
 
   # Append test command to OUTPUTCHECK_TESTS so that it will be run with the output_check_tests target.
   LIST(APPEND OUTPUTCHECK_TESTS ${TEST_COMMAND})
