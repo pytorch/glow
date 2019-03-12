@@ -1596,6 +1596,8 @@ static FullyConnectedNode *createSimpleFCNet(PlaceholderBindings &bindings,
 
   auto *FC = F.createFullyConnected("FC", input, W, B);
   auto *S = F.createSave("ret", FC);
+  ::glow::convertPlaceholdersToConstants(&F, bindings,
+                                         {input, S->getPlaceholder()});
   bindings.allocate(S->getPlaceholder());
 
   return FC;
@@ -1618,7 +1620,8 @@ static NodeClass *findNodeKindOrReturnNull(Function *F) {
 /// correct quantization parameters, whether the \p BackendClass does or does
 /// not lower the FC given \p expectLoweredFC.
 template <class BackendClass>
-static void testProfileQuantizationOfFC(bool expectLoweredFC) {
+static void testProfileQuantizationOfFC(bool expectLoweredFC,
+                                        bool rowwiseQuantizeFC) {
   ExecutionEngine profileEE(BackendKind::Interpreter);
   Function *profileF = profileEE.getModule().createFunction("profile");
   PlaceholderBindings profilebindings;
@@ -1719,15 +1722,39 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
   // Quantize the function given the current backend we're testing along with
   // the quantization infos gathered.
   backendF = quantization::quantizeFunction(backendEE, QI, ElemKind::Int8QTy,
-                                            backendF, loweredMapForQuant);
+                                            backendF, loweredMapForQuant,
+                                            "quant", {}, rowwiseQuantizeFC);
+
+  // Compile the graph to remove dead code and optimize away unnecessary
+  // quantize nodes.
+  backendEE.compile(CompilationMode::Infer, backendF);
 
   // Check that the graph is still structured as expected, and that the
   // scales/offsets are set as found in QI.
   auto *quantFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
   auto *quantMM = findNodeKindOrReturnNull<MatMulNode>(backendF);
   auto *quantBA = findNodeKindOrReturnNull<BatchedAddNode>(backendF);
-  if (expectLoweredFC) {
+  auto *quantRowwiseFC =
+      findNodeKindOrReturnNull<RowwiseQuantizedFullyConnectedNode>(backendF);
+
+  if (rowwiseQuantizeFC) {
+    EXPECT_FALSE(quantMM);
+    EXPECT_FALSE(quantBA);
+    EXPECT_FALSE(quantFC);
+
+    ASSERT_TRUE(quantRowwiseFC);
+    EXPECT_EQ(quantRowwiseFC->getResult().getType()->getScale(), FCQI->Scale());
+    EXPECT_EQ(quantRowwiseFC->getResult().getType()->getOffset(),
+              FCQI->Offset());
+
+    EXPECT_EQ(quantRowwiseFC->getBias().getElementType(), ElemKind::Int32QTy);
+    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
+              FCWQI->Scale() * FCIQI->Scale());
+    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(),
+              FCBQI->Offset());
+  } else if (expectLoweredFC) {
     ASSERT_FALSE(quantFC);
+    ASSERT_FALSE(quantRowwiseFC);
 
     ASSERT_TRUE(quantMM);
     EXPECT_EQ(quantMM->getResult().getType()->getScale(), MMQI->Scale());
@@ -1742,6 +1769,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
               FCWQI->Scale() * FCIQI->Scale());
     EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), FCBQI->Offset());
   } else {
+    ASSERT_FALSE(quantRowwiseFC);
+
     ASSERT_TRUE(quantFC);
     EXPECT_EQ(quantFC->getResult().getType()->getScale(), FCQI->Scale());
     EXPECT_EQ(quantFC->getResult().getType()->getOffset(), FCQI->Offset());
@@ -1760,13 +1789,28 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC) {
 /// parameters of their nodes.
 TEST(Quantization, TestProfileQuantizationOfUnloweredFC) {
   testProfileQuantizationOfFC<MockBackendUnloweredFC>(
-      /* expectLoweredFC */ false);
+      /* expectLoweredFC */ false, /* rowwiseQuantizeFC */ false);
 }
 
 /// Test that backends that do lower FCs can find the quantization parameters of
 /// their nodes.
 TEST(Quantization, TestProfileQuantizationOfLoweredFC) {
-  testProfileQuantizationOfFC<MockBackendLoweredFC>(/* expectLoweredFC */ true);
+  testProfileQuantizationOfFC<MockBackendLoweredFC>(
+      /* expectLoweredFC */ true, /* rowwiseQuantizeFC */ false);
+}
+
+/// Test that backends that do not lower FCs can find the quantization
+/// parameters of their nodes and correctly rowwise quantize.
+TEST(Quantization, TestProfileQuantizationOfUnloweredFCRowwise) {
+  testProfileQuantizationOfFC<MockBackendUnloweredFC>(
+      /* expectLoweredFC */ false, /* rowwiseQuantizeFC */ true);
+}
+
+/// Test that backends that do lower FCs can find the quantization parameters of
+/// their nodes and correctly rowwise quantize even when lowering the FC.
+TEST(Quantization, TestProfileQuantizationOfLoweredFCRowwise) {
+  testProfileQuantizationOfFC<MockBackendLoweredFC>(
+      /* expectLoweredFC */ true, /* rowwiseQuantizeFC */ true);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
