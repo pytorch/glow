@@ -3286,9 +3286,12 @@ TEST_P(InterpOnly, BatchBoxCox) {
   const size_t kRows = 10;
   const size_t kCols = 5;
 
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "data", false);
-  auto *lambda1 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda1", false);
-  auto *lambda2 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda2", false);
+  auto *data =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "data", false);
+  auto *lambda1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda1", false);
+  auto *lambda2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda2", false);
 
   auto dataH = ctx_.allocate(data)->getHandle();
   auto lambda1H = ctx_.allocate(lambda1)->getHandle();
@@ -3301,7 +3304,7 @@ TEST_P(InterpOnly, BatchBoxCox) {
 
   // Zero out every other element to lambda1 to test that case of the transform.
   for (size_t i = 0; i < kCols; i += 2) {
-      lambda1H.at({i}) = 0;
+    lambda1H.at({i}) = 0;
   }
 
   auto *batchBoxCox = F_->createBatchBoxCox("boxcox", data, lambda1, lambda2);
