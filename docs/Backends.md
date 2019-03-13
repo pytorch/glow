@@ -22,16 +22,18 @@ are two pure virtual functions all backends must implement:
 
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
 
-  - This function takes a `Function *F` to compile. It should return a unique pointer to the
-    [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. It also stores the constants used by the function in the `CompiledFunction`'s [RuntimeBundle](#runtimebundle-helper-class). If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
+  - This function takes a `Function *F` to compile with default 
+  [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
+    [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
 
-- `virtual std::unique_ptr<CompiledFunction> compileWithoutConstants(Function *F) const;`
+- `virtual std::unique_ptr<CompiledFunction> compile(Function *F, CompilationOptions &opts) const;`
 
-  - This function takes a `Function *F` to compile. This function does not store
-    constants in the `RuntimeBundle` this allows for that action to be handled later. It should return
-    a unique pointer to the [`CompiledFunction`](#compiledfunction-abstract-class) of `F`.
-    If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate
-    an optimized `IRFunction`.
+  - This function takes a `Function *F` and the provided 
+  [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
+    [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
+
+- `virtual std::vector<std::unique_ptr<CompiledFunction>> compileFunctions(llvm::ArrayRef<Function *> functions, CompilationOptions &opts) const;`
+    - This function takes an `ArrayRef` of `Function *`s and compiles them using the same `CompilationOptions` object for all functions. This allows the compiler to reason over things like shared constants between functions.
 
 - `virtual bool isOpSupported(const NodeInfo &NI) const;`
 
@@ -116,6 +118,13 @@ of constants needed at runtime. This allows a function to be compiled without be
 to a context, and allows the `Function` to be freed after compilation. The symbol information
 is stored in a table where the key is the symbol name and the payload contains symbol information
 including, size, offset, type, and whether it is an input or output of the function. `RuntimeBundle` also  contains a pointer that may point to a block of memory that contains the constants for the `CompiledFunction` if that `Backend` uses it.
+
+### `CompilationOptions` Helper Class
+
+`CompilationOptions` is a helper class that contains the options for compilation. The options include:
+- `CompilationMode mode` - This can be Infer or Train. Default: Infer
+- `bool collectConstants` - Whether constants should be collected and stored in the `CompiledFunction`'s [RuntimeBundle](#runtimebundle-helper-class). Default: True
+- `bool autoInstrument` - Whether `TraceEvents` should be inserted for profiling. Default: False
 
 ## Backend-Specific Nodes and Instructions Transformations
 
