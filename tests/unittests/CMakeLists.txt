@@ -153,6 +153,18 @@ target_link_libraries(GradCheckTest
 add_glow_test(GradCheckTest ${GLOW_BINARY_DIR}/tests/GradCheckTest --gtest_output=xml:GradCheckTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/GradCheckTest -optimize-ir=false &&)
 
+add_executable(OperatorGradTest
+               OperatorGradTest.cpp)
+target_link_libraries(OperatorGradTest
+                      PRIVATE
+                        Base
+                        ExecutionEngine
+                        Graph
+                        gtest
+                        TestMain)
+add_glow_test(OperatorGradTest ${GLOW_BINARY_DIR}/tests/OperatorGradTest --gtest_output=xml:OperatorGradTest.xml)
+LIST(APPEND UNOPT_TESTS ./tests/OperatorGradTest -optimize-ir=false &&)
+
 add_executable(GraphGradTest
                GraphGradTest.cpp)
 target_link_libraries(GraphGradTest
