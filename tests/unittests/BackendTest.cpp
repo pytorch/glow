@@ -188,6 +188,23 @@ TEST_P(BackendTest, CompileWithoutConstants) {
   auto function = backend->compile(F, opts);
 }
 
+/// Test compiling a vector of functions completes without error.
+TEST_P(BackendTest, compileVectorOfFunctions) {
+  Module mod;
+  std::vector<Function *> functions;
+  for (unsigned int i = 0; i < 3; i++) {
+    Function *F = mod.createFunction("function" + std::to_string(i));
+    auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3},
+                                    "X" + std::to_string(i), false);
+    auto *pow = F->createPow("Pow" + std::to_string(i), X, 2.0);
+    F->createSave("save" + std::to_string(i), pow);
+    functions.push_back(F);
+  }
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  CompilationOptions opts;
+  auto function = backend->compileFunctions(functions, opts);
+}
+
 /// This test checks that we can compile a function without depending on the
 /// graph representation. We compile some function and then delete the function.
 /// Later we execute the code and check that things work.

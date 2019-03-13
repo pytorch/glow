@@ -45,6 +45,19 @@ public:
   /// \returns the kind of Backend this is.
   virtual BackendKind getBackendKind() const = 0;
 
+  /// Generate code for a vector of functions, \p functions. All compilations
+  /// use the same settings provided by \p opts. This allows the compiler to
+  /// support shared constants between functions.
+  virtual std::vector<std::unique_ptr<CompiledFunction>>
+  compileFunctions(llvm::ArrayRef<Function *> functions,
+                   CompilationOptions &opts) const {
+    std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
+    for (auto &function : functions) {
+      compiledFunctions.push_back(compile(function, opts));
+    }
+    return compiledFunctions;
+  }
+
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
     CompilationOptions opts;
     return compile(F, opts);
