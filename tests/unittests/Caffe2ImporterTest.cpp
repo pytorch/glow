@@ -655,21 +655,18 @@ TEST(caffe2, FCWithFlatten) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetDescFilename(GLOW_DATA_PATH
-                              "tests/models/caffe2Models/fc_predict_net.pbtxt");
-  std::string NetWeightFilename(GLOW_DATA_PATH
-                                "tests/models/caffe2Models/fc_init_net.pbtxt");
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/fc_4d_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/fc_4d_init_net.pbtxt");
 
   Placeholder *output;
   PlaceholderBindings bindings;
 
   {
-    Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
-    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+    Tensor inputs(ElemKind::FloatTy, {1, 1, 1, 2048});
 
-    // Weights and bias are read from NetWeightFilename. And the values are:
-    // weights : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    // Weights and bias are read from NetWeightFilename
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
@@ -677,47 +674,23 @@ TEST(caffe2, FCWithFlatten) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have 1 reshape, 1 FC,
-  // and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 3);
+  // High level check on the content of the graph. We have a reshape, an FC,
+  // another reshape, and a save.
+  EXPECT_EQ(F->getNodes().size(), 4);
+
+  auto finalShape = output->getType()->dims();
+  std::vector<size_t> expectedOutput{1, 1, 1, 9190};
+  EXPECT_EQ(finalShape, llvm::makeArrayRef(expectedOutput));
+
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *fcNode =
-      llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
+  auto *reshapeAfterNode =
+      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(reshapeAfterNode);
+  auto *fcNode = llvm::dyn_cast<FullyConnectedNode>(
+      reshapeAfterNode->getInput().getNode());
   ASSERT_TRUE(fcNode);
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
   ASSERT_TRUE(reshape);
-
-  // Check the numerical values of the weights and biases.
-  {
-    const Constant *constant = mod.getConstantByName("weights");
-    ASSERT_TRUE(constant);
-    const Tensor &weights = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {3, 4};
-    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                               2.0f, 5.0f, 8.0f, 11.0f, //
-                                               3.0f, 6.0f, 9.0f, 12.0f};
-    EXPECT_EQ(expectedDimensions, weights.dims().vec());
-    ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto elements = weights.getHandle();
-    for (size_t i = 0; i < expectedValues.size(); ++i) {
-      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
-          << "Where i = " << i;
-    }
-  }
-  {
-    const Constant *constant = mod.getConstantByName("biases");
-    ASSERT_TRUE(constant);
-    const Tensor &bias = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {4};
-    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
-    EXPECT_EQ(expectedDimensions, bias.dims().vec());
-    ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto elements = bias.getHandle();
-    for (size_t i = 0; i < expectedValues.size(); ++i) {
-      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
-          << "Where i = " << i;
-    }
-  }
 
   // We don't actually check that the output is correct, because this is
   // already covered in the Operator.FCWithFlatten/* tests.
@@ -805,20 +778,18 @@ TEST(caffe2, FCTransposedWithFlatten) {
 
   std::string NetDescFilename(
       GLOW_DATA_PATH
-      "tests/models/caffe2Models/fcTransposed_predict_net.pbtxt");
+      "tests/models/caffe2Models/fcTransposed_4d_predict_net.pbtxt");
   std::string NetWeightFilename(
-      GLOW_DATA_PATH "tests/models/caffe2Models/fcTransposed_init_net.pbtxt");
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/fcTransposed_4d_init_net.pbtxt");
 
   Placeholder *output;
   PlaceholderBindings bindings;
 
   {
-    Tensor inputs(ElemKind::FloatTy, {2, 1, 3});
-    inputs.getHandle() = {1, 2, 3, 4, 5, 6};
+    Tensor inputs(ElemKind::FloatTy, {1, 1, 1, 2048});
 
-    // Weights and bias are read from NetWeightFilename. And the values are:
-    // weights : {1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12};
-    // bias : {0.1f, 0.2f, 0.3f, 0.4f};
+    // Weights and bias are read from NetWeightFilename.
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
@@ -826,47 +797,23 @@ TEST(caffe2, FCTransposedWithFlatten) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have 1 reshape, 1 FC,
-  // and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 3);
-  auto *saveNode1 = getSaveNodeFromDest(output);
-  auto *fcNode1 =
-      llvm::dyn_cast<FullyConnectedNode>(saveNode1->getInput().getNode());
-  ASSERT_TRUE(fcNode1);
-  auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode1->getInput());
-  ASSERT_TRUE(reshape);
+  // High level check on the content of the graph. We have a reshape, an FC,
+  // another reshape, and a save.
+  EXPECT_EQ(F->getNodes().size(), 4);
 
-  // Check the numerical values of the weights and biases.
-  {
-    const Constant *constant = mod.getConstantByName("weights");
-    ASSERT_TRUE(constant);
-    const Tensor &weights = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {3, 4};
-    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                               2.0f, 5.0f, 8.0f, 11.0f, //
-                                               3.0f, 6.0f, 9.0f, 12.0f};
-    EXPECT_EQ(expectedDimensions, weights.dims().vec());
-    ASSERT_EQ(expectedValues.size(), weights.size());
-    const auto elements = weights.getHandle();
-    for (size_t i = 0; i < expectedValues.size(); ++i) {
-      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
-          << "Where i = " << i;
-    }
-  }
-  {
-    const Constant *constant = mod.getConstantByName("biases");
-    ASSERT_TRUE(constant);
-    const Tensor &bias = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {4};
-    const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
-    EXPECT_EQ(expectedDimensions, bias.dims().vec());
-    ASSERT_EQ(expectedValues.size(), bias.size());
-    const auto elements = bias.getHandle();
-    for (size_t i = 0; i < expectedValues.size(); ++i) {
-      EXPECT_FLOAT_EQ(expectedValues.at(i), elements.raw(i))
-          << "Where i = " << i;
-    }
-  }
+  auto finalShape = output->getType()->dims();
+  std::vector<size_t> expectedOutput{1, 1, 1, 9190};
+  EXPECT_EQ(finalShape, llvm::makeArrayRef(expectedOutput));
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *reshapeAfterNode =
+      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(reshapeAfterNode);
+  auto *fcNode = llvm::dyn_cast<FullyConnectedNode>(
+      reshapeAfterNode->getInput().getNode());
+  ASSERT_TRUE(fcNode);
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
+  ASSERT_TRUE(reshape);
 
   // We don't actually check that the output is correct, because this is
   // already covered in the Operator.FCWithFlatten/* tests.
