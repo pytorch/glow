@@ -60,7 +60,7 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   auto *pow = F->createPow("Pow" + std::to_string(functionNumber), X, 2.0);
   F->createSave("save" + std::to_string(functionNumber), pow);
 
-  ASSERT_FALSE(errToBool(manager->addNetwork(module.get())));
+  errToBool(manager->addNetwork(module.get()));
   manager->removeNetwork("function" + std::to_string(functionNumber));
 }
 
@@ -130,27 +130,44 @@ TEST_F(HostManagerTest, runNetwork) {
   ready.wait();
   EXPECT_FALSE(errToBool(std::move(runErr)));
 }
-// This test is currently disabled, ASAN complains because the compiled function
-// can be freed out from under the DeviceManager. There are plans to moved
-// ownership of the compiledFunction to the deviceManager. Once that is done
-// this won't be an issue. Or we can add a callback to evictNetwork.
 
-// TEST_F(HostManagerTest, ConcurrentAddRemove) {
-//   constexpr auto numThreads = 6;
-//   constexpr auto numItersPerThread = 20;
-//   auto hostManager = createHostManager("CPU0", BackendKind::CPU);
-//   uint counter = 0;
-//   std::vector<std::thread> threads;
-//   for (auto i = 0; i < numThreads; ++i) {
-//     threads.emplace_back([&]() {
-//       for (auto j = 0; j < numItersPerThread; ++j) {
-//         addAndRemoveNetwork(hostManager.get(), counter);
-//         counter++;
-//       }
-//     });
-//   }
+/// Test that HostManager properly handles concurrent add/remove requests with
+/// unique network names.
+TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
+  constexpr auto numThreads = 6;
+  constexpr auto numItersPerThread = 20;
+  auto hostManager = createHostManager(BackendKind::CPU);
+  std::atomic<uint> counter{0};
+  std::vector<std::thread> threads;
+  for (auto i = 0; i < numThreads; ++i) {
+    threads.emplace_back([&]() {
+      for (auto j = 0; j < numItersPerThread; ++j) {
+        addAndRemoveNetwork(hostManager.get(), ++counter);
+      }
+    });
+  }
 
-//   for (auto &t : threads) {
-//     t.join();
-//   }
-// }
+  for (auto &t : threads) {
+    t.join();
+  }
+}
+
+/// Test that HostManager properly handles concurrent add/remove requests with a
+/// duplicate network name.
+TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
+  constexpr auto numThreads = 6;
+  constexpr auto numItersPerThread = 20;
+  auto hostManager = createHostManager(BackendKind::CPU);
+  std::vector<std::thread> threads;
+  for (auto i = 0; i < numThreads; ++i) {
+    threads.emplace_back([&]() {
+      for (auto j = 0; j < numItersPerThread; ++j) {
+        addAndRemoveNetwork(hostManager.get(), 0);
+      }
+    });
+  }
+
+  for (auto &t : threads) {
+    t.join();
+  }
+}
