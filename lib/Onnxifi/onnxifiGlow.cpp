@@ -400,7 +400,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetGraphIO)(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
-  llvm_unreachable("Use onnxSetIOAndRunGraph instead.");
+  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxSetGraphIO\n";
+  return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
 /// Asynchronously execute operations in an ONNXIFI graph using pre-specified
@@ -409,7 +410,8 @@ EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     onnxMemoryFenceV1 *outputFence) {
-  llvm_unreachable("Use onnxSetIOAndRunGraph instead.");
+  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxRunGraph\n";
+  return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses then

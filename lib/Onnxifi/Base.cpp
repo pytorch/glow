@@ -77,7 +77,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
 std::unique_ptr<runtime::HostManager>
 BackendId::createHostManager(glow::BackendKind kind) {
   std::vector<runtime::DeviceManagerConfig> configs;
-  auto config = runtime::DeviceManagerConfig();
+  runtime::DeviceManagerConfig config;
   config.deviceConfig = nullptr;
   config.backendKind = kind;
   configs.push_back(std::move(config));
@@ -226,7 +226,6 @@ onnxStatus Graph::setIOAndRunAsync(
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
-    auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
 
     auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
     if (outPhIt == onnxOutputToPlaceholder_.end()) {

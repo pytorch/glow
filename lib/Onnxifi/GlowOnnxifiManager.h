@@ -93,6 +93,8 @@ private:
 
   /// Create a new HostManager managing backends of kind \p backendKind or get
   /// an existing HostManager for the backendKind if one exists.
+  /// NOTE: This method is not thread safe, the caller should be holding the
+  /// mutex m_ when calling it!
   runtime::HostManager *getOrCreateHostManager(BackendKind backendKind);
 
   /// The set of all valid glow BackendIds.
@@ -107,7 +109,7 @@ private:
   /// The set of all valid glow Graphs.
   std::unordered_set<GraphPtr> graphs_;
 
-  // Map from BackendKind to HostManager managing devices of that kind.
+  /// Map from BackendKind to HostManager managing devices of that kind.
   std::map<BackendKind, std::unique_ptr<runtime::HostManager>> hostManagers_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
