@@ -5426,4 +5426,67 @@ TEST_P(OperatorTest, dotProduct2D) {
   }
 }
 
+/// Test that the BatchBoxCox operator works as expected.
+TEST_P(OperatorTest, BatchBoxCoxFloat) {
+  ENABLED_BACKENDS(Interpreter);
+
+  // Input tensors.
+  const size_t kRows = 10;
+  const size_t kCols = 5;
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "data",
+                                      /* isTrainable */ false);
+  auto *lambda1 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda1",
+                                         /* isTrainable */ false);
+  auto *lambda2 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda2",
+                                         /* isTrainable */ false);
+  auto dataH = bindings_.allocate(data)->getHandle();
+  auto lambda1H = bindings_.allocate(lambda1)->getHandle();
+  auto lambda2H = bindings_.allocate(lambda2)->getHandle();
+
+  // Fill inputs with random values.
+  dataH.randomize(0.0, 5.0, mod_.getPRNG());
+  lambda1H.randomize(1.0, 2.0, mod_.getPRNG());
+  lambda2H.randomize(1.0, 2.0, mod_.getPRNG());
+
+  // Zero out every other element to lambda1 to test that case of the transform.
+  for (size_t i = 0; i < kCols; i += 2) {
+    lambda1H.at({i}) = 0;
+  }
+
+  // Construct the graph for the backend to run.
+  auto *BBC = F_->createBatchBoxCox("bbc", data, lambda1, lambda2);
+  auto *save = F_->createSave("save", BBC);
+  auto resultH = bindings_.allocate(save->getPlaceholder())->getHandle();
+
+  // Compile and run the model, setting results in tensor backed by resultH.
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  // Compute expected output here on the host to compare results.
+  Tensor expected(ElemKind::FloatTy, {kRows, kCols});
+  auto expectedH = expected.getHandle();
+
+  for (size_t i = 0; i < kRows; ++i) {
+    for (size_t j = 0; j < kCols; ++j) {
+      float d = dataH.at({i, j});
+      float l1 = lambda1H.at({j});
+      float l2 = lambda2H.at({j});
+
+      // Compute elementwise Box-Cox transform.
+      float tmp = std::max(d + l2, 1e-6f);
+      if (l1 == 0) {
+        // Clip argument to log and pow at 1e-6 to avoid saturation.
+        expectedH.at({i, j}) = std::log(tmp);
+      } else {
+        expectedH.at({i, j}) = (std::pow(tmp, l1) - 1) / l1;
+      }
+    }
+  }
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0; i < resultH.size(); ++i) {
+    EXPECT_FLOAT_EQ(resultH.raw(i), expectedH.raw(i));
+  }
+}
+
 #undef ENABLED_BACKENDS
