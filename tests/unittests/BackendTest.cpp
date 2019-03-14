@@ -254,6 +254,66 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   EXPECT_TRUE(STensor->isEqual(data));
 }
 
+/// Add and compile a network, then add and compile another so that the first
+/// CompiledFunction does not know about every Placeholder in the module.
+TEST_P(BackendTest, compileThenAddNetwork) {
+  PlaceholderBindings bindings1, bindings2;
+
+  auto &mod = EE_.getModule();
+  Tensor inputs(ElemKind::FloatTy, {1, 10, 10, 3});
+  inputs.getHandle().randomize(-2, 2, mod.getPRNG());
+
+  // Create a simple graph that uses some placeholders.
+  Function *F = mod.createFunction("main");
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
+
+  auto *FC = F->createFullyConnected(bindings1, "FC", input, 30);
+  auto *RL = F->createRELU("RL2", FC);
+  auto *SM = F->createSoftMax("sm", RL, ex);
+  auto *S = F->createSave("ret", SM);
+
+  Placeholder *FC_weights =
+      llvm::dyn_cast<Placeholder>(FC->getWeights().getNode());
+
+  EE_.compile(CompilationMode::Infer, F);
+
+  // Recreate that graph in a different Function.
+  Function *F2 = mod.createFunction("other");
+  auto *input2 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+
+  auto *ex2 = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
+  auto *FC2 = F2->createFullyConnected(bindings2, "FC", input2, 30);
+
+  // FC2 now has random weights we replace with FC1's weights so the output is
+  // the same.
+  Placeholder *FC2_weights =
+      llvm::dyn_cast<Placeholder>(FC2->getWeights().getNode());
+  bindings2.get(FC2_weights)->assign(bindings1.get(FC_weights));
+
+  auto *RL2 = F2->createRELU("RL2", FC2);
+  auto *SM2 = F2->createSoftMax("sm", RL2, ex2);
+  auto *S2 = F2->createSave("ret", SM2);
+
+  EE_.compile(CompilationMode::Infer, F2, /* clearOtherFunctions */ false);
+
+  // Allocate all placeholders.
+  bindings1.allocate(mod.getPlaceholders());
+  bindings2.allocate(mod.getPlaceholders());
+  updateInputPlaceholders(bindings1, {input}, {&inputs});
+  updateInputPlaceholders(bindings2, {input2}, {&inputs});
+
+  EE_.run(bindings1, "main");
+  EE_.run(bindings2, "other");
+
+  // The graphs were the same so their outputs should be as well.
+  EXPECT_TRUE(bindings1.get(S->getPlaceholder())
+                  ->isEqual(*bindings2.get(S2->getPlaceholder())));
+}
+
 /// Test the basic functionality of the bindings.
 TEST(PlaceholderBindings, basicPlaceholderBindingsTest) {
   Module mod;

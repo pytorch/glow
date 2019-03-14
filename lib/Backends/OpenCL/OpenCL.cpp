@@ -1488,8 +1488,13 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
     clFinish(commands_);
   }
 
+  auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto PH : bindings->pairs()) {
-    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
@@ -1510,8 +1515,13 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
 }
 
 void OpenCLFunction::updatePlaceholders(PlaceholderBindings *bindings) {
+  auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto PH : bindings->pairs()) {
-    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // Issue a non-blocking command to copy the buffer to the device.
