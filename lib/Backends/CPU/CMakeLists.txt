@@ -43,12 +43,14 @@ foreach(libjit_src_file ${libjit_files})
   list(APPEND CPURuntime_SRCS ${libjit_src_file_path})
 endforeach()
 
+file(MAKE_DIRECTORY ${GLOW_BINARY_DIR}/CPU)
 add_custom_command(
     OUTPUT ${GLOW_BINARY_DIR}/CPU/libjit.bc
     COMMAND ${LLVM_LINK_BIN} -o ${GLOW_BINARY_DIR}/CPU/libjit.bc ${CPURuntime_OBJS}
     DEPENDS  ${CPURuntime_OBJS} ${CPURuntime_SRCS}
     WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/glow/CPU)
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc
     COMMAND include-bin "${CMAKE_BINARY_DIR}/CPU/libjit.bc" "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
