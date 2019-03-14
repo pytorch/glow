@@ -25,6 +25,9 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace glow;
 
 class TraceEventsTest : public ::testing::TestWithParam<BackendKind> {
@@ -302,6 +305,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   EE_.run(context);
 
   auto &traceEvents = context.getTraceEvents();
+  // Can't use CheckTimestamps here because the manual & auto inserted
+  // timestamps are not sorted by time.
 
   ASSERT_GT(traceEvents.size(), numEvents);
   size_t manualEvents = 0;
@@ -311,6 +316,66 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
     }
   }
   ASSERT_EQ(manualEvents, numEvents);
+}
+
+/// Compile the same function twice with auto instrumentation on - ensure that
+/// instrumentation doesn't break future compiles.
+TEST_P(TraceEventsTest, twoCompiles) {
+  ExecutionContext context;
+
+  size_t numEvents = 4;
+  auto *eventData = createEventPlaceholder(numEvents);
+  unsigned eventId = 0;
+
+  F->createTraceEvent("first half", "B", eventData, eventId++);
+  auto *n = part_one(F, context);
+  F->createTraceEvent("first half", "E", eventData, eventId++);
+  F->createTraceEvent("second half", "B", eventData, eventId++);
+  n = part_four(F, context, n);
+  F->createTraceEvent("second half", "E", eventData, eventId++);
+
+  ExecutionContext context2{context.clone()};
+
+  context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
+
+  auto *backend = EE_.getBackend();
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  opts.autoInstrument = true;
+  backend->optimizeFunction(F, opts);
+
+  std::string name = F->getName();
+  EE_.insertCompiledFunction(name, backend->compile(F, opts));
+
+  std::string name2 = name + "2";
+  EE_.insertCompiledFunction(name2, backend->compile(F, opts));
+
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
+  EE_.run(context, name);
+  auto &traceEvents = context.getTraceEvents();
+
+  ASSERT_GT(traceEvents.size(), 0);
+
+  context2.getPlaceholderBindings()->allocate(
+      EE_.getModule().getPlaceholders());
+
+  // Add a little delay to ensure the timestamps don't happen to occur in the
+  // same millisecond.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+  EE_.run(context2, name2);
+  auto &traceEvents2 = context2.getTraceEvents();
+
+  ASSERT_GT(traceEvents2.size(), 0);
+
+  ASSERT_EQ(traceEvents.size(), traceEvents2.size());
+
+  for (unsigned i = 0; i < traceEvents.size(); ++i) {
+    ASSERT_EQ(traceEvents2[i].name, traceEvents[i].name);
+    ASSERT_EQ(traceEvents2[i].type, traceEvents[i].type);
+    ASSERT_GT(traceEvents2[i].timestamp, traceEvents[i].timestamp);
+  }
 }
 
 TEST_P(TraceEventsTest, onlyTraceEvents) {
