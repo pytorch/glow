@@ -94,6 +94,8 @@ whereas MacPorts installs it in `/opt/local/libexec/llvm-7.0/`. This means that
 CMake will need to be told where to find LLVM when building; instructions on
 that can be found [here](#building-with-dependencies-llvm).
 
+Also please note that Glow currently builds, but does not work reliably with LLVM built with assertions on, but can crash at run time (see issue [#2537](/pytorch/glow/issues/2537)).
+
 Finally, create a symbolic link to the Homebrew- or MacPorts-installed
 `clang-*` tools so that the `utils/format.sh` script is able to find them later
 on. For a Homebrew-managed installation, run:
