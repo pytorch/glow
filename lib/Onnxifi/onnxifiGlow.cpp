@@ -202,8 +202,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendInfo)(
     return setBackendInfoUInt64(infoValue, infoValueSize,
                                 ONNXIFI_SYNCHRONIZATION_EVENT);
   case ONNXIFI_BACKEND_EXTENSIONS:
-    return setBackendInfoString(infoValue, infoValueSize,
-                                "onnxSetIOAndRunGraphFunction");
+    return setBackendInfoString(
+        infoValue, infoValueSize,
+        "onnxSetIOAndRunGraphFunction onnxReleaseTraceEventsFunction");
   default:
     return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
   }
@@ -483,7 +484,11 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors,
-    onnxMemoryFenceV1 *outputFence) {
+    onnxMemoryFenceV1 *outputFence, onnxTraceEventList *traceEvents) {
+  if (traceEvents) {
+    llvm::errs() << "Glow doesn't support tracing yet\n";
+  }
+
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
   if (!inputDescriptors || !outputDescriptors || !outputFence) {
@@ -547,6 +552,18 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseGraph)(onnxGraph graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
+/// Release onnxTraceEvents in \p traceEvents.
+EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents)(
+    onnxTraceEventList *traceEvents) {
+  if (!traceEvents) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+  llvm::errs() << "onnxReleaseTraceEvents not implemented\n";
+  return ONNXIFI_STATUS_INTERNAL_ERROR;
+}
+
+/// Get pointer to onnxifi extension function with \p name.
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
     onnxBackendID backendID, const char *name,
@@ -570,7 +587,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
       extensionMap = {
           {"onnxSetIOAndRunGraphFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
-               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph))}};
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph))},
+          {"onnxReleaseTraceEventsFunction",
+           reinterpret_cast<onnxExtensionFunctionPointer>(
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents))}};
 
   auto extensionIt = extensionMap.find(name);
 
