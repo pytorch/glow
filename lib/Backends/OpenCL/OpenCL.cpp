@@ -625,6 +625,13 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 void OpenCLFunction::execute(ExecutionContext *context) {
   (void)context;
 
+  // TODO: deviceBuffer_ should go into DeviceBindings in context.
+  deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
+                                    runtimeBundle_.getMutableWeightSize() +
+                                    runtimeBundle_.getActivationsSize());
+
+  loadPlaceholders(context->getPlaceholderBindings());
+
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -1394,6 +1401,21 @@ void OpenCLFunction::execute(ExecutionContext *context) {
   }
 
   clFinish(commands_);
+
+  updatePlaceholders(context->getPlaceholderBindings());
+
+  // Output profiling information.
+  dumpProfileInfo(kernelLaunches_);
+
+  for (auto &kl : kernelLaunches_) {
+    clReleaseKernel(kl.kernel_);
+  }
+  kernelLaunches_.clear();
+
+  if (deviceBuffer_) {
+    freeDeviceBuffer(deviceBuffer_);
+    deviceBuffer_ = nullptr;
+  }
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
@@ -1440,35 +1462,27 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
   return copiedBytes;
 }
 
-void OpenCLFunction::setupRuns() {
-  if (!runsSetup_) {
-    deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
-                                      runtimeBundle_.getMutableWeightSize() +
-                                      runtimeBundle_.getActivationsSize());
-    size_t sizeInBytes = runtimeBundle_.getConstantWeightSize();
-    if (runtimeBundle_.getConstants()) {
-      // Issue a non-blocking command to copy the buffer to the device.
-      auto buf = runtimeBundle_.getConstants();
-      size_t valueOffset = 0;
-      cl_event event{nullptr};
-      cl_int err = clEnqueueWriteBuffer(
-          commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
-          sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-          /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-      if (clDoProfile) {
-        kernelLaunches_.emplace_back(
-            KernelLaunch("copyConstantsToDevice", event));
-      }
-      // Do it!
-      clFinish(commands_);
+void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
+  size_t sizeInBytes = runtimeBundle_.getConstantWeightSize();
+  if (runtimeBundle_.getConstants()) {
+    // Issue a non-blocking command to copy the buffer to the device.
+    auto buf = runtimeBundle_.getConstants();
+    size_t valueOffset = 0;
+    cl_event event{nullptr};
+    cl_int err = clEnqueueWriteBuffer(
+        commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
+        sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (clDoProfile) {
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyConstantsToDevice", event));
     }
-    runsSetup_ = true;
+    // Do it!
+    clFinish(commands_);
   }
-}
 
-void OpenCLFunction::beforeRun(const PlaceholderBindings &bindings) {
-  for (auto PH : bindings.pairs()) {
+  for (auto PH : bindings->pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
@@ -1489,8 +1503,8 @@ void OpenCLFunction::beforeRun(const PlaceholderBindings &bindings) {
   clFinish(commands_);
 }
 
-void OpenCLFunction::afterRun(const PlaceholderBindings &bindings) {
-  for (auto PH : bindings.pairs()) {
+void OpenCLFunction::updatePlaceholders(PlaceholderBindings *bindings) {
+  for (auto PH : bindings->pairs()) {
     auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
@@ -1510,22 +1524,6 @@ void OpenCLFunction::afterRun(const PlaceholderBindings &bindings) {
   }
   // Do it!
   clFinish(commands_);
-
-  // Output profiling information.
-  dumpProfileInfo(kernelLaunches_);
-
-  for (auto &kl : kernelLaunches_) {
-    clReleaseKernel(kl.kernel_);
-  }
-  kernelLaunches_.clear();
-}
-
-void OpenCLFunction::tearDownRuns() {
-  if (deviceBuffer_) {
-    freeDeviceBuffer(deviceBuffer_);
-    deviceBuffer_ = nullptr;
-  }
-  runsSetup_ = false;
 }
 
 cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {

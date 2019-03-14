@@ -97,14 +97,6 @@ public:
   ~OpenCLFunction() override;
 
   void execute(ExecutionContext *context) override;
-  /// Allocates on device buffer and copies Constant weights to device.
-  void setupRuns() override;
-  /// Per run setup, copies Inputs from \p bindings to on device memory.
-  void beforeRun(const PlaceholderBindings &bindings) override;
-  /// Copies outputs from device to tensors in \p bindings.
-  void afterRun(const PlaceholderBindings &bindings) override;
-  /// Final cleanup, currently an empty function in OpenCL.
-  void tearDownRuns() override;
 
   /// Collects constants for runtime.
   void collectConstants(Module *module) override;
@@ -157,6 +149,12 @@ private:
                      cl_device_id device, llvm::ArrayRef<size_t> global,
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
+
+  /// Load inputs from \p bindings onto the device.
+  void loadPlaceholders(PlaceholderBindings *bindings);
+
+  /// Load outputs from the device into \p bindings.
+  void updatePlaceholders(PlaceholderBindings *bindings);
 };
 
 /// This is the OpenCL backend.
