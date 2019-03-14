@@ -24,15 +24,15 @@ namespace runtime {
 /// Contains information for initialization and handling of symbol at runtime.
 struct RuntimeSymbolInfo {
   /// The size in bytes.
-  size_t size;
+  size_t size{0};
   /// Offset in bytes from the base address.
-  size_t offset;
+  size_t offset{0};
   /// Type of symbol.
   Type type;
   /// Is the symbol an input for the function.
-  bool input;
+  bool input{true};
   /// Is the symbol an output for the function.
-  bool output;
+  bool output{true};
 };
 
 using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;
