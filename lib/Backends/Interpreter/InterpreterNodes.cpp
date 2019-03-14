@@ -2163,6 +2163,54 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInst(
                             I->getData()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
+    const SparseLengthsWeightedSumGradInst *I) {
+  assert(I->getDataGrad()->getType()->getElementType() == ElemKind::FloatTy &&
+         "Input channels must be divisible by group.");
+
+  auto destGrad = getTensor(I->getDestGrad());
+  auto dataGrad = getTensor(I->getDataGrad());
+  auto weights = getTensor(I->getWeights());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  // The data gradients not touched by this operation should
+  // be 0, so set the entire buffer to 0 to start with.
+  dataGrad->zero();
+
+  auto LH = lengths->getHandle<int32_t>();
+  auto IH = indices->getHandle<int64_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength == indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = dataGrad->size() / dataGrad->dims()[0];
+
+  auto IGH = destGrad->getHandle();
+  auto WH = weights->getHandle();
+  auto OGH = dataGrad->getHandle();
+
+  // For each index in each segment, accumulate into the corresponding data
+  // gradient the product of the gradient of the result it was added to and
+  // the weight that it was multiplied by during the
+  // SparseLengthsWeightedSum operation.
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    size_t offsetIn = i * lineSize;
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      float weight = WH.raw(curIdx);
+      size_t offsetOut = IH.raw(curIdx++) * lineSize;
+      for (size_t k = 0; k < lineSize; k++)
+        OGH.raw(offsetOut++) += IGH.raw(offsetIn) * weight;
+    }
+  }
+}
+
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());

@@ -1089,6 +1089,31 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
+void libjit_sparse_lengths_weighted_sum_grad_f(float *destGrad, float *dataGrad,
+                                               float *weights, size_t *indices,
+                                               int32_t *lengths,
+                                               size_t segments, size_t lineSize,
+                                               size_t numLines) {
+  // The data gradients not touched by this operation should
+  // be 0, so set the entire buffer to 0 to start with.
+  memset(dataGrad, 0, numLines * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      // For each index in each segment, accumulate into the corresponding data
+      // gradient the product of the gradient of the result it was added to and
+      // the weight that it was multiplied by during the
+      // SparseLengthsWeightedSum operation.
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dataGrad[line * lineSize + k] += weight * destGrad[i * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f(
     float *dest, int8_t *data, float *scales, float *offsets, float *weights,
     size_t *indices, int32_t *lengths, size_t segments, size_t lineSize) {

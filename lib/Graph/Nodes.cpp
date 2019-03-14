@@ -823,6 +823,34 @@ bool SparseLengthsWeightedSumNode::verify() const {
   return isValid;
 }
 
+bool SparseLengthsWeightedSumGradNode::verify() const {
+  // Same checks as SparseLengthsWeightedSumNode.
+  bool isValid =
+      checkType(getOriginalOutputForResult(), getData().getElementType(), this);
+  isValid &= checkType(getWeights(), getData().getElementType(), this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= expectCompareTrue("Indices must be a 1D vector",
+                               getIndices().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Weights must be a 1D vector",
+                               getWeights().dims().size(), size_t(1), this);
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        getWeights().dims()[0], getIndices().dims()[0], this);
+
+  // Checks on gradient inputs/outputs.
+  isValid &= checkSameType(getGradOfOriginalOutputNamedResult(),
+                           getOriginalOutputForResult(), this);
+  isValid &= checkSameType(getGradOfInputNamedData(), getData(), this);
+  isValid &= checkSameType(getGradOfInputNamedWeights(), getWeights(), this);
+  isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
+  isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
+  return isValid;
+}
+
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
   isValid &= checkType(getData(), ElemKind::Int8QTy, this);
