@@ -107,10 +107,11 @@ void createAndDestroyManagerObjects() {
   EXPECT_TRUE(manager.isValid(event));
   EXPECT_TRUE(manager.isValid(graph));
 
-  manager.release(backendId);
-  manager.release(backend);
-  manager.release(event);
   manager.release(graph);
+  manager.release(event);
+  manager.release(backend);
+  manager.release(backendId);
+  
 }
 
 TEST(GlowOnnxifiManagerTest, Concurrency) {
