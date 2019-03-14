@@ -2220,6 +2220,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SparseLengthsWeightedSumGradInstKind: {
+    auto *SI = cast<SparseLengthsWeightedSumGradInst>(I);
+    auto *destGrad = SI->getDestGrad();
+    auto *dataGrad = SI->getDataGrad();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *lengths = SI->getLengths();
+    auto *destGradPtr = emitValueAddress(builder, destGrad);
+    auto *dataGradPtr = emitValueAddress(builder, dataGrad);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *dataGradRawSize =
+        emitConstSizeT(builder, dataGrad->size() * sizeof(float));
+    auto *lineSize =
+        emitConstSizeT(builder, dataGrad->size() / dataGrad->dims()[0]);
+    auto *F = getFunction("sparse_lengths_weighted_sum_grad",
+                          destGrad->getElementType());
+    createCall(builder, F,
+               {destGradPtr, dataGradPtr, weightsPtr, indicesPtr, lengthsPtr,
+                segments, lineSize, dataGradRawSize});
+    break;
+  }
+
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumInstKind: {
     auto *N = cast<RowwiseQuantizedSparseLengthsWeightedSumInst>(I);
     auto *dest = N->getDest();
