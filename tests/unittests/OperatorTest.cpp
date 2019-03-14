@@ -3138,18 +3138,20 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+/// Test Conv3D with group size of 2 to make sure that group 3d convolution
+/// works as expected.
 TEST_P(OperatorTest, GroupConv3D) {
   ENABLED_BACKENDS(Interpreter);
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 2, 8},
                                        "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
-  for (size_t i = 0; i < 2 * 2 * 8; i++) {
+  for (size_t i = 0; i < input->getType()->size(); i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 1, 4},
-                                       "filter", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 1, 4},
+                                        "filter", false);
   auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 6; i++)
     for (size_t j = 0; j < 4; j++) {
@@ -3286,10 +3288,10 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
     }   // W
   }     // H
 
-  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
-                                       "filter", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
+                                        "filter", false);
   auto FH = bindings_.allocate(filter)->getHandle();
-  for (size_t i = 0; i < 2 * 2 * 2 * 2; i++) {
+  for (size_t i = 0; i < filter->getType()->size(); i++) {
     FH.raw(i) = pow(2.0, i);
   }
   auto *zeroBias =
@@ -3661,8 +3663,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3D) {
     }   // W
   }     // H
 
-  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
-                                       "filter", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
+                                        "filter", false);
   auto FH = bindings_.allocate(filter)->getHandle();
   nextVal = 1;
   for (size_t i = 0; i < 1; i++) {
@@ -3716,10 +3718,10 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
   }     // H
 
   auto qInType = mod_.uniqueType(ElemKind::Int16QTy, {1, 4, 4, 4, 1}, 0.1, 0);
-  auto *qInput = F_->createQuantize("q_input", input, qInType);
+  QuantizeNode *qInput = F_->createQuantize("q_input", input, qInType);
 
-  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
-                                       "filter", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
+                                        "filter", false);
   auto FH = bindings_.allocate(filter)->getHandle();
   nextVal = 1;
   for (size_t i = 0; i < 1; i++) {
@@ -3732,13 +3734,13 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
 
   auto qFilterType =
       mod_.uniqueType(ElemKind::Int16QTy, {1, 1, 2, 3, 1}, 0.1, 0);
-  auto *qFilter = F_->createQuantize("q_filter", filter, qFilterType);
+  QuantizeNode *qFilter = F_->createQuantize("q_filter", filter, qFilterType);
 
   auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
   bindings_.allocate(bias)->zero();
 
   auto qBiasType = mod_.uniqueType(ElemKind::Int32QTy, {1}, 0.1, 0);
-  auto *qBias = F_->createQuantize("q_bias", bias, qBiasType);
+  QuantizeNode *qBias = F_->createQuantize("q_bias", bias, qBiasType);
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 3, 2, 1});
 
@@ -3754,7 +3756,7 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
 
   SaveNode *S = F_->createSave("save", CN);
 
-  auto *deQ = F_->createDequantize("deQ_result", qCN);
+  DequantizeNode *deQ = F_->createDequantize("deQ_result", qCN);
   SaveNode *qS = F_->createSave("save", deQ);
 
   bindings_.allocate(S->getPlaceholder());
@@ -3871,8 +3873,8 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
     }   // W
   }     // H
 
-  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
-                                       "filter", false);
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
+                                        "filter", false);
   auto FH = bindings_.allocate(filter)->getHandle();
   nextVal = 1;
   for (size_t i = 0; i < 2; i++) {
