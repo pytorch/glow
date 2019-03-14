@@ -6,6 +6,7 @@ endif()
 
 find_program(LLVM_LINK_BIN
              NAMES
+               llvm-link-7
                llvm-link-6.0
                llvm-link)
 
