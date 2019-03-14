@@ -366,9 +366,12 @@ public:
       insertSymbolIntoPlaceholderBindings(
           input, nodeInputContext->getPlaceholderBindings());
 
-      RuntimeSymbolInfo runtimeSymbolInfo{
-          /*size=*/type_->getSizeInBytes(), /*offset=*/offset,
-          /*type=*/*type_, /*input=*/true, /*output=*/false};
+      RuntimeSymbolInfo runtimeSymbolInfo;
+      runtimeSymbolInfo.size = type_->getSizeInBytes();
+      runtimeSymbolInfo.offset = offset;
+      runtimeSymbolInfo.type = *type_;
+      runtimeSymbolInfo.input = true;
+      runtimeSymbolInfo.output = false;
       symbolTable.insert(std::make_pair(input, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }
@@ -377,9 +380,12 @@ public:
       insertSymbolIntoPlaceholderBindings(
           output, nodeOutputContext->getPlaceholderBindings());
 
-      RuntimeSymbolInfo runtimeSymbolInfo{
-          /*size=*/type_->getSizeInBytes(), /*offset=*/offset,
-          /*type=*/*type_, /*input=*/false, /*output=*/true};
+      RuntimeSymbolInfo runtimeSymbolInfo;
+      runtimeSymbolInfo.size = type_->getSizeInBytes();
+      runtimeSymbolInfo.offset = offset;
+      runtimeSymbolInfo.type = *type_;
+      runtimeSymbolInfo.input = false;
+      runtimeSymbolInfo.output = true;
       symbolTable.insert(std::make_pair(output, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }
