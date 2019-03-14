@@ -115,3 +115,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
   }
   return llvm::Error::success();
 };
+
+void Provisioner::removeFunction(llvm::StringRef name) {
+  functions_.erase(name);
+}

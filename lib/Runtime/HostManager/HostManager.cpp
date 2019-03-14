@@ -57,6 +57,16 @@ HostManager::~HostManager() { llvm::toString(clearHost()); }
 
 llvm::Error HostManager::addNetwork(Module *M) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
+  auto functions = M->getFunctions();
+  for (auto &F : functions) {
+    std::string name = F->getName();
+    auto it = networks_.find(name);
+    if (it != networks_.end()) {
+      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                      "Failed to add network: already have a function called " +
+                          name);
+    }
+  }
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
     DeviceInfo info = DeviceInfo();
@@ -89,6 +99,22 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
     return;
+  }
+  auto &nodes = networkIterator->second.nodes;
+  for (auto &node : nodes) {
+    std::promise<void> removeNetwork;
+    llvm::Error removeErr = llvm::Error::success();
+    auto done = removeNetwork.get_future();
+    devices_[node->deviceID]->evictNetwork(
+        node->name,
+        [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
+          removeErr = std::move(err);
+          removeNetwork.set_value();
+        });
+    done.get();
+    errToBool(std::move(removeErr));
+    // Also remove compiledFunction from Provisioner.
+    provisioner_->removeFunction(node->name);
   }
   networks_.erase(networkIterator);
 }

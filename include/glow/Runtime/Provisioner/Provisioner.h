@@ -39,6 +39,9 @@ public:
   /// success.
   llvm::Error provision(DAGListTy &networks, Module &module);
 
+  /// Remove stored compiledFunction.
+  void removeFunction(llvm::StringRef name);
+
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
   /// device to ensure the correct backed per device.
