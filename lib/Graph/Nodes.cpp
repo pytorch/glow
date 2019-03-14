@@ -374,6 +374,29 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
          checkSameType(dest, expected, dest.getNode());
 }
 
+static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
+                                           NodeValue weights, NodeValue indices,
+                                           NodeValue lengths) {
+  bool isValid = checkType(dest, data.getElementType(), dest.getNode());
+  isValid &= checkType(weights, data.getElementType(), dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Lengths must be a 1D vector", lengths.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 1D vector", weights.dims().size(),
+                        size_t(1), dest.getNode());
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        weights.dims()[0], indices.dims()[0], dest.getNode());
+  return isValid;
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -829,20 +852,23 @@ bool BatchedReduceMeanNode::verify() const {
 }
 
 bool SparseLengthsWeightedSumNode::verify() const {
-  bool isValid = checkType(getResult(), getData().getElementType(), this);
-  isValid &= checkType(getWeights(), getData().getElementType(), this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
-  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
-  isValid &= expectCompareTrue("Indices must be a 1D vector",
-                               getIndices().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Lengths must be a 1D vector",
-                               getLengths().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Weights must be a 1D vector",
-                               getWeights().dims().size(), size_t(1), this);
+  return verifySparseLengthsWeightedSum(getResult(), getData(), getWeights(),
+                                        getIndices(), getLengths());
+}
 
-  isValid &=
-      expectCompareTrue("Weights and Indices must have the same size",
-                        getWeights().dims()[0], getIndices().dims()[0], this);
+bool SparseLengthsWeightedSumGradNode::verify() const {
+  // Same checks as SparseLengthsWeightedSumNode.
+  bool isValid =
+      verifySparseLengthsWeightedSum(getOriginalOutputForResult(), getData(),
+                                     getWeights(), getIndices(), getLengths());
+
+  // Checks on gradient inputs/outputs.
+  isValid &= checkSameType(getGradOfOriginalOutputNamedResult(),
+                           getOriginalOutputForResult(), this);
+  isValid &= checkSameType(getGradOfInputNamedData(), getData(), this);
+  isValid &= checkSameType(getGradOfInputNamedWeights(), getWeights(), this);
+  isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
+  isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
   return isValid;
 }
 
