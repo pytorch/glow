@@ -1289,10 +1289,10 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
   gatherInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
-template <typename IndexType>
+template <typename DataType, typename IndexType>
 void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
                       glow::Function *F_, glow::ExecutionEngine &EE_,
-                      ElemKind ITy) {
+                      ElemKind DTy, ElemKind ITy) {
   /*
     DATA  = [1, 2, 3, 4, 5, 6]
     RANGES = [
@@ -1308,10 +1308,10 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
     OUTPUT = [1, 3, 4, 5, 6]
     LENGTHS = [3, 2]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "data", false);
+  auto *data = mod_.createPlaceholder(DTy, {6}, "data", false);
   auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
 
-  bindings_.allocate(data)->getHandle<int64_t>() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4, 5, 6};
   bindings_.allocate(ranges)->getHandle<IndexType>() = {0, 1, 2, 2, 4, 1, 5, 1};
 
   auto *R =
@@ -1326,7 +1326,7 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(bindings_);
 
-  auto OH = bindings_.get(output->getPlaceholder())->getHandle<int64_t>();
+  auto OH = bindings_.get(output->getPlaceholder())->getHandle<DataType>();
   auto LH = bindings_.get(lengths->getPlaceholder())->getHandle<IndexType>();
 
   EXPECT_EQ(OH.at({0}), 1);
@@ -1339,14 +1339,32 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   EXPECT_EQ(LH.at({1}), 2);
 }
 
-TEST_P(OperatorTest, GatherRanges32) {
+/// Test GatherRanges with Int64 data and Int32 indices.
+TEST_P(OperatorTest, GatherRangesDataInt64IdxInt32) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherRangesTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+  gatherRangesTest<int64_t, int32_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::Int64ITy, ElemKind::Int32ITy);
 }
 
-TEST_P(OperatorTest, GatherRanges64) {
+/// Test GatherRanges with Int64 data and Int64 indices.
+TEST_P(OperatorTest, GatherRangesDataInt64IdxInt64) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherRangesTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  gatherRangesTest<int64_t, int64_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::Int64ITy, ElemKind::Int64ITy);
+}
+
+/// Test GatherRanges with Float data and Int32 indices.
+TEST_P(OperatorTest, GatherRangesDataFloatIdxInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherRangesTest<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                   ElemKind::Int32ITy);
+}
+
+/// Test GatherRanges with Float data and Int64 indices.
+TEST_P(OperatorTest, GatherRangesDataFloatIdxInt64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherRangesTest<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                   ElemKind::Int64ITy);
 }
 
 /// Check if the code generation of transposes
