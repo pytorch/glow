@@ -5304,74 +5304,6 @@ TEST_P(OperatorTest, QuantizeSimpleInt32) {
   quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
-/// Check that convertTo node works properly from float16_t to float.
-TEST_P(OperatorTest, ConvertFromFloat16ToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  auto inputHandle = bindings_.allocate(A)->getHandle<float>();
-  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
-
-  TypeRef outTy = mod_.uniqueType(ElemKind::Float16Ty, A->dims());
-
-  auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
-  auto *result = F_->createSave("save", convertTo);
-  bindings_.allocate(result->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto *outputTensor = bindings_.get(result->getPlaceholder());
-  Tensor convertedInput = bindings_.get(A)->clone();
-  convertedInput.convertToType(ElemKind::Float16Ty);
-  ASSERT_EQ(outputTensor->size(), inputHandle.size());
-  EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
-}
-
-/// Check that convertTo node works properly from float to float16_t.
-TEST_P(OperatorTest, ConvertFromFloatToFloat16) {
-  ENABLED_BACKENDS(Interpreter);
-
-  auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
-  auto inputHandle = bindings_.allocate(A)->getHandle<float16_t>();
-  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
-
-  TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, A->dims());
-
-  auto *convertTo = F_->createConvertTo("convertTo", A, outTy);
-  auto *result = F_->createSave("save", convertTo);
-  bindings_.allocate(result->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto *outputTensor = bindings_.get(result->getPlaceholder());
-  Tensor convertedInput = bindings_.get(A)->clone();
-  convertedInput.convertToType(ElemKind::FloatTy);
-  ASSERT_EQ(outputTensor->size(), inputHandle.size());
-  EXPECT_TRUE(convertedInput.isEqual(*outputTensor));
-}
-
-/// Noop convert can happen on unoptimized graphs.
-/// Make sure we support them.
-TEST_P(OperatorTest, NoopConvertFromFloatToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
-  auto *inputTensor = bindings_.allocate(A);
-  inputTensor->getHandle<float>().randomize(-3.0, 3.0, mod_.getPRNG());
-
-  auto *convertTo = F_->createConvertTo("convertTo", A, A->getType());
-  auto *result = F_->createSave("save", convertTo);
-  bindings_.allocate(result->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto *outputTensor = bindings_.get(result->getPlaceholder());
-  EXPECT_TRUE(inputTensor->isEqual(*outputTensor));
-}
-
 TEST_P(OperatorTest, LengthsToRanges) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
@@ -5739,5 +5671,84 @@ TEST_ARITH_OP_FLOAT(Mul, [](float a, float b) { return a * b; })
 TEST_ARITH_OP_FLOAT(Div, [](float a, float b) { return a / b; })
 TEST_ARITH_OP_FLOAT(Min, [](float a, float b) { return std::min(a, b); })
 TEST_ARITH_OP_FLOAT(Max, [](float a, float b) { return std::max(a, b); })
+
+/// Helper to test ConvertTo casting from \p STy to \p DTy.
+template <typename SourceType, typename DestType>
+static void testConvertTo(glow::PlaceholderBindings &bindings_,
+                          glow::Module &mod_, glow::Function *F_,
+                          glow::ExecutionEngine &EE_, ElemKind STy,
+                          ElemKind DTy) {
+  // Input tensor in source type.
+  size_t shape[] = {5, 3, 20};
+  auto *data = mod_.createPlaceholder(STy, shape, "data",
+                                      /* isTrainable */ false);
+  auto dataH = bindings_.allocate(data)->getHandle<SourceType>();
+  dataH.randomize(-1000, 1000, mod_.getPRNG());
+
+  // Construct the graph for the backend to run, converting to dest type.
+  auto OT = mod_.uniqueType(DTy, shape);
+  auto *convert = F_->createConvertTo("convert", data, OT);
+  auto *save = F_->createSave("save", convert);
+  auto resultH =
+      bindings_.allocate(save->getPlaceholder())->getHandle<DestType>();
+
+  // Compile and run the model, setting results in tensor backed by resultH.
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  // Compute expected output here on the host to compare results.
+  Tensor expected(DTy, shape);
+  auto expectedH = expected.getHandle<DestType>();
+  for (size_t i = 0, e = expectedH.size(); i < e; ++i) {
+    expectedH.raw(i) = static_cast<DestType>(dataH.raw(i));
+  }
+
+  // Check that the output tensor is the same as the expected output.
+  for (size_t i = 0, e = resultH.size(); i < e; i++) {
+    const DestType exp = expectedH.raw(i);
+    const DestType res = resultH.raw(i);
+    if (DTy == ElemKind::FloatTy) {
+      EXPECT_FLOAT_EQ(exp, res);
+    } else {
+      EXPECT_EQ(exp, res);
+    }
+  }
+}
+
+/// Test that ConvertTo operator casts correctly from Int64 to Float.
+TEST_P(OperatorTest, ConvertFromInt64ToFloat) {
+  ENABLED_BACKENDS(Interpreter);
+  testConvertTo<int64_t, float>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                                ElemKind::FloatTy);
+}
+
+/// Test that ConvertTo operator casts correctly from Float to Int64.
+TEST_P(OperatorTest, ConvertFromFloatToInt64) {
+  ENABLED_BACKENDS(Interpreter);
+  testConvertTo<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                ElemKind::Int64ITy);
+}
+
+/// Test that ConvertTo operator casts correctly from Float16 to Float.
+TEST_P(OperatorTest, ConvertFromFloat16ToFloat) {
+  ENABLED_BACKENDS(Interpreter);
+  testConvertTo<float16_t, float>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                                  ElemKind::FloatTy);
+}
+
+/// Test that ConvertTo operator casts correctly from Float to Float16.
+TEST_P(OperatorTest, ConvertFromFloatToFloat16) {
+  ENABLED_BACKENDS(Interpreter);
+  testConvertTo<float, float16_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                                  ElemKind::Float16Ty);
+}
+
+/// Test that ConvertTo operator casts correctly from Float to Float. This is a
+/// noop, but can happen on unoptimized graphs.
+TEST_P(OperatorTest, ConvertFromFloatToFloat) {
+  ENABLED_BACKENDS(Interpreter);
+  testConvertTo<float, float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                              ElemKind::FloatTy);
+}
 
 #undef ENABLED_BACKENDS
