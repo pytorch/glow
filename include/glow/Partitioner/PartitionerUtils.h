@@ -25,12 +25,12 @@ namespace glow {
 struct GraphMemInfo {
   // The memory usage of all input nodes (whose predecessors are not included in
   // this subgraph) of this subgraph.
-  size_t inMemSize;
+  uint64_t inMemSize;
   // The memory usage of all output nodes (whose successors are not included in
   // this subgraph) of this subgraph.
-  size_t outMemSize;
+  uint64_t outMemSize;
   // The memory usage of all constants used in this subgraph.
-  size_t constMemSize;
+  uint64_t constMemSize;
 
   GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
 };
