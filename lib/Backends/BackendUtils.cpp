@@ -73,7 +73,7 @@ size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
   return it->second.offset;
 }
 
-runtime::RuntimeSymbolInfo
+const runtime::RuntimeSymbolInfo &
 runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
