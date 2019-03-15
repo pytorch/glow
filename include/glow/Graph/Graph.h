@@ -258,7 +258,7 @@ public:
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input with \p filter and \bias. \p kernels defines the size of the
-  /// height, width, and time dimensions of the filters. \p strides defines the
+  /// height, width, and depth dimensions of the filters. \p strides defines the
   /// the number of steps to take in the input for each output cell. \p pads
   /// defines how many zero padding cells should be added to the input during
   /// convolution. \p group defines the number of groups the input and output
@@ -274,7 +274,7 @@ public:
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input with \p filter and \bias. \p kernel defines the size of the
-  /// height, width, and time dimensions of the filters. \p stride defines the
+  /// height, width, and depth dimensions of the filters. \p stride defines the
   /// the number of steps to take in the input for each output cell. \p pad
   /// defines how many zero padding cells should be added to the input during
   /// convolution. \p group defines the number of groups the input and output
@@ -897,7 +897,7 @@ public:
                               unsigned_t group);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
-  /// \p input. \p kernels defines the size of the height, width, and time
+  /// \p input. \p kernels defines the size of the height, width, and depth
   /// dimensions of the convolutional filters. \p strides defines the the number
   /// of steps to take in the input for each output cell. \p pads defines how
   /// many zero padding cells should be added to the input during convolution.
@@ -912,7 +912,7 @@ public:
                                   unsigned_t group);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
-  /// \p input. \p kernel defines the size of the height, width, and time
+  /// \p input. \p kernel defines the size of the height, width, and depth
   /// dimensions of the convolutional filters. \p stride defines the the number
   /// of steps to take in the input for each output cell. \p pad defines how
   /// many zero padding cells should be added to the input during convolution.

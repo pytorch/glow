@@ -145,6 +145,22 @@ private:
                                    llvm::ArrayRef<unsigned_t> pads,
                                    size_t group);
 
+  template <typename ElemTy, typename AccumulatorTy>
+  void fwdConvolution3DInstQuantizedImpl(Value *inV, Value *outV,
+                                         Value *filterV, Value *biasV,
+                                         llvm::ArrayRef<unsigned_t> kernelSizes,
+                                         llvm::ArrayRef<unsigned_t> strides,
+                                         llvm::ArrayRef<unsigned_t> pads,
+                                         size_t group);
+
+  template <typename ElemTy = float>
+  void fwdConvolution3DInstFloatImpl(Value *inV, Value *outV, Value *filterV,
+                                     Value *biasV,
+                                     llvm::ArrayRef<unsigned_t> kernelSizes,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     size_t group);
+
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);

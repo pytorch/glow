@@ -152,21 +152,21 @@ inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
 
 /// Calculate the size of the output tensor based on the 3D convolution/pooling
 /// parameters \p inH \p inW, \p inT which are the input's height, width, and
-/// time respectively.
-inline ShapeHWT calculate3DConvPoolOutputDims(
-    size_t inH, size_t inW, size_t inT, llvm::ArrayRef<unsigned_t> kernels,
+/// depth respectively.
+inline ShapeHWD calculate3DConvPoolOutputDims(
+    size_t inH, size_t inW, size_t inD, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
-  PaddingTLBRNF pdim(pads);
-  ShapeHWT kdim(kernels);
-  ShapeHWT sdim(strides);
+  PaddingTLNBRF pdim(pads);
+  ShapeHWD kdim(kernels);
+  ShapeHWD sdim(strides);
 
   size_t outH =
       ((inH + pdim.top + pdim.bottom - kdim.height) / sdim.height + 1);
   size_t outW = ((inW + pdim.left + pdim.right - kdim.width) / sdim.width + 1);
-  size_t outT = ((inT + pdim.near + pdim.far - kdim.time) / sdim.time + 1);
+  size_t outD = ((inD + pdim.near + pdim.far - kdim.depth) / sdim.depth + 1);
 
-  llvm::SmallVector<size_t, 3> outDims{outH, outW, outT};
-  return ShapeHWT(llvm::makeArrayRef(outDims));
+  llvm::SmallVector<size_t, 3> outDims{outH, outW, outD};
+  return ShapeHWD(llvm::makeArrayRef(outDims));
 }
 
 /// Modes of the padding operation.

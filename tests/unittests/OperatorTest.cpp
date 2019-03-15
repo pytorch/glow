@@ -3020,7 +3020,7 @@ TEST_P(OperatorTest, GroupConvolution) {
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
 
   std::vector<size_t> expectedDims = {1, 2, 1, 6};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
   EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 1 + 2 + 3 + 4);
   EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 10);
   EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 100);
@@ -3033,6 +3033,76 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 1000);
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 10000);
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
+}
+
+/// Test Conv3D with group size of 2 to make sure that group 3d convolution
+/// works as expected.
+TEST_P(OperatorTest, GroupConv3D) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 2, 8},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  for (size_t i = 0; i < input->getType()->size(); i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {6, 1, 1, 1, 4},
+                                        "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  for (size_t i = 0; i < 6; i++)
+    for (size_t j = 0; j < 4; j++) {
+      FH.at({i, 0, 0, 0, j}) = pow(10.0, i);
+    }
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {6}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 1, 2, 6});
+
+  Convolution3DNode *CN =
+      F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, 1, 1, 0, 2);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<size_t> expectedDims = {1, 2, 1, 2, 6};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 0}), 1 + 2 + 3 + 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 1}), (1 + 2 + 3 + 4) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 2}), (1 + 2 + 3 + 4) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 3}), (5 + 6 + 7 + 8) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 4}), (5 + 6 + 7 + 8) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0, 5}), (5 + 6 + 7 + 8) * 100000);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 0}), 9 + 10 + 11 + 12);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 1}), (9 + 10 + 11 + 12) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 2}), (9 + 10 + 11 + 12) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 3}), (13 + 14 + 15 + 16) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 4}), (13 + 14 + 15 + 16) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1, 5}), (13 + 14 + 15 + 16) * 100000);
+
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 0}), 17 + 18 + 19 + 20);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 1}), (17 + 18 + 19 + 20) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 2}), (17 + 18 + 19 + 20) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 3}), (21 + 22 + 23 + 24) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 4}), (21 + 22 + 23 + 24) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0, 5}), (21 + 22 + 23 + 24) * 100000);
+
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 0}), 25 + 26 + 27 + 28);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 1}), (25 + 26 + 27 + 28) * 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 2}), (25 + 26 + 27 + 28) * 100);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 3}), (29 + 30 + 31 + 32) * 1000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 4}), (29 + 30 + 31 + 32) * 10000);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1, 5}), (29 + 30 + 31 + 32) * 100000);
 }
 
 /// Check non-square padding for convolution. The first conv has non-square
@@ -3084,6 +3154,79 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
   Function *refF = mod_.createFunction("mainRef");
   CN = refF->createConv("Conv1", input1, filter, zeroBias, outTy, {2, 2},
                         {1, 1}, {0, 0, 0, 0}, 1);
+  S = refF->createSave("save1", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, input1, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, refF);
+  EE_.run(bindings_);
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
+
+  EXPECT_TRUE(result.isEqual(result1));
+}
+
+/// Check non-cubic padding for conv3D. The first conv3D has non-cubic
+/// padding, while the second one has zero padding. The second conv3D's input is
+/// the same as the first one's after-padding input. All other parameters of
+/// the two conv3Ds are the same.
+TEST_P(OperatorTest, NonCubicPaddingConv3D) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  int nextVal = 1;
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 4; k++) {
+        IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
+                                        "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  for (size_t i = 0; i < filter->getType()->size(); i++) {
+    FH.raw(i) = pow(2.0, i);
+  }
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 12, 2});
+
+  Convolution3DNode *CN =
+      F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
+                       {1, 1, 1}, {0, 2, 5, 1, 3, 4}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  // Create the reference conv3D operator whose input is the same as the
+  // after-padding-input above.
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 13, 1},
+                                        "input1", false);
+  bindings_.allocate(input1)->zero();
+  auto IH1 = bindings_.get(input1)->getHandle();
+  nextVal = 1;
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 2; j < 6; j++) {
+      for (size_t k = 5; k < 9; k++) {
+        IH1.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  Function *refF = mod_.createFunction("mainRef");
+  CN = refF->createConv3D("Conv3D_1", input1, filter, zeroBias, outTy,
+                          {2, 2, 2}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
   S = refF->createSave("save1", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -3401,6 +3544,133 @@ TEST_P(OperatorTest, NonSquareKernelConvolution) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
 }
 
+/// Check Non-cubic kernel for conv3D.
+TEST_P(OperatorTest, NonCubicKernelConv3D) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  int nextVal = 1;
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 4; k++) {
+        IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
+                                        "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  nextVal = 1;
+  for (size_t i = 0; i < 1; i++) {
+    for (size_t j = 0; j < 2; j++) {
+      for (size_t k = 0; k < 3; k++) {
+        FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 3, 2, 1});
+
+  Convolution3DNode *CN =
+      F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {1, 2, 3},
+                       {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  static const float ref[] = {106, 127, 190,  211,  274,  295,  442,  463,
+                              526, 547, 610,  631,  778,  799,  862,  883,
+                              946, 967, 1114, 1135, 1198, 1219, 1282, 1303};
+  for (size_t i = 0; i < 4 * 3 * 2; i++) {
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+  }
+}
+
+/// Check Non-cubic kernel for conv3D with quantized input, filters, and bias.
+TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  int nextVal = 1;
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 4; k++) {
+        IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto qInType = mod_.uniqueType(ElemKind::Int16QTy, {1, 4, 4, 4, 1}, 0.1, 0);
+  QuantizeNode *qInput = F_->createQuantize("q_input", input, qInType);
+
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
+                                        "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  nextVal = 1;
+  for (size_t i = 0; i < 1; i++) {
+    for (size_t j = 0; j < 2; j++) {
+      for (size_t k = 0; k < 3; k++) {
+        FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto qFilterType =
+      mod_.uniqueType(ElemKind::Int16QTy, {1, 1, 2, 3, 1}, 0.1, 0);
+  QuantizeNode *qFilter = F_->createQuantize("q_filter", filter, qFilterType);
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  auto qBiasType = mod_.uniqueType(ElemKind::Int32QTy, {1}, 0.1, 0);
+  QuantizeNode *qBias = F_->createQuantize("q_bias", bias, qBiasType);
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 3, 2, 1});
+
+  Convolution3DNode *CN =
+      F_->createConv3D("Conv3D", input, filter, bias, outTy, {1, 2, 3},
+                       {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+
+  auto qOutTy = mod_.uniqueType(ElemKind::Int16QTy, {1, 4, 3, 2, 1}, 0.1, 0);
+
+  Convolution3DNode *qCN =
+      F_->createConv3D("q_Conv3D", qInput, qFilter, qBias, qOutTy, {1, 2, 3},
+                       {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+
+  DequantizeNode *deQ = F_->createDequantize("deQ_result", qCN);
+  SaveNode *qS = F_->createSave("save", deQ);
+
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor &qResult = *bindings_.get(qS->getPlaceholder());
+
+  for (size_t i = 0; i < 4 * 3 * 2; i++) {
+    EXPECT_NEAR(qResult.getHandle().raw(i), result.getHandle().raw(i), 0.5);
+  }
+}
+
 /// Check Non-square kernel for AveragePool.
 TEST_P(OperatorTest, NonSquareKernelAveragePool) {
   ENABLED_BACKENDS(Interpreter, CPU);
@@ -3482,6 +3752,58 @@ TEST_P(OperatorTest, NonSquareStrideConvolution) {
   static const float ref[] = {44, 64, 41, 47};
   for (size_t i = 0; i < 4; i++)
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+}
+
+/// Check Non-cubic stride for conv3D.
+TEST_P(OperatorTest, NonCubicStrideConv3D) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  int nextVal = 1;
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 4; k++) {
+        IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
+                                        "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  nextVal = 1;
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 2; j++) {
+      for (size_t k = 0; k < 2; k++) {
+        FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
+      } // D
+    }   // W
+  }     // H
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 2, 2, 1});
+
+  Convolution3DNode *CN =
+      F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
+                       {3, 2, 3}, {0, 0, 0, 1, 1, 1}, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  static const float ref[] = {560, 296, 848, 424, 524, 220, 604, 252};
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_EQ(result.getHandle().raw(i), ref[i]);
+  }
 }
 
 /// Check Non-square stride for AveragePool.
