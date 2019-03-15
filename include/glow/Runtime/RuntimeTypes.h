@@ -48,9 +48,9 @@ using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
 /// Used to communicate memory constraints and later costs to the Partitioner.
 struct DeviceInfo {
   /// Available memory on device in bytes.
-  size_t availableMemory;
+  uint64_t availableMemory;
   /// Available SRAM capacity in bytes.
-  size_t sramCapacity;
+  uint64_t sramCapacity;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.
   /// TODO: distinguish between data types with different peak flops.
   float peakCompute;

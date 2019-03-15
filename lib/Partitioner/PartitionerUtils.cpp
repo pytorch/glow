@@ -155,7 +155,7 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
       nSet.insert(node);
       Storage *in = llvm::dyn_cast<Storage>(node);
       if (in) {
-        size_t size = in->getType()->getSizeInBytes();
+        uint64_t size = in->getType()->getSizeInBytes();
         if (node->getKind() == Kinded::Kind::ConstantKind) {
           // Constant.
           ret.constMemSize += size;
