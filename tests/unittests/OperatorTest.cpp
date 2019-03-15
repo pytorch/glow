@@ -221,32 +221,6 @@ TEST_P(OperatorTest, CmpEQ) {
   }
 }
 
-/// Check that the add operator works properly.
-TEST_P(OperatorTest, add) {
-  PseudoRNG PRNG;
-
-  auto *inputA =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
-  bindings_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
-  auto *inputB =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
-  bindings_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
-  auto *Pool = F_->createAdd("pool", inputA, inputB);
-  auto *S = F_->createSave("save", Pool);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto result = bindings_.get(S->getPlaceholder())->getHandle();
-  auto handleA = bindings_.get(inputA)->getHandle();
-  auto handleB = bindings_.get(inputB)->getHandle();
-  ASSERT_EQ(result.size(), handleA.size());
-  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
-    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
-  }
-}
-
 /// Check that the add operator works properly with FP16.
 TEST_P(OperatorTest, FP16Add) {
   ENABLED_BACKENDS(Interpreter);
@@ -892,57 +866,6 @@ TEST_P(OperatorTest, weightedSum) {
   EXPECT_NEAR(resultH.at({0, 1}), 60.2, 1E-5);
   EXPECT_NEAR(resultH.at({1, 0}), 70.3, 1E-5);
   EXPECT_NEAR(resultH.at({1, 1}), 80.4, 1E-5);
-}
-
-TEST_P(OperatorTest, minElem) {
-  PseudoRNG PRNG;
-  unsigned len = 5;
-
-  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "lhs", false);
-  auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
-  auto *min = F_->createMin("min", LHS, RHS);
-  auto *save = F_->createSave("min", min);
-  auto *result = bindings_.allocate(save->getPlaceholder());
-
-  bindings_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
-  bindings_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto resultH = result->getHandle();
-  auto LHSH = bindings_.get(LHS)->getHandle();
-  auto RHSH = bindings_.get(RHS)->getHandle();
-
-  for (size_t i = 0; i < len; i++) {
-    EXPECT_EQ(resultH.raw(i), std::min(LHSH.raw(i), RHSH.raw(i)));
-  }
-}
-
-/// Verify that the Max operator works correctly.
-TEST_P(OperatorTest, maxElem) {
-  PseudoRNG PRNG;
-  unsigned len = 5;
-
-  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "lhs", false);
-  auto *RHS = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "rhs", false);
-  auto *max = F_->createMax("max", LHS, RHS);
-  auto *save = F_->createSave("max", max);
-  auto *result = bindings_.allocate(save->getPlaceholder());
-
-  bindings_.allocate(LHS)->getHandle().randomize(-10, 10, PRNG);
-  bindings_.allocate(RHS)->getHandle().randomize(-10, 10, PRNG);
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto resultH = result->getHandle();
-  auto LHSH = bindings_.get(LHS)->getHandle();
-  auto RHSH = bindings_.get(RHS)->getHandle();
-
-  for (size_t i = 0; i < len; i++) {
-    EXPECT_EQ(resultH.raw(i), std::max(LHSH.raw(i), RHSH.raw(i)));
-  }
 }
 
 /// Verify that the RELU operator works correctly.
@@ -1974,32 +1897,6 @@ TEST_P(OperatorTest, EntropyLossTest) {
 
   auto R = bindings_.get(L->getPlaceholder())->getHandle();
   EXPECT_NEAR(R.at({0}), -log(0.5) - log(0.3), 0.1);
-}
-
-/// Check that the max operator works properly.
-TEST_P(OperatorTest, Max) {
-  PseudoRNG PRNG;
-
-  auto *inputA =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "A", false);
-  bindings_.allocate(inputA)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
-  auto *inputB =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "B", false);
-  bindings_.allocate(inputB)->getHandle<float>().randomize(-3.0, 3.0, PRNG);
-  auto *Max = F_->createMax("max", inputA, inputB);
-  auto *S = F_->createSave("save", Max);
-  bindings_.allocate(S->getPlaceholder());
-
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  auto result = bindings_.get(S->getPlaceholder())->getHandle<float>();
-  auto handleA = bindings_.get(inputA)->getHandle<float>();
-  auto handleB = bindings_.get(inputB)->getHandle<float>();
-  ASSERT_EQ(result.size(), handleA.size());
-  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
-    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
-  }
 }
 
 /// Check that the max operator works properly with FP16.
@@ -5488,5 +5385,37 @@ TEST_P(OperatorTest, BatchBoxCoxFloat) {
     EXPECT_FLOAT_EQ(resultH.raw(i), expectedH.raw(i));
   }
 }
+
+/// Test that Arithmetic ops work.
+#define TEST_ARITH_OP_FLOAT(OP_NAME_, OP_)                                     \
+  TEST_P(OperatorTest, OP_NAME_##ArithFloatTest) {                             \
+    constexpr size_t size = 50;                                                \
+    auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "A", false);   \
+    auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "B", false);   \
+    auto *AT = bindings_.allocate(A);                                          \
+    auto *BT = bindings_.allocate(B);                                          \
+    auto AH = AT->getHandle();                                                 \
+    auto BH = BT->getHandle();                                                 \
+    AH.randomize(-10.0f, 10.0f, mod_.getPRNG());                               \
+    BH.randomize(0.01f, 10.0f, mod_.getPRNG());                                \
+                                                                               \
+    auto *N = F_->create##OP_NAME_("op", A, B);                                \
+    auto *save = F_->createSave("save", N);                                    \
+    auto resultH = bindings_.allocate(save->getPlaceholder())->getHandle();    \
+                                                                               \
+    EE_.compile(CompilationMode::Infer, F_);                                   \
+    EE_.run(bindings_);                                                        \
+                                                                               \
+    for (size_t i = 0; i < size; i++) {                                        \
+      EXPECT_FLOAT_EQ(resultH.raw(i), OP_(AH.raw(i), BH.raw(i)));              \
+    }                                                                          \
+  }
+
+TEST_ARITH_OP_FLOAT(Add, [](float a, float b) { return a + b; })
+TEST_ARITH_OP_FLOAT(Sub, [](float a, float b) { return a - b; })
+TEST_ARITH_OP_FLOAT(Mul, [](float a, float b) { return a * b; })
+TEST_ARITH_OP_FLOAT(Div, [](float a, float b) { return a / b; })
+TEST_ARITH_OP_FLOAT(Min, [](float a, float b) { return std::min(a, b); })
+TEST_ARITH_OP_FLOAT(Max, [](float a, float b) { return std::max(a, b); })
 
 #undef ENABLED_BACKENDS
