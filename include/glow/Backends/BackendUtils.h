@@ -65,7 +65,7 @@ public:
   /// Helper function, gets offset of \p v.
   size_t getValueOffset(const Named *v) const;
   /// Helper function, gets symbol info for \p v.
-  RuntimeSymbolInfo getSymbolInfo(const Named *v) const;
+  const RuntimeSymbolInfo &getSymbolInfo(const Named *v) const;
   /// Get a const reference to the symbol table.
   const SymbolTableTy &getSymbolTable() const { return symbolTable_; }
   /// At compile time condense constants to a single block of memory.
