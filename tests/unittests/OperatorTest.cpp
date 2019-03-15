@@ -1126,9 +1126,11 @@ TEST_P(OperatorTest, QuantizedTopK) {
   EXPECT_EQ(IH.at({2, 0, 2}), 4);
 }
 
-TEST_P(OperatorTest, Gather64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
+/// Helper for testing Gather with different \p ITy / \p IndexType.
+template <typename IndexType>
+static void gatherFloatInputTest(glow::PlaceholderBindings &bindings_,
+                                 glow::Module &mod_, glow::Function *F_,
+                                 glow::ExecutionEngine &EE_, ElemKind ITy) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1155,13 +1157,12 @@ TEST_P(OperatorTest, Gather64) {
     ]
   */
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
-  auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
+  auto *indices = mod_.createPlaceholder(ITy, {2, 4}, "indices", false);
 
   bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings_.allocate(indices)->getHandle<int64_t>() = {
+  bindings_.allocate(indices)->getHandle<IndexType>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -1194,14 +1195,28 @@ TEST_P(OperatorTest, Gather64) {
   EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
 }
 
-TEST_P(OperatorTest, Gather32) {
+/// Test that Gather works with Float data and Int32 indices.
+TEST_P(OperatorTest, GatherDataFloatIdxInt32) {
   ENABLED_BACKENDS(Interpreter, CPU);
+  gatherFloatInputTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
 
+/// Test that Gather works with Float data and Int64 indices.
+TEST_P(OperatorTest, GatherDataFloatIdxInt64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherFloatInputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Helper for testing Gather with different \p ITy / \p IndexType.
+template <typename IndexType>
+static void gatherInt8InputTest(glow::PlaceholderBindings &bindings_,
+                                glow::Module &mod_, glow::Function *F_,
+                                glow::ExecutionEngine &EE_, ElemKind ITy) {
   /*
     DATA  = [
-        [1.0, 1.2],
-        [2.3, 3.4],
-        [4.5, 5.7],
+        [1, 2],
+        [3, 4],
+        [5, 6],
     ]
     INDICES = [
         [0, 1, 0, 1],
@@ -1209,27 +1224,27 @@ TEST_P(OperatorTest, Gather32) {
     ]
     OUTPUT = [
         [
-            [1.0, 1.2],
-            [2.3, 3.4],
-            [1.0, 1.2],
-            [2.3, 3.4],
+            [1, 2],
+            [3, 4],
+            [1, 2],
+            [3, 4],
         ],
         [
-            [2.3, 3.4],
-            [4.5, 5.7],
-            [4.5, 5.7],
-            [1.0, 1.2],
+            [3, 4],
+            [5, 6],
+            [5, 6],
+            [1, 2],
         ],
     ]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
-  auto *indices =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {2, 4}, "indices", false);
+  auto *data =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 2}, 1.0, 0, "data", false);
+  auto *indices = mod_.createPlaceholder(ITy, {2, 4}, "indices", false);
 
-  bindings_.allocate(data)->getHandle() = {
-      1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
+  bindings_.allocate(data)->getHandle<int8_t>() = {
+      1, 2, 3, 4, 5, 6,
   };
-  bindings_.allocate(indices)->getHandle<int32_t>() = {
+  bindings_.allocate(indices)->getHandle<IndexType>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -1241,25 +1256,37 @@ TEST_P(OperatorTest, Gather32) {
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(bindings_);
 
-  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings_.get(result->getPlaceholder())->getHandle<int8_t>();
 
-  EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
-  EXPECT_FLOAT_EQ(H.at({0, 1, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({0, 1, 1}), 3.4);
-  EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 1.2);
-  EXPECT_FLOAT_EQ(H.at({0, 3, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({0, 3, 1}), 3.4);
+  EXPECT_EQ(H.at({0, 0, 0}), 1);
+  EXPECT_EQ(H.at({0, 0, 1}), 2);
+  EXPECT_EQ(H.at({0, 1, 0}), 3);
+  EXPECT_EQ(H.at({0, 1, 1}), 4);
+  EXPECT_EQ(H.at({0, 2, 0}), 1);
+  EXPECT_EQ(H.at({0, 2, 1}), 2);
+  EXPECT_EQ(H.at({0, 3, 0}), 3);
+  EXPECT_EQ(H.at({0, 3, 1}), 4);
 
-  EXPECT_FLOAT_EQ(H.at({1, 0, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({1, 0, 1}), 3.4);
-  EXPECT_FLOAT_EQ(H.at({1, 1, 0}), 4.5);
-  EXPECT_FLOAT_EQ(H.at({1, 1, 1}), 5.7);
-  EXPECT_FLOAT_EQ(H.at({1, 2, 0}), 4.5);
-  EXPECT_FLOAT_EQ(H.at({1, 2, 1}), 5.7);
-  EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
+  EXPECT_EQ(H.at({1, 0, 0}), 3);
+  EXPECT_EQ(H.at({1, 0, 1}), 4);
+  EXPECT_EQ(H.at({1, 1, 0}), 5);
+  EXPECT_EQ(H.at({1, 1, 1}), 6);
+  EXPECT_EQ(H.at({1, 2, 0}), 5);
+  EXPECT_EQ(H.at({1, 2, 1}), 6);
+  EXPECT_EQ(H.at({1, 3, 0}), 1);
+  EXPECT_EQ(H.at({1, 3, 1}), 2);
+}
+
+/// Test that Gather works with Int8 data and Int32 indices.
+TEST_P(OperatorTest, GatherDataInt8IdxInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherInt8InputTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+/// Test that Gather works with Int8 data and Int64 indices.
+TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 template <typename IndexType>
