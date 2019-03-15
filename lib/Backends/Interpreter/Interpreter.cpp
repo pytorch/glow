@@ -264,9 +264,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
-             ElemKind::Float16Ty)) ||
+            ((NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+              ElemKind::Float16Ty) ||
+             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+              ElemKind::Int64ITy))) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Float16Ty) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy));
 
   case Kinded::Kind::TopKNodeKind:

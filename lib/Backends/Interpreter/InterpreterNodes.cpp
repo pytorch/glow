@@ -2572,15 +2572,27 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   }
   switch (source->getElementType()) {
   case ElemKind::FloatTy:
-    assert(dest->getElementType() == ElemKind::Float16Ty &&
-           "Conversion not supported");
-    dest->copyWithCast<float16_t, float>(source);
-    break;
+    switch (dest->getElementType()) {
+    case ElemKind::Float16Ty:
+      dest->copyWithCast<float16_t, float>(source);
+      return;
+    case ElemKind::Int64ITy:
+      dest->copyWithCast<int64_t, float>(source);
+      return;
+    default:
+      llvm_unreachable("Conversion not supported");
+    }
+    return;
   case ElemKind::Float16Ty:
     assert(dest->getElementType() == ElemKind::FloatTy &&
            "Conversion not supported");
     dest->copyWithCast<float, float16_t>(source);
-    break;
+    return;
+  case ElemKind::Int64ITy:
+    assert(dest->getElementType() == ElemKind::FloatTy &&
+           "Conversion not supported");
+    dest->copyWithCast<float, int64_t>(source);
+    return;
   default:
     llvm_unreachable("Type not supported");
   }
