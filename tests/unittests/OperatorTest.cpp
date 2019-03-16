@@ -1311,23 +1311,19 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   auto *output = F_->createSave("output", R->getOutput());
   auto *lengths = F_->createSave("lengths", R->getLengths());
 
-  bindings_.allocate(output->getPlaceholder());
-  bindings_.allocate(lengths->getPlaceholder());
+  Tensor *outputT = bindings_.allocate(output->getPlaceholder());
+  Tensor *lengthsT = bindings_.allocate(lengths->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(bindings_);
 
-  auto OH = bindings_.get(output->getPlaceholder())->getHandle<DataType>();
-  auto LH = bindings_.get(lengths->getPlaceholder())->getHandle<IndexType>();
+  Tensor expectedOutputT(DTy, {5});
+  expectedOutputT.getHandle<DataType>() = {1, 3, 4, 5, 6};
+  EXPECT_TRUE(outputT->isEqual(expectedOutputT));
 
-  EXPECT_EQ(OH.at({0}), static_cast<DataType>(1));
-  EXPECT_EQ(OH.at({1}), static_cast<DataType>(3));
-  EXPECT_EQ(OH.at({2}), static_cast<DataType>(4));
-  EXPECT_EQ(OH.at({3}), static_cast<DataType>(5));
-  EXPECT_EQ(OH.at({4}), static_cast<DataType>(6));
-
-  EXPECT_EQ(LH.at({0}), static_cast<IndexType>(3));
-  EXPECT_EQ(LH.at({1}), static_cast<IndexType>(2));
+  Tensor expectedLengthsT(ITy, {2});
+  expectedLengthsT.getHandle<IndexType>() = {3, 2};
+  EXPECT_TRUE(lengthsT->isEqual(expectedLengthsT));
 }
 
 /// Test GatherRanges with Int64 data and Int32 indices.
