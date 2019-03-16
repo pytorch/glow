@@ -5332,39 +5332,75 @@ TEST_P(OperatorTest, LengthsToRanges) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(OperatorTest, BatchOneHot) {
-  ENABLED_BACKENDS(Interpreter);
-
+/// Helper for testing BatchOneHot with different \p DTy.
+template <typename DataType>
+void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE,
+                     ElemKind DTy) {
   /*
     DATA = [[5, 0], [11, 3], [0, 5]]
     LENGTHS = [4, 2]
     VALUES = [5, 0, 11, 0, 5, 0]
     OUTPUT =  [[1, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0], [0, 1, 0, 1, 1, 0]]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *data = isQuantizedElemKind(DTy)
+                   ? mod.createPlaceholder(DTy, {3, 2}, 1.0, 0, "data", false)
+                   : mod.createPlaceholder(DTy, {3, 2}, "data", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
-  auto *values =
-      mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
+  auto *values = isQuantizedElemKind(DTy)
+                     ? mod.createPlaceholder(DTy, {6}, 1.0, 0, "values", false)
+                     : mod.createPlaceholder(DTy, {6}, "values", false);
 
-  bindings_.allocate(data)->getHandle<float>() = {5, 0, 11, 3, 0, 5};
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
-  bindings_.allocate(values)->getHandle<float>() = {5, 0, 11, 0, 5, 0};
+  bindings.allocate(data)->getHandle<DataType>() = {5, 0, 11, 3, 0, 5};
+  bindings.allocate(lengths)->getHandle<int32_t>() = {4, 2};
+  bindings.allocate(values)->getHandle<DataType>() = {5, 0, 11, 0, 5, 0};
 
-  auto *R = F_->createBatchOneHot("BOH", data, lengths, values);
-  auto *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  auto *R = F->createBatchOneHot("BOH", data, lengths, values);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, {3, 6});
-  expected.getHandle<float>() = {
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  auto expected = isQuantizedElemKind(DTy) ? Tensor(DTy, {3, 6}, 1.0, 0)
+                                           : Tensor(DTy, {3, 6});
+  expected.getHandle<DataType>() = {
       1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
   };
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+/// Test BatchOneHot with Float data and Int32 Lengths.
+TEST_P(OperatorTest, BatchOneHotDataFloat) {
+  ENABLED_BACKENDS(Interpreter);
+  batchOneHotTest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test BatchOneHot with Float16 data and Int32 Lengths
+TEST_P(OperatorTest, BatchOneHotDataFloat16) {
+  ENABLED_BACKENDS(Interpreter);
+  batchOneHotTest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test BatchOneHot with Int64 data and Int32 Lengths.
+TEST_P(OperatorTest, BatchOneHotDataInt64) {
+  ENABLED_BACKENDS(Interpreter);
+  batchOneHotTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test BatchOneHot with Int32 data and Int32 Lengths.
+TEST_P(OperatorTest, BatchOneHotDataInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  batchOneHotTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+/// Test BatchOneHot with Int8 data and Int32 Lengths.
+TEST_P(OperatorTest, BatchOneHotDataInt8) {
+  ENABLED_BACKENDS(Interpreter);
+  batchOneHotTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Check that modulo works.
