@@ -1128,9 +1128,9 @@ TEST_P(OperatorTest, QuantizedTopK) {
 
 /// Helper for testing Gather with different \p ITy / \p IndexType.
 template <typename IndexType>
-static void gatherFloatInputTest(glow::PlaceholderBindings &bindings_,
-                                 glow::Module &mod_, glow::Function *F_,
-                                 glow::ExecutionEngine &EE_, ElemKind ITy) {
+static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
+                                 glow::Module &mod, glow::Function *F,
+                                 glow::ExecutionEngine &EE, ElemKind ITy) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1156,25 +1156,25 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings_,
         ],
     ]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
-  auto *indices = mod_.createPlaceholder(ITy, {2, 4}, "indices", false);
+  auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices = mod.createPlaceholder(ITy, {2, 4}, "indices", false);
 
-  bindings_.allocate(data)->getHandle() = {
+  bindings.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings_.allocate(indices)->getHandle<IndexType>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto *R = F_->createGather("gather", data, indices);
+  auto *R = F->createGather("gather", data, indices);
 
-  auto *result = F_->createSave("save", R);
-  bindings_.allocate(result->getPlaceholder());
+  auto *result = F->createSave("save", R);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  auto H = bindings.get(result->getPlaceholder())->getHandle();
 
   EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
   EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
@@ -1209,9 +1209,9 @@ TEST_P(OperatorTest, GatherDataFloatIdxInt64) {
 
 /// Helper for testing Gather with different \p ITy / \p IndexType.
 template <typename IndexType>
-static void gatherInt8InputTest(glow::PlaceholderBindings &bindings_,
-                                glow::Module &mod_, glow::Function *F_,
-                                glow::ExecutionEngine &EE_, ElemKind ITy) {
+static void gatherInt8InputTest(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind ITy) {
   /*
     DATA  = [
         [1, 2],
@@ -1238,25 +1238,25 @@ static void gatherInt8InputTest(glow::PlaceholderBindings &bindings_,
     ]
   */
   auto *data =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 2}, 1.0, 0, "data", false);
-  auto *indices = mod_.createPlaceholder(ITy, {2, 4}, "indices", false);
+      mod.createPlaceholder(ElemKind::Int8QTy, {3, 2}, 1.0, 0, "data", false);
+  auto *indices = mod.createPlaceholder(ITy, {2, 4}, "indices", false);
 
-  bindings_.allocate(data)->getHandle<int8_t>() = {
+  bindings.allocate(data)->getHandle<int8_t>() = {
       1, 2, 3, 4, 5, 6,
   };
-  bindings_.allocate(indices)->getHandle<IndexType>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
-  auto *R = F_->createGather("gather", data, indices);
+  auto *R = F->createGather("gather", data, indices);
 
-  auto *result = F_->createSave("save", R);
-  bindings_.allocate(result->getPlaceholder());
+  auto *result = F->createSave("save", R);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto H = bindings_.get(result->getPlaceholder())->getHandle<int8_t>();
+  auto H = bindings.get(result->getPlaceholder())->getHandle<int8_t>();
 
   EXPECT_EQ(H.at({0, 0, 0}), 1);
   EXPECT_EQ(H.at({0, 0, 1}), 2);
