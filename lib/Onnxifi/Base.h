@@ -59,31 +59,10 @@ public:
   /// \returns HostManager associated with the BackendId.
   runtime::HostManager &getHostManager() { return *hostManager_; }
 
-<<<<<<< HEAD
-  /// \returns the backend id.
-  int getID() const { return id_; }
-
-  /// \returns concurrency for the backend.
-  int getConcurrency() const { return concurrency_; }
-
-  /// \returns the glow Backend of this BackendId.
-  glow::Backend *getGlowBackend() { return glowBackend_.get(); }
-
-  /// Run the network named by \p networkName using HostManager with bindings \p
-  /// bindings afterwhich the result callback \p cb will be called.
-  void runOnHostManager(llvm::StringRef networkName,
-                        std::unique_ptr<PlaceholderBindings> bindings,
-                        ResultCBTy cb) {
-    // TODO enable once HostManager is landed.
-    // hostManager_->runNetwork(networkName, std::move(bindings),
-    // std::move(cb));
-  }
-=======
   // \returns a unique_ptr to a new HostManager for the given BackendKind \p
   // kind.
   static std::unique_ptr<runtime::HostManager>
   createHostManager(glow::BackendKind kind);
->>>>>>> Use HostManager for onnxifi
 
 private:
   runtime::HostManager *hostManager_;

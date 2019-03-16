@@ -119,10 +119,9 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
-  auto res = backendPtr_->getHostManager().addNetwork(&m_);
+  auto err = backendPtr_->getHostManager().addNetwork(&m_);
 
-  // TODO: add higher resolution error reporting
-  if (res != runtime::ResultCode::Ready) {
+  if (std::move(errToBool)) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
@@ -133,60 +132,6 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
 size_t Graph::makeUniqueGraphId() {
   static std::atomic<size_t> nextId{0};
   return nextId++;
-}
-
-void Graph::run(
-    const llvm::DenseMap<Placeholder *, onnxPointer> &inputPlaceholderToBuffer,
-    const llvm::DenseMap<Placeholder *, onnxPointer>
-        &outputPlaceholderToBuffer) {
-  // Copy tensors from the input addresses to the Glow tensors.
-  llvm::SmallVector<Tensor *, 4> tensors;
-  llvm::SmallVector<Placeholder *, 4> phs;
-  for (auto inputVar : inputPlaceholderToBuffer) {
-    auto *var = inputVar.first;
-    auto *type = var->getType();
-    void *inputBuffer = reinterpret_cast<void *>(inputVar.second);
-    tensors.push_back(new Tensor(inputBuffer, type));
-    phs.push_back(var);
-  }
-
-  auto bindings = llvm::make_unique<PlaceholderBindings>();
-
-  // Run inference.
-  auto &mod = executionEngine_.getModule();
-  bindings->allocate(mod.getPlaceholders());
-  updateInputPlaceholders(*bindings, phs, tensors);
-
-  // Lambda capturing work to do after the graph has finished running.
-  auto afterRun = [tensors = std::move(tensors), outputPlaceholderToBuffer](
-                      std::unique_ptr<glow::PlaceholderBindings> bindings) {
-    // Tensors do not own underlying memory for input buffer,
-    // just delete memory allocated for the tensor object itself.
-    for (size_t i = 0; i < tensors.size(); ++i) {
-      delete tensors[i];
-    }
-
-    // Copy output data from the graph to the onnxifi outputs.
-    for (auto &outputVar : outputPlaceholderToBuffer) {
-      void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-      Tensor *res = bindings->get(outputVar.first);
-      memcpy(outputAddress, res->getUnsafePtr(),
-             res->size() * res->getType().getElementSize());
-    }
-  };
-
-  if (backendPtr_->getUseHostManager()) {
-    backendPtr_->runOnHostManager(
-        inferenceFunctionName, std::move(bindings),
-        [afterRun = std::move(afterRun)](
-            int runIdentifier, int resultCode,
-            std::unique_ptr<glow::PlaceholderBindings> bindings) {
-          afterRun(std::move(bindings));
-        });
-  } else {
-    executionEngine_.run(*bindings);
-    afterRun(std::move(bindings));
-  }
 }
 
 Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
@@ -201,7 +146,7 @@ onnxStatus Graph::setIOAndRunAsync(
     uint32_t outputsCount, const onnxTensorDescriptorV1 *outputDescriptors,
     EventPtr outputEvent) {
 
-  auto ctx = llvm::make_unique<Context>();
+  auto ctx = llvm::make_unique<ExecutionContext>();
 
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
@@ -217,7 +162,7 @@ onnxStatus Graph::setIOAndRunAsync(
 
     Tensor t(inOnnxBuffer, inPhPtr->getType());
 
-    ctx->insert(inPhPtr, std::move(t));
+    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(t));
   }
 
   std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
@@ -238,16 +183,23 @@ onnxStatus Graph::setIOAndRunAsync(
 
     Tensor t(outPhPtr->getType());
 
-    ctx->insert(outPhPtr, std::move(t));
+    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
 
   // Run
   getHostManager().runNetwork(
       netName_, std::move(ctx),
       [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
-       outputEvent](runtime::RunIdentifierTy runId, runtime::ResultCode result,
-                    std::unique_ptr<Context> ctx) {
-        for (auto &ph : ctx->pairs()) {
+       outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
+                    std::unique_ptr<ExecutionContext> ctx) {
+        // If an Error occurred then log it in errToBool and signal, output
+        // event, and quit.
+        if (errToBool(std::move(err))) {
+          outputEvent->signal();
+          return;
+        }
+
+        for (auto &ph : ctx->getPlaceholderBindings()->pairs()) {
           if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
             continue;
           }
@@ -259,6 +211,7 @@ onnxStatus Graph::setIOAndRunAsync(
           memcpy(outputAddress, res->getUnsafePtr(),
                  res->size() * res->getType().getElementSize());
         }
+
         outputEvent->signal();
       });
 
