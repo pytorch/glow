@@ -1127,10 +1127,11 @@ TEST_P(OperatorTest, QuantizedTopK) {
 }
 
 /// Helper for testing Gather with different \p ITy / \p IndexType.
-template <typename IndexType>
+template <typename DataType, typename IndexType>
 static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
-                                 glow::ExecutionEngine &EE, ElemKind ITy) {
+                                 glow::ExecutionEngine &EE, ElemKind DTy,
+                                 ElemKind ITy) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -1156,10 +1157,10 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
         ],
     ]
   */
-  auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *data = mod.createPlaceholder(DTy, {3, 2}, "data", false);
   auto *indices = mod.createPlaceholder(ITy, {2, 4}, "indices", false);
 
-  bindings.allocate(data)->getHandle() = {
+  bindings.allocate(data)->getHandle<DataType>() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
   bindings.allocate(indices)->getHandle<IndexType>() = {
@@ -1175,9 +1176,9 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   Tensor *resultT = bindings.get(result->getPlaceholder());
-  Tensor expectedT(ElemKind::FloatTy, {2, 4, 2});
-  expectedT.getHandle<float>() = {1.0, 1.2, 2.3, 3.4, 1.0, 1.2, 2.3, 3.4,
-                                  2.3, 3.4, 4.5, 5.7, 4.5, 5.7, 1.0, 1.2};
+  Tensor expectedT(DTy, {2, 4, 2});
+  expectedT.getHandle<DataType>() = {1.0, 1.2, 2.3, 3.4, 1.0, 1.2, 2.3, 3.4,
+                                     2.3, 3.4, 4.5, 5.7, 4.5, 5.7, 1.0, 1.2};
 
   EXPECT_TRUE(resultT->isEqual(expectedT));
 }
@@ -1185,13 +1186,29 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
 /// Test that Gather works with Float data and Int32 indices.
 TEST_P(OperatorTest, GatherDataFloatIdxInt32) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherFloatInputTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+  gatherFloatInputTest<float, int32_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::FloatTy, ElemKind::Int32ITy);
 }
 
 /// Test that Gather works with Float data and Int64 indices.
 TEST_P(OperatorTest, GatherDataFloatIdxInt64) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  gatherFloatInputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  gatherFloatInputTest<float, int64_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::FloatTy, ElemKind::Int64ITy);
+}
+
+/// Test that Gather works with Float16 data and Int32 indices.
+TEST_P(OperatorTest, GatherDataFloat16IdxInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  gatherFloatInputTest<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+/// Test that Gather works with Float16 data and Int64 indices.
+TEST_P(OperatorTest, GatherDataFloat16IdxInt64) {
+  ENABLED_BACKENDS(Interpreter);
+  gatherFloatInputTest<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
 }
 
 /// Helper for testing Gather with different \p ITy / \p IndexType.
@@ -1303,14 +1320,14 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   auto OH = bindings_.get(output->getPlaceholder())->getHandle<DataType>();
   auto LH = bindings_.get(lengths->getPlaceholder())->getHandle<IndexType>();
 
-  EXPECT_EQ(OH.at({0}), 1);
-  EXPECT_EQ(OH.at({1}), 3);
-  EXPECT_EQ(OH.at({2}), 4);
-  EXPECT_EQ(OH.at({3}), 5);
-  EXPECT_EQ(OH.at({4}), 6);
+  EXPECT_EQ(OH.at({0}), static_cast<DataType>(1));
+  EXPECT_EQ(OH.at({1}), static_cast<DataType>(3));
+  EXPECT_EQ(OH.at({2}), static_cast<DataType>(4));
+  EXPECT_EQ(OH.at({3}), static_cast<DataType>(5));
+  EXPECT_EQ(OH.at({4}), static_cast<DataType>(6));
 
-  EXPECT_EQ(LH.at({0}), 3);
-  EXPECT_EQ(LH.at({1}), 2);
+  EXPECT_EQ(LH.at({0}), static_cast<IndexType>(3));
+  EXPECT_EQ(LH.at({1}), static_cast<IndexType>(2));
 }
 
 /// Test GatherRanges with Int64 data and Int32 indices.
@@ -1339,6 +1356,20 @@ TEST_P(OperatorTest, GatherRangesDataFloatIdxInt64) {
   ENABLED_BACKENDS(Interpreter, CPU);
   gatherRangesTest<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
                                    ElemKind::Int64ITy);
+}
+
+/// Test GatherRanges with Float16 data and Int32 indices.
+TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  gatherRangesTest<float16_t, int32_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::Float16Ty, ElemKind::Int32ITy);
+}
+
+/// Test GatherRanges with Float16 data and Int64 indices.
+TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt64) {
+  ENABLED_BACKENDS(Interpreter);
+  gatherRangesTest<float16_t, int64_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::Float16Ty, ElemKind::Int64ITy);
 }
 
 /// Check if the code generation of transposes
