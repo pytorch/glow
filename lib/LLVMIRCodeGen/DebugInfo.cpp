@@ -30,6 +30,7 @@
 
 using namespace glow;
 using llvm::cast;
+using llvm::DISubprogram;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -159,10 +160,18 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
     auto *DIFunctionTy = DIBuilder_->createSubroutineType(
         DIBuilder_->getOrCreateTypeArray(paramTys));
     // Create a debug information for the current function.
+#if LLVM_VERSION_MAJOR < 8
     DIFunction = DIBuilder_->createFunction(
         scope, F->getName(), "", file, lineNo, DIFunctionTy,
         false /* internal linkage */, true /* definition */, lineNo,
         llvm::DINode::FlagPrototyped, true /* isOptimized */);
+#else
+    DIFunction = DIBuilder_->createFunction(
+        scope, F->getName(), "", file, lineNo, DIFunctionTy, lineNo,
+        llvm::DINode::FlagPrototyped,
+        DISubprogram::SPFlagLocalToUnit | DISubprogram::SPFlagDefinition |
+            DISubprogram::SPFlagOptimized);
+#endif
     assert(DIFunction);
     F->setSubprogram(DIFunction);
   }

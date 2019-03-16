@@ -92,7 +92,12 @@ public:
     // Inform the debugger about the loaded object file. This should allow for
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
+#if LLVM_VERSION_MAJOR < 8
     dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
+#else
+    dbgRegistrationListener_->notifyObjectLoaded(
+        (llvm::JITEventListener::ObjectKey)&loadedObj, loadedObj, objInfo);
+#endif
     // Dump symbol information for the JITed symbols.
     dumpSymbolInfo(loadedObj, objInfo);
   }
@@ -145,12 +150,21 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return nullptr;
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
+#if LLVM_VERSION_MAJOR < 8
       objectLayer_(ES_,
                    [this](llvm::orc::VModuleKey) {
                      return RTDyldObjectLinkingLayer::Resources{
                          std::make_shared<SectionMemoryManager>(), resolver_};
                    },
                    NotifyLoadedFunctor(this)),
+#else
+      objectLayer_(ES_,
+                   [this](llvm::orc::VModuleKey) {
+                     return LegacyRTDyldObjectLinkingLayer::Resources{
+                         std::make_shared<SectionMemoryManager>(), resolver_};
+                   },
+                   NotifyLoadedFunctor(this)),
+#endif
 #else
       objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); },
                    NotifyLoadedFunctor(this)),

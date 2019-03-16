@@ -54,8 +54,13 @@ private:
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
+#if LLVM_VERSION_MAJOR < 8
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
+#else
+  LegacyRTDyldObjectLinkingLayer objectLayer_;
+  LegacyIRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
+#endif
 
 public:
   GlowJIT(llvm::TargetMachine &TM);
