@@ -284,7 +284,8 @@ TEST(onnx, reduceMean4Dto3D) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/reduceMean4Dto3D.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceMean4Dto3D.onnxtxt");
 
   PlaceholderBindings bindings;
   Placeholder *output;
@@ -322,7 +323,8 @@ TEST(onnx, reduceMean4Dto4D) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/reduceMean4Dto4D.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceMean4Dto4D.onnxtxt");
 
   PlaceholderBindings bindings;
   Placeholder *output;
@@ -360,7 +362,8 @@ TEST(onnx, reduceSum4D) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/reduceSum4D.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceSum4D.onnxtxt");
 
   PlaceholderBindings bindings;
   Placeholder *output;
@@ -396,7 +399,8 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename("tests/models/onnxModels/reduceMean2AvgPool.onnxtxt");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/reduceMean2AvgPool.onnxtxt");
 
   PlaceholderBindings bindings;
   Placeholder *output;
@@ -439,6 +443,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
   Function *F = mod.createFunction("main");
 
   std::string netFilename(
+      GLOW_DATA_PATH
       "tests/models/onnxModels/reduceMean2AvgPoolNoKeep.onnxtxt");
 
   PlaceholderBindings bindings;
