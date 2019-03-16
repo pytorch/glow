@@ -239,8 +239,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::BatchOneHotNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
-                ElemKind::Int64ITy},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+                ElemKind::Int32ITy, ElemKind::Int64ITy},
                {BatchOneHotNode::LengthsIdx}) &&
            (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 

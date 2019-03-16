@@ -1268,6 +1268,9 @@ void BoundInterpreterFunction::fwdBatchOneHotInst(
   case ElemKind::Int64ITy:
     fwdBatchOneHotImpl<int64_t>(I);
     break;
+  case ElemKind::Int32ITy:
+    fwdBatchOneHotImpl<int32_t>(I);
+    break;
   case ElemKind::Int8QTy:
     fwdBatchOneHotImpl<int8_t>(I);
     break;
