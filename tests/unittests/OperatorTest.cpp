@@ -1174,25 +1174,12 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto H = bindings.get(result->getPlaceholder())->getHandle();
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::FloatTy, {2, 4, 2});
+  expectedT.getHandle<float>() = {1.0, 1.2, 2.3, 3.4, 1.0, 1.2, 2.3, 3.4,
+                                  2.3, 3.4, 4.5, 5.7, 4.5, 5.7, 1.0, 1.2};
 
-  EXPECT_FLOAT_EQ(H.at({0, 0, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({0, 0, 1}), 1.2);
-  EXPECT_FLOAT_EQ(H.at({0, 1, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({0, 1, 1}), 3.4);
-  EXPECT_FLOAT_EQ(H.at({0, 2, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({0, 2, 1}), 1.2);
-  EXPECT_FLOAT_EQ(H.at({0, 3, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({0, 3, 1}), 3.4);
-
-  EXPECT_FLOAT_EQ(H.at({1, 0, 0}), 2.3);
-  EXPECT_FLOAT_EQ(H.at({1, 0, 1}), 3.4);
-  EXPECT_FLOAT_EQ(H.at({1, 1, 0}), 4.5);
-  EXPECT_FLOAT_EQ(H.at({1, 1, 1}), 5.7);
-  EXPECT_FLOAT_EQ(H.at({1, 2, 0}), 4.5);
-  EXPECT_FLOAT_EQ(H.at({1, 2, 1}), 5.7);
-  EXPECT_FLOAT_EQ(H.at({1, 3, 0}), 1.0);
-  EXPECT_FLOAT_EQ(H.at({1, 3, 1}), 1.2);
+  EXPECT_TRUE(resultT->isEqual(expectedT));
 }
 
 /// Test that Gather works with Float data and Int32 indices.
@@ -1256,25 +1243,12 @@ static void gatherInt8InputTest(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto H = bindings.get(result->getPlaceholder())->getHandle<int8_t>();
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::Int8QTy, {2, 4, 2}, 1.0, 0);
+  expectedT.getHandle<int8_t>() = {1, 2, 3, 4, 1, 2, 3, 4,
+                                   3, 4, 5, 6, 5, 6, 1, 2};
 
-  EXPECT_EQ(H.at({0, 0, 0}), 1);
-  EXPECT_EQ(H.at({0, 0, 1}), 2);
-  EXPECT_EQ(H.at({0, 1, 0}), 3);
-  EXPECT_EQ(H.at({0, 1, 1}), 4);
-  EXPECT_EQ(H.at({0, 2, 0}), 1);
-  EXPECT_EQ(H.at({0, 2, 1}), 2);
-  EXPECT_EQ(H.at({0, 3, 0}), 3);
-  EXPECT_EQ(H.at({0, 3, 1}), 4);
-
-  EXPECT_EQ(H.at({1, 0, 0}), 3);
-  EXPECT_EQ(H.at({1, 0, 1}), 4);
-  EXPECT_EQ(H.at({1, 1, 0}), 5);
-  EXPECT_EQ(H.at({1, 1, 1}), 6);
-  EXPECT_EQ(H.at({1, 2, 0}), 5);
-  EXPECT_EQ(H.at({1, 2, 1}), 6);
-  EXPECT_EQ(H.at({1, 3, 0}), 1);
-  EXPECT_EQ(H.at({1, 3, 1}), 2);
+  EXPECT_TRUE(resultT->isEqual(expectedT));
 }
 
 /// Test that Gather works with Int8 data and Int32 indices.
