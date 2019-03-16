@@ -105,6 +105,57 @@ TEST_P(OperatorGradTest, concat) {
   EXPECT_TRUE(expectedRight.isEqual(*getGradTensor(varGrads, B)));
 }
 
+TEST_P(OperatorGradTest, conv) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  auto *X = mod_.createPlaceholder(
+      ElemKind::FloatTy, {1, 3 /* width */, 3 /* height */, 1 /* depth */}, "x",
+      false);
+  bindings_.allocate(X)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+
+  ConvolutionNode *O =
+      F_->createConv(bindings_, "conv", X, 1 /* outChannels */, 2 /* kernel */,
+                     1 /* stride */, 0 /* pad */, 1 /* group */);
+
+  // Note that filter is trainable, but probably it's okay since we run the
+  // graph only once.
+  bindings_.get(llvm::cast<Placeholder>(O->getFilter()))->getHandle() = {0, 1,
+                                                                         2, 3};
+  bindings_.get(llvm::cast<Placeholder>(O->getBias()))->getHandle() = {1};
+
+  VariableGradientsList varGrads = computeVarGrads(O);
+
+  // (Note that T stands for the filter).
+  // O_0_0 = X_0_0*T_0_0 + X_0_1*T_0_1 + X_1_0*T_1_0 + X_1_1*T_1_1 + b = 20
+  // O_0_1 = X_0_1*T_0_0 + X_0_2*T_0_1 + X_1_1*T_1_0 + X_1_2*T_1_1 + b = 26
+  // O_1_0 = X_1_0*T_0_0 + X_1_1*T_0_1 + X_2_0*T_1_0 + X_2_1*T_1_1 + b = 38
+  // O_1_1 = X_1_1*T_0_0 + X_1_2*T_0_1 + X_2_1*T_1_0 + X_2_2*T_1_1 + b = 44
+  // (b is ignored).
+  //
+  // == Table for derivates ==
+  //         d|X00|X01|X02|X10|X11|X12|X20|X21|X22
+  // ----------------------------------------------
+  // dO_0_0   |T00|T01| 0 |T10|T11| 0 | 0 | 0 | 0
+  // dO_0_1   | 0 |T00|T01| 0 |T10|T11| 0 | 0 | 0
+  // dO_1_0   | 0 | 0 | 0 |T00|T01| 0 |T10|T11| 0
+  // dO_1_1   | 0 | 0 | 0 | 0 |T00|T01| 0 |T10|T11
+  //
+  // Based on the table above, dF/dX can be easily computed by
+  // dF/dX_i_j = sum(dO_k_l/dX_i_j) for all k,l.
+
+  Tensor expected(ElemKind::FloatTy, {1, 3, 3, 1});
+  expected.getHandle() = {20 * 0, // row 0.
+                          20 * 1 + 26 * 0,
+                          26 * 1,
+                          20 * 2 + 38 * 0, // row 1.
+                          20 * 3 + 26 * 2 + 38 * 1 + 44 * 0,
+                          26 * 3 + 44 * 1,
+                          38 * 2,  // row 2.
+                          38 * 3 + 44 * 2,
+                          44 * 3};
+  EXPECT_TRUE(expected.isEqual(*getGradTensor(varGrads, X)));
+}
+
 TEST_P(OperatorGradTest, fc) {
   ENABLED_BACKENDS(Interpreter);
 
