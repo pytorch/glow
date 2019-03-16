@@ -36,11 +36,8 @@ namespace onnxifi {
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind, \p concurrency, whether to use onnx
-  /// or caffe2 for models (\p useOnnx), and whether to use HostManager instead
-  /// of ExecutionEngine for running graphs (useHostManager).
-  /// NOTE: useHostManager is not yet supported as HostManager is yet to be
-  /// fully implemented.
+  /// given Glow backend \p kind, whether to use onnx or caffe2 for models
+  /// (\p useOnnx)
   explicit BackendId(runtime::HostManager *hostManager, glow::BackendKind kind,
                      bool useOnnx)
       : hostManager_(hostManager), useOnnx_(useOnnx),

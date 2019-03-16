@@ -111,7 +111,6 @@ void createAndDestroyManagerObjects() {
   manager.release(event);
   manager.release(backend);
   manager.release(backendId);
-  
 }
 
 TEST(GlowOnnxifiManagerTest, Concurrency) {

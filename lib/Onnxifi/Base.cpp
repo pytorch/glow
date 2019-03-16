@@ -105,8 +105,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             uint32_t weightCount,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
 
-  auto id = makeUniqueGraphId();
-  netName_ = llvm::formatv("inference_function_{}", id).str();
+  netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
   Function *function = m_.createFunction(netName_);
 
@@ -121,7 +120,7 @@ onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   auto err = backendPtr_->getHostManager().addNetwork(&m_);
 
-  if (std::move(errToBool)) {
+  if (errToBool(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
@@ -192,8 +191,8 @@ onnxStatus Graph::setIOAndRunAsync(
       [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
        outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
                     std::unique_ptr<ExecutionContext> ctx) {
-        // If an Error occurred then log it in errToBool and signal, output
-        // event, and quit.
+        // If an Error occurred then log it in errToBool and signal the output
+        // event
         if (errToBool(std::move(err))) {
           outputEvent->signal();
           return;

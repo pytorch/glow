@@ -161,14 +161,20 @@ HostManager::runNetwork(llvm::StringRef networkName,
         std::move(context));
     return currentRun;
   }
-  if (activeRequestCount_ >= activeRequestLimit_) {
-    callback(currentRun,
-             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-                      "The number of allowed requests has been exceeded."),
-             std::move(context));
+
+  size_t activeRequestCount = activeRequestCount_++;
+  if (activeRequestCount >= activeRequestLimit_) {
+    activeRequestCount_--;
+    callback(
+        currentRun,
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                 strFormat("The number of allowed requests has been exceeded. "
+                           "active requests: %lu allowed requests: %u",
+                           activeRequestCount, activeRequestLimit_)),
+        std::move(context));
     return currentRun;
   }
-  activeRequestCount_++;
+
   executor_->run(networks_[networkName].root.get(), std::move(context),
                  currentRun,
                  [&activeRequest = this->activeRequestCount_,

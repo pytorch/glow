@@ -41,7 +41,7 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
 
 public:
   CPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
-                   size_t maxMemory = 2 * 1024 * 1024 * 1024)
+                   size_t maxMemory = 2000000000)
       : QueueBackedDeviceManager(BackendKind::CPU, std::move(config)),
         maxMemoryBytes_(maxMemory) {}
 

@@ -52,9 +52,9 @@ class HostManager final {
   std::atomic<size_t> totalRequestCount_{0};
 
   /// Limit maximum count of networks run at once. Hardcoded for now this
-  /// should be a configurable value. Above this limite the HostManager will
+  /// should be a configurable value. Above this limit the HostManager will
   /// refuse additional request and return Failed.
-  const unsigned int activeRequestLimit_ = 20;
+  const unsigned int activeRequestLimit_ = 100;
 
   /// A map from a networkName to a network, which is represented by struct DAG.
   std::unordered_map<std::string, DAG> networks_;
