@@ -107,24 +107,28 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
       libjitBC_(libjitBC) {}
 
-void LLVMIRGen::initTargetMachine(llvm::StringRef T,
-                                  llvm::CodeModel::Model codeModel) {
+void LLVMIRGen::initTargetMachine(
+    llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
+    const llvm::SmallVectorImpl<std::string> &targetFeatures,
+    llvm::CodeModel::Model codeModel) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
 
-  if (T.empty())
+  if (target.empty()) {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(codeModel)
                   .setRelocationModel(relocModel)
-                  .selectTarget(llvm::Triple(), "", getHostCpuName(),
+                  .selectTarget(llvm::Triple(), arch, getHostCpuName(),
                                 getMachineAttributes()));
-  else
-    TM_.reset(llvm::EngineBuilder()
-                  .setCodeModel(codeModel)
-                  .setRelocationModel(relocModel)
-                  .selectTarget(llvm::Triple(T), "", "",
-                                llvm::SmallVector<std::string, 0>()));
+  } else {
+    TM_.reset(
+        llvm::EngineBuilder()
+            .setCodeModel(codeModel)
+            .setRelocationModel(relocModel)
+            .selectTarget(llvm::Triple(target), arch, cpu, targetFeatures));
+  }
+  assert(TM_ && "Could not initialize the target machine");
 }
 
 std::string LLVMIRGen::getMainEntryName() const {

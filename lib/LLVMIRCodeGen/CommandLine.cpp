@@ -21,3 +21,14 @@ llvm::cl::OptionCategory &getLLVMBackendCat() {
 
   return cpuBackendCat;
 }
+
+llvm::cl::opt<std::string> llvmTarget("target",
+                                      llvm::cl::desc("LLVM target to be used"));
+llvm::cl::opt<std::string>
+    llvmArch("march", llvm::cl::desc("LLVM architecture to be used"));
+llvm::cl::opt<std::string> llvmCPU("mcpu",
+                                   llvm::cl::desc("LLVM CPU to be used"));
+llvm::cl::list<std::string>
+    llvmTargetFeatures("target-feature",
+                       llvm::cl::desc("LLVM target/CPU features to be used"),
+                       llvm::cl::CommaSeparated, llvm::cl::ZeroOrMore);

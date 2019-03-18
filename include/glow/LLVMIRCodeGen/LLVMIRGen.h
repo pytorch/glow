@@ -244,8 +244,13 @@ public:
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC);
 
-  /// Init the TargetMachine using a given target and code model.
-  virtual void initTargetMachine(llvm::StringRef T, llvm::CodeModel::Model CM);
+  /// Init the TargetMachine using a given \p target, \p arch, \p cpu, \p
+  /// targetFeatures and code model.
+  virtual void
+  initTargetMachine(llvm::StringRef target, llvm::StringRef arch,
+                    llvm::StringRef cpu,
+                    const llvm::SmallVectorImpl<std::string> &targetFeatures,
+                    llvm::CodeModel::Model CM);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a

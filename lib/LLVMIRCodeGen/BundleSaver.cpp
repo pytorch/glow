@@ -265,10 +265,13 @@ void BundleSaver::performBundleMemoryAllocation() {
   allocationsInfo_.allocateTensorViews(F_);
 }
 
-void BundleSaver::save(llvm::StringRef target, llvm::StringRef outputDir,
-                       llvm::StringRef networkName) {
+void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
+                       llvm::StringRef cpu,
+                       const llvm::SmallVectorImpl<std::string> &targetFeatures,
+                       llvm::StringRef outputDir, llvm::StringRef networkName) {
   // Object files generation works properly only in small mode.
-  irgen_->initTargetMachine(target, llvm::CodeModel::Model::Small);
+  irgen_->initTargetMachine(target, arch, cpu, targetFeatures,
+                            llvm::CodeModel::Model::Small);
   irgen_->setMainEntryName(networkName);
   irgen_->setOutputDir(outputDir);
   irgen_->initCodeGen();
