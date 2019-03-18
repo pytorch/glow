@@ -16,6 +16,7 @@
 
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 #include "BundleSaver.h"
+#include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 
 #include "glow/Backends/BackendUtils.h"
@@ -30,8 +31,6 @@
 #include "llvm/IR/LLVMContext.h"
 
 using namespace glow;
-
-static llvm::cl::opt<std::string> target("target", llvm::cl::desc("target"));
 
 namespace {
 
@@ -100,7 +99,12 @@ std::unique_ptr<CompiledFunction>
 LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
-  irgen->initTargetMachine(target.empty() ? "" : target.getValue(),
+  llvm::StringRef target = llvmTarget.getValue();
+  llvm::StringRef arch = llvmArch.getValue();
+  llvm::StringRef cpu = llvmCPU.getValue();
+  llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
+                                                   llvmTargetFeatures.end());
+  irgen->initTargetMachine(target, arch, cpu, targetFeatures,
                            llvm::CodeModel::Model::Large);
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
@@ -144,7 +148,12 @@ LLVMBackend::compile(Function *F, const CompilationOptions &opts) const {
 
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
                        llvm::StringRef networkName) const {
-  std::string tgt = target.empty() ? "" : target.getValue();
+  llvm::StringRef target = llvmTarget.getValue();
+  llvm::StringRef arch = llvmArch.getValue();
+  llvm::StringRef cpu = llvmCPU.getValue();
+  llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
+                                                   llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  BundleSaver(IR.get(), *this).save(tgt, outputDir, networkName);
+  BundleSaver(IR.get(), *this)
+      .save(target, arch, cpu, targetFeatures, outputDir, networkName);
 }

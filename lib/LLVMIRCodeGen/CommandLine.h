@@ -21,4 +21,19 @@
 
 llvm::cl::OptionCategory &getLLVMBackendCat();
 
+/// Options for specifying the parameters of llvm::EngineBuilder::selectTarget,
+/// which is invoked to create llvm::TargetMachine. They are the equivalents of
+/// clang's/llvm's -target, -mcpu, -march and -target-feature options.
+
+/// Target to be used by the LLVMBackend. Used as -target=targetA.
+extern llvm::cl::opt<std::string> llvmTarget;
+/// Architecture to be used by the LLVMBackend. Used as -march=archA.
+extern llvm::cl::opt<std::string> llvmArch;
+/// CPU to be used by the LLVMBackend. Used as -mcpu=cpuA.
+extern llvm::cl::opt<std::string> llvmCPU;
+/// Target and CPU features to be used by the LLVMBackend. The features should
+/// be comma-separated and prefixed with +.
+/// Used as  -target-feature=+featureA,+featureB.
+extern llvm::cl::list<std::string> llvmTargetFeatures;
+
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H
