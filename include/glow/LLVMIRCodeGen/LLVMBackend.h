@@ -78,6 +78,9 @@ protected:
 
   /// \returns libjit bitcode for the current backend.
   virtual llvm::StringRef getLibjitBitcode() const = 0;
+
+  /// Emit the jitmain function.
+  virtual void emitJitMain(LLVMIRGen &irgen) const;
 };
 
 } // namespace glow
