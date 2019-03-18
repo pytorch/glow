@@ -150,7 +150,7 @@ TEST_P(OperatorGradTest, conv) {
                           20 * 2 + 38 * 0, // row 1.
                           20 * 3 + 26 * 2 + 38 * 1 + 44 * 0,
                           26 * 3 + 44 * 1,
-                          38 * 2,  // row 2.
+                          38 * 2, // row 2.
                           38 * 3 + 44 * 2,
                           44 * 3};
   EXPECT_TRUE(expected.isEqual(*getGradTensor(varGrads, X)));
