@@ -137,7 +137,7 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
   auto hostManager = createHostManager(BackendKind::CPU);
-  std::atomic<uint> counter{0};
+  std::atomic<unsigned> counter{0};
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
     threads.emplace_back([&]() {
