@@ -16,7 +16,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_BUNDLESAVER_H
 #define GLOW_LLVMIRCODEGEN_BUNDLESAVER_H
 
-#include "AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/AllocationsInfo.h"
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "glow/IR/IR.h"

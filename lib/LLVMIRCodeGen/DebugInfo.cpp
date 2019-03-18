@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "AllocationsInfo.h"
 #include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/AllocationsInfo.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"

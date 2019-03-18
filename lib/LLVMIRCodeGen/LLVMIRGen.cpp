@@ -16,8 +16,8 @@
 
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
-#include "AllocationsInfo.h"
 #include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/AllocationsInfo.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Graph.h"
