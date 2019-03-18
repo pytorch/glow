@@ -100,14 +100,17 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     // Load functions on device.
     DeviceIDTy logicalID = logicalDeviceSize[i].first;
     DeviceIDTy deviceID = deviceMemory[i].first;
-    std::promise<llvm::Error> addNetwork;
-    auto ready = addNetwork.get_future();
+    llvm::Error addErr = llvm::Error::success();
+    std::promise<void> addPromise;
+    auto ready = addPromise.get_future();
     devices_[deviceID]->addNetwork(
         &module, functionMaps[logicalID],
-        [&addNetwork](const Module *, llvm::Error err) {
-          addNetwork.set_value(std::move(err));
+        [&addErr, &addPromise](const Module *, llvm::Error err) {
+          addErr = std::move(err);
+          addPromise.set_value();
         });
-    RETURN_IF_ERR(ready.get());
+    ready.wait();
+    RETURN_IF_ERR(addErr);
     // Set deviceID for each node added
     for (auto &node : logicalDevices[logicalID]) {
       node->deviceID = deviceID;

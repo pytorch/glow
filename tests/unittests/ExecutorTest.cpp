@@ -621,18 +621,20 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   std::unique_ptr<ExecutionContext> executorOutputContext;
 
   // Call Executor::run().
-  std::promise<llvm::Error> promise;
-  std::future<llvm::Error> future = promise.get_future();
+  llvm::Error runErr = llvm::Error::success();
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
   executor_->run(nullptr, std::move(testContext), testRunId,
-                 [&promise, &executorRunId, &executorOutputContext](
+                 [&runErr, &promise, &executorRunId, &executorOutputContext](
                      RunIdentifierTy runId, llvm::Error err,
                      std::unique_ptr<ExecutionContext> context) {
                    executorRunId = runId;
                    executorOutputContext = std::move(context);
-                   promise.set_value(std::move(err));
+                   runErr = std::move(err);
+                   promise.set_value();
                  });
 
-  EXPECT_FALSE(errToBool(future.get()));
+  EXPECT_FALSE(errToBool(std::move(runErr)));
 
   EXPECT_EQ(executorRunId, testRunId);
 
