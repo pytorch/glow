@@ -141,7 +141,7 @@ TEST_P(OperatorGradTest, conv) {
   // dO_1_1   | 0 | 0 | 0 | 0 |T00|T01| 0 |T10|T11
   //
   // Based on the table above, dF/dX can be easily computed by
-  // dF/dX_i_j = sum(dO_k_l/dX_i_j) for all k,l.
+  // dF/dX_i_j = sum(dF/dO_k_l * dO_k_l/dX_i_j) for all k,l.
 
   Tensor expected(ElemKind::FloatTy, {1, 3, 3, 1});
   expected.getHandle() = {20 * 0, // row 0.
