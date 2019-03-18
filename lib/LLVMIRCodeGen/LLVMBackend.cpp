@@ -38,12 +38,22 @@ namespace {
 //                   Functions for executing code using JIT
 //===----------------------------------------------------------------------===//
 
+/// Perform memory allocation for a JIT execution.
+void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
+  allocationsInfo.numberValues(F);
+  allocationsInfo.allocateActivations(F);
+  allocationsInfo.allocateWeightVars(F);
+  allocationsInfo.allocateTensorViews(F);
+}
+
+} // end namespace
+
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
 ///   void jitmain(uint8_t *baseConstantWeightVars,
 ///                uint8_t *baseInOutWeightVars,
 ///                nuint8_t *baseActivations);
-static void emitJitMain(LLVMIRGen &irgen) {
+void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
@@ -75,16 +85,6 @@ static void emitJitMain(LLVMIRGen &irgen) {
   // Create the debug info for the entry point function.
   irgen.generateFunctionDebugInfo(func);
 }
-
-/// Perform memory allocation for a JIT execution.
-void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
-  allocationsInfo.numberValues(F);
-  allocationsInfo.allocateActivations(F);
-  allocationsInfo.allocateWeightVars(F);
-  allocationsInfo.allocateTensorViews(F);
-}
-
-} // end namespace
 
 std::unique_ptr<CompiledFunction>
 LLVMBackend::compileIR(std::unique_ptr<IRFunction> IR) const {

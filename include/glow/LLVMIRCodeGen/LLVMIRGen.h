@@ -181,10 +181,10 @@ protected:
   /// Load base addresses of different memory areas (activations, const
   /// weightvars, mutable weight vars) so that they can be reused inside the
   /// body of the function.
-  void loadBaseAddresses(llvm::IRBuilder<> &builder);
+  virtual void loadBaseAddresses(llvm::IRBuilder<> &builder);
   /// Create a function representing a stacked kernel for instructions provided
   /// in \p stackedInstrs.
-  void
+  virtual void
   emitDataParallelKernel(llvm::IRBuilder<> &builder,
                          llvm::ArrayRef<const Instruction *> stackedInstrs);
   /// Emit IR for the data parallel instruction \p I which is invoked inside the
@@ -202,9 +202,9 @@ protected:
   /// Create a debug information for a given LLVM type \p ty.
   llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
   /// Init the generation of debug information.
-  void initDebugInfo();
+  virtual void initDebugInfo();
   /// Generate debug information.
-  void generateDebugInfo();
+  virtual void generateDebugInfo();
   /// Set the debug location for the \p builder, so that it corresponds to the
   /// instruction \p I in the textual representation of the Glow IR.
   void setCurrentDebugLocation(llvm::IRBuilder<> &builder,
@@ -271,16 +271,17 @@ public:
                                      llvm::Function *callee,
                                      llvm::ArrayRef<llvm::Value *> args);
   /// \returns a libjit API function by name.
-  llvm::Function *getFunction(const std::string &name);
+  virtual llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
-  llvm::Function *getFunction(const std::string &name, glow::ElemKind elemTy);
+  virtual llvm::Function *getFunction(const std::string &name,
+                                      glow::ElemKind elemTy);
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
-  void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
+  virtual void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
   /// Performs specialization of operations based on constant parameters.
-  void performSpecialization();
+  virtual void performSpecialization();
   /// \returns allocations info.
-  AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
+  virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the main entry point.
   /// When JITting, it will be "main". In case of bundling it will be the name
   /// of the bundle.
@@ -288,9 +289,9 @@ public:
   /// Set the name of the main entry point.
   void setMainEntryName(std::string name);
   /// Creates an LLVM module, the entry function, etc.
-  void initCodeGen();
+  virtual void initCodeGen();
   /// Emits the code of the entry function, performs optimizations, etc.
-  void performCodeGen();
+  virtual void performCodeGen();
   /// \returns the current builder.
   llvm::IRBuilder<> &getBuilder() { return *builder_; }
   /// \returns the target machine description.
@@ -309,14 +310,16 @@ public:
   /// Get output directory for bundles, debug info files, etc.
   llvm::StringRef getOutputDir() const { return outputDir_; }
   /// Emit the array of constant offsets as provided by the \p allocationsInfo.
-  llvm::Value *emitConstOffsetsArray(llvm::IRBuilder<> &builder,
-                                     const AllocationsInfo &allocationsInfo);
+  virtual llvm::Value *
+  emitConstOffsetsArray(llvm::IRBuilder<> &builder,
+                        const AllocationsInfo &allocationsInfo);
   /// Generate debug info for a LLVM function \p F.
-  void generateFunctionDebugInfo(llvm::Function *F);
+  virtual void generateFunctionDebugInfo(llvm::Function *F);
   /// Generates LLVM IR that materializes the string literal \p str.
-  llvm::Value *emitStringConst(llvm::IRBuilder<> &builder, llvm::StringRef str);
+  virtual llvm::Value *emitStringConst(llvm::IRBuilder<> &builder,
+                                       llvm::StringRef str);
   /// Register \p val as an argument that should not be specialized.
-  void markArgAsUnspecialized(llvm::Value *val);
+  virtual void markArgAsUnspecialized(llvm::Value *val);
   /// \returns bit-width of the target size_t.
   virtual unsigned getTargetSizeTWidth() const;
 };
