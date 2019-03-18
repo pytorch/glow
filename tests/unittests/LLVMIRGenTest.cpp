@@ -15,7 +15,7 @@
  */
 
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
-#include "../../lib/LLVMIRCodeGen/AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/AllocationsInfo.h"
 
 #include "glow/IR/IR.h"
 

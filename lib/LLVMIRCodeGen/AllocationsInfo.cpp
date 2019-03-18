@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/AllocationsInfo.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
