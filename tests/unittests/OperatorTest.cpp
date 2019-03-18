@@ -83,32 +83,46 @@ TEST_P(OperatorTest, pow) {
   EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
 }
 
-TEST_P(OperatorTest, replaceNaN) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
+/// Helper to test ReplaceNaN using \p DTy.
+template <typename DataType>
+static void testReplaceNaN(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind DTy) {
   auto value = 1.0f;
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
-  auto XH = bindings_.allocate(X)->getHandle();
+  auto *X = mod.createPlaceholder(DTy, {6}, "X", false);
+  auto XH = bindings.allocate(X)->getHandle<DataType>();
   XH = {1, NAN, 2, NAN, 3, NAN};
 
-  auto *RNN = F_->createReplaceNaN("replaceNaN", X, value);
+  auto *RNN = F->createReplaceNaN("replaceNaN", X, value);
 
-  auto *save = F_->createSave("save", RNN);
-  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+  auto *save = F->createSave("save", RNN);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
-  EE_.run(bindings_);
+  EE.run(bindings);
 
-  auto saveH = saveTensor->getHandle();
+  auto saveH = saveTensor->getHandle<DataType>();
 
   for (size_t i = 0; i < 6; i++) {
-    if (std::isnan(XH.raw(i))) {
-      EXPECT_EQ(saveH.raw(i), value);
+    if (std::isnan((float)XH.raw(i))) {
+      EXPECT_EQ(saveH.raw(i), (DataType)value);
     } else {
       EXPECT_EQ(XH.raw(i), saveH.raw(i));
     }
   }
+}
+
+/// Test that ReplaceNaN is correctly supported in FloatTy.
+TEST_P(OperatorTest, replaceNaN_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testReplaceNaN<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that ReplaceNaN is correctly supported in Float16Ty.
+TEST_P(OperatorTest, replaceNaN_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testReplaceNaN<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, log) {
