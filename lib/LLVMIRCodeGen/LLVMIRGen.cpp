@@ -548,6 +548,24 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   }
 }
 
+llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
+                                      llvm::Function *callee,
+                                      llvm::ArrayRef<llvm::Value *> args) {
+#ifndef NDEBUG
+  llvm::FunctionType *FTy = callee->getFunctionType();
+  assert((args.size() == FTy->getNumParams() ||
+          (FTy->isVarArg() && args.size() > FTy->getNumParams())) &&
+         "Calling a function with bad signature: wrong number of arguments.");
+
+  for (unsigned i = 0; i != args.size(); ++i) {
+    assert((i >= FTy->getNumParams() ||
+            FTy->getParamType(i) == args[i]->getType()) &&
+           "Calling a function with a bad signature: argument type mismatch.");
+  }
+#endif
+  return builder.CreateCall(callee, args);
+}
+
 std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
 LLVMIRGen::createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
                       llvm::Value *numElements) const {

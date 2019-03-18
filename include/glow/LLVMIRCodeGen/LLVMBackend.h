@@ -30,16 +30,6 @@ struct AllocationsInfo;
 class PlaceholderBindings;
 class LLVMIRGen;
 
-/// Helper function to create a new CallInst, with the specified \p builder, \p
-/// callee, and \p args. Verifies that the function signature is correct,
-/// and then creates and \returns the CallInst.
-/// \param builder the IR builder to be used for creating the Call instruction.
-/// \param callee the function to be called.
-/// \param args arguments to be passed in this call.
-/// \returns generated Call instruction.
-llvm::CallInst *createCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
-                           llvm::ArrayRef<llvm::Value *> args);
-
 class LLVMBackend : public BackendUsingGlowIR {
 public:
   LLVMBackend() = default;

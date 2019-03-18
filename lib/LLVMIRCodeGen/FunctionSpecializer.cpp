@@ -262,8 +262,8 @@ class FunctionSpecializer {
 
 public:
   FunctionSpecializer(llvm::Function *entryF,
-                      llvm::DenseSet<llvm::Value *> &dontSpec)
-      : entryF_(entryF), dontSpecializeArgsSet_(dontSpec) {}
+                      llvm::DenseSet<llvm::Value *> &dontSpec, LLVMIRGen &irgen)
+      : entryF_(entryF), dontSpecializeArgsSet_(dontSpec), irgen_(irgen) {}
 
   /// Specialize a single call.
   /// \returns the specialized Call instruction if it was possible to specialize
@@ -304,7 +304,7 @@ public:
     // Generate a call of the specialized function before the current call
     // instruction.
     builder.SetInsertPoint(call);
-    return createCall(builder, specializedF, argsForSpecialized);
+    return irgen_.createCall(builder, specializedF, argsForSpecialized);
   }
 
   void run() {
@@ -430,12 +430,14 @@ private:
   /// A reference to a set of values that the specializer was requested not to
   /// specialize.
   llvm::DenseSet<llvm::Value *> &dontSpecializeArgsSet_;
+  /// LLVMIRGen to be used.
+  LLVMIRGen &irgen_;
 };
 
 } // namespace
 
 void LLVMIRGen::performSpecialization() {
   FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"),
-                                      dontSpecializeArgsSet_);
+                                      dontSpecializeArgsSet_, *this);
   FuncSpecializer.run();
 }
