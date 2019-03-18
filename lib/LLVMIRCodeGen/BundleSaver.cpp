@@ -208,7 +208,7 @@ void BundleSaver::emitBundleEntryFunction() {
   // use of it.
   auto *entryF = irgen_->getModule().getFunction("main");
   entryF->setLinkage(llvm::Function::InternalLinkage);
-  createCall(builder, entryF, initFunctionCallArgs);
+  irgen_->createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
   // Create the debug info for the bundle entry point function.

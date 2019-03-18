@@ -256,6 +256,15 @@ public:
                                       const glow::Instruction *I);
   /// Emit LLVM-IR for the whole IRFunction.
   virtual void generateLLVMIRForModule(llvm::IRBuilder<> &builder);
+  /// Helper function to create a new CallInst, with the specified \p builder,
+  /// \p callee, and \p args. Verifies that the function signature is correct,
+  /// and then creates and \returns the CallInst.
+  /// \param builder the IR builder to be used for creating the Call
+  /// instruction. \param callee the function to be called. \param args
+  /// arguments to be passed in this call. \returns generated Call instruction
+  virtual llvm::CallInst *createCall(llvm::IRBuilder<> &builder,
+                                     llvm::Function *callee,
+                                     llvm::ArrayRef<llvm::Value *> args);
   /// \returns a libjit API function by name.
   llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
