@@ -4357,38 +4357,41 @@ TEST_P(OperatorTest, IntLookupTable) {
   }
 }
 
-/// Check that the sequence of extract-batchedadd-concat works.
-TEST_P(OperatorTest, testBatchAdd) {
+/// Helper to test BatchAdd using \p DTy.
+template <typename DataType>
+static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                         glow::Function *F, glow::ExecutionEngine &EE,
+                         ElemKind DTy) {
   unsigned numSlices = 10;
-  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
-                                       "input", false);
-  auto *slice =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
+  auto *input = mod.createPlaceholder(DTy, {numSlices, 10, 10}, "input", false);
+  auto *slice = mod.createPlaceholder(DTy, {10, 10}, "slice", false);
 
-  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
-  bindings_.allocate(slice)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+  bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
+  bindings.allocate(slice)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
 
   std::vector<NodeValue> adds;
   for (size_t i = 0; i < numSlices; i++) {
-    auto *ex = F_->createSlice("slice", input, {i, 0, 0}, {i + 1, 10, 10});
-    auto *ba = F_->createBatchedAdd("add", ex, slice);
+    auto *ex = F->createSlice("slice", input, {i, 0, 0}, {i + 1, 10, 10});
+    auto *ba = F->createBatchedAdd("add", ex, slice);
     adds.push_back(ba);
   }
 
-  auto *cc = F_->createConcat("concat", adds, 0);
+  auto *cc = F->createConcat("concat", adds, 0);
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  auto *result = F_->createSave("save", cc);
-  bindings_.allocate(result->getPlaceholder());
+  auto *result = F->createSave("save", cc);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto RH = bindings_.get(result->getPlaceholder())->getHandle();
-  auto IH = bindings_.get(input)->getHandle();
-  auto SH = bindings_.get(slice)->getHandle();
+  auto RH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
+  auto IH = bindings.get(input)->getHandle<DataType>();
+  auto SH = bindings.get(slice)->getHandle<DataType>();
 
   // Check that batched add works as expected.
   for (size_t i = 0; i < numSlices; i++) {
@@ -4399,6 +4402,17 @@ TEST_P(OperatorTest, testBatchAdd) {
       }
     }
   }
+}
+
+/// Check that the sequence of extract-batchedadd-concat works.
+TEST_P(OperatorTest, testBatchAdd_Float) {
+  testBatchAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Check that the sequence of extract-batchedadd-concat works.
+TEST_P(OperatorTest, testBatchAdd_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
