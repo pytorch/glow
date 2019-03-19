@@ -4936,12 +4936,14 @@ TEST_P(OperatorTest, CmpLTE) {
   EXPECT_FALSE(resH.at({4}));
 }
 
-/// Stack many slices/reshapes together. Some of these may be turned into
-/// tensor views stacked onto each other.
-TEST_P(OperatorTest, sliceReshape) {
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "X", false);
+/// Helper to test SliceReshape using \p DTy.
+template <typename DataType>
+static void testSliceReshape(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "X", false);
 
-  auto XH = bindings_.allocate(X)->getHandle();
+  auto XH = bindings.allocate(X)->getHandle();
   for (size_t i = 0; i < 3; i++) {
     for (size_t j = 0; j < 3; j++) {
       XH.at({i, j}) = i * 3 + j;
@@ -4949,45 +4951,51 @@ TEST_P(OperatorTest, sliceReshape) {
   }
 
   // Do an assortment of slices/reshapes stacked on top of each other.
-  auto *SX = F_->createSlice("sliceX", X, {2, 0}, {3, 3});
-  auto *RSX = F_->createReshape("reshapeSX", SX, {3});
-  auto *SSX = F_->createSlice("sliceSliceX", SX, {0, 2}, {1, 3});
-  auto *RSSX = F_->createReshape("reshapeSliceSliceX", SSX, {1});
+  auto *SX = F->createSlice("sliceX", X, {2, 0}, {3, 3});
+  auto *RSX = F->createReshape("reshapeSX", SX, {3});
+  auto *SSX = F->createSlice("sliceSliceX", SX, {0, 2}, {1, 3});
+  auto *RSSX = F->createReshape("reshapeSliceSliceX", SSX, {1});
 
-  auto *resultSX = F_->createSave("saveSX", SX);
-  auto *resultRSX = F_->createSave("saveRSX", RSX);
-  auto *resultSSX = F_->createSave("saveSSX", SSX);
-  auto *resultRSSX = F_->createSave("saveRSSX", RSSX);
+  auto *resultSX = F->createSave("saveSX", SX);
+  auto *resultRSX = F->createSave("saveRSX", RSX);
+  auto *resultSSX = F->createSave("saveSSX", SSX);
+  auto *resultRSSX = F->createSave("saveRSSX", RSSX);
 
-  bindings_.allocate(resultSX->getPlaceholder());
-  bindings_.allocate(resultRSX->getPlaceholder());
-  bindings_.allocate(resultSSX->getPlaceholder());
-  bindings_.allocate(resultRSSX->getPlaceholder());
+  bindings.allocate(resultSX->getPlaceholder());
+  bindings.allocate(resultRSX->getPlaceholder());
+  bindings.allocate(resultSSX->getPlaceholder());
+  bindings.allocate(resultRSSX->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   // Verify the slice has the same data as the original X.
-  auto SXH = bindings_.get(resultSX->getPlaceholder())->getHandle();
+  auto SXH = bindings.get(resultSX->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), XH.at({2, i}), 1E-5);
   }
 
   // Verify the reshaped slice has the same data as the slice.
-  auto RSXH = bindings_.get(resultRSX->getPlaceholder())->getHandle();
+  auto RSXH = bindings.get(resultRSX->getPlaceholder())->getHandle();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), RSXH.at({i}), 1E-5);
   }
 
   // Verify the slice of the slice has the same data as the slice.
-  auto SSXH = bindings_.get(resultSSX->getPlaceholder())->getHandle();
+  auto SSXH = bindings.get(resultSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
 
   // Verify the reshape of the slice of the slice has the same data as the
   // slice of the slice.
-  auto RSSXH = bindings_.get(resultRSSX->getPlaceholder())->getHandle();
+  auto RSSXH = bindings.get(resultRSSX->getPlaceholder())->getHandle();
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other.
+TEST_P(OperatorTest, sliceReshape_Float) {
+  testSliceReshape<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Check that the flatten operator produces 2D tensors of the right
