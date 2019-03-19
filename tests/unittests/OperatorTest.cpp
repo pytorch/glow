@@ -4023,27 +4023,42 @@ TEST_P(OperatorTest, FP16BatchAdd) {
   }
 }
 
-/// Verify that the Sigmoid operator works correctly.
-TEST_P(OperatorTest, Sigmoid) {
+/// Helper to test Sigmoid using \p DTy.
+template <typename DataType>
+static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                        glow::Function *F, glow::ExecutionEngine &EE,
+                        ElemKind DTy) {
   constexpr size_t size = 10;
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
+      mod.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
 
-  auto *sigmoid = F_->createSigmoid("sigmoid", input);
-  auto *save = F_->createSave("Save", sigmoid);
-  bindings_.allocate(save->getPlaceholder());
+  auto *sigmoid = F->createSigmoid("sigmoid", input);
+  auto *save = F->createSave("Save", sigmoid);
+  bindings.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto RH = bindings_.get(save->getPlaceholder())->getHandle();
-  auto inH = bindings_.get(input)->getHandle();
+  auto RH = bindings.get(save->getPlaceholder())->getHandle();
+  auto inH = bindings.get(input)->getHandle();
 
   for (size_t i = 0; i < size; i++) {
     float val = 1 / (1 + std::exp(-inH.at({i})));
     EXPECT_NEAR(RH.at({i}), val, 0.001);
   }
+}
+
+/// Verify that the Sigmoid operator works correctly with FloatTy.
+TEST_P(OperatorTest, Sigmoid_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the Sigmoid operator works correctly with Float16Ty.
+TEST_P(OperatorTest, Sigmoid_Float16) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, IntLookupTable) {
