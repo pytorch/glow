@@ -79,7 +79,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   backendIDs[2] = cpuBackendC2;
   backendIDs[3] = interpreterBackendC2;
 #else
-  *numBackends = 3;
+  *numBackends = 2;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -93,13 +93,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   auto *interpreterBackendC2 =
       manager.createBackendId(glow::BackendKind::Interpreter,
                               /*useOnnx*/ false);
-  auto *interpreterBackendC2HostManager = manager.createBackendId(
-      glow::BackendKind::Interpreter,
-      /*useOnnx*/ false;
 
   backendIDs[0] = interpreterBackendOnnx;
   backendIDs[1] = interpreterBackendC2;
-  backendIDs[2] = interpreterBackendC2HostManager;
 #endif
 
   return ONNXIFI_STATUS_SUCCESS;
