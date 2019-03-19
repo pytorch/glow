@@ -448,27 +448,53 @@ TEST_P(OperatorTest, batchedReduceZeroDimResult_Int8) {
                                          ElemKind::Int8QTy);
 }
 
-TEST_P(OperatorTest, batchedReduceAddWithAxis) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
+/// Helper to test BatchedReduceAddWithAxis using \p DTy.
+template <typename DataType>
+static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
+                                         glow::Module &mod, glow::Function *F,
+                                         glow::ExecutionEngine &EE,
+                                         ElemKind DTy) {
   auto *batch =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
-  bindings_.allocate(batch)->getHandle() = {0, 1, 2, 3, 4,  5,
-                                            6, 7, 8, 9, 10, 11};
+      isQuantizedElemKind(DTy)
+          ? mod.createPlaceholder(DTy, {2, 3, 2}, 1.0, 0, "batch", false)
+          : mod.createPlaceholder(DTy, {2, 3, 2}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {0, 1, 2, 3, 4,  5,
+                                                     6, 7, 8, 9, 10, 11};
 
-  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
+  auto OT = isQuantizedElemKind(DTy) ? mod.uniqueType(DTy, {2, 2}, 1.0, 0)
+                                     : mod.uniqueType(DTy, {2, 2});
+  auto *R = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 1);
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
 
-  auto *save = F_->createSave("save", R);
-  auto *result = bindings_.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  auto expected = isQuantizedElemKind(DTy) ? Tensor(DTy, {2, 2}, 1.0, 0)
+                                           : Tensor(DTy, {2, 2});
+  expected.getHandle<DataType>() = {6, 9, 24, 27};
+  EXPECT_TRUE(result->isEqual(expected));
+}
 
-  auto H = result->getHandle();
-  EXPECT_NEAR(H.at({0, 0}), 6, 0.001);
-  EXPECT_NEAR(H.at({0, 1}), 9, 0.001);
-  EXPECT_NEAR(H.at({1, 0}), 24, 0.001);
-  EXPECT_NEAR(H.at({1, 1}), 27, 0.001);
+/// Test that batchedReduceAddWithAxis is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceAddWithAxis_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceAddWithAxis<float>(bindings_, mod_, F_, EE_,
+                                      ElemKind::FloatTy);
+}
+
+/// Test that batchedReduceAddWithAxis is correctly supported in Float16Ty.
+TEST_P(OperatorTest, batchedReduceAddWithAxis_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceAddWithAxis<float16_t>(bindings_, mod_, F_, EE_,
+                                          ElemKind::Float16Ty);
+}
+
+/// Test that batchedReduceAddWithAxis is correctly supported in Int8QTy.
+TEST_P(OperatorTest, batchedReduceAddWithAxis_Int8Q) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceAddWithAxis<int8_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, batchedReduceAddQuantized) {
