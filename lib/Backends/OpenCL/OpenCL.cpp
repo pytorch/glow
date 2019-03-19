@@ -74,7 +74,7 @@ static const unsigned char kernels_fwd_quantized_conv_cl_src[] = {
 static const size_t kernels_fwd_quantized_conv_cl_src_size =
     sizeof(kernels_fwd_quantized_conv_cl_src);
 
-llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
+static llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
 llvm::cl::opt<unsigned>
     clPlatformId("platform", llvm::cl::desc("OpenCL platform to be used"),
@@ -255,7 +255,7 @@ OpenCLFunction::createProgram(const std::string &source,
 }
 
 template <class T>
-void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
+static void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   cl_int err = clSetKernelArg(kernel, argIdx, sizeof(T), &value);
   GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
 }
@@ -300,9 +300,9 @@ void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
 
 /// \returns the max local workgroup size for each dimension, under the
 /// opencl constraints, with the global workgroup sizes of \p global;
-void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
-                              llvm::ArrayRef<size_t> global,
-                              llvm::MutableArrayRef<size_t> local) {
+static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
+                                     llvm::ArrayRef<size_t> global,
+                                     llvm::MutableArrayRef<size_t> local) {
 
   // Figure out the max size of the workgroup.
   size_t L;
