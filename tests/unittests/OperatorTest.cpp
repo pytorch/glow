@@ -2486,43 +2486,48 @@ TEST_P(OperatorTest, concatVectorsRepeated) {
   }
 }
 
-TEST_P(OperatorTest, sliceVectors) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+/// Helper to test SliceVectors using \p DTy.
+template <typename DataType>
+static void testSliceVectors(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy) {
+  F->setName("sliceVectors");
 
-  F_->setName("sliceVectors");
+  auto *V = isQuantizedElemKind(DTy)
+                ? mod.createPlaceholder(DTy, {3, 30}, 1.0, 0, "V", false)
+                : mod.createPlaceholder(DTy, {3, 30}, "V", false);
+  bindings.allocate(V);
 
-  auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 30}, "V", false);
-  bindings_.allocate(V);
+  Node *S1 = F->createSlice("slice1", V, {0, 10}, {3, 13});
+  Node *S2 = F->createSlice("slice2", V, {1, 0}, {2, 30});
+  Node *S3 = F->createSlice("slice3", V, {2, 10}, {3, 12});
 
-  Node *S1 = F_->createSlice("slice1", V, {0, 10}, {3, 13});
-  Node *S2 = F_->createSlice("slice2", V, {1, 0}, {2, 30});
-  Node *S3 = F_->createSlice("slice3", V, {2, 10}, {3, 12});
+  auto *result1 = F->createSave("ret1", S1);
+  auto *result2 = F->createSave("ret2", S2);
+  auto *result3 = F->createSave("ret3", S3);
 
-  auto *result1 = F_->createSave("ret1", S1);
-  auto *result2 = F_->createSave("ret2", S2);
-  auto *result3 = F_->createSave("ret3", S3);
+  bindings.allocate(result1->getPlaceholder());
+  bindings.allocate(result2->getPlaceholder());
+  bindings.allocate(result3->getPlaceholder());
 
-  bindings_.allocate(result1->getPlaceholder());
-  bindings_.allocate(result2->getPlaceholder());
-  bindings_.allocate(result3->getPlaceholder());
-
-  Tensor I(ElemKind::Int64ITy, {3, 30});
-
+  auto I = isQuantizedElemKind(DTy) ? Tensor(DTy, {3, 30}, 1.0, 0)
+                                    : Tensor(DTy, {3, 30});
+  auto IH = I.getHandle<DataType>();
   for (size_t j = 0; j < 30; j++) {
-    I.getHandle<int64_t>().at({0, j}) = j;
-    I.getHandle<int64_t>().at({1, j}) = j + 30;
-    I.getHandle<int64_t>().at({2, j}) = j + 60;
+    IH.at({0, j}) = j;
+    IH.at({1, j}) = j + 30;
+    IH.at({2, j}) = j + 60;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output slices.
-  updateInputPlaceholders(bindings_, {V}, {&I});
-  EE_.run(bindings_);
+  updateInputPlaceholders(bindings, {V}, {&I});
+  EE.run(bindings);
 
-  auto RNWH1 = bindings_.get(result1->getPlaceholder())->getHandle<int64_t>();
-  auto RNWH2 = bindings_.get(result2->getPlaceholder())->getHandle<int64_t>();
-  auto RNWH3 = bindings_.get(result3->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH1 = bindings.get(result1->getPlaceholder())->getHandle<DataType>();
+  auto RNWH2 = bindings.get(result2->getPlaceholder())->getHandle<DataType>();
+  auto RNWH3 = bindings.get(result3->getPlaceholder())->getHandle<DataType>();
 
   EXPECT_EQ(3, RNWH1.dims()[0]);
   EXPECT_EQ(3, RNWH1.dims()[1]);
@@ -2541,6 +2546,30 @@ TEST_P(OperatorTest, sliceVectors) {
   for (size_t j = 10; j < 12; j++) {
     EXPECT_NEAR(RNWH3.at({0, j - 10}), j + 60, 0.001);
   }
+}
+
+/// Test slicing with Int64ITy.
+TEST_P(OperatorTest, sliceVectors_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test slicing with FloatTy.
+TEST_P(OperatorTest, sliceVectors_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test slicing with Float16Ty.
+TEST_P(OperatorTest, sliceVectors_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test slicing with Int8QTy.
+TEST_P(OperatorTest, sliceVectors_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  testSliceVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, sliceConcatVectors) {
