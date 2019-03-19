@@ -2393,49 +2393,84 @@ TEST_P(OperatorTest, FCGradientCheck) {
   EXPECT_NEAR(bindings_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
 }
 
-TEST_P(OperatorTest, concatVectors) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+/// Helper to test concatVectors using \p DTy.
+template <typename DataType>
+static void testConcatVectors(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind DTy) {
+  F->setName("concatVectors");
 
-  F_->setName("concatVectors");
+  auto *V1 = isQuantizedElemKind(DTy)
+                 ? mod.createPlaceholder(DTy, {10}, 1.0, 0, "V1", false)
+                 : mod.createPlaceholder(DTy, {10}, "V1", false);
+  auto *V2 = isQuantizedElemKind(DTy)
+                 ? mod.createPlaceholder(DTy, {20}, 1.0, 0, "V2", false)
+                 : mod.createPlaceholder(DTy, {20}, "V2", false);
+  auto *V3 = isQuantizedElemKind(DTy)
+                 ? mod.createPlaceholder(DTy, {30}, 1.0, 0, "V3", false)
+                 : mod.createPlaceholder(DTy, {30}, "V3", false);
 
-  auto *V1 = mod_.createPlaceholder(ElemKind::Int64ITy, {10}, "V1", false);
-  auto *V2 = mod_.createPlaceholder(ElemKind::Int64ITy, {20}, "V2", false);
-  auto *V3 = mod_.createPlaceholder(ElemKind::Int64ITy, {30}, "V3", false);
+  bindings.allocate(V1);
+  bindings.allocate(V2);
+  bindings.allocate(V3);
 
-  bindings_.allocate(V1);
-  bindings_.allocate(V2);
-  bindings_.allocate(V3);
+  Node *L = F->createConcat("concat", {V1, V2, V3}, 0);
+  auto *result = F->createSave("ret", L);
+  bindings.allocate(result->getPlaceholder());
 
-  Node *L = F_->createConcat("concat", {V1, V2, V3}, 0);
-  auto *result = F_->createSave("ret", L);
-  bindings_.allocate(result->getPlaceholder());
-
-  Tensor I1(ElemKind::Int64ITy, {10});
-  Tensor I2(ElemKind::Int64ITy, {20});
-  Tensor I3(ElemKind::Int64ITy, {30});
+  auto I1 =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {10}, 1.0, 0) : Tensor(DTy, {10});
+  auto I2 =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {20}, 1.0, 0) : Tensor(DTy, {20});
+  auto I3 =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {30}, 1.0, 0) : Tensor(DTy, {30});
 
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<int64_t>().at({i}) = i;
+    I1.getHandle<DataType>().at({i}) = i;
 
-    I2.getHandle<int64_t>().at({i}) = i + 10;
-    I2.getHandle<int64_t>().at({i + 10}) = i + 20;
-    I3.getHandle<int64_t>().at({i}) = i + 30;
-    I3.getHandle<int64_t>().at({i + 10}) = i + 40;
-    I3.getHandle<int64_t>().at({i + 20}) = i + 50;
+    I2.getHandle<DataType>().at({i}) = i + 10;
+    I2.getHandle<DataType>().at({i + 10}) = i + 20;
+    I3.getHandle<DataType>().at({i}) = i + 30;
+    I3.getHandle<DataType>().at({i + 10}) = i + 40;
+    I3.getHandle<DataType>().at({i + 20}) = i + 50;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  updateInputPlaceholders(bindings_, {V1, V2, V3}, {&I1, &I2, &I3});
-  EE_.run(bindings_);
+  updateInputPlaceholders(bindings, {V1, V2, V3}, {&I1, &I2, &I3});
+  EE.run(bindings);
 
-  auto RNWH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto RNWH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
     EXPECT_NEAR(RNWH.at({i}), i, 0.001);
   }
+}
+
+/// Test concatenating vectors that are Int64ITy.
+TEST_P(OperatorTest, concatVectors_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test concatenating vectors that are Int8Qty.
+TEST_P(OperatorTest, concatVectors_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Test concatenating vectors that are FloatTy.
+TEST_P(OperatorTest, concatVectors_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test concatenating vectors that are Float16Ty.
+TEST_P(OperatorTest, concatVectors_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Check that concatenating two tensors repeatedly is correct. This is
