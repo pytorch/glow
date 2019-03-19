@@ -1308,6 +1308,7 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
   gatherInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
+/// Helper for testing GatherRanges with different \p ITy / \p IndexType.
 template <typename DataType, typename IndexType>
 void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
                       glow::Function *F_, glow::ExecutionEngine &EE_,
@@ -1327,7 +1328,9 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
     OUTPUT = [1, 3, 4, 5, 6]
     LENGTHS = [3, 2]
   */
-  auto *data = mod_.createPlaceholder(DTy, {6}, "data", false);
+  auto *data = isQuantizedElemKind(DTy)
+                   ? mod_.createPlaceholder(DTy, {6}, 1.0, 0, "data", false)
+                   : mod_.createPlaceholder(DTy, {6}, "data", false);
   auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
 
   bindings_.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4, 5, 6};
@@ -1345,7 +1348,8 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(bindings_);
 
-  Tensor expectedOutputT(DTy, {5});
+  auto expectedOutputT =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {5}, 1.0, 0) : Tensor(DTy, {5});
   expectedOutputT.getHandle<DataType>() = {1, 3, 4, 5, 6};
   EXPECT_TRUE(outputT->isEqual(expectedOutputT));
 
@@ -1394,6 +1398,20 @@ TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt64) {
   ENABLED_BACKENDS(Interpreter);
   gatherRangesTest<float16_t, int64_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Float16Ty, ElemKind::Int64ITy);
+}
+
+/// Test GatherRanges with Int8Q data and Int32 indices.
+TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherRangesTest<int8_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                                    ElemKind::Int32ITy);
+}
+
+/// Test GatherRanges with Int8Q data and Int64 indices.
+TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  gatherRangesTest<int8_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                                    ElemKind::Int64ITy);
 }
 
 /// Check if the code generation of transposes
