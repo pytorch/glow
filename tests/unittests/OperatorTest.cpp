@@ -1526,13 +1526,19 @@ TEST_P(OperatorTest, FP16Transpose2Dims) {
   EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
 
-/// Check if the code generation of transposes
-/// is correct for tensors with 3 dimensions.
+/// Helper to check if the code generation of transposes
+/// is correct for tensors with 3 dimensions using \p DTy.
 /// Note: This assumes that Tensor::transpose is correct.
-TEST_P(OperatorTest, Transpose3Dims) {
+template <typename DataType>
+static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy) {
   constexpr size_t dims[] = {20, 13, 7};
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "A", false);
-  bindings_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
+  auto *A = isQuantizedElemKind(DTy)
+                ? mod.createPlaceholder(DTy, dims, 1.0, 0, "A", false)
+                : mod.createPlaceholder(DTy, dims, "A", false);
+  bindings.allocate(A)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                        mod.getPRNG());
 
   int nbOfShuffle = 0;
   SaveNode *savedTransposes[6];
@@ -1550,9 +1556,9 @@ TEST_P(OperatorTest, Transpose3Dims) {
         shuffles[nbOfShuffle][0] = i;
         shuffles[nbOfShuffle][1] = j;
         shuffles[nbOfShuffle][2] = k;
-        auto *tr = F_->createTranspose("tr", A, shuffles[nbOfShuffle]);
-        savedTransposes[nbOfShuffle] = F_->createSave("saveTranspose", tr);
-        bindings_.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
+        auto *tr = F->createTranspose("tr", A, shuffles[nbOfShuffle]);
+        savedTransposes[nbOfShuffle] = F->createSave("saveTranspose", tr);
+        bindings.allocate(savedTransposes[nbOfShuffle]->getPlaceholder());
         ++nbOfShuffle;
       }
     }
@@ -1561,16 +1567,38 @@ TEST_P(OperatorTest, Transpose3Dims) {
   // We should have exactly 6 possible permutations for 3 dimensions.
   EXPECT_EQ(6, nbOfShuffle);
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
   for (int i = 0; i < 6; ++i) {
-    Tensor dest(ElemKind::FloatTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
-                                    dims[shuffles[i][2]]});
-    bindings_.get(A)->transpose(&dest, shuffles[i]);
+    auto dest = isQuantizedElemKind(DTy)
+                    ? Tensor(DTy,
+                             {dims[shuffles[i][0]], dims[shuffles[i][1]],
+                              dims[shuffles[i][2]]},
+                             1.0, 0)
+                    : Tensor(DTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
+                                   dims[shuffles[i][2]]});
+    bindings.get(A)->transpose(&dest, shuffles[i]);
     EXPECT_TRUE(
-        bindings_.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
+        bindings.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
   }
+}
+
+/// Test Transpose3Dims with Float.
+TEST_P(OperatorTest, Transpose3Dims_Float) {
+  testTranspose3Dims<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test Transpose3Dims with Float16.
+TEST_P(OperatorTest, Transpose3Dims_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testTranspose3Dims<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test Transpose3Dims with Int8.
+TEST_P(OperatorTest, Transpose3Dims_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testTranspose3Dims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Check that gather on Int64ITy/size_t works.
