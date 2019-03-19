@@ -3075,68 +3075,74 @@ TEST_P(OperatorTest, ExpandDims) {
   }
 }
 
-TEST_P(OperatorTest, Split) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
+/// Helper to test Split using \p DTy.
+template <typename DataType>
+static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
   auto *inputs =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 6}, "inputs", false);
-  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4,  5,  6,
-                                             7, 8, 9, 10, 11, 12};
+      isQuantizedElemKind(DTy)
+          ? mod.createPlaceholder(DTy, {1, 2, 6}, 1.0, 0, "inputs", false)
+          : mod.createPlaceholder(DTy, {1, 2, 6}, "inputs", false);
+  bindings.allocate(inputs)->getHandle<DataType>() = {1, 2, 3, 4,  5,  6,
+                                                      7, 8, 9, 10, 11, 12};
 
   std::vector<SliceNode *> outputs1;
-  F_->createSplit("Split1", inputs, /*outputNum = */ 2, /*axis = */ 2,
-                  /*split = */ {}, outputs1);
+  F->createSplit("Split1", inputs, /*outputNum = */ 2, /*axis = */ 2,
+                 /*split = */ {}, outputs1);
   std::vector<SliceNode *> outputs2;
-  F_->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
-                  /*split = */ {2, 4}, outputs2);
-  auto *S1 = F_->createSave("save1", outputs1[0]);
-  auto *S2 = F_->createSave("save2", outputs1[1]);
-  auto *S3 = F_->createSave("save3", outputs2[0]);
-  auto *S4 = F_->createSave("save4", outputs2[1]);
+  F->createSplit("Split2", inputs, /*outputNum = */ 2, /*axis = */ 2,
+                 /*split = */ {2, 4}, outputs2);
+  auto *S1 = F->createSave("save1", outputs1[0]);
+  auto *S2 = F->createSave("save2", outputs1[1]);
+  auto *S3 = F->createSave("save3", outputs2[0]);
+  auto *S4 = F->createSave("save4", outputs2[1]);
 
-  bindings_.allocate(S1->getPlaceholder());
-  bindings_.allocate(S2->getPlaceholder());
-  bindings_.allocate(S3->getPlaceholder());
-  bindings_.allocate(S4->getPlaceholder());
+  auto *result1 = bindings.allocate(S1->getPlaceholder());
+  auto *result2 = bindings.allocate(S2->getPlaceholder());
+  auto *result3 = bindings.allocate(S3->getPlaceholder());
+  auto *result4 = bindings.allocate(S4->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto result = bindings_.get(S1->getPlaceholder())->getHandle();
-  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 3);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 7);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 9);
+  Tensor expected1 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 3}, 1.0, 0)
+                                              : Tensor(DTy, {1, 2, 3});
+  expected1.getHandle<DataType>() = {1, 2, 3, 7, 8, 9};
+  EXPECT_TRUE(result1->isEqual(expected1));
 
-  result = bindings_.get(S2->getPlaceholder())->getHandle();
-  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 3}));
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 4);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 5);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 6);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 10);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 11);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 12);
+  Tensor expected2 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 3}, 1.0, 0)
+                                              : Tensor(DTy, {1, 2, 3});
+  expected2.getHandle<DataType>() = {4, 5, 6, 10, 11, 12};
+  EXPECT_TRUE(result2->isEqual(expected2));
 
-  result = bindings_.get(S3->getPlaceholder())->getHandle();
-  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 2}));
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 2);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 7);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 8);
+  Tensor expected3 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 2}, 1.0, 0)
+                                              : Tensor(DTy, {1, 2, 2});
+  expected3.getHandle<DataType>() = {1, 2, 7, 8};
+  EXPECT_TRUE(result3->isEqual(expected3));
 
-  result = bindings_.get(S4->getPlaceholder())->getHandle();
-  EXPECT_EQ(result.dims().vec(), std::vector<size_t>({1, 2, 4}));
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0}), 3);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 1}), 4);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 2}), 5);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 3}), 6);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0}), 9);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 1}), 10);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 2}), 11);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 3}), 12);
+  Tensor expected4 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 4}, 1.0, 0)
+                                              : Tensor(DTy, {1, 2, 4});
+  expected4.getHandle<DataType>() = {3, 4, 5, 6, 9, 10, 11, 12};
+  EXPECT_TRUE(result4->isEqual(expected4));
+}
+
+/// Test that Split is correctly supported in FloatTy.
+TEST_P(OperatorTest, Split_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSplit<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that Split is correctly supported in Float16Ty.
+TEST_P(OperatorTest, Split_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSplit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test that Split is correctly supported in Int8QTy.
+TEST_P(OperatorTest, Split_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSplit<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, IntRelu) {
