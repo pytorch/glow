@@ -392,27 +392,60 @@ TEST_P(OperatorTest, batchedReduceAdd_Float16) {
                                   ElemKind::Float16Ty);
 }
 
-/// Test reduction down to a zero-dim tensor.
-TEST_P(OperatorTest, batchedReduceZeroDimResult) {
-  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "batch",
-                                       /* isTrainable */ false);
-  bindings_.allocate(batch)->getHandle() = {1, 2, 3, 4};
+/// Helper to test BatchedReduceZeroDimResult using \p DTy.
+template <typename DataType>
+static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
+                                           glow::Module &mod, glow::Function *F,
+                                           glow::ExecutionEngine &EE,
+                                           ElemKind DTy) {
+  auto *batch =
+      isQuantizedElemKind(DTy)
+          ? mod.createPlaceholder(DTy, {4}, 1.0, 0, "batch",
+                                  /* isTrainable */ false)
+          : mod.createPlaceholder(DTy, {4}, "batch", /* isTrainable */ false);
+  bindings.allocate(batch)->getHandle<DataType>() = {2, 4, 6, 8};
 
-  auto *RA = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
-  auto *RM = F_->createBatchedReduceMean("reduce.mean", batch, /* axis */ 0);
-  auto *saveRA = F_->createSave("saveRA", RA);
-  auto *saveRM = F_->createSave("saveRM", RM);
-  auto *resultRA = bindings_.allocate(saveRA->getPlaceholder());
-  auto *resultRM = bindings_.allocate(saveRM->getPlaceholder());
+  auto OT = isQuantizedElemKind(DTy) ? mod.uniqueType(DTy, {}, 1.0, 0)
+                                     : mod.uniqueType(DTy, {});
+  auto *RA = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 0);
+  auto *RM = F->createBatchedReduceMean("reduce.mean", OT, batch, /* axis */ 0);
+  auto *saveRA = F->createSave("saveRA", RA);
+  auto *saveRM = F->createSave("saveRM", RM);
+  auto *resultRA = bindings.allocate(saveRA->getPlaceholder());
+  auto *resultRM = bindings.allocate(saveRM->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto RAH = resultRA->getHandle();
-  EXPECT_NEAR(RAH.at({}), 10, 0.001);
+  auto RAH = resultRA->getHandle<DataType>();
+  auto RMH = resultRM->getHandle<DataType>();
+  if (isQuantizedElemKind(DTy)) {
+    EXPECT_EQ(RAH.at({}), static_cast<DataType>(20));
+    EXPECT_EQ(RMH.at({}), static_cast<DataType>(5));
+  } else {
+    EXPECT_NEAR(RAH.at({}), 20, 0.001);
+    EXPECT_NEAR(RMH.at({}), 5, 0.001);
+  }
+}
 
-  auto RMH = resultRM->getHandle();
-  EXPECT_NEAR(RMH.at({}), 2.5, 0.001);
+/// Test reduction down to a zero-dim tensor on FloatTy.
+TEST_P(OperatorTest, batchedReduceZeroDimResult_Float) {
+  testBatchedReduceZeroDimResult<float>(bindings_, mod_, F_, EE_,
+                                        ElemKind::FloatTy);
+}
+
+/// Test reduction down to a zero-dim tensor on Float16Ty.
+TEST_P(OperatorTest, batchedReduceZeroDimResult_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceZeroDimResult<float16_t>(bindings_, mod_, F_, EE_,
+                                            ElemKind::Float16Ty);
+}
+
+/// Test reduction down to a zero-dim tensor on Int8QTy.
+TEST_P(OperatorTest, batchedReduceZeroDimResult_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceZeroDimResult<int8_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, batchedReduceAddWithAxis) {
