@@ -4,6 +4,5 @@ add_executable(png2bin
 target_link_libraries(png2bin
                       PRIVATE
                         Base
-                        Quantization
                         QuantizationBase
                         Support)

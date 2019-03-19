@@ -29,8 +29,8 @@
 #include <sstream>
 
 using namespace glow;
-using llvm::cast;
 using llvm::DISubprogram;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
