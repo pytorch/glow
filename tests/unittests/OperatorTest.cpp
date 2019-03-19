@@ -3760,6 +3760,12 @@ TEST_P(OperatorStatelessTest, Int8Tanh) {
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f);
 }
 
+TEST_P(OperatorStatelessTest, Tanh_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.001f);
+}
+
 /// Verify that the Tanh operator works correctly.
 TEST_P(OperatorTest, Tanh) {
   constexpr size_t size = 10;
