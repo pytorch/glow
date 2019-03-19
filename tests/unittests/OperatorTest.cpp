@@ -4941,9 +4941,11 @@ template <typename DataType>
 static void testSliceReshape(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
-  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "X", false);
+  auto *X = isQuantizedElemKind(DTy)
+                ? mod.createPlaceholder(DTy, {3, 3}, 1.0, 0, "X", false)
+                : mod.createPlaceholder(DTy, {3, 3}, "X", false);
 
-  auto XH = bindings.allocate(X)->getHandle();
+  auto XH = bindings.allocate(X)->getHandle<DataType>();
   for (size_t i = 0; i < 3; i++) {
     for (size_t j = 0; j < 3; j++) {
       XH.at({i, j}) = i * 3 + j;
@@ -4971,31 +4973,46 @@ static void testSliceReshape(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   // Verify the slice has the same data as the original X.
-  auto SXH = bindings.get(resultSX->getPlaceholder())->getHandle();
+  auto SXH = bindings.get(resultSX->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), XH.at({2, i}), 1E-5);
   }
 
   // Verify the reshaped slice has the same data as the slice.
-  auto RSXH = bindings.get(resultRSX->getPlaceholder())->getHandle();
+  auto RSXH = bindings.get(resultRSX->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 3; i++) {
     EXPECT_NEAR(SXH.at({0, i}), RSXH.at({i}), 1E-5);
   }
 
   // Verify the slice of the slice has the same data as the slice.
-  auto SSXH = bindings.get(resultSSX->getPlaceholder())->getHandle();
+  auto SSXH = bindings.get(resultSSX->getPlaceholder())->getHandle<DataType>();
   EXPECT_NEAR(SXH.at({0, 2}), SSXH.at({0, 0}), 1E-5);
 
   // Verify the reshape of the slice of the slice has the same data as the
   // slice of the slice.
-  auto RSSXH = bindings.get(resultRSSX->getPlaceholder())->getHandle();
+  auto RSSXH =
+      bindings.get(resultRSSX->getPlaceholder())->getHandle<DataType>();
   EXPECT_NEAR(RSSXH.at({0}), SSXH.at({0, 0}), 1E-5);
 }
 
 /// Stack many slices/reshapes together. Some of these may be turned into
-/// tensor views stacked onto each other.
+/// tensor views stacked onto each other. Test in FloatTy.
 TEST_P(OperatorTest, sliceReshape_Float) {
   testSliceReshape<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other. Test in Float16Ty.
+TEST_P(OperatorTest, sliceReshape_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceReshape<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other. Test in Int8QTy.
+TEST_P(OperatorTest, sliceReshape_Int8) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceReshape<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Check that the flatten operator produces 2D tensors of the right
