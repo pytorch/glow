@@ -358,24 +358,38 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
   EXPECT_NEAR(H.at({1, 2, 0}), -54, 0.001);
 }
 
-TEST_P(OperatorTest, batchedReduceAdd) {
-  auto *batch =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
-  bindings_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
+/// Helper to test BatchedReduceAdd using \p DTy.
+template <typename DataType>
+static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
+                                 glow::Module &mod, glow::Function *F,
+                                 glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
+                                                     1,  2,  3,  4};
 
-  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+  auto *R = F->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
 
-  auto *save = F_->createSave("save", R);
-  auto *result = bindings_.allocate(save->getPlaceholder());
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto H = result->getHandle();
-  EXPECT_NEAR(H.at({0}), 11, 0.001);
-  EXPECT_NEAR(H.at({1}), 22, 0.001);
-  EXPECT_NEAR(H.at({2}), 33, 0.001);
-  EXPECT_NEAR(H.at({3}), 44, 0.001);
+  Tensor expected(DTy, {4});
+  expected.getHandle<DataType>() = {11, 22, 33, 44};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAdd is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceAdd_Float) {
+  testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
+TEST_P(OperatorTest, batchedReduceAdd_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
+                                  ElemKind::Float16Ty);
 }
 
 /// Test reduction down to a zero-dim tensor.
