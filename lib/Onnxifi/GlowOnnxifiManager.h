@@ -39,11 +39,10 @@ public:
   GlowOnnxifiManager &operator=(const GlowOnnxifiManager &) = delete;
   GlowOnnxifiManager &operator=(GlowOnnxifiManager &&) = delete;
 
-  /// Add a new glow BackendId \p backendId to the set of valid BackendIds.
-  /// GlowOnnxifiManager then owns this BackendId and is responsible for
-  /// deallocating when it is released. Can be called safely by multiple threads
-  /// concurrently.
-  void addBackendId(BackendIdPtr backendId);
+  /// Create a new glow BackendId for BackendKind \p kind using onnx graphs if
+  /// \p useOnnx and caffe2 graphs otherwise.
+  /// Can be called safely by multiple threads concurrently.
+  BackendIdPtr createBackendId(glow::BackendKind kind, bool useOnnx);
 
   /// Create a new glow Backend associated with \p backendId.
   /// Can be called safely by multiple threads concurrently.
@@ -92,6 +91,12 @@ public:
 private:
   GlowOnnxifiManager() = default;
 
+  /// Create a new HostManager managing backends of kind \p backendKind or get
+  /// an existing HostManager for the backendKind if one exists.
+  /// NOTE: This method is not thread safe, the caller should be holding the
+  /// mutex m_ when calling it!
+  runtime::HostManager *getOrCreateHostManager(BackendKind backendKind);
+
   /// The set of all valid glow BackendIds.
   std::unordered_set<BackendIdPtr> backendIds_;
 
@@ -103,6 +108,9 @@ private:
 
   /// The set of all valid glow Graphs.
   std::unordered_set<GraphPtr> graphs_;
+
+  /// Map from BackendKind to HostManager managing devices of that kind.
+  std::map<BackendKind, std::unique_ptr<runtime::HostManager>> hostManagers_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
   /// TODO: can use one mutex per set if performance becomes an issue.

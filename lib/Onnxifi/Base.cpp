@@ -17,13 +17,11 @@
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Format.h"
 
 namespace glow {
 namespace onnxifi {
 namespace {
-const char *inferenceFunctionName = "inference";
 const char *compatibilityFunctionName = "check";
 } // namespace
 
@@ -75,8 +73,15 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-void Backend::runAsync(std::function<void(void)> &&fn) {
-  threadPool_.submit(std::move(fn));
+// static
+std::unique_ptr<runtime::HostManager>
+BackendId::createHostManager(glow::BackendKind kind) {
+  std::vector<runtime::DeviceManagerConfig> configs;
+  runtime::DeviceManagerConfig config;
+  config.deviceConfig = nullptr;
+  config.backendKind = kind;
+  configs.push_back(std::move(config));
+  return llvm::make_unique<runtime::HostManager>(configs);
 }
 
 bool Event::signal() {
@@ -99,141 +104,115 @@ void Event::wait() {
 onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
                             uint32_t weightCount,
                             const onnxTensorDescriptorV1 *weightDescriptors) {
-  // TODO: support multiple functions here.
-  function_ =
-      executionEngine_.getModule().createFunction(inferenceFunctionName);
+
+  netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
+
+  Function *function = m_.createFunction(netName_);
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
       TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
+          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
           true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
-  // Emit IR for the graph and compile it.
-  if (backendPtr_->getUseHostManager()) {
-    backendPtr_->getHostManager().addNetwork(&executionEngine_.getModule());
-  } else {
-    executionEngine_.compile(CompilationMode::Infer, function_);
+  auto err = backendPtr_->getHostManager().addNetwork(&m_);
+
+  if (errToBool(std::move(err))) {
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-void Graph::runAsync(EventPtr inputEvent, EventPtr outputEvent) {
-  llvm::DenseMap<Placeholder *, onnxPointer> inputPlaceholderToBuffer =
-      inputPlaceholderToBuffer_;
-  llvm::DenseMap<Placeholder *, onnxPointer> outputPlaceholderToBuffer =
-      outputPlaceholderToBuffer_;
-
-  // Once inputs are copied we can allow processing concurrent requests.
-  inputRunMutex_.unlock();
-
-  // Submit graph for asynchronous execution.
-  // Concurrency for executing 'run' method is limited by number of threads in
-  // the backend specific thread pool.
-  backend()->runAsync([inputEvent, outputEvent, inputPlaceholderToBuffer,
-                       outputPlaceholderToBuffer, this]() {
-    // Wait for all inputs to be ready.
-    if (inputEvent) {
-      inputEvent->wait();
-    }
-    // Run inference.
-    this->run(inputPlaceholderToBuffer, outputPlaceholderToBuffer);
-    // Signal that the outputs are ready.
-    outputEvent->signal();
-  });
+// static
+size_t Graph::makeUniqueGraphId() {
+  static std::atomic<size_t> nextId{0};
+  return nextId++;
 }
 
-void Graph::run(
-    const llvm::DenseMap<Placeholder *, onnxPointer> &inputPlaceholderToBuffer,
-    const llvm::DenseMap<Placeholder *, onnxPointer>
-        &outputPlaceholderToBuffer) {
-  // Copy tensors from the input addresses to the Glow tensors.
-  llvm::SmallVector<Tensor *, 4> tensors;
-  llvm::SmallVector<Placeholder *, 4> phs;
-  for (auto inputVar : inputPlaceholderToBuffer) {
-    auto *var = inputVar.first;
-    auto *type = var->getType();
-    void *inputBuffer = reinterpret_cast<void *>(inputVar.second);
-    tensors.push_back(new Tensor(inputBuffer, type));
-    phs.push_back(var);
-  }
+Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
-  auto bindings = llvm::make_unique<PlaceholderBindings>();
-
-  // Run inference.
-  auto &mod = executionEngine_.getModule();
-  bindings->allocate(mod.getPlaceholders());
-  updateInputPlaceholders(*bindings, phs, tensors);
-
-  // Lambda capturing work to do after the graph has finished running.
-  auto afterRun = [tensors = std::move(tensors), outputPlaceholderToBuffer](
-                      std::unique_ptr<glow::PlaceholderBindings> bindings) {
-    // Tensors do not own underlying memory for input buffer,
-    // just delete memory allocated for the tensor object itself.
-    for (size_t i = 0; i < tensors.size(); ++i) {
-      delete tensors[i];
-    }
-
-    // Copy output data from the graph to the onnxifi outputs.
-    for (auto &outputVar : outputPlaceholderToBuffer) {
-      void *outputAddress = reinterpret_cast<void *>(outputVar.second);
-      Tensor *res = bindings->get(outputVar.first);
-      memcpy(outputAddress, res->getUnsafePtr(),
-             res->size() * res->getType().getElementSize());
-    }
-  };
-
-  if (backendPtr_->getUseHostManager()) {
-    backendPtr_->runOnHostManager(
-        inferenceFunctionName, std::move(bindings),
-        [afterRun = std::move(afterRun)](
-            int runIdentifier, int resultCode,
-            std::unique_ptr<glow::PlaceholderBindings> bindings) {
-          afterRun(std::move(bindings));
-        });
-  } else {
-    executionEngine_.run(*bindings);
-    afterRun(std::move(bindings));
-  }
+Graph::~Graph() {
+  // Remove network from hostmanager
+  backendPtr_->getHostManager().removeNetwork(netName_);
 }
 
-onnxStatus Graph::setIO(uint32_t inputsCount,
-                        const onnxTensorDescriptorV1 *inputDescriptors,
-                        uint32_t outputsCount,
-                        const onnxTensorDescriptorV1 *outputDescriptors) {
-  // Avoid race on setting inputs/outputs and graph run.
-  inputRunMutex_.lock();
+onnxStatus Graph::setIOAndRunAsync(
+    uint32_t inputsCount, const onnxTensorDescriptorV1 *inputDescriptors,
+    uint32_t outputsCount, const onnxTensorDescriptorV1 *outputDescriptors,
+    EventPtr outputEvent) {
 
-  // Build name to buffer mapping for inputs and outputs from scratch.
-  inputPlaceholderToBuffer_.clear();
-  outputPlaceholderToBuffer_.clear();
+  auto ctx = llvm::make_unique<ExecutionContext>();
 
-  // Process inputs.
+  // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
-    const auto &in = inputDescriptors[i];
-    if (!onnxInputToPlaceholder_.count(in.name)) {
+    const auto &inOnnxTensor = inputDescriptors[i];
+    auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
+
+    auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
+    if (inPhIt == onnxInputToPlaceholder_.end()) {
       return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
     }
 
-    auto *input = onnxInputToPlaceholder_[in.name];
-    inputPlaceholderToBuffer_.insert({input, in.buffer});
+    auto &inPhPtr = inPhIt->getValue();
+
+    Tensor t(inOnnxBuffer, inPhPtr->getType());
+
+    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(t));
   }
 
-  // Process outputs.
+  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
+      phNameToOnnxTensorOutputs;
+
+  // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
-    const auto &out = outputDescriptors[i];
+    const auto &outOnnxTensor = outputDescriptors[i];
 
-    if (!onnxOutputToPlaceholder_.count(out.name)) {
+    auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+    if (outPhIt == onnxOutputToPlaceholder_.end()) {
       return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
     }
 
-    auto *output = onnxOutputToPlaceholder_[out.name];
-    outputPlaceholderToBuffer_.insert({output, out.buffer});
+    auto &outPhPtr = outPhIt->getValue();
+
+    phNameToOnnxTensorOutputs[outPhPtr] = outOnnxTensor;
+
+    Tensor t(outPhPtr->getType());
+
+    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
+
+  // Run
+  getHostManager().runNetwork(
+      netName_, std::move(ctx),
+      [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
+       outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
+                    std::unique_ptr<ExecutionContext> ctx) {
+        // If an Error occurred then log it in errToBool and signal the output
+        // event
+        if (errToBool(std::move(err))) {
+          outputEvent->signal();
+          return;
+        }
+
+        for (auto &ph : ctx->getPlaceholderBindings()->pairs()) {
+          if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
+            continue;
+          }
+
+          auto &outOnnxTensor = phNameToOnnxTensorOutputs.at(ph.first);
+
+          void *outputAddress = reinterpret_cast<void *>(outOnnxTensor.buffer);
+          Tensor *res = ph.second;
+          memcpy(outputAddress, res->getUnsafePtr(),
+                 res->size() * res->getType().getElementSize());
+        }
+
+        outputEvent->signal();
+      });
 
   return ONNXIFI_STATUS_SUCCESS;
 }

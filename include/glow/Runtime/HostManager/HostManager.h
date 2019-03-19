@@ -52,9 +52,9 @@ class HostManager final {
   std::atomic<size_t> totalRequestCount_{0};
 
   /// Limit maximum count of networks run at once. Hardcoded for now this
-  /// should be a configurable value. Above this limite the HostManager will
+  /// should be a configurable value. Above this limit the HostManager will
   /// refuse additional request and return Failed.
-  const unsigned int activeRequestLimit_ = 20;
+  const unsigned int activeRequestLimit_ = 100;
 
   /// A map from a networkName to a network, which is represented by struct DAG.
   std::unordered_map<std::string, DAG> networks_;
@@ -103,7 +103,7 @@ public:
   /// specic inference request. Calls \p callback with the results when
   /// inference is done.
   /// Note: This method is intended to be thread-safe, it will be called
-  /// concurrently from mutliple threads.
+  /// concurrently from multiple threads.
   /// Returns -1 if networkName not found or too many active requests.
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<ExecutionContext> context,

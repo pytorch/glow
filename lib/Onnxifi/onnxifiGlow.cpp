@@ -63,32 +63,23 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-  // TODO: change concurrency level to std::thread::hardware_concurrency()
-  // when Glow CPU backend can handle concurrent execution.
-  // For now, limit concurrent execution to a single worker thread..
-  auto *cpuBackendOnnx = new glow::onnxifi::BackendId(
-      glow::BackendKind::CPU, /*id*/ 1,
-      /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *cpuBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::CPU, /*id*/ 3,
-      /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 4, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  manager.addBackendId(cpuBackendOnnx);
-  manager.addBackendId(interpreterBackendOnnx);
-  manager.addBackendId(cpuBackendC2);
-  manager.addBackendId(interpreterBackendC2);
+  auto *cpuBackendOnnx = manager.createBackendId(glow::BackendKind::CPU,
+                                                 /*useOnnx*/ true);
+  auto *interpreterBackendOnnx =
+      manager.createBackendId(glow::BackendKind::Interpreter,
+                              /*useOnnx*/ true);
+  auto *cpuBackendC2 = manager.createBackendId(glow::BackendKind::CPU,
+                                               /*useOnnx*/ false);
+  auto *interpreterBackendC2 =
+      manager.createBackendId(glow::BackendKind::Interpreter,
+                              /*useOnnx*/ false);
 
   backendIDs[0] = cpuBackendOnnx;
   backendIDs[1] = interpreterBackendOnnx;
   backendIDs[2] = cpuBackendC2;
   backendIDs[3] = interpreterBackendC2;
 #else
-  *numBackends = 3;
+  *numBackends = 2;
 
   // In case backendIDs is nullptr or does not have enough capacity just return
   // the total number of supported backends.
@@ -96,24 +87,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     return ONNXIFI_STATUS_FALLBACK;
   }
 
-  auto *interpreterBackendOnnx = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 1, /*concurrency*/ 1, /*useOnnx*/ true, /*useHostManager*/ false);
-  auto *interpreterBackendC2 = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false, /*useHostManager*/ false);
-  auto *interpreterBackendC2HostManager = new glow::onnxifi::BackendId(
-      glow::BackendKind::Interpreter,
-      /*id*/ 2, /*concurrency*/ 1, /*useOnnx*/ false,
-      /*useHostManager*/ true);
-
-  manager.addBackendId(interpreterBackendOnnx);
-  manager.addBackendId(interpreterBackendC2);
-  manager.addBackendId(interpreterBackendC2HostManager);
+  auto *interpreterBackendOnnx =
+      manager.createBackendId(glow::BackendKind::Interpreter,
+                              /*useOnnx*/ true);
+  auto *interpreterBackendC2 =
+      manager.createBackendId(glow::BackendKind::Interpreter,
+                              /*useOnnx*/ false);
 
   backendIDs[0] = interpreterBackendOnnx;
   backendIDs[1] = interpreterBackendC2;
-  backendIDs[2] = interpreterBackendC2HostManager;
 #endif
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -414,29 +396,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetGraphIO)(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
-  if ((!inputDescriptors && inputsCount) || !outputDescriptors) {
-    return ONNXIFI_STATUS_INVALID_POINTER;
-  }
-
-  auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
-
-  auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
-  if (!manager.isValid(glowGraph)) {
-    return ONNXIFI_STATUS_INVALID_GRAPH;
-  }
-
-  auto inputStatus = verifyDescriptors(inputsCount, inputDescriptors);
-  if (inputStatus != ONNXIFI_STATUS_SUCCESS) {
-    return inputStatus;
-  }
-
-  auto outputStatus = verifyDescriptors(outputsCount, outputDescriptors);
-  if (outputStatus != ONNXIFI_STATUS_SUCCESS) {
-    return outputStatus;
-  }
-
-  return glowGraph->setIO(inputsCount, inputDescriptors, outputsCount,
-                          outputDescriptors);
+  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxSetGraphIO\n";
+  return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
 /// Asynchronously execute operations in an ONNXIFI graph using pre-specified
@@ -445,35 +406,8 @@ EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     onnxMemoryFenceV1 *outputFence) {
-  if (!inputFence || !outputFence) {
-    return ONNXIFI_STATUS_INVALID_POINTER;
-  }
-
-  auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
-
-  auto *glowGraph = static_cast<glow::onnxifi::GraphPtr>(graph);
-  if (!manager.isValid(glowGraph)) {
-    return ONNXIFI_STATUS_INVALID_GRAPH;
-  }
-
-  if (inputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT ||
-      inputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1 ||
-      outputFence->type != ONNXIFI_SYNCHRONIZATION_EVENT ||
-      outputFence->tag != ONNXIFI_TAG_MEMORY_FENCE_V1) {
-    return ONNXIFI_STATUS_UNSUPPORTED_TAG;
-  }
-
-  auto initStatus = GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitEvent)(
-      glowGraph->backend(), &outputFence->event);
-  if (initStatus != ONNXIFI_STATUS_SUCCESS) {
-    return initStatus;
-  }
-
-  auto *inputEvent = static_cast<glow::onnxifi::EventPtr>(inputFence->event);
-  auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
-
-  glowGraph->runAsync(inputEvent, outputEvent);
-  return ONNXIFI_STATUS_SUCCESS;
+  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxRunGraph\n";
+  return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
 /// Binds inputs and outputs of an ONNXIFI graph to specific addresses then
@@ -528,12 +462,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
 
   auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
 
-  // Set graph IO and run asynchronous.
-  glowGraph->setIO(inputsCount, inputDescriptors, outputsCount,
-                   outputDescriptors);
-  glowGraph->runAsync(/*inputEvent*/ nullptr, outputEvent);
-
-  return ONNXIFI_STATUS_SUCCESS;
+  // Set graph IO and run async
+  return glowGraph->setIOAndRunAsync(inputsCount, inputDescriptors,
+                                     outputsCount, outputDescriptors,
+                                     outputEvent);
 }
 
 /// Deinitialize an ONNXIFI graph and release associated resources.

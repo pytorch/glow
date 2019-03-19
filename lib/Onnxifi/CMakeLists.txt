@@ -14,20 +14,18 @@ add_library(onnxifi-glow-lib
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         Backends
-                        ExecutionEngine
                         Graph
+                        HostManager
                         Importer
-                        Optimizer
-                        ThreadPool)
+                        Optimizer)
 
 target_link_libraries(onnxifi-glow
                       PUBLIC
                         Backends
-                        ExecutionEngine
                         Graph
+                        HostManager
                         Importer
-                        Optimizer
-                        ThreadPool)
+                        Optimizer)
 
 target_compile_definitions(onnxifi-glow
                            PRIVATE
