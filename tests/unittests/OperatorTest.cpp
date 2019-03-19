@@ -2491,52 +2491,93 @@ TEST_P(OperatorTest, concatVectors_Float16) {
   testConcatVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
-/// Check that concatenating two tensors repeatedly is correct. This is
-/// intended to verify that IRGen to InsertTensor instructions with axis/count
-/// works correctly.
-TEST_P(OperatorTest, concatVectorsRepeated) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+/// Helper to test ConcatVectorsRepeated using \p DTy.
+template <typename DataType>
+static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
+                                      glow::Module &mod, glow::Function *F,
+                                      glow::ExecutionEngine &EE, ElemKind DTy) {
+  F->setName("concatVectors");
 
-  F_->setName("concatVectors");
-
-  auto *V1 = mod_.createPlaceholder(ElemKind::Int64ITy, {10}, "V1", false);
-  auto *V2 = mod_.createPlaceholder(ElemKind::Int64ITy, {20}, "V2", false);
-  bindings_.allocate(V1);
-  bindings_.allocate(V2);
+  auto *V1 = isQuantizedElemKind(DTy)
+                 ? mod.createPlaceholder(DTy, {10}, 1.0, 0, "V1", false)
+                 : mod.createPlaceholder(DTy, {10}, "V1", false);
+  auto *V2 = isQuantizedElemKind(DTy)
+                 ? mod.createPlaceholder(DTy, {20}, 1.0, 0, "V2", false)
+                 : mod.createPlaceholder(DTy, {20}, "V2", false);
+  bindings.allocate(V1);
+  bindings.allocate(V2);
 
   // Alternate adding sequences of V1 and V2, so that the IRGen'd
   // InsertTensors have different counts.
-  Node *L = F_->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
-  auto *result = F_->createSave("ret", L);
-  bindings_.allocate(result->getPlaceholder());
+  Node *L = F->createConcat("concat", {V2, V1, V1, V1, V2, V2, V1, V1, V2}, 0);
+  auto *result = F->createSave("ret", L);
+  bindings.allocate(result->getPlaceholder());
 
-  Tensor I1(ElemKind::Int64ITy, {10});
-  Tensor I2(ElemKind::Int64ITy, {20});
-
+  auto I1 =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {10}, 1.0, 0) : Tensor(DTy, {10});
+  auto I2 =
+      isQuantizedElemKind(DTy) ? Tensor(DTy, {20}, 1.0, 0) : Tensor(DTy, {20});
+  auto I1H = I1.getHandle<DataType>();
+  auto I2H = I2.getHandle<DataType>();
   for (size_t i = 0; i < 10; i++) {
-    I1.getHandle<int64_t>().at({i}) = 1;
+    I1H.at({i}) = 1;
 
-    I2.getHandle<int64_t>().at({i}) = 2;
-    I2.getHandle<int64_t>().at({i + 10}) = 2;
+    I2H.at({i}) = 2;
+    I2H.at({i + 10}) = 2;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
   // Testing the output vector.
-  updateInputPlaceholders(bindings_, {V1, V2}, {&I1, &I2});
-  EE_.run(bindings_);
+  updateInputPlaceholders(bindings, {V1, V2}, {&I1, &I2});
+  EE.run(bindings);
 
-  auto outH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto outH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
 
   // Simply verify here that the values are in their correct places, based on
   // the number of times/order V1 and V2 are concatenated and their sizes.
   for (size_t i = 0; i < 130; i++) {
     if ((i < 20) || (i >= 50 && i < 90) || (i >= 110)) {
-      EXPECT_EQ(outH.at({i}), 2);
+      EXPECT_EQ(outH.at({i}), static_cast<DataType>(2));
     } else {
-      EXPECT_EQ(outH.at({i}), 1);
+      EXPECT_EQ(outH.at({i}), static_cast<DataType>(1));
     }
   }
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing Int64ITy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectorsRepeated<int64_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::Int64ITy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing Int8QTy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectorsRepeated<int8_t>(bindings_, mod_, F_, EE_,
+                                    ElemKind::Int8QTy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing FloatTy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testConcatVectorsRepeated<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing Float16Ty data.
+TEST_P(OperatorTest, concatVectorsRepeated_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectorsRepeated<float16_t>(bindings_, mod_, F_, EE_,
+                                       ElemKind::Float16Ty);
 }
 
 /// Helper to test SliceVectors using \p DTy.
