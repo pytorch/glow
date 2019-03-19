@@ -106,3 +106,6 @@ target_link_libraries(CPUDeviceManager
                         IR
                         Optimizer
                         ThreadPool)
+
+set(linked_factories ${linked_factories} CPUFactory PARENT_SCOPE)
+set(linked_device_managers ${linked_device_managers} CPUDeviceManager PARENT_SCOPE)

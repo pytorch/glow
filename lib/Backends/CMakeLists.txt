@@ -1,20 +1,16 @@
-add_subdirectory(Interpreter)
-
-LIST(APPEND linked_device_managers InterpreterDeviceManager)
-LIST(APPEND linked_factories InterpreterFactory)
-
-if(GLOW_WITH_OPENCL)
-  add_subdirectory(OpenCL)
-  LIST(APPEND linked_factories OpenCLFactory)
-  LIST(APPEND linked_device_managers OpenCLDeviceManager)
-endif()
-
-
-if(GLOW_WITH_CPU)
-  add_subdirectory(CPU)
-  LIST(APPEND linked_factories CPUFactory)
-  LIST(APPEND linked_device_managers CPUDeviceManager)
-endif()
+# Iterate all subdirectories and check whether
+# particular backend is enabled.
+FILE(GLOB subdirs RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(object ${subdirs})
+  if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${object})
+    set(backendEnabled GLOW_WITH_${object})
+    string(TOUPPER ${backendEnabled} backendEnabled)
+    if(NOT DEFINED ${backendEnabled} OR ${backendEnabled})
+      message("Adding ${object} backend.")
+      add_subdirectory(${object})
+    endif()
+  endif()
+endforeach()
 
 add_library(Backend
               Backend.cpp
