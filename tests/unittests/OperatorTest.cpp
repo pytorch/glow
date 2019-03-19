@@ -2572,46 +2572,51 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
   testSliceVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
-TEST_P(OperatorTest, sliceConcatVectors) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+/// Helper to test SliceConcatVectors using \p DTy.
+template <typename DataType>
+static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+  F->setName("sliceConcatVectors");
 
-  F_->setName("sliceConcatVectors");
+  auto *V = isQuantizedElemKind(DTy)
+                ? mod.createPlaceholder(DTy, {5, 4}, 1.0, 0, "V", false)
+                : mod.createPlaceholder(DTy, {5, 4}, "V", false);
+  bindings.allocate(V);
 
-  auto *V = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 4}, "V", false);
-  bindings_.allocate(V);
-
-  Tensor I(ElemKind::Int64ITy, {5, 4});
+  auto I = isQuantizedElemKind(DTy) ? Tensor(DTy, {5, 4}, 1.0, 0)
+                                    : Tensor(DTy, {5, 4});
+  auto IH = I.getHandle<DataType>();
   for (size_t i = 0; i < 5; i++) {
     for (size_t j = 0; j < 4; j++) {
-      I.getHandle<int64_t>().at({i, j}) = i * 100 + j;
+      IH.at({i, j}) = i * 10 + j;
     }
   }
 
-  Node *S0 = F_->createSlice("slice0", V, {1, 0}, {5, 4});
-  Node *S1 = F_->createSlice("slice1", S0, {0, 0}, {2, 4});
-  Node *S2 = F_->createSlice("slice2", S0, {2, 0}, {4, 4});
-  Node *S3 = F_->createSlice("slice3", S0, {0, 0}, {2, 2});
-  Node *S4 = F_->createSlice("slice4", S0, {2, 2}, {4, 4});
-  Node *S5 = F_->createSlice("slice5", V, {0, 0}, {1, 4});
+  Node *S0 = F->createSlice("slice0", V, {1, 0}, {5, 4});
+  Node *S1 = F->createSlice("slice1", S0, {0, 0}, {2, 4});
+  Node *S2 = F->createSlice("slice2", S0, {2, 0}, {4, 4});
+  Node *S3 = F->createSlice("slice3", S0, {0, 0}, {2, 2});
+  Node *S4 = F->createSlice("slice4", S0, {2, 2}, {4, 4});
+  Node *S5 = F->createSlice("slice5", V, {0, 0}, {1, 4});
 
-  Node *C0 = F_->createConcat("concat0", {S5, S1}, 0);
-  Node *C1 = F_->createConcat("concat1", {S3, S4}, 1);
-  Node *C2 = F_->createConcat("concat2", {S2, C1, C0}, 0);
+  Node *C0 = F->createConcat("concat0", {S5, S1}, 0);
+  Node *C1 = F->createConcat("concat1", {S3, S4}, 1);
+  Node *C2 = F->createConcat("concat2", {S2, C1, C0}, 0);
 
-  auto *result = F_->createSave("ret", C2);
-  bindings_.allocate(result->getPlaceholder());
+  auto *result = F->createSave("ret", C2);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(bindings_, {V}, {&I});
-  EE_.run(bindings_);
+  updateInputPlaceholders(bindings, {V}, {&I});
+  EE.run(bindings);
 
-  const size_t expected[7][4] = {{300, 301, 302, 303}, {400, 401, 402, 403},
-                                 {100, 101, 302, 303}, {200, 201, 402, 403},
-                                 {0, 1, 2, 3},         {100, 101, 102, 103},
-                                 {200, 201, 202, 203}};
+  const DataType expected[7][4] = {
+      {30, 31, 32, 33}, {40, 41, 42, 43}, {10, 11, 32, 33}, {20, 21, 42, 43},
+      {0, 1, 2, 3},     {10, 11, 12, 13}, {20, 21, 22, 23}};
 
-  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
   EXPECT_EQ(7, resultH.dims()[0]);
   EXPECT_EQ(4, resultH.dims()[1]);
   for (size_t i = 0; i < 7; i++) {
@@ -2619,6 +2624,31 @@ TEST_P(OperatorTest, sliceConcatVectors) {
       EXPECT_EQ(resultH.at({i, j}), expected[i][j]);
     }
   }
+}
+
+/// Test a combination of slicing and concating, in Int64ITy.
+TEST_P(OperatorTest, sliceConcatVectors_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test a combination of slicing and concating, in Int8QTy.
+TEST_P(OperatorTest, sliceConcatVectors_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Test a combination of slicing and concating, in FloatTy.
+TEST_P(OperatorTest, sliceConcatVectors_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceConcatVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test a combination of slicing and concating, in Float16Ty.
+TEST_P(OperatorTest, sliceConcatVectors_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceConcatVectors<float16_t>(bindings_, mod_, F_, EE_,
+                                    ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Tile) {
