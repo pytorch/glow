@@ -173,11 +173,44 @@ TEST_P(OperatorTest, log) {
   }
 }
 
-TEST_P(OperatorTest, logit) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
-  auto eps = 1E-6f;                // the default in Caffe2
+/// Helper to test Logit using \p DTy.
+template <typename DataType>
+static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy, float allowedError) {
+  constexpr auto eps = 1E-6f;      // the default in Caffe2
   constexpr std::size_t size = 10; // sample size for randomized tests
+
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  // generate the input data in (0.0f, 1.0f) (probabilites including degenerate
+  // cases) and test that afterward the input data is clamped in
+  // (eps, 1 - eps) as in Caffe2.
+  bindings.allocate(input)->getHandle<DataType>().randomize(0.0f, 1.0f,
+                                                            mod.getPRNG());
+
+  auto *logitDiff = F->createLogit("logitDiff", input, eps);
+  auto *saveDiff = F->createSave("saveDiff", logitDiff);
+  bindings.allocate(saveDiff->getPlaceholder());
+
+  // property: zero-sum for the log-odds for complementary events probabilities
+  // i.e., logit(p) + logit(1 - p) == 0
+  Node *const1 = F->createSplat("const1", input->getType(), 1.0);
+  Node *complInput = F->createSub("sub", const1, input);
+  Node *logitCompl = F->createLogit("logitCompl", complInput, eps);
+  auto *saveCompl = F->createSave("saveCompl", logitCompl);
+  bindings.allocate(saveCompl->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  // results: differential test against the oracle
+  auto resultDiffH =
+      bindings.get(saveDiff->getPlaceholder())->getHandle<DataType>();
+  auto inputH = bindings.get(input)->getHandle<DataType>();
+
+  // results: zero-sum property
+  auto resultComplH =
+      bindings.get(saveCompl->getPlaceholder())->getHandle<DataType>();
 
   // differential test:
   // ensure we match an oracle `logit_test` (a C++ reimplementation test)
@@ -189,48 +222,31 @@ TEST_P(OperatorTest, logit) {
     return std::log(p / (1.0f - p));
   };
 
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  // generate the input data in (0.0f, 1.0f) (probabilites including degenerate
-  // cases) and test that afterward the input data is clamped in
-  // (eps, 1 - eps) as in Caffe2.
-  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
-
-  auto *logitDiff = F_->createLogit("logitDiff", input, eps);
-  auto *saveDiff = F_->createSave("saveDiff", logitDiff);
-  bindings_.allocate(saveDiff->getPlaceholder());
-
-  // property: zero-sum for the log-odds for complementary events probabilities
-  // i.e., logit(p) + logit(1 - p) == 0
-  Node *const1 = F_->createSplat("const1", input->getType(), 1.0);
-  Node *complInput = F_->createSub("sub", const1, input);
-  Node *logitCompl = F_->createLogit("logitCompl", complInput, eps);
-  auto *saveCompl = F_->createSave("saveCompl", logitCompl);
-  bindings_.allocate(saveCompl->getPlaceholder());
-
   // property: the logit function is the right-inverse of the logistic function
   // i.e., logistic(logit(p)) == p
   auto logistic_test = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
-  // results: differential test against the oracle
-  auto resultDiffH = bindings_.get(saveDiff->getPlaceholder())->getHandle();
-  auto inputH = bindings_.get(input)->getHandle();
-
-  // results: zero-sum property
-  auto resultComplH = bindings_.get(saveCompl->getPlaceholder())->getHandle();
-
   for (std::size_t i = 0; i != size; ++i) {
     // differential test against the oracle
-    EXPECT_NEAR(resultDiffH.at({i}), logit_test(inputH.at({i})), 1E-5);
+    EXPECT_NEAR(resultDiffH.at({i}), logit_test(inputH.at({i})), allowedError);
     // zero-sum property
-    EXPECT_NEAR(resultComplH.at({i}) + resultDiffH.at({i}), 0.0f, 1E-5);
+    EXPECT_NEAR(resultComplH.at({i}) + resultDiffH.at({i}), 0.0f, allowedError);
     // right-inverse property
     EXPECT_NEAR(logistic_test(resultDiffH.at({i})),
-                clamp_test(inputH.at({i}), eps, 1.0f - eps), 1E-5);
+                clamp_test(inputH.at({i}), eps, 1.0f - eps), allowedError);
   }
+}
+
+/// Test the Logit operator using FloatTy.
+TEST_P(OperatorTest, Logit_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testLogit<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-5);
+}
+
+/// Test the Logit operator using Float16Ty.
+TEST_P(OperatorTest, Logit_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
 TEST_P(OperatorTest, CmpEQ) {
