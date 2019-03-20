@@ -1647,11 +1647,16 @@ Function::createQuantizationProfile(PlaceholderBindings &bindings,
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = getParent()->createPlaceholder(
+  auto *computationInfoPH = getParent()->createPlaceholder(
       ElemKind::FloatTy, {2}, "CI_" + name.str(), false);
-  bindings.allocate(computationInfo);
+  bindings.allocate(computationInfoPH);
+  auto *computationInfoTensor = bindings.get(computationInfoPH);
+  auto handle = computationInfoTensor->getHandle<float>();
+  handle.raw(0) = std::numeric_limits<float>::max();
+  handle.raw(1) = std::numeric_limits<float>::lowest();
+
   return addNode(new QuantizationProfileNode(
-      "QI_" + name.str(), input, histogram, computationInfo,
+      "QI_" + name.str(), input, histogram, computationInfoPH,
       input.getNode()->getName().str(), input.getResNo()));
 }
 
