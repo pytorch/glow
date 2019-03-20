@@ -5962,31 +5962,32 @@ TEST_P(OperatorTest, elementwiseLinear) {
   }
 }
 
-// Test a DotProduct operator with 2D inputs.
-TEST_P(OperatorTest, dotProduct2D) {
-  ENABLED_BACKENDS(Interpreter, CPU);
-
+/// Helper to test DotProduct2D using \p DTy.
+template <typename DataType>
+static void testDotProduct2D(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy) {
   // Input tensors.
   constexpr std::size_t kRows = 10;
-  constexpr std::size_t kCols = 20;
-  auto *X =
-      mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "X", false);
-  auto *Y =
-      mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "Y", false);
-  auto XH = bindings_.allocate(X)->getHandle();
-  auto YH = bindings_.allocate(Y)->getHandle();
+  constexpr std::size_t kCols = 14;
+  auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kRows, kCols},
+                                                    "X", false);
+  auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kRows, kCols},
+                                                    "Y", false);
+  auto XH = bindings.allocate(X)->getHandle<DataType>();
+  auto YH = bindings.allocate(Y)->getHandle<DataType>();
 
   // Fill inputs with random values.
-  XH.randomize(-3.0, 3.0, mod_.getPRNG());
-  YH.randomize(-3.0, 3.0, mod_.getPRNG());
+  XH.randomize(-3.0, 3.0, mod.getPRNG());
+  YH.randomize(-3.0, 3.0, mod.getPRNG());
 
   // Compute expected output.
-  auto *expected =
-      mod_.createPlaceholder(ElemKind::FloatTy, {kRows}, "expected", false);
-  auto expectedH = bindings_.allocate(expected)->getHandle();
+  auto *expected = createPlaceholderConditionallyQuantized(mod, DTy, {kRows},
+                                                           "expected", false);
+  auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
 
   for (std::size_t i = 0; i < kRows; ++i) {
-    auto dotProduct = 0.0f;
+    DataType dotProduct = 0.0f;
 
     // Compute dot product of the i-th row of X and Y.
     for (std::size_t j = 0; j < kCols; ++j) {
@@ -5997,20 +5998,38 @@ TEST_P(OperatorTest, dotProduct2D) {
   }
 
   // Compile and run the model.
-  auto *dotProduct = F_->createDotProduct("prod", X, Y);
-  auto *result = F_->createSave("save", dotProduct);
-  bindings_.allocate(result->getPlaceholder());
+  auto *dotProduct = F->createDotProduct("prod", X, Y);
+  auto *result = F->createSave("save", dotProduct);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto actualH = bindings_.get(result->getPlaceholder())->getHandle();
+  auto actualH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
 
   // Check that the output tensor is the same as the expected output.
   EXPECT_EQ(actualH.size(), expectedH.size());
   for (std::size_t i = 0; i < actualH.size(); ++i) {
     EXPECT_NEAR(actualH.raw(i), expectedH.raw(i), 0.00001);
   }
+}
+
+// Test a DotProduct operator with 2D inputs, using FloatTy.
+TEST_P(OperatorTest, dotProduct2D_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testDotProduct2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+// Test a DotProduct operator with 2D inputs, using Float16Ty.
+TEST_P(OperatorTest, dotProduct2D_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testDotProduct2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+// Test a DotProduct operator with 2D inputs, using Int8QTy.
+TEST_P(OperatorTest, dotProduct2D_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testDotProduct2D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Helper to test BatchBoxCox using \p DTy.
