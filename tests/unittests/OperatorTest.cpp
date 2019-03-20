@@ -39,6 +39,31 @@ protected:
 
 INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(OperatorTest, OperatorTest);
 
+/// Helper to create a Placeholder; if \p T is quantized, then it will include a
+/// dummy scale and offset, otherwise it will not.
+static Placeholder *createPlaceholderConditionallyQuantized(
+    Module &mod, ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+    bool isTrainable) {
+  return isQuantizedElemKind(T)
+             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable)
+             : mod.createPlaceholder(T, dims, name, isTrainable);
+}
+
+/// Helper to get a unique Type; if \p T is quantized, then it will include a
+/// dummy scale and offset, otherwise it will not.
+static TypeRef uniqueTypeConditionallyQuantized(Module &mod, ElemKind T,
+                                                llvm::ArrayRef<size_t> dims) {
+  return isQuantizedElemKind(T) ? mod.uniqueType(T, dims, 1.0, 0)
+                                : mod.uniqueType(T, dims);
+}
+
+/// Helper to create a Tensor; if \p T is quantized, then it will include a
+/// dummy scale and offset, otherwise it will not.
+static Tensor createTensorConditionallyQuantized(ElemKind T,
+                                                 llvm::ArrayRef<size_t> dims) {
+  return isQuantizedElemKind(T) ? Tensor(T, dims, 1.0, 0) : Tensor(T, dims);
+}
+
 TEST_P(OperatorTest, pow) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);
@@ -398,15 +423,11 @@ static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
                                            glow::Module &mod, glow::Function *F,
                                            glow::ExecutionEngine &EE,
                                            ElemKind DTy) {
-  auto *batch =
-      isQuantizedElemKind(DTy)
-          ? mod.createPlaceholder(DTy, {4}, 1.0, 0, "batch",
-                                  /* isTrainable */ false)
-          : mod.createPlaceholder(DTy, {4}, "batch", /* isTrainable */ false);
+  auto *batch = createPlaceholderConditionallyQuantized(
+      mod, DTy, {4}, "batch", /* isTrainable */ false);
   bindings.allocate(batch)->getHandle<DataType>() = {2, 4, 6, 8};
 
-  auto OT = isQuantizedElemKind(DTy) ? mod.uniqueType(DTy, {}, 1.0, 0)
-                                     : mod.uniqueType(DTy, {});
+  auto OT = uniqueTypeConditionallyQuantized(mod, DTy, {});
   auto *RA = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 0);
   auto *RM = F->createBatchedReduceMean("reduce.mean", OT, batch, /* axis */ 0);
   auto *saveRA = F->createSave("saveRA", RA);
@@ -454,15 +475,12 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
                                          glow::Module &mod, glow::Function *F,
                                          glow::ExecutionEngine &EE,
                                          ElemKind DTy) {
-  auto *batch =
-      isQuantizedElemKind(DTy)
-          ? mod.createPlaceholder(DTy, {2, 3, 2}, 1.0, 0, "batch", false)
-          : mod.createPlaceholder(DTy, {2, 3, 2}, "batch", false);
+  auto *batch = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2},
+                                                        "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {0, 1, 2, 3, 4,  5,
                                                      6, 7, 8, 9, 10, 11};
 
-  auto OT = isQuantizedElemKind(DTy) ? mod.uniqueType(DTy, {2, 2}, 1.0, 0)
-                                     : mod.uniqueType(DTy, {2, 2});
+  auto OT = uniqueTypeConditionallyQuantized(mod, DTy, {2, 2});
   auto *R = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 1);
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
@@ -470,8 +488,7 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto expected = isQuantizedElemKind(DTy) ? Tensor(DTy, {2, 2}, 1.0, 0)
-                                           : Tensor(DTy, {2, 2});
+  auto expected = createTensorConditionallyQuantized(DTy, {2, 2});
   expected.getHandle<DataType>() = {6, 9, 24, 27};
   EXPECT_TRUE(result->isEqual(expected));
 }
@@ -1401,9 +1418,8 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
     OUTPUT = [1, 3, 4, 5, 6]
     LENGTHS = [3, 2]
   */
-  auto *data = isQuantizedElemKind(DTy)
-                   ? mod_.createPlaceholder(DTy, {6}, 1.0, 0, "data", false)
-                   : mod_.createPlaceholder(DTy, {6}, "data", false);
+  auto *data =
+      createPlaceholderConditionallyQuantized(mod_, DTy, {6}, "data", false);
   auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
 
   bindings_.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4, 5, 6};
@@ -1421,8 +1437,7 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(bindings_);
 
-  auto expectedOutputT =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {5}, 1.0, 0) : Tensor(DTy, {5});
+  auto expectedOutputT = createTensorConditionallyQuantized(DTy, {5});
   expectedOutputT.getHandle<DataType>() = {1, 3, 4, 5, 6};
   EXPECT_TRUE(outputT->isEqual(expectedOutputT));
 
@@ -1534,9 +1549,7 @@ static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
                                glow::Module &mod, glow::Function *F,
                                glow::ExecutionEngine &EE, ElemKind DTy) {
   constexpr size_t dims[] = {20, 13, 7};
-  auto *A = isQuantizedElemKind(DTy)
-                ? mod.createPlaceholder(DTy, dims, 1.0, 0, "A", false)
-                : mod.createPlaceholder(DTy, dims, "A", false);
+  auto *A = createPlaceholderConditionallyQuantized(mod, DTy, dims, "A", false);
   bindings.allocate(A)->getHandle<DataType>().randomize(-3.0, 3.0,
                                                         mod.getPRNG());
 
@@ -1571,13 +1584,9 @@ static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   for (int i = 0; i < 6; ++i) {
-    auto dest = isQuantizedElemKind(DTy)
-                    ? Tensor(DTy,
-                             {dims[shuffles[i][0]], dims[shuffles[i][1]],
-                              dims[shuffles[i][2]]},
-                             1.0, 0)
-                    : Tensor(DTy, {dims[shuffles[i][0]], dims[shuffles[i][1]],
-                                   dims[shuffles[i][2]]});
+    auto dest = createTensorConditionallyQuantized(
+        DTy,
+        {dims[shuffles[i][0]], dims[shuffles[i][1]], dims[shuffles[i][2]]});
     bindings.get(A)->transpose(&dest, shuffles[i]);
     EXPECT_TRUE(
         bindings.get(savedTransposes[i]->getPlaceholder())->isEqual(dest));
@@ -2519,15 +2528,12 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
                               glow::ExecutionEngine &EE, ElemKind DTy) {
   F->setName("concatVectors");
 
-  auto *V1 = isQuantizedElemKind(DTy)
-                 ? mod.createPlaceholder(DTy, {10}, 1.0, 0, "V1", false)
-                 : mod.createPlaceholder(DTy, {10}, "V1", false);
-  auto *V2 = isQuantizedElemKind(DTy)
-                 ? mod.createPlaceholder(DTy, {20}, 1.0, 0, "V2", false)
-                 : mod.createPlaceholder(DTy, {20}, "V2", false);
-  auto *V3 = isQuantizedElemKind(DTy)
-                 ? mod.createPlaceholder(DTy, {30}, 1.0, 0, "V3", false)
-                 : mod.createPlaceholder(DTy, {30}, "V3", false);
+  auto *V1 =
+      createPlaceholderConditionallyQuantized(mod, DTy, {10}, "V1", false);
+  auto *V2 =
+      createPlaceholderConditionallyQuantized(mod, DTy, {20}, "V2", false);
+  auto *V3 =
+      createPlaceholderConditionallyQuantized(mod, DTy, {30}, "V3", false);
 
   bindings.allocate(V1);
   bindings.allocate(V2);
@@ -2537,12 +2543,9 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("ret", L);
   bindings.allocate(result->getPlaceholder());
 
-  auto I1 =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {10}, 1.0, 0) : Tensor(DTy, {10});
-  auto I2 =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {20}, 1.0, 0) : Tensor(DTy, {20});
-  auto I3 =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {30}, 1.0, 0) : Tensor(DTy, {30});
+  auto I1 = createTensorConditionallyQuantized(DTy, {10});
+  auto I2 = createTensorConditionallyQuantized(DTy, {20});
+  auto I3 = createTensorConditionallyQuantized(DTy, {30});
 
   for (size_t i = 0; i < 10; i++) {
     I1.getHandle<DataType>().at({i}) = i;
@@ -2599,12 +2602,10 @@ static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
                                       glow::ExecutionEngine &EE, ElemKind DTy) {
   F->setName("concatVectors");
 
-  auto *V1 = isQuantizedElemKind(DTy)
-                 ? mod.createPlaceholder(DTy, {10}, 1.0, 0, "V1", false)
-                 : mod.createPlaceholder(DTy, {10}, "V1", false);
-  auto *V2 = isQuantizedElemKind(DTy)
-                 ? mod.createPlaceholder(DTy, {20}, 1.0, 0, "V2", false)
-                 : mod.createPlaceholder(DTy, {20}, "V2", false);
+  auto *V1 =
+      createPlaceholderConditionallyQuantized(mod, DTy, {10}, "V1", false);
+  auto *V2 =
+      createPlaceholderConditionallyQuantized(mod, DTy, {20}, "V2", false);
   bindings.allocate(V1);
   bindings.allocate(V2);
 
@@ -2614,10 +2615,8 @@ static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("ret", L);
   bindings.allocate(result->getPlaceholder());
 
-  auto I1 =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {10}, 1.0, 0) : Tensor(DTy, {10});
-  auto I2 =
-      isQuantizedElemKind(DTy) ? Tensor(DTy, {20}, 1.0, 0) : Tensor(DTy, {20});
+  auto I1 = createTensorConditionallyQuantized(DTy, {10});
+  auto I2 = createTensorConditionallyQuantized(DTy, {20});
   auto I1H = I1.getHandle<DataType>();
   auto I2H = I2.getHandle<DataType>();
   for (size_t i = 0; i < 10; i++) {
@@ -2688,9 +2687,8 @@ static void testSliceVectors(glow::PlaceholderBindings &bindings,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
   F->setName("sliceVectors");
 
-  auto *V = isQuantizedElemKind(DTy)
-                ? mod.createPlaceholder(DTy, {3, 30}, 1.0, 0, "V", false)
-                : mod.createPlaceholder(DTy, {3, 30}, "V", false);
+  auto *V =
+      createPlaceholderConditionallyQuantized(mod, DTy, {3, 30}, "V", false);
   bindings.allocate(V);
 
   Node *S1 = F->createSlice("slice1", V, {0, 10}, {3, 13});
@@ -2705,8 +2703,7 @@ static void testSliceVectors(glow::PlaceholderBindings &bindings,
   bindings.allocate(result2->getPlaceholder());
   bindings.allocate(result3->getPlaceholder());
 
-  auto I = isQuantizedElemKind(DTy) ? Tensor(DTy, {3, 30}, 1.0, 0)
-                                    : Tensor(DTy, {3, 30});
+  auto I = createTensorConditionallyQuantized(DTy, {3, 30});
   auto IH = I.getHandle<DataType>();
   for (size_t j = 0; j < 30; j++) {
     IH.at({0, j}) = j;
@@ -2774,13 +2771,11 @@ static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
                                    glow::ExecutionEngine &EE, ElemKind DTy) {
   F->setName("sliceConcatVectors");
 
-  auto *V = isQuantizedElemKind(DTy)
-                ? mod.createPlaceholder(DTy, {5, 4}, 1.0, 0, "V", false)
-                : mod.createPlaceholder(DTy, {5, 4}, "V", false);
+  auto *V =
+      createPlaceholderConditionallyQuantized(mod, DTy, {5, 4}, "V", false);
   bindings.allocate(V);
 
-  auto I = isQuantizedElemKind(DTy) ? Tensor(DTy, {5, 4}, 1.0, 0)
-                                    : Tensor(DTy, {5, 4});
+  auto I = createTensorConditionallyQuantized(DTy, {5, 4});
   auto IH = I.getHandle<DataType>();
   for (size_t i = 0; i < 5; i++) {
     for (size_t j = 0; j < 4; j++) {
@@ -3181,10 +3176,8 @@ template <typename DataType>
 static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
                       glow::Function *F, glow::ExecutionEngine &EE,
                       ElemKind DTy) {
-  auto *inputs =
-      isQuantizedElemKind(DTy)
-          ? mod.createPlaceholder(DTy, {1, 2, 6}, 1.0, 0, "inputs", false)
-          : mod.createPlaceholder(DTy, {1, 2, 6}, "inputs", false);
+  auto *inputs = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 6},
+                                                         "inputs", false);
   bindings.allocate(inputs)->getHandle<DataType>() = {1, 2, 3, 4,  5,  6,
                                                       7, 8, 9, 10, 11, 12};
 
@@ -3207,23 +3200,19 @@ static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  Tensor expected1 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 3}, 1.0, 0)
-                                              : Tensor(DTy, {1, 2, 3});
+  Tensor expected1 = createTensorConditionallyQuantized(DTy, {1, 2, 3});
   expected1.getHandle<DataType>() = {1, 2, 3, 7, 8, 9};
   EXPECT_TRUE(result1->isEqual(expected1));
 
-  Tensor expected2 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 3}, 1.0, 0)
-                                              : Tensor(DTy, {1, 2, 3});
+  Tensor expected2 = createTensorConditionallyQuantized(DTy, {1, 2, 3});
   expected2.getHandle<DataType>() = {4, 5, 6, 10, 11, 12};
   EXPECT_TRUE(result2->isEqual(expected2));
 
-  Tensor expected3 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 2}, 1.0, 0)
-                                              : Tensor(DTy, {1, 2, 2});
+  Tensor expected3 = createTensorConditionallyQuantized(DTy, {1, 2, 2});
   expected3.getHandle<DataType>() = {1, 2, 7, 8};
   EXPECT_TRUE(result3->isEqual(expected3));
 
-  Tensor expected4 = isQuantizedElemKind(DTy) ? Tensor(DTy, {1, 2, 4}, 1.0, 0)
-                                              : Tensor(DTy, {1, 2, 4});
+  Tensor expected4 = createTensorConditionallyQuantized(DTy, {1, 2, 4});
   expected4.getHandle<DataType>() = {3, 4, 5, 6, 9, 10, 11, 12};
   EXPECT_TRUE(result4->isEqual(expected4));
 }
@@ -5221,9 +5210,8 @@ template <typename DataType>
 static void testSliceReshape(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
-  auto *X = isQuantizedElemKind(DTy)
-                ? mod.createPlaceholder(DTy, {3, 3}, 1.0, 0, "X", false)
-                : mod.createPlaceholder(DTy, {3, 3}, "X", false);
+  auto *X =
+      createPlaceholderConditionallyQuantized(mod, DTy, {3, 3}, "X", false);
 
   auto XH = bindings.allocate(X)->getHandle<DataType>();
   for (size_t i = 0; i < 3; i++) {
@@ -5737,14 +5725,12 @@ void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
     VALUES = [5, 0, 11, 0, 5, 0]
     OUTPUT =  [[1, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0], [0, 1, 0, 1, 1, 0]]
   */
-  auto *data = isQuantizedElemKind(DTy)
-                   ? mod.createPlaceholder(DTy, {3, 2}, 1.0, 0, "data", false)
-                   : mod.createPlaceholder(DTy, {3, 2}, "data", false);
+  auto *data =
+      createPlaceholderConditionallyQuantized(mod, DTy, {3, 2}, "data", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
-  auto *values = isQuantizedElemKind(DTy)
-                     ? mod.createPlaceholder(DTy, {6}, 1.0, 0, "values", false)
-                     : mod.createPlaceholder(DTy, {6}, "values", false);
+  auto *values =
+      createPlaceholderConditionallyQuantized(mod, DTy, {6}, "values", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {5, 0, 11, 3, 0, 5};
   bindings.allocate(lengths)->getHandle<int32_t>() = {4, 2};
@@ -5758,8 +5744,7 @@ void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
-  auto expected = isQuantizedElemKind(DTy) ? Tensor(DTy, {3, 6}, 1.0, 0)
-                                           : Tensor(DTy, {3, 6});
+  auto expected = createTensorConditionallyQuantized(DTy, {3, 6});
   expected.getHandle<DataType>() = {
       1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
   };
