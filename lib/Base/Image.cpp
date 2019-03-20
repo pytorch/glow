@@ -401,7 +401,7 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                                    ImageLayout imageLayout) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
-  unsigned numImages = filenames.size();
+  size_t numImages = filenames.size();
 
   // Get image dimensions and check if grayscale or color.
   size_t imgHeight;
