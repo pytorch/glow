@@ -1819,41 +1819,72 @@ TEST_P(OperatorTest, ScatterAssignQuantized) {
   EXPECT_NEAR(H.at({4, 1}), 10.0, 0.05);
 }
 
-// Note: Add only currently supports int8_t as quantized type.
-static FunctionTensorPair
-createAndInitBasicAddTest(glow::PlaceholderBindings &bindings,
-                          glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+#define COMPARE_ARITH_FUN(_OP_NAME_)                                           \
+  static FunctionTensorPair createAndInitBasic##_OP_NAME_##Test(               \
+      glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE) {        \
+    auto &mod = EE.getModule();                                                \
+    Function *F = mod.createFunction("main");                                  \
+                                                                               \
+    auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);    \
+    auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);    \
+    bindings.allocate(A)->getHandle() = {1.0f, -1.2f, 0.5f, -1.3f};            \
+    bindings.allocate(B)->getHandle() = {1.8f, -0.2f, -2.4f, 2.7f};            \
+                                                                               \
+    auto *add = F->create##_OP_NAME_("arith", A, B);                           \
+    auto *result = F->createSave("save", add);                                 \
+    auto *resultTensor = bindings.allocate(result->getPlaceholder());          \
+                                                                               \
+    return std::make_pair(F, resultTensor);                                    \
+  }
+COMPARE_ARITH_FUN(Add)
+COMPARE_ARITH_FUN(Sub)
+COMPARE_ARITH_FUN(Mul)
+COMPARE_ARITH_FUN(Div)
+COMPARE_ARITH_FUN(Max)
+COMPARE_ARITH_FUN(Min)
+#undef COMPARE_ARITH_FUN
 
-  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
-  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
-  bindings.allocate(A)->getHandle() = {1, 1.2f, 0.5f, 1.3f};
-  bindings.allocate(B)->getHandle() = {1.8f, 5.2f, 3.5f, 2.7f};
+#define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_, ...)                            \
+  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
+    ENABLED_BACKENDS(__VA_ARGS__);                                             \
+    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
+                              ElemKind::FloatTy, ElemKind::Int8QTy, 0.02f);    \
+  }
+COMPARE_ARITH_FLOAT_VS_INT8(Add, Interpreter, CPU, OpenCL)
+COMPARE_ARITH_FLOAT_VS_INT8(Sub, Interpreter, CPU, OpenCL)
+COMPARE_ARITH_FLOAT_VS_INT8(Mul, Interpreter, CPU, OpenCL)
+COMPARE_ARITH_FLOAT_VS_INT8(Div, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT8(Max, Interpreter, CPU, OpenCL)
+COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
+#undef COMPARE_ARITH_FLOAT_VS_INT8
 
-  auto *add = F->createAdd("add", A, B);
-  auto *result = F->createSave("save", add);
-  auto *resultTensor = bindings.allocate(result->getPlaceholder());
+#define COMPARE_ARITH_FLOAT_VS_INT16(_OP_NAME_, ...)                           \
+  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt16) {           \
+    ENABLED_BACKENDS(__VA_ARGS__);                                             \
+    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
+                              ElemKind::FloatTy, ElemKind::Int16QTy, 0.02f);   \
+  }
+COMPARE_ARITH_FLOAT_VS_INT16(Add, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT16(Sub, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT16(Mul, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT16(Div, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT16(Max, Interpreter)
+COMPARE_ARITH_FLOAT_VS_INT16(Min, Interpreter)
+#undef COMPARE_ARITH_FLOAT_VS_INT16
 
-  return std::make_pair(F, resultTensor);
-}
-
-TEST_P(OperatorStatelessTest, BasicAddNetFloatVsInt8) {
-  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.02f);
-}
-
-TEST_P(OperatorStatelessTest, BasicAddNetFloat16VsInt8) {
-  ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
-                            ElemKind::Float16Ty, ElemKind::Int8QTy, 0.02f);
-}
-
-TEST_P(OperatorStatelessTest, BasicAddNetFloatVsInt16) {
-  ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicAddTest,
-                            ElemKind::FloatTy, ElemKind::Int16QTy, 0.02f);
-}
+#define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
+  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
+    ENABLED_BACKENDS(__VA_ARGS__);                                             \
+    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
+                              ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);  \
+  }
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Add, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Mul, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Div, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Max, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
+#undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 
 TEST_P(OperatorTest, IntMatMul) {
   // The scaling factor 1.4x was carefully selected to make sure we don't
