@@ -5842,43 +5842,64 @@ TEST_P(OperatorTest, Modulo2) {
   }
 }
 
-/// Test a DotProduct operator with 1D inputs.
-TEST_P(OperatorTest, dotProduct1D) {
+/// Helper to test DotProduct1D using \p DTy.
+template <typename DataType>
+static void testDotProduct1D(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy) {
   // Input tensors.
   constexpr std::size_t kDataSize = 10;
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "X", false);
-  auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "Y", false);
-  auto XH = bindings_.allocate(X)->getHandle();
-  auto YH = bindings_.allocate(Y)->getHandle();
+  auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "X",
+                                                    false);
+  auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "Y",
+                                                    false);
+  auto XH = bindings.allocate(X)->getHandle<DataType>();
+  auto YH = bindings.allocate(Y)->getHandle<DataType>();
 
   // Fill inputs with random values.
-  XH.randomize(-3.0, 3.0, mod_.getPRNG());
-  YH.randomize(-3.0, 3.0, mod_.getPRNG());
+  XH.randomize(-10.0, 10.0, mod.getPRNG());
+  YH.randomize(-10.0, 10.0, mod.getPRNG());
 
   // Compute expected output.
-  auto *expected =
-      mod_.createPlaceholder(ElemKind::FloatTy, {kDataSize}, "expected", false);
-  auto expectedH = bindings_.allocate(expected)->getHandle();
+  auto *expected = createPlaceholderConditionallyQuantized(
+      mod, DTy, {kDataSize}, "expected", false);
+  auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
 
   for (std::size_t i = 0; i < kDataSize; ++i) {
     expectedH.at({i}) = XH.at({i}) * YH.at({i});
   }
 
   // Compile and run the model.
-  auto *dotProduct = F_->createDotProduct("prod", X, Y);
-  auto *result = F_->createSave("save", dotProduct);
-  bindings_.allocate(result->getPlaceholder());
+  auto *dotProduct = F->createDotProduct("prod", X, Y);
+  auto *result = F->createSave("save", dotProduct);
+  bindings.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  auto actualH = bindings_.get(result->getPlaceholder())->getHandle();
+  auto actualH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
 
   // Check that the output tensor is the same as the expected output.
   EXPECT_EQ(actualH.size(), expectedH.size());
   for (std::size_t i = 0; i < actualH.size(); ++i) {
     EXPECT_NEAR(actualH.raw(i), expectedH.raw(i), 0.00001);
   }
+}
+
+/// Test a DotProduct operator with 1D inputs, using FloatTy.
+TEST_P(OperatorTest, dotProduct1D_Float) {
+  testDotProduct1D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test a DotProduct operator with 1D inputs, using Float16Ty.
+TEST_P(OperatorTest, dotProduct1D_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testDotProduct1D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test a DotProduct operator with 1D inputs, using Int8Ty.
+TEST_P(OperatorTest, dotProduct1D_Int8) {
+  testDotProduct1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 // Test an ElementwiseLinear operator with both axis = 0 and axis = 1
