@@ -99,4 +99,22 @@ const std::string strFormat(const char *format, ...) {
   va_end(vaArgs);
   return std::string(str.data(), len);
 }
+
+std::string legalizeName(llvm::StringRef name) {
+  std::string legalName;
+
+  // Legalize the name.
+  for (const char c : name) {
+    bool legal = isalpha(c) || isdigit(c) || c == '_';
+    legalName.push_back(legal ? c : '_');
+  }
+
+  // Names must start with some alphabetic character or underscore and can't be
+  // empty.
+  if (legalName.empty() || isdigit(legalName[0])) {
+    legalName = "A" + legalName;
+  }
+  return legalName;
+}
+
 } // namespace glow

@@ -1,6 +1,6 @@
 name: "conv_test"
 op {
-  input: "data"
+  input: "gpu_0/data_0"
   input: "conv_w"
   input: "conv_b"
   output: "conv_out"

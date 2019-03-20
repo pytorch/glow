@@ -32,3 +32,17 @@ TEST(Support, strFormat) {
   // Output is not a single line.
   EXPECT_FALSE(StrCheck(str2).sameln("string2").sameln("456").sameln("y"));
 }
+
+TEST(Support, legalizeName) {
+  // Check that a name can't be empty.
+  std::string str1 = legalizeName("");
+  EXPECT_TRUE(str1.compare("A") == 0);
+
+  // Check that a name must start with some alphabetic character or underscore.
+  std::string str2 = legalizeName("1abc_/abc");
+  EXPECT_TRUE(str2.compare("A1abc__abc") == 0);
+
+  // Check that a legal name won't be converted.
+  std::string str3 = legalizeName("abc_1aBc");
+  EXPECT_TRUE(str3.compare("abc_1aBc") == 0);
+}
