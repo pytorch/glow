@@ -846,9 +846,12 @@ public:
   /// itself is implemented using elementwise Max, Add, Log (if lambda1 == 0),
   /// Pow, Splat, Sub, and Div (if lambda1 != 0) nodes with a Splat and Select
   /// node to select between the two cases listed above. \returns the final
-  /// Select node.
+  /// Select node. \p epsilon is used to ensure we do not divide by zero when
+  /// calculating the lambda == 0 case, as we use a Select to choose which
+  /// result to use, and so both paths are executed.
   Node *createBatchBoxCox(llvm::StringRef name, NodeValue input,
-                          NodeValue lambda1, NodeValue lambda2);
+                          NodeValue lambda1, NodeValue lambda2,
+                          float epsilon = std::numeric_limits<float>::min());
 
   /// Create a series of nodes for the Clip operator. It limits the given input
   /// within an interval specified by the `min` and `max` arguments.

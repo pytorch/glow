@@ -6007,45 +6007,52 @@ TEST_P(OperatorTest, dotProduct2D) {
   }
 }
 
-/// Test that the BatchBoxCox operator works as expected.
-TEST_P(OperatorTest, BatchBoxCoxFloat) {
-  ENABLED_BACKENDS(Interpreter);
-
+/// Helper to test BatchBoxCox using \p DTy.
+template <typename DataType>
+static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            float allowedError = 0.0001f) {
   // Input tensors.
   const size_t kRows = 10;
   const size_t kCols = 5;
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {kRows, kCols}, "data",
-                                      /* isTrainable */ false);
-  auto *lambda1 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda1",
-                                         /* isTrainable */ false);
-  auto *lambda2 = mod_.createPlaceholder(ElemKind::FloatTy, {kCols}, "lambda2",
-                                         /* isTrainable */ false);
-  auto dataH = bindings_.allocate(data)->getHandle();
-  auto lambda1H = bindings_.allocate(lambda1)->getHandle();
-  auto lambda2H = bindings_.allocate(lambda2)->getHandle();
+  auto *data = mod.createPlaceholder(DTy, {kRows, kCols}, "data",
+                                     /* isTrainable */ false);
+  auto *lambda1 = mod.createPlaceholder(DTy, {kCols}, "lambda1",
+                                        /* isTrainable */ false);
+  auto *lambda2 = mod.createPlaceholder(DTy, {kCols}, "lambda2",
+                                        /* isTrainable */ false);
+  auto dataH = bindings.allocate(data)->getHandle<DataType>();
+  auto lambda1H = bindings.allocate(lambda1)->getHandle<DataType>();
+  auto lambda2H = bindings.allocate(lambda2)->getHandle<DataType>();
 
   // Fill inputs with random values.
-  dataH.randomize(0.0, 5.0, mod_.getPRNG());
-  lambda1H.randomize(1.0, 2.0, mod_.getPRNG());
-  lambda2H.randomize(1.0, 2.0, mod_.getPRNG());
+  dataH.randomize(0.0, 5.0, mod.getPRNG());
+  lambda1H.randomize(1.0, 2.0, mod.getPRNG());
+  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
 
   // Zero out every other element to lambda1 to test that case of the transform.
   for (size_t i = 0; i < kCols; i += 2) {
     lambda1H.at({i}) = 0;
   }
 
+  const float epsilon = std::is_same<float, DataType>::value
+                            ? std::numeric_limits<float>::min()
+                            : 1e-6f;
+
   // Construct the graph for the backend to run.
-  auto *BBC = F_->createBatchBoxCox("bbc", data, lambda1, lambda2);
-  auto *save = F_->createSave("save", BBC);
-  auto resultH = bindings_.allocate(save->getPlaceholder())->getHandle();
+  auto *BBC = F->createBatchBoxCox("bbc", data, lambda1, lambda2, epsilon);
+  auto *save = F->createSave("save", BBC);
+  auto resultH =
+      bindings.allocate(save->getPlaceholder())->getHandle<DataType>();
 
   // Compile and run the model, setting results in tensor backed by resultH.
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
   // Compute expected output here on the host to compare results.
-  Tensor expected(ElemKind::FloatTy, {kRows, kCols});
-  auto expectedH = expected.getHandle();
+  Tensor expected(DTy, {kRows, kCols});
+  auto expectedH = expected.getHandle<DataType>();
 
   for (size_t i = 0; i < kRows; ++i) {
     for (size_t j = 0; j < kCols; ++j) {
@@ -6066,8 +6073,21 @@ TEST_P(OperatorTest, BatchBoxCoxFloat) {
 
   // Check that the output tensor is the same as the expected output.
   for (size_t i = 0; i < resultH.size(); ++i) {
-    EXPECT_FLOAT_EQ(resultH.raw(i), expectedH.raw(i));
+    EXPECT_NEAR(resultH.raw(i), expectedH.raw(i), allowedError);
   }
+}
+
+/// Test that the BatchBoxCox operator works as expected in FloatTy.
+TEST_P(OperatorTest, BatchBoxCox_Float) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchBoxCox<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.001f);
+}
+
+/// Test that the BatchBoxCox operator works as expected in Float16Ty.
+TEST_P(OperatorTest, BatchBoxCox_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             0.01f);
 }
 
 /// Test that Arithmetic ops work.

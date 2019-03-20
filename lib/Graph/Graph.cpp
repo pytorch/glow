@@ -1848,7 +1848,8 @@ Node *Function::createWeightedSum(llvm::StringRef name,
 }
 
 Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
-                                  NodeValue lambda1, NodeValue lambda2) {
+                                  NodeValue lambda1, NodeValue lambda2,
+                                  float epsilon) {
   assert((lambda1.dims() == lambda2.dims()) &&
          "lambda1 and lambda2 must have the same shape");
   assert((lambda1.getType()->getElementType() == lambda2.getElementType()) &&
@@ -1880,8 +1881,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   // Add a small epsilon to lambda1 so that we can avoid dividing by zero
   // later. It doesn't matter that this is technically incorrect because the
   // final Select will discard the results of this computation.
-  auto *eps = createSplat(name.str() + ".eps", typeBL1,
-                          std::numeric_limits<float>::min());
+  auto *eps = createSplat(name.str() + ".eps", typeBL1, epsilon);
   auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
 
   // Compute data + BL2, which is needed regardless of whether
