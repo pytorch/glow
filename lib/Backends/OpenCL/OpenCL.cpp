@@ -495,7 +495,14 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   cl_int err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_ITEM_SIZES,
                                sizeof(WIS), &WIS, nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+
+  size_t dev_max_wg_size;
+  err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_GROUP_SIZE,
+                        sizeof(dev_max_wg_size), &dev_max_wg_size, nullptr);
+  GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+
   size_t wg_size[3];
+
   for (int id = 0; id < 2; ++id) {
     size_t defaultVal = 16;
     // Special case on CPUs devices, where a workgroup size could be 1,
@@ -503,6 +510,8 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
     if (WIS[id] < defaultVal || (id == 0 && WIS[1] < defaultVal)) {
       defaultVal = WIS[1];
     }
+    if (id == 1 && defaultVal * wg_size[0] > dev_max_wg_size)
+      defaultVal = dev_max_wg_size / wg_size[0];
     addIntOption(options, "workgroup_size_" + std::to_string(id), defaultVal);
     wg_size[id] = defaultVal;
   }
@@ -569,10 +578,11 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   int fw_div_M = fw_wptm * fw_wgs1;
   int N_FW_ = odim.h * odim.w;
   int M_FW_ = odim.c / group;
-  size_t L;
+  size_t max_kern_wg_size;
   clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
-                           sizeof(L), &L, nullptr);
-  GLOW_ASSERT(fw_wgs0 * fw_wgs1 <= L && "Bad workgroup size");
+                           sizeof(max_kern_wg_size), &max_kern_wg_size,
+                           nullptr);
+  GLOW_ASSERT(fw_wgs0 * fw_wgs1 <= max_kern_wg_size && "Bad workgroup size");
 
   // Set the size of a workgroup.
   std::vector<size_t> local = {fw_wgs0, fw_wgs1, 1};
