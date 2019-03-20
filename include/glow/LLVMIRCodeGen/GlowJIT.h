@@ -54,7 +54,7 @@ private:
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
-#if LLVM_VERSION_MAJOR < 8
+#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
 #else
