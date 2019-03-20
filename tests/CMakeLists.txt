@@ -83,15 +83,15 @@ add_output_check_test(NAME en2gr_quantization_test
                       COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_quantization_test.sh
                       REQUIRES MODELS RELEASE)
 
-# # Create an OutputCheck test to run resnet-runtime-test.
-# add_output_check_test(NAME resnet_runtime_test
-#                       COMMAND ${EXAMPLES_TESTS_DIR}/resnet-runtime-test.sh
-#                       REQUIRES MODELS)
+# Create an OutputCheck test to run resnet-runtime-test.
+add_output_check_test(NAME resnet_runtime_test
+                      COMMAND ${EXAMPLES_TESTS_DIR}/resnet-runtime-test.sh
+                      REQUIRES MODELS)
 
-# # Create an OutputCheck test to run resnet-concurrent-test.
-# add_output_check_test(NAME resnet_concurrent_test
-#                       COMMAND ${EXAMPLES_TESTS_DIR}/resnet-concurrent-test.sh
-#                       REQUIRES MODELS)
+# Create an OutputCheck test to run resnet-concurrent-test.
+add_output_check_test(NAME resnet_concurrent_test
+                      COMMAND ${EXAMPLES_TESTS_DIR}/resnet-concurrent-test.sh
+                      REQUIRES MODELS)
 
 # Create target for OUTPUTCHECK_TESTS. 
 LIST(APPEND OUTPUTCHECK_TESTS true)
