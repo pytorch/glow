@@ -5352,25 +5352,27 @@ TEST_P(OperatorTest, sliceReshape_Int8) {
   testSliceReshape<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
-/// Check that the flatten operator produces 2D tensors of the right
-/// dimensions.
-TEST_P(OperatorTest, Flatten) {
-  auto *tensor4D =
-      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 4, 3}, "4D", false);
-  bindings_.allocate(tensor4D)->init(Tensor::InitKind::Xavier, 1.0,
-                                     mod_.getPRNG());
+/// Helper to test Flatten using \p DTy.
+template <typename DataType>
+static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                        glow::Function *F, glow::ExecutionEngine &EE,
+                        ElemKind DTy) {
+  auto *tensor4D = createPlaceholderConditionallyQuantized(
+      mod, DTy, {3, 2, 4, 3}, "4D", false);
+  bindings.allocate(tensor4D)->init(Tensor::InitKind::Xavier, 1.0,
+                                    mod.getPRNG());
 
-  auto *reshape4Dto2DAxis1 = F_->createFlatten("flat4Dto2Da1", tensor4D, 1);
+  auto *reshape4Dto2DAxis1 = F->createFlatten("flat4Dto2Da1", tensor4D, 1);
   EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
   EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[0], 3);
   EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[1], 24);
 
-  auto *reshape4Dto2DAxis2 = F_->createFlatten("flat4Dto2Da2", tensor4D, 2);
+  auto *reshape4Dto2DAxis2 = F->createFlatten("flat4Dto2Da2", tensor4D, 2);
   EXPECT_EQ(reshape4Dto2DAxis2->dims(0).size(), 2);
   EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[0], 6);
   EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[1], 12);
 
-  auto *reshape4Dto2DAxis3 = F_->createFlatten("flat4Dto2Da3", tensor4D, 3);
+  auto *reshape4Dto2DAxis3 = F->createFlatten("flat4Dto2Da3", tensor4D, 3);
   EXPECT_EQ(reshape4Dto2DAxis3->dims(0).size(), 2);
   EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[0], 24);
   EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[1], 3);
@@ -5379,7 +5381,7 @@ TEST_P(OperatorTest, Flatten) {
   // This comes straight from caffe2 because flattening is
   // supported for every axis up and including the rank of a tensor.
   // The rank of this tensor is 4, so axis 4 is fine.
-  auto *reshape4Dto2DAxis4 = F_->createFlatten("flat4Dto2Da4", tensor4D, 4);
+  auto *reshape4Dto2DAxis4 = F->createFlatten("flat4Dto2Da4", tensor4D, 4);
   EXPECT_EQ(reshape4Dto2DAxis4->dims(0).size(), 2);
   EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[0], 72);
   EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[1], 1);
@@ -5387,63 +5389,85 @@ TEST_P(OperatorTest, Flatten) {
   // This one is weird because we flatten something that is already flat, but
   // again because flattening is supported for every axis up and including the
   // rank of a tensor, 1D vector means we can flatten it on axis 1.
-  auto *tensor1D = mod_.createPlaceholder(ElemKind::FloatTy, {15}, "1D", false);
-  bindings_.allocate(tensor1D)->init(Tensor::InitKind::Xavier, 1.0,
-                                     mod_.getPRNG());
+  auto *tensor1D =
+      createPlaceholderConditionallyQuantized(mod, DTy, {15}, "1D", false);
+  bindings.allocate(tensor1D)->init(Tensor::InitKind::Xavier, 1.0,
+                                    mod.getPRNG());
 
-  auto *reshape1Dto2DAxis1 = F_->createFlatten("flat1Dto2D", tensor1D, 1);
+  auto *reshape1Dto2DAxis1 = F->createFlatten("flat1Dto2D", tensor1D, 1);
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[0], 15);
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
 
   // Save all the reshapes so that the optimizations won't kill the network.
-  auto *save1Dto2D = F_->createSave("save1Dto2D", reshape1Dto2DAxis1);
-  auto *save4Dto2Da1 = F_->createSave("save4Dto2Da1", reshape4Dto2DAxis1);
-  auto *save4Dto2Da2 = F_->createSave("save4Dto2Da2", reshape4Dto2DAxis2);
-  auto *save4Dto2Da3 = F_->createSave("save4Dto2Da3", reshape4Dto2DAxis3);
-  auto *save4Dto2Da4 = F_->createSave("save4Dto2Da4", reshape4Dto2DAxis4);
+  auto *save1Dto2D = F->createSave("save1Dto2D", reshape1Dto2DAxis1);
+  auto *save4Dto2Da1 = F->createSave("save4Dto2Da1", reshape4Dto2DAxis1);
+  auto *save4Dto2Da2 = F->createSave("save4Dto2Da2", reshape4Dto2DAxis2);
+  auto *save4Dto2Da3 = F->createSave("save4Dto2Da3", reshape4Dto2DAxis3);
+  auto *save4Dto2Da4 = F->createSave("save4Dto2Da4", reshape4Dto2DAxis4);
 
-  bindings_.allocate(save1Dto2D->getPlaceholder());
-  bindings_.allocate(save4Dto2Da1->getPlaceholder());
-  bindings_.allocate(save4Dto2Da2->getPlaceholder());
-  bindings_.allocate(save4Dto2Da3->getPlaceholder());
-  bindings_.allocate(save4Dto2Da4->getPlaceholder());
+  bindings.allocate(save1Dto2D->getPlaceholder());
+  bindings.allocate(save4Dto2Da1->getPlaceholder());
+  bindings.allocate(save4Dto2Da2->getPlaceholder());
+  bindings.allocate(save4Dto2Da3->getPlaceholder());
+  bindings.allocate(save4Dto2Da4->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer, F);
 
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   // Verify the reshapes have the same data as the original value.
-  auto tensor4DH = bindings_.get(tensor4D)->getHandle();
+  auto tensor4DH = bindings.get(tensor4D)->getHandle<DataType>();
   auto save4Dto2Da1H =
-      bindings_.get(save4Dto2Da1->getPlaceholder())->getHandle();
+      bindings.get(save4Dto2Da1->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da1H.raw(i), 1E-5);
   }
 
   auto save4Dto2Da2H =
-      bindings_.get(save4Dto2Da2->getPlaceholder())->getHandle();
+      bindings.get(save4Dto2Da2->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da2H.raw(i), 1E-5);
   }
 
   auto save4Dto2Da3H =
-      bindings_.get(save4Dto2Da3->getPlaceholder())->getHandle();
+      bindings.get(save4Dto2Da3->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da3H.raw(i), 1E-5);
   }
 
   auto save4Dto2Da4H =
-      bindings_.get(save4Dto2Da4->getPlaceholder())->getHandle();
+      bindings.get(save4Dto2Da4->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 72; i++) {
     EXPECT_NEAR(tensor4DH.raw(i), save4Dto2Da4H.raw(i), 1E-5);
   }
 
-  auto tensor1DH = bindings_.get(tensor1D)->getHandle();
-  auto save1Dto2DH = bindings_.get(save1Dto2D->getPlaceholder())->getHandle();
+  auto tensor1DH = bindings.get(tensor1D)->getHandle<DataType>();
+  auto save1Dto2DH =
+      bindings.get(save1Dto2D->getPlaceholder())->getHandle<DataType>();
   for (size_t i = 0; i < 15; i++) {
     EXPECT_NEAR(tensor1DH.raw(i), save1Dto2DH.raw(i), 1E-5);
   }
+}
+
+/// Check that the flatten operator produces 2D tensors of the right
+/// dimensions, using FloatTy.
+TEST_P(OperatorTest, Flatten_FloatTy) {
+  testFlatten<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Check that the flatten operator produces 2D tensors of the right
+/// dimensions, using Float16Ty.
+TEST_P(OperatorTest, Flatten_Float16Ty) {
+  ENABLED_BACKENDS(Interpreter);
+  testFlatten<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Check that the flatten operator produces 2D tensors of the right
+/// dimensions, using Int8QTy.
+TEST_P(OperatorTest, Flatten_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlatten<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Check that div on Int64ITy/size_t works.
