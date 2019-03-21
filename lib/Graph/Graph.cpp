@@ -404,19 +404,7 @@ Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
 
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    llvm::StringSet<> &stringTable) {
-  std::string legalName;
-
-  // Legalize the name.
-  for (const char c : name) {
-    bool legal = isalpha(c) || isdigit(c) || c == '_';
-    legalName.push_back(legal ? c : '_');
-  }
-
-  // Names must start with some alphabetic character or underscore and can't be
-  // empty.
-  if (legalName.empty() || isdigit(legalName[0])) {
-    legalName = "A" + legalName;
-  }
+  std::string legalName = legalizeName(name);
 
   auto it = stringTable.insert(legalName);
   if (it.second) {

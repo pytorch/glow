@@ -46,12 +46,12 @@ TEST(caffe2, importConv) {
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"data"},
-                               {&data.getType()}, *F);
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   auto res = bindings.get(output);
