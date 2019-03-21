@@ -27,6 +27,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <queue>
@@ -43,7 +44,14 @@ llvm::cl::list<std::string> inputImageFilenames(
     llvm::cl::desc("<input files> (note: specifying '-' enables streaming "
                    "mode, where the model is compiled once and then can be run "
                    "many times with new input filenames passed via stdin)"),
-    llvm::cl::OneOrMore);
+    llvm::cl::ZeroOrMore);
+
+llvm::cl::opt<std::string> inputImageListFile(
+    "input-image-list-file",
+    llvm::cl::desc(
+        "Name of the file containing list of images (one image per line)"),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<unsigned> labelOffset(
     "label-offset",
@@ -319,11 +327,40 @@ static void processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
   }
 }
 
+/// Read all images from \p inputImageListFile in to \p inputImageFilenames.
+static void parseInputImageList(const std::string &inputImageListFile) {
+  std::ifstream inFile;
+  inFile.open(inputImageListFile);
+  while (!inFile.eof()) {
+    std::string img;
+    getline(inFile, img);
+    if (!img.empty()) {
+      inputImageFilenames.push_back(img);
+    }
+  }
+  inFile.close();
+}
+
 int main(int argc, char **argv) {
   PlaceholderBindings bindings;
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
+
+  if (inputImageListFile.empty() && inputImageFilenames.size() == 0) {
+    llvm::errs()
+        << "Args: Either positional inputImageFilenames or -inputImageListFile "
+           "must be used to specify input images.\n";
+    std::exit(1);
+  }
+
+  if (!inputImageListFile.empty()) {
+    GLOW_ASSERT(
+        inputImageFilenames.size() == 0 &&
+        "When using -input-image-list-file all Input images must be specified "
+        "using -input-image-list-file option.");
+    parseInputImageList(inputImageListFile);
+  }
 
   const bool streamInputFilenamesMode =
       inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
