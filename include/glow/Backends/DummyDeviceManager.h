@@ -52,8 +52,9 @@ public:
       if (functions_.count(func.first) != 0) {
         callback(
             module,
-            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                     llvm::formatv("Function {} not found", func.first).str()));
+            MAKE_ERR(
+                GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                llvm::formatv("Function {0} not found", func.first).str()));
         return;
       }
     }
@@ -90,7 +91,7 @@ public:
       callback(
           0,
           MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                   llvm::formatv("Function {} not found", functionName).str()),
+                   llvm::formatv("Function {0} not found", functionName).str()),
           std::move(context));
       return 0;
     }
