@@ -48,7 +48,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
           module,
           MAKE_ERR(
               llvm::formatv(
-                  "Failed to add network: already have a function called {}",
+                  "Failed to add network: already have a function called {0}",
                   func.first)
                   .str()));
       return;
@@ -56,7 +56,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
     if (func.second->getCompileBackendKind() != BackendKind::Interpreter) {
       readyCB(module, MAKE_ERR(llvm::formatv("Failed to add network: function "
-                                             "{} is not a InterpreterFunction",
+                                             "{0} is not a InterpreterFunction",
                                              func.first)
                                    .str()));
       return;
@@ -93,7 +93,7 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
   } else {
     err =
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {} to evict",
+                 llvm::formatv("Could not find function with name {0} to evict",
                                functionName)
                      .str());
   }
@@ -112,7 +112,7 @@ void InterpreterDeviceManager::runFunctionImpl(
   if (funcIt == functions_.end()) {
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                      llvm::formatv("Function {} not found", function).str()),
+                      llvm::formatv("Function {0} not found", function).str()),
              std::move(context));
     return;
   }

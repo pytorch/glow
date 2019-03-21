@@ -157,7 +157,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     callback(
         currentRun,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Function {} not found", networkName).str()),
+                 llvm::formatv("Function {0} not found", networkName).str()),
         std::move(context));
     return currentRun;
   }
