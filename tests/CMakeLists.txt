@@ -88,11 +88,6 @@ add_output_check_test(NAME resnet_runtime_test
                       COMMAND ${EXAMPLES_TESTS_DIR}/resnet-runtime-test.sh
                       REQUIRES MODELS)
 
-# Create an OutputCheck test to run resnet-concurrent-test.
-add_output_check_test(NAME resnet_concurrent_test
-                      COMMAND ${EXAMPLES_TESTS_DIR}/resnet-concurrent-test.sh
-                      REQUIRES MODELS)
-
 # Create target for OUTPUTCHECK_TESTS. 
 LIST(APPEND OUTPUTCHECK_TESTS true)
 add_custom_target(output_check_tests
