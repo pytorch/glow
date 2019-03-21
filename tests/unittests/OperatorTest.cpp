@@ -3189,33 +3189,55 @@ TEST_P(OperatorTest, Squeeze) {
   }
 }
 
-/// Check that the expand dims operator works, which is implemented with a
-/// reshape.
-TEST_P(OperatorTest, ExpandDims) {
-  auto *inputs =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "inputs", false);
-  auto IH = bindings_.allocate(inputs)->getHandle();
+/// Helper to test ExpandDims using \p DTy.
+template <typename DataType>
+static void testExpandDims(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *inputs = createPlaceholderConditionallyQuantized(mod, DTy, {2, 2},
+                                                         "inputs", false);
+  auto IH = bindings.allocate(inputs)->getHandle<DataType>();
   IH = {1, 2, 3, 4};
 
   // This should be uniqued and sorted, so should become {0, 1, 3, 5}.
   std::vector<size_t> axes = {3, 0, 5, 1, 3};
-  Node *EDN = F_->createExpandDims("expand", inputs, axes);
-  SaveNode *S = F_->createSave("save", EDN);
-  bindings_.allocate(S->getPlaceholder());
+  Node *EDN = F->createExpandDims("expand", inputs, axes);
+  SaveNode *S = F->createSave("save", EDN);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
   // Expected dims based on the axes above; inserted new dimensions of 1 in
   // every unique axes location, based on the output tensor shape.
   std::vector<size_t> expectedDims = {1, 1, 2, 1, 2, 1};
-  auto results = bindings_.get(S->getPlaceholder())->getHandle();
+  auto results = bindings.get(S->getPlaceholder())->getHandle<DataType>();
   EXPECT_TRUE(results.dims().vec() == expectedDims);
 
   // The data should be the same, as this was just a reshape.
   for (size_t i = 0; i < 4; i++) {
     EXPECT_FLOAT_EQ(results.raw(i), IH.raw(i));
   }
+}
+
+/// Check that the expand dims operator works, which is implemented with a
+/// reshape, in FloatTy.
+TEST_P(OperatorTest, ExpandDims_Float) {
+  testExpandDims<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Check that the expand dims operator works, which is implemented with a
+/// reshape, in Float16Ty.
+TEST_P(OperatorTest, ExpandDims_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testExpandDims<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Check that the expand dims operator works, which is implemented with a
+/// reshape, in Int8QTy.
+TEST_P(OperatorTest, ExpandDims_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testExpandDims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Helper to test Split using \p DTy.
