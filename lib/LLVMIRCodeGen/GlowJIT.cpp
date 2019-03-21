@@ -92,7 +92,7 @@ public:
     // Inform the debugger about the loaded object file. This should allow for
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
-#if LLVM_VERSION_MAJOR < 8
+#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
     dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
 #else
     dbgRegistrationListener_->notifyObjectLoaded(
@@ -150,7 +150,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return nullptr;
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
-#if LLVM_VERSION_MAJOR < 8
+#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
       objectLayer_(ES_,
                    [this](llvm::orc::VModuleKey) {
                      return RTDyldObjectLinkingLayer::Resources{
