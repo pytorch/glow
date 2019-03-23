@@ -2129,6 +2129,13 @@ TEST_P(OperatorStatelessTest, IntFC) {
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f);
 }
 
+/// Test FC with Float16.
+TEST_P(OperatorStatelessTest, FC_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
+}
+
 TEST_P(OperatorTest, EntropyLossTest) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
