@@ -1588,24 +1588,36 @@ libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
                    size_t elemKind, const char *name) {
   printf("%s\n", name);
   /// This definition should match the defintion in Glow.
-  enum ElemKind {
-    FloatTy,
-    Int8QTy,
-    Int32QTy,
-    Int64ITy,
+  enum class ElemKind : unsigned char {
+    FloatTy,       // 32-bit float type (float)
+    Float16Ty,     // 16-bit float type (half, fp16)
+    Int8QTy,       // 8-bit quantized type (int8_t)
+    Int16QTy,      // 16-bit quantized type (int16_t)
+    Int32QTy,      // 32-bit quantized type (int32_t)
+    Int32ITy,      // 32-bit index type (int32_t)
+    Int64ITy,      // 64-bit index type (int64_t)
+    UInt8FusedQTy, // 8-bit quantized type with fused scale/offset (uint8_t)
+    BoolTy,        // Bool type (bool)
   };
   // Dump the content of a tensor.
-  switch (elemKind) {
-  case FloatTy:
+  switch ((ElemKind)elemKind) {
+  case ElemKind::FloatTy:
     libjit_dump_tensor_impl((float *)tensor, tensorDim, numDimsTensor);
     break;
-  case Int64ITy:
+  case ElemKind::Int64ITy:
     libjit_dump_tensor_impl((size_t *)tensor, tensorDim, numDimsTensor);
+    break;
+  case ElemKind::Int8QTy:
+    libjit_dump_tensor_impl((int8_t *)tensor, tensorDim, numDimsTensor);
+    break;
+  case ElemKind::Int32QTy:
+    libjit_dump_tensor_impl((int32_t *)tensor, tensorDim, numDimsTensor);
     break;
   default:
     printf("Dumping this type of payload is not supported: %zu\n", elemKind);
     break;
   }
+  puts("");
 }
 
 void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
