@@ -17,8 +17,9 @@
 #define GLOW_ONNXIFI_BASE_H
 
 #include "glow/Backends/Backend.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
-#include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/Runtime/RuntimeTypes.h"
 
 #include "foxi/onnxifi.h"
 #include "foxi/onnxifi_ext.h"
@@ -32,16 +33,18 @@
 namespace glow {
 namespace onnxifi {
 
+class Graph;
+
 /// BackendId associated with the Glow backend.
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
   /// given Glow backend \p kind, whether to use onnx or caffe2 for models
   /// (\p useOnnx)
-  explicit BackendId(runtime::HostManager *hostManager, glow::BackendKind kind,
-                     bool useOnnx)
-      : hostManager_(hostManager), useOnnx_(useOnnx),
-        glowBackend_(createBackend(kind)) {}
+  BackendId(glow::BackendKind kind, bool useOnnx)
+      : useOnnx_(useOnnx), glowBackend_(createBackend(kind)) {}
+
+  virtual ~BackendId() = default;
 
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
@@ -53,20 +56,18 @@ public:
   /// \returns the whether use onnx or not.
   bool getUseOnnx() const { return useOnnx_; }
 
-  /// \returns HostManager associated with the BackendId.
-  runtime::HostManager &getHostManager() { return *hostManager_; }
+  virtual void runNetwork(const Graph *graph,
+                          std::unique_ptr<ExecutionContext> context,
+                          runtime::ResultCBTy callback) {}
 
-  // \returns a unique_ptr to a new HostManager for the given BackendKind \p
-  // kind.
-  static std::unique_ptr<runtime::HostManager>
-  createHostManager(glow::BackendKind kind);
+  virtual onnxStatus addNetwork(Module *module) {
+    return ONNXIFI_STATUS_SUCCESS;
+  }
 
-private:
-  runtime::HostManager *hostManager_;
+  virtual void removeNetwork(const Graph *graph) {}
+
+protected:
   bool useOnnx_;
-  // TODO: glowBackend_ is need Backend for checkGraphCompatibility because
-  // isOpSupported, shouldLower, etc aren't exposed by HostManager. These
-  // methods should be made static however and then glowBackend_ can be removed.
   std::unique_ptr<glow::Backend> glowBackend_;
 };
 
@@ -79,10 +80,7 @@ public:
   /// Whether this backend uses ONNX proto or Caffe2 proto.
   bool getUseOnnx() const { return backendIdPtr_->getUseOnnx(); }
 
-  /// \returns HostManager for the associated BackendId.
-  runtime::HostManager &getHostManager() {
-    return backendIdPtr_->getHostManager();
-  }
+  BackendId *getBackendId() { return backendIdPtr_; }
 
 private:
   BackendIdPtr backendIdPtr_;
@@ -113,38 +111,34 @@ typedef Event *EventPtr;
 class Graph {
 public:
   explicit Graph(BackendPtr backendPtr);
-  ~Graph();
+  virtual ~Graph();
 
   BackendPtr backend() { return backendPtr_; }
 
-  /// Init Glow graph based on the ONNX model \p onnxModel and
-  /// static trained weights \p weightDescriptors.
-  onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
-                       uint32_t weightCount,
-                       const onnxTensorDescriptorV1 *weightDescriptors);
-
-  /// \returns HostManager for the associated BackendId.
-  runtime::HostManager &getHostManager() {
-    return backendPtr_->getHostManager();
-  }
-
   /// Setup Glow graph in preparation for the inference and run.
   /// Set input memory addresses for inputs based on the \p inputDescriptors.
-  /// Set output memory addresses for outputs based on the \p outputDescriptors.
-  /// Will async signal the \p outputEvent when run is complete.
-  onnxStatus setIOAndRunAsync(uint32_t inputsCount,
-                              const onnxTensorDescriptorV1 *inputDescriptors,
-                              uint32_t outputsCount,
-                              const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent);
+  /// Set output memory addresses for outputs based on the \p
+  /// outputDescriptors. Will async signal the \p outputEvent when run is
+  /// complete.
+  onnxStatus setIOAndRun(uint32_t inputsCount,
+                         const onnxTensorDescriptorV1 *inputDescriptors,
+                         uint32_t outputsCount,
+                         const onnxTensorDescriptorV1 *outputDescriptors,
+                         EventPtr outputEvent);
 
-private:
-  /// \returns a globally unique graph id.
-  static size_t makeUniqueGraphId();
+  /// Init Glow graph based on the ONNX model \p onnxModel and
+  /// static trained weights \p weightDescriptors.
+  virtual onnxStatus
+  initGraph(const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+            const onnxTensorDescriptorV1 *weightDescriptors) = 0;
 
+  virtual onnxStatus
+  run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
+      std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
+          phNameToOnnxTensorOutputs) = 0;
+
+protected:
   BackendPtr backendPtr_;
-  Module m_;
-  std::string netName_;
 
   /// Mapping between ONNX name for the input variable and Glow
   /// placeholder for input.

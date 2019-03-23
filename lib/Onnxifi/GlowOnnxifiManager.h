@@ -17,6 +17,8 @@
 #define GLOW_ONNXIFI_GLOWONNXIFIMANAGER_H
 
 #include "Base.h"
+#include "HostManagerOnnxifi.h"
+#include "InlineOnnxifi.h"
 
 #include <mutex>
 #include <unordered_set>
@@ -42,7 +44,8 @@ public:
   /// Create a new glow BackendId for BackendKind \p kind using onnx graphs if
   /// \p useOnnx and caffe2 graphs otherwise.
   /// Can be called safely by multiple threads concurrently.
-  BackendIdPtr createBackendId(glow::BackendKind kind, bool useOnnx);
+  BackendIdPtr createBackendId(glow::BackendKind kind, bool useOnnx,
+                               bool forQuantization = false);
 
   /// Create a new glow Backend associated with \p backendId.
   /// Can be called safely by multiple threads concurrently.
@@ -54,7 +57,9 @@ public:
 
   /// Create a new glow Graph associated with \p backend.
   /// Can be called safely by multiple threads concurrently.
-  GraphPtr createGraph(BackendPtr backend);
+  GraphPtr createGraph(
+      BackendPtr backend,
+      OnnxifiQuantizationStep quantizationStep = OnnxifiQuantizationStep::None);
 
   /// Check if \p backendId is a BackendId created and managed by glow.
   /// Can be called safely by multiple threads concurrently.

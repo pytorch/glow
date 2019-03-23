@@ -4,28 +4,36 @@ add_library(onnxifi-glow
             SHARED
               Base.cpp
               GlowOnnxifiManager.cpp
-              onnxifiGlow.cpp)
+              HostManagerOnnxifi.cpp
+              onnxifiGlow.cpp
+              InlineOnnxifi.cpp)
 
 add_library(onnxifi-glow-lib
               Base.cpp
               GlowOnnxifiManager.cpp
-              onnxifiGlow.cpp)
+              HostManagerOnnxifi.cpp
+              onnxifiGlow.cpp
+              InlineOnnxifi.cpp)
 
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         Backends
+                        ExecutionEngine
                         Graph
                         HostManager
                         Importer
-                        Optimizer)
+                        Optimizer
+                        Quantization)
 
 target_link_libraries(onnxifi-glow
                       PUBLIC
                         Backends
+                        ExecutionEngine
                         Graph
                         HostManager
                         Importer
-                        Optimizer)
+                        Optimizer
+                        Quantization)
 
 target_compile_definitions(onnxifi-glow
                            PRIVATE
