@@ -35,9 +35,14 @@ void LLVMCompiledFunction::collectConstants(Module *module) {
 void LLVMCompiledFunction::loadPlaceholders(
     PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
   // Copy Placeholders into allocated memory.
+  auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto PH : bindings->pairs()) {
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
     auto payload = PH.second->getUnsafePtr();
-    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
     auto addr = symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     // copy PH to allocated memory.
@@ -48,8 +53,13 @@ void LLVMCompiledFunction::loadPlaceholders(
 void LLVMCompiledFunction::updatePlaceholders(
     PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
   // Copy placeholders from device back into bindings.
+  auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto PH : bindings->pairs()) {
-    auto symbolInfo = runtimeBundle_.getSymbolInfo(PH.first);
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
     auto numBytes = symbolInfo.size;
     auto addr = PH.second->getUnsafePtr();
