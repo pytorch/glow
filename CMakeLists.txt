@@ -96,6 +96,10 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 
+if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googlebenchmark/src")
+  message(FATAL_ERROR "No googlebenchmark git submodule. Run: git submodule update --init --recursive")
+endif()
+
 if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googletest/googletest")
   message(FATAL_ERROR "No googletest git submodule. Run: git submodule update --init --recursive")
 endif()
@@ -130,6 +134,8 @@ if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)
 endif()
 
 if (GLOW_BUILD_TESTS)
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable tests for Google benchmark" FORCE)
+  add_subdirectory(tests/googlebenchmark EXCLUDE_FROM_ALL)
   add_subdirectory(tests/googletest EXCLUDE_FROM_ALL)
   add_subdirectory(tests)
 

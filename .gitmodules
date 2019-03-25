@@ -13,3 +13,6 @@
 [submodule "thirdparty/foxi"]
 	path = thirdparty/foxi
 	url = https://github.com/houseroad/foxi.git
+[submodule "googlebenchmark"]
+	path = tests/googlebenchmark
+	url = https://github.com/google/benchmark
