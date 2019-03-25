@@ -10,4 +10,17 @@ add_executable(ConvBench
 target_link_libraries(ConvBench
                       PRIVATE
                         CPURuntimeNative)
+
+add_executable(DeviceManagerBench
+               DeviceManagerBench.cpp)
+target_link_libraries(DeviceManagerBench
+                      PRIVATE
+                        Backend
+                        Backends
+                        DeviceManager
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Optimizer
+                        benchmark)
 endif()
