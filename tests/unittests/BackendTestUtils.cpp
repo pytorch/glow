@@ -112,9 +112,9 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
 void compareAgainstInterpreter(BackendKind backendKind,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
-                               ElemKind backendElemKind,
-                               quantization::Schema schema, float allowedError,
-                               bool enableRowwiseQuantization) {
+                               ElemKind backendElemKind, float allowedError,
+                               bool enableRowwiseQuantization,
+                               quantization::Schema schema) {
   ExecutionEngine IEE{BackendKind::Interpreter};
   ExecutionEngine BEE{backendKind};
   PlaceholderBindings Ibindings, Bbindings;

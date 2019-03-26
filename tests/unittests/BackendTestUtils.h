@@ -190,14 +190,13 @@ using CreateAndInitFunction =
 /// quantize one or both. Otherwise if either is Float16Ty then the respective
 /// Function it will be converted using the Converter. If
 /// \p enableRowwiseQuantization then rowwise quantization will be used for
-/// nodes that support it.
-void compareAgainstInterpreter(BackendKind backendKind,
-                               CreateAndInitFunction createAndInitFunction,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind,
-                               quantization::Schema schema,
-                               float allowedError = 0.0001,
-                               bool enableRowwiseQuantization = false);
+/// nodes that support it. \p schema represents the quantization schema to use,
+/// if applicable.
+void compareAgainstInterpreter(
+    BackendKind backendKind, CreateAndInitFunction createAndInitFunction,
+    ElemKind interpElemKind, ElemKind backendElemKind,
+    float allowedError = 0.0001, bool enableRowwiseQuantization = false,
+    quantization::Schema schema = quantization::Schema::Asymmetric);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
