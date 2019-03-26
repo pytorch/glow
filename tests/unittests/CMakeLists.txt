@@ -401,12 +401,10 @@ add_executable(ExecutorTest
                ExecutorTest.cpp)
 target_link_libraries(ExecutorTest
                       PRIVATE
-                        DeviceManager
-                        Executor
-                        Graph
+                        RuntimeTestUtils
                         gtest
-                        TestMain
-                        ThreadPool)
+                        TestMain)
+target_include_directories(ExecutorTest PUBLIC ${CMAKE_SOURCE_DIR}/tests/utils)
 add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
 
 add_executable(TensorsTest

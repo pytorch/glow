@@ -1,0 +1,9 @@
+add_library(RuntimeTestUtils
+            RuntimeTestUtils.cpp)
+target_link_libraries(RuntimeTestUtils
+                      PRIVATE
+                        Base
+                        DeviceManager
+                        Executor
+                        Graph
+                        ThreadPool)

@@ -4,6 +4,7 @@ add_subdirectory(unittests)
 add_subdirectory(images)
 add_subdirectory(benchmark)
 add_subdirectory(models)
+add_subdirectory(utils)
 
 # Function which creates a new OutputCheck test that runs test_script.
 function(add_output_check_test)
@@ -14,7 +15,7 @@ function(add_output_check_test)
   if (NOT ARG_NAME)
     message(FATAL_ERROR "Name mandatory")
   endif()
-  
+
   if (NOT ARG_COMMAND)
     message(FATAL_ERROR "Command mandatory")
   endif()
@@ -88,7 +89,7 @@ add_output_check_test(NAME resnet_runtime_test
                       COMMAND ${EXAMPLES_TESTS_DIR}/resnet-runtime-test.sh
                       REQUIRES MODELS)
 
-# Create target for OUTPUTCHECK_TESTS. 
+# Create target for OUTPUTCHECK_TESTS.
 LIST(APPEND OUTPUTCHECK_TESTS true)
 add_custom_target(output_check_tests
   COMMAND ${OUTPUTCHECK_TESTS}
