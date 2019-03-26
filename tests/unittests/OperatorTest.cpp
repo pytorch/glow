@@ -5638,7 +5638,6 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
   ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
-                            quantization::Schema::Asymmetric,
                             /* enableRowwiseQuantization */ true);
 }
 
