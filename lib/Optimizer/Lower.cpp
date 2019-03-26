@@ -121,15 +121,10 @@ static void lowerRegressionGradNode(Function *F, LoweredInfoMap *loweredMap,
 
 static void lowerFullyConnectedNode(Function *F, LoweredInfoMap *loweredMap,
                                     const FullyConnectedNode &FC) {
-  auto *X = F->createFlatten("fc.1X", FC.getInput(), 1);
-
   auto W = FC.getWeights();
-  TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
-      FC.getResult().getType(), {X->getResult().dims()[0], W.dims()[1]});
-  auto *mul = F->createMatMul("fc.dot", outTy, X, W);
-
-  auto *add = F->createBatchedAdd("fc.add.bias", FC.getResult().getType(), mul,
-                                  FC.getBias());
+  TypeRef OT = FC.getResult().getType();
+  auto *mul = F->createMatMul("fc.dot", OT, FC.getInput(), W);
+  auto *add = F->createBatchedAdd("fc.add.bias", OT, mul, FC.getBias());
   replaceAllUsesOfWith(loweredMap, FC.getResult(), add);
 
   if (FC.hasPredicate()) {

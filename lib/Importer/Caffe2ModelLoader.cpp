@@ -568,11 +568,6 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
 
-    // If number of input dims is greater then 2 flatten on axis.
-    if (in.getType()->dims().size() > 2) {
-      in = G_.createFlatten("fc.in", in, axis);
-    }
-
     // Load weights.
     Tensor *w;
     ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
@@ -623,9 +618,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto outTy = G_.getParent()->uniqueType(
           ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
           yScale, yZeroPoint - OFFSETSHIFT);
-      node = G_.createFullyConnected(opName, in, W, B, outTy);
+      node = G_.createFullyConnected(opName, in, W, B, outTy, axis);
     } else {
-      node = G_.createFullyConnected(opName, in, W, B);
+      node = G_.createFullyConnected(opName, in, W, B, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output
