@@ -160,7 +160,8 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// this must either be int32_t or float.
 template <typename T>
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
-                               Tensor &scales, Tensor &offsets) {
+                               Tensor &scales, Tensor &offsets,
+                               quantization::Schema schema) {
   const auto fDims = flattenCdr(input.dims());
   Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
   Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
@@ -182,7 +183,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 
     if (std::is_same<int32_t, T>::value) {
       TensorQuantizationParams qParams =
-          chooseQuantizationParams(min, max, quantization::Schema::Asymmetric);
+          chooseQuantizationParams(min, max, schema);
       for (size_t j = 0; j < idim.width; j++) {
         destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
       }

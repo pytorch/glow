@@ -79,6 +79,7 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
                                Function *&IF, Function *&BF,
                                ElemKind interpElemKind,
                                ElemKind backendElemKind,
+                               quantization::Schema schema,
                                bool enableRowwiseQuantization) {
   // Lower everything for profiling in a cloned PF, keeping track of lowered
   // info in loweredMap, which is then used when generating QI.
@@ -92,7 +93,7 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(IF, &loweredMapForQuant, IEE.getBackend());
-    IF = quantization::quantizeFunction(IEE, QI, interpElemKind, IF,
+    IF = quantization::quantizeFunction(IEE, schema, QI, interpElemKind, IF,
                                         loweredMapForQuant, "quant", {},
                                         enableRowwiseQuantization);
   }
@@ -100,7 +101,7 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(BF, &loweredMapForQuant, BEE.getBackend());
-    BF = quantization::quantizeFunction(BEE, QI, backendElemKind, BF,
+    BF = quantization::quantizeFunction(BEE, schema, QI, backendElemKind, BF,
                                         loweredMapForQuant, "quant", {},
                                         enableRowwiseQuantization);
   }
@@ -111,7 +112,8 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
 void compareAgainstInterpreter(BackendKind backendKind,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
-                               ElemKind backendElemKind, float allowedError,
+                               ElemKind backendElemKind,
+                               quantization::Schema schema, float allowedError,
                                bool enableRowwiseQuantization) {
   ExecutionEngine IEE{BackendKind::Interpreter};
   ExecutionEngine BEE{backendKind};
@@ -130,7 +132,7 @@ void compareAgainstInterpreter(BackendKind backendKind,
                             isQuantizedElemKind(backendElemKind);
   if (profAndQuant) {
     profileAndQuantize(Ibindings, IEE, BEE, IF, BF, interpElemKind,
-                       backendElemKind, enableRowwiseQuantization);
+                       backendElemKind, schema, enableRowwiseQuantization);
   }
 
   if (interpElemKind == ElemKind::Float16Ty) {

@@ -18,6 +18,7 @@
 
 #include "glow/Base/Type.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -328,10 +329,9 @@ public:
   /// creation time. The output is quantized in the regular way, and its type
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
-  RowwiseQuantizedFullyConnectedNode *
-  createRowwiseQuantizedFullyConnected(llvm::StringRef name, NodeValue input,
-                                       Constant *W, Node *B, TypeRef outTy,
-                                       bool transposeWeight = false);
+  RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, Constant *W, Node *B,
+      TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
   /// inputs. Consequently, \p X and \p Y must be either 1D or 2D tensors. This
@@ -646,7 +646,8 @@ public:
   /// float input \p data, which is rowwise-quantized internally.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Tensor &data,
-                                         NodeValue indices, NodeValue lengths);
+                                         NodeValue indices, NodeValue lengths,
+                                         quantization::Schema schema);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -658,11 +659,9 @@ public:
   /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                 Tensor &data,
-                                                 NodeValue weights,
-                                                 NodeValue indices,
-                                                 NodeValue lengths);
+  createRowwiseQuantizedSparseLengthsWeightedSum(
+      llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+      NodeValue lengths, quantization::Schema schema);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
