@@ -313,15 +313,20 @@ public:
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad);
 
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
+  /// along \p axis. Note, output type and outputDepth are inferred based on
+  /// the input types.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Storage *W,
-                                           Storage *B);
+                                           Storage *B, unsigned_t axis = 1);
 
-  /// Create a fully connected node with the specified output type.
-  /// Note, outputDepth is infered based on the output type.
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is
+  /// flattened along \p axis. Note, outputDepth is inferred based on \p outTy.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Node *W, Node *B,
-                                           TypeRef outTy);
+                                           TypeRef outTy, unsigned_t axis = 1);
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
@@ -926,11 +931,14 @@ public:
                                   unsigned_t stride, unsigned_t pad,
                                   unsigned_t group);
 
-  /// Create a fully connected node with the given \p name, \p input and \p
-  /// output depth. Trainable weight and bias variables are created implicitly.
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
+  /// along \p axis. Note, output type is inferred based on the input
+  /// types. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(PlaceholderBindings &bindings,
                                            llvm::StringRef name,
-                                           NodeValue input, size_t outDepth);
+                                           NodeValue input, size_t outDepth,
+                                           unsigned_t axis = 1);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
