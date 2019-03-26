@@ -813,14 +813,29 @@ public:
   }
 
   /// Fill the tensor with uniformly distributed values in the range
-  /// [low .. high].
+  /// [low .. high]. For quantized fused tensors leave scales/offsets unchanged.
   template <typename T = ElemTy>
   typename std::enable_if<std::is_integral<T>::value>::type
   randomize(int low, int high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
     std::uniform_int_distribution<int> dist(low, high);
-    for (auto &elem : *this) {
-      elem = dist(PRNG);
+    switch (getElementType()) {
+    default: {
+      for (auto &elem : *this) {
+        elem = dist(PRNG);
+      }
+      return;
+    }
+    case ElemKind::UInt8FusedQTy: {
+      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
+      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
+      for (size_t i = 0, e = dims()[0]; i < e; i++) {
+        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
+          at({i, j}) = dist(PRNG);
+        }
+      }
+      return;
+    }
     }
   }
 
