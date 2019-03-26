@@ -898,3 +898,23 @@ TEST(Tensor, initBroadcastFused) {
     }
   }
 }
+
+/// Check that when randomizing a fused quantized tensor, the scale and offset
+/// are not changed.
+TEST(Tensor, randomizeFused) {
+  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 1.0, 0);
+  auto TH = T.getHandle<uint8_t>();
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 0; j < 10; j++) {
+      TH.at({i, j}) = i * 10 + j;
+    }
+  }
+  PseudoRNG PRNG;
+  TH.randomize(0, 255, PRNG);
+  for (size_t i = 0; i < 10; i++) {
+    for (size_t j = 2; j < 10; j++) {
+      // Check that the scales/offsets are unchanged.
+      EXPECT_EQ(TH.at({i, j}), i * 10 + j);
+    }
+  }
+}
