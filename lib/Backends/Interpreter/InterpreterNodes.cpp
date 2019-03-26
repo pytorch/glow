@@ -2279,7 +2279,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
-  assert(totalLength == indices->dims()[0] &&
+  assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
   size_t lineSize = data->size() / data->dims()[0];
@@ -2319,7 +2319,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
-  assert(totalLength == indices->dims()[0] &&
+  assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
   size_t lineSize = data->size() / data->dims()[0];
@@ -2381,7 +2381,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
-  assert(totalLength == indices->dims()[0] &&
+  assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
   size_t lineSize = data->size() / data->dims()[0];
@@ -2429,7 +2429,7 @@ void BoundInterpreterFunction::
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
-  assert(totalLength == indices->dims()[0] &&
+  assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
   const size_t inLineSize = data->size() / data->dims()[0];
