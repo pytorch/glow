@@ -5383,8 +5383,8 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
                         ElemKind DTy) {
   auto *tensor4D = createPlaceholderConditionallyQuantized(
       mod, DTy, {3, 2, 4, 3}, "4D", false);
-  bindings.allocate(tensor4D)->init(Tensor::InitKind::Xavier, 1.0,
-                                    mod.getPRNG());
+  bindings.allocate(tensor4D)->getHandle<DataType>().randomize(0, 100,
+                                                               mod.getPRNG());
 
   auto *reshape4Dto2DAxis1 = F->createFlatten("flat4Dto2Da1", tensor4D, 1);
   EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
@@ -5415,8 +5415,8 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
   // rank of a tensor, 1D vector means we can flatten it on axis 1.
   auto *tensor1D =
       createPlaceholderConditionallyQuantized(mod, DTy, {15}, "1D", false);
-  bindings.allocate(tensor1D)->init(Tensor::InitKind::Xavier, 1.0,
-                                    mod.getPRNG());
+  bindings.allocate(tensor1D)->getHandle<DataType>().randomize(0, 100,
+                                                               mod.getPRNG());
 
   auto *reshape1Dto2DAxis1 = F->createFlatten("flat1Dto2D", tensor1D, 1);
   EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);

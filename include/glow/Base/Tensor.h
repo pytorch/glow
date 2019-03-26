@@ -774,29 +774,13 @@ public:
   /// row of \p input equals to norm of corresponding row of \p result.
   void initXavier(size_t filterSize, PseudoRNG &PRNG) {
     assert(filterSize > 0 && "invalid filter size");
+    assert((getElementType() == ElemKind::FloatTy ||
+            getElementType() == ElemKind::Float16Ty) &&
+           "Only support floating point Xavier initialization.");
     double scale = std::sqrt(3.0 / double(filterSize));
     std::uniform_real_distribution<> dist(-scale, scale);
-    switch (getElementType()) {
-    default: {
-      for (auto &e : *this) {
-        e = dist(PRNG);
-      }
-      return;
-    }
-    case ElemKind::UInt8FusedQTy: {
-      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
-      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
-      for (size_t i = 0, e = dims()[0]; i < e; i++) {
-        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
-          auto v = dist(PRNG);
-          memcpy(&at({i, j}), &v, sizeof(uint8_t));
-        }
-      }
-      return;
-    }
-    case ElemKind::BoolTy: {
-      llvm_unreachable("Undefined to Xavier-initialize Bool Tensor.");
-    }
+    for (auto &e : *this) {
+      e = dist(PRNG);
     }
   }
 
@@ -818,6 +802,9 @@ public:
   typename std::enable_if<std::is_integral<T>::value>::type
   randomize(int low, int high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
+    assert(static_cast<ElemTy>(low) >= std::numeric_limits<ElemTy>::lowest() &&
+           static_cast<ElemTy>(high) <= std::numeric_limits<ElemTy>::max() &&
+           "Cannot initialize outside range of representable values.");
     std::uniform_int_distribution<int> dist(low, high);
     switch (getElementType()) {
     default: {

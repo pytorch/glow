@@ -461,32 +461,8 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<float16_t>().initXavier(val, PRNG);
       break;
     }
-    case ElemKind::Int8QTy: {
-      getHandle<int8_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::Int16QTy: {
-      getHandle<int16_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::Int32QTy: {
-      getHandle<int32_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::Int32ITy: {
-      getHandle<int32_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::Int64ITy: {
-      getHandle<int64_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::UInt8FusedQTy: {
-      getHandle<uint8_t>().initXavier(val, PRNG);
-      break;
-    }
-    case ElemKind::BoolTy: {
-      llvm_unreachable("Undefined to Xavier-initialize Bool Tensor.");
+    default: {
+      llvm_unreachable("Undefined to Xavier-initialize non-Float Tensors.");
     }
     }
     break;
