@@ -43,7 +43,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
 
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
-  for (auto &v : F->getGraph()->getParent()->getConstants()) {
+  for (auto &v : F->findConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
@@ -52,7 +52,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
   }
 
   // Compute the offsets and total memory requirements for Placeholders.
-  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+  for (auto &v : F->findPlaceholders()) {
     // Get the WeightVar for each Placeholder to calculate offsets.
     assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
@@ -174,14 +174,14 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 void AllocationsInfo::numberValues(const IRFunction *F) {
   size_t valueIdx = 0;
   // Assign numbers to all weights.
-  for (auto &v : F->getGraph()->getParent()->getConstants()) {
+  for (auto &v : F->findConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     valueNumbers_[w] = std::make_pair(ValueKind::ConstantWeight, valueIdx++);
   }
 
   // Assign numbers to all placeholders.
-  for (auto &v : F->getGraph()->getParent()->getPlaceholders()) {
+  for (auto &v : F->findPlaceholders()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     valueNumbers_[w] = std::make_pair(ValueKind::MutableWeight, valueIdx++);

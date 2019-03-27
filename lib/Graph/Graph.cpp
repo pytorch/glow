@@ -2712,6 +2712,58 @@ void Function::eraseNode(Node *N) {
   eraseNode(N->getIterator());
 }
 
+PlaceholderList Function::findPlaceholders() {
+  PlaceholderList list;
+  for (auto &PH : parent_->getPlaceholders()) {
+    for (auto &user : PH->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(PH);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+PlaceholderList Function::findPlaceholders() const {
+  PlaceholderList list;
+  for (auto &PH : parent_->getPlaceholders()) {
+    for (auto &user : PH->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(PH);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+ConstList Function::findConstants() {
+  ConstList list;
+  for (auto &constant : parent_->getConstants()) {
+    for (auto &user : constant->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(constant);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+ConstList Function::findConstants() const {
+  ConstList list;
+  for (auto &constant : parent_->getConstants()) {
+    for (auto &user : constant->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(constant);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
 Function *Function::clone(llvm::StringRef newName,
                           llvm::DenseMap<Node *, Node *> *map) {
   Module *M = getParent();
