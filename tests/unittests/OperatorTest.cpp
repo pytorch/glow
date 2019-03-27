@@ -1848,7 +1848,7 @@ COMPARE_ARITH_FUN(Min)
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
     compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Int8QTy, 0.02f);    \
+                              ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f);   \
   }
 COMPARE_ARITH_FLOAT_VS_INT8(Add, Interpreter, CPU, OpenCL)
 COMPARE_ARITH_FLOAT_VS_INT8(Sub, Interpreter, CPU, OpenCL)
