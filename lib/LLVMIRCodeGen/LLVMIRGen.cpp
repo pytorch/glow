@@ -328,6 +328,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
+  case ElemKind::Int16QTy:
+    T = llvm::Type::getInt16PtrTy(ctx_);
+    break;
   case ElemKind::Int32QTy:
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
