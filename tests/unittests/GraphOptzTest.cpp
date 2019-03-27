@@ -35,6 +35,8 @@ protected:
   PlaceholderBindings bindings_;
 };
 
+class GraphFold : public GraphOptz {};
+
 /// \returns the number of nodes in \p F of kind \p kind.
 static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   unsigned count = 0;
@@ -1997,6 +1999,65 @@ TEST_F(GraphOptz, fusePadIntoConvNeg2) {
                       {0, 1, -2, 0, 0, -3, 4, 0} /* pads */,
                       5 /* convKernelSize */, {0, 2, 5, 7} /* convPads */,
                       1 /* convStride */, 16 /* convNumKernels */);
+}
+
+/// This test checks that a lowered LeakyRelu is corrected folded:
+/// Max(A, Mult(A, Splat)) -> PRelu(Splat)
+TEST_F(GraphFold, foldLeakyReluFromSplat) {
+  std::vector<size_t> dims = {5, 2};
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", true);
+
+  const float leakyAlpha = 0.05f;
+  auto OutTy = mod_.uniqueType(ElemKind::FloatTy, dims);
+  SplatNode *splatNode = F_->createSplat("splat", OutTy, leakyAlpha);
+  MulNode *mulNode = F_->createMul("mul", input, splatNode);
+  MaxNode *maxNode = F_->createMax("max", input, mulNode);
+  SaveNode *output = F_->createSave("save", maxNode);
+
+  EXPECT_EQ(4, F_->getNodes().size());
+
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  // Check the resulting graph after folding.
+  EXPECT_EQ(3, F_->getNodes().size());
+  auto *newPReluNode = llvm::dyn_cast<PReluNode>(output->getInput());
+  ASSERT_TRUE(newPReluNode);
+  auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
+  ASSERT_TRUE(newSplatNode);
+  EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
+  EXPECT_EQ(input, newPReluNode->getInput());
+}
+
+/// This test checks that a lowered LeakyRelu is corrected folded:
+/// Max(A, Mult(A, broadcasted Const)) -> PRelu(Splat)
+TEST_F(GraphFold, foldLeakyReluFromConst) {
+  std::vector<size_t> dims = {5, 2};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", true);
+
+  const float leakyAlpha = 0.99f;
+  auto *alphaConst = mod_.createConstant(ElemKind::FloatTy, {1}, "alphaConst");
+  alphaConst->getHandle() = {leakyAlpha};
+  ReshapeNode *reshapeNode = F_->createReshape("reshape", alphaConst, {1, 1});
+  TileNode *tileNode1 = F_->createTile("tile1", reshapeNode, 2, 1);
+  TileNode *tileNode2 = F_->createTile("tile2", tileNode1, 5, 0);
+  MulNode *mulNode = F_->createMul("mul", input, tileNode2);
+  MaxNode *maxNode = F_->createMax("max", input, mulNode);
+  SaveNode *output = F_->createSave("save", maxNode);
+
+  EXPECT_EQ(6, F_->getNodes().size());
+
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  // Check the resulting graph after folding. Reshape must have been merged into
+  // the constant and LeakyRelu must have been folded.
+  EXPECT_EQ(3, F_->getNodes().size());
+  auto *newPReluNode = llvm::dyn_cast<PReluNode>(output->getInput());
+  ASSERT_TRUE(newPReluNode);
+  auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
+  ASSERT_TRUE(newSplatNode);
+  EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
+  EXPECT_EQ(input, newPReluNode->getInput());
 }
 
 /// This test ensures that if there is a RescaleNode whose input has multiple
