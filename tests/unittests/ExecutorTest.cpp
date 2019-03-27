@@ -15,17 +15,17 @@
  */
 
 #include "glow/Runtime/Executor/Executor.h"
-#include "RuntimeTestUtils.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Support/Support.h"
-#include "glow/Support/ThreadPool.h"
+
+#include "ExecutorTestBuilder.h"
+#include "ExecutorUnitTestWrapper.h"
+#include "TestDeviceManager.h"
 
 #include "gtest/gtest.h"
 
-#include <chrono>
 #include <future>
 #include <thread>
-#include <unordered_set>
 
 using namespace glow;
 using namespace glow::runtime;
@@ -123,8 +123,10 @@ TEST_F(ThreadPoolExecutorTest, SingleNode) {
                        /*parents=*/{}, {"netInput"}, {"netOutput"}, testRunId,
                        true);
 
-  ExecutorTest test = testBuilder_.emitTest();
-  EXPECT_TRUE(test.run());
+  std::unique_ptr<ExecutorUnitTestWrapper> test =
+      testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+  ASSERT_TRUE(test);
+  EXPECT_TRUE(test->run());
 }
 
 /// Tests that several instances of a single node DAG can be run in parallel.
@@ -167,7 +169,9 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
     testBuilder_.addNode(strFormat("net_%d", i), testDeviceId,
                          /*parents=*/{}, {"netInput"}, {"netOutput"},
                          baseTestRunId + i, true);
-    ExecutorTest t = testBuilder_.emitTest();
+    std::unique_ptr<ExecutorUnitTestWrapper> t =
+        testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+    ASSERT_TRUE(t);
 
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,
                     test = std::move(t), numConcurrentRuns]() mutable {
@@ -184,7 +188,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
       threadCV.wait(lock);
       // Unlock the mutex to let all other threads run their tests concurrently.
       lock.unlock();
-      bool passed = test.run();
+      bool passed = test->run();
       lock.lock();
 
       if (passed) {
@@ -232,7 +236,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
 
   std::atomic<unsigned> testsPassed{0};
   std::vector<std::thread> threads;
-  std::vector<ExecutorTest> tests;
+  std::vector<std::unique_ptr<ExecutorUnitTestWrapper>> tests;
 
   // Build all tests.
   for (unsigned i = 0; i < numConcurrentRuns; ++i) {
@@ -247,13 +251,13 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
     testBuilder_.addNode(strFormat("net_%d", i), testDeviceId,
                          /*parents=*/{}, {"netInput"}, {"netOutput"}, testRunId,
                          true);
-    tests.emplace_back(testBuilder_.emitTest());
+    tests.emplace_back(testBuilder_.emitTest<ExecutorUnitTestWrapper>());
   }
 
   // Run all tests.
   for (unsigned i = 0; i < numConcurrentRuns; ++i) {
     std::thread th([&testsPassed, test = std::move(tests[i])]() mutable {
-      bool passed = test.run();
+      bool passed = test->run();
       if (passed) {
         testsPassed++;
       }
@@ -315,8 +319,10 @@ TEST_F(ThreadPoolExecutorTest, MultiNode) {
                        /*parents=*/{"gamma"}, /*inputs=*/{"epsIn"},
                        /*outputs=*/{"epsOut"}, testRunId, true);
 
-  ExecutorTest test = testBuilder_.emitTest();
-  EXPECT_TRUE(test.run());
+  std::unique_ptr<ExecutorUnitTestWrapper> test =
+      testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+  ASSERT_TRUE(test);
+  EXPECT_TRUE(test->run());
 }
 
 /// Tests that a DAG with a node that fails can run correctly.
@@ -366,8 +372,10 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeWithFailure) {
                        /*parents=*/{"eps"}, /*inputs=*/{"epsOut"},
                        /*outputs=*/{"zetaOut"}, testRunId, true);
 
-  ExecutorTest test = testBuilder_.emitTest();
-  EXPECT_TRUE(test.run());
+  std::unique_ptr<ExecutorUnitTestWrapper> test =
+      testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+  ASSERT_TRUE(test);
+  EXPECT_TRUE(test->run());
 }
 
 /// Tests that a DAG with nodes spread across multiple devices can run
@@ -419,8 +427,10 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeMultiDevice) {
                        /*parents=*/{"gamma"}, /*inputs=*/{"epsIn"},
                        /*outputs=*/{"epsOut"}, testRunId, true);
 
-  ExecutorTest test = testBuilder_.emitTest();
-  EXPECT_TRUE(test.run());
+  std::unique_ptr<ExecutorUnitTestWrapper> test =
+      testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+  ASSERT_TRUE(test);
+  EXPECT_TRUE(test->run());
 }
 
 /// Tests that several instances of a DAG with multiple nodes can run correctly
@@ -493,7 +503,9 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
                          /*parents=*/{gamma}, /*inputs=*/{"epsIn"},
                          /*outputs=*/{"epsOut"}, baseTestRunId + i, true);
 
-    ExecutorTest t = testBuilder_.emitTest();
+    std::unique_ptr<ExecutorUnitTestWrapper> t =
+        testBuilder_.emitTest<ExecutorUnitTestWrapper>();
+    ASSERT_TRUE(t);
     std::thread th([&mtx, &driverCV, &threadCV, &threadsReady, &testsPassed,
                     test = std::move(t), numConcurrentRuns]() mutable {
       std::unique_lock<std::mutex> lock(mtx);
@@ -509,7 +521,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
       threadCV.wait(lock);
       // Unlock the mutex to let all other threads run their tests concurrently.
       lock.unlock();
-      bool passed = test.run();
+      bool passed = test->run();
       lock.lock();
 
       if (passed) {

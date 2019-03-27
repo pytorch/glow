@@ -14,143 +14,13 @@
  * limitations under the License.
  */
 
-#include "RuntimeTestUtils.h"
+#include "ExecutorTestBuilder.h"
+#include "ExecutorBenchmarkWrapper.h"
+#include "ExecutorUnitTestWrapper.h"
+#include "TestDeviceManager.h"
 
 using namespace glow;
 using namespace glow::runtime;
-
-using PlaceholderNameMapTy =
-    std::unordered_map<std::string, std::unique_ptr<Placeholder>>;
-using DAGNodeNameMapTy =
-    std::unordered_map<std::string, std::unique_ptr<DAGNode>>;
-
-void TestDeviceManager::evictNetwork(std::string functionName,
-                                     EvictFunctionCBTy evictCB) {
-  // Erase the entry so that the same function name can be used to register
-  // another result.
-  llvm::Error err = llvm::Error::success();
-
-  if (!resultMap_.erase(functionName)) {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {0} to evict",
-                               functionName)
-                     .str());
-  }
-
-  if (evictCB) {
-    evictCB(functionName, std::move(err));
-  } else {
-    llvm::errs() << llvm::toString(std::move(err));
-  }
-}
-
-void TestDeviceManager::doRunFunction(std::string functionName,
-                                      std::shared_ptr<ExecutionContext> context,
-                                      ResultCBTy resultCB) {
-  RunIdentifierTy runId = 0;
-  bool successResult = false;
-  std::unique_ptr<ExecutionContext> resultContext = nullptr;
-
-  // Retrieve the registered response for the function if there is one.
-  if (context && resultCB && resultMap_.count(functionName)) {
-    std::unique_ptr<RunFunctionResult> registeredResult =
-        std::move(resultMap_[functionName]);
-
-    // Check that context contains the expected Placeholder-Tensor mappings.
-    std::unique_ptr<ExecutionContext> inputContext =
-        std::move(registeredResult->inputContext);
-
-    if (PlaceholderBindings::compare(context->getPlaceholderBindings(),
-                                     inputContext->getPlaceholderBindings())) {
-      // If bindings contains all expected mappings, overwrite the default
-      // runId, result and resultContext with the registered
-      // ones.
-      runId = registeredResult->runId;
-      successResult = registeredResult->success;
-      resultContext = std::move(registeredResult->resultContext);
-    }
-  }
-
-  if (successResult) {
-    resultCB(runId, llvm::Error::success(), std::move(resultContext));
-  } else {
-    resultCB(runId, MAKE_ERR("An error occurred"), std::move(resultContext));
-  }
-}
-
-runtime::RunIdentifierTy
-TestDeviceManager::runFunction(std::string functionName,
-                               std::unique_ptr<ExecutionContext> context,
-                               ResultCBTy resultCB) {
-  // Give the call to the thread pool to process to make the tests
-  // multithreaded if needed.
-  std::shared_ptr<ExecutionContext> sharedContext = std::move(context);
-  this->threadPool_.submit([this, functionName, sharedContext, resultCB]() {
-    this->doRunFunction(functionName, sharedContext, resultCB);
-  });
-  return 0;
-}
-
-bool TestDeviceManager::registerResult(
-    const std::string &functionName, RunIdentifierTy runId, bool success,
-    std::unique_ptr<ExecutionContext> inputContext,
-    std::unique_ptr<ExecutionContext> resultContext) {
-  bool registered = false;
-
-  if (!resultMap_.count(functionName)) {
-    // If the function name has not already been registered, insert it into
-    // resultMap_.
-    std::tie(std::ignore, registered) = resultMap_.insert(std::make_pair(
-        functionName, llvm::make_unique<RunFunctionResult>(
-                          runId, success, std::move(inputContext),
-                          std::move(resultContext))));
-  }
-
-  return registered;
-}
-
-bool ExecutorTest::run() {
-  if (testRun_) {
-    assert(!"Test has already been run!");
-  }
-
-  // Variables for storing runId actually returned by
-  // Executor::run() via its callback.
-  RunIdentifierTy executorRunId;
-  std::unique_ptr<ExecutionContext> executorOutputContext;
-
-  // Call Executor::run().
-  std::promise<bool> promise;
-  std::future<bool> future = promise.get_future();
-  executor_->run(root_.get(), std::move(inputContext_), runId_,
-                 [&promise, &executorRunId, &executorOutputContext](
-                     RunIdentifierTy runId, llvm::Error err,
-                     std::unique_ptr<ExecutionContext> context) {
-                   executorRunId = runId;
-                   executorOutputContext = std::move(context);
-                   promise.set_value(errToBool(std::move(err)));
-                 });
-
-  bool runSuccess = !future.get();
-
-  // Check that the values returned in the Executor callback match
-  // expectations.
-  bool runIdsMatch = executorRunId == runId_;
-  bool resultsMatch = runSuccess == expectSuccess_;
-
-  bool bindingsMatch = PlaceholderBindings::compare(
-      executorOutputContext->getPlaceholderBindings(),
-      outputContext_->getPlaceholderBindings());
-
-  // If the run failed, we shouldn't expect bindingsMatch to be true.
-  bool testPassed =
-      runIdsMatch && resultsMatch && (!runSuccess || bindingsMatch);
-
-  testRun_ = true;
-
-  return testPassed;
-}
 
 void ExecutorTestBuilder::addNode(const std::string &name, DeviceIDTy deviceId,
                                   llvm::ArrayRef<llvm::StringRef> parents,
@@ -265,7 +135,8 @@ void ExecutorTestBuilder::addNode(const std::string &name, DeviceIDTy deviceId,
   leaves_.insert(newNodeRawPtr);
 }
 
-ExecutorTest ExecutorTestBuilder::emitTest() {
+template <class TestType>
+std::unique_ptr<TestType> ExecutorTestBuilder::emitTest() {
   // Get the input and output symbol names for the whole DAG.
   std::vector<std::string> inputSymbols = gatherInputSymbols();
   std::vector<std::string> outputSymbols = gatherOutputSymbols();
@@ -300,10 +171,10 @@ ExecutorTest ExecutorTestBuilder::emitTest() {
   }
 
   // Create the test object.
-  ExecutorTest test(executor_, std::move(root_), std::move(type_),
-                    std::move(nodes_), std::move(placeholders_),
-                    std::move(inputContext), std::move(outputContext), runId_,
-                    success_);
+  auto test = llvm::make_unique<TestType>(
+      executor_, std::move(root_), std::move(type_), std::move(nodes_),
+      std::move(placeholders_), std::move(inputContext),
+      std::move(outputContext), runId_, success_);
 
   // Reset builder state to allow a new test to be constructed with this
   // instance.
@@ -317,6 +188,12 @@ ExecutorTest ExecutorTestBuilder::emitTest() {
 
   return test;
 }
+
+// Explicit instantiations of ExecutorTestBuilder::emitTest().
+template std::unique_ptr<ExecutorUnitTestWrapper>
+ExecutorTestBuilder::emitTest<ExecutorUnitTestWrapper>();
+template std::unique_ptr<ExecutorBenchmarkWrapper>
+ExecutorTestBuilder::emitTest<ExecutorBenchmarkWrapper>();
 
 std::vector<std::string> ExecutorTestBuilder::gatherInputSymbols() const {
   std::vector<std::string> inputSymbols;

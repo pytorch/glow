@@ -401,7 +401,9 @@ add_executable(ExecutorTest
                ExecutorTest.cpp)
 target_link_libraries(ExecutorTest
                       PRIVATE
-                        RuntimeTestUtils
+                        ExecutorTestBuilder
+                        ExecutorUnitTestWrapper
+                        TestDeviceManager
                         gtest
                         TestMain)
 target_include_directories(ExecutorTest PUBLIC ${CMAKE_SOURCE_DIR}/tests/utils)
