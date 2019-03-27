@@ -24,3 +24,15 @@ target_link_libraries(DeviceManagerBench
                         Optimizer
                         benchmark)
 endif()
+
+add_executable(ExecutorBench
+               ExecutorBench.cpp)
+target_link_libraries(ExecutorBench
+                      PRIVATE
+                        Executor
+                        ExecutorTestBuilder
+                        ExecutorBenchmarkWrapper
+                        Graph
+                        TestDeviceManager
+                        benchmark)
+target_include_directories(ExecutorBench PUBLIC ${CMAKE_SOURCE_DIR}/tests/utils)

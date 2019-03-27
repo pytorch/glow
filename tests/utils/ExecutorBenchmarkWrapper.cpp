@@ -68,5 +68,6 @@ bool ExecutorBenchmarkWrapper::run(benchmark::State &state) {
 
   testRun_ = true;
 
+  state.ResumeTiming();
   return testPassed;
 }
