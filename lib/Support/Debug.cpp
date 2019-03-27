@@ -30,17 +30,20 @@ static llvm::cl::opt<bool, true>
               llvm::cl::Hidden, llvm::cl::location(DebugFlag));
 
 /// -debug-glow-only - Command line option to enable debug output for specific
-/// passes.
-static llvm::cl::opt<std::string, true>
+/// debug types. Multiple comma-separated debug types names can be provided.
+static llvm::cl::list<std::string>
     DebugGlowOnly("debug-glow-only",
-                  llvm::cl::desc("Enable a specific type of debug output"),
-                  llvm::cl::Hidden, llvm::cl::location(DebugOnlyType));
+                  llvm::cl::desc("Enable specific types of debug output"),
+                  llvm::cl::CommaSeparated, llvm::cl::Hidden);
 
 namespace glow {
 
 /// Exported boolean set by -debug-glow option.
 bool DebugFlag = false;
 
-bool isCurrentDebugType(const char *type) { return DebugOnlyType == type; }
+bool isCurrentDebugType(const char *type) {
+  return std::find(DebugGlowOnly.begin(), DebugGlowOnly.end(), type) !=
+         DebugGlowOnly.end();
+}
 
 } // namespace glow
