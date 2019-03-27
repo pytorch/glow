@@ -41,7 +41,7 @@ void InterpreterFunction::collectConstants(Module *module) {
   runtimeBundle_.collectConstants(module);
   if (constants_.empty()) {
     if (runtimeBundle_.getConstantWeightSize()) {
-      for (const auto &v : module->getConstants()) {
+      for (const auto &v : F_->findConstants()) {
         auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
         auto addr = runtimeBundle_.getConstants() + symbolInfo.offset;
         auto tensor = new Tensor(addr, &symbolInfo.type);

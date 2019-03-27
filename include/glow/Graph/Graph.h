@@ -200,6 +200,9 @@ class Function final : public Named {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
+  /// A list of metadata PHs associated with the function.
+  std::vector<Placeholder *> metadataPlaceholders_;
+
   /// Stores a list of unique node names that were used by the module at some
   /// point.
   llvm::StringSet<> uniqueNodeNames_{};
@@ -213,7 +216,28 @@ public:
 
   ~Function();
 
+  /// Add placeholder for metadata such as profiling.
+  void addMetadataPlaceholder(Placeholder *PH) {
+    metadataPlaceholders_.push_back(PH);
+  }
+
+  /// Get list of metadata placeholders.
+  const std::vector<Placeholder *> &getMetadataPlaceholders() const {
+    return metadataPlaceholders_;
+  }
+
   Module *getParent() { return parent_; }
+
+  /// Search the Module containing the function to gather and return a list of
+  /// placeholders that are used by the Function.
+  PlaceholderList findPlaceholders();
+  PlaceholderList findPlaceholders() const;
+
+  /// Search the Module containing the function to gather and return a list of
+  /// constants that are used by the Function.
+  ConstList findConstants();
+  ConstList findConstants() const;
+
   const Module *getParent() const { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.

@@ -121,6 +121,9 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
     assert(backingPH);
   }
 
+  // Add Placeholder to the graph so we can add it to the runtimeBundle later.
+  F->addMetadataPlaceholder(backingPH);
+
   // If we don't have a weight we need to create one too, whether or not we just
   // created a Placeholder.
   if (!backingWeight) {
