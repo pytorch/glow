@@ -64,7 +64,8 @@ template <class ElemTy> static char valueToChar(ElemTy input) {
 }
 
 template <class ElemTy>
-static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
+static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
+                            unsigned maxNumElem) {
   auto shape = handle.dims();
   size_t numDims = shape.size();
   auto &Ty = handle.getType();
@@ -104,8 +105,6 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   os << "  min: ";
   llvm::write_double(os, mn, llvm::FloatStyle::Fixed, 3);
   os << "\n";
-
-  const unsigned maxNumElem = 100;
 
   os << "[";
 
@@ -292,27 +291,32 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
 
 void glow::dumpAsciiImpl(const Tensor *T) { dumpAsciiImpl(T, llvm::outs()); }
 
-void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os) {
+void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
+                    unsigned maxNumElem) {
   switch (T->getElementType()) {
   case ElemKind::FloatTy:
-    return dumpGenericImpl(T->getHandle<float>(), os);
+    return dumpGenericImpl(T->getHandle<float>(), os, maxNumElem);
   case ElemKind::Float16Ty:
-    return dumpGenericImpl(T->getHandle<float16_t>(), os);
+    return dumpGenericImpl(T->getHandle<float16_t>(), os, maxNumElem);
   case ElemKind::Int8QTy:
-    return dumpGenericImpl(T->getHandle<int8_t>(), os);
+    return dumpGenericImpl(T->getHandle<int8_t>(), os, maxNumElem);
   case ElemKind::Int16QTy:
-    return dumpGenericImpl(T->getHandle<int16_t>(), os);
+    return dumpGenericImpl(T->getHandle<int16_t>(), os, maxNumElem);
   case ElemKind::Int32QTy:
-    return dumpGenericImpl(T->getHandle<int32_t>(), os);
+    return dumpGenericImpl(T->getHandle<int32_t>(), os, maxNumElem);
   case ElemKind::Int32ITy:
-    return dumpGenericImpl(T->getHandle<int32_t>(), os);
+    return dumpGenericImpl(T->getHandle<int32_t>(), os, maxNumElem);
   case ElemKind::Int64ITy:
-    return dumpGenericImpl(T->getHandle<int64_t>(), os);
+    return dumpGenericImpl(T->getHandle<int64_t>(), os, maxNumElem);
   case ElemKind::UInt8FusedQTy:
-    return dumpGenericImpl(T->getHandle<uint8_t>(), os);
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
-    return dumpGenericImpl(T->getHandle<bool>(), os);
+    return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
   }
+}
+
+void glow::dumpImpl(const Tensor *T, unsigned maxNumElem) {
+  dumpImpl(T, llvm::outs(), maxNumElem);
 }
 
 void glow::dumpImpl(const Tensor *T) { dumpImpl(T, llvm::outs()); }
