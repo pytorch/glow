@@ -29,7 +29,8 @@ add_library(InterpreterFactory
               InterpreterFactory.cpp)
 target_link_libraries(InterpreterFactory
                       PRIVATE
-                        Interpreter)
+                        Interpreter
+                        LLVMCore)
 
 set(linked_factories ${linked_factories} InterpreterFactory PARENT_SCOPE)
 set(linked_device_managers ${linked_device_managers} InterpreterDeviceManager PARENT_SCOPE)

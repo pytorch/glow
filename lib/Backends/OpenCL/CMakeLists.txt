@@ -59,7 +59,8 @@ add_library(OpenCLFactory
               OpenCLFactory.cpp)
 target_link_libraries(OpenCLFactory
                       PRIVATE
-                        OpenCLBackend)
+                        OpenCLBackend
+                        LLVMCore)
 
 set(linked_factories ${linked_factories} OpenCLFactory PARENT_SCOPE)
 set(linked_device_managers ${linked_device_managers} OpenCLDeviceManager PARENT_SCOPE)
