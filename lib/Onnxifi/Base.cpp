@@ -140,10 +140,5 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
 Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
-Graph::~Graph() {
-  // Remove network from the BackendId
-  backendPtr_->getBackendId()->removeNetwork(this);
-}
-
 } // namespace onnxifi
 } // namespace glow

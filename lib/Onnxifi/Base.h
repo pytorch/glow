@@ -111,7 +111,7 @@ typedef Event *EventPtr;
 class Graph {
 public:
   explicit Graph(BackendPtr backendPtr);
-  virtual ~Graph();
+  virtual ~Graph() = default;
 
   BackendPtr backend() { return backendPtr_; }
 

@@ -19,7 +19,6 @@
 namespace glow {
 namespace onnxifi {
 
-// static
 std::unique_ptr<runtime::HostManager>
 HostManagerBackendId::createHostManager(glow::BackendKind kind) {
   std::vector<runtime::DeviceManagerConfig> configs;
@@ -79,14 +78,13 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                       EventPtr outputEvent,
                       std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
                           phNameToOnnxTensorOutputs) {
-  // Run
   backendPtr_->getBackendId()->runNetwork(
       this, std::move(ctx),
       [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
        outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
                     std::unique_ptr<ExecutionContext> ctx) {
         // If an Error occurred then log it in errToBool and signal the output
-        // event
+        // event.
         if (errToBool(std::move(err))) {
           outputEvent->signal();
           return;
@@ -111,7 +109,11 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-// static
+HostManagerGraph::~HostManagerGraph() {
+  // Remove network from the BackendId
+  backendPtr_->getBackendId()->removeNetwork(this);
+}
+
 size_t HostManagerGraph::makeUniqueGraphId() {
   static std::atomic<size_t> nextId{0};
   return nextId++;

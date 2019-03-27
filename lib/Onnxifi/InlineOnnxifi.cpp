@@ -60,14 +60,14 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   computeModelHash(onnxModel, onnxModelSize, MD5_);
   optimize(function_, CompilationMode::Infer);
 
-  // Profile
+  // -- Profile --
   if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
     lower(function_, &loweredMap_, executionEngine_.getBackend());
     PlaceholderBindings dummyCtx;
     function_ = profileQuantization(dummyCtx, function_);
   }
 
-  // Quantize
+  // -- Quantize --
   if (quantizationStep_ == OnnxifiQuantizationStep::Quantize) {
     auto QI = deserializeFromYaml(getProfileFile(MD5_));
     std::string oldName = function_->getName();
@@ -78,6 +78,8 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     Q->getParent()->eraseFunction(function_);
     function_ = Q;
   }
+
+  executionEngine_.compile(CompilationMode::Infer, function_);
 
   return ONNXIFI_STATUS_SUCCESS;
 }

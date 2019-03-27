@@ -60,7 +60,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   constexpr bool withCPU = false;
 #endif
 
-  // Only return quantization backend if GLOW_DUMP_PROFILE
+  // Only return quantization backend if GLOW_DUMP_PROFILE.
   if (getenv("GLOW_DUMP_PROFILE")) {
     *numBackends = 2;
 
