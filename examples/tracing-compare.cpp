@@ -145,6 +145,8 @@ int main(int argc, char **argv) {
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto context = llvm::make_unique<ExecutionContext>();
+    context->setTraceContext(
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, i));
     context->getPlaceholderBindings()->allocate(module.getPlaceholders());
     updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
                             {&batch});
@@ -158,8 +160,7 @@ int main(int argc, char **argv) {
         });
   }
 
-  auto context = llvm::make_unique<ExecutionContext>();
-  auto &allEvents = context->getTraceEvents();
+  std::vector<TraceEvent> allEvents;
 
   allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "Interpreter"}}});
   allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "CPU"}}});
@@ -168,10 +169,9 @@ int main(int argc, char **argv) {
     auto f = promises[i].get_future();
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
     auto runbindings = f.get();
-    for (auto &event : runbindings->getTraceEvents()) {
-      event.tid = i;
-      allEvents.push_back(event);
-    }
+    assert(runbindings->getTraceContext());
+    auto &events = runbindings->getTraceContext()->getTraceEvents();
+    std::move(events.begin(), events.end(), std::back_inserter(allEvents));
   }
 
   llvm::outs() << "Dumping json to " << outputJson << ".\n";

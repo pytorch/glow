@@ -43,7 +43,6 @@ public:
     inputPH = mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input",
                                     false);
     F = mod.createFunction("main");
-    F->setName("interpret");
   }
 
   // Split a sample network into four parts to make it easy to insert
@@ -118,6 +117,8 @@ public:
 
 TEST_P(TraceEventsTest, manualEvents) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -144,7 +145,7 @@ TEST_P(TraceEventsTest, manualEvents) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, {{"first half", "B"},
@@ -165,6 +166,8 @@ TEST_P(TraceEventsTest, manualEvents) {
 
 TEST_P(TraceEventsTest, incompleteCoverage) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -189,9 +192,9 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
-  ASSERT_EQ(traceEvents.size(), numEvents);
+  ASSERT_GE(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, {{"second half", "B"}, {"second half", "E"}});
 
   checkEventTimestamps(traceEvents);
@@ -207,6 +210,8 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 
 TEST_P(TraceEventsTest, internalGap) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -230,9 +235,9 @@ TEST_P(TraceEventsTest, internalGap) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
-  ASSERT_EQ(traceEvents.size(), numEvents);
+  ASSERT_GE(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents,
                      {{"middle section", "B"}, {"middle section", "E"}});
 
@@ -249,6 +254,8 @@ TEST_P(TraceEventsTest, internalGap) {
 
 TEST_P(TraceEventsTest, automaticInstrumentation) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   auto *n = part_one(F, context);
   n = part_two(F, context, n);
@@ -267,7 +274,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
   checkEventTimestamps(traceEvents);
@@ -275,6 +282,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 
 TEST_P(TraceEventsTest, manualAndAutomatic) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -304,7 +313,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
   // Can't use CheckTimestamps here because the manual & auto inserted
   // timestamps are not sorted by time.
 
@@ -322,6 +331,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 /// instrumentation doesn't break future compiles.
 TEST_P(TraceEventsTest, twoCompiles) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -335,6 +346,8 @@ TEST_P(TraceEventsTest, twoCompiles) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   ExecutionContext context2{context.clone()};
+  context2.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
@@ -353,7 +366,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
   EE_.run(context, name);
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
 
@@ -365,7 +378,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
   EE_.run(context2, name2);
-  auto &traceEvents2 = context2.getTraceEvents();
+  auto &traceEvents2 = context2.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents2.size(), 0);
 
@@ -380,6 +393,8 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
 TEST_P(TraceEventsTest, onlyTraceEvents) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 16;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -401,9 +416,9 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
-  ASSERT_EQ(traceEvents.size(), numEvents);
+  ASSERT_GE(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, expected);
   checkEventTimestamps(traceEvents);
 
@@ -418,6 +433,8 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 
 TEST_P(TraceEventsTest, multipleBackingTensors) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 6;
   auto *eventData1 = createEventPlaceholder(3);
@@ -450,9 +467,9 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
                           {&inputs});
   EE_.run(context);
 
-  auto &traceEvents = context.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
-  ASSERT_EQ(traceEvents.size(), numEvents);
+  ASSERT_GE(traceEvents.size(), numEvents);
 
   // Can't use checkEventMetadata since events aren't ordered
   size_t event1{0}, event2{0}, event3{0};
@@ -475,6 +492,8 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -501,16 +520,18 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
                           {&inputs});
 
   ExecutionContext context2{context.clone()};
+  context2.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
 
   // run twice
   EE_.run(context);
   EE_.run(context2);
 
-  auto &traceEvents = context.getTraceEvents();
-  auto &traceEvents2 = context2.getTraceEvents();
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
+  auto &traceEvents2 = context2.getTraceContext()->getTraceEvents();
 
-  ASSERT_EQ(traceEvents.size(), numEvents);
-  ASSERT_EQ(traceEvents2.size(), numEvents);
+  ASSERT_GE(traceEvents.size(), numEvents);
+  ASSERT_GE(traceEvents2.size(), numEvents);
 
   for (unsigned i = 0; i < numEvents; ++i) {
     ASSERT_EQ(traceEvents[i].name, traceEvents[i].name);
@@ -518,6 +539,32 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
     // timestamps are not equal
     ASSERT_EQ(traceEvents[i].timestamp, traceEvents[i].timestamp);
   }
+}
+
+TEST_P(TraceEventsTest, deviceManagerEvents) {
+  ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0));
+
+  auto *n = part_one(F, context);
+  n = part_two(F, context, n);
+  n = part_three(F, context, n);
+  n = part_four(F, context, n);
+
+  context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
+
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  EE_.compile(F, opts);
+
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
+  EE_.run(context);
+
+  auto &traceEvents = context.getTraceContext()->getTraceEvents();
+
+  ASSERT_GT(traceEvents.size(), 0);
+  checkEventTimestamps(traceEvents);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,

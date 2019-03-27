@@ -106,7 +106,8 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
       // This isn't ideal, the placeholder exists but we have no weight.
       // Probably indicates a bug in the graph, best we can do is create a new
       // placeholder and weight for the instrumentation.
-      assert(!"could not find weight for existing instrumentation placeholder");
+      // assert(!"could not find weight for existing instrumentation
+      // placeholder");
       backingPH = nullptr;
     }
   }
