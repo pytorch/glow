@@ -1025,6 +1025,49 @@ TEST_P(OperatorTest, ReluSimple_Float16) {
   testReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Helper to test PReluSimple using \p DTy.
+template <typename DataType>
+static void testPReluSimple(glow::PlaceholderBindings &bindings,
+                            glow::Module &mod, glow::Function *F,
+                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            double allowedError) {
+  auto *in = mod.createPlaceholder(DTy, {7}, "in", false);
+  auto *slope = mod.createPlaceholder(DTy, {7}, "slope", false);
+  auto *prelu = F->createPRELU("prelu", in, slope);
+  auto *save = F->createSave("prelu", prelu);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  bindings.allocate(in)->getHandle<DataType>() = {0, -1, -2, -3, 4, 5, 6};
+  bindings.allocate(slope)->getHandle<DataType>().randomize(0.1, 3.0,
+                                                            mod.getPRNG());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto resultH = result->getHandle<DataType>();
+  auto inH = bindings.get(in)->getHandle<DataType>();
+  auto slopeH = bindings.get(slope)->getHandle<DataType>();
+
+  for (size_t i = 0; i < 7; i++) {
+    DataType expectedResult =
+        slopeH.raw(i) * std::min<DataType>(0, inH.raw(i)) +
+        std::max<DataType>(0, inH.raw(i));
+    EXPECT_NEAR(resultH.at(i), expectedResult, allowedError);
+  }
+}
+
+/// Verify that the PRELU operator works correctly for Float.
+TEST_P(OperatorTest, PReluSimple_Float) {
+  testPReluSimple<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-32);
+}
+
+/// Verify that the PRELU operator works correctly for Float16.
+TEST_P(OperatorTest, PReluSimple_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testPReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             1E-16);
+}
+
 TEST_P(OperatorTest, TopK) {
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);

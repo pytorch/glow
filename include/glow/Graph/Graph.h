@@ -356,6 +356,16 @@ public:
   /// output type \p outTy.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
+  /// Create a PReLU node with the given \p name, \p input and  \p slope.
+  /// Result type will be implicitly set based on the \p input type.
+  PReluNode *createPRELU(llvm::StringRef name, NodeValue input,
+                         NodeValue slope);
+
+  /// Create a PReLU node with the given \p name, \p input, \p slope and
+  /// output type \p outTy.
+  PReluNode *createPRELU(llvm::StringRef name, NodeValue input, NodeValue slope,
+                         TypeRef outTy);
+
   /// Create a Sigmoid node with the given \p name, \p input and
   /// output type \p outTy.
   SigmoidNode *createSigmoid(llvm::StringRef name, TypeRef outTy,

@@ -715,6 +715,16 @@ ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input.getType(), input));
 }
 
+PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
+                                 NodeValue slope, TypeRef outTy) {
+  return addNode(new PReluNode(name, outTy, input, slope));
+}
+
+PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
+                                 NodeValue slope) {
+  return addNode(new PReluNode(name, input.getType(), input, slope));
+}
+
 SigmoidNode *Function::createSigmoid(llvm::StringRef name, TypeRef outTy,
                                      NodeValue input) {
   return addNode(new SigmoidNode(name, outTy, input));
