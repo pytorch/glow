@@ -40,54 +40,66 @@ inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     RETURN_ERR("Only support CPU memory tensors.");
   }
 
+  // This is a caffe2 offset shift.
+  const int32_t OFFSETSHIFT = 128;
   std::vector<size_t> dims;
   for (unsigned i = 0; i < in.dimensions; ++i) {
     dims.push_back(in.shape[i]);
   }
+  if (in.is_quantized == 1) {
+    if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      T->reset(ElemKind::Int8QTy, dims, in.scale, in.bias - OFFSETSHIFT);
 
-  if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
-    T->reset(ElemKind::FloatTy, dims);
-
-    auto TH = T->getHandle<>();
-    float *data = (float *)in.buffer;
-    for (size_t i = 0; i < TH.size(); ++i) {
-      TH.raw(i) = data[i];
-    }
-  } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
-             in.dataType == ONNXIFI_DATATYPE_INT64) {
-    const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
-    (void)inDataSigned;
-    T->reset(ElemKind::Int64ITy, dims);
-
-    auto TH = T->getHandle<int64_t>();
-    int64_t *data = (int64_t *)in.buffer;
-    for (size_t i = 0; i < TH.size(); ++i) {
-      RETURN_ERR_IF_NOT(
-          (inDataSigned || data[i] >= 0),
-          "Disallow overflow of loaded UINT64 data into Int64ITy.");
-      TH.raw(i) = data[i];
-    }
-  } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-    T->reset(ElemKind::Int32ITy, dims);
-
-    auto TH = T->getHandle<int32_t>();
-    int32_t *data = (int32_t *)in.buffer;
-    for (size_t i = 0; i < TH.size(); ++i) {
-      TH.raw(i) = data[i];
-    }
-  } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
-    T->reset(ElemKind::Int8QTy, dims, 1.0, 0);
-
-    auto TH = T->getHandle<int8_t>();
-    uint8_t *data = (uint8_t *)in.buffer;
-    for (size_t i = 0; i < TH.size(); ++i) {
-      constexpr uint8_t OFFSETSHIFT = 128;
-      TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
+      auto TH = T->getHandle<int8_t>();
+      uint8_t *data = (uint8_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+      }
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+      T->reset(ElemKind::Int32QTy, dims, in.scale, in.bias);
+      auto TH = T->getHandle<int32_t>();
+      int32_t *data = (int32_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = data[i];
+      }
+    } else {
+      RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
     }
   } else {
-    RETURN_ERR("Only float, index, and int8 tensors are supported.");
-  }
+    if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
+      T->reset(ElemKind::FloatTy, dims);
 
+      auto TH = T->getHandle<>();
+      float *data = (float *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = data[i];
+      }
+    } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
+               in.dataType == ONNXIFI_DATATYPE_INT64) {
+      const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
+      (void)inDataSigned;
+      T->reset(ElemKind::Int64ITy, dims);
+
+      auto TH = T->getHandle<int64_t>();
+      int64_t *data = (int64_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        RETURN_ERR_IF_NOT(
+            (inDataSigned || data[i] >= 0),
+            "Disallow overflow of loaded UINT64 data into Int64ITy.");
+        TH.raw(i) = data[i];
+      }
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+      T->reset(ElemKind::Int32ITy, dims);
+
+      auto TH = T->getHandle<int32_t>();
+      int32_t *data = (int32_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = data[i];
+      }
+    } else {
+      RETURN_ERR("Only float and index tensors are supported.");
+    }
+  }
   return llvm::Error::success();
 }
 

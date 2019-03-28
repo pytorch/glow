@@ -67,6 +67,14 @@ class Caffe2ModelLoader
   /// Mapping between Caffe2 tensor names for inputs and actual Glow input vars.
   llvm::StringMap<Placeholder *> nameToInputVars_;
 
+  /// loadInputs calls this function for each member in its target arguments.
+  /// Currently we are supporting two tensorprototypes:
+  /// caffe2::TensorProto, caffe2::QTensorProto
+  template <class TensorProtoType>
+  llvm::Error loadInputsWithTensorProtoType(const caffe2::NetDef &net,
+                                            bool loadInputsAsPlaceholders,
+                                            const TensorProtoType &in);
+
   /// Load the inputs from the NetDef. If \p loadInputsAsPlaceholders is
   /// true then this will load each graph input as a placeholder otherwise it
   /// will create an empty tensor for each input.
