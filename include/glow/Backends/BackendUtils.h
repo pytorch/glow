@@ -81,7 +81,24 @@ public:
   /// Sets the input and output flags for each symbol in the symbolBundle.
   void setInputsandOutputs();
 
-  RuntimeBundle() = default;
+  /// Computes offsets and total allocation for Constants, Placeholders, and
+  /// Activations to build runtime symbol table. Returns RuntimeBundle.
+  static runtime::RuntimeBundle create(const IRFunction &F,
+                                       MemoryAllocator &constantAllocator,
+                                       MemoryAllocator &placeholderAllocator,
+                                       MemoryAllocator &activationsAllocator);
+
+  /// Build a runtime symbol table from a Function.  Computes Constant and
+  /// Placeholder sizes, but not Activations, since Functions are unserialized.
+  /// Only use this method to generate bundles for backends that do not use
+  /// Glow's IR.
+  static runtime::RuntimeBundle create(const Function &F);
+
+  /// Deleted default constructor.  A properly constructed RuntimeBundle is
+  /// necessary for correct execution using the HostManager.
+  RuntimeBundle() = delete;
+
+  // Constructor.
   RuntimeBundle(SymbolTableTy &symbolTable, size_t constWeight,
                 size_t mutableWeight, size_t activations)
       : symbolTable_(std::move(symbolTable)), constants_(nullptr),
@@ -90,19 +107,6 @@ public:
         activationsMemSize_(activations) {}
 };
 } // namespace runtime
-
-/// Computes offsets and total allocation for Constants, Placeholders, and
-/// Activations to build runtime symbol table. Returns RuntimeBundle.
-runtime::RuntimeBundle
-generateRuntimeBundle(const IRFunction &F, MemoryAllocator &constantAllocator,
-                      MemoryAllocator &placeholderAllocator,
-                      MemoryAllocator &activationsAllocator);
-
-/// Build a runtime symbol table from a Function.  Computes Constant and
-/// Placeholder sizes, but not Activations, since Functions are unserialized.
-/// Only use this method to generate bundles for backends that do not use
-/// Glow's IR.
-runtime::RuntimeBundle generateRuntimeBundle(const Function *F);
 
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

@@ -275,7 +275,7 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
     std::shared_ptr<ExecutionState> executionState, const DAGNode *node,
     const ExecutionContext *ctx) {
   // Get the symbol table for the node.
-  const SymbolTableTy &symbolTable = (node->runtimeBundle).getSymbolTable();
+  const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
   for (const auto &symbolPair : symbolTable) {
     const auto &symbolName = symbolPair.first;
