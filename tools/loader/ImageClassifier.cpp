@@ -80,46 +80,6 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
 
 } // namespace
 
-/// Loads and normalizes all PNGs into a tensor in the NHWC format with the
-/// requested channel ordering.
-void loadImagesAndPreprocess(const llvm::cl::list<std::string> &filenames,
-                             Tensor *inputImageData) {
-  assert(!filenames.empty() &&
-         "There must be at least one filename in filenames.");
-  unsigned numImages = filenames.size();
-
-  // Get image dimensions and check if grayscale or color.
-  size_t imgHeight;
-  size_t imgWidth;
-  bool isGray;
-  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
-  const size_t numChannels = isGray ? 1 : 3;
-
-  // Allocate a tensor for the batch.
-  ShapeVector batchDims;
-  switch (imageLayout) {
-  case ImageLayout::NCHW:
-    batchDims = {numImages, numChannels, imgHeight, imgWidth};
-    break;
-  case ImageLayout::NHWC:
-    batchDims = {numImages, imgHeight, imgWidth, numChannels};
-    break;
-  }
-  inputImageData->reset(ElemKind::FloatTy, batchDims);
-  auto IIDH = inputImageData->getHandle<>();
-
-  // Read images into local tensors and add to batch.
-  for (size_t n = 0; n < filenames.size(); n++) {
-    Tensor localCopy = readPngImageAndPreprocess(filenames[n], imageNormMode,
-                                                 imageChannelOrder, imageLayout,
-                                                 useImagenetNormalization);
-    assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
-                      inputImageData->dims().begin() + 1) &&
-           "All images must have the same dimensions");
-    IIDH.insertSlice(localCopy, n);
-  }
-}
-
 /// Write a prompt to stdout asking for filenames for classification. Read in
 /// those filenames and add them to \p filenames. \p filenames is cleared before
 /// adding the new set of filenames from stdin. \returns false if the passed in
@@ -380,7 +340,9 @@ int main(int argc, char **argv) {
           getNextImageFilenames(&inputImageFilenames)) ||
          isFirstRun) {
     // Load and process the image data into the inputImageData Tensor.
-    loadImagesAndPreprocess(inputImageFilenames, &inputImageData);
+    loadImagesAndPreprocess(inputImageFilenames, &inputImageData, imageNormMode,
+                            imageChannelOrder, imageLayout,
+                            useImagenetNormalization);
 
     // If this is the first run, then we need to build and compile the model.
     if (isFirstRun) {
