@@ -255,6 +255,8 @@ inline bool operator==(const ShapeNHWDC &LHS, const ShapeNHWDC &RHS) {
 
 /// An enum representing the type used by the elements of a tensor. The types of
 /// Handles for these tensors should match the element kind.
+/// When adding new type, note that this enum definition must match with
+/// ElemKind definition in Glow/lib/Backends/CPU/libjit/libjit.cpp
 enum class ElemKind : unsigned char {
   FloatTy,       // 32-bit float type (float)
   Float16Ty,     // 16-bit float type (half, fp16)
