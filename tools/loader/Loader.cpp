@@ -343,7 +343,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
   }
 }
 
-void Loader::runInference(PlaceholderBindings &bindings) {
+void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
 
@@ -356,9 +356,9 @@ void Loader::runInference(PlaceholderBindings &bindings) {
   }
   if (timeOpt) {
     timer.stopTimer();
-    llvm::outs() << llvm::formatv("Wall time per iteration (s): {0:f4}\n",
+    llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
                                   timer.getTotalTime().getWallTime() /
-                                      iterationsOpt);
+                                      iterationsOpt / batchSize);
   }
 }
 

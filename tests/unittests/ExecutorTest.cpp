@@ -393,9 +393,10 @@ public:
     // Set the name, device ID, and RuntimeBundle of the new node.
     newNode->name = name;
     newNode->deviceID = deviceId;
-    newNode->runtimeBundle =
-        RuntimeBundle(symbolTable, /*constWeight=*/0, /*mutableWeight=*/0,
-                      /*activations=*/0);
+
+    newNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
+        symbolTable, /*constWeight=*/0, /*mutableWeight=*/0,
+        /*activations=*/0);
 
     // Register node result with the appropriate DeviceManager.
     auto it = deviceManagers_.find(deviceId);
@@ -483,7 +484,7 @@ private:
     // Input symbols for the entire test are the inputs of all nodes that have
     // no parents.
     for (const auto &node : root_->children) {
-      const SymbolTableTy &symbolTable = (node->runtimeBundle).getSymbolTable();
+      const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
       for (const auto &symbolPair : symbolTable) {
         const auto &symbolName = symbolPair.first;
@@ -506,7 +507,7 @@ private:
     // Input symbols for the entire test are the outputs of all nodes that have
     // no children.
     for (const auto &node : leaves_) {
-      const SymbolTableTy &symbolTable = (node->runtimeBundle).getSymbolTable();
+      const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
       for (const auto &symbolPair : symbolTable) {
         const auto &symbolName = symbolPair.first;

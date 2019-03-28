@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Page 1 -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0" y="0" width="306" height="84" viewBox="0 0 306 84" version="1.1" style="display: block;margin-left: auto;margin-right: auto;">
+  <defs>
+    <clipPath id="c0_1">
+      <path d="M0,84.7V0H306.9V84.7Z"/>
+    </clipPath>
+    <style type="text/css"><![CDATA[
+text { white-space: pre; }
+path, image { pointer-events: none; }
+text::-moz-selection {
+	color: transparent;
+	background: rgba(0, 106, 173, 0.4);
+}
+text::selection {
+	color: transparent;
+	background: rgba(0, 106, 173, 0.4);
+}
+
+.s1_1{
+font-size: 51.02px;
+font-family: FreightSansLFPro-Regular_8;
+fill: TRANSPARENT;
+}
+
+.g0_1{
+fill: #694FA0;
+}
+
+]]></style>
+  </defs>
+  <path d="M0,0 L0,84 L306,84 L306,0 Z " fill="#FFFFFF" stroke="none"/>
+  <g clip-path="url(#c0_1)">
+    <g fill="#6F5BA1">
+      <use xlink:href="#f0_2" transform="matrix(33.4,0,0,33.4,107.7,76.6)"/>
+      <use xlink:href="#f0_3" transform="matrix(33.4,0,0,33.4,160,76.6)"/>
+      <use xlink:href="#f0_4" transform="matrix(33.4,0,0,33.4,202.8,76.6)"/>
+      <use xlink:href="#f0_5" transform="matrix(33.4,0,0,33.4,258.6,76.6)"/>
+    </g>
+  </g>
+  <text x="107" y="76" dx="0,20.4,18.5,19.6" class="s1_1">GLOW</text>
+  <path d="M66.9,22.6L78.7,42.8L62.6,70.4H30.3L14.2,42.8L30.3,15.2H46.5V5.1H24.4L2.3,42.8L24.4,80.6H68.5L90.6,42.8L74.4,15.2Z" class="g0_1"/>
+  <defs>
+    <path d="M533,-19C257,-19,72,173,72,475c0,304,194,500,461,500c118,0,232,-37,303,-80L804,807c-72,46,-173,79,-272,79C324,886,171,738,171,478C171,226,316,69,535,69c90,0,168,24,229,58V387H487v88H859V75C765,12,642,-19,533,-19Z" id="f0_2" transform="scale(0.001,-0.001)"/>
+    <path d="M122,0V955h98V92H692V0Z" id="f0_3" transform="scale(0.001,-0.001)"/>
+    <path d="M545,67c213,0,367,167,367,408C912,721,756,888,539,888C325,888,171,723,171,481C171,235,328,67,545,67Zm-4,-86C275,-19,72,180,72,475c0,292,197,500,470,500c266,0,469,-199,469,-494C1011,189,814,-19,541,-19Z" id="f0_4" transform="scale(0.001,-0.001)"/>
+    <path d="M335,0L63,955H163L387,139L629,955H746L993,139l214,816h98L1037,0H943L686,840L428,0Z" id="f0_5" transform="scale(0.001,-0.001)"/>
+  </defs>
+  <!-- Any embedded fonts defined here -->
+  <style type="text/css"><![CDATA[
+
+@font-face {
+	font-family: FreightSansLFPro-Regular_8;
+	src: url("fonts/FreightSansLFPro-Regular_8.woff") format("woff");
+}
+
+]]></style>
+</svg>

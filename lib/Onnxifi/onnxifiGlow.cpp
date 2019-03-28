@@ -55,48 +55,74 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   const size_t numBackendsCapacity = *numBackends;
 
 #ifdef GLOW_WITH_CPU
-  *numBackends = 4;
-
-  // In case backendIDs is nullptr or does not have enough capacity just return
-  // the total number of supported backends.
-  if (numBackendsCapacity < *numBackends || !backendIDs) {
-    return ONNXIFI_STATUS_FALLBACK;
-  }
-
-  auto *cpuBackendOnnx = manager.createBackendId(glow::BackendKind::CPU,
-                                                 /*useOnnx*/ true);
-  auto *interpreterBackendOnnx =
-      manager.createBackendId(glow::BackendKind::Interpreter,
-                              /*useOnnx*/ true);
-  auto *cpuBackendC2 = manager.createBackendId(glow::BackendKind::CPU,
-                                               /*useOnnx*/ false);
-  auto *interpreterBackendC2 =
-      manager.createBackendId(glow::BackendKind::Interpreter,
-                              /*useOnnx*/ false);
-
-  backendIDs[0] = cpuBackendOnnx;
-  backendIDs[1] = interpreterBackendOnnx;
-  backendIDs[2] = cpuBackendC2;
-  backendIDs[3] = interpreterBackendC2;
+  constexpr bool withCPU = true;
 #else
-  *numBackends = 2;
-
-  // In case backendIDs is nullptr or does not have enough capacity just return
-  // the total number of supported backends.
-  if (numBackendsCapacity < *numBackends || !backendIDs) {
-    return ONNXIFI_STATUS_FALLBACK;
-  }
-
-  auto *interpreterBackendOnnx =
-      manager.createBackendId(glow::BackendKind::Interpreter,
-                              /*useOnnx*/ true);
-  auto *interpreterBackendC2 =
-      manager.createBackendId(glow::BackendKind::Interpreter,
-                              /*useOnnx*/ false);
-
-  backendIDs[0] = interpreterBackendOnnx;
-  backendIDs[1] = interpreterBackendC2;
+  constexpr bool withCPU = false;
 #endif
+
+  // Only return quantization backend if GLOW_DUMP_PROFILE.
+  if (getenv("GLOW_DUMP_PROFILE")) {
+    *numBackends = 2;
+
+    // In case backendIDs is nullptr or does not have enough capacity just
+    // return the total number of supported backends.
+    if (numBackendsCapacity < *numBackends || !backendIDs) {
+      return ONNXIFI_STATUS_FALLBACK;
+    }
+
+    auto *quantizationBackendOnnx =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ true, /*forQuantization*/ true);
+    auto *quantizationBackendC2 =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ false, /*forQuantization*/ true);
+
+    backendIDs[0] = quantizationBackendOnnx;
+    backendIDs[1] = quantizationBackendC2;
+  } else if (withCPU) {
+    *numBackends = 4;
+
+    // In case backendIDs is nullptr or does not have enough capacity just
+    // return the total number of supported backends.
+    if (numBackendsCapacity < *numBackends || !backendIDs) {
+      return ONNXIFI_STATUS_FALLBACK;
+    }
+
+    auto *cpuBackendOnnx = manager.createBackendId(glow::BackendKind::CPU,
+                                                   /*useOnnx*/ true);
+    auto *interpreterBackendOnnx =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ true);
+    auto *cpuBackendC2 = manager.createBackendId(glow::BackendKind::CPU,
+                                                 /*useOnnx*/ false);
+    auto *interpreterBackendC2 =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ false);
+
+    backendIDs[0] = cpuBackendOnnx;
+    backendIDs[1] = interpreterBackendOnnx;
+    backendIDs[2] = cpuBackendC2;
+    backendIDs[3] = interpreterBackendC2;
+  } else {
+
+    *numBackends = 2;
+
+    // In case backendIDs is nullptr or does not have enough capacity just
+    // return the total number of supported backends.
+    if (numBackendsCapacity < *numBackends || !backendIDs) {
+      return ONNXIFI_STATUS_FALLBACK;
+    }
+
+    auto *interpreterBackendOnnx =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ true);
+    auto *interpreterBackendC2 =
+        manager.createBackendId(glow::BackendKind::Interpreter,
+                                /*useOnnx*/ false);
+
+    backendIDs[0] = interpreterBackendOnnx;
+    backendIDs[1] = interpreterBackendC2;
+  }
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -358,7 +384,16 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
 
-  auto *glowGraph = manager.createGraph(glowBackend);
+  glow::onnxifi::OnnxifiQuantizationStep quantizationStep;
+  if (getenv("GLOW_DUMP_PROFILE")) {
+    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::Profile;
+  } else if (getenv("GLOW_LOAD_PROFILE")) {
+    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::Quantize;
+  } else {
+    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::None;
+  }
+
+  auto *glowGraph = manager.createGraph(glowBackend, quantizationStep);
   auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
                                   weightDescriptors);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
@@ -463,9 +498,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
   auto *outputEvent = static_cast<glow::onnxifi::EventPtr>(outputFence->event);
 
   // Set graph IO and run async
-  return glowGraph->setIOAndRunAsync(inputsCount, inputDescriptors,
-                                     outputsCount, outputDescriptors,
-                                     outputEvent);
+  return glowGraph->setIOAndRun(inputsCount, inputDescriptors, outputsCount,
+                                outputDescriptors, outputEvent);
 }
 
 /// Deinitialize an ONNXIFI graph and release associated resources.

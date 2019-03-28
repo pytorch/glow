@@ -70,11 +70,12 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
       CompilationOptions compileOptions;
       compileOptions.collectConstants = false;
       auto compiled = backend_->compile(function, compileOptions);
-      node->runtimeBundle = compiled->getRuntimeBundle();
-      node->runtimeBundle.setInputsandOutputs();
+      node->runtimeBundle =
+          llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
+      node->runtimeBundle->setInputsandOutputs();
       functionMap.emplace(node->name, compiled.get());
       functions_.emplace(node->name, std::move(compiled));
-      totalMemory += node->runtimeBundle.getConstantWeightSize();
+      totalMemory += node->runtimeBundle->getConstantWeightSize();
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
     functionMaps.emplace(device.first, functionMap);

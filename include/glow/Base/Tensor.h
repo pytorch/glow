@@ -507,10 +507,14 @@ private:
 //                    Tensor Handle
 //===----------------------------------------------------------------------===//
 
+constexpr unsigned MAX_DUMP_ELEMS = 100;
+
 void dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os);
 void dumpAsciiImpl(const Tensor *T);
 
-void dumpImpl(const Tensor *T, llvm::raw_ostream &os);
+void dumpImpl(const Tensor *T, llvm::raw_ostream &os,
+              unsigned maxNumElem = MAX_DUMP_ELEMS);
+void dumpImpl(const Tensor *T, unsigned maxNumElem);
 void dumpImpl(const Tensor *T);
 
 /// A class that provides indexed access to a tensor. This class has value
@@ -761,8 +765,11 @@ public:
     return std::all_of(begin(), end(), [=](ElemTy e) { return e == trueZero; });
   }
 
-  void dump(llvm::raw_ostream &os) const { dumpImpl(tensor_, os); }
-  void dump() const { dumpImpl(tensor_); }
+  void dump(llvm::raw_ostream &os, unsigned maxNumElem = MAX_DUMP_ELEMS) const {
+    dumpImpl(tensor_, os, maxNumElem);
+  }
+  void dump(unsigned maxNumElem) const { dumpImpl(tensor_, maxNumElem); }
+  void dump() const { dumpImpl(tensor_, MAX_DUMP_ELEMS); }
 
   /// Fill the array with random data that's close to zero using the
   /// Xavier method, based on the paper [Bengio and Glorot 2010].
@@ -802,8 +809,8 @@ public:
   typename std::enable_if<std::is_integral<T>::value>::type
   randomize(int low, int high, PseudoRNG &PRNG) {
     assert(low < high && "invalid range");
-    assert(static_cast<ElemTy>(low) >= std::numeric_limits<ElemTy>::lowest() &&
-           static_cast<ElemTy>(high) <= std::numeric_limits<ElemTy>::max() &&
+    assert(low >= std::numeric_limits<ElemTy>::lowest() &&
+           high <= std::numeric_limits<ElemTy>::max() &&
            "Cannot initialize outside range of representable values.");
     std::uniform_int_distribution<int> dist(low, high);
     switch (getElementType()) {

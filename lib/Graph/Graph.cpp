@@ -643,19 +643,26 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
-                                                   Storage *B) {
+                                                   Storage *B,
+                                                   unsigned_t axis) {
   TypeRef T = input.getType();
   TypeRef OT = getParent()->uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
 
-  return addNode(new FullyConnectedNode(name, OT, input, W, B));
+  return createFullyConnected(name, input, W, B, OT, axis);
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Node *W,
-                                                   Node *B, TypeRef outTy) {
+                                                   Node *B, TypeRef outTy,
+                                                   unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
+
+  // FC always uses 2D input; flatten if necessary.
+  if (input.dims().size() != 2) {
+    input = createFlatten(name.str() + ".reshape2D", input, axis);
+  }
 
   TypeRef OT = getParent()->uniqueType(*outTy);
   return addNode(new FullyConnectedNode(name, OT, input, W, B));
@@ -715,6 +722,16 @@ ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input,
 
 ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input.getType(), input));
+}
+
+PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
+                                 NodeValue slope, TypeRef outTy) {
+  return addNode(new PReluNode(name, outTy, input, slope));
+}
+
+PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
+                                 NodeValue slope) {
+  return addNode(new PReluNode(name, input.getType(), input, slope));
 }
 
 SigmoidNode *Function::createSigmoid(llvm::StringRef name, TypeRef outTy,
@@ -2077,22 +2094,23 @@ ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
 FullyConnectedNode *
 Function::createFullyConnected(PlaceholderBindings &bindings,
                                llvm::StringRef name, NodeValue input,
-                               size_t outDepth) {
-  TypeRef T = input.getType();
-  auto idim = flattenCdr(input.dims());
-  size_t fanIn = idim.second;
+                               size_t outDepth, unsigned_t axis) {
+  const ElemKind k = input.getType()->getElementType();
 
-  auto *W = getParent()->createPlaceholder(
-      T->getElementType(), {idim.second, outDepth}, "weights", true);
-  auto *B = getParent()->createPlaceholder(T->getElementType(), {outDepth},
-                                           "bias", true);
+  // FC always uses 2D input; flatten if necessary.
+  if (input.dims().size() != 2) {
+    input = createFlatten(name.str() + ".reshape2D", input, axis);
+  }
+  auto *W = getParent()->createPlaceholder(k, {input.dims()[1], outDepth},
+                                           "weights", true);
+  auto *B = getParent()->createPlaceholder(k, {outDepth}, "bias", true);
 
-  bindings.allocate(W)->init(Tensor::InitKind::Xavier, fanIn, getPRNG());
+  bindings.allocate(W)->init(Tensor::InitKind::Xavier, input.dims()[1],
+                             getPRNG());
   bindings.allocate(B)->init(Tensor::InitKind::Broadcast, .1, getPRNG());
 
-  auto OT =
-      getParent()->uniqueType(T->getElementType(), {idim.first, outDepth});
-  return addNode(new FullyConnectedNode(name, OT, input, W, B));
+  auto OT = getParent()->uniqueType(k, {input.dims()[0], outDepth});
+  return createFullyConnected(name, input, W, B, OT, axis);
 }
 
 Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,

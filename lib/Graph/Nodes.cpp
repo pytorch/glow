@@ -219,12 +219,14 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
 static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                  NodeValue bias, NodeValue dest) {
   const Node *parent = dest.getNode();
-  bool isValid = expectCompareTrue("Mismatch on expected source dimensions",
-                                   src.dims()[0], dest.dims()[0], parent);
+  bool isValid = expectCompareTrue("FC input must be 2D", size_t(2),
+                                   src.dims().size(), parent);
+  isValid &= expectCompareTrue("FC weights must be 2D", size_t(2),
+                               weights.dims().size(), parent);
   isValid &= expectCompareTrue("Mismatch on expected source dimensions",
-                               flattenCdr(src.dims()).second, weights.dims()[0],
-                               parent);
-
+                               src.dims()[0], dest.dims()[0], parent);
+  isValid &= expectCompareTrue("Mismatch on expected source dimensions",
+                               src.dims()[1], weights.dims()[0], parent);
   isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
                                weights.dims()[1], parent);
   isValid &= expectCompareTrue("Inconsistent weights/dest sizes",
@@ -351,6 +353,19 @@ static bool verifyRelu(NodeValue result, NodeValue input) {
            checkSameShape(result, input, parent);
   }
   return checkSameType(result, input, parent);
+}
+
+static bool verifyPRelu(NodeValue result, NodeValue input, NodeValue slope) {
+  const Node *parent = result.getNode();
+  if (input.getType()->isQuantizedType()) {
+    return checkSameIsQuantized(input.getType(), result.getType(), parent) &&
+           checkSameIsQuantized(input.getType(), slope.getType(), parent) &&
+           checkSameShape(result, input, parent) &&
+           checkSameShape(slope, input, parent);
+  }
+  return checkSameType(result, input, parent) &&
+         checkSameType(slope, input, parent) &&
+         checkSameShape(slope, input, parent);
 }
 
 static bool verifyRegression(NodeValue src, NodeValue dest,
@@ -1159,6 +1174,10 @@ bool ReluGradNode::verify() const {
                                         getGradOfOriginalOutputNamedResult(),
                                         this) &&
          verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
+}
+
+bool PReluNode::verify() const {
+  return verifyPRelu(getResult(), getInput(), getSlope());
 }
 
 bool RegressionNode::verify() const {

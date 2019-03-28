@@ -43,8 +43,8 @@ using ArgumentDictionaryTy =
 /// In Glow, the activations are quantized to int_8. Therefore, for the offset
 /// read from quantized caffe2 model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
-/// For Glow: -127 <= orig_fp32/scale_1 + offset_1 < 128
-/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 < 255
+/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
+/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 <= 255
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
@@ -60,7 +60,6 @@ llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
     }
     dim.push_back(d);
   }
-
   if (in.data_type() == caffe2::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
     return llvm::Error::success();
@@ -75,6 +74,26 @@ llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
     return llvm::Error::success();
   } else {
     RETURN_ERR("Only float and index tensors are supported");
+  }
+}
+
+llvm::Error setTensorType(const caffe2::QTensorProto &in, Tensor *T) {
+  std::vector<size_t> dim;
+  for (auto d : in.dims()) {
+    if (d == 0) {
+      RETURN_ERR("0 dimemsion qtensor is not supported");
+    }
+    dim.push_back(d);
+  }
+
+  if (in.data_type() == caffe2::TensorProto::UINT8) {
+    T->reset(ElemKind::Int8QTy, dim, in.scale(), in.bias() - OFFSETSHIFT);
+    return llvm::Error::success();
+  } else if (in.data_type() == caffe2::TensorProto::INT32) {
+    T->reset(ElemKind::Int32QTy, dim, in.scale(), in.bias());
+    return llvm::Error::success();
+  } else {
+    RETURN_ERR("Only uint8 and int32 qtensors are supported");
   }
 }
 } // namespace
@@ -568,11 +587,6 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
 
-    // If number of input dims is greater then 2 flatten on axis.
-    if (in.getType()->dims().size() > 2) {
-      in = G_.createFlatten("fc.in", in, axis);
-    }
-
     // Load weights.
     Tensor *w;
     ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
@@ -623,9 +637,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto outTy = G_.getParent()->uniqueType(
           ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
           yScale, yZeroPoint - OFFSETSHIFT);
-      node = G_.createFullyConnected(opName, in, W, B, outTy);
+      node = G_.createFullyConnected(opName, in, W, B, outTy, axis);
     } else {
-      node = G_.createFullyConnected(opName, in, W, B);
+      node = G_.createFullyConnected(opName, in, W, B, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output
@@ -1048,37 +1062,59 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
+template <class TensorProtoType>
+llvm::Error
+Caffe2ModelLoader::loadInputsWithTensorProtoType(const caffe2::NetDef &net,
+                                                 bool loadInputsAsPlaceholders,
+                                                 const TensorProtoType &in) {
+  // Skip static weights
+  if (tensors_.count(in.name())) {
+    return llvm::Error::success();
+  }
+
+  if (loadInputsAsPlaceholders) {
+    Tensor T;
+    RETURN_IF_ERR(setTensorType(in, &T));
+
+    Placeholder *placeholder;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
+    nameToInputVars_.try_emplace(in.name(), placeholder);
+  } else {
+    std::unique_ptr<Tensor> T(new Tensor());
+    RETURN_IF_ERR(setTensorType(in, T.get()));
+    tensors_[in.name()] = std::move(T);
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
                                           bool loadInputsAsPlaceholders) {
-  const caffe2::Argument *arg = nullptr;
-  for (auto i = 0, e = net.arg_size(); i < e; ++i) {
+  const caffe2::Argument *arg = nullptr, *qarg = nullptr;
+  for (auto i = 0, e = net.arg_size(); i < e && (!arg || !qarg); ++i) {
     if (net.arg(i).name() == "input_shape_info") {
       arg = &net.arg(i);
-      break;
+    } else if (net.arg(i).name() == "input_qshape_info") {
+      qarg = &net.arg(i);
     }
   }
+
+  // Load all regular tensor input
   if (arg) {
     for (const auto &in : arg->tensors()) {
-      // Skip static weights
-      if (tensors_.count(in.name())) {
-        continue;
-      }
-
-      if (loadInputsAsPlaceholders) {
-        Tensor T;
-        RETURN_IF_ERR(setTensorType(in, &T));
-
-        Placeholder *placeholder;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
-        nameToInputVars_.try_emplace(in.name(), placeholder);
-      } else {
-        std::unique_ptr<Tensor> T(new Tensor());
-        RETURN_IF_ERR(setTensorType(in, T.get()));
-        tensors_[in.name()] = std::move(T);
-      }
+      RETURN_IF_ERR(loadInputsWithTensorProtoType<caffe2::TensorProto>(
+          net, loadInputsAsPlaceholders, in));
     }
   }
+
+  // Load all quantized tensor input
+  if (qarg) {
+    for (const auto &in : qarg->qtensors()) {
+      RETURN_IF_ERR(loadInputsWithTensorProtoType<caffe2::QTensorProto>(
+          net, loadInputsAsPlaceholders, in));
+    }
+  }
+
   return llvm::Error::success();
 }
 
