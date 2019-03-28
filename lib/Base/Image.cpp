@@ -391,3 +391,45 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
   }
   return imageData;
 }
+
+void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
+                                   Tensor *inputImageData,
+                                   ImageNormalizationMode imageNormMode,
+                                   ImageChannelOrder imageChannelOrder,
+                                   ImageLayout imageLayout,
+                                   bool useImagenetNormalization) {
+  assert(!filenames.empty() &&
+         "There must be at least one filename in filenames.");
+  unsigned numImages = filenames.size();
+
+  // Get image dimensions and check if grayscale or color.
+  size_t imgHeight;
+  size_t imgWidth;
+  bool isGray;
+  std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
+  const size_t numChannels = isGray ? 1 : 3;
+
+  // Allocate a tensor for the batch.
+  ShapeVector batchDims;
+  switch (imageLayout) {
+  case ImageLayout::NCHW:
+    batchDims = {numImages, numChannels, imgHeight, imgWidth};
+    break;
+  case ImageLayout::NHWC:
+    batchDims = {numImages, imgHeight, imgWidth, numChannels};
+    break;
+  }
+  inputImageData->reset(ElemKind::FloatTy, batchDims);
+  auto IIDH = inputImageData->getHandle<>();
+
+  // Read images into local tensors and add to batch.
+  for (size_t n = 0; n < filenames.size(); n++) {
+    Tensor localCopy = readPngImageAndPreprocess(filenames[n], imageNormMode,
+                                                 imageChannelOrder, imageLayout,
+                                                 useImagenetNormalization);
+    assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
+                      inputImageData->dims().begin() + 1) &&
+           "All images must have the same dimensions");
+    IIDH.insertSlice(localCopy, n);
+  }
+}

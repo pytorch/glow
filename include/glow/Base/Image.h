@@ -22,6 +22,9 @@
 
 #include "glow/Base/Tensor.h"
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+
 #include <tuple>
 
 namespace glow {
@@ -91,6 +94,21 @@ Tensor readPngImageAndPreprocess(llvm::StringRef filename,
                                  ImageChannelOrder imageChannelOrder,
                                  ImageLayout imageLayout,
                                  bool useImagenetNormalization);
+
+/// Loads and normalizes all PNGs into a tensor in the NHWC format with the
+/// requested channel ordering.
+/// \param filenames list of filenames to read.
+/// \param inputImageData Tensor to save the resulting output.
+/// \param imageNormMode normalize values to this range.
+/// \param imageChannelOrder the order of color channels.
+/// \param imageLayout the order of dimensions (channel, height, and width).
+/// \param useImagenetNormalization use special normalization for Imagenet.
+void loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
+                             Tensor *inputImageData,
+                             ImageNormalizationMode imageNormMode,
+                             ImageChannelOrder imageChannelOrder,
+                             ImageLayout imageLayout,
+                             bool useImagenetNormalization);
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H
