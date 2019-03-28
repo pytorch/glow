@@ -98,5 +98,11 @@ generateRuntimeBundle(const IRFunction &F, MemoryAllocator &constantAllocator,
                       MemoryAllocator &placeholderAllocator,
                       MemoryAllocator &activationsAllocator);
 
+/// Build a runtime symbol table from a Function.  Computes Constant and
+/// Placeholder sizes, but not Activations, since Functions are unserialized.
+/// Only use this method to generate bundles for backends that do not use
+/// Glow's IR.
+runtime::RuntimeBundle generateRuntimeBundle(const Function *F);
+
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H
