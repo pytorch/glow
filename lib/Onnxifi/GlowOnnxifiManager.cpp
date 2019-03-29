@@ -15,8 +15,6 @@
  */
 #include "GlowOnnxifiManager.h"
 
-#include "Base.h"
-
 #include <mutex>
 
 namespace glow {
@@ -27,12 +25,17 @@ GlowOnnxifiManager &GlowOnnxifiManager::get() {
 }
 
 BackendIdPtr GlowOnnxifiManager::createBackendId(glow::BackendKind kind,
-                                                 bool useOnnx) {
+                                                 bool useOnnx,
+                                                 bool forQuantization) {
   std::lock_guard<std::mutex> lock(m_);
 
-  auto *hostManager = getOrCreateHostManager(kind);
-
-  BackendIdPtr backendId = new onnxifi::BackendId(hostManager, kind, useOnnx);
+  BackendIdPtr backendId;
+  if (forQuantization) {
+    backendId = new onnxifi::BackendId(kind, useOnnx);
+  } else {
+    auto *hostManager = getOrCreateHostManager(kind);
+    backendId = new onnxifi::HostManagerBackendId(hostManager, kind, useOnnx);
+  }
 
   auto res = backendIds_.insert(backendId);
 
@@ -68,10 +71,18 @@ EventPtr GlowOnnxifiManager::createEvent() {
   return event;
 }
 
-GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend) {
+GraphPtr
+GlowOnnxifiManager::createGraph(BackendPtr backend,
+                                OnnxifiQuantizationStep quantizationStep) {
   assert(isValid(backend));
 
-  GraphPtr graph = new onnxifi::Graph(backend);
+  GraphPtr graph;
+
+  if (quantizationStep == OnnxifiQuantizationStep::None) {
+    graph = new onnxifi::HostManagerGraph(backend);
+  } else {
+    graph = new onnxifi::InlineGraph(backend, quantizationStep);
+  }
 
   std::lock_guard<std::mutex> lock(m_);
 
@@ -88,7 +99,8 @@ GlowOnnxifiManager::getOrCreateHostManager(BackendKind backendKind) {
 
   // If a HostManager doesn't exist yet for this BackendKind then create one
   if (it == hostManagers_.end()) {
-    auto newHostManager = onnxifi::BackendId::createHostManager(backendKind);
+    auto newHostManager =
+        onnxifi::HostManagerBackendId::createHostManager(backendKind);
     assert(newHostManager != nullptr);
     auto ptr = newHostManager.get();
     hostManagers_[backendKind] = std::move(newHostManager);

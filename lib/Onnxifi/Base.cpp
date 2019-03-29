@@ -73,17 +73,6 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-// static
-std::unique_ptr<runtime::HostManager>
-BackendId::createHostManager(glow::BackendKind kind) {
-  std::vector<runtime::DeviceManagerConfig> configs;
-  runtime::DeviceManagerConfig config;
-  config.deviceConfig = nullptr;
-  config.backendKind = kind;
-  configs.push_back(std::move(config));
-  return llvm::make_unique<runtime::HostManager>(configs);
-}
-
 bool Event::signal() {
   {
     std::lock_guard<std::mutex> guard(mutex_);
@@ -101,50 +90,11 @@ void Event::wait() {
   cond_.wait(guard, [this] { return fired_ == true; });
 }
 
-onnxStatus Graph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                            uint32_t weightCount,
-                            const onnxTensorDescriptorV1 *weightDescriptors) {
-
-  netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
-
-  Function *function = m_.createFunction(netName_);
-
-  // TODO: make better error reporting.
-  std::unique_ptr<ONNXIFIModelLoader> loader =
-      TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
-          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
-
-  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
-  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
-
-  auto err = backendPtr_->getHostManager().addNetwork(&m_);
-
-  if (errToBool(std::move(err))) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
-  }
-
-  return ONNXIFI_STATUS_SUCCESS;
-}
-
-// static
-size_t Graph::makeUniqueGraphId() {
-  static std::atomic<size_t> nextId{0};
-  return nextId++;
-}
-
-Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
-
-Graph::~Graph() {
-  // Remove network from hostmanager
-  backendPtr_->getHostManager().removeNetwork(netName_);
-}
-
-onnxStatus Graph::setIOAndRunAsync(
-    uint32_t inputsCount, const onnxTensorDescriptorV1 *inputDescriptors,
-    uint32_t outputsCount, const onnxTensorDescriptorV1 *outputDescriptors,
-    EventPtr outputEvent) {
-
+onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
+                              const onnxTensorDescriptorV1 *inputDescriptors,
+                              uint32_t outputsCount,
+                              const onnxTensorDescriptorV1 *outputDescriptors,
+                              EventPtr outputEvent) {
   auto ctx = llvm::make_unique<ExecutionContext>();
 
   // Create tensors for input placeholders
@@ -185,37 +135,10 @@ onnxStatus Graph::setIOAndRunAsync(
     ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
 
-  // Run
-  getHostManager().runNetwork(
-      netName_, std::move(ctx),
-      [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
-       outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
-                    std::unique_ptr<ExecutionContext> ctx) {
-        // If an Error occurred then log it in errToBool and signal the output
-        // event
-        if (errToBool(std::move(err))) {
-          outputEvent->signal();
-          return;
-        }
-
-        for (auto &ph : ctx->getPlaceholderBindings()->pairs()) {
-          if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
-            continue;
-          }
-
-          auto &outOnnxTensor = phNameToOnnxTensorOutputs.at(ph.first);
-
-          void *outputAddress = reinterpret_cast<void *>(outOnnxTensor.buffer);
-          Tensor *res = ph.second;
-          memcpy(outputAddress, res->getUnsafePtr(),
-                 res->size() * res->getType().getElementSize());
-        }
-
-        outputEvent->signal();
-      });
-
-  return ONNXIFI_STATUS_SUCCESS;
+  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs));
 }
+
+Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
 } // namespace onnxifi
 } // namespace glow
