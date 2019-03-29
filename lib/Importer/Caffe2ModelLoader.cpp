@@ -1066,6 +1066,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
+
 template <class TensorProtoType>
 llvm::Error
 Caffe2ModelLoader::loadInputsWithTensorProtoType(const caffe2::NetDef &net,
@@ -1219,8 +1220,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       arg {
       name: "values"
       s:
-"\000\377\152\232\115\072\000\000\200\077\000\377\050\132\215\073\063\063\023\100\000\377\314\063\232\073\000\000\220\100"
-  }
+      "\000\377\152\232\115\072\000\000\200\077\000\377\050\132\215\073\063\063\023\100\000\377\314\063\232\073\000\000\220\100"
+      }
      */
 
     for (auto &o : op.output()) {
