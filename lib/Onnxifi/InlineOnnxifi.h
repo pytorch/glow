@@ -29,14 +29,6 @@ enum class OnnxifiQuantizationStep : char {
   Quantize, // Load quantization profile and insert quantize/dequantize nodes
 };
 
-/// BackendId to be use with InlineGraphs. The implementation is basically empty
-/// because InlineGraph will do all of the heavy lifting for execution by
-/// itself.
-class InlineBackendId : public BackendId {
-public:
-  using BackendId::BackendId;
-};
-
 /// Onnxifi Graph whose run method just executes the underlying function on the
 /// same thread that calls its setIOAndRun function.
 class InlineGraph : public Graph {
@@ -64,8 +56,8 @@ private:
   /// NodeValue (key) that replaced them.
   LoweredInfoMap loweredMap_;
 
-  /// Hash of the mode, used to find profiling data.
-  llvm::SmallString<32> MD5_;
+  /// Hash of the model, used to find profiling data.
+  llvm::SmallString<32> modelHash_;
 };
 
 } // namespace onnxifi

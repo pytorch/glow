@@ -60,10 +60,6 @@ public:
                           std::unique_ptr<ExecutionContext> context,
                           runtime::ResultCBTy callback) {}
 
-  virtual onnxStatus addNetwork(Module *module) {
-    return ONNXIFI_STATUS_SUCCESS;
-  }
-
   virtual void removeNetwork(const Graph *graph) {}
 
 protected:

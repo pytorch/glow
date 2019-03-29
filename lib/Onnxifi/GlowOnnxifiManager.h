@@ -42,7 +42,9 @@ public:
   GlowOnnxifiManager &operator=(GlowOnnxifiManager &&) = delete;
 
   /// Create a new glow BackendId for BackendKind \p kind using onnx graphs if
-  /// \p useOnnx and caffe2 graphs otherwise.
+  /// \p useOnnx and caffe2 graphs otherwise. If \p forQuantization is true then
+  /// a BackendId will be created otherwise a HostManagerBackendId will be
+  /// be created.
   /// Can be called safely by multiple threads concurrently.
   BackendIdPtr createBackendId(glow::BackendKind kind, bool useOnnx,
                                bool forQuantization = false);

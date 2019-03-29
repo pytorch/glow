@@ -35,7 +35,7 @@ public:
   void runNetwork(const Graph *graph, std::unique_ptr<ExecutionContext> context,
                   runtime::ResultCBTy callback) override;
 
-  onnxStatus addNetwork(Module *module) override;
+  onnxStatus addNetwork(Module *module);
 
   void removeNetwork(const Graph *graph) override;
 

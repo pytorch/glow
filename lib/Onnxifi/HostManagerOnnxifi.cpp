@@ -70,7 +70,8 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
-  return backendPtr_->getBackendId()->addNetwork(&m_);
+  return static_cast<HostManagerBackendId *>(backendPtr_->getBackendId())
+      ->addNetwork(&m_);
 }
 
 onnxStatus

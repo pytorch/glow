@@ -31,7 +31,7 @@ BackendIdPtr GlowOnnxifiManager::createBackendId(glow::BackendKind kind,
 
   BackendIdPtr backendId;
   if (forQuantization) {
-    backendId = new onnxifi::InlineBackendId(kind, useOnnx);
+    backendId = new onnxifi::BackendId(kind, useOnnx);
   } else {
     auto *hostManager = getOrCreateHostManager(kind);
     backendId = new onnxifi::HostManagerBackendId(hostManager, kind, useOnnx);

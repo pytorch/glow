@@ -57,7 +57,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
-  computeModelHash(onnxModel, onnxModelSize, MD5_);
+  computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);
 
   // -- Profile --
@@ -69,11 +69,11 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // -- Quantize --
   if (quantizationStep_ == OnnxifiQuantizationStep::Quantize) {
-    auto QI = deserializeFromYaml(getProfileFile(MD5_));
+    auto QI = deserializeFromYaml(getProfileFile(modelHash_));
     std::string oldName = function_->getName();
     function_->setName("old");
     auto *Q = quantization::quantizeFunction(
-        executionEngine_, quantization::Schema::Asymmetric, QI,
+        executionEngine_, quantization::Schema::Symmetric, QI,
         ElemKind::Int8QTy, function_, loweredMap_, oldName, {}, false);
     Q->getParent()->eraseFunction(function_);
     function_ = Q;
@@ -92,11 +92,12 @@ InlineGraph::run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
   executionEngine_.run(*ctx);
 
   // Dump profile if requested.
+  // TODO: enable configuration of quantization schema
   if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
     auto QI = quantization::generateNodeQuantizationInfos(
         *(ctx->getPlaceholderBindings()), function_, loweredMap_,
         quantization::Schema::Symmetric, ElemKind::Int8QTy);
-    serializeToYaml(getProfileFile(MD5_), QI);
+    serializeToYaml(getProfileFile(modelHash_), QI);
   }
 
   outputEvent->signal();
