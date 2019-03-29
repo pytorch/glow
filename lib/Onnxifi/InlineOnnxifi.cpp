@@ -22,14 +22,28 @@
 
 #include "llvm/Support/MD5.h"
 
+#ifdef WIN32
+#include <Lmcons.h>
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif // !
 
 namespace glow {
 namespace onnxifi {
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
-  return strFormat("/tmp/glow-profile-%d-%s.yaml", getuid(),
+  std::string sUID;
+#ifdef WIN32
+  char username[UNLEN + 1];
+  DWORD username_len = UNLEN + 1;
+  GetUserName(username, &username_len);
+  sUID = username;
+#else
+  sUID = getuid();
+#endif
+  return strFormat("/tmp/glow-profile-%s-%s.yaml", sUID.c_str(),
                    hash.str().c_str());
 }
 
