@@ -715,6 +715,7 @@ int main(int argc, char **argv) {
 
 #include "Backends/CPU/CPUSpecificNodes.h"
 #include "Backends/OpenCL/OpenCLSpecificNodes.h"
+#include "Backends/Habana/HabanaSpecificNodes.h"
 
   return 0;
 }

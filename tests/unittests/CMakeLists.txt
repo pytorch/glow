@@ -382,6 +382,30 @@ add_glow_test(HostManagerTest ${GLOW_BINARY_DIR}/tests/HostManagerTest --gtest_o
 
 endif()
 
+if(GLOW_WITH_HABANA)
+  add_executable(HabanaTest
+                 HabanaTest.cpp)
+  target_link_libraries(HabanaTest
+                        PRIVATE
+                          Habana
+                          Support
+                          gtest
+                          TestMain)
+  add_glow_test(HabanaTest ${GLOW_BINARY_DIR}/tests/HabanaTest --gtest_output=xml:HabanaTest.xml)
+
+  add_executable(HabanaBackendTest
+                 HabanaBackendTest.cpp)
+  target_link_libraries(HabanaBackendTest
+                        PRIVATE
+                          ExecutionEngine
+                          Graph
+                          Habana
+                          Optimizer
+                          gtest
+                          TestMain)
+  add_glow_test(HabanaBackendTest ${GLOW_BINARY_DIR}/tests/HabanaBackendTest --gtest_output=xml:HabanaBackendTest.xml)
+endif()
+
 add_executable(QuantizationTest
                QuantizationTest.cpp)
 target_link_libraries(QuantizationTest

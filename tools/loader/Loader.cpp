@@ -136,7 +136,8 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter"),
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
+                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
 
 /// Debugging options.

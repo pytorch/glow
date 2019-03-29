@@ -623,6 +623,7 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
 
 #include "Backends/CPU/CPUSpecificInstrs.h"
+#include "Backends/Habana/HabanaSpecificInstrs.h"
 #include "Backends/OpenCL/OpenCLSpecificInstrs.h"
 
   return 0;
