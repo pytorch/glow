@@ -43,8 +43,8 @@ using ArgumentDictionaryTy =
 /// In Glow, the activations are quantized to int_8. Therefore, for the offset
 /// read from quantized caffe2 model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
-/// For Glow: -127 <= orig_fp32/scale_1 + offset_1 < 128
-/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 < 255
+/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
+/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 <= 255
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
