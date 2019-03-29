@@ -80,6 +80,39 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   return it->second;
 }
 
+runtime::RuntimeBundle glow::generateRuntimeBundle(const Function *F) {
+  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+
+  MemoryAllocator constants("constants", 0);
+  MemoryAllocator placeholders("placeholders", 0);
+
+  // Allocate constants.
+  for (auto const *V : F->getParent()->getConstants()) {
+    auto size = V->getType()->getSizeInBytes();
+    auto offset = constants.allocate(size, V);
+    runtime::RuntimeSymbolInfo symbol;
+    symbol.offset = offset;
+    symbol.size = size;
+    symbol.type = *V->getType();
+    symbolTable.emplace(V->getName(), symbol);
+  }
+
+  // Allocate placeholders.
+  for (auto const *V : F->getParent()->getPlaceholders()) {
+    auto size = V->getType()->getSizeInBytes();
+    auto offset = placeholders.allocate(size, V);
+    runtime::RuntimeSymbolInfo symbol;
+    symbol.offset = offset;
+    symbol.size = size;
+    symbol.type = *V->getType();
+    symbolTable.emplace(V->getName(), symbol);
+  }
+
+  return runtime::RuntimeBundle(symbolTable, constants.getMaxMemoryUsage(),
+                                placeholders.getMaxMemoryUsage(),
+                                /*activationsMaxSize*/ 0);
+}
+
 runtime::RuntimeBundle
 glow::generateRuntimeBundle(const IRFunction &F,
                             MemoryAllocator &constantAllocator,
