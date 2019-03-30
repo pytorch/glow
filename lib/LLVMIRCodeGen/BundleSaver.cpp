@@ -82,13 +82,13 @@ void BundleSaver::emitSymbolTable() {
   // Define a struct for symbol table entries:
   // struct SymbolTableEntry {
   //  const char *name;
-  //  size_t offset;
-  //  size_t size;
+  //  uint64_t offset;
+  //  uint64_t size;
   //  char kind;
   // };
   auto *charTy = llvm::Type::getInt8Ty(irgen_->getLLVMContext());
   auto *sizeTTy =
-      llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(size_t) * 8);
+      llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(uint64_t) * 8);
   auto symbolTableEntryTy =
       llvm::StructType::get(irgen_->getLLVMContext(),
                             {charTy->getPointerTo(), sizeTTy, sizeTTy, charTy});
@@ -219,11 +219,11 @@ void BundleSaver::emitBundleEntryFunction() {
 // so that they know how much memory they need to allocate, etc.
 // Config consists of the following fields:
 // struct BundleConfig {
-//   size_t constantWeightVarsMemSize;
-//   size_t mutableWeightVarsMemSize;
-//   size_t activationsMemSize;
-//   size_t alignment;
-//   size_t numSymbols;
+//   uint64_t constantWeightVarsMemSize;
+//   uint64_t mutableWeightVarsMemSize;
+//   uint64_t activationsMemSize;
+//   uint64_t alignment;
+//   uint64_t numSymbols;
 //   SymbolTableEntry *symbolTable;
 // };
 void BundleSaver::emitBundleConfig() {
@@ -231,8 +231,8 @@ void BundleSaver::emitBundleConfig() {
       irgen_->getMainEntryName() + "SymbolTable", true);
   GLOW_ASSERT(symbolTable &&
               "Expected to find a symbol table for the AOT bundle");
-  // Get the integer type having the same size in bits as size_t.
-  auto *SizeTType = irgen_->getBuilder().getIntNTy(sizeof(size_t) * 8);
+  // Get the integer type having the same size in bits as uint64_t.
+  auto *SizeTType = irgen_->getBuilder().getIntNTy(sizeof(uint64_t) * 8);
   auto symbolTableEntryTy = symbolTable->getType()->getPointerElementType();
   auto *bundleConfigTy =
       llvm::StructType::get(irgen_->getLLVMContext(),
