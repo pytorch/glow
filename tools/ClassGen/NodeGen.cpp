@@ -460,6 +460,13 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
+  BB.newNode("PRelu")
+      .addInput("Input")
+      .addInput("Slope")
+      .addResultFromCtorArg()
+      .setDocstring("Applies PReLU, slope * min(0, x) + max(0, x), to each "
+                    "element in the Input tensor.");
+
   BB.newNode("Sigmoid")
       .addInput("Input")
       .addResultFromCtorArg()

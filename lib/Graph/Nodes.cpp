@@ -355,6 +355,19 @@ static bool verifyRelu(NodeValue result, NodeValue input) {
   return checkSameType(result, input, parent);
 }
 
+static bool verifyPRelu(NodeValue result, NodeValue input, NodeValue slope) {
+  const Node *parent = result.getNode();
+  if (input.getType()->isQuantizedType()) {
+    return checkSameIsQuantized(input.getType(), result.getType(), parent) &&
+           checkSameIsQuantized(input.getType(), slope.getType(), parent) &&
+           checkSameShape(result, input, parent) &&
+           checkSameShape(slope, input, parent);
+  }
+  return checkSameType(result, input, parent) &&
+         checkSameType(slope, input, parent) &&
+         checkSameShape(slope, input, parent);
+}
+
 static bool verifyRegression(NodeValue src, NodeValue dest,
                              NodeValue expected) {
   return checkSameType(src, dest, dest.getNode()) &&
@@ -1161,6 +1174,10 @@ bool ReluGradNode::verify() const {
                                         getGradOfOriginalOutputNamedResult(),
                                         this) &&
          verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
+}
+
+bool PReluNode::verify() const {
+  return verifyPRelu(getResult(), getInput(), getSlope());
 }
 
 bool RegressionNode::verify() const {

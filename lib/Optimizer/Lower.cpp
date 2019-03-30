@@ -214,6 +214,20 @@ static void lowerReluNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, R.getResult(), relu);
 }
 
+static void lowerPReluNode(Function *F, LoweredInfoMap *loweredMap,
+                           const PReluNode &R) {
+  // PRelu is :
+  // slope * x    if x < 0
+  // x            if x >= 0
+  // where slope is an input from a different node.
+  auto *zeroSplat = F->createSplat("zeroSplat", R.getResult().getType(), 0.0);
+  auto *cmplgt = F->createCmpLTE("cmplgt", zeroSplat, R.getInput());
+  auto *mul = F->createMul("mul", R.getSlope(), R.getInput());
+  auto *prelu = F->createSelect("prelu", cmplgt, R.getInput(), mul);
+
+  replaceAllUsesOfWith(loweredMap, R.getResult(), prelu);
+}
+
 static void lowerPadNode(Function *F, LoweredInfoMap *loweredMap,
                          const PadNode &P) {
   auto *outputType = P.getResult().getType();
@@ -790,6 +804,8 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
     lowerReluGradNode(F, loweredMap, *RG);
   } else if (auto *R = dyn_cast<ReluNode>(node)) {
     lowerReluNode(F, loweredMap, *R);
+  } else if (auto *R = dyn_cast<PReluNode>(node)) {
+    lowerPReluNode(F, loweredMap, *R);
   } else if (auto *P = dyn_cast<PadNode>(node)) {
     lowerPadNode(F, loweredMap, *P);
   } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
