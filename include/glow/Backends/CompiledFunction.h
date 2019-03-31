@@ -30,7 +30,7 @@ enum class BackendKind;
 class CompiledFunction {
 public:
   /// Default Ctor.
-  CompiledFunction() = default;
+  CompiledFunction() = delete;
 
   /// Ctor that accepts runtimeBundle.
   CompiledFunction(const runtime::RuntimeBundle &bundle);

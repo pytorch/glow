@@ -81,7 +81,7 @@ struct DAGNode {
   std::string name;
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
-  RuntimeBundle runtimeBundle;
+  std::unique_ptr<RuntimeBundle> runtimeBundle;
 };
 
 /// This struct represents a DAG. The first element is the root of a DAG, and

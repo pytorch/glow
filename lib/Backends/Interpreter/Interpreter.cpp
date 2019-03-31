@@ -59,9 +59,9 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   MemoryAllocator constantWeightsAllocator("ConstantWeights", 0);
   MemoryAllocator placeholderWeightsAllocator("PlaceholderWeights", 0);
   MemoryAllocator activationsAllocator("Activations", 0);
-  runtime::RuntimeBundle bundle =
-      generateRuntimeBundle(*IR, constantWeightsAllocator,
-                            placeholderWeightsAllocator, activationsAllocator);
+  runtime::RuntimeBundle bundle = runtime::RuntimeBundle::create(
+      *IR, constantWeightsAllocator, placeholderWeightsAllocator,
+      activationsAllocator);
   return llvm::make_unique<InterpreterFunction>(std::move(IR), bundle);
 }
 

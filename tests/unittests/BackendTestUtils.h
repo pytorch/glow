@@ -95,6 +95,10 @@ static const auto all_backends = ::testing::Values(
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
+  public:
+    MockFunction(const runtime::RuntimeBundle &bundle)
+        : CompiledFunction(bundle) {}
+
     void execute(ExecutionContext *) override {}
 
     BackendKind getCompileBackendKind() const override {
@@ -108,7 +112,7 @@ class MockBackend : public Backend {
 
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &) const override {
-    return llvm::make_unique<MockFunction>();
+    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
@@ -122,6 +126,10 @@ class MockBackend : public Backend {
 /// from Node to Instruction IR.
 class MockBackendCustomIRGen : public Backend {
   class MockFunction : public CompiledFunction {
+  public:
+    MockFunction(const runtime::RuntimeBundle &bundle)
+        : CompiledFunction(bundle) {}
+
     void execute(ExecutionContext *) override {}
 
     BackendKind getCompileBackendKind() const override {
@@ -135,7 +143,7 @@ class MockBackendCustomIRGen : public Backend {
 
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &) const override {
-    return llvm::make_unique<MockFunction>();
+    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }

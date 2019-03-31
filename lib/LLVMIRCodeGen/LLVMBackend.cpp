@@ -121,7 +121,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   MemoryAllocator constantAllocator("ConstantWeights", 0);
   MemoryAllocator placeholderAllocator("Placeholders", 0);
   MemoryAllocator activationsAllocator("Activations", 0);
-  runtime::RuntimeBundle runtimeInfo = generateRuntimeBundle(
+  auto runtimeInfo = runtime::RuntimeBundle::create(
       *IR, constantAllocator, placeholderAllocator, activationsAllocator);
   return createCompiledFunction(std::move(JIT), runtimeInfo);
 }
