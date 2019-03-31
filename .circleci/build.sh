@@ -42,7 +42,7 @@ GLOW_DIR=$PWD
 
 # Install Glow dependencies
 sudo apt-get update
-sudo apt-get install -y llvm-6.0 llvm-6.0-dev libpng-dev
+sudo apt-get install -y llvm-6.0 llvm-6.0-dev libpng-dev libgoogle-glog-dev
 
 # Redirect clang
 sudo ln -s /usr/bin/clang-6.0 /usr/bin/clang
