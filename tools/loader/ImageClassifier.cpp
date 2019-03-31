@@ -378,7 +378,8 @@ int main(int argc, char **argv) {
     updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
 
     // Perform the inference execution, updating SMT.
-    loader.runInference(bindings);
+    auto batchSize = inputImageData.dims()[0];
+    loader.runInference(bindings, batchSize);
 
     // Print the top-k results from the output Softmax tensor.
     processAndPrintResults(SMT, loader.getFunction()->getName());

@@ -73,7 +73,7 @@ public:
   /// Runs inference, unless emit bundle mode is enabled. \p bindings
   /// binds specific placeholders to concrete tensors. The concrete
   /// tensors include quantization profile guided information.
-  void runInference(PlaceholderBindings &bindings);
+  void runInference(PlaceholderBindings &bindings, size_t batchSize = 1);
 
   /// Generates and serializes the quantization infos after gathering a profile
   /// by running inference one or more times. \p bindings
