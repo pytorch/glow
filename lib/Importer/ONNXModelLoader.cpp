@@ -171,7 +171,7 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 llvm::Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.",
+  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files: " + filename,
                     GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
 
   // TODO: intend to find a way to reuse the following function later

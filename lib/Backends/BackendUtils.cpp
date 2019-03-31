@@ -17,6 +17,7 @@
 #include "glow/IR/Instrs.h"
 
 using namespace glow;
+
 using llvm::cast;
 using llvm::isa;
 
@@ -80,14 +81,14 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   return it->second;
 }
 
-runtime::RuntimeBundle glow::generateRuntimeBundle(const Function *F) {
+runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
 
   MemoryAllocator constants("constants", 0);
   MemoryAllocator placeholders("placeholders", 0);
 
   // Allocate constants.
-  for (auto const *V : F->getParent()->getConstants()) {
+  for (auto const *V : F.getParent()->getConstants()) {
     auto size = V->getType()->getSizeInBytes();
     auto offset = constants.allocate(size, V);
     runtime::RuntimeSymbolInfo symbol;
@@ -98,7 +99,7 @@ runtime::RuntimeBundle glow::generateRuntimeBundle(const Function *F) {
   }
 
   // Allocate placeholders.
-  for (auto const *V : F->getParent()->getPlaceholders()) {
+  for (auto const *V : F.getParent()->getPlaceholders()) {
     auto size = V->getType()->getSizeInBytes();
     auto offset = placeholders.allocate(size, V);
     runtime::RuntimeSymbolInfo symbol;
@@ -114,10 +115,10 @@ runtime::RuntimeBundle glow::generateRuntimeBundle(const Function *F) {
 }
 
 runtime::RuntimeBundle
-glow::generateRuntimeBundle(const IRFunction &F,
-                            MemoryAllocator &constantAllocator,
-                            MemoryAllocator &placeholderAllocator,
-                            MemoryAllocator &activationsAllocator) {
+runtime::RuntimeBundle::create(const IRFunction &F,
+                               MemoryAllocator &constantAllocator,
+                               MemoryAllocator &placeholderAllocator,
+                               MemoryAllocator &activationsAllocator) {
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
