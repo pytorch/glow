@@ -16,8 +16,8 @@
 
 #include "glow/Quantization/Quantization.h"
 
+#include "glow/Backends/Backend.h"
 #include "glow/Converter/FunctionConverter.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include <cmath>
 #include <unordered_set>
@@ -198,7 +198,7 @@ protected:
     }
 
     // Only convert the node if the backend supports the newly converted node.
-    return EE_.isOpSupported(NodeInfo(node.getKind(), inputTypes, outputTypes));
+    return B_.isOpSupported(NodeInfo(node.getKind(), inputTypes, outputTypes));
   }
 
   /// Helper that \returns whether quantization parameters exist
@@ -421,9 +421,8 @@ protected:
 private:
   /// Shortcut to the module of function_.
   Module &mod_;
-  /// Execution engine used to check is a quantized operator is
-  /// supported.
-  const ExecutionEngine &EE_;
+  /// Backend used to check is a quantized operator is supported.
+  const Backend &B_;
   /// Quantization schema.
   quantization::Schema schema_;
   /// Quantization precision.
@@ -467,15 +466,14 @@ public:
   /// Creates a function quantizer for \p F using the quantization
   /// parameters defined by \p quantizationInfos and target quantization
   /// precision defined by \p quantizationPrecision.
-  /// \p EE and \p doNotQuantizeKinds are used to check which
+  /// \p B and \p doNotQuantizeKinds are used to check which
   /// nodes shouldn't be converted.
-  FunctionQuantizer(Function &F, const ExecutionEngine &EE,
-                    quantization::Schema schema,
+  FunctionQuantizer(Function &F, const Backend &B, quantization::Schema schema,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
                     const LoweredInfoMap &loweredMap)
-      : FunctionConverter(F), mod_(*F.getParent()), EE_(EE), schema_(schema),
+      : FunctionConverter(F), mod_(*F.getParent()), B_(B), schema_(schema),
         quantizationPrecision_(quantizationPrecision),
         doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap) {
     // Build a mapping between node name and TensorQuantizatonParams.
@@ -697,7 +695,7 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
 }
 
 Function *
-quantizeFunction(const ExecutionEngine &EE, quantization::Schema schema,
+quantizeFunction(const Backend &B, quantization::Schema schema,
                  llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                  ElemKind quantizationPrecision, Function *F,
                  const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
@@ -713,7 +711,7 @@ quantizeFunction(const ExecutionEngine &EE, quantization::Schema schema,
 
   Function *G = F->clone(newFuncName);
 
-  FunctionQuantizer quantizer(*G, EE, schema, quantizationInfos,
+  FunctionQuantizer quantizer(*G, B, schema, quantizationInfos,
                               quantizationPrecision, doNotQuantizeKinds,
                               loweredMap);
   quantizer.convert();

@@ -73,7 +73,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     std::string oldName = function_->getName();
     function_->setName("old");
     auto *Q = quantization::quantizeFunction(
-        executionEngine_, quantization::Schema::Symmetric, QI,
+        *executionEngine_.getBackend(), quantization::Schema::Symmetric, QI,
         ElemKind::Int8QTy, function_, loweredMap_, oldName, {}, false);
     Q->getParent()->eraseFunction(function_);
     function_ = Q;
