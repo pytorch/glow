@@ -194,3 +194,14 @@ optimizations to take place.
 The `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h` and
 `tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h` files are included in
 `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, respectively.
+
+
+#### External backends
+
+External backends can be added to Glow without changing the Glow build infrastructure.
+
+An external backend is provided as a single source directory. It can then be developped in a separate source management repository.
+
+The external backend mechanism is for instance convenient for adding closed source backends to Glow.
+
+The structure of external backends is defined [here](https://github.com/pytorch/glow/blob/master/docs/ExternalBackend.md).
