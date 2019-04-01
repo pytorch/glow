@@ -52,4 +52,41 @@ void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
   // Skip the ending bracket since that is allowed.
   file.close();
 }
+
+uint64_t TraceEvent::now() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+void TraceContext::logTraceEvent(llvm::StringRef name, llvm::StringRef type,
+                                 std::map<std::string, std::string> args) {
+  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+    return;
+  }
+  TraceEvent ev(name, TraceEvent::now(), type, traceThread_, std::move(args));
+  traceEvents_.push_back(std::move(ev));
+}
+
+ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
+    : context_(context), name_(name) {
+  if (context_) {
+    context_->logTraceEvent(name_, "B", std::move(args_));
+  }
+}
+
+ScopedTraceBlock::~ScopedTraceBlock() { end(); }
+
+ScopedTraceBlock &ScopedTraceBlock::addArg(llvm::StringRef key,
+                                           llvm::StringRef value) {
+  args_[key] = value;
+  return *this;
+}
+
+void ScopedTraceBlock::end() {
+  if (!end_ && context_) {
+    context_->logTraceEvent(name_, "E", std::move(args_));
+  }
+  end_ = true;
+}
 } // namespace glow

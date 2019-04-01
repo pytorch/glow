@@ -54,7 +54,10 @@ void InterpreterFunction::collectConstants(Module *module) {
 void InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
   boundFunc.execute(F_.get(), context);
-  translateTraceEvents(context);
+  {
+    auto ev = context->scopedEvent("processInstrumentation");
+    translateTraceEvents(context);
+  }
 }
 
 void InterpreterFunction::translateTraceEvents(
@@ -64,15 +67,21 @@ void InterpreterFunction::translateTraceEvents(
     return;
   }
 
+  TraceContext *traceContext = context->getTraceContext();
+
+  if (!traceContext || traceContext->getTraceLevel() == TraceLevel::NONE ||
+      traceContext->getTraceLevel() == TraceLevel::RUNTIME) {
+    return;
+  }
+
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = 0;
+  int tid = traceContext->getTraceThread();
+  auto &traceEvents = traceContext->getTraceEvents();
   for (auto &backing : traceInfo.events) {
-    tid++;
     Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);
 
-    auto &traceEvents = context->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
       uint64_t ts{0};
       memcpy(&ts,
@@ -157,15 +166,18 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
 
 void BoundInterpreterFunction::execute(IRFunction *F,
                                        ExecutionContext *context) {
-  // Register the concrete tensors that back the placeholder tensors.
-  for (auto &ph : context->getPlaceholderBindings()->pairs()) {
-    auto *w = F->getWeightForNode(ph.first);
-    // If the Placeholder has been aliased to the same Weight, just skip it.
-    if (externalTensors_.count(w)) {
-      continue;
-    }
+  {
+    auto ev = context->scopedEvent("registerTensors");
+    // Register the concrete tensors that back the placeholder tensors.
+    for (auto &ph : context->getPlaceholderBindings()->pairs()) {
+      auto *w = F->getWeightForNode(ph.first);
+      // If the Placeholder has been aliased to the same Weight, just skip it.
+      if (externalTensors_.count(w)) {
+        continue;
+      }
 
-    externalTensors_[w] = ph.second;
+      externalTensors_[w] = ph.second;
+    }
   }
 
 // Do the forward pass.
@@ -186,9 +198,12 @@ void BoundInterpreterFunction::execute(IRFunction *F,
     }
   }
 
-  // Remove the concrete tensors that back the placeholder tensors.
-  for (auto &ph : context->getPlaceholderBindings()->pairs()) {
-    auto *w = F->getWeightForNode(ph.first);
-    externalTensors_.erase(w);
+  {
+    auto ev = context->scopedEvent("eraseTensors");
+    // Remove the concrete tensors that back the placeholder tensors.
+    for (auto &ph : context->getPlaceholderBindings()->pairs()) {
+      auto *w = F->getWeightForNode(ph.first);
+      externalTensors_.erase(w);
+    }
   }
 }
