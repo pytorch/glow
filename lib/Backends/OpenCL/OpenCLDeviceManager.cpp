@@ -32,6 +32,12 @@
 using namespace glow;
 using namespace glow::runtime;
 
+// This defines kernels for most operations.
+static const unsigned char kernels_cl_src[] = {
+#include "glow/kernels.inc"
+};
+static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
+
 extern llvm::cl::opt<unsigned> clPlatformId;
 extern llvm::cl::opt<unsigned> clDeviceId;
 extern llvm::cl::opt<bool> clDoProfile;
@@ -102,11 +108,7 @@ llvm::Error OpenCLDeviceManager::init() {
   if (!context_) {
     RETURN_ERR("clCreateContext Failed");
   }
-  commands_ = clCreateCommandQueue(
-      context_, deviceId_, (clDoProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
-  if (!commands_) {
-    RETURN_ERR("clCreateCommandQueue Failed");
-  }
+
   cl_ulong mem_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong),
                         &mem_size, NULL);
@@ -119,7 +121,6 @@ llvm::Error OpenCLDeviceManager::init() {
 }
 
 OpenCLDeviceManager::~OpenCLDeviceManager() {
-  clReleaseCommandQueue(commands_);
   clReleaseContext(context_);
   buffers_.clear();
 }
@@ -176,6 +177,19 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     return;
   }
 
+  // Create a command queue to copy constants to the device and compile the
+  // function.
+  cl_int err;
+  auto traceInfo = functions.begin()->second->getTraceInfo();
+  cl_command_queue commands =
+      clCreateCommandQueue(context_, deviceId_, 0, &err);
+  if (!commands) {
+    readyCB(
+        module,
+        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                 "Failed to add network: could not create CL command queue."));
+  }
+
   // Copy constants to device.
   auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
               bundle.getActivationsSize();
@@ -186,24 +200,37 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     size_t valueOffset = 0;
     cl_event event{nullptr};
     cl_int err = clEnqueueWriteBuffer(
-        commands_, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
+        commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
         valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    clFinish(commands_);
+    clFinish(commands);
   }
   usedMemoryBytes_ += sizeInBytes;
+  // Compile the CL program.
   // Add to the function name lookup map.
-  // Add shared pointer to buffer to buffers. This way buffer will be freed
-  // after last reference is removed.
+  // Add shared pointer to the buffer to buffers. This way the buffer will be
+  // freed after the last reference is removed.
   for (const auto &func : functions) {
+    // Configure the kernels by providing the size of size_t on the host size.
+    // This is required to e.g. properly pass struct parameters of types like
+    // ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the host
+    // side use size_t for their members and they should be defined on the
+    // OpenCL's side using integer types of the same width.
+    std::vector<std::string> options;
+    addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
+    // Create the program from the source.
+    std::string source(reinterpret_cast<const char *>(kernels_cl_src),
+                       kernels_cl_src_size);
+    OpenCLFunction *function = static_cast<OpenCLFunction *>(func.second);
+    function->createProgram(source, options, commands);
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
   }
 
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
-
+  clReleaseCommandQueue(commands);
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
@@ -236,6 +263,23 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
   }
 }
 
+cl_command_queue
+OpenCLDeviceManager::requestRunCommandQueue(CompiledFunction *function) {
+  cl_int err;
+  auto traceInfo = function->getTraceInfo();
+  cl_command_queue_properties profiling = 0;
+  if (clDoProfile || traceInfo.enabled) {
+    profiling = CL_QUEUE_PROFILING_ENABLE;
+  }
+  cl_command_queue commands =
+      clCreateCommandQueue(context_, deviceId_, profiling, &err);
+  return commands;
+}
+
+void OpenCLDeviceManager::returnRunCommandQueue(cl_command_queue commands) {
+  clReleaseCommandQueue(commands);
+}
+
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
@@ -251,15 +295,21 @@ void OpenCLDeviceManager::runFunctionImpl(
   }
 
   CompiledFunction *func = funcIt->second;
-  PlaceholderBindings &bindings = *context->getPlaceholderBindings();
+
+  // Get a command queue for this run.
+  cl_command_queue commands = requestRunCommandQueue(func);
+
+  // Create and set deviceBindings for call. This contains all the state needed
+  // for the function to run on a device.
+  auto clBindings = llvm::make_unique<runtime::OpenCLDeviceBindings>(
+      buffers_[function]->getBuffer(), commands, deviceId_, context_);
+  context->setDeviceBindings(std::move(clBindings));
 
   // Run that function.
-  // Until we have executionInfo object need to call setup/teardown and pin to
-  // single device.
-  func->setupRuns();
-  func->beforeRun(bindings);
   func->execute(context.get());
-  func->afterRun(bindings);
+
+  // Return the command queue.
+  returnRunCommandQueue(commands);
 
   // End the TraceEvent early to avoid time in the CB.
   context->logTraceEvent("DM_run", "E");

@@ -54,12 +54,6 @@ typedef uint32_t cl_size_t;
 /// compile these sources into our the OpenCL backend. During the execution
 /// these sources are compiled by the OpenCL driver.
 
-// This defines kernels for most operations.
-static const unsigned char kernels_cl_src[] = {
-#include "glow/kernels.inc"
-};
-static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
-
 // This defines kernels for optimized convolutions.
 static const unsigned char kernels_fwd_conv_cl_src[] = {
 #include "glow/kernels_fwd_conv.inc"
@@ -106,13 +100,6 @@ static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #endif
 }
 
-/// Add an macro definition with an integer value to the set of options.
-template <typename T>
-static void addIntOption(std::vector<std::string> &options,
-                         const std::string &name, const T value) {
-  options.push_back("-D" + name + "=" + std::to_string(value));
-}
-
 /// Add an macro definition with a string value to the set of options.
 static void addStringOption(std::vector<std::string> &options,
                             const std::string &name, const std::string &value) {
@@ -123,37 +110,6 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
                                const runtime::RuntimeBundle &bundle,
                                TraceInfo traceInfo)
     : CompiledFunction(bundle), F_(std::move(F)) {
-  cl_uint numPlatforms{0};
-  cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
-  GLOW_ASSERT(numPlatforms > clPlatformId &&
-              "Should have at least one platform for running OpenCL");
-  std::vector<cl_platform_id> platform_ids(numPlatforms);
-  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
-  cl_platform_id platform_id_used = platform_ids[clPlatformId];
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetPlatformIDs Failed.");
-
-  cl_uint num{0};
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-  GLOW_ASSERT(num > clDeviceId &&
-              "Should have at least one GPU/CPU/FPGA for running OpenCL");
-  std::vector<cl_device_id> devices(num);
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
-                       devices.data(), nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetDeviceIDs Failed.");
-  deviceId_ = devices[clDeviceId];
-  context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
-  GLOW_ASSERT(context_ && "clCreateContext Failed.");
-
-  cl_command_queue_properties profiling = 0;
-  if (clDoProfile || traceInfo.enabled) {
-    profiling = CL_QUEUE_PROFILING_ENABLE;
-  }
-  kernelProfiling_ = clDoProfile || traceInfo.autoInstrumented;
-  commands_ = clCreateCommandQueue(context_, deviceId_, profiling, &err);
-  GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
-
   // We need to go through the TraceInfo and pull out some info about manual
   // TraceEvents.
   for (const auto &backingPair : traceInfo.events) {
@@ -164,21 +120,7 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
                                  std::make_pair(backing, &event));
     }
   }
-
   setTraceInfo(std::move(traceInfo));
-
-  err = CL_SUCCESS;
-  std::vector<std::string> options;
-  // Configure the kernels by providing the size of size_t on the host size.
-  // This is required to e.g. properly pass struct parameters of types like
-  // ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the host side
-  // use size_t for their members and they should be defined on the OpenCL's
-  // side using integer types of the same width.
-  addIntOption(options, "SIZEOF_HOST_SIZE_T", sizeof(size_t));
-  // Create the program from the source.
-  std::string source(reinterpret_cast<const char *>(kernels_cl_src),
-                     kernels_cl_src_size);
-  createProgram(source, options, commands_);
 }
 
 OpenCLFunction::~OpenCLFunction() {
@@ -186,13 +128,6 @@ OpenCLFunction::~OpenCLFunction() {
     auto prog = kv.second;
     clReleaseProgram(prog);
   }
-  clReleaseCommandQueue(commands_);
-  clReleaseContext(context_);
-  if (deviceBuffer_) {
-    freeDeviceBuffer(deviceBuffer_);
-    deviceBuffer_ = nullptr;
-  }
-  tearDownRuns();
 }
 
 static std::string getKernelName(const char *baseName, ElemKind elemTy) {
@@ -261,7 +196,7 @@ OpenCLFunction::createProgram(const std::string &source,
     return program;
   }
   // Create a new compiled program.
-  program = clCreateProgramWithSource(context_, 1, &src, nullptr, &err);
+  program = clCreateProgramWithSource(ctx, 1, &src, nullptr, &err);
   GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
   err = clBuildProgram(program, 0, nullptr, combinedOptions.c_str(), nullptr,
                        nullptr);
@@ -607,13 +542,15 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 void OpenCLFunction::execute(ExecutionContext *context) {
   (void)context;
 
-  {
-    auto ev = context->scopedEvent("alloc");
-    // TODO: deviceBuffer_ should go into DeviceBindings in context.
-    deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
-                                      runtimeBundle_.getMutableWeightSize() +
-                                      runtimeBundle_.getActivationsSize());
-  }
+  auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
+      context->getDeviceBindings());
+
+  deviceBuffer_ = clBindings->deviceBuffer;
+  deviceId_ = clBindings->deviceId;
+  commands_ = clBindings->commandQueue;
+  context_ = clBindings->context;
+
+  kernelProfiling_ = clDoProfile || getTraceInfo().autoInstrumented;
 
   {
     auto ev = context->scopedEvent("loadPlaceholders");
@@ -1426,14 +1363,6 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       clReleaseKernel(kl.kernel_);
     }
     kernelLaunches_.clear();
-  }
-
-  {
-    auto ev = context->scopedEvent("free");
-    if (deviceBuffer_) {
-      freeDeviceBuffer(deviceBuffer_);
-      deviceBuffer_ = nullptr;
-    }
   }
 }
 

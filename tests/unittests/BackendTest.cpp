@@ -165,11 +165,8 @@ TEST_P(BackendTest, debugPrint) {
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
   auto function = backend->compileIR(std::move(IR));
-  function->setupRuns();
-  function->beforeRun(*ctx->getPlaceholderBindings());
-  function->execute(ctx.get());
-  function->afterRun(*ctx->getPlaceholderBindings());
-  function->tearDownRuns();
+  EE_.insertCompiledFunction("main", std::move(function));
+  EE_.run(*ctx.get());
 }
 
 /// Test the compile method on the backend completes without error when

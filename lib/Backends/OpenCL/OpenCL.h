@@ -60,6 +60,13 @@ struct KernelLaunch {
       : kernel_(nullptr), name_(name), type_(type), event_(event) {}
 };
 
+/// Add an macro definition with an integer value to the set of options.
+template <typename T>
+static void addIntOption(std::vector<std::string> &options,
+                         const std::string &name, const T value) {
+  options.push_back("-D" + name + "=" + std::to_string(value));
+}
+
 /// A Glow IR function compiled for OpenCL.
 class OpenCLFunction final : public CompiledFunction {
   /// A helper type representing a key for the program's cache.
@@ -119,6 +126,11 @@ public:
   /// Returns IR function pointer.
   IRFunction *getIR() { return F_.get(); }
 
+  /// Create a program from the \p source using provided \p options.
+  cl_program createProgram(const std::string &source,
+                           const std::vector<std::string> &options,
+                           cl_command_queue queue);
+
 private:
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
@@ -144,10 +156,6 @@ private:
   /// in any of compiled programs.
   cl_kernel createKernel(const std::string &name, cl_program program = nullptr);
 
-  /// Create a program from the \p source using provided \p options.
-  cl_program createProgram(const std::string &source,
-                           const std::vector<std::string> &options,
-                           cl_command_queue queue);
   /// Enqueue a \p kernel on a provided \p commands queue.
   void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
                      cl_kernel kernel, cl_device_id device,
@@ -215,6 +223,34 @@ public:
   /// @}
 };
 
+namespace runtime {
+/// OpenCLDeviceBindings inherits from DeviceBindings, it contains per run
+/// device specific information used to run a compiled function on a specific
+/// device.
+struct OpenCLDeviceBindings : DeviceBindings {
+  OpenCLDeviceBindings(cl_mem buffer, cl_command_queue commands,
+                       cl_device_id device, cl_context ctx)
+      : DeviceBindings(BackendKind::OpenCL), deviceBuffer{buffer},
+        commandQueue{commands}, deviceId{device}, context{ctx} {}
+
+  /// CL memory buffer. Currently this contains both mutable and immutable
+  /// weights, the buffer is allocated once when the network is added.
+  cl_mem deviceBuffer;
+
+  /// CL compute command queue. A per run queue for the specific device.
+  ///
+  cl_command_queue commandQueue;
+
+  /// CL compute device id. Identifies the CL device to be used.
+  ///
+  cl_device_id deviceId;
+
+  /// CL compute context. Identifies a context on the CL device the computation
+  /// will take place in.
+  ///
+  cl_context context;
+};
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENDS_OPENCL_OPENCL_H
