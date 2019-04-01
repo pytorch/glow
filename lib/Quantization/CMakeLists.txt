@@ -8,6 +8,6 @@ target_link_libraries(Quantization
                       PRIVATE
                         Converter
                         Graph
-                        ExecutionEngine
+                        Backend
                         QuantizationBase
                         LLVMSupport)
