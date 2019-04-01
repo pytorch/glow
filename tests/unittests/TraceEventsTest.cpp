@@ -576,6 +576,6 @@ INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest,
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-// INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest,
-//                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest,
+                        ::testing::Values(BackendKind::OpenCL));
 #endif // GLOW_WITH_OPENCL
