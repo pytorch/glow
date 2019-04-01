@@ -72,11 +72,9 @@ public:
                               std::unique_ptr<ExecutionContext> context,
                               ResultCBTy callback) override {
     RunIdentifierTy id = nextIdentifier_++;
-    context->logTraceEvent("DM_enqueue", "B");
     workThread_.submit([this, id, functionName = std::move(functionName),
                         context = std::move(context),
                         callback = std::move(callback)]() mutable {
-      context->logTraceEvent("DM_enqueue", "E");
       runFunctionImpl(id, std::move(functionName), std::move(context),
                       std::move(callback));
     });

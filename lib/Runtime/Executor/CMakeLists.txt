@@ -5,5 +5,6 @@ add_library(Executor
 target_link_libraries(Executor
                       PUBLIC
                         ThreadPool
-	              PRIVATE
-		        Graph)
+                      PRIVATE
+                        ExecutionContext
+                        Graph)

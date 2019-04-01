@@ -283,10 +283,11 @@ void OpenCLDeviceManager::returnRunCommandQueue(cl_command_queue commands) {
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
-  context->logTraceEvent("DM_run", "B");
+  TRACE_EVENT_BEGIN(context, "DM_run");
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
-    context->logTraceEvent("DM_run", "E", {{"reason", "function not found"}});
+    context->logTraceEvent("DM_run", TraceEvent::EndType,
+                           {{"reason", "function not found"}});
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {} not found", function).str()),
@@ -312,7 +313,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   returnRunCommandQueue(commands);
 
   // End the TraceEvent early to avoid time in the CB.
-  context->logTraceEvent("DM_run", "E");
+  TRACE_EVENT_END(context, "DM_run");
 
   // Fire the resultCB.
   resultCB(id, llvm::Error::success(), std::move(context));
