@@ -26,6 +26,9 @@ googlenetV4IdxValue=(281 207 340)
 mnistFiles=("0_1009" "1_1008" "2_1065" "3_1020" "4_1059" "5_1087" "6_1099" "7_1055" "8_1026" "9_1088")
 mnistIdxValue=(0 1 2 3 4 5 6 7 8 9)
 
+# Default idx is a valid input
+./bin/image-classifier tests/images/imagenet/${imagenetFiles[0]}.png -use-imagenet-normalization -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data "$@"
+
 for i in ${!imagenetFiles[@]}; do
 	./bin/image-classifier tests/images/imagenet/${imagenetFiles[$i]}.png -idx=${imagenetIdxValue[$i]} -use-imagenet-normalization -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data "$@"
 	./bin/image-classifier tests/images/imagenet/${imagenetFiles[$i]}.png -idx=${imagenetIdxValue[$i]} -image-mode=neg128to127 -m=vgg19 -model-input-name=data "$@"

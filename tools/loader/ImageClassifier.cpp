@@ -222,10 +222,14 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
-/// Checks if /p topKPairs have the index that matches the provided index
+/// Checks if /p topKPairs have the index that matches the provided index.
 static int matchIndices(const std::vector<FloatIndexPair> &topKPairs,
                         const std::string &fileName) {
-  // loop through pairs and try to match the index from file name
+  // Check default value of category.
+  if (expectedCategoryIndex == -1) {
+    return 0; // not category index has been set, skip index matching.
+  }
+  // Loop through pairs and try to match the index from file name.
   for (const auto& p : topKPairs) {
     if (p.second - labelOffset == expectedCategoryIndex) {
       return 0;
@@ -255,7 +259,7 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
 }
 
 /// Given the output Softmax Tensor \p SMT and \p functionName, prints the
-/// results of inference and returns number of incorrect predictions
+/// results of inference and returns number of incorrect predictions.
 template <typename ElemTy>
 static int processAndPrintResultsImpl(Tensor *SMT,
                                       llvm::StringRef functionName) {
