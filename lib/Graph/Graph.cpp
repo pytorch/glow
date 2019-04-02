@@ -658,8 +658,8 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
-                                                   NodeValue input, Node *W,
-                                                   Node *B, TypeRef outTy,
+                                                   NodeValue input, NodeValue W,
+                                                   NodeValue B, TypeRef outTy,
                                                    unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
@@ -676,7 +676,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Constant *W,
-                                               Node *B, TypeRef outTy,
+                                               NodeValue B, TypeRef outTy,
                                                quantization::Schema schema,
                                                bool transposeWeight) {
   // Since W is constant, quantize it in compilation time.

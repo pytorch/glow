@@ -350,8 +350,9 @@ public:
   /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is
   /// flattened along \p axis. Note, outputDepth is inferred based on \p outTy.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, Node *W, Node *B,
-                                           TypeRef outTy, unsigned_t axis = 1);
+                                           NodeValue input, NodeValue W,
+                                           NodeValue B, TypeRef outTy,
+                                           unsigned_t axis = 1);
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
@@ -360,7 +361,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Node *B,
+      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its
