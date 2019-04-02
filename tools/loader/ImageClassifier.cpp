@@ -78,9 +78,9 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
 
-llvm::cl::list<int> expectedMatchingIndices(
-    "idxs",
-    llvm::cl::desc("The comma delimited list of the matching indices"),
+llvm::cl::list<unsigned> expectedMatchingLabels(
+    "expected-labels",
+    llvm::cl::desc("The comma delimited list of the matching lables"),
     llvm::cl::value_desc("int"), llvm::cl::ZeroOrMore,
     llvm::cl::CommaSeparated, llvm::cl::cat(imageLoaderCat));
 } // namespace
@@ -228,10 +228,11 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
 /// \returns the number of found mismatches.
 static int matchIndices(const std::vector<FloatIndexPair> &topKPairs,
                         const std::string &fileName,
-                        signed expectedCategoryIndex) {
+                        unsigned expectedCategoryIndex) {
   // Check default value of category.
-  if (expectedCategoryIndex == -1) {
-    return 0; // not category index has been set, skip index matching.
+  if (expectedCategoryIndex == ~0U) {
+    // No category index has been set, skip index matching.
+    return 0;
   }
   // Loop through pairs and try to match the index from file name.
   for (const auto& p : topKPairs) {
@@ -285,17 +286,18 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
   // Parse provided, if any, category indices.
-  std::vector<int> matchingIndices(inputImageFilenames.size(), -1);
-  if (!expectedMatchingIndices.empty()) {
+  std::vector<unsigned> matchingIndices(inputImageFilenames.size(), ~0U);
+  if (!expectedMatchingLabels.empty()) {
     // The number of category indices must match the number of files.
-    if (expectedMatchingIndices.size() != inputImageFilenames.size()) {
+    if (expectedMatchingLabels.size() != inputImageFilenames.size()) {
       llvm::outs() << "Number of matching indices: "
-                   << expectedMatchingIndices.size()
+                   << expectedMatchingLabels.size()
                    << " doesn't match the number of files: "
                    << inputImageFilenames.size() << "\n";
+      return 1;
     } else {
       matchingIndices.assign(
-          expectedMatchingIndices.begin(), expectedMatchingIndices.end());
+          expectedMatchingLabels.begin(), expectedMatchingLabels.end());
     }
   }
 

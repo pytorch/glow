@@ -19,6 +19,7 @@ imagenetIdxArray=(281 207 340)
 googlenetV1IdxArray=(281 222 340)
 googlenetV4IdxArray=(281 207 340)
 mnistIdxValues="0,1,2,3,4,5,6,7,8,9"
+mnistIdxArray=(0 1 2 3 4 5 6 7 8 9)
 
 # Accumulate errors
 num_errors=0
@@ -27,7 +28,7 @@ function runSqueezenetModel {
   local indices=''
   if [ "$#" -ge 2 ]
   then
-    indices="-idxs=$2"
+    indices="-expected-labels=$2"
   fi
   local suffix=''
   local model=''
@@ -52,40 +53,94 @@ runSqueezenetModel "tests/images/imagenet/zebra_340.png" ${imagenetIdxArray[2]} 
 
 
 # Batch processing
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -use-imagenet-normalization -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -use-imagenet-normalization -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=neg128to127 -m=vgg19 -model-input-name=data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=neg128to127 -m=vgg19 -model-input-name=data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=neg128to127 -m=squeezenet -model-input-name=data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to255 -m=zfnet512 -model-input-name=gpu_0/data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to255 -m=zfnet512 -model-input-name=gpu_0/data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=densenet121 -model-input-name=data -compute-softmax "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to1 -m=densenet121 -model-input-name=data -compute-softmax "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=shufflenet -model-input-name=gpu_0/data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to1 -m=shufflenet -model-input-name=gpu_0/data "$@"
+./bin/image-classifier tests/images/mnist/*.png -expected-labels=${mnistIdxValues} -image-mode=0to1 -m=lenet_mnist -model-input-name=data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/mnist/*.png -idxs=${mnistIdxValues} -image-mode=0to1 -m=lenet_mnist -model-input-name=data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to255 -m=inception_v1 -model-input-name=data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to255 -m=inception_v1 -model-input-name=data "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to255 -m=bvlc_alexnet -model-input-name=data "$@"
 num_errors=$(($num_errors + $?))
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to255 -m=bvlc_alexnet -model-input-name=data "$@"
-num_errors=$(($num_errors + $?))
+
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -use-imagenet-normalization -image-mode=0to1 -m=resnet50/model.onnx -model-input-name=gpu_0/data_0 "$@"
+   num_errors=$(($num_errors + $?))
+   i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=neg128to127 -m=vgg19/model.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=neg128to127 -m=squeezenet/model.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=0to255 -m=zfnet512/model.onnx -model-input-name=gpu_0/data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=0to1 -m=densenet121/model.onnx -model-input-name=data_0 -compute-softmax "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=0to1 -m=shufflenet/model.onnx -model-input-name=gpu_0/data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/mnist/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${mnistIdxArray[$i]} -image-mode=0to1 -m=mnist.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=0to255 -m=inception_v1/model.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${imagenetIdxArray[$i]} -image-mode=0to255 -m=bvlc_alexnet/model.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
+  i=$(($i + 1))
+done
+
 #Inference test for TF ONNX models
 i=0
 for png_filename in tests/images/imagenet/*.png; do
-  ./bin/image-classifier "$png_filename" -idxs=${googlenetV1IdxArray[$i]} -image-mode=0to1 -m=googlenet_v1_slim/googlenet_v1_slim.onnx -model-input-name=input:0 -image-layout=NHWC -label-offset=1 "$@"
+  ./bin/image-classifier "$png_filename" -expected-labels=${googlenetV1IdxArray[$i]} -image-mode=0to1 -m=googlenet_v1_slim/googlenet_v1_slim.onnx -model-input-name=input:0 -image-layout=NHWC -label-offset=1 "$@"
   num_errors=$(($num_errors + $?))
   i=$(($i + 1))
 done
 i=0
 for png_filename in tests/images/imagenet_299/*.png; do
-  ./bin/image-classifier "$png_filename" -idxs=${googlenetV4IdxArray[$i]} -image-mode=0to1 -m=googlenet_v4_slim/googlenet_v4_slim.onnx -model-input-name=input:0 -image-layout=NHWC -label-offset=1 "$@"
+  ./bin/image-classifier "$png_filename" -expected-labels=${googlenetV4IdxArray[$i]} -image-mode=0to1 -m=googlenet_v4_slim/googlenet_v4_slim.onnx -model-input-name=input:0 -image-layout=NHWC -label-offset=1 "$@"
   num_errors=$(($num_errors + $?))
   i=$(($i + 1))
 done
 
 # Quantized Resnet50 Caffe2 model test
-./bin/image-classifier tests/images/imagenet/*.png -idxs=${imagenetIdxValues} -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"
 num_errors=$(($num_errors + $?))
 
 if [ $num_errors -gt 0 ]
