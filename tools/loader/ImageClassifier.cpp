@@ -287,7 +287,7 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   // Parse provided, if any, category indices.
   std::vector<signed> matchingIndices(inputImageFilenames.size(), -1);
   if (!expectedMatchingIndices.empty()) {
-		llvm::SmallVector<llvm::StringRef, 1> parts;
+    llvm::SmallVector<llvm::StringRef, 1> parts;
     llvm::StringRef(expectedMatchingIndices).split(parts, ',', -1, false);
     if (parts.size() != inputImageFilenames.size()) {
       llvm::outs() << "Number of matching indices: " << parts.size()
