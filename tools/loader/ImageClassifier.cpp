@@ -78,6 +78,10 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> expectedCategoryIndex(
+    "idx",
+    llvm::cl::desc("Expect the prediction top pair has the same index"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
 } // namespace
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
@@ -219,6 +223,24 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
+/// Checks if /p topKPairs have the index that matches the provided index
+static int matchIndices(const std::vector<FloatIndexPair> &topKPairs,
+                        const std::string &fileName) {
+  // loop through pairs and try to match the index from file name
+  for (const auto& p : topKPairs) {
+    if (p.second - labelOffset == expectedCategoryIndex) {
+      return 0;
+    }
+  }
+
+  llvm::outs() << " File: " << fileName
+               << " doesn't match index: " << expectedCategoryIndex
+               << " in the top pairs\n";
+
+  return 1;
+}
+
+
 /// Apply the softmax function to the given handle.
 template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
@@ -233,11 +255,11 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   }
 }
 
-/// Given the output Softmax Tensor \p SMT and \p functionName, print the
-/// results of inference.
+/// Given the output Softmax Tensor \p SMT and \p functionName, prints the
+/// results of inference and returns number of incorrect predictions
 template <typename ElemTy>
-static void processAndPrintResultsImpl(Tensor *SMT,
-                                       llvm::StringRef functionName) {
+static int processAndPrintResultsImpl(Tensor *SMT,
+                                      llvm::StringRef functionName) {
   // Print out the inferred image classification.
   llvm::outs() << "Model: " << functionName << "\n";
 
@@ -254,8 +276,10 @@ static void processAndPrintResultsImpl(Tensor *SMT,
   const size_t numLabels = SMT->dims()[1];
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
+  int retVal = 0;
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
-    llvm::outs() << " File: " << inputImageFilenames[i];
+    const auto &fileName = inputImageFilenames[i];
+    llvm::outs() << " File: " << fileName;
 
     // batchSize is the first dimension, so update it to get the next slice.
     sliceOffset[0] = i;
@@ -268,22 +292,24 @@ static void processAndPrintResultsImpl(Tensor *SMT,
 
     auto topKPairs = getTopKPairs(SH);
     printTopKPairs(topKPairs);
+    retVal += matchIndices(topKPairs, fileName);
   }
+
+  return retVal;
 }
 
 /// Given the output Softmax Tensor \p SMT and \p functionName, switch between
 /// the correct element type to print the results of inference as contained in
 /// \p SMT.
-static void processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
+static int processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
   switch (SMT->getElementType()) {
   case ElemKind::FloatTy:
-    processAndPrintResultsImpl<float>(SMT, functionName);
-    break;
+    return processAndPrintResultsImpl<float>(SMT, functionName);
   case ElemKind::Float16Ty:
-    processAndPrintResultsImpl<float16_t>(SMT, functionName);
-    break;
+    return processAndPrintResultsImpl<float16_t>(SMT, functionName);
   default:
     llvm_unreachable("Type not supported");
+    return 0;
   }
 }
 
@@ -335,6 +361,7 @@ int main(int argc, char **argv) {
   Placeholder *inputImagePH = nullptr;
   Tensor *SMT = nullptr;
 
+  int numErrors = 0;
   Tensor inputImageData;
   while ((streamInputFilenamesMode &&
           getNextImageFilenames(&inputImageFilenames)) ||
@@ -382,7 +409,7 @@ int main(int argc, char **argv) {
     loader.runInference(bindings, batchSize);
 
     // Print the top-k results from the output Softmax tensor.
-    processAndPrintResults(SMT, loader.getFunction()->getName());
+    numErrors += processAndPrintResults(SMT, loader.getFunction()->getName());
   }
 
   // If profiling, generate and serialize the quantization infos now that we
@@ -391,5 +418,5 @@ int main(int argc, char **argv) {
     loader.generateAndSerializeQuantizationInfos(bindings);
   }
 
-  return 0;
+  return numErrors;
 }
