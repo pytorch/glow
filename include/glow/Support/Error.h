@@ -79,6 +79,8 @@ public:
     RUNTIME_DEVICE_NOT_FOUND,
     // Compilation error; node unsupported after optimizations.
     COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+    // Compilation error; Compilation context not correctly setup.
+    COMPILE_CONTEXT_MALFORMED,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -146,6 +148,8 @@ private:
       return "RUNTIME_DEVICE_NOT_FOUND";
     case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
       return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
+    case ErrorCode::COMPILE_CONTEXT_MALFORMED:
+      return "COMPILE_CONTEXT_MALFORMED";
     };
 
     llvm_unreachable("unsupported ErrorCode");

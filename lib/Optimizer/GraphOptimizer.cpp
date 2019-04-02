@@ -15,6 +15,7 @@
  */
 
 #include "glow/Backend/Backend.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -22,6 +23,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -2720,16 +2722,79 @@ static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
   return llvm::Error::success();
 }
 
+/// Helper function that may transform \p F given preferences of \p cctx and
+/// \p B. The specific transformations are done based on the
+/// PrecisionConfiguration found in \p cctx. This could include quantization,
+/// profiling, and FP16 conversion.
+static void transformForPrecisionMode(const Backend &B, Function *F,
+                                      const CompilationContext &cctx) {
+  const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+  switch (precConfig.quantMode) {
+  case QuantizationMode::Profile: {
+    assert(cctx.bindings);
+    glow::profileQuantization(*cctx.bindings, F);
+    break;
+  }
+
+  case QuantizationMode::Quantize: {
+    quantization::quantizeFunction(F, precConfig.quantConfig, B,
+                                   *cctx.loweredInfoMap,
+                                   precConfig.precisionModeKindSet);
+    break;
+  }
+
+  case QuantizationMode::None: {
+    break;
+  }
+  }
+
+  if (precConfig.convertToFP16) {
+    TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                            ElemKind::Float16Ty,
+                                            &precConfig.precisionModeKindSet);
+    converter.convert();
+  }
+}
+
+// NOTE: When updating this function, please also update the documentation in
+// docs/GraphOptimizationPipeline.md
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    const CompilationContext &cctx) {
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
+  // Verify that the CompilationContext is set up correctly.
+  RETURN_IF_ERR(cctx.verify());
+
+  // Fold low-level operators into higher-level operators.
+  // This is useful when compiling an input model where some high-level
+  // operators have been lowered (this can be for instance a side effect of
+  // model converters, like converters from Tensorflow to ONNX). In this
+  // situation, such folding can then enable more optimizations and also improve
+  // the performance backends that support natively such high-level operators.
+  ::glow::fold(F, glow::CompilationMode::Infer);
+
   // Optimize the graph.
   ::glow::optimize(F, cctx);
 
   // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, /* loweredMap */ nullptr, &B);
+  const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  if (precConfig.quantMode == QuantizationMode::Profile) {
+    // When profiling, pass a nullptr for the backend, signaling that all nodes
+    // should be lowered. loweredInfoMap logs what is lowered from what for
+    // later use when creating quantization infos. Also pass the precision mode
+    // kind set as nodes to not lower, specified higher up in the stack.
+    ::glow::lower(F, cctx.loweredInfoMap, /* backend */ nullptr,
+                  precConfig.precisionModeKindSet);
+  } else {
+    // Lower based on the backend's preferences.
+    ::glow::lower(F, cctx.loweredInfoMap, &B);
+  }
+
+  // Transform given precision mode; may quantize, convert to fp16, or
+  // instrument with profiling nodes. This must be done after lowering.
+  transformForPrecisionMode(B, F, cctx);
 
   // Optimize the graph again.
   ::glow::optimize(F, cctx);
