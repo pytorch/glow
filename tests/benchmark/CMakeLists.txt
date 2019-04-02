@@ -11,16 +11,22 @@ target_link_libraries(ConvBench
                       PRIVATE
                         CPURuntimeNative)
 
-add_executable(DeviceManagerBench
-               DeviceManagerBench.cpp)
-target_link_libraries(DeviceManagerBench
+add_executable(RuntimeBench
+               RuntimeBench.cpp)
+target_include_directories(RuntimeBench
+                           PRIVATE
+                             ${CMAKE_SOURCE_DIR}/lib/Backends/CPU
+                             ${CMAKE_SOURCE_DIR}/lib/Backends/Interpreter)
+target_link_libraries(RuntimeBench
                       PRIVATE
                         Backend
                         Backends
-                        DeviceManager
-                        Graph
-                        IR
+                        CPUBackend
                         ExecutionEngine
+                        Executor
+                        DeviceManager
+                        HostManager
+                        Graph
                         Optimizer
                         benchmark)
 endif()
