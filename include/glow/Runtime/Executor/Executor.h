@@ -25,9 +25,10 @@
 namespace glow {
 
 class PlaceholderBindings;
-class DeviceManager;
 
 namespace runtime {
+
+class DeviceManager;
 
 /// This enum lists the available executors.
 enum class ExecutorKind {
