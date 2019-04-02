@@ -287,15 +287,20 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   // Parse provided, if any, category indices.
   std::vector<signed> matchingIndices(inputImageFilenames.size(), -1);
   if (!expectedMatchingIndices.empty()) {
+    // If category indices list is not empty it must be in n,m,k,...,z format.
     llvm::SmallVector<llvm::StringRef, 1> parts;
+    // Split delimited list into array/vector of strings
     llvm::StringRef(expectedMatchingIndices).split(parts, ',', -1, false);
+    // The number of category indices must match the number of files.
     if (parts.size() != inputImageFilenames.size()) {
       llvm::outs() << "Number of matching indices: " << parts.size()
                    << " doesn't match the number of files: "
                    << inputImageFilenames.size() << "\n";
     } else {
       for (unsigned i = 0; i < parts.size(); i++) {
-        if (parts[i].getAsInteger(10, matchingIndices[i])) { // true means error
+        // Try to convert string to integer, apparently getAsInteger returns
+        // true on failure.
+        if (parts[i].getAsInteger(10, matchingIndices[i])) {
           llvm::outs() << "Cannot convert string: " << parts[i]
                        << " to integer\n";
         }
