@@ -77,10 +77,12 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
     llvm::cl::desc(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
-llvm::cl::opt<unsigned> expectedCategoryIndex(
-    "idx",
-    llvm::cl::desc("Expect the prediction top pair has the same index"),
-    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<std::string> expectedMatchingIndices(
+    "idxs",
+    llvm::cl::desc("The comma delimited list of the matching indices"),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(imageLoaderCat));
 } // namespace
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
@@ -222,9 +224,11 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
-/// Checks if /p topKPairs have the index that matches the provided index.
+/// Checks if \p topKPairs have the index that matches the provided index,
+/// \returns the number of found mismatches.
 static int matchIndices(const std::vector<FloatIndexPair> &topKPairs,
-                        const std::string &fileName) {
+                        const std::string &fileName,
+                        signed expectedCategoryIndex) {
   // Check default value of category.
   if (expectedCategoryIndex == -1) {
     return 0; // not category index has been set, skip index matching.
@@ -259,7 +263,8 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
 }
 
 /// Given the output Softmax Tensor \p SMT and \p functionName, prints the
-/// results of inference and returns number of incorrect predictions.
+/// results of inference and returns number of incorrect predictions,
+/// \returns the number of found mismatches.
 template <typename ElemTy>
 static int processAndPrintResultsImpl(Tensor *SMT,
                                       llvm::StringRef functionName) {
@@ -279,6 +284,25 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   const size_t numLabels = SMT->dims()[1];
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
+  // Parse provided, if any, category indices.
+  std::vector<signed> matchingIndices(inputImageFilenames.size(), -1);
+  if (!expectedMatchingIndices.empty()) {
+		llvm::SmallVector<llvm::StringRef, 1> parts;
+    llvm::StringRef(expectedMatchingIndices).split(parts, ',', -1, false);
+    if (parts.size() != inputImageFilenames.size()) {
+      llvm::outs() << "Number of matching indices: " << parts.size()
+                   << " doesn't match the number of files: "
+                   << inputImageFilenames.size() << "\n";
+    } else {
+      for (unsigned i = 0; i < parts.size(); i++) {
+        if (parts[i].getAsInteger(10, matchingIndices[i])) { // true means error
+          llvm::outs() << "Cannot convert string: " << parts[i]
+                       << " to integer\n";
+        }
+      }
+    }
+  }
+
   int retVal = 0;
   for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
     const auto &fileName = inputImageFilenames[i];
@@ -295,7 +319,7 @@ static int processAndPrintResultsImpl(Tensor *SMT,
 
     auto topKPairs = getTopKPairs(SH);
     printTopKPairs(topKPairs);
-    retVal += matchIndices(topKPairs, fileName);
+    retVal += matchIndices(topKPairs, fileName, matchingIndices[i]);
   }
 
   return retVal;
@@ -303,7 +327,7 @@ static int processAndPrintResultsImpl(Tensor *SMT,
 
 /// Given the output Softmax Tensor \p SMT and \p functionName, switch between
 /// the correct element type to print the results of inference as contained in
-/// \p SMT.
+/// \p SMT, \returns the number of found mismatches.
 static int processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
   switch (SMT->getElementType()) {
   case ElemKind::FloatTy:
