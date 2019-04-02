@@ -817,30 +817,30 @@ testQuantizationEnd2End(ExecutionEngine &profileEE,
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   LoweredInfoMap loweredMapForProf;
-  lower(F1, &loweredMapForProf);
-  glow::profileQuantization(bindings, F1);
-  profileEE.compile(CompilationMode::Infer, F1);
+  CompilationContext cctxProf{&bindings, &loweredMapForProf};
+  cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
+  profileEE.compile(F1, cctxProf);
 
   // Run graph to capture profile.
   profileEE.run(bindings);
 
-  // Get quantization infos and build new quantized graph.
-  quantization::QuantizationConfiguration quantConfig{
-      quantization::generateNodeQuantizationInfos(
-          bindings, F1, loweredMapForProf, quantization::Schema::Asymmetric,
-          quantizationPrecision)};
-
   // STEP2 - Use the profile to quantize a network.
+  LoweredInfoMap loweredMapForQuant;
+  CompilationContext cctxQuant{&bindings, &loweredMapForQuant};
+
+  // Get quantization infos and build new quantized graph.
+  PrecisionConfiguration &precConfig = cctxQuant.precisionConfig;
+  precConfig.quantMode = QuantizationMode::Quantize;
+  precConfig.quantConfig.infos = quantization::generateNodeQuantizationInfos(
+      bindings, F1, loweredMapForProf, quantization::Schema::Asymmetric,
+      quantizationPrecision);
+  precConfig.quantConfig.precision = quantizationPrecision;
+  precConfig.quantConfig.assertAllNodesQuantized = true;
+  precConfig.precisionModeKindSet = keepOriginalPrecisionForNodes;
+
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
-  LoweredInfoMap loweredMapForQuant;
-  lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
-  quantConfig.precision = quantizationPrecision;
-  quantConfig.assertAllNodesQuantized = true;
-  quantization::quantizeFunction(
-      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant,
-      keepOriginalPrecisionForNodes);
-  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  backendSpecificEE.compile(F2, cctxQuant);
   backendSpecificEE.run(bindings);
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -983,38 +983,34 @@ TEST_P(Operator, end2endGRU) {
   SaveNode *result1 = cast<SaveNode>(F1->getNodeByName("save"));
 
   LoweredInfoMap loweredMapForProf;
-  lower(F1, &loweredMapForProf);
-  glow::profileQuantization(bindings, F1);
-  profileEE.compile(CompilationMode::Infer, F1);
+  CompilationContext cctxProf{&bindings, &loweredMapForProf};
+  cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
+  profileEE.compile(F1, cctxProf);
 
   // Run graph to capture profile.
   profileEE.run(bindings);
 
-  // Get quantization infos and build new quantized graph.
-  quantization::QuantizationConfiguration quantConfig{
-      quantization::generateNodeQuantizationInfos(bindings, F1,
-                                                  loweredMapForProf)};
-
-  // STEP2 - Use the profile to quantize a network.
-  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+  LoweredInfoMap loweredMapForQuant;
+  CompilationContext cctxQuant{&bindings, &loweredMapForQuant};
+  cctxQuant.precisionConfig.quantMode = QuantizationMode::Quantize;
+  PrecisionConfiguration &precConfig = cctxQuant.precisionConfig;
+  precConfig.quantConfig.infos = quantization::generateNodeQuantizationInfos(
+      bindings, F1, loweredMapForProf);
 
   // The OpenCL backend does not support some of the nodes in the test;
   // explicitly whitelist them here as staying in float, so that the quantizer
   // does not complain.
   KindSet doNotQuantizeKinds;
   if (backendSpecificEE.getBackend()->getBackendKind() == BackendKind::OpenCL) {
-    doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
-    doNotQuantizeKinds.insert(Kinded::Kind::SigmoidNodeKind);
-    doNotQuantizeKinds.insert(Kinded::Kind::GatherNodeKind);
+    precConfig.precisionModeKindSet.insert(Kinded::Kind::TanhNodeKind);
+    precConfig.precisionModeKindSet.insert(Kinded::Kind::SigmoidNodeKind);
+    precConfig.precisionModeKindSet.insert(Kinded::Kind::GatherNodeKind);
   }
 
-  LoweredInfoMap loweredMapForQuant;
-  lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
-  quantConfig.assertAllNodesQuantized = true;
-  quantization::quantizeFunction(F2, quantConfig,
-                                 *backendSpecificEE.getBackend(),
-                                 loweredMapForQuant, doNotQuantizeKinds);
-  backendSpecificEE.compile(CompilationMode::Infer, F2);
+  // STEP2 - Use the profile to quantize a network.
+  SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
+
+  backendSpecificEE.compile(F2, cctxQuant);
   backendSpecificEE.run(bindings);
 
   // STEP3 - Compare the results of the original and quantized functions.
@@ -1957,7 +1953,10 @@ static NodeClass *findNodeKindOrReturnNull(Function *F) {
 
 /// Profile and quantize a graph with an FC, and make sure that we find the
 /// correct quantization parameters, whether the \p BackendClass does or does
-/// not lower the FC given \p expectLoweredFC.
+/// not lower the FC given \p expectLoweredFC. Note that in this test we
+/// replicate the logic from optimizeFunction(), wherein we lower and then call
+/// profileQuantization(), in order to ensure each stage of the compilation
+/// pipeline for profiling/quantization is correct.
 template <class BackendClass>
 static void testProfileQuantizationOfFC(bool expectLoweredFC,
                                         bool rowwiseQuantizeFC) {
@@ -2065,9 +2064,10 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   quantization::quantizeFunction(backendF, quantConfig, *backendEE.getBackend(),
                                  loweredMapForQuant);
 
-  // Compile the graph to remove dead code and optimize away unnecessary
-  // quantize nodes.
-  backendEE.compile(CompilationMode::Infer, backendF);
+  // Optimize the graph to remove dead code and optimize away unnecessary
+  // quantize nodes. Note that we do not do a full compile call here, as we have
+  // already lowered.
+  ::glow::optimize(backendF, CompilationMode::Infer);
 
   // Check that the graph is still structured as expected, and that the
   // scales/offsets are set as found in QI.

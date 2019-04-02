@@ -63,11 +63,13 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
-  ::glow::profileQuantization(bindings, F);
+  LoweredInfoMap loweredMap;
+  CompilationContext cctx{&bindings, &loweredMap};
+  cctx.precisionConfig.quantMode = QuantizationMode::Profile;
 
   bindings.allocate(A);
   bindings.allocate(Ex);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(F, cctx);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.

@@ -409,19 +409,22 @@ TEST(Graph, QuantizationProfileNodes) {
   F->createSave("save", O);
   F->createSave("save", C);
 
-  // Simulate actual usage.
-  ::optimize(F, CompilationMode::Infer);
-  ::glow::profileQuantization(bindings, F);
-  auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
-  ::optimize(F, CompilationMode::Infer);
+  LoweredInfoMap loweredMapForProf;
+  CompilationContext cctx{&bindings, &loweredMapForProf};
+  cctx.precisionConfig.quantMode = QuantizationMode::Profile;
+  std::unique_ptr<Backend> backend(createBackend(BackendKind::Interpreter));
+  EXIT_ON_ERR(::optimizeFunction(F, *backend, cctx));
 
   size_t numberOfProfileNodes =
       std::count_if(F->getNodes().begin(), F->getNodes().end(), [](Node &node) {
         return llvm::isa<QuantizationProfileNode>(&node);
       });
 
-  EXPECT_EQ(10, numberOfProfileNodes);
+  // 1 from A
+  // 8 from two lowered FCs: MM, BA, weight PH, bias PH
+  // 2 from RELU (lowered to Max+Splat)
+  // 2 from float saves (just profile their output PH)
+  EXPECT_EQ(13, numberOfProfileNodes);
 }
 
 TEST(Graph, simpleQuant) {
