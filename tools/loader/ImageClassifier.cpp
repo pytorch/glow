@@ -78,11 +78,11 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
         "Convert the input and output tensors of the network to fp16"),
     llvm::cl::cat(imageLoaderCat));
 
-llvm::cl::opt<std::string> expectedMatchingIndices(
+llvm::cl::list<int> expectedMatchingIndices(
     "idxs",
     llvm::cl::desc("The comma delimited list of the matching indices"),
-    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
-    llvm::cl::cat(imageLoaderCat));
+    llvm::cl::value_desc("int"), llvm::cl::ZeroOrMore,
+    llvm::cl::CommaSeparated, llvm::cl::cat(imageLoaderCat));
 } // namespace
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
@@ -285,26 +285,17 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
   // Parse provided, if any, category indices.
-  std::vector<signed> matchingIndices(inputImageFilenames.size(), -1);
+  std::vector<int> matchingIndices(inputImageFilenames.size(), -1);
   if (!expectedMatchingIndices.empty()) {
-    // If category indices list is not empty it must be in n,m,k,...,z format.
-    llvm::SmallVector<llvm::StringRef, 1> parts;
-    // Split delimited list into array/vector of strings
-    llvm::StringRef(expectedMatchingIndices).split(parts, ',', -1, false);
     // The number of category indices must match the number of files.
-    if (parts.size() != inputImageFilenames.size()) {
-      llvm::outs() << "Number of matching indices: " << parts.size()
+    if (expectedMatchingIndices.size() != inputImageFilenames.size()) {
+      llvm::outs() << "Number of matching indices: "
+                   << expectedMatchingIndices.size()
                    << " doesn't match the number of files: "
                    << inputImageFilenames.size() << "\n";
     } else {
-      for (unsigned i = 0; i < parts.size(); i++) {
-        // Try to convert string to integer, apparently getAsInteger returns
-        // true on failure.
-        if (parts[i].getAsInteger(10, matchingIndices[i])) {
-          llvm::outs() << "Cannot convert string: " << parts[i]
-                       << " to integer\n";
-        }
-      }
+      matchingIndices.assign(
+          expectedMatchingIndices.begin(), expectedMatchingIndices.end());
     }
   }
 
