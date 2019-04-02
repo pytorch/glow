@@ -22,15 +22,12 @@
 
 #include "llvm/Support/MD5.h"
 
-#include <unistd.h>
-
 namespace glow {
 namespace onnxifi {
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
-  return strFormat("/tmp/glow-profile-%d-%s.yaml", getuid(),
-                   hash.str().c_str());
+  return strFormat("/tmp/glow-profile-%s.yaml", hash.str().c_str());
 }
 
 void computeModelHash(const void *onnxModel, size_t onnxModelSize,
