@@ -71,6 +71,9 @@ struct TraceInfo {
   /// Whether tracing is enabled for this run.
   bool enabled{false};
 
+  /// Whether the function was auto instrumented.
+  bool autoInstrumented{false};
+
   /// The size of each item in the backing Tensor.
   size_t dataSize{0};
 
@@ -78,12 +81,21 @@ struct TraceInfo {
     size_t index;
     std::string name;
     std::string type;
+
+    // additional info per backend. May not be present.
+    std::string context;
   };
 
   std::map<Placeholder *, std::vector<Event>> events;
 
   void add(Placeholder *PH, size_t index, std::string name, std::string type) {
-    events[PH].push_back({index, std::move(name), std::move(type)});
+    events[PH].push_back({index, std::move(name), std::move(type), ""});
+  }
+
+  void add(Placeholder *PH, size_t index, std::string name, std::string type,
+           std::string context) {
+    events[PH].push_back(
+        {index, std::move(name), std::move(type), std::move(context)});
   }
 };
 

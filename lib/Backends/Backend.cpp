@@ -133,6 +133,7 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   }
 
   traceInfo.enabled = true;
+  traceInfo.autoInstrumented = true;
   std::string lastName = "";
   size_t index = 0;
 

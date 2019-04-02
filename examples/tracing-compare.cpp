@@ -30,8 +30,13 @@
 using namespace glow;
 using namespace glow::runtime;
 
-std::array<BackendKind, 2> supportedBackends{BackendKind::Interpreter,
-                                             BackendKind::CPU};
+#if (GLOW_WITH_OPENCL)
+std::array<BackendKind, 3> supportedBackends{
+    BackendKind::CPU, BackendKind::Interpreter, BackendKind::OpenCL};
+#else
+std::array<BackendKind, 2> supportedBackends{BackendKind::CPU,
+                                             BackendKind::Interpreter};
+#endif
 
 namespace {
 llvm::cl::OptionCategory category("tracing-compare Options");
@@ -70,13 +75,14 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
                                                BackendKind backendKind) {
   auto *backend = createBackend(backendKind);
   Function *F = module.getFunction("resnet50");
+  Function *F_ = F->clone("resnet50" + std::to_string((int)backendKind));
 
-  llvm::outs() << "Starting compile.\n";
+  llvm::outs() << "Starting compile on " << (int)backendKind << ".\n";
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
-  return backend->compile(F, opts);
+  backend->optimizeFunction(F_, opts);
+  return backend->compile(F_, opts);
 }
 
 std::future<void> addToDevice(unsigned int id, DeviceManager *device,
@@ -161,8 +167,11 @@ int main(int argc, char **argv) {
 
   std::vector<TraceEvent> allEvents;
 
-  allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "Interpreter"}}});
-  allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "CPU"}}});
+  allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "CPU"}}});
+  allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "Interpreter"}}});
+#if (GLOW_WITH_OPENCL)
+  allEvents.push_back({"thread_name", 0, "M", 2, {{"name", "OpenCL"}}});
+#endif
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto f = promises[i].get_future();
