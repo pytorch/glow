@@ -176,8 +176,9 @@ public:
   /// Erase all of the functions from the module.
   void eraseFunctions();
 
-  /// Erase all the functions, variables, etc.
-  void clear();
+  /// Erase all the functions, variables, etc. If \p clearPlaceholders is false
+  /// then placeholders in the module will not be cleared out.
+  void clear(bool clearPlaceholders = true);
 
   /// Erase a function \p F from the module.
   void eraseFunction(Function *F);

@@ -43,6 +43,15 @@ class Provisioner;
 /// handles DeviceManager initialization, houses the Executor, and calls into
 /// the Partitioner and Provisioner for network initialization.
 class HostManager final {
+  /// NetworkData contains data about each network in HostManager that is needed
+  /// by the runtime.
+  struct NetworkData {
+    DAG dag;
+    // Module that was used to create this network. Everything except
+    // placeholders and types have been removed from it.
+    std::shared_ptr<Module> module;
+  };
+
   /// Count of current in-flight networks being run. Atomic to allow
   /// concurrency in runNetwork.
   std::atomic<size_t> activeRequestCount_{0};
@@ -57,7 +66,7 @@ class HostManager final {
   const unsigned int activeRequestLimit_ = 100;
 
   /// A map from a networkName to a network, which is represented by struct DAG.
-  std::unordered_map<std::string, DAG> networks_;
+  std::unordered_map<std::string, NetworkData> networks_;
 
   /// Mutex for networks_ since runNetwork, addNetwork, and
   /// removeNetwork can all be called concurrently, a guard is needed.
@@ -84,9 +93,11 @@ class HostManager final {
 public:
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing
-  /// backends. Additionally DAGs are created for each function and stored in
-  /// networks_. Returns an llvm::Error containing the results of the operation.
-  llvm::Error addNetwork(Module *M);
+  /// backends. Additionally DAGs are created for each function and stored
+  /// in networks_. Returns an llvm::Error containing the results of the
+  /// operation. This function consumes the \p module so any pointers to data
+  /// contained within the module should be considered invalid.
+  llvm::Error addNetwork(std::unique_ptr<Module> module);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.

@@ -55,9 +55,9 @@ llvm::Error HostManager::init(const std::vector<DeviceManagerConfig> &configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
-llvm::Error HostManager::addNetwork(Module *M) {
+llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
-  auto functions = M->getFunctions();
+  auto functions = module->getFunctions();
   for (auto &F : functions) {
     std::string name = F->getName();
     auto it = networks_.find(name);
@@ -78,17 +78,25 @@ llvm::Error HostManager::addNetwork(Module *M) {
   if (backend_) {
     CompilationOptions opts;
     opts.mode = CompilationMode::Infer;
-    for (auto F : M->getFunctions()) {
+    for (auto F : module->getFunctions()) {
       backend_->optimizeFunction(F, opts);
     }
   }
-  auto partitioner = Partitioner(M, deviceInfo);
+  auto partitioner = Partitioner(module.get(), deviceInfo);
   auto nodeList = std::move(partitioner.Partition());
 
-  RETURN_IF_ERR(provisioner_->provision(nodeList, *M));
+  RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
+
+  // Clear everything but placeholders from the module then put it a shared_ptr
+  // to be shared between all of the networks created from each function in the
+  // module.
+  module->clear(/* clearPlaceholders */ false);
+  auto sharedModule = std::shared_ptr<Module>(std::move(module));
 
   for (auto &node : nodeList) {
-    networks_.emplace((node.root)->name, std::move(node));
+    auto &networkData = networks_[(node.root)->name];
+    networkData.dag = std::move(node);
+    networkData.module = sharedModule;
   }
 
   return llvm::Error::success();
@@ -100,7 +108,7 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   if (networkIterator == networks_.end()) {
     return;
   }
-  auto &nodes = networkIterator->second.nodes;
+  auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
     std::promise<void> removeNetwork;
     llvm::Error removeErr = llvm::Error::success();
@@ -138,7 +146,7 @@ llvm::Error HostManager::clearHost() {
   }
 
   for (auto &network : networks_) {
-    for (auto &node : network.second.nodes) {
+    for (auto &node : network.second.dag.nodes) {
       devices_[node->deviceID]->evictNetwork(node->name, /*evictCB=*/nullptr);
     }
   }
@@ -175,7 +183,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     return currentRun;
   }
 
-  executor_->run(networks_[networkName].root.get(), std::move(context),
+  executor_->run(networks_[networkName].dag.root.get(), std::move(context),
                  currentRun,
                  [&activeRequest = this->activeRequestCount_,
                   callback](RunIdentifierTy runID, llvm::Error err,
