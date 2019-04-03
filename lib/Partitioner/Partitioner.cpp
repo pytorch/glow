@@ -468,6 +468,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
     }
 
     // Link subF to its parents.
+    std::set<Function *> parents;
     for (auto &N : subF->getNodes()) {
       for (int inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
@@ -489,8 +490,11 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         }
 
         // subF is a child of inputF, inputF is a parent of subF.
-        funcDAG[inputF]->children.push_back(funcDAG[subF]);
-        funcDAG[subF]->parents.push_back(funcDAG[inputF]);
+        if (parents.find(inputF) == parents.end()) {
+          funcDAG[inputF]->children.push_back(funcDAG[subF]);
+          funcDAG[subF]->parents.push_back(funcDAG[inputF]);
+          parents.insert(inputF);
+        }
 
         // If we've already created a placeholder for this dependence, use it.
         auto it = placeholders.find(input.getNode());
