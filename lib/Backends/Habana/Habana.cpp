@@ -826,6 +826,18 @@ HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
       multiInputs.emplace_back(std::move(inputs));
       break;
     }
+    case Kinded::Kind::MulNodeKind: {
+      auto *SI = llvm::cast<MulNode>(&I);
+      std::vector<synTensor> inputs;
+      inputs.push_back(tensors[SI->getLHS()].get());
+      inputs.push_back(tensors[SI->getRHS()].get());
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[SI].get(), inputs.size(), 1, nullptr,
+          getKernelName("mult", SI->getResult().getElementType()).c_str(),
+          SI->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::DivNodeKind: {
       auto *DI = llvm::cast<DivNode>(&I);
       std::vector<synTensor> inputs;
@@ -1079,6 +1091,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
     case Kinded::Kind::HabanaReshapeNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
+    case Kinded::Kind::MulNodeKind:
     case Kinded::Kind::QuantizeNodeKind:
     case Kinded::Kind::ReluNodeKind:
     case Kinded::Kind::ReshapeNodeKind:
@@ -1108,6 +1121,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MaxPoolNodeKind:
   case Kinded::Kind::MinNodeKind:
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::SaveNodeKind:
