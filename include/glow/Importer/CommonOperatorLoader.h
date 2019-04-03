@@ -95,7 +95,15 @@ inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
       for (size_t i = 0; i < TH.size(); ++i) {
         TH.raw(i) = data[i];
       }
-    } else {
+    } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      T->reset(ElemKind::Int8QTy, dims, 1.0, 0);
+      auto TH = T->getHandle<int8_t>();
+      uint8_t *data = (uint8_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        constexpr uint8_t OFFSETSHIFT = 128;
+        TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
+      }
+	} else {
       RETURN_ERR("Only float and index tensors are supported.");
     }
   }
