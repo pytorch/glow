@@ -1620,13 +1620,13 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
                           ->getHandle<int64_t>();
         const TraceInfo::Event *ev = it->second.second;
 
-        handle.at({ev->index, 0}) = time_end / 1000000;
-        traceEvents.push_back({ev->name, time_end / 1000000, ev->type, tid});
+        handle.at({ev->index, 0}) = time_end / 1000;
+        traceEvents.push_back({ev->name, time_end / 1000, ev->type, tid});
       }
     } else {
       traceEvents.push_back(
-          {name, time_start / 1000000, "B", tid, {{"type", type}}});
-      traceEvents.push_back({name, time_end / 1000000, "E", tid});
+          {name, time_start / 1000, "B", tid, {{"type", type}}});
+      traceEvents.push_back({name, time_end / 1000, "E", tid});
     }
 
     if (clDoProfile) {
