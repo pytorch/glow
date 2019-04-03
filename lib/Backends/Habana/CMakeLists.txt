@@ -1,12 +1,13 @@
 add_library(Habana
-            Habana.cpp
-            SynapseShim.cpp)
+            Habana.cpp)
 
 target_include_directories(Habana
                            PUBLIC
                              "${SYNAPSE_INCLUDE_DIR}")
 
 target_link_libraries(Habana
+                      PUBLIC
+                        "${SYNAPSE_LIB}"
                       PRIVATE
                         Backend
                         Base

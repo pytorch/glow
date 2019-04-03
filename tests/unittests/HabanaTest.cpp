@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
-#include "../../lib/Backends/Habana/SynapseShim.h"
 #include "glow/Support/Compiler.h"
 
 #include "gtest/gtest.h"
+
+#include "synapse.h"
+
+#include "perf_lib_layer_params.h"
 
 #include <future>
 #include <mutex>
