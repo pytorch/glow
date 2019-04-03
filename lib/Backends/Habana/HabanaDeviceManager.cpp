@@ -208,6 +208,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
 llvm::Error HabanaDeviceManager::stop(bool /*block*/) {
   std::lock_guard<std::mutex> lock(synapseLock);
+  functions_.clear();
   synStatus status = synReleaseDevice(deviceId_);
 
   if (status != synSuccess) {
