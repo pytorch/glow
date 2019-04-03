@@ -1772,8 +1772,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     EXPECT_EQ(quantRowwiseFC->getBias().getElementType(), ElemKind::Int32QTy);
     EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
               FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(),
-              FCBQI->Offset());
+    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(), 0);
   } else if (expectLoweredFC) {
     ASSERT_FALSE(quantFC);
     ASSERT_FALSE(quantRowwiseFC);
@@ -1789,7 +1788,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     EXPECT_EQ(quantBA->getSlice().getElementType(), ElemKind::Int32QTy);
     EXPECT_EQ(quantBA->getSlice().getType()->getScale(),
               FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), FCBQI->Offset());
+    EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), 0);
   } else {
     ASSERT_FALSE(quantRowwiseFC);
 
@@ -1803,7 +1802,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     EXPECT_EQ(quantFC->getBias().getElementType(), ElemKind::Int32QTy);
     EXPECT_EQ(quantFC->getBias().getType()->getScale(),
               FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantFC->getBias().getType()->getOffset(), FCBQI->Offset());
+    EXPECT_EQ(quantFC->getBias().getType()->getOffset(), 0);
   }
 }
 
