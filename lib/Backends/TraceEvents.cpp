@@ -22,9 +22,13 @@
 
 namespace glow {
 
-void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
-                                 llvm::StringRef filename) {
+void TraceEvent::dumpTraceEvents(
+    std::vector<TraceEvent> &events, llvm::StringRef filename,
+    const std::string &processName,
+    const std::map<int, std::string> &threadNames) {
   llvm::errs() << "dumping " << events.size() << " trace events.\n";
+
+  auto process = processName.empty() ? "glow" : processName;
 
   std::ofstream file(filename);
   file << "[\n";
@@ -33,8 +37,14 @@ void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
     file << "\", \"cat\": \"glow\",";
     file << "\"ph\": \"" << event.type;
     file << "\", \"ts\": " << event.timestamp;
-    file << ", \"pid\": " << 0;
-    file << ", \"tid\": " << event.tid;
+    file << ", \"pid\": \"" << process << "\"";
+
+    auto nameIt = threadNames.find(event.tid);
+    if (nameIt != threadNames.end()) {
+      file << ", \"tid\": \"" << nameIt->second << "\"";
+    } else {
+      file << ", \"tid\": " << event.tid;
+    }
 
     if (!event.args.empty()) {
       file << ", \"args\": {";
@@ -77,6 +87,26 @@ void TraceContext::logTraceEvent(
     std::lock_guard<std::mutex> l(lock_);
     traceEvents_.push_back(std::move(ev));
   }
+}
+
+void TraceContext::setThreadName(int tid, llvm::StringRef name) {
+  threadNames_[tid] = name;
+}
+
+void TraceContext::dump(llvm::StringRef filename,
+                        const std::string &processName) {
+  TraceEvent::dumpTraceEvents(getTraceEvents(), filename,
+                              std::move(processName), getThreadNames());
+}
+
+void TraceContext::merge(TraceContext *other) {
+  std::lock_guard<std::mutex> l(lock_);
+  auto &newEvents = other->getTraceEvents();
+  std::move(newEvents.begin(), newEvents.end(),
+            std::back_inserter(getTraceEvents()));
+  auto &names = other->getThreadNames();
+  threadNames_.insert(names.begin(), names.end());
+  names.clear();
 }
 
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)

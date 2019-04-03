@@ -387,6 +387,13 @@ void ThreadPoolExecutor::executeDAGNode(
 
   auto &deviceManager = deviceManagerIt->second;
 
+  // If tracing is enabled, set the thread name for TraceEvents for this node to
+  // be the name of the Device.
+  if (executionState->getRawResultContextPtr()->getTraceContext()) {
+    executionState->getRawResultContextPtr()->getTraceContext()->setThreadName(
+        node->deviceID, deviceManager->getDeviceConfig()->getName());
+  }
+
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);

@@ -60,8 +60,10 @@ struct TraceEvent {
              std::map<std::string, std::string> a)
       : name(n), timestamp(ts), type(c), tid(t), args(a) {}
 
-  static void dumpTraceEvents(std::vector<TraceEvent> &events,
-                              llvm::StringRef filename);
+  static void
+  dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
+                  const std::string &processName = "",
+                  const std::map<int, std::string> &threadNames = {});
 
   static uint64_t now();
 };
@@ -120,12 +122,15 @@ class TraceContext {
   /// The list of materialized Events filled out with timestamp and metadata.
   std::vector<TraceEvent> traceEvents_;
 
+  /// Human readable name mapping for traceThreads_.
+  std::map<int, std::string> threadNames_;
+
   /// The detail level of tracing for this run.
   TraceLevel traceLevel_{TraceLevel::NONE};
 
   /// The thread (tid) used in the output tracing, allowing separation of events
   /// on different contexts.
-  int traceThread_{0};
+  int traceThread_{-1};
 
   /// Lock around traceEvents_.
   std::mutex lock_;
@@ -161,6 +166,22 @@ public:
   void
   logTraceEvent(llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
                 std::map<std::string, std::string> additionalAttributes = {});
+
+  /// Sets the human readable \p name for thread \tid.
+  void setThreadName(int tid, llvm::StringRef name);
+  /// \returns the list of human readable thread names.
+  std::map<int, std::string> &getThreadNames() { return threadNames_; }
+
+  /// Dumps all TraceEvents in json format to the given \p filename, optionally
+  /// with a provided \p processName.
+  void dump(llvm::StringRef filename, const std::string &processName = "");
+
+  /// Moves all TraceEvents and thread names in \p other into this context.
+  void merge(TraceContext *other);
+
+  /// Moves all TraceEvents and thread names in \p other into this context. This
+  /// version is destructive of the other TraceContext.
+  void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
 };
 
 /// These macros predicate the logging of a TraceEvent on a validity of the

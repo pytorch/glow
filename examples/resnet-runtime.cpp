@@ -52,8 +52,8 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
 
-std::vector<TraceEvent> allEvents;
 std::mutex eventLock;
+std::unique_ptr<TraceContext> traceContext;
 
 } // namespace
 
@@ -98,9 +98,8 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
 
         if (!tracePath.empty()) {
           std::lock_guard<std::mutex> l(eventLock);
-          auto &newEvents = context->getTraceContext()->getTraceEvents();
-          std::move(newEvents.begin(), newEvents.end(),
-                    std::back_inserter(allEvents));
+          // Merge this run's TraceEvents into the global TraceContext.
+          traceContext->merge(context->getTraceContext());
         }
 
         if (++returned == maxImages) {
@@ -126,6 +125,12 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<HostManager> hostManager =
       llvm::make_unique<HostManager>(std::move(configs));
+
+  // If tracing is enabled, create a TraceContext to merge each runs events
+  // into.
+  if (!tracePath.empty()) {
+    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0);
+  }
 
   // Load model, create a context, and add to HostManager.
 
@@ -198,8 +203,7 @@ int main(int argc, char **argv) {
   llvm::outs() << "Finished classifying " << started << " images.\n";
 
   if (!tracePath.empty()) {
-    std::lock_guard<std::mutex> l(eventLock);
-    TraceEvent::dumpTraceEvents(allEvents, tracePath);
+    traceContext->dump(tracePath, "resnet-runtime");
   }
 
   return 0;

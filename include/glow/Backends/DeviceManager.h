@@ -107,6 +107,9 @@ public:
   /// \returns true if we expect a Module with the estimated constant size will
   /// fit on the device.
   virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
+
+  /// \returns the DeviceConfig which initialized this device.
+  const DeviceConfig *getDeviceConfig() { return config_.get(); }
 };
 
 } // namespace runtime

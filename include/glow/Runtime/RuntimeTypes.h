@@ -112,8 +112,8 @@ public:
 
   BackendKind getBackendKind() { return backendKind_; }
 
-  llvm::StringRef getName() { return name_; }
-  bool hasName() { return name_ != ""; }
+  llvm::StringRef getName() const { return name_; }
+  bool hasName() const { return name_ != ""; }
   void setName(llvm::StringRef name) { name_ = name; }
 };
 
