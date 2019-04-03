@@ -47,6 +47,8 @@ public:
   /// \returns the kind of Backend this is.
   virtual BackendKind getBackendKind() const = 0;
 
+  virtual std::string getBackendName() const = 0;
+
   /// Generate code for a vector of functions, \p functions. All compilations
   /// use the same settings provided by \p opts. This allows the compiler to
   /// support shared constants between functions.

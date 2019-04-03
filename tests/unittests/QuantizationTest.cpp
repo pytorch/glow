@@ -76,6 +76,8 @@ public:
     return BackendKind::Interpreter;
   }
 
+  std::string getBackendName() const override { return "MockQuantBackend"; }
+
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override {
     return backend_->compile(F, opts);

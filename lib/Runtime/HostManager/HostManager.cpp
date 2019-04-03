@@ -28,20 +28,27 @@
 using namespace glow;
 using namespace runtime;
 
-HostManager::HostManager(const std::vector<DeviceManagerConfig> &configs) {
+HostManager::HostManager(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   // TODO: move all initialization out of constructor.
-  TEMP_EXIT_ON_ERR(init(configs));
+  TEMP_EXIT_ON_ERR(init(std::move(configs)));
 }
 
-llvm::Error HostManager::init(const std::vector<DeviceManagerConfig> &configs) {
+llvm::Error
+HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   if (configs.size() > 0) {
-    backend_.reset(createBackend(configs[0].backendKind));
+    backend_.reset(createBackend(configs[0]->getBackendKind()));
   }
+
   for (auto &config : configs) {
+    if (!config->hasName()) {
+      config->setName(backend_->getBackendName() + std::to_string(deviceCount));
+    }
+
+    auto kind = config->getBackendKind();
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
-        DeviceManager::createDeviceManager(config.backendKind, nullptr));
+        DeviceManager::createDeviceManager(kind, std::move(config)));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
 

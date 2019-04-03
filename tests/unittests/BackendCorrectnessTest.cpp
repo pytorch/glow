@@ -177,6 +177,7 @@ public:
   }
 
   BackendKind getBackendKind() const override { return BackendKind::CPU; }
+  std::string getBackendName() const override { return "MockCPUBackend"; }
 
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override {
