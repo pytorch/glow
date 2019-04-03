@@ -255,6 +255,81 @@ TEST(onnx, importUniBroadcastMultiOutput) {
   (void)onnxLD;
 }
 
+static void testImportPRelu(std::string filename,
+                            llvm::ArrayRef<size_t> inputShape,
+                            std::vector<float> expectedSlope) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFileName =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, inputShape);
+    data.getHandle().randomize(-4.0, 4.0, mod.getPRNG());
+    ONNXModelLoader onnxLoader(NetFileName, {"data"}, {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLoader.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+  }
+
+  // Compile&run the graph, and check the output.
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  auto dataH = bindings.get(bindings.getPlaceholderByName("data"))->getHandle();
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  std::vector<size_t> expectedDims = {inputShape[0], inputShape[1],
+                                      inputShape[2], inputShape[3]};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < dataH.size(); i++) {
+    float expectedVal = expectedSlope[i] * std::min<float>(0, dataH.raw(i)) +
+                        std::max<float>(0, dataH.raw(i));
+    EXPECT_FLOAT_EQ(result.raw(i), expectedVal);
+  }
+}
+
+TEST(onnx, importPreluSlopeHasSameShape) {
+  // The expected slope values correspond to the pre-broadcast
+  // initializer values in the model file.
+  std::vector<float> expectedSlope = {1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0,
+                                      3.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 4.0};
+  testImportPRelu("preluSlopeHasSameShape.onnxtxt", {1, 4, 2, 2},
+                  expectedSlope);
+}
+
+TEST(onnx, importPReluBroadcastSlope) {
+  // The expected slope values correspond to the pre-broadcast
+  // initializer values in the model file.
+  std::vector<float> expectedSlope = {1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0,
+                                      3.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 4.0};
+  testImportPRelu("preluBroadcastSlope.onnxtxt", {1, 4, 2, 2}, expectedSlope);
+}
+
+/// Expects failure to load PRelu in case of invalid slope shape.
+TEST(onnx, importPReluInvalidBroadcastSlope) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFileName =
+      std::string(GLOW_DATA_PATH
+                  "tests/models/onnxModels/preluInvalidBroadcastSlope.onnxtxt");
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {1, 4, 2, 2});
+    EXPECT_DEATH(ONNXModelLoader(NetFileName, {"data"}, {&data.getType()}, *F),
+                 "");
+  }
+}
+
 /// Helper method to run the Conv operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.
