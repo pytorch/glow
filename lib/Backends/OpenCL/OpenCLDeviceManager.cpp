@@ -239,8 +239,10 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  context->logTraceEvent("DM_run", "B");
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
+    context->logTraceEvent("DM_run", "E", {{"reason", "function not found"}});
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {} not found", function).str()),
@@ -258,6 +260,9 @@ void OpenCLDeviceManager::runFunctionImpl(
   func->beforeRun(bindings);
   func->execute(context.get());
   func->afterRun(bindings);
+
+  // End the TraceEvent early to avoid time in the CB.
+  context->logTraceEvent("DM_run", "E");
 
   // Fire the resultCB.
   resultCB(id, llvm::Error::success(), std::move(context));

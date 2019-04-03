@@ -155,6 +155,8 @@ TEST_P(BackendTest, debugPrint) {
                                    "input", false);
   auto *IVTensor = ctx->getPlaceholderBindings()->allocate(IV);
   IVTensor->assign(&input);
+  auto *save = F->createSave("save", IV);
+  ctx->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   std::unique_ptr<BackendUsingGlowIR> backend(
       static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
@@ -186,6 +188,65 @@ TEST_P(BackendTest, CompileWithoutConstants) {
   CompilationOptions opts;
   opts.collectConstants = false;
   auto function = backend->compile(F, opts);
+}
+
+/// Test that the runtimeBundle includes only symbols from its function and not
+/// the whole module.
+TEST_P(BackendTest, BundleFunctionSymbolsOnly) {
+  Module mod;
+  PlaceholderBindings bindings;
+  Function *F = mod.createFunction("main");
+  auto *X = mod.createConstant(ElemKind::FloatTy, {3}, "X");
+  X->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  bindings.allocate(save->getPlaceholder());
+  PlaceholderBindings bindings2;
+  Function *F2 = mod.createFunction("main2");
+  auto *X2 = mod.createConstant(ElemKind::FloatTy, {3}, "X2");
+  X2->getHandle() = {1., 2., 3.};
+  auto *pow2 = F2->createPow("Pow2", X2, 2.0);
+  auto *save2 = F2->createSave("save2", pow2);
+  bindings2.allocate(save2->getPlaceholder());
+
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  auto function = backend->compile(F);
+  auto function2 = backend->compile(F2);
+  auto table1 = function->getRuntimeBundle().getSymbolTable();
+  auto table2 = function2->getRuntimeBundle().getSymbolTable();
+  /// Make sure no symbol in table1 is in table2.
+  for (auto sym : table1) {
+    auto it = table2.find(sym.first);
+    EXPECT_TRUE(it == table2.end());
+  }
+}
+
+/// Test that a shared constant is in the bundle of both functions.
+TEST_P(BackendTest, BundleSharedConstant) {
+  Module mod;
+  PlaceholderBindings bindings;
+  Function *F = mod.createFunction("main");
+  auto *X = mod.createConstant(ElemKind::FloatTy, {3}, "X");
+  X->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  bindings.allocate(save->getPlaceholder());
+  PlaceholderBindings bindings2;
+  Function *F2 = mod.createFunction("main2");
+  auto *pow2 = F2->createPow("Pow2", X, 2.0);
+  auto *save2 = F2->createSave("save2", pow2);
+  bindings2.allocate(save2->getPlaceholder());
+
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
+  auto function = backend->compile(F);
+  auto function2 = backend->compile(F2);
+  auto table1 = function->getRuntimeBundle().getSymbolTable();
+  auto table2 = function2->getRuntimeBundle().getSymbolTable();
+  /// Make sure X is in both tables.
+  auto it = table1.find(X->getName());
+  auto it2 = table2.find(X->getName());
+  EXPECT_TRUE(it != table1.end());
+  EXPECT_TRUE(it2 != table2.end());
 }
 
 /// Test compiling a vector of functions completes without error.

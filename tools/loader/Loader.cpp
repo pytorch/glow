@@ -136,7 +136,8 @@ llvm::cl::opt<BackendKind> ExecutionBackend(
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter"),
                      clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
+                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
     llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
 
 /// Debugging options.
@@ -308,8 +309,9 @@ void Loader::compile(PlaceholderBindings &bindings) {
 
     // Quantize the graph based on the captured profile.
     auto *Q = quantization::quantizeFunction(
-        EE_, quantizationSchema, quantizationInfos, quantizationPrecision, F_,
-        loweredMap_, oldName, keepOriginalPrecisionForNodes, enableRowwiseOpt);
+        *EE_.getBackend(), quantizationSchema, quantizationInfos,
+        quantizationPrecision, F_, loweredMap_, oldName,
+        keepOriginalPrecisionForNodes, enableRowwiseOpt);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.
@@ -343,7 +345,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
   }
 }
 
-void Loader::runInference(PlaceholderBindings &bindings) {
+void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
 
@@ -356,9 +358,9 @@ void Loader::runInference(PlaceholderBindings &bindings) {
   }
   if (timeOpt) {
     timer.stopTimer();
-    llvm::outs() << llvm::formatv("Wall time per iteration (s): {0:f4}\n",
+    llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
                                   timer.getTotalTime().getWallTime() /
-                                      iterationsOpt);
+                                      iterationsOpt / batchSize);
   }
 }
 

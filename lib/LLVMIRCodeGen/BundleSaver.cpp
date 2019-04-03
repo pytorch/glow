@@ -53,7 +53,7 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   // it should be configurable and set by the client.
   size_t pos = 0;
   size_t maxPos = 0;
-  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
+  for (auto &v : F_->findConstants()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
@@ -96,7 +96,7 @@ void BundleSaver::emitSymbolTable() {
   llvm::SmallVector<llvm::Constant *, 128> entries;
   // Iterate over all Placeholders and record information about their names,
   // offset, size and kind.
-  for (auto &v : F_->getGraph()->getParent()->getPlaceholders()) {
+  for (auto &v : F_->findPlaceholders()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto size = w->getType()->size();
     auto addr = allocationsInfo_.allocatedAddress_[w];
@@ -250,9 +250,10 @@ void BundleSaver::emitBundleConfig() {
           uint64TType, irgen_->getAllocationsInfo().mutableWeightVarsMemSize_),
       llvm::ConstantInt::get(uint64TType,
                              irgen_->getAllocationsInfo().activationsMemSize_),
+
       llvm::ConstantInt::get(uint64TType, TensorAlignment),
-      llvm::ConstantInt::get(
-          uint64TType, F_->getGraph()->getParent()->getConstants().size()),
+      llvm::ConstantInt::get(uint64TType, F_->findConstants().size()),
+
       symbolTable));
 }
 

@@ -16,12 +16,20 @@ foreach(object ${subdirs})
   endif()
 endforeach()
 
+add_library(ExecutionContext
+              TraceEvents.cpp)
+target_link_libraries(ExecutionContext
+                      PRIVATE
+                        Base
+                        Graph)
+
 add_library(Backend
               Backend.cpp
               BackendUtils.cpp
-              CompiledFunction.cpp
-              TraceEvents.cpp)
+              CompiledFunction.cpp)
 target_link_libraries(Backend
+                      PUBLIC
+                        ExecutionContext
                       PRIVATE
                         Base
                         CodeGen
@@ -46,6 +54,7 @@ add_library(DeviceManager
 target_link_libraries(DeviceManager
                       PUBLIC
                         ThreadPool
+                        ExecutionContext
                         ${linked_device_managers}
                       PRIVATE
                         Backend

@@ -74,19 +74,26 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   /// Base address for Mutable weights memory block, Inputs and Outputs.
   uint8_t *baseMutableWeightVarsAddress{nullptr};
 
-  if (runtimeBundle_.getActivationsSize() != 0) {
-    baseActivationsAddress = (uint8_t *)alignedAlloc(
-        runtimeBundle_.getActivationsSize(), TensorAlignment);
+  {
+    auto ev = context->scopedEvent("alloc");
+    if (runtimeBundle_.getActivationsSize() != 0) {
+      baseActivationsAddress = (uint8_t *)alignedAlloc(
+          runtimeBundle_.getActivationsSize(), TensorAlignment);
+    }
+
+    if (runtimeBundle_.getMutableWeightSize() != 0) {
+      baseMutableWeightVarsAddress = (uint8_t *)alignedAlloc(
+          runtimeBundle_.getMutableWeightSize(), TensorAlignment);
+    }
+
+    {
+      auto ev = context->scopedEvent("loadPlaceholders");
+      loadPlaceholders(context->getPlaceholderBindings(),
+                       baseMutableWeightVarsAddress);
+    }
   }
 
-  if (runtimeBundle_.getMutableWeightSize() != 0) {
-    baseMutableWeightVarsAddress = (uint8_t *)alignedAlloc(
-        runtimeBundle_.getMutableWeightSize(), TensorAlignment);
-  }
-
-  loadPlaceholders(context->getPlaceholderBindings(),
-                   baseMutableWeightVarsAddress);
-
+  context->logTraceEvent("findJitmainSymbol", "B");
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType =
@@ -95,19 +102,29 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
+    context->logTraceEvent("findJitmainSymbol", "E");
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
   } else {
     GLOW_UNREACHABLE("Error getting address");
   }
 
-  updatePlaceholders(context->getPlaceholderBindings(),
-                     baseMutableWeightVarsAddress);
+  {
+    auto ev = context->scopedEvent("updatePlaceholders");
+    updatePlaceholders(context->getPlaceholderBindings(),
+                       baseMutableWeightVarsAddress);
+  }
 
-  alignedFree(baseMutableWeightVarsAddress);
-  alignedFree(baseActivationsAddress);
+  {
+    auto ev = context->scopedEvent("free");
+    alignedFree(baseMutableWeightVarsAddress);
+    alignedFree(baseActivationsAddress);
+  }
 
-  translateTraceEvents(context);
+  {
+    auto ev = context->scopedEvent("processInstrumentation");
+    translateTraceEvents(context);
+  }
 }
 
 void LLVMCompiledFunction::translateTraceEvents(
@@ -117,15 +134,21 @@ void LLVMCompiledFunction::translateTraceEvents(
     return;
   }
 
+  TraceContext *traceContext = context->getTraceContext();
+
+  if (traceContext->getTraceLevel() == TraceLevel::NONE ||
+      traceContext->getTraceLevel() == TraceLevel::RUNTIME) {
+    return;
+  }
+
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = 0;
+  int tid = traceContext->getTraceThread();
   for (auto &backing : traceInfo.events) {
-    tid++;
     Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);
 
-    auto &traceEvents = context->getTraceEvents();
+    auto &traceEvents = traceContext->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
       uint64_t ts{0};
       memcpy(&ts,

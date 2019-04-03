@@ -81,7 +81,7 @@ struct DAGNode {
   std::string name;
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
-  RuntimeBundle runtimeBundle;
+  std::unique_ptr<RuntimeBundle> runtimeBundle;
 };
 
 /// This struct represents a DAG. The first element is the root of a DAG, and
@@ -89,13 +89,6 @@ struct DAGNode {
 using rootDAGNodeTy = std::unique_ptr<DAGNode>;
 using nodesDAGNodeTy = std::vector<std::unique_ptr<DAGNode>>;
 struct DAG {
-  DAG(){};
-  DAG(rootDAGNodeTy &&rootDAG, nodesDAGNodeTy &&nodesDAG)
-      : root(std::move(rootDAG)), nodes(std::move(nodesDAG)) {}
-
-  DAG(DAG &&node_)
-      : root(std::move(node_.root)), nodes(std::move(node_.nodes)) {}
-
   rootDAGNodeTy root;
   nodesDAGNodeTy nodes;
 };

@@ -45,16 +45,19 @@ struct KernelLaunch {
   cl_kernel kernel_;
   /// The name of the kernel that was launched.
   std::string name_;
+  /// The type of the kernel that was launched.
+  std::string type_;
   /// Event associated with the start of the kernel.
   /// Used only when profiling is enabled.
   cl_event event_;
   /// Constructor to be used by launching Glow's CL kernels.
-  KernelLaunch(cl_kernel kernel, std::string name, cl_event event)
-      : kernel_(kernel), name_(name), event_(event) {}
+  KernelLaunch(cl_kernel kernel, std::string name, std::string type,
+               cl_event event)
+      : kernel_(kernel), name_(name), type_(type), event_(event) {}
   /// Constructor to be used when launching an "external" CL kernel, e.g.
   /// provided by such libraries like CLBlast, etc.
-  KernelLaunch(const std::string &name, cl_event event)
-      : kernel_(nullptr), name_(name), event_(event) {}
+  KernelLaunch(const std::string &name, std::string type, cl_event event)
+      : kernel_(nullptr), name_(name), type_(type), event_(event) {}
 };
 
 /// A Glow IR function compiled for OpenCL.
@@ -86,11 +89,17 @@ class OpenCLFunction final : public CompiledFunction {
   cl_mem deviceBuffer_{0};
   /// Information about kernel launches.
   std::vector<KernelLaunch> kernelLaunches_;
+  /// is kernel level profiling (autoInstrumentation) enabled.
+  bool kernelProfiling_{false};
+  /// Manual trace events:
+  std::map<std::string, std::pair<Placeholder *, const TraceInfo::Event *>>
+      manualTraceEvents_;
 
 public:
   /// Ctor.
   explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
-                          const runtime::RuntimeBundle &bundle);
+                          const runtime::RuntimeBundle &bundle,
+                          TraceInfo traceInfo);
 
   /// @name CompiledFunction interface
   ///@{
@@ -140,13 +149,15 @@ private:
                            const std::vector<std::string> &options,
                            cl_command_queue queue);
   /// Enqueue a \p kernel on a provided \p commands queue.
-  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                     cl_device_id device, llvm::ArrayRef<size_t> global,
+  void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
+                     cl_kernel kernel, cl_device_id device,
+                     llvm::ArrayRef<size_t> global,
                      std::vector<KernelLaunch> &kernelLaunches);
   /// Enqueue a \p kernel on a provided \p commands queue using specified \p
   /// global and \p local work sizes.
-  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                     cl_device_id device, llvm::ArrayRef<size_t> global,
+  void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
+                     cl_kernel kernel, cl_device_id device,
+                     llvm::ArrayRef<size_t> global,
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
 
@@ -155,6 +166,9 @@ private:
 
   /// Load outputs from the device into \p bindings.
   void updatePlaceholders(PlaceholderBindings *bindings);
+
+  /// Read trace events out of this func and write them into /p bindings
+  void translateTraceEvents(ExecutionContext *context) const override;
 };
 
 /// This is the OpenCL backend.
@@ -172,8 +186,6 @@ public:
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
-  std::unique_ptr<CompiledFunction>
-  compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override;
@@ -189,6 +201,16 @@ public:
       return false;
     return true;
   }
+
+  /// Size of each TraceEvent (for manual events).
+  size_t getTraceEventDataSize() const override { return sizeof(uint64_t); }
+
+  /// Parses the graph \F and builds a TraceInfo structure from any found
+  /// TraceEventNodes.
+  TraceInfo buildManualTraceInfo(Function *F) const;
+
+  /// Enables kernel profiling to generate TraceEvents after run.
+  void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
 
   /// @}
 };

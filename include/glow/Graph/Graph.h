@@ -176,8 +176,9 @@ public:
   /// Erase all of the functions from the module.
   void eraseFunctions();
 
-  /// Erase all the functions, variables, etc.
-  void clear();
+  /// Erase all the functions, variables, etc. If \p clearPlaceholders is false
+  /// then placeholders in the module will not be cleared out.
+  void clear(bool clearPlaceholders = true);
 
   /// Erase a function \p F from the module.
   void eraseFunction(Function *F);
@@ -199,6 +200,9 @@ class Function final : public Named {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
+  /// A list of metadata PHs associated with the function.
+  std::vector<Placeholder *> metadataPlaceholders_;
+
   /// Stores a list of unique node names that were used by the module at some
   /// point.
   llvm::StringSet<> uniqueNodeNames_{};
@@ -212,7 +216,28 @@ public:
 
   ~Function();
 
+  /// Add placeholder for metadata such as profiling.
+  void addMetadataPlaceholder(Placeholder *PH) {
+    metadataPlaceholders_.push_back(PH);
+  }
+
+  /// Get list of metadata placeholders.
+  const std::vector<Placeholder *> &getMetadataPlaceholders() const {
+    return metadataPlaceholders_;
+  }
+
   Module *getParent() { return parent_; }
+
+  /// Search the Module containing the function to gather and return a list of
+  /// placeholders that are used by the Function.
+  PlaceholderList findPlaceholders();
+  PlaceholderList findPlaceholders() const;
+
+  /// Search the Module containing the function to gather and return a list of
+  /// constants that are used by the Function.
+  ConstList findConstants();
+  ConstList findConstants() const;
+
   const Module *getParent() const { return parent_; }
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
@@ -325,8 +350,9 @@ public:
   /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is
   /// flattened along \p axis. Note, outputDepth is inferred based on \p outTy.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
-                                           NodeValue input, Node *W, Node *B,
-                                           TypeRef outTy, unsigned_t axis = 1);
+                                           NodeValue input, NodeValue W,
+                                           NodeValue B, TypeRef outTy,
+                                           unsigned_t axis = 1);
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
@@ -335,7 +361,7 @@ public:
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
   /// be transposed first.
   RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
-      llvm::StringRef name, NodeValue input, Constant *W, Node *B,
+      llvm::StringRef name, NodeValue input, Constant *W, NodeValue B,
       TypeRef outTy, quantization::Schema schema, bool transposeWeight = false);
 
   /// Implement an operation that computes the row-wise dot product of its

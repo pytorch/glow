@@ -1807,6 +1807,37 @@ static void optimizeSliceOfSplat(Function *F) {
   }
 }
 
+/// Optimize TransposeNode into ReshapeNode when it actually moves no data.
+static void optimizeTransposeIntoReshape(Function *F) {
+  for (auto &node : F->getNodes()) {
+    auto *TR = dyn_cast<TransposeNode>(&node);
+    if (!TR)
+      continue;
+    auto inputNode = TR->getInput();
+    auto inputDims = inputNode.dims();
+    auto outputDims = TR->getResult().dims();
+    // Transpose moves no data if input/output dimensions match after they both
+    // drop dimensions of size 1. E.g. transposing [1 5 1 15] into [5 15 1 1]
+    // produces vectors (1, 3) for both dimensions so optimization is executed.
+    auto shuffle = TR->getShuffle();
+    ShapeVector inDims;
+    ShapeVector outDims;
+    for (size_t i = 0; i < inputDims.size(); i++) {
+      if (inputDims[i] != 1) {
+        inDims.push_back(i);
+      }
+      if (outputDims[i] != 1) {
+        outDims.push_back(shuffle[i]);
+      }
+    }
+    if (inDims != outDims) {
+      continue;
+    }
+    auto *RS = F->createReshape(TR->getName(), inputNode, outputDims);
+    TR->getResult().replaceAllUsesOfWith(RS);
+  }
+}
+
 /// Optimize reshape nodes.
 static void optimizeReshape(Function *F) {
   for (auto &node : F->getNodes()) {
@@ -2467,6 +2498,10 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
     // Perform Dead Code Elimination between rounds of code sinking.
     DCE(F);
   }
+
+  // Transposes that don't move data are optimized into Reshapes, which enables
+  // further optimizations.
+  optimizeTransposeIntoReshape(F);
 
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.

@@ -120,7 +120,8 @@ static void addStringOption(std::vector<std::string> &options,
 }
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
-                               const runtime::RuntimeBundle &bundle)
+                               const runtime::RuntimeBundle &bundle,
+                               TraceInfo traceInfo)
     : CompiledFunction(bundle), F_(std::move(F)) {
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -144,9 +145,27 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   deviceId_ = devices[clDeviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   GLOW_ASSERT(context_ && "clCreateContext Failed.");
-  commands_ = clCreateCommandQueue(
-      context_, deviceId_, (clDoProfile) ? CL_QUEUE_PROFILING_ENABLE : 0, &err);
+
+  cl_command_queue_properties profiling = 0;
+  if (clDoProfile || traceInfo.enabled) {
+    profiling = CL_QUEUE_PROFILING_ENABLE;
+  }
+  kernelProfiling_ = clDoProfile || traceInfo.autoInstrumented;
+  commands_ = clCreateCommandQueue(context_, deviceId_, profiling, &err);
   GLOW_ASSERT(commands_ && "clCreateCommandQueue Failed.");
+
+  // We need to go through the TraceInfo and pull out some info about manual
+  // TraceEvents.
+  for (const auto &backingPair : traceInfo.events) {
+    Placeholder *backing = backingPair.first;
+    for (const auto &event : backingPair.second) {
+      // Context is the name of the TraceEventNode.
+      manualTraceEvents_.emplace(event.context,
+                                 std::make_pair(backing, &event));
+    }
+  }
+
+  setTraceInfo(std::move(traceInfo));
 
   err = CL_SUCCESS;
   std::vector<std::string> options;
@@ -295,7 +314,8 @@ void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
   setKernelArg(kernel, 0, buffer);
   setKernelArg<cl_uint>(kernel, 1, start);
   setKernelArg(kernel, 2, value);
-  enqueueKernel(commands_, kernel, deviceId_, {(size_t)len}, kernelLaunches_);
+  enqueueKernel("splat", commands_, kernel, deviceId_, {(size_t)len},
+                kernelLaunches_);
 }
 
 /// \returns the max local workgroup size for each dimension, under the
@@ -340,95 +360,50 @@ static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   }
 }
 
-void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+void OpenCLFunction::enqueueKernel(llvm::StringRef name,
+                                   cl_command_queue commands, cl_kernel kernel,
                                    cl_device_id device,
                                    llvm::ArrayRef<size_t> global,
                                    llvm::ArrayRef<size_t> local,
                                    std::vector<KernelLaunch> &kernelLaunches) {
-  char kernelName[128];
+  char kernelType[128];
   size_t retSize;
   cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
-                               sizeof(kernelName), &kernelName, &retSize);
+                               sizeof(kernelType), &kernelType, &retSize);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
 
   cl_event event{nullptr};
+  bool profile = kernelProfiling_;
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
-                               clDoProfile ? &event : nullptr);
+                               profile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
-  kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
+  kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
 /// Enqueue a \p kernel for execution on the command queue \p commands on a
 /// given \p device. The information about the launched kernel will be added to
 /// \p kernelLaunches list.
-void OpenCLFunction::enqueueKernel(cl_command_queue commands, cl_kernel kernel,
+void OpenCLFunction::enqueueKernel(llvm::StringRef name,
+                                   cl_command_queue commands, cl_kernel kernel,
                                    cl_device_id device,
                                    llvm::ArrayRef<size_t> global,
                                    std::vector<KernelLaunch> &kernelLaunches) {
   llvm::SmallVector<size_t, 4> local(global.size(), 0);
   getMaxLocalWorkgroupSize(kernel, device, global, local);
-  char kernelName[128];
+  char kernelType[128];
   size_t retSize;
   cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
-                               sizeof(kernelName), &kernelName, &retSize);
+                               sizeof(kernelType), &kernelType, &retSize);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
 
   cl_event event{nullptr};
+  bool profile = kernelProfiling_;
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
-                               clDoProfile ? &event : nullptr);
+                               profile ? &event : nullptr);
   GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
-  kernelLaunches.push_back(KernelLaunch(kernel, kernelName, event));
-}
-
-/// Analyze and dump the collected profiling information about the execution of
-/// OpenCL kernels.
-static void dumpProfileInfo(const std::vector<KernelLaunch> &kernelLaunches) {
-  if (!clDoProfile)
-    return;
-  cl_ulong total = 0;
-
-  std::unordered_map<std::string, cl_ulong> kernelToDuration;
-
-  for (auto &kl : kernelLaunches) {
-    auto &event = kl.event_;
-    clWaitForEvents(1, &event);
-    auto name = kl.name_;
-    assert(!name.empty() && "Kernel name cannot be empty");
-    cl_ulong time_start;
-    cl_ulong time_end;
-
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
-                            sizeof(time_start), &time_start, NULL);
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
-                            &time_end, NULL);
-    // Duration (in nanoseconds).
-    double duration = time_end - time_start;
-    kernelToDuration[name] += duration;
-    total += duration;
-    llvm::outs() << "OpenCl execution time for a launch of kernel " << name
-                 << format(" is: %0.3f milliseconds\n", duration / 1000000.0);
-  }
-  llvm::outs() << format(
-      "OpenCl total execution time is: %0.3f milliseconds \n",
-      total / 1000000.0);
-
-  // Build a sorted list of kernel durations.
-  std::vector<std::pair<cl_ulong, std::string>> sortedKernelDurations;
-  sortedKernelDurations.reserve(kernelToDuration.size());
-  for (auto kv : kernelToDuration) {
-    sortedKernelDurations.push_back(std::make_pair(kv.second, kv.first));
-  }
-  std::sort(sortedKernelDurations.begin(), sortedKernelDurations.end());
-
-  llvm::outs() << "\n\nSummary information per kernel:\n";
-  for (auto k : sortedKernelDurations) {
-    llvm::outs() << "OpenCl total execution time for kernel " << k.second
-                 << format(" is: %0.3f milliseconds (%lu%%)\n",
-                           k.first / 1000000.0,
-                           (unsigned long)(k.first * 100 / total));
-  }
+  kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
 void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
@@ -592,7 +567,8 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
                                 ((M_FW_ - 1) / fw_div_M + 1) * fw_wgs1,
                                 idim.n * group};
 
-  enqueueKernel(commands_, kernel, deviceId_, global, local, kernelLaunches_);
+  enqueueKernel(CC->getName(), commands_, kernel, deviceId_, global, local,
+                kernelLaunches_);
 }
 
 /// This method is copied from InterpreterNodes.cpp. Please be aware that
@@ -631,13 +607,20 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 void OpenCLFunction::execute(ExecutionContext *context) {
   (void)context;
 
-  // TODO: deviceBuffer_ should go into DeviceBindings in context.
-  deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
-                                    runtimeBundle_.getMutableWeightSize() +
-                                    runtimeBundle_.getActivationsSize());
+  {
+    auto ev = context->scopedEvent("alloc");
+    // TODO: deviceBuffer_ should go into DeviceBindings in context.
+    deviceBuffer_ = allocDeviceBuffer(runtimeBundle_.getConstantWeightSize() +
+                                      runtimeBundle_.getMutableWeightSize() +
+                                      runtimeBundle_.getActivationsSize());
+  }
 
-  loadPlaceholders(context->getPlaceholderBindings());
+  {
+    auto ev = context->scopedEvent("loadPlaceholders");
+    loadPlaceholders(context->getPlaceholderBindings());
+  }
 
+  auto enqueueEvent = context->scopedEvent("enqueueKernels");
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -777,7 +760,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
 
       assert((!isQuantized) ||
              numArgs > numMandatoryArgs && "Not enough kernel arguments");
-      enqueueKernel(commands_, kernel, deviceId_, {global}, kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {global},
+                    kernelLaunches_);
       continue;
     }
 
@@ -796,7 +780,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {numSlices},
+                    kernelLaunches_);
       continue;
     }
 
@@ -815,7 +800,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       // Pass the slice size (size of each sample in the batch) as a parameter.
       setKernelArg<cl_uint>(kernel, numArgs + 1, flattenCdr(inputDims).second);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numSlices}, kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {numSlices},
+                    kernelLaunches_);
       continue;
     }
 
@@ -854,7 +840,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 1, odim);
       setKernelArg(kernel, numArgs + 2, idim);
       setKernelArg(kernel, numArgs + 3, offset);
-      enqueueKernel(commands_, kernel, deviceId_, {odim.n, odim.h},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {odim.n, odim.h},
                     kernelLaunches_);
       continue;
     }
@@ -895,7 +881,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 3, offset);
       setKernelArg<cl_uint>(kernel, numArgs + 4, IT->getCount());
       setKernelArg<cl_uint>(kernel, numArgs + 5, IT->getAxis());
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {idim.n, idim.h},
                     kernelLaunches_);
       continue;
     }
@@ -942,11 +928,11 @@ void OpenCLFunction::execute(ExecutionContext *context) {
         std::vector<size_t> global{(ddim.n / local[0] + 1) * local[0],
                                    (ddim.h / local[1] + 1) * local[1]};
 
-        enqueueKernel(commands_, kernel, deviceId_, global, local,
+        enqueueKernel(I.getName(), commands_, kernel, deviceId_, global, local,
                       kernelLaunches_);
       } else {
-        enqueueKernel(commands_, kernel, deviceId_, {ddim.n, ddim.h, ddim.w},
-                      kernelLaunches_);
+        enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                      {ddim.n, ddim.h, ddim.w}, kernelLaunches_);
       }
 #undef TILE_DIM
       continue;
@@ -983,7 +969,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       }
 
       // Parallelize on each element in the slice.
-      enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {bdim.second},
                     kernelLaunches_);
       continue;
     }
@@ -1000,7 +986,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg<cl_uint>(kernel, numArgs + 2, bdim.second);
 
       // Parallelize on each element in the slice.
-      enqueueKernel(commands_, kernel, deviceId_, {bdim.second},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {bdim.second},
                     kernelLaunches_);
       continue;
     }
@@ -1046,8 +1032,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
 
       // Use a 3D grid where the first dimension is the depth and the second
       // dimension is the slice index in the batch.
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1087,7 +1073,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       assert(filter->dims() == filterGrad->dims() && "Dims should be the same");
       assert(src->dims() == srcGrad->dims() && "Dims should be the same");
 
-      enqueueKernel(commands_, kernel, deviceId_,
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
                     {destGradDim.h, destGradDim.w, destGradDim.c},
                     kernelLaunches_);
       continue;
@@ -1113,8 +1099,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1138,8 +1124,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1164,7 +1150,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       assert(srcGradDim.n == destGradDim.n && "batch size is wrong");
       assert(srcGradDim.c == destGradDim.c && "depth size is wrong");
 
-      enqueueKernel(commands_, kernel, deviceId_, {srcGradDim.n},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {srcGradDim.n},
                     kernelLaunches_);
       continue;
     }
@@ -1189,8 +1175,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1224,7 +1210,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
 
       ShapeNHWC shuff(mask[0], mask[1], mask[2], mask[3]);
       setKernelArg(kernel, numArgs + 3, shuff);
-      enqueueKernel(commands_, kernel, deviceId_, {idim.n, idim.h},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {idim.n, idim.h},
                     kernelLaunches_);
       continue;
     }
@@ -1242,9 +1228,9 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       cl_event event{nullptr};
       cl_int err = clEnqueueCopyBuffer(commands_, deviceBuffer_, deviceBuffer_,
                                        srcOff, destOff, sizeInBytes, 0, nullptr,
-                                       clDoProfile ? &event : nullptr);
-      if (clDoProfile) {
-        kernelLaunches_.emplace_back(KernelLaunch("copy", event));
+                                       kernelProfiling_ ? &event : nullptr);
+      if (kernelProfiling_) {
+        kernelLaunches_.emplace_back(KernelLaunch(I.getName(), "copy", event));
       }
       GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
       continue;
@@ -1281,7 +1267,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg<cl_uint>(kernel, numArgs + 4, destSampleSize);
       setKernelArg<cl_uint>(kernel, numArgs + 5, srcSampleSize);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numIndices},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {numIndices},
                     kernelLaunches_);
       continue;
     }
@@ -1296,7 +1282,7 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       size_t numIndices = SAI->getIndices()->size();
       setKernelArg<cl_uint>(kernel, numArgs + 1, dataSliceSize);
 
-      enqueueKernel(commands_, kernel, deviceId_, {numIndices},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {numIndices},
                     kernelLaunches_);
       continue;
     }
@@ -1320,7 +1306,20 @@ void OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *TE = dyn_cast<TraceEventInst>(&I)) {
-      llvm::outs() << "skipping TraceEvent on OpenCL: unimplemented\n";
+      cl_kernel kernel = createKernel("checkpoint");
+      setKernelArg(kernel, 0, deviceBuffer_);
+
+      llvm::SmallVector<size_t, 1> global = {1};
+      llvm::SmallVector<size_t, 4> local(global.size(), 0);
+      getMaxLocalWorkgroupSize(kernel, deviceId_, global, local);
+
+      cl_event event;
+      cl_int err =
+          clEnqueueNDRangeKernel(commands_, kernel, global.size(), nullptr,
+                                 &global[0], &local[0], 0, nullptr, &event);
+      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      kernelLaunches_.push_back(
+          KernelLaunch(kernel, TE->getName(), "checkpoint", event));
       continue;
     }
 
@@ -1377,8 +1376,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
         setKernelArg(kernel, numArgs + 7, destScaleParam);
       }
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1397,8 +1396,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 4, odim);
       setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(commands_, kernel, deviceId_, {odim.h, odim.w, odim.c},
-                    kernelLaunches_);
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
+                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1406,21 +1405,35 @@ void OpenCLFunction::execute(ExecutionContext *context) {
     GLOW_UNREACHABLE("compilation failed");
   }
 
+  enqueueEvent.end();
+
   clFinish(commands_);
 
-  updatePlaceholders(context->getPlaceholderBindings());
-
-  // Output profiling information.
-  dumpProfileInfo(kernelLaunches_);
-
-  for (auto &kl : kernelLaunches_) {
-    clReleaseKernel(kl.kernel_);
+  {
+    auto ev = context->scopedEvent("updatePlaceholders");
+    updatePlaceholders(context->getPlaceholderBindings());
   }
-  kernelLaunches_.clear();
 
-  if (deviceBuffer_) {
-    freeDeviceBuffer(deviceBuffer_);
-    deviceBuffer_ = nullptr;
+  {
+    auto ev = context->scopedEvent("processInstrumentation");
+    // Output profiling information.
+    translateTraceEvents(context);
+  }
+
+  {
+    auto ev = context->scopedEvent("releaseKernels");
+    for (auto &kl : kernelLaunches_) {
+      clReleaseKernel(kl.kernel_);
+    }
+    kernelLaunches_.clear();
+  }
+
+  {
+    auto ev = context->scopedEvent("free");
+    if (deviceBuffer_) {
+      freeDeviceBuffer(deviceBuffer_);
+      deviceBuffer_ = nullptr;
+    }
   }
 }
 
@@ -1435,10 +1448,12 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+        /* event_list */ nullptr,
+        /* event */ kernelProfiling_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (clDoProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyValueToDevice", event));
+    if (kernelProfiling_) {
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyValueToDevice", "copyValueToDevice", event));
     }
     copiedBytes += sizeInBytes;
   }
@@ -1456,12 +1471,14 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+        /* event_list */ nullptr,
+        /* event */ kernelProfiling_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
     DEBUG_GLOW(llvm::dbgs()
                << "Copied the value from device: " << v->getName() << "\n");
-    if (clDoProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyValueFromDevice", event));
+    if (kernelProfiling_) {
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyValueFromDevice", "copyValueFromDevice", event));
     }
     copiedBytes += sizeInBytes;
   }
@@ -1478,11 +1495,12 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, valueOffset,
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+        /* event_list */ nullptr,
+        /* event */ kernelProfiling_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (clDoProfile) {
-      kernelLaunches_.emplace_back(
-          KernelLaunch("copyConstantsToDevice", event));
+    if (kernelProfiling_) {
+      kernelLaunches_.emplace_back(KernelLaunch(
+          "copyConstantsToDevice", "copyConstantsToDevice", event));
     }
     // Do it!
     clFinish(commands_);
@@ -1504,10 +1522,12 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
     cl_int err = clEnqueueWriteBuffer(
         commands_, deviceBuffer_, /* blocking_write */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+        /* event_list */ nullptr,
+        /* event */ kernelProfiling_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    if (clDoProfile) {
-      kernelLaunches_.emplace_back(KernelLaunch("copyInputsToDevice", event));
+    if (kernelProfiling_) {
+      kernelLaunches_.emplace_back(
+          KernelLaunch("copyInputsToDevice", "copyInputsToDevice", event));
     }
   }
   // Do it!
@@ -1531,11 +1551,12 @@ void OpenCLFunction::updatePlaceholders(PlaceholderBindings *bindings) {
     cl_int err = clEnqueueReadBuffer(
         commands_, deviceBuffer_, /* blocking_read */ CL_FALSE, addr, numBytes,
         buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ clDoProfile ? &event : nullptr);
+        /* event_list */ nullptr,
+        /* event */ kernelProfiling_ ? &event : nullptr);
     GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data from the device");
-    if (clDoProfile) {
-      kernelLaunches_.emplace_back(
-          KernelLaunch("copyOutputsFromDevice", event));
+    if (kernelProfiling_) {
+      kernelLaunches_.emplace_back(KernelLaunch(
+          "copyOutputsFromDevice", "copyOutputsFromDevice", event));
     }
   }
   // Do it!
@@ -1557,36 +1578,129 @@ void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 void OpenCLFunction::collectConstants(Module *module) {
   runtimeBundle_.collectConstants(module);
 }
+
+void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
+  if (context->getTraceContext() == nullptr ||
+      (!getTraceInfo().enabled && !clDoProfile)) {
+    return;
+  }
+  cl_ulong total = 0;
+
+  std::unordered_map<std::string, cl_ulong> kernelToDuration;
+  auto &traceEvents = context->getTraceContext()->getTraceEvents();
+  int tid = context->getTraceContext()->getTraceThread();
+  std::vector<cl_ulong> manualTimestamps;
+
+  for (auto &kl : kernelLaunches_) {
+    auto &event = kl.event_;
+    if (event == nullptr) {
+      continue;
+    }
+    clWaitForEvents(1, &event);
+
+    auto &name = kl.name_;
+    auto &type = kl.type_;
+    assert(!name.empty() && "Kernel name cannot be empty");
+    cl_ulong time_start;
+    cl_ulong time_end;
+
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                            sizeof(time_start), &time_start, NULL);
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
+                            &time_end, NULL);
+
+    if (type == "checkpoint") {
+      const auto &it = manualTraceEvents_.find(name);
+      if (it == manualTraceEvents_.end()) {
+        DEBUG_GLOW(llvm::dbgs() << "warning: found manual trace event (" << name
+                                << ") with no metadata (OCL)\n");
+      } else {
+        auto handle = context->getPlaceholderBindings()
+                          ->get(it->second.first)
+                          ->getHandle<int64_t>();
+        const TraceInfo::Event *ev = it->second.second;
+
+        handle.at({ev->index, 0}) = time_end / 1000000;
+        traceEvents.push_back({ev->name, time_end / 1000000, ev->type, tid});
+      }
+    } else {
+      traceEvents.push_back(
+          {name, time_start / 1000000, "B", tid, {{"type", type}}});
+      traceEvents.push_back({name, time_end / 1000000, "E", tid});
+    }
+
+    if (clDoProfile) {
+      // Duration (in nanoseconds).
+      double duration = time_end - time_start;
+      kernelToDuration[type] += duration;
+      total += duration;
+      llvm::outs() << "OpenCl execution time for a launch of kernel " << type
+                   << format(" is: %0.3f milliseconds\n", duration / 1000000.0);
+    }
+  }
+
+  if (!clDoProfile) {
+    return;
+  }
+  llvm::outs() << format(
+      "OpenCl total execution time is: %0.3f milliseconds \n",
+      total / 1000000.0);
+
+  // Build a sorted list of kernel durations.
+  std::vector<std::pair<cl_ulong, std::string>> sortedKernelDurations;
+  sortedKernelDurations.reserve(kernelToDuration.size());
+  for (auto kv : kernelToDuration) {
+    sortedKernelDurations.push_back(std::make_pair(kv.second, kv.first));
+  }
+  std::sort(sortedKernelDurations.begin(), sortedKernelDurations.end());
+
+  llvm::outs() << "\n\nSummary information per kernel:\n";
+  for (auto k : sortedKernelDurations) {
+    llvm::outs() << "OpenCl total execution time for kernel " << k.second
+                 << format(" is: %0.3f milliseconds (%lu%%)\n",
+                           k.first / 1000000.0,
+                           (unsigned long)(k.first * 100 / total));
+  }
+}
+
 std::unique_ptr<CompiledFunction>
 OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   auto *module = IR->getGraph()->getParent();
-  auto function = compileIRWithoutConstants(std::move(IR));
+  TraceInfo traceInfo;
+
+  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
+  runtime::RuntimeBundle bundle =
+      runtime::RuntimeBundle::create(*IR, allocator, allocator, allocator);
+  std::unique_ptr<CompiledFunction> function =
+      llvm::make_unique<OpenCLFunction>(std::move(IR), bundle,
+                                        std::move(traceInfo));
   auto OCLFunction = static_cast<OpenCLFunction *>(function.get());
   OCLFunction->collectConstants(module);
   return function;
 }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
-  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
-  runtime::RuntimeBundle bundle =
-      generateRuntimeBundle(*IR, allocator, allocator, allocator);
-  return llvm::make_unique<OpenCLFunction>(std::move(IR), bundle);
-}
-
-std::unique_ptr<CompiledFunction>
 OCLBackend::compile(Function *F, const CompilationOptions &opts) const {
-  if (opts.autoInstrument) {
-    GLOW_UNREACHABLE("Instrumentation not supported on this Backend");
-  }
+  TraceInfo traceInfo = buildManualTraceInfo(F);
 
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
 
-  if (opts.collectConstants) {
-    return compileIR(std::move(IR));
+  if (opts.autoInstrument) {
+    autoInstrument(traceInfo, IR.get());
   }
 
-  return compileIRWithoutConstants(std::move(IR));
+  MemoryAllocator allocator("GPU", 0xFFFFFFFF);
+  runtime::RuntimeBundle bundle =
+      runtime::RuntimeBundle::create(*IR, allocator, allocator, allocator);
+  std::unique_ptr<CompiledFunction> compiledFunc =
+      llvm::make_unique<OpenCLFunction>(std::move(IR), bundle,
+                                        std::move(traceInfo));
+
+  if (opts.collectConstants) {
+    bundle.collectConstants(F->getParent());
+  }
+
+  return compiledFunc;
 }
 
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
@@ -1704,10 +1818,37 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
+  case Kinded::Kind::TraceEventNodeKind:
     // These work regardless of the underlying type.
     return true;
 
   default:
     return false;
   }
+}
+
+TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {
+  TraceInfo info(false, getTraceEventDataSize());
+
+  const auto &nodes = F->getNodes();
+  for (const auto &node : nodes) {
+    if (const TraceEventNode *TEN = llvm::dyn_cast<TraceEventNode>(&node)) {
+
+      Placeholder *backing =
+          llvm::dyn_cast<Placeholder>(TEN->getData().getNode());
+      info.add(backing, TEN->getIndex(), TEN->getEventName(),
+               TEN->getEventType(), TEN->getName());
+      info.enabled = true;
+    }
+  }
+
+  return info;
+}
+
+void OCLBackend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
+  traceInfo.enabled = true;
+  traceInfo.autoInstrumented = true;
+
+  // On OpenCL we don't insert instructions into the IR, and we don't need
+  // entries in TraceInfo to interpret them.
 }

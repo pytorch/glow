@@ -2503,6 +2503,23 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
 
+/// Test that Transpose is optimized into Reshape when it moves no data.
+TEST_F(GraphOptz, transposeIntoReshapeOptim) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2, 4}, "batch", false);
+  Node *T = F_->createTranspose("transpose", batch, {1, 2, 0, 3});
+  SaveNode *O = F_->createSave("ret", T);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // TransposeNode is Optimized into ReshapeNode.
+  auto *reshape = llvm::dyn_cast<ReshapeNode>(O->getInput().getNode());
+  ASSERT_NE(reshape, nullptr);
+}
+
 /// Test that transpose is merged into matmul.
 TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
   auto *input =
