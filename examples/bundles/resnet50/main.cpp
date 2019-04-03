@@ -35,14 +35,13 @@
 std::vector<std::string> inputImageFilenames;
 
 /// \returns the index of the element at x,y,z,w.
-uint64_t getXYZW(const uint64_t *dims, uint64_t x, uint64_t y, uint64_t z,
-                 uint64_t w) {
+size_t getXYZW(const size_t *dims, size_t x, size_t y, size_t z, size_t w) {
   return (x * dims[1] * dims[2] * dims[3]) + (y * dims[2] * dims[3]) +
          (z * dims[3]) + w;
 }
 
 /// \returns the index of the element at x,y,z.
-uint64_t getXYZ(const uint64_t *dims, uint64_t x, uint64_t y, uint64_t z) {
+size_t getXYZ(const size_t *dims, size_t x, size_t y, size_t z) {
   return (x * dims[1] * dims[2]) + (y * dims[2]) + z;
 }
 
@@ -50,7 +49,7 @@ uint64_t getXYZ(const uint64_t *dims, uint64_t x, uint64_t y, uint64_t z) {
 /// representing a WxHxNxC tensor and returns it. The client is responsible for
 /// freeing the memory block.
 bool readPngImage(const char *filename, std::pair<float, float> range,
-                  float *&imageT, uint64_t *imageDims) {
+                  float *&imageT, size_t *imageDims) {
   unsigned char header[8];
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -60,7 +59,7 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
   }
 
   // Validate signature.
-  uint64_t fread_ret = fread(header, 1, 8, fp);
+  size_t fread_ret = fread(header, 1, 8, fp);
   if (fread_ret != 8) {
     return true;
   }
@@ -88,13 +87,13 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
   png_set_sig_bytes(png_ptr, 8);
   png_read_info(png_ptr, info_ptr);
 
-  uint64_t width = png_get_image_width(png_ptr, info_ptr);
-  uint64_t height = png_get_image_height(png_ptr, info_ptr);
+  size_t width = png_get_image_width(png_ptr, info_ptr);
+  size_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
 
   const bool isGray = color_type == PNG_COLOR_TYPE_GRAY;
-  const uint64_t numChannels = isGray ? 1 : 3;
+  const size_t numChannels = isGray ? 1 : 3;
 
   (void)bit_depth;
   assert(bit_depth == 8 && "Invalid image");
@@ -115,7 +114,7 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
   }
 
   auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (uint64_t y = 0; y < height; y++) {
+  for (size_t y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
   }
 
@@ -131,9 +130,9 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
-  for (uint64_t row_n = 0; row_n < height; row_n++) {
+  for (size_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
-    for (uint64_t col_n = 0; col_n < width; col_n++) {
+    for (size_t col_n = 0; col_n < width; col_n++) {
       png_byte *ptr =
           &(row[col_n * (hasAlpha ? (numChannels + 1) : numChannels)]);
       if (isGray) {
@@ -150,7 +149,7 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
     }
   }
 
-  for (uint64_t y = 0; y < height; y++) {
+  for (size_t y = 0; y < height; y++) {
     free(row_pointers[y]);
   }
   free(row_pointers);
@@ -164,7 +163,7 @@ bool readPngImage(const char *filename, std::pair<float, float> range,
 /// Loads and normalizes all PNGs into a tensor memory block \p resultT in the
 /// NCHW 3x224x224 format.
 static void loadImagesAndPreprocess(const std::vector<std::string> &filenames,
-                                    float *&resultT, uint64_t *resultDims) {
+                                    float *&resultT, size_t *resultDims) {
   assert(filenames.size() > 0 &&
          "There must be at least one filename in filenames");
   std::pair<float, float> range = std::make_pair(0., 1.0);
@@ -174,14 +173,14 @@ static void loadImagesAndPreprocess(const std::vector<std::string> &filenames,
   resultDims[1] = 3;
   resultDims[2] = DEFAULT_HEIGHT;
   resultDims[3] = DEFAULT_WIDTH;
-  uint64_t resultSizeInBytes =
+  size_t resultSizeInBytes =
       numImages * 3 * DEFAULT_HEIGHT * DEFAULT_WIDTH * sizeof(float);
   resultT = static_cast<float *>(malloc(resultSizeInBytes));
   // We iterate over all the png files, reading them all into our result tensor
   // for processing
   for (unsigned n = 0; n < numImages; n++) {
     float *imageT{nullptr};
-    uint64_t dims[3];
+    size_t dims[3];
     bool loadSuccess = !readPngImage(filenames[n].c_str(), range, imageT, dims);
     assert(loadSuccess && "Error reading input image.");
 
@@ -273,13 +272,13 @@ const SymbolTableEntry &getMutableWeightVar(const BundleConfig &config,
 }
 
 /// Allocate an aligned block of memory.
-void *alignedAlloc(const BundleConfig &config, uint64_t size) {
-  const uint64_t alignment = 64;
+void *alignedAlloc(const BundleConfig &config, size_t size) {
+  const size_t alignment = 64;
   void *ptr;
   // Properly align the memory region.
   int res = posix_memalign(&ptr, config.alignment, size);
   assert(res == 0 && "posix_memalign failed");
-  assert((uint64_t)ptr % alignment == 0 && "Wrong alignment");
+  assert((size_t)ptr % alignment == 0 && "Wrong alignment");
   memset(ptr, 0, size);
   return ptr;
 }
@@ -295,7 +294,7 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
     exit(1);
   }
   fseek(weightsFile, 0, SEEK_END);
-  uint64_t fileSize = ftell(weightsFile);
+  size_t fileSize = ftell(weightsFile);
   fseek(weightsFile, 0, SEEK_SET);
   uint8_t *baseConstantWeightVarsAddr =
       static_cast<uint8_t *>(alignedAlloc(config, fileSize));
@@ -346,12 +345,12 @@ static void dumpInferenceResults(const BundleConfig &config,
 /// data | gpu_0/data | results
 static uint8_t *initMutableWeightVars(const BundleConfig &config) {
   uint8_t *mutableWeightVarsAddr = allocateMutableWeightVars(config);
-  uint64_t inputDims[4];
+  size_t inputDims[4];
   float *inputT{nullptr};
   loadImagesAndPreprocess(inputImageFilenames, inputT, inputDims);
   // Copy image data into the gpu_0/data input variable in the
   // mutableWeightVars area.
-  uint64_t imageDataSizeInBytes =
+  size_t imageDataSizeInBytes =
       inputDims[0] * inputDims[1] * inputDims[2] * inputDims[3] * sizeof(float);
   printf("Copying image data into mutable weight vars: %lu bytes\n",
          imageDataSizeInBytes);
