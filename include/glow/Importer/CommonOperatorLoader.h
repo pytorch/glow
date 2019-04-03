@@ -103,7 +103,7 @@ inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
         constexpr uint8_t OFFSETSHIFT = 128;
         TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
       }
-	} else {
+    } else {
       RETURN_ERR("Only float and index tensors are supported.");
     }
   }
