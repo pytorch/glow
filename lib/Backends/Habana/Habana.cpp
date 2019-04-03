@@ -15,7 +15,6 @@
  */
 
 #include "Habana.h"
-#include "SynapseShim.h"
 
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
@@ -25,6 +24,10 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include "synapse.h"
+
+#include "perf_lib_layer_params.h"
 
 #include <mutex>
 #include <unordered_map>

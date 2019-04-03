@@ -15,8 +15,10 @@
  */
 
 #include "HabanaDeviceManager.h"
-#include "SynapseShim.h"
+
 #include "llvm/Support/raw_ostream.h"
+
+#include "synapse.h"
 
 using namespace glow;
 using namespace glow::runtime;
