@@ -1388,3 +1388,18 @@ TEST_F(HabanaBackendTest, BigPseudoBatchedAdd) {
     expected += 2;
   }
 }
+
+TEST_F(HabanaBackendTest, Mul) {
+  auto *i1 = mod_.createPlaceholder(ElemKind::FloatTy, {8}, "i1", false);
+  auto *i2 = mod_.createPlaceholder(ElemKind::FloatTy, {8}, "i2", false);
+  auto *mul = F_->createMul("mul", i1, i2);
+  auto *save = F_->createSave("save", mul);
+  ctx_.allocate(i1)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
+  ctx_.allocate(i2)->getHandle() = {8, 7, 6, 5, 4, 3, 2, 1};
+  auto *out = ctx_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+  Tensor expected(ElemKind::FloatTy, {8});
+  expected.getHandle() = {8, 14, 18, 20, 20, 18, 14, 8};
+  ASSERT_TRUE(out->isEqual(expected));
+}
