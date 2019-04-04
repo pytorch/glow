@@ -89,9 +89,9 @@ void BundleSaver::emitSymbolTable() {
   auto *charTy = llvm::Type::getInt8Ty(irgen_->getLLVMContext());
   auto *uint64TTy =
       llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(uint64_t) * 8);
-  auto symbolTableEntryTy =
-      llvm::StructType::get(irgen_->getLLVMContext(),
-                            {charTy->getPointerTo(), uint64TTy, uint64TTy, charTy});
+  auto symbolTableEntryTy = llvm::StructType::get(
+      irgen_->getLLVMContext(),
+      {charTy->getPointerTo(), uint64TTy, uint64TTy, charTy});
   // Set of entries in the symbol table.
   llvm::SmallVector<llvm::Constant *, 128> entries;
   // Iterate over all Placeholders and record information about their names,
