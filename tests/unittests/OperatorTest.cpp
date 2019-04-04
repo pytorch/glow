@@ -1669,6 +1669,33 @@ TEST_P(OperatorTest, Transpose3Dims_Int8) {
   testTranspose3Dims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+/// Test that Transpose optimization into Reshape yields expected results.
+TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2, 4}, "batch", false);
+  auto IH = bindings_.allocate(batch)->getHandle();
+  for (size_t i = 0; i < 24; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  Node *T = F_->createTranspose("transpose", batch, {1, 2, 0, 3});
+  Node *R = F_->createBatchedReduceMean("reduce.mean", T, {2, 3});
+  SaveNode *O = F_->createSave("ret", R);
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(O->getPlaceholder())->getHandle();
+  std::vector<size_t> expectedDims = {3, 2};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+
+  std::vector<float> expectedValues = {2.5f, 6.5f, 10.5f, 14.5f, 18.5f, 22.5f};
+  for (size_t i = 0; i < 3 * 2; i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
 /// Check that gather on Int64ITy/size_t works.
 TEST_P(OperatorTest, GatherSizeT) {
   ENABLED_BACKENDS(Interpreter, CPU);

@@ -35,7 +35,8 @@ Below you can see the list of currently supported graph optimizations:
   * Optimization of transpose nodes
 
     This optimization combines multiple consecutive transpose nodes
-    into a single node, and also eliminates identity transpose nodes.
+    into a single node, eliminates identity transpose nodes, and optimizes 
+    transpose nodes into reshape nodes when they actually move no data.
 
   * Sinking of transpose operations below other operations
 

@@ -48,14 +48,20 @@ Scheduler *createScheduler(SchedulerKind schedulerKind, Function &G,
 
 void IRFunction::scheduleGraph(NodesPtrList &Schedule) {
   Schedule.clear();
-  for (auto &N : G_->getParent()->getConstants()) {
+  auto constants = G_->findConstants();
+  auto placeholders = G_->findPlaceholders();
+  for (auto &N : constants) {
     Schedule.push_back(N);
   }
-  for (auto &N : G_->getParent()->getPlaceholders()) {
+  for (auto &N : placeholders) {
     Schedule.push_back(N);
   }
-  auto numVars = G_->getParent()->getConstants().size();
-  auto numPlaceholders = G_->getParent()->getPlaceholders().size();
+  for (auto &N : G_->getMetadataPlaceholders()) {
+    Schedule.push_back(N);
+  }
+  auto numVars = constants.size();
+  auto numPlaceholders =
+      placeholders.size() + G_->getMetadataPlaceholders().size();
   (void)numVars;
   (void)numPlaceholders;
   std::unique_ptr<Scheduler> scheduler{

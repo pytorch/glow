@@ -1142,44 +1142,6 @@ static void optimizeReduceMean(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// Pool optimization.
-static void optimizePool(Function *F) {
-  auto &nodes = F->getNodes();
-
-  // For each node:
-  for (auto &node : nodes) {
-    // Swap the order of Relu->MaxPool, to perform the RELU operation on a
-    // smaller tensor. This optimization is not a major performance win. The
-    // RELU operation takes a small fraction of the time, and reordering the
-    // nodes does not give us much. However, reordering the buffers allows us
-    // to reuse the memory buffer of the pool operation and potentially save
-    // memory.
-    if (auto *PL = dyn_cast<MaxPoolNode>(&node)) {
-      auto *RL = dyn_cast<ReluNode>(PL->getInput());
-
-      if (!RL) {
-        continue;
-      }
-
-      // We don't want to increase the number of operations in the program, so
-      // perform this transformation if the relu has a single user, which is
-      // the pooling operation.
-      if (!RL->hasOneUse()) {
-        continue;
-      }
-
-      auto *NPL =
-          F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernels(),
-                           PL->getStrides(), PL->getPads());
-      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
-          RL->getResult().getType(), NPL->getResult().dims());
-      auto *NRL = F->createRELU(RL->getName(), NPL, reluOutTy);
-      PL->getResult().replaceAllUsesOfWith(NRL);
-      continue;
-    }
-  } // For all nodes in the graph.
-}
-
 /// \returns a uniquely used Constant with the same contents as \p node. If \p
 /// node is not a Constant then \returns a nullptr. If \node is a Constant which
 /// has a single use, \p node is returned. If \node is a Constant which has
@@ -1804,6 +1766,37 @@ static void optimizeSliceOfSplat(Function *F) {
         F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
                        splatNode->getValue());
     sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
+  }
+}
+
+/// Optimize TransposeNode into ReshapeNode when it actually moves no data.
+static void optimizeTransposeIntoReshape(Function *F) {
+  for (auto &node : F->getNodes()) {
+    auto *TR = dyn_cast<TransposeNode>(&node);
+    if (!TR)
+      continue;
+    auto inputNode = TR->getInput();
+    auto inputDims = inputNode.dims();
+    auto outputDims = TR->getResult().dims();
+    // Transpose moves no data if input/output dimensions match after they both
+    // drop dimensions of size 1. E.g. transposing [1 5 1 15] into [5 15 1 1]
+    // produces vectors (1, 3) for both dimensions so optimization is executed.
+    auto shuffle = TR->getShuffle();
+    ShapeVector inDims;
+    ShapeVector outDims;
+    for (size_t i = 0; i < inputDims.size(); i++) {
+      if (inputDims[i] != 1) {
+        inDims.push_back(i);
+      }
+      if (outputDims[i] != 1) {
+        outDims.push_back(shuffle[i]);
+      }
+    }
+    if (inDims != outDims) {
+      continue;
+    }
+    auto *RS = F->createReshape(TR->getName(), inputNode, outputDims);
+    TR->getResult().replaceAllUsesOfWith(RS);
   }
 }
 
@@ -2468,15 +2461,16 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
     DCE(F);
   }
 
+  // Transposes that don't move data are optimized into Reshapes, which enables
+  // further optimizations.
+  optimizeTransposeIntoReshape(F);
+
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
   optimizeReshape(F);
   if (opts.mode == CompilationMode::Infer) {
     transposeConstants(F);
   }
-
-  // Optimize the pooling operation.
-  optimizePool(F);
 
   // Perform Common Subexpression Elimination.
   CSE(F);

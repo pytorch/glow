@@ -56,15 +56,23 @@ struct TraceEvent {
 
   static void dumpTraceEvents(std::vector<TraceEvent> &events,
                               llvm::StringRef filename);
+
+  static uint64_t now();
 };
 
-/// Tracing / Profiling events map for a compiled function.
+/// Tracing / Profiling events map for a CompiledFunction.
+/// This class encodes information on how to read event metrics out of Tensors
+/// and into TraceEvents, and is used by
+/// CompiledFunction::translateTraceEvents().
 struct TraceInfo {
   TraceInfo() = default;
   TraceInfo(bool e, size_t d) : enabled(e), dataSize(d) {}
 
   /// Whether tracing is enabled for this run.
   bool enabled{false};
+
+  /// Whether the function was auto instrumented.
+  bool autoInstrumented{false};
 
   /// The size of each item in the backing Tensor.
   size_t dataSize{0};
@@ -73,13 +81,89 @@ struct TraceInfo {
     size_t index;
     std::string name;
     std::string type;
+
+    // additional info per backend. May not be present.
+    std::string context;
   };
 
   std::map<Placeholder *, std::vector<Event>> events;
 
   void add(Placeholder *PH, size_t index, std::string name, std::string type) {
-    events[PH].push_back({index, std::move(name), std::move(type)});
+    events[PH].push_back({index, std::move(name), std::move(type), ""});
   }
+
+  void add(Placeholder *PH, size_t index, std::string name, std::string type,
+           std::string context) {
+    events[PH].push_back(
+        {index, std::move(name), std::move(type), std::move(context)});
+  }
+};
+
+/// The amount and type of TraceEvents that should appear in the trace.
+enum class TraceLevel {
+  NONE,     // No trace events.
+  RUNTIME,  // Glow runtime events only.
+  OPERATOR, // Backend operator instrumentation only.
+  STANDARD, // Glow runtime events and backend operator events.
+  DEBUG     // Full debug events with extra information.
+};
+
+/// A context for storing TraceEvents throughout a run (ie. between partitioned
+/// CompiledFunctions).
+class TraceContext {
+  /// The list of materialized Events filled out with timestamp and metadata.
+  std::vector<TraceEvent> traceEvents_;
+
+  /// The detail level of tracing for this run.
+  TraceLevel traceLevel_{TraceLevel::NONE};
+
+  /// The thread (tid) used in the output tracing, allowing separation of events
+  /// on different contexts.
+  int traceThread_{0};
+
+public:
+  TraceContext(TraceLevel level, int thread)
+      : traceLevel_(level), traceThread_(thread) {}
+  /// \returns TraceEvents for the last run.
+  std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
+
+  int getTraceThread() const { return traceThread_; }
+  void setTraceThread(int tid) { traceThread_ = tid; }
+
+  TraceLevel getTraceLevel() { return traceLevel_; }
+  void setTraceLevel(TraceLevel level) { traceLevel_ = level; }
+
+  void logTraceEvent(llvm::StringRef name, llvm::StringRef type = "i",
+                     std::map<std::string, std::string> args = {});
+};
+
+/// Helper class which uses RAII for the start and end times of a TraceEvent.
+/// At creation will create a "begin" TraceEvent and at destuction (or end())
+/// will create an "end" TraceEvent.
+class ScopedTraceBlock {
+  /// The context to log to.
+  TraceContext *context_;
+
+  /// The name of the event.
+  llvm::StringRef name_;
+
+  /// Additional metadata associated with the event, which will be visible in
+  /// the properties display of the event in the tracing visualizer.
+  std::map<std::string, std::string> args_;
+
+  /// Whether this event has already logged the "end" event, to avoid logging it
+  /// twice.
+  bool end_{false};
+
+public:
+  ScopedTraceBlock(TraceContext *context, llvm::StringRef name);
+  ~ScopedTraceBlock();
+
+  /// Adds an argument to the metadata for this object.
+  ScopedTraceBlock &addArg(llvm::StringRef key, llvm::StringRef value);
+
+  /// Triggers the "end" event before destruction of the object.
+  void end();
 };
 
 } // namespace glow

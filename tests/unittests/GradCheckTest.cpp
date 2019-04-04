@@ -91,7 +91,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
                       float delta, float allowedError) {
   TrainingConfig TC;
 
-  auto &F = *EE.getModule().getFunction("main");
+  auto *F = EE.getModule().getFunction("main");
 
   // Allocate result, inputVar and expVar.
   auto resultTensor = bindings.allocate(result->getPlaceholder());
@@ -103,7 +103,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
   size_t sampleCounter = 0;
 
   // Create a function that trains the network.
-  Function *TF = glow::differentiate(&F, TC);
+  Function *TF = glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train, TF);
 
   // The network might have variables, other than inputVar and expVar.
@@ -114,7 +114,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
   // Create a version of the network that records the gradients to some side
   // table instead of updating them.
   VariableGradientsList varGrads;
-  Function *recordNet = glow::differentiate(&F, TC, "record", &varGrads);
+  Function *recordNet = glow::differentiate(F, TC, "record", &varGrads);
   allocateGrads(bindings, varGrads);
   EE.compile(CompilationMode::Train, recordNet);
 
@@ -128,7 +128,7 @@ void performGradCheck(ExecutionEngine &EE, PlaceholderBindings &bindings,
            {inputs, outputs});
 
   // Compile the original network in inference mode.
-  EE.compile(CompilationMode::Infer, &F);
+  EE.compile(CompilationMode::Infer, F);
 
   auto analyticalGradsH = gradVarTensor->getHandle();
   auto inputsH = inputs->getHandle<>();

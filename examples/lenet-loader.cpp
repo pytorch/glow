@@ -44,8 +44,7 @@ int main() {
   // Read an example PNG and add it to an input batch.
   auto image = glow::readPngImageAndPreprocess(
       "tests/images/mnist/5_1087.png", glow::ImageNormalizationMode::k0to1,
-      glow::ImageChannelOrder::BGR, glow::ImageLayout::NCHW,
-      /* useImagenetNormalization */ false);
+      glow::ImageChannelOrder::BGR, glow::ImageLayout::NCHW);
   glow::Tensor batch(inputType);
   batch.getHandle<>().insertSlice(image, 0);
 

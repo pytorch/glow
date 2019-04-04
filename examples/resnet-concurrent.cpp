@@ -196,11 +196,9 @@ int main(int argc, char **argv) {
     }
 
     std::string path = dirIt->path();
-
-    auto image =
-        readPngImageAndPreprocess(path, ImageNormalizationMode::k0to1,
-                                  ImageChannelOrder::BGR, ImageLayout::NCHW,
-                                  /* useImagenetNormalization */ true);
+    auto image = readPngImageAndPreprocess(
+        path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
+        ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
 
     Tensor batch = image.getUnowned(inputType->dims());
 
