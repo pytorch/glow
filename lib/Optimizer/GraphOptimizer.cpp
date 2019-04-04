@@ -1142,44 +1142,6 @@ static void optimizeReduceMean(Function *F) {
   } // For all nodes in the graph.
 }
 
-/// Pool optimization.
-static void optimizePool(Function *F) {
-  auto &nodes = F->getNodes();
-
-  // For each node:
-  for (auto &node : nodes) {
-    // Swap the order of Relu->MaxPool, to perform the RELU operation on a
-    // smaller tensor. This optimization is not a major performance win. The
-    // RELU operation takes a small fraction of the time, and reordering the
-    // nodes does not give us much. However, reordering the buffers allows us
-    // to reuse the memory buffer of the pool operation and potentially save
-    // memory.
-    if (auto *PL = dyn_cast<MaxPoolNode>(&node)) {
-      auto *RL = dyn_cast<ReluNode>(PL->getInput());
-
-      if (!RL) {
-        continue;
-      }
-
-      // We don't want to increase the number of operations in the program, so
-      // perform this transformation if the relu has a single user, which is
-      // the pooling operation.
-      if (!RL->hasOneUse()) {
-        continue;
-      }
-
-      auto *NPL =
-          F->createMaxPool(PL->getName(), RL->getInput(), PL->getKernels(),
-                           PL->getStrides(), PL->getPads());
-      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
-          RL->getResult().getType(), NPL->getResult().dims());
-      auto *NRL = F->createRELU(RL->getName(), NPL, reluOutTy);
-      PL->getResult().replaceAllUsesOfWith(NRL);
-      continue;
-    }
-  } // For all nodes in the graph.
-}
-
 /// \returns a uniquely used Constant with the same contents as \p node. If \p
 /// node is not a Constant then \returns a nullptr. If \node is a Constant which
 /// has a single use, \p node is returned. If \node is a Constant which has
@@ -2509,9 +2471,6 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   if (opts.mode == CompilationMode::Infer) {
     transposeConstants(F);
   }
-
-  // Optimize the pooling operation.
-  optimizePool(F);
 
   // Perform Common Subexpression Elimination.
   CSE(F);
