@@ -2464,6 +2464,8 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Transposes that don't move data are optimized into Reshapes, which enables
   // further optimizations.
   optimizeTransposeIntoReshape(F);
+  // Need to remove old uses that would prohibit Reshape(Constant) optimization.
+  DCE(F);
 
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.

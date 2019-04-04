@@ -235,6 +235,35 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
 }
 
+/// Check that reshape constant folding is done before BatchNorm optimization,
+/// where Reshape is a result of Transpose 2 Reshape optimization,
+/// which allows to merge BatchNorm into Convolution with transposed weights.
+TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input", false);
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {5, 5, 3, 1}, "filter", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+
+  auto *TN = F_->createTranspose("transpose", filter, {3, 0, 1, 2});
+  auto *CV = F_->createConv("conv", input, TN, bias,
+                            mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 1}),
+                            5, 1, 2, 1);
+  auto *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  // Initialize to ensure that constant tensors are not optimized out.
+  bindings_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+}
+
 /// Check that the batch normalization optimization is
 /// not blocked by predicates and that it preserves them.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
