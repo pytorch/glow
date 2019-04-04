@@ -103,12 +103,18 @@ using DAGListTy = std::vector<DAG>;
 /// member variable to it's correct BackendKind.
 class DeviceConfig {
   const BackendKind backendKind_;
-
-protected:
-  DeviceConfig(BackendKind kind) : backendKind_(kind) {}
+  std::string name_;
 
 public:
+  DeviceConfig(BackendKind kind) : backendKind_(kind) {}
+  DeviceConfig(BackendKind kind, std::string name)
+      : backendKind_(kind), name_(name) {}
+
   BackendKind getBackendKind() { return backendKind_; }
+
+  llvm::StringRef getName() { return name_; }
+  bool hasName() { return name_ != ""; }
+  void setName(llvm::StringRef name) { name_ = name; }
 };
 
 } // namespace runtime

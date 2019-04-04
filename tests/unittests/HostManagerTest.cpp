@@ -41,13 +41,11 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
 }
 
 std::unique_ptr<HostManager> createHostManager(BackendKind kind) {
-  std::vector<DeviceManagerConfig> configs;
-  auto config = DeviceManagerConfig();
-  config.deviceConfig = nullptr;
-  config.backendKind = kind;
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto config = llvm::make_unique<DeviceConfig>(kind);
   configs.push_back(std::move(config));
   std::unique_ptr<HostManager> hostManager =
-      llvm::make_unique<HostManager>(configs);
+      llvm::make_unique<HostManager>(std::move(configs));
   return hostManager;
 }
 

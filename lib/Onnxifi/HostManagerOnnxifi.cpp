@@ -21,12 +21,11 @@ namespace onnxifi {
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackendId::createHostManager(glow::BackendKind kind) {
-  std::vector<runtime::DeviceManagerConfig> configs;
-  runtime::DeviceManagerConfig config;
-  config.deviceConfig = nullptr;
-  config.backendKind = kind;
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+
+  auto config = llvm::make_unique<runtime::DeviceConfig>(kind);
   configs.push_back(std::move(config));
-  return llvm::make_unique<runtime::HostManager>(configs);
+  return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 void HostManagerBackendId::runNetwork(const Graph *graph,

@@ -103,16 +103,14 @@ int main(int argc, char **argv) {
   llvm::outs() << "Initializing " << numDevices
                << " CPU Devices on HostManager.\n";
 
-  std::vector<DeviceManagerConfig> configs;
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = DeviceManagerConfig();
-    config.deviceConfig = nullptr;
-    config.backendKind = BackendKind::CPU;
+    auto config = llvm::make_unique<DeviceConfig>(BackendKind::CPU);
     configs.push_back(std::move(config));
   }
 
   std::unique_ptr<HostManager> hostManager =
-      llvm::make_unique<HostManager>(configs);
+      llvm::make_unique<HostManager>(std::move(configs));
 
   // Load model, create a context, and add to HostManager.
 

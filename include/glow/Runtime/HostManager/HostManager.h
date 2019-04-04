@@ -29,11 +29,6 @@
 namespace glow {
 namespace runtime {
 
-struct DeviceManagerConfig {
-  std::unique_ptr<DeviceConfig> deviceConfig;
-  BackendKind backendKind;
-};
-
 class Executor;
 
 class Provisioner;
@@ -119,11 +114,11 @@ public:
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<ExecutionContext> context,
                              ResultCBTy callback);
-  HostManager(const std::vector<DeviceManagerConfig> &configs);
+  HostManager(std::vector<std::unique_ptr<DeviceConfig>> configs);
 
   /// Initialize the HostManager with the given \p configs creating one
   /// DeviceManager for each config listed.
-  llvm::Error init(const std::vector<DeviceManagerConfig> &configs);
+  llvm::Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);
 
   ~HostManager();
 };
