@@ -15,6 +15,7 @@
  */
 
 #include "BundleSaver.h"
+#include "CommandLine.h"
 
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
@@ -133,7 +134,8 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
 
   auto &M = irgen_->getModule();
   auto bundleName = irgen_->getMainEntryName();
-  auto bundleCodeOutput = (outputDir + "/" + bundleName + ".o").str();
+  std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
+  auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
                           << "bundle name: " << bundleName << "\n"
@@ -151,6 +153,23 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
 #else
     llvm::WriteBitcodeToFile(&M, outputFile);
 #endif
+    outputFile.flush();
+    if (!llvmCompiler.empty()) {
+      // Compile bitcode using an external LLVM compiler.
+      std::string cmd = llvmCompiler;
+      for (auto option : llvmCompilerOptions) {
+        cmd += " " + option + " ";
+      }
+      cmd += " " + bundleCodeOutput;
+      std::string bundleObjectCodeOutputOpt =
+          " -o " + (outputDir + "/" + bundleName + ".o").str();
+      cmd += bundleObjectCodeOutputOpt;
+      if (system(cmd.c_str())) {
+        llvm::errs() << "Error running external LLVM compiler:\n"
+                     << cmd << "\n";
+        GLOW_UNREACHABLE("Error running external LLVM compiler");
+      }
+    }
   } else if (fileName.endswith(".o")) {
     // Emit the object file.
     llvm::legacy::PassManager PM;
