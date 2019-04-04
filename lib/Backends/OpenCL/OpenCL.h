@@ -192,6 +192,8 @@ public:
 
   BackendKind getBackendKind() const override { return BackendKind::OpenCL; }
 
+  std::string getBackendName() const override { return "OpenCL"; }
+
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 

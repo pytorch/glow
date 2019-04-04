@@ -151,6 +151,8 @@ public:
 
   BackendKind getBackendKind() const override { return BackendKind::Habana; }
 
+  std::string getBackendName() const override { return "Habana"; }
+
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override;
 

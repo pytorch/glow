@@ -38,6 +38,8 @@ public:
     return BackendKind::Interpreter;
   }
 
+  std::string getBackendName() const override { return "Interpreter"; }
+
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
