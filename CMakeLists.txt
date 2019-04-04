@@ -85,8 +85,6 @@ if (GLOW_WITH_HABANA)
   add_definitions(-DGLOW_WITH_HABANA=1)
 endif ()
 
-message("Did we defined synapse lib? ${SYNAPSE_LIB}")
-
 # Top level setup for external backends
 ExternalBackendsInit()
 
