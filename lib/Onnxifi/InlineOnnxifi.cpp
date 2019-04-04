@@ -22,15 +22,12 @@
 
 #include "llvm/Support/MD5.h"
 
-#include <unistd.h>
-
 namespace glow {
 namespace onnxifi {
 
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
-  return strFormat("/tmp/glow-profile-%d-%s.yaml", getuid(),
-                   hash.str().c_str());
+  return strFormat("/tmp/glow-profile-%s.yaml", hash.str().c_str());
 }
 
 void computeModelHash(const void *onnxModel, size_t onnxModelSize,
@@ -73,7 +70,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     std::string oldName = function_->getName();
     function_->setName("old");
     auto *Q = quantization::quantizeFunction(
-        executionEngine_, quantization::Schema::Symmetric, QI,
+        *executionEngine_.getBackend(), quantization::Schema::Symmetric, QI,
         ElemKind::Int8QTy, function_, loweredMap_, oldName, {}, false);
     Q->getParent()->eraseFunction(function_);
     function_ = Q;

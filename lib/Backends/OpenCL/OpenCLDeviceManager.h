@@ -25,6 +25,7 @@
 #endif
 
 namespace glow {
+class OpenCLFunction;
 namespace runtime {
 
 /// A class that contains an openCL device buffer. It frees the buffer when it
@@ -35,20 +36,27 @@ namespace runtime {
 class OpenCLBuffer {
   /// The OpenCL buffer being stored.
   cl_mem buffer_;
+
   /// Count of functions using this buffer.
   unsigned int users_{0};
+
   /// Size of the buffer in bytes.
   const size_t size_{0};
 
 public:
   ~OpenCLBuffer() { clReleaseMemObject(buffer_); }
-  OpenCLBuffer(cl_mem &buffer, size_t size) : buffer_(buffer), size_(size) {}
+
+  OpenCLBuffer(cl_mem buffer, size_t size) : buffer_(buffer), size_(size) {}
+
   /// Returns the stored buffer.
   cl_mem getBuffer() { return buffer_; }
+
   /// Increment user count by 1 and return new count.
   unsigned int incrementUsers() { return users_++; }
+
   /// Decrement user count by 1 and return new count.
   unsigned int decrementUsers() { return users_--; }
+
   /// Get size of buffer in bytes.
   size_t getSize() { return size_; }
 };
@@ -69,8 +77,6 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   cl_device_id deviceId_;
   /// CL compute context.
   cl_context context_;
-  /// CL compute command queue.
-  cl_command_queue commands_;
 
   /// Enable profiling flag.
   bool doProfile_{false};
@@ -102,6 +108,14 @@ public:
   /// device. This is not a promise as memory cost could vary due to alignment,
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  /// Requests a command queue for the current run. Currently this creates a new
+  /// queue for each run. It could be extended to use a pool of pre-allocated
+  /// queues.
+  cl_command_queue requestRunCommandQueue(CompiledFunction *function);
+
+  /// Returns a command queue. Currently this frees the queue.
+  void returnRunCommandQueue(cl_command_queue commands);
 
 protected:
   /// Adds functions to the device. Calls to this are serialized so concurrency

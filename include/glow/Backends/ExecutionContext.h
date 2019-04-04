@@ -49,9 +49,9 @@ public:
 class ExecutionContext {
   std::unique_ptr<PlaceholderBindings> placeholderBindings_;
   std::unique_ptr<DeviceBindings> deviceBindings_;
+  std::unique_ptr<TraceContext> traceContext_;
 
   /// Trace Events recorded during this run.
-  std::vector<TraceEvent> traceEvents_;
 
 public:
   ExecutionContext()
@@ -64,9 +64,6 @@ public:
                    std::unique_ptr<DeviceBindings> devices)
       : placeholderBindings_(std::move(bindings)),
         deviceBindings_(std::move(devices)) {}
-
-  /// \returns TraceEvents for the last run.
-  std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
   /// \returns a non-owning pointer to the PlaceholderBindings.
   PlaceholderBindings *getPlaceholderBindings() {
@@ -98,6 +95,19 @@ public:
     return bindings;
   }
 
+  /// \returns a non-owning pointer to the TraceContext.
+  TraceContext *getTraceContext() { return traceContext_.get(); }
+
+  /// \returns a const non-owning pointer to the TraceContext.
+  const TraceContext *getTraceContext() const { return traceContext_.get(); }
+
+  /// Sets the TraceContext and \returns the existing value.
+  std::unique_ptr<TraceContext>
+  setTraceContext(std::unique_ptr<TraceContext> traceContext) {
+    std::swap(traceContext_, traceContext);
+    return traceContext;
+  }
+
   /// Clones this ExecutionContext, but does not clone underlying Tensors.
   ExecutionContext clone() {
     if (deviceBindings_) {
@@ -107,6 +117,23 @@ public:
     } else {
       return ExecutionContext(llvm::make_unique<PlaceholderBindings>(
           placeholderBindings_->clone()));
+    }
+  }
+
+  /// A helper function to create a scoped TraceEvent builder.
+  /// If there is no TraceContext, this will still create an object, but it will
+  /// do nothing.
+  ScopedTraceBlock scopedEvent(llvm::StringRef name) {
+    return ScopedTraceBlock(getTraceContext(), name);
+  }
+
+  /// A helper function to log a TraceEvent at the current time, if there is a
+  /// TraceContext available.
+  void logTraceEvent(llvm::StringRef name, llvm::StringRef type = "i",
+                     std::map<std::string, std::string> args = {}) {
+    TraceContext *traceContext = getTraceContext();
+    if (traceContext) {
+      traceContext->logTraceEvent(name, type, std::move(args));
     }
   }
 };

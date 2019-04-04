@@ -428,6 +428,26 @@ static void dumpIRInContext(const Value *V, llvm::raw_ostream &out) {
   }
 }
 
+std::vector<const Constant *> IRFunction::findConstants() const {
+  std::vector<const Constant *> constants;
+  for (auto &node : variableMap_) {
+    if (const Constant *constant = dyn_cast<const Constant>(node.first)) {
+      constants.push_back(constant);
+    }
+  }
+  return constants;
+}
+
+std::vector<const Placeholder *> IRFunction::findPlaceholders() const {
+  std::vector<const Placeholder *> placeholders;
+  for (auto &node : variableMap_) {
+    if (const Placeholder *PH = dyn_cast<const Placeholder>(node.first)) {
+      placeholders.push_back(PH);
+    }
+  }
+  return placeholders;
+}
+
 /// Dump the instruction numbers of all users of \p V.
 static void dumpUsers(const Value *V, llvm::raw_ostream &out,
                       InstructionNumbering &InstrNumbering) {
