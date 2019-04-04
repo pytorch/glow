@@ -288,7 +288,8 @@ struct HyphenNetwork {
                            TrainingConfig &TC) {
     // Compilation is destructive because of target-specific lowering.
     // Compile a clone of the inference function.
-    EE.compile(CompilationMode::Infer, infer_->clone(name));
+    auto *CF = infer_->clone(name);
+    EE.compile(CompilationMode::Infer, CF);
 
     auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];

@@ -1496,3 +1496,6 @@ __kernel void scatterassignW(__global void *mem, cl_uint32_t data,
                              cl_uint32_t sliceSize) {
   scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
+
+/// An empty kernel used as a checkpoint for TraceEvents.
+__kernel void checkpoint(__global void *mem) {}

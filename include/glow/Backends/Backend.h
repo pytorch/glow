@@ -35,6 +35,7 @@ enum class BackendKind {
   Interpreter, // Execute the network with the built-in interpreter.
   OpenCL,      // Run the code on an OpenCL device.
   CPU,         // Compile and run the code on the host.
+  Habana,      // Compile and run the code on a Habana accelerator.
 };
 
 // This is the interface that glow backends need to implement.

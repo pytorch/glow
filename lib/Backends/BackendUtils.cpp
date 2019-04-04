@@ -88,7 +88,7 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   MemoryAllocator placeholders("placeholders", 0);
 
   // Allocate constants.
-  for (auto const *V : F.getParent()->getConstants()) {
+  for (auto const *V : F.findConstants()) {
     auto size = V->getType()->getSizeInBytes();
     auto offset = constants.allocate(size, V);
     runtime::RuntimeSymbolInfo symbol;
@@ -99,7 +99,7 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   }
 
   // Allocate placeholders.
-  for (auto const *V : F.getParent()->getPlaceholders()) {
+  for (auto const *V : F.findPlaceholders()) {
     auto size = V->getType()->getSizeInBytes();
     auto offset = placeholders.allocate(size, V);
     runtime::RuntimeSymbolInfo symbol;
@@ -123,7 +123,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
   // Compute the offsets for Constants.
-  for (auto &v : F.getGraph()->getParent()->getConstants()) {
+  for (auto &v : F.findConstants()) {
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F.getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
@@ -137,7 +137,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
 
   // Compute the offsets for Placeholders.
-  for (auto &v : F.getGraph()->getParent()->getPlaceholders()) {
+  for (auto &v : F.findPlaceholders()) {
     // Get the WeightVar for each Placeholder to calculate offsets.
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F.getWeightForNode(v));

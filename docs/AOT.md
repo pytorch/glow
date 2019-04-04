@@ -87,15 +87,15 @@ the compiled network. The type of this symbol is always the following struct:
 ```c++
 struct BundleConfig {
   // Size of the constant weight variables memory area.
-  size_t constantWeightVarsMemSize;
+  uint64_t constantWeightVarsMemSize;
   // Size of the mutable weight variables memory area.
-  size_t mutableWeightVarsMemSize;
+  uint64_t mutableWeightVarsMemSize;
   // Size of the activations memory area.
-  size_t activationsMemSize;
+  uint64_t activationsMemSize;
   // Alignment to be used for weights and activations.
-  size_t alignment;
+  uint64_t alignment;
   // Number of symbols in the symbol table.
-  size_t numSymbols;
+  uint64_t numSymbols;
   // Symbol table.
   const SymbolTableEntry *symbolTable;
 };
@@ -112,9 +112,9 @@ struct SymbolTableEntry {
   // Name of a variable.
   const char *name;
   // Offset of the variable inside the memory area.
-  size_t offset;
+  uint64_t offset;
   // The number of elements inside this variable.
-  size_t size;
+  uint64_t size;
   // The kind of the variable. 1 if it is a mutable variable, 0 otherwise.
   char kind;
 };

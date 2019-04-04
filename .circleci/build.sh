@@ -58,6 +58,7 @@ cd ${GLOW_DIR}
 mkdir build && cd build
 CMAKE_ARGS=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
+CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
