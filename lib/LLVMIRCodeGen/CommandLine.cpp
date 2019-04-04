@@ -32,3 +32,13 @@ llvm::cl::list<std::string>
     llvmTargetFeatures("target-feature",
                        llvm::cl::desc("LLVM target/CPU features to be used"),
                        llvm::cl::CommaSeparated, llvm::cl::ZeroOrMore);
+
+llvm::cl::opt<std::string>
+    llvmCompiler("llvm-compiler",
+                 llvm::cl::desc("External LLVM compiler (e.g. llc) to use for "
+                                "compiling LLVM bitcode into machine code"));
+
+llvm::cl::list<std::string> llvmCompilerOptions(
+    "llvm-compiler-opt",
+    llvm::cl::desc("Options to pass to the external LLVM compiler"),
+    llvm::cl::ZeroOrMore);
