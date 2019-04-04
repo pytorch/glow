@@ -1159,61 +1159,6 @@ TEST_F(GraphOptz, sinkTransposeBelowPad) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST_F(GraphOptz, poolBelowReluSwapped) {
-  Node *A =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
-  Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
-
-  EXPECT_EQ(F_->getNodes().size(), 3);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
-
-  // Expecting RELU->Output rather than Pool->Output.
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<ReluNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
-  EXPECT_EQ(F_->getNodes().size(), 3);
-}
-
-TEST_F(GraphOptz, poolBelowReluNotSwappedIfModeNotMax) {
-  Node *A =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
-  Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createAvgPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
-
-  EXPECT_EQ(F_->getNodes().size(), 3);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
-
-  // Expecting Pool->Output (no swap).
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<AvgPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
-  EXPECT_EQ(F_->getNodes().size(), 3);
-}
-
-TEST_F(GraphOptz, poolBelowReluNotSwappedIfNotSingleUse) {
-  Node *A =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
-  Node *R = F_->createRELU("relu", A);
-  Node *PL = F_->createMaxPool("pool", R, 1, 10, 20);
-  Node *O = F_->createSave("ret", PL);
-  F_->createSave("ret", R);
-
-  EXPECT_EQ(F_->getNodes().size(), 4);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
-
-  // Expecting Pool->Output (no swap).
-  EXPECT_TRUE(llvm::isa<SaveNode>(O));
-  EXPECT_TRUE(llvm::isa<MaxPoolNode>(llvm::dyn_cast<SaveNode>(O)->getInput()));
-
-  EXPECT_EQ(F_->getNodes().size(), 4);
-}
-
 /// A helper predicate to check if the provided node has the same address as a
 /// pre-defined address provided in constructor. This is useful if you need to
 /// check that a given node is still in the graph. In general, it is not safe to
