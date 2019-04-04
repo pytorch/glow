@@ -35,5 +35,10 @@ extern llvm::cl::opt<std::string> llvmCPU;
 /// be comma-separated and prefixed with +.
 /// Used as  -target-feature=+featureA,+featureB.
 extern llvm::cl::list<std::string> llvmTargetFeatures;
+//// External LLVM compiler (e.g. llc) to use for compiling LLVM bitcode into
+/// machine code.
+extern llvm::cl::opt<std::string> llvmCompiler;
+/// Set of options to pass to the external LLVM compiler.
+extern llvm::cl::list<std::string> llvmCompilerOptions;
 
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H
