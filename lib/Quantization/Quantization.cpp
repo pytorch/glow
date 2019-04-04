@@ -82,7 +82,10 @@ protected:
            "Missing quantization params for a node");
 
     const TensorQuantizationParams &TQP = valTQPIt->second;
-    // For bias of a conv op, it is quantized to int32.
+    // Bias of a conv or fc op is quantized to int32.
+    // As it is already represented as int32, there is no need to
+    // have non 0 offset. It also make sense to keep offset equal to 0 for
+    // performance reasons.
     if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind &&
         idx == ConvolutionNode::BiasIdx) {
       // For bias of a conv op, it is quantized to int32. Also, we should make
@@ -97,8 +100,9 @@ protected:
 
       float scaleInput = inputTy->getScale();
       float scaleWeights = weightsTy->getScale();
+
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                             scaleInput * scaleWeights, TQP.offset);
+                             scaleInput * scaleWeights, 0);
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
       // Get the input and weights types. This ensures the types will be
@@ -112,7 +116,7 @@ protected:
       float scaleInput = inputTy->getScale();
       float scaleWeights = weightsTy->getScale();
       return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                             scaleInput * scaleWeights, TQP.offset);
+                             scaleInput * scaleWeights, 0);
     } else if (use.getKind() == glow::Kinded::Kind::BatchedAddNodeKind &&
                idx == BatchedAddNode::SliceIdx) {
       // Check if this BatchedAdd was lowered from a FullyConnectedNode. If so
@@ -139,7 +143,7 @@ protected:
         float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
         float scaleWeights = getTargetTypeForOutput(MM->getRHS())->getScale();
         return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                               scaleInput * scaleWeights, TQP.offset);
+                               scaleInput * scaleWeights, 0);
       }
     }
     return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
