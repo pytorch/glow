@@ -456,7 +456,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // For any dependency that crosses a partition, add a placeholder and save
   // node. Record the dependence in the function graph.
   int logicalID = 0;
-  llvm::DenseMap<Node *, Placeholder *> placeholders;
+  std::unordered_map<NodeValue, Placeholder *> placeholders;
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
@@ -497,7 +497,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         }
 
         // If we've already created a placeholder for this dependence, use it.
-        auto it = placeholders.find(input.getNode());
+        auto it = placeholders.find(input);
         if (it != placeholders.end()) {
           N.setNthInput(inp, it->second);
           continue;
@@ -506,7 +506,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         // Create a new placeholder to represent this dependence.
         auto *save = inputF->createSave("tmp", input);
         auto *tmp = save->getPlaceholder();
-        placeholders[input.getNode()] = tmp;
+        placeholders[input] = tmp;
         N.setNthInput(inp, tmp);
       }
     }
