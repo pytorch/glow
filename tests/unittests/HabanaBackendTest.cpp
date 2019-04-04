@@ -15,11 +15,16 @@
  */
 
 #include "../../lib/Backends/Habana/Habana.h"
+#include "../../lib/Backends/Habana/HabanaDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 
 #include "gtest/gtest.h"
+
+#include <future>
+#include <thread>
+#include <vector>
 
 using namespace glow;
 
@@ -1402,4 +1407,153 @@ TEST_F(HabanaBackendTest, Mul) {
   Tensor expected(ElemKind::FloatTy, {8});
   expected.getHandle() = {8, 14, 18, 20, 20, 18, 14, 8};
   ASSERT_TRUE(out->isEqual(expected));
+}
+
+TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
+  // Test constants.
+  constexpr unsigned maxDeviceManagers = 6;
+  constexpr unsigned threadsPerDeviceManager = 6;
+  constexpr unsigned iterationsPerThread = 50;
+
+  using DeviceManager = glow::runtime::DeviceManager;
+  using RunIdentifierTy = glow::runtime::RunIdentifierTy;
+
+  // Create device managers.
+  std::vector<std::unique_ptr<DeviceManager>> deviceManagers;
+
+  for (unsigned i = 0; i < maxDeviceManagers; ++i) {
+    DeviceManager *deviceManager = new glow::runtime::HabanaDeviceManager();
+
+    if (deviceManager->init()) {
+      delete deviceManager;
+    } else {
+      deviceManagers.emplace_back(deviceManager);
+    }
+  }
+
+  // At least one DeviceManager is needed to continue.
+  ASSERT_GE(deviceManagers.size(), 0);
+
+  // Create function.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 32}, "input", false);
+  auto *weights1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 32}, "weights1", false);
+  // auto *weights2 =
+  //     mod_.createPlaceholder(ElemKind::FloatTy, {32, 32}, "weights2", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {32}, "bias", false);
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 32}, "output", false);
+
+  auto *fc1 = F_->createFullyConnected("fc1", input, weights1, bias);
+  // auto *fc2 = F_->createFullyConnected("fc2", fc1, weights2, bias);
+
+  F_->createSave("save", fc1, output);
+  ctx_.allocate(input)->getHandle().clear(1);
+  ctx_.allocate(weights1)->getHandle().clear(0);
+  // ctx_.allocate(weights2)->getHandle().clear(0);
+  ctx_.allocate(bias)->getHandle().clear(32);
+  ctx_.allocate(output);
+
+  glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
+
+  // Compile function.
+  glow::runtime::FunctionMapTy functions;
+  auto *backend = createBackend(BackendKind::Habana);
+  CompilationOptions opts;
+  opts.mode = CompilationMode::Infer;
+  backend->optimizeFunction(F_, opts);
+  auto compiledFunction = backend->compile(F_, opts);
+  functions.emplace(F_->getName(), compiledFunction.get());
+
+  // Add the function to each device.
+  std::vector<std::future<bool>> addNetworkFutures;
+
+  for (auto &deviceManager : deviceManagers) {
+    auto addNetworkPromise = std::make_shared<std::promise<bool>>();
+    addNetworkFutures.emplace_back(addNetworkPromise->get_future());
+    deviceManager->addNetwork(
+        &mod_, functions,
+        [promise = addNetworkPromise](const Module * /*module*/,
+                                      llvm::Error err) mutable {
+          promise->set_value(errToBool(std::move(err)));
+        });
+  }
+
+  for (auto &future : addNetworkFutures) {
+    ASSERT_FALSE(future.get());
+  }
+
+  // Run function.
+  std::vector<std::thread> threads;
+
+  for (auto &deviceManager : deviceManagers) {
+    for (size_t i = 0, t = threadsPerDeviceManager; i < t; ++i) {
+      threads.emplace_back([deviceManager = deviceManager.get(),
+                            functionName = F_->getName(), inputP = input,
+                            outputP = output]() mutable {
+        std::atomic<unsigned> completeIterations{1};
+        std::promise<void> threadDonePromise;
+        std::future<void> threadDoneFuture = threadDonePromise.get_future();
+
+        std::vector<std::unique_ptr<ExecutionContext>> inputExecutionContexts;
+        std::vector<std::shared_ptr<PlaceholderBindings>> outputBindings;
+
+        // Compute inputs and outputs for all iterations to increase congestion
+        // in runFunction (hopefully).
+        for (unsigned j = 0, e = iterationsPerThread; j < e; ++j) {
+          // Set inputs.
+          auto iBindings = llvm::make_unique<PlaceholderBindings>();
+          auto inputHandle = iBindings->allocate(inputP)->getHandle();
+          inputHandle.clear(1);
+
+          iBindings->allocate(outputP);
+
+          // Set expected outputs.
+          auto oBindings =
+              std::make_shared<PlaceholderBindings>(iBindings->clone());
+          auto outputHandle = oBindings->get(outputP)->getHandle();
+          outputHandle.clear(32);
+
+          inputExecutionContexts.emplace_back(
+              llvm::make_unique<ExecutionContext>(std::move(iBindings)));
+          outputBindings.emplace_back(std::move(oBindings));
+        }
+
+        for (unsigned j = 0, e = iterationsPerThread; j < e; ++j) {
+          // Run function.
+          deviceManager->runFunction(
+              functionName, std::move(inputExecutionContexts[j]),
+              [&threadDonePromise, &completeIterations,
+               expectedResultBindings = outputBindings[j]](
+                  RunIdentifierTy runId, llvm::Error err,
+                  std::unique_ptr<ExecutionContext> resultContext) {
+                EXPECT_FALSE(errToBool(std::move(err)));
+                EXPECT_TRUE(PlaceholderBindings::compare(
+                    resultContext->getPlaceholderBindings(),
+                    expectedResultBindings.get()));
+
+                // If all iterations are done (i.e. executed AND this callback
+                // has been called), fulfill the promise.
+                if (completeIterations++ == iterationsPerThread) {
+                  threadDonePromise.set_value();
+                }
+              });
+        }
+
+        // Wait for all callbacks given to runFunction to be called.
+        threadDoneFuture.wait();
+      });
+    }
+  }
+
+  // Join all threads.
+  for (auto &thread : threads) {
+    thread.join();
+  }
+
+  // Stop all devices.
+  for (auto &deviceManager : deviceManagers) {
+    EXPECT_FALSE(errToBool(deviceManager->stop()));
+  }
 }
