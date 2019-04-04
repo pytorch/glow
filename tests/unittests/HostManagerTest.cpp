@@ -60,25 +60,27 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   auto *pow = F->createPow("Pow" + std::to_string(functionNumber), X, 2.0);
   F->createSave("save" + std::to_string(functionNumber), pow);
 
-  errToBool(manager->addNetwork(module.get()));
+  // Expect this to be an Error because multiple networks with the same name
+  // have been added to HostManager
+  errToBool(manager->addNetwork(std::move(module)));
   manager->removeNetwork("function" + std::to_string(functionNumber));
 }
 
 TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
 
 TEST_F(HostManagerTest, addNetwork) {
-  auto mod = setupModule(6);
+  auto module = setupModule(6);
   auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(mod.get())));
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
 }
 
 TEST_F(HostManagerTest, runNetwork) {
-  Module mod;
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
       llvm::make_unique<ExecutionContext>();
 
-  Function *F = mod.createFunction("main");
-  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *XTensor = context->getPlaceholderBindings()->allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
@@ -87,7 +89,7 @@ TEST_F(HostManagerTest, runNetwork) {
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(&mod)));
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
 
   std::promise<void> runNetwork;
   auto ready = runNetwork.get_future();

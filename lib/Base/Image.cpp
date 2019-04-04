@@ -80,6 +80,19 @@ static llvm::cl::opt<bool, true> useImagenetNormalizationF(
     llvm::cl::cat(imageCat), llvm::cl::location(useImagenetNormalization),
     llvm::cl::init(false));
 
+llvm::cl::list<float> meanValues(
+    "mean",
+    llvm::cl::desc("Mean values m1,m2,m3..."
+                   "Count must be equal to number of input channels."),
+    llvm::cl::value_desc("float"), llvm::cl::ZeroOrMore,
+    llvm::cl::CommaSeparated, llvm::cl::cat(imageCat));
+
+llvm::cl::list<float> stddevValues(
+    "stddev",
+    llvm::cl::desc("Standard deviation values s1,s2,s3..."
+                   "Count must be equal to number of input channels."),
+    llvm::cl::value_desc("float"), llvm::cl::ZeroOrMore,
+    llvm::cl::CommaSeparated, llvm::cl::cat(imageCat));
 } // namespace glow
 
 /// Convert the normalization to numeric floating poing ranges.
@@ -135,16 +148,10 @@ std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
   return std::make_tuple(height, width, isGray);
 }
 
-/// These are standard normalization factors for imagenet, adjusted for
-/// normalizing values in the 0to255 range instead of 0to1, as seen at:
-/// https://github.com/pytorch/examples/blob/master/imagenet/main.py
-static constexpr float imagenetNormMean[] = {0.485 * 255.0, 0.456 * 255.0,
-                                             0.406 * 255.0};
-static constexpr float imagenetNormStd[] = {0.229, 0.224, 0.225};
-
 bool glow::readPngImage(Tensor *T, const char *filename,
                         std::pair<float, float> range,
-                        bool useImagenetNormalization) {
+                        llvm::ArrayRef<float> mean,
+                        llvm::ArrayRef<float> stddev) {
   unsigned char header[8];
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
@@ -231,9 +238,6 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
-  assert(!(useImagenetNormalization && numChannels != 3) &&
-         "Imagenet normalization can only be used with RGB images.");
-
   for (size_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
     for (size_t col_n = 0; col_n < width; col_n++) {
@@ -241,9 +245,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
           &(row[col_n * (hasAlpha ? (numChannels + 1) : numChannels)]);
       for (size_t i = 0; i < numChannels; i++) {
         float val = float(ptr[i]);
-        if (useImagenetNormalization) {
-          val = (val - imagenetNormMean[i]) / imagenetNormStd[i];
-        }
+        val = (val - mean[i]) / stddev[i];
         H.at({row_n, col_n, i}) = val * scale + bias;
       }
     }
@@ -261,7 +263,8 @@ bool glow::readPngImage(Tensor *T, const char *filename,
 
 bool glow::writePngImage(Tensor *T, const char *filename,
                          std::pair<float, float> range,
-                         bool useImagenetNormalization) {
+                         llvm::ArrayRef<float> mean,
+                         llvm::ArrayRef<float> stddev) {
   /* create file */
   FILE *fp = fopen(filename, "wb");
   if (!fp) {
@@ -327,9 +330,7 @@ bool glow::writePngImage(Tensor *T, const char *filename,
       png_byte *ptr = &(row[x * 4]);
       for (size_t i = 0; i < numChannels; i++) {
         float val = (H.at({y, x, i}) - bias) / scale;
-        if (useImagenetNormalization) {
-          val = (val * imagenetNormStd[i]) + imagenetNormMean[i];
-        }
+        val = (val * stddev[i]) + mean[i];
         ptr[i] = val;
       }
       ptr[3] = 0xff;
@@ -358,11 +359,12 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
                                        ImageNormalizationMode imageNormMode,
                                        ImageChannelOrder imageChannelOrder,
                                        ImageLayout imageLayout,
-                                       bool useImagenetNormalization) {
+                                       llvm::ArrayRef<float> mean,
+                                       llvm::ArrayRef<float> stddev) {
   Tensor imageData;
   auto range = normModeToRange(imageNormMode);
-  bool loadSuccess = !readPngImage(&imageData, filename.data(), range,
-                                   useImagenetNormalization);
+  bool loadSuccess =
+      !readPngImage(&imageData, filename.data(), range, mean, stddev);
   GLOW_ASSERT(loadSuccess && "Error reading input image.");
   size_t imgHeight = imageData.dims()[0];
   size_t imgWidth = imageData.dims()[1];
@@ -396,8 +398,7 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                                    Tensor *inputImageData,
                                    ImageNormalizationMode imageNormMode,
                                    ImageChannelOrder imageChannelOrder,
-                                   ImageLayout imageLayout,
-                                   bool useImagenetNormalization) {
+                                   ImageLayout imageLayout) {
   assert(!filenames.empty() &&
          "There must be at least one filename in filenames.");
   unsigned numImages = filenames.size();
@@ -408,6 +409,35 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
   bool isGray;
   std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
   const size_t numChannels = isGray ? 1 : 3;
+
+  // Assign mean and stddev for input normalization.
+  llvm::ArrayRef<float> mean;
+  llvm::ArrayRef<float> stddev;
+  if (!meanValues.empty()) {
+    GLOW_ASSERT(meanValues.size() == numChannels &&
+                "Number of mean values != input channels");
+    GLOW_ASSERT(
+        !useImagenetNormalization &&
+        "-mean and -use-imagenet-normalization cannot be used together.");
+    mean = meanValues;
+  } else if (useImagenetNormalization) {
+    mean = imagenetNormMean;
+  } else {
+    mean = zeroMean;
+  }
+
+  if (!stddevValues.empty()) {
+    GLOW_ASSERT(stddevValues.size() == numChannels &&
+                "Number of stddev values != input channels");
+    GLOW_ASSERT(
+        !useImagenetNormalization &&
+        "-stddev and -use-imagenet-normalization cannot be used together.");
+    stddev = stddevValues;
+  } else if (useImagenetNormalization) {
+    stddev = imagenetNormStd;
+  } else {
+    stddev = oneStd;
+  }
 
   // Allocate a tensor for the batch.
   ShapeVector batchDims;
@@ -424,9 +454,9 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
 
   // Read images into local tensors and add to batch.
   for (size_t n = 0; n < filenames.size(); n++) {
-    Tensor localCopy = readPngImageAndPreprocess(filenames[n], imageNormMode,
-                                                 imageChannelOrder, imageLayout,
-                                                 useImagenetNormalization);
+    Tensor localCopy =
+        readPngImageAndPreprocess(filenames[n], imageNormMode,
+                                  imageChannelOrder, imageLayout, mean, stddev);
     assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
                       inputImageData->dims().begin() + 1) &&
            "All images must have the same dimensions");

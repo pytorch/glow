@@ -45,17 +45,27 @@ struct KernelLaunch {
   cl_kernel kernel_;
   /// The name of the kernel that was launched.
   std::string name_;
+  /// The type of the kernel that was launched.
+  std::string type_;
   /// Event associated with the start of the kernel.
   /// Used only when profiling is enabled.
   cl_event event_;
   /// Constructor to be used by launching Glow's CL kernels.
-  KernelLaunch(cl_kernel kernel, std::string name, cl_event event)
-      : kernel_(kernel), name_(name), event_(event) {}
+  KernelLaunch(cl_kernel kernel, std::string name, std::string type,
+               cl_event event)
+      : kernel_(kernel), name_(name), type_(type), event_(event) {}
   /// Constructor to be used when launching an "external" CL kernel, e.g.
   /// provided by such libraries like CLBlast, etc.
-  KernelLaunch(const std::string &name, cl_event event)
-      : kernel_(nullptr), name_(name), event_(event) {}
+  KernelLaunch(const std::string &name, std::string type, cl_event event)
+      : kernel_(nullptr), name_(name), type_(type), event_(event) {}
 };
+
+/// Add an macro definition with an integer value to the set of options.
+template <typename T>
+static void addIntOption(std::vector<std::string> &options,
+                         const std::string &name, const T value) {
+  options.push_back("-D" + name + "=" + std::to_string(value));
+}
 
 /// A Glow IR function compiled for OpenCL.
 class OpenCLFunction final : public CompiledFunction {
@@ -86,11 +96,17 @@ class OpenCLFunction final : public CompiledFunction {
   cl_mem deviceBuffer_{0};
   /// Information about kernel launches.
   std::vector<KernelLaunch> kernelLaunches_;
+  /// is kernel level profiling (autoInstrumentation) enabled.
+  bool kernelProfiling_{false};
+  /// Manual trace events:
+  std::map<std::string, std::pair<Placeholder *, const TraceInfo::Event *>>
+      manualTraceEvents_;
 
 public:
   /// Ctor.
   explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
-                          const runtime::RuntimeBundle &bundle);
+                          const runtime::RuntimeBundle &bundle,
+                          TraceInfo traceInfo);
 
   /// @name CompiledFunction interface
   ///@{
@@ -109,6 +125,11 @@ public:
 
   /// Returns IR function pointer.
   IRFunction *getIR() { return F_.get(); }
+
+  /// Create a program from the \p source using provided \p options.
+  cl_program createProgram(const std::string &source,
+                           const std::vector<std::string> &options,
+                           cl_command_queue queue);
 
 private:
   /// Copy the value from a device to a provided buffer.
@@ -135,18 +156,16 @@ private:
   /// in any of compiled programs.
   cl_kernel createKernel(const std::string &name, cl_program program = nullptr);
 
-  /// Create a program from the \p source using provided \p options.
-  cl_program createProgram(const std::string &source,
-                           const std::vector<std::string> &options,
-                           cl_command_queue queue);
   /// Enqueue a \p kernel on a provided \p commands queue.
-  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                     cl_device_id device, llvm::ArrayRef<size_t> global,
+  void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
+                     cl_kernel kernel, cl_device_id device,
+                     llvm::ArrayRef<size_t> global,
                      std::vector<KernelLaunch> &kernelLaunches);
   /// Enqueue a \p kernel on a provided \p commands queue using specified \p
   /// global and \p local work sizes.
-  void enqueueKernel(cl_command_queue commands, cl_kernel kernel,
-                     cl_device_id device, llvm::ArrayRef<size_t> global,
+  void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
+                     cl_kernel kernel, cl_device_id device,
+                     llvm::ArrayRef<size_t> global,
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
 
@@ -155,6 +174,9 @@ private:
 
   /// Load outputs from the device into \p bindings.
   void updatePlaceholders(PlaceholderBindings *bindings);
+
+  /// Read trace events out of this func and write them into /p bindings
+  void translateTraceEvents(ExecutionContext *context) const override;
 };
 
 /// This is the OpenCL backend.
@@ -172,8 +194,6 @@ public:
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
-  std::unique_ptr<CompiledFunction>
-  compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
   std::unique_ptr<CompiledFunction>
   compile(Function *F, const CompilationOptions &opts) const override;
@@ -190,9 +210,47 @@ public:
     return true;
   }
 
+  /// Size of each TraceEvent (for manual events).
+  size_t getTraceEventDataSize() const override { return sizeof(uint64_t); }
+
+  /// Parses the graph \F and builds a TraceInfo structure from any found
+  /// TraceEventNodes.
+  TraceInfo buildManualTraceInfo(Function *F) const;
+
+  /// Enables kernel profiling to generate TraceEvents after run.
+  void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
+
   /// @}
 };
 
+namespace runtime {
+/// OpenCLDeviceBindings inherits from DeviceBindings, it contains per run
+/// device specific information used to run a compiled function on a specific
+/// device.
+struct OpenCLDeviceBindings : DeviceBindings {
+  OpenCLDeviceBindings(cl_mem buffer, cl_command_queue commands,
+                       cl_device_id device, cl_context ctx)
+      : DeviceBindings(BackendKind::OpenCL), deviceBuffer{buffer},
+        commandQueue{commands}, deviceId{device}, context{ctx} {}
+
+  /// CL memory buffer. Currently this contains both mutable and immutable
+  /// weights, the buffer is allocated once when the network is added.
+  cl_mem deviceBuffer;
+
+  /// CL compute command queue. A per run queue for the specific device.
+  ///
+  cl_command_queue commandQueue;
+
+  /// CL compute device id. Identifies the CL device to be used.
+  ///
+  cl_device_id deviceId;
+
+  /// CL compute context. Identifies a context on the CL device the computation
+  /// will take place in.
+  ///
+  cl_context context;
+};
+} // namespace runtime
 } // namespace glow
 
 #endif // GLOW_BACKENDS_OPENCL_OPENCL_H

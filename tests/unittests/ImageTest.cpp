@@ -85,7 +85,7 @@ TEST(Image, writePngImageWithImagenetNormalization) {
   Tensor localCopy;
   bool loadSuccess =
       !readPngImage(&localCopy, "tests/images/imagenet/cat_285.png", range,
-                    /* useImagenetNormalization */ true);
+                    imagenetNormMean, imagenetNormStd);
   ASSERT_TRUE(loadSuccess);
 
   llvm::SmallVector<char, 10> resultPath;
@@ -93,12 +93,12 @@ TEST(Image, writePngImageWithImagenetNormalization) {
   std::string outfilename(resultPath.begin(), resultPath.end());
 
   bool storeSuccess = !writePngImage(&localCopy, outfilename.c_str(), range,
-                                     /* useImagenetNormalization */ true);
+                                     imagenetNormMean, imagenetNormStd);
   ASSERT_TRUE(storeSuccess);
 
   Tensor secondLocalCopy;
   loadSuccess = !readPngImage(&secondLocalCopy, outfilename.c_str(), range,
-                              /* useImagenetNormalization */ true);
+                              imagenetNormMean, imagenetNormStd);
   ASSERT_TRUE(loadSuccess);
   EXPECT_TRUE(secondLocalCopy.isEqual(localCopy, 0.02));
 

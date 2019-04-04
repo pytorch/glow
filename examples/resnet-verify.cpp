@@ -74,8 +74,8 @@ int main() {
   // Read an example PNG and add it to an input batch.
   auto image = readPngImageAndPreprocess(
       "tests/images/imagenet/cat_285.png", ImageNormalizationMode::k0to1,
-      ImageChannelOrder::BGR, ImageLayout::NCHW,
-      /* useImagenetNormalization */ true);
+      ImageChannelOrder::BGR, ImageLayout::NCHW, imagenetNormMean,
+      imagenetNormStd);
   Tensor batch(interp.getInputType());
   batch.getHandle<float>().insertSlice(image, 0);
 

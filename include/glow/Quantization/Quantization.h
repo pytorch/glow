@@ -26,7 +26,7 @@
 
 namespace glow {
 
-class ExecutionEngine;
+class Backend;
 
 /// Tensor quantization parameters for a given node.
 struct NodeQuantizationInfo {
@@ -103,7 +103,7 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
 /// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
 /// quantized function.
 Function *quantizeFunction(
-    const ExecutionEngine &EE, quantization::Schema schema,
+    const Backend &B, quantization::Schema schema,
     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
     ElemKind quantizationPrecision, Function *F,
     const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",
