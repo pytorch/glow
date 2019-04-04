@@ -116,17 +116,19 @@ int main(int argc, char **argv) {
 
   // Load model, create a context, and add to HostManager.
 
+  std::vector<size_t> inputShape{1, 3, 224, 224};
+
   Placeholder *input;
   std::vector<Placeholder *> inputs;
-  std::vector<std::unique_ptr<Module>> modules;
+  std::vector<PlaceholderList> phLists;
   for (unsigned int i = 0; i < numDevices; i++) {
     std::unique_ptr<Module> module = llvm::make_unique<Module>();
-    TypeRef inputType = module->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224});
+    TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
     input = loadResnet50Model(inputType, module.get(), i);
     inputs.push_back(input);
     llvm::outs() << "Adding to HostManager\n";
-    EXIT_ON_ERR(hostManager->addNetwork(module.get()));
-    modules.push_back(std::move(module));
+    phLists.push_back(module->getPlaceholders());
+    EXIT_ON_ERR(hostManager->addNetwork(std::move(module)));
   }
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";
@@ -143,8 +145,6 @@ int main(int argc, char **argv) {
   size_t started = 0;
   std::atomic<size_t> returned{0};
 
-  auto inputType = modules[0]->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224});
-
   // Run up to maxImages classifications.
   unsigned int currDevice{0};
   while (started++ < maxImages) {
@@ -160,16 +160,14 @@ int main(int argc, char **argv) {
     int index = currDevice % numDevices;
     std::string path = dirIt->path();
 
-    auto image =
-        readPngImageAndPreprocess(path, ImageNormalizationMode::k0to1,
-                                  ImageChannelOrder::BGR, ImageLayout::NCHW,
-                                  /* useImagenetNormalization */ true);
+    auto image = readPngImageAndPreprocess(
+        path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
+        ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
     std::unique_ptr<ExecutionContext> context =
         llvm::make_unique<ExecutionContext>();
 
-    context->getPlaceholderBindings()->allocate(
-        modules[index]->getPlaceholders());
-    Tensor batch = image.getUnowned(inputType->dims());
+    context->getPlaceholderBindings()->allocate(phLists[index]);
+    Tensor batch = image.getUnowned(inputShape);
     updateInputPlaceholders(*(context->getPlaceholderBindings()),
                             {inputs[index]}, {&batch});
 

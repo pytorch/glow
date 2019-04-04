@@ -8,6 +8,7 @@ enable_testing()
 option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
 option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" ON)
+option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
@@ -29,6 +30,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(GlowDefaults)
 include(GlowTestSupport)
+include(GlowExternalBackends)
 include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
@@ -50,6 +52,7 @@ include_directories(BEFORE
 
 include_directories(${GLOW_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${GLOW_SOURCE_DIR})
 
 file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
@@ -74,6 +77,16 @@ if (GLOW_WITH_OPENCL)
   add_definitions(-DGLOW_WITH_OPENCL=1)
   find_package(OpenCL REQUIRED)
 endif ()
+
+if (GLOW_WITH_HABANA)
+  list(APPEND CMAKE_PREFIX_PATH /usr/lib/habanalabs)
+  find_path(SYNAPSE_INCLUDE_DIR synapse.h)
+  find_library(SYNAPSE_LIB Synapse)
+  add_definitions(-DGLOW_WITH_HABANA=1)
+endif ()
+
+# Top level setup for external backends
+ExternalBackendsInit()
 
 # Prefer LLVM 7.
 find_package(LLVM 7 CONFIG)

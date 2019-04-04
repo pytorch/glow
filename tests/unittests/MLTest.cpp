@@ -1077,9 +1077,9 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
   lower(F, &loweredMapForQuant, EE.getBackend());
-  Function *QP =
-      quantization::quantizeFunction(EE, quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F, loweredMapForQuant);
+  Function *QP = quantization::quantizeFunction(
+      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
+      F, loweredMapForQuant);
 
   EE.compile(CompilationMode::Infer, QP);
 
@@ -1197,9 +1197,9 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
   lower(F, &loweredMapForQuant, EE.getBackend());
-  Function *QP =
-      quantization::quantizeFunction(EE, quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F, loweredMapForQuant);
+  Function *QP = quantization::quantizeFunction(
+      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
+      F, loweredMapForQuant);
 
   EE.compile(CompilationMode::Infer, QP);
 

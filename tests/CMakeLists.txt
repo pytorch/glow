@@ -5,6 +5,9 @@ add_subdirectory(images)
 add_subdirectory(benchmark)
 add_subdirectory(models)
 
+# External backends
+ExternalBackendsTest()
+
 # Function which creates a new OutputCheck test that runs test_script.
 function(add_output_check_test)
   set(oneValueArgs NAME)

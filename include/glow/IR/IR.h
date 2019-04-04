@@ -320,6 +320,12 @@ public:
   /// \returns the variable map.
   VariableMap &getVariableMap() { return variableMap_; }
 
+  /// Returns a list of constants associated with function.
+  std::vector<const Constant *> findConstants() const;
+
+  /// Returns a list of placeholders associated with the function.
+  std::vector<const Placeholder *> findPlaceholders() const;
+
   /// \returns the weight that the variable \p v is lowered into, or null if the
   /// variable is unknown.
   Value *getWeightForNode(const Storage *V) const;

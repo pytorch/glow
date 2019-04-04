@@ -53,7 +53,7 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   // it should be configurable and set by the client.
   size_t pos = 0;
   size_t maxPos = 0;
-  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
+  for (auto &v : F_->findConstants()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
     auto payload = v->getPayload().getUnsafePtr();
@@ -82,21 +82,21 @@ void BundleSaver::emitSymbolTable() {
   // Define a struct for symbol table entries:
   // struct SymbolTableEntry {
   //  const char *name;
-  //  size_t offset;
-  //  size_t size;
+  //  uint64_t offset;
+  //  uint64_t size;
   //  char kind;
   // };
   auto *charTy = llvm::Type::getInt8Ty(irgen_->getLLVMContext());
-  auto *sizeTTy =
-      llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(size_t) * 8);
-  auto symbolTableEntryTy =
-      llvm::StructType::get(irgen_->getLLVMContext(),
-                            {charTy->getPointerTo(), sizeTTy, sizeTTy, charTy});
+  auto *uint64TTy =
+      llvm::Type::getIntNTy(irgen_->getLLVMContext(), sizeof(uint64_t) * 8);
+  auto symbolTableEntryTy = llvm::StructType::get(
+      irgen_->getLLVMContext(),
+      {charTy->getPointerTo(), uint64TTy, uint64TTy, charTy});
   // Set of entries in the symbol table.
   llvm::SmallVector<llvm::Constant *, 128> entries;
   // Iterate over all Placeholders and record information about their names,
   // offset, size and kind.
-  for (auto &v : F_->getGraph()->getParent()->getPlaceholders()) {
+  for (auto &v : F_->findPlaceholders()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     auto size = w->getType()->size();
     auto addr = allocationsInfo_.allocatedAddress_[w];
@@ -108,9 +108,9 @@ void BundleSaver::emitSymbolTable() {
              irgen_->emitStringConst(irgen_->getBuilder(), w->getName()),
              charTy->getPointerTo())),
          // offset.
-         llvm::ConstantInt::get(sizeTTy, addr),
+         llvm::ConstantInt::get(uint64TTy, addr),
          // size.
-         llvm::ConstantInt::get(sizeTTy, size),
+         llvm::ConstantInt::get(uint64TTy, size),
          // 1 for Mutable Kind
          llvm::ConstantInt::get(charTy, 1)});
     entries.push_back(entry);
@@ -219,11 +219,11 @@ void BundleSaver::emitBundleEntryFunction() {
 // so that they know how much memory they need to allocate, etc.
 // Config consists of the following fields:
 // struct BundleConfig {
-//   size_t constantWeightVarsMemSize;
-//   size_t mutableWeightVarsMemSize;
-//   size_t activationsMemSize;
-//   size_t alignment;
-//   size_t numSymbols;
+//   uint64_t constantWeightVarsMemSize;
+//   uint64_t mutableWeightVarsMemSize;
+//   uint64_t activationsMemSize;
+//   uint64_t alignment;
+//   uint64_t numSymbols;
 //   SymbolTableEntry *symbolTable;
 // };
 void BundleSaver::emitBundleConfig() {
@@ -231,13 +231,13 @@ void BundleSaver::emitBundleConfig() {
       irgen_->getMainEntryName() + "SymbolTable", true);
   GLOW_ASSERT(symbolTable &&
               "Expected to find a symbol table for the AOT bundle");
-  // Get the integer type having the same size in bits as size_t.
-  auto *SizeTType = irgen_->getBuilder().getIntNTy(sizeof(size_t) * 8);
+  // Get the integer type having the same size in bits as uint64_t.
+  auto *uint64TType = irgen_->getBuilder().getIntNTy(sizeof(uint64_t) * 8);
   auto symbolTableEntryTy = symbolTable->getType()->getPointerElementType();
   auto *bundleConfigTy =
       llvm::StructType::get(irgen_->getLLVMContext(),
-                            {SizeTType, SizeTType, SizeTType, SizeTType,
-                             SizeTType, symbolTableEntryTy->getPointerTo()});
+                            {uint64TType, uint64TType, uint64TType, uint64TType,
+                             uint64TType, symbolTableEntryTy->getPointerTo()});
   auto config = new llvm::GlobalVariable(
       irgen_->getModule(), bundleConfigTy, /* isConst */ true,
       llvm::GlobalValue::LinkageTypes::ExternalLinkage, nullptr,
@@ -245,14 +245,15 @@ void BundleSaver::emitBundleConfig() {
   config->setInitializer(llvm::ConstantStruct::get(
       bundleConfigTy,
       llvm::ConstantInt::get(
-          SizeTType, irgen_->getAllocationsInfo().constantWeightVarsMemSize_),
+          uint64TType, irgen_->getAllocationsInfo().constantWeightVarsMemSize_),
       llvm::ConstantInt::get(
-          SizeTType, irgen_->getAllocationsInfo().mutableWeightVarsMemSize_),
-      llvm::ConstantInt::get(SizeTType,
+          uint64TType, irgen_->getAllocationsInfo().mutableWeightVarsMemSize_),
+      llvm::ConstantInt::get(uint64TType,
                              irgen_->getAllocationsInfo().activationsMemSize_),
-      llvm::ConstantInt::get(SizeTType, TensorAlignment),
-      llvm::ConstantInt::get(
-          SizeTType, F_->getGraph()->getParent()->getConstants().size()),
+
+      llvm::ConstantInt::get(uint64TType, TensorAlignment),
+      llvm::ConstantInt::get(uint64TType, F_->findConstants().size()),
+
       symbolTable));
 }
 
