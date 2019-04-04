@@ -23,16 +23,177 @@
 
 #include "synapse.h"
 
+#include <condition_variable>
+#include <mutex>
+#include <queue>
 #include <string>
 
 namespace glow {
+
+/// Buffer used for storing input/output tensors for a
+/// HabanaFunction.
+class HabanaIOBuffer {
+public:
+  /// Constructor.
+  HabanaIOBuffer(uint32_t deviceId, uint8_t *buffer,
+               const std::unordered_map<const Placeholder *, off_t> &offsets);
+  /// Destructor.
+  ~HabanaIOBuffer() = default;
+
+  /// Prohibit copy, assignment, and moves.
+  HabanaIOBuffer(const HabanaIOBuffer &src) = delete;
+  HabanaIOBuffer &operator=(const HabanaIOBuffer &src) = delete;
+  HabanaIOBuffer(HabanaIOBuffer &&src) = delete;
+  HabanaIOBuffer &operator=(HabanaIOBuffer &&src) = delete;
+
+  /// Get a pointer to the buffer at which to read/store Placeholder \p p.
+  uint8_t *get(const Placeholder *p) const;
+
+private:
+  /// The device that this buffer is located on.
+  uint32_t deviceId_;
+  /// Pointer to the start of the buffer. All placeholders in offsets_ are
+  /// allocated contiguously starting at this address.
+  uint8_t *buffer_;
+  /// Offsets into buffer_ for different input/output Placeholders.
+  const std::unordered_map<const Placeholder *, off_t> &offsets_;
+};
+
+/// A pool of HabanaIOBuffer objects that threads must "check
+/// out" before they execute a HabanaFunction and "check in" after execution is
+/// complete. To enable concurrency, this class can allocate several times the
+/// required memory for all input/output Placeholders to allow multiple threads
+/// to execute on the device at once.
+class HabanaIOBufferPool {
+public:
+  /// Constructor.
+  HabanaIOBufferPool(uint32_t deviceId, const PlaceholderList &inputs,
+                   const PlaceholderList &outputs,
+                   unsigned numBuffers = kDefaultNumBuffers);
+
+  /// Destructor.
+  ~HabanaIOBufferPool();
+
+  /// Prohibit copy, assignment, and moves.
+  HabanaIOBufferPool(const HabanaIOBufferPool &src) = delete;
+  HabanaIOBufferPool &operator=(const HabanaIOBufferPool &src) = delete;
+  HabanaIOBufferPool(HabanaIOBufferPool &&src) = delete;
+  HabanaIOBufferPool &operator=(HabanaIOBufferPool &&src) = delete;
+
+  /// Get a HabanaIOBuffer instance from the pool. This confers exclusive
+  /// ownership to the calling thread.
+  std::unique_ptr<HabanaIOBuffer> get();
+
+  /// Return a HabanaIOBuffer instance to the pool. This returns exclusive
+  /// ownership back to the pool.
+  void put(std::unique_ptr<HabanaIOBuffer> buffer);
+
+private:
+  /// The device that the underlying buffer resides on.
+  uint32_t deviceId_;
+  /// Offsets for different input/output Placeholders. This is the same for all
+  /// HabanaIOBuffer instances, so the real copy is kept here and all HabanaIOBuffer
+  /// instances in the pool receive const references to this one.
+  std::unordered_map<const Placeholder *, off_t> offsets_;
+  /// The size of all input and output Placeholders provided during
+  /// construction. This is the effective size of one HabanaIOBuffer in this pool.
+  size_t size_;
+  /// The combined size of all HabanaIOBuffers in this pool (i.e. size_ *
+  /// numBuffers_).
+  size_t totalSize_;
+  /// Buffer that backs all of the HOmaIOBuffers in this pool. The first buffer
+  /// starts at buffer_, the second at buffer_ + size_, etc. The last *ends* at
+  /// buffer_ + totalSize_.
+  uint8_t *buffer_;
+  /// The number of buffers in the pool.
+  unsigned numBuffers_{kDefaultNumBuffers};
+  static constexpr unsigned kDefaultNumBuffers{3};
+
+  /// Queue of HabanaIOBuffers and a mutex and condition variable for synchronized
+  /// access.
+  std::mutex mtx_;
+  std::condition_variable cv_;
+  std::queue<std::unique_ptr<HabanaIOBuffer>> ioBuffers_;
+};
+
+/// Wrapper class for synWaitHandle and all related state that must persist
+/// until the handle is waited on.
+class HabanaWaitHandle {
+public:
+  /// Constructors.
+  HabanaWaitHandle();
+  HabanaWaitHandle(uint32_t deviceId, synWaitHandle handle,
+                 std::vector<EnqueueTensorInfo> &&inputInfo,
+                 std::vector<EnqueueTensorInfo> &&outputInfo);
+  /// Destructor.
+  ~HabanaWaitHandle();
+
+  /// Allow moves.
+  HabanaWaitHandle(HabanaWaitHandle &&);
+  HabanaWaitHandle &operator=(HabanaWaitHandle &&);
+
+  /// Prohibit copy and assignment.
+  HabanaWaitHandle(const HabanaWaitHandle &) = delete;
+  HabanaWaitHandle &operator=(const HabanaWaitHandle &) = delete;
+
+  /// Wait on the underlying handle. \returns true if wait succeeded, false
+  /// otherwise.
+  bool wait();
+
+private:
+  /// If true, the instance points to a valid handle. Used to ensure proper
+  /// destruction in the event of moves.
+  bool valid_;
+  /// The device that the enqueue corresponding to the handle was performed on.
+  uint32_t deviceId_;
+  /// The underlying synWaitHandle.
+  synWaitHandle handle_;
+  /// Inputs passed to the enqueue call that generated handle_.
+  std::vector<EnqueueTensorInfo> inputInfo_;
+  /// Outputs passed to the enqueue call that generated handle_.
+  std::vector<EnqueueTensorInfo> outputInfo_;
+};
+
+class HabanaBindings : public DeviceBindings {
+public:
+  HabanaBindings(uint32_t deviceId, uint64_t topologyId)
+      : DeviceBindings(BackendKind::Habana), deviceId_(deviceId),
+        topologyId_(topologyId) {}
+
+  virtual ~HabanaBindings() {}
+
+  std::unique_ptr<DeviceBindings> clone() override {
+    return llvm::make_unique<HabanaBindings>(deviceId_, topologyId_);
+  }
+
+  uint32_t getDeviceId() const { return deviceId_; }
+
+  uint64_t getTopologyId() const { return topologyId_; }
+
+  HabanaWaitHandle &getHandle() { return handle_; }
+
+  void setHandle(HabanaWaitHandle &&handle) { handle_ = std::move(handle); }
+
+  HabanaIOBuffer *getIOBufferUnsafePtr() { return ioBuffer_.get(); }
+  std::unique_ptr<HabanaIOBuffer> getIOBuffer() { return std::move(ioBuffer_); }
+
+  void setIOBuffer(std::unique_ptr<HabanaIOBuffer> ioBuffer) {
+    ioBuffer_ = std::move(ioBuffer);
+  }
+
+private:
+  uint32_t deviceId_;
+  uint64_t topologyId_;
+  std::unique_ptr<HabanaIOBuffer> ioBuffer_;
+  HabanaWaitHandle handle_;
+};
 
 class HabanaFunction final : public CompiledFunction {
 public:
   /// Constructor.
   HabanaFunction(const runtime::RuntimeBundle &bundle,
-                 const std::string &recipeName, PlaceholderList &&inputs,
-                 PlaceholderList &&outputs);
+               const std::string &recipeName, PlaceholderList &&inputs,
+               PlaceholderList &&outputs);
 
   /// @name CompiledFunction interface
   ///@{
@@ -70,73 +231,6 @@ private:
   const PlaceholderBindings *ctx_;
   PlaceholderList inputs_;
   PlaceholderList outputs_;
-};
-
-/// RAII wrapper for MMU mapping from host to device memory.
-class MemoryMap {
-public:
-  MemoryMap(int32_t deviceId, uint64_t size) : deviceId_(deviceId) {
-    auto status =
-        synMalloc(deviceId_, size, synMemFlags::synMemHost, &buffer_, 0);
-    GLOW_ASSERT(status == synSuccess);
-  }
-
-  ~MemoryMap() {
-    auto status = synFree(deviceId_, buffer_);
-    GLOW_ASSERT(status == synSuccess);
-  }
-
-  MemoryMap(const MemoryMap &) = delete;
-  MemoryMap &operator=(const MemoryMap &) = delete;
-
-  char *getBuffer() { return (char *)buffer_; }
-
-private:
-  int32_t deviceId_;
-  void *buffer_;
-};
-
-/// Thie struct wraps a topology ID with its corresponding HabanaFunction so
-/// that only one map is needed to keep track of both.
-struct HabanaFunctionMeta {
-  HabanaFunctionMeta() = default;
-
-  HabanaFunctionMeta(int32_t deviceId, uint64_t topo, HabanaFunction *HF);
-
-  char *getPointer(Placeholder *P) { return ioBuffer->getBuffer() + ioMap[P]; }
-
-  /// The topology ID of the function. This is returned by the Synapse API
-  /// after loading a recipe.
-  uint64_t topologyId;
-
-  /// The HabanaFunction corresponding to topologyId. This is needed in order
-  /// to call HabanaFunction::executeOnDevice after loading and activating a
-  /// topology.
-  HabanaFunction *function;
-
-  std::unique_ptr<MemoryMap> ioBuffer;
-
-  std::unordered_map<Placeholder *, size_t> ioMap;
-};
-
-class HabanaBindings : public DeviceBindings {
-public:
-  HabanaBindings(uint32_t deviceId, HabanaFunctionMeta *meta)
-      : DeviceBindings(BackendKind::Habana), deviceId_(deviceId), meta_(meta) {}
-
-  virtual ~HabanaBindings() {}
-
-  std::unique_ptr<DeviceBindings> clone() override {
-    return llvm::make_unique<HabanaBindings>(deviceId_, meta_);
-  }
-
-  uint32_t getDeviceId() const { return deviceId_; }
-
-  HabanaFunctionMeta *getMeta() { return meta_; }
-
-private:
-  uint32_t deviceId_;
-  HabanaFunctionMeta *meta_;
 };
 
 class HabanaBackend final : public Backend {

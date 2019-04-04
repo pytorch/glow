@@ -318,10 +318,118 @@ public:
 };
 } // namespace
 
+HabanaIOBuffer::HabanaIOBuffer(
+    uint32_t deviceId, uint8_t *buffer,
+    const std::unordered_map<const Placeholder *, off_t> &offsets)
+    : deviceId_(deviceId), buffer_(buffer), offsets_(offsets) {}
+
+uint8_t *HabanaIOBuffer::get(const Placeholder *p) const {
+  GLOW_ASSERT(offsets_.count(p) > 0 && "Placeholder not in IO buffer!");
+  return buffer_ + offsets_.find(p)->second;
+}
+
+HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
+                                   const PlaceholderList &inputs,
+                                   const PlaceholderList &outputs,
+                                   unsigned numBuffers)
+    : deviceId_(deviceId), numBuffers_(numBuffers) {
+  size_t currentOffset = 0;
+
+  // Iterate through input Placeholders and assign offsets to each one.
+  for (const auto &ph : inputs) {
+    offsets_.insert(std::make_pair(ph, currentOffset));
+    currentOffset += ph->getType()->getSizeInBytes();
+  }
+
+  // Iterate through output Placeholders and assign offsets to each one.
+  for (const auto &ph : outputs) {
+    offsets_.insert(std::make_pair(ph, currentOffset));
+    currentOffset += ph->getType()->getSizeInBytes();
+  }
+
+  // Now that the total size of one buffer has been determined, allocate storage
+  // for the whole pool.
+  size_ = currentOffset;
+  totalSize_ = size_ * numBuffers_;
+  chk(synMalloc(deviceId_, totalSize_, synMemFlags::synMemHost,
+                (void **)&buffer_));
+
+  // Create HabanaIOBuffer instances for the pool with offsets into buffer_ that
+  // are size_ apart.
+  uint8_t *copyOffset = buffer_;
+  for (unsigned i = 0; i < numBuffers_; ++i) {
+    ioBuffers_.push(
+        llvm::make_unique<HabanaIOBuffer>(deviceId_, copyOffset, offsets_));
+    copyOffset += size_;
+  }
+}
+
+HabanaIOBufferPool::~HabanaIOBufferPool() {
+  GLOW_ASSERT(ioBuffers_.size() == numBuffers_ &&
+              "IO buffer pool destroyed while some buffers still in use!");
+  chk(synFree(deviceId_, buffer_, synMemFlags::synMemHost));
+}
+
+std::unique_ptr<HabanaIOBuffer> HabanaIOBufferPool::get() {
+  std::unique_lock<std::mutex> lk(mtx_);
+  // If the queue of buffers is empty, wait until one is returned.
+  cv_.wait(lk, [this]() { return !ioBuffers_.empty(); });
+  std::unique_ptr<HabanaIOBuffer> buf(std::move(ioBuffers_.front()));
+  ioBuffers_.pop();
+  return buf;
+}
+
+void HabanaIOBufferPool::put(std::unique_ptr<HabanaIOBuffer> buffer) {
+  std::lock_guard<std::mutex> lk(mtx_);
+  bool wasEmpty = ioBuffers_.empty();
+  ioBuffers_.push(std::move(buffer));
+  // If the queue was empty before the push, threads might be waiting for a
+  // buffer. Signal them.
+  if (wasEmpty) {
+    cv_.notify_all();
+  }
+}
+
+HabanaWaitHandle::HabanaWaitHandle()
+    : valid_(false), deviceId_(0), handle_(nullptr) {}
+
+HabanaWaitHandle::HabanaWaitHandle(uint32_t deviceId, synWaitHandle handle,
+                               std::vector<EnqueueTensorInfo> &&inputInfo,
+                               std::vector<EnqueueTensorInfo> &&outputInfo)
+    : valid_(true), deviceId_(deviceId), handle_(handle),
+      inputInfo_(std::move(inputInfo)), outputInfo_(std::move(outputInfo)) {}
+
+HabanaWaitHandle::~HabanaWaitHandle() {
+  if (valid_) {
+    synDestroyHandle(handle_);
+    valid_ = false;
+  }
+}
+
+HabanaWaitHandle::HabanaWaitHandle(HabanaWaitHandle &&o) { *this = std::move(o); }
+
+HabanaWaitHandle &HabanaWaitHandle::operator=(HabanaWaitHandle &&o) {
+  std::swap(deviceId_, o.deviceId_);
+  std::swap(handle_, o.handle_);
+  inputInfo_ = std::move(o.inputInfo_);
+  outputInfo_ = std::move(o.outputInfo_);
+  std::swap(valid_, o.valid_);
+  o.valid_ = false;
+  return *this;
+}
+
+bool HabanaWaitHandle::wait() {
+  if (!valid_) {
+    return false;
+  }
+
+  synStatus status = synWaitForEvent(deviceId_, handle_);
+  return status == synSuccess;
+}
+
 HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
-                               const std::string &recipeName,
-                               PlaceholderList &&inputs,
-                               PlaceholderList &&outputs)
+                           const std::string &recipeName,
+                           PlaceholderList &&inputs, PlaceholderList &&outputs)
     : CompiledFunction(bundle), recipeName_(recipeName),
       inputs_(std::move(inputs)), outputs_(std::move(outputs)) {}
 
@@ -333,27 +441,15 @@ void HabanaFunction::setupRuns() {}
 
 void HabanaFunction::beforeRun(const PlaceholderBindings &ctx) {}
 
-HabanaFunctionMeta::HabanaFunctionMeta(int32_t deviceId, uint64_t topo,
-                                       HabanaFunction *HF)
-    : topologyId(topo), function(HF) {
-  size_t bufSize = 0;
-  for (auto *in : HF->getInputs()) {
-    ioMap[in] = bufSize;
-    bufSize += in->getType()->getSizeInBytes();
-  }
-  for (auto *out : HF->getOutputs()) {
-    ioMap[out] = bufSize;
-    bufSize += out->getType()->getSizeInBytes();
-  }
-  ioBuffer = llvm::make_unique<MemoryMap>(deviceId, bufSize);
-}
-
 void HabanaFunction::execute(ExecutionContext *context) {
-  std::lock_guard<std::mutex> g(synapseLock);
-
-  auto *bindings = static_cast<HabanaBindings *>(context->getDeviceBindings());
-  uint32_t deviceId = bindings->getDeviceId();
-  HabanaFunctionMeta *meta = bindings->getMeta();
+  uint32_t deviceId =
+      static_cast<HabanaBindings *>(context->getDeviceBindings())->getDeviceId();
+  uint64_t topologyId =
+      static_cast<HabanaBindings *>(context->getDeviceBindings())
+          ->getTopologyId();
+  HabanaIOBuffer *ioBuffer =
+      static_cast<HabanaBindings *>(context->getDeviceBindings())
+          ->getIOBufferUnsafePtr();
 
   std::vector<EnqueueTensorInfo> inputInfo;
   std::vector<EnqueueTensorInfo> outputInfo;
@@ -372,12 +468,13 @@ void HabanaFunction::execute(ExecutionContext *context) {
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
     eti.tensorSize = T->getSizeInBytes();
-    eti.pTensorData = meta->getPointer(P);
+    eti.pTensorData = (char *)ioBuffer->get(P);
 
     if (getOutputSave(P)) {
       outputInfo.push_back(eti);
     } else {
       inputInfo.push_back(eti);
+      // Copy from the tensor into the designated IO buffer.
       memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
     }
   }
@@ -386,24 +483,18 @@ void HabanaFunction::execute(ExecutionContext *context) {
 
   // Enqueue the run and wait for it to come back.
   synWaitHandle handle;
-  chk(synEnqueueByName(
-      deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
-      inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
-  chk(synWaitForEvent(deviceId, handle));
-  synDestroyHandle(handle);
-
-  for (const auto &pair : phTensorMap) {
-    Placeholder *P = pair.first;
-    Tensor *T = pair.second;
-
-    if (P->getNumUsers() == 0) {
-      continue;
-    }
-
-    if (getOutputSave(P)) {
-      memcpy(T->getUnsafePtr(), meta->getPointer(P), T->getSizeInBytes());
-    }
+  {
+    // Activate and enqueue need to be atomic.
+    std::lock_guard<std::mutex> g(synapseLock);
+    chk(synActivateTopology(deviceId, topologyId));
+    chk(synEnqueueByName(
+        deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
+        inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
   }
+
+  static_cast<HabanaBindings *>(context->getDeviceBindings())
+      ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
+                                 std::move(outputInfo)));
 }
 
 void HabanaFunction::afterRun(const PlaceholderBindings &ctx) {}
@@ -611,8 +702,6 @@ IOPlaceholders findIOPlaceholders(Function *F) {
 
 std::unique_ptr<CompiledFunction>
 HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
-  std::lock_guard<std::mutex> g(synapseLock);
-
   chk(synCreateGraph(synDeviceGoya));
 
   // Allocate all the tensors.
@@ -1377,8 +1466,8 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 
 } // namespace
 
-bool HabanaBackend::transformPostLowering(
-    Function *F, const CompilationOptions &opts) const {
+bool HabanaBackend::transformPostLowering(Function *F,
+                                        const CompilationOptions &opts) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Separate any Slice nodes into several that only slice in one dimension
@@ -1395,8 +1484,8 @@ bool HabanaBackend::transformPostLowering(
 
     // Fuse Convolution followed by relu.
     if (auto *relu = llvm::dyn_cast<ReluNode>(&node)) {
-      if (auto *conv = llvm::dyn_cast<HabanaConvolutionNode>(
-              relu->getInput().getNode())) {
+      if (auto *conv =
+              llvm::dyn_cast<HabanaConvolutionNode>(relu->getInput().getNode())) {
         changed |= fuseConvRelu(F, *conv, *relu);
         continue;
       } else if (auto *convAdd = llvm::dyn_cast<HabanaConvolutionAddNode>(
@@ -1416,7 +1505,7 @@ bool HabanaBackend::transformPostLowering(
           F->createTranspose("weight_transpose", FC->getWeights(), {1, 0});
       auto *NF = F->addNode(
           new HabanaFullyConnectedNode(FC->getName(), FC->getResult().getType(),
-                                       FC->getInput(), weights, FC->getBias()));
+                                     FC->getInput(), weights, FC->getBias()));
       FC->getResult().replaceAllUsesOfWith(NF);
       changed = true;
       continue;
@@ -1437,8 +1526,7 @@ bool HabanaBackend::transformPostLowering(
       continue;
     }
 
-    // Replace Reshape with HabanaReshape for better control over code
-    // generation.
+    // Replace Reshape with HabanaReshape for better control over code generation.
     if (auto *reshape = llvm::dyn_cast<ReshapeNode>(&node)) {
       auto *NR = F->addNode(new HabanaReshapeNode(
           reshape->getName(), reshape->getResult().getType(),
