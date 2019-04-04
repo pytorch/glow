@@ -54,20 +54,25 @@ Function *Module::createFunction(llvm::StringRef name) {
   return F;
 }
 
-void Module::clear() {
+void Module::clear(bool clearPlaceholders) {
   eraseFunctions();
 
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
     delete v;
   }
-  for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
-       it++) {
-    Placeholder *p = *it;
-    delete p;
-  }
+
   constants_.clear();
-  placeholders_.clear();
+
+  if (clearPlaceholders) {
+    for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
+         it++) {
+      Placeholder *p = *it;
+      delete p;
+    }
+
+    placeholders_.clear();
+  }
 }
 
 Module::~Module() { clear(); }
@@ -653,8 +658,8 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 }
 
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
-                                                   NodeValue input, Node *W,
-                                                   Node *B, TypeRef outTy,
+                                                   NodeValue input, NodeValue W,
+                                                   NodeValue B, TypeRef outTy,
                                                    unsigned_t axis) {
   assert(outTy->dims().size() == 2 && "Invalid number of dimensions");
   assert(outTy->dims()[0] == input.dims()[0] && "Invalid dimensions");
@@ -671,7 +676,7 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Constant *W,
-                                               Node *B, TypeRef outTy,
+                                               NodeValue B, TypeRef outTy,
                                                quantization::Schema schema,
                                                bool transposeWeight) {
   // Since W is constant, quantize it in compilation time.
@@ -2705,6 +2710,58 @@ void Function::eraseNode(Node *N) {
              nodes_.end() &&
          "Could not find node to delete!");
   eraseNode(N->getIterator());
+}
+
+PlaceholderList Function::findPlaceholders() {
+  PlaceholderList list;
+  for (auto &PH : parent_->getPlaceholders()) {
+    for (auto &user : PH->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(PH);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+PlaceholderList Function::findPlaceholders() const {
+  PlaceholderList list;
+  for (auto &PH : parent_->getPlaceholders()) {
+    for (auto &user : PH->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(PH);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+ConstList Function::findConstants() {
+  ConstList list;
+  for (auto &constant : parent_->getConstants()) {
+    for (auto &user : constant->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(constant);
+        break;
+      }
+    }
+  }
+  return list;
+}
+
+ConstList Function::findConstants() const {
+  ConstList list;
+  for (auto &constant : parent_->getConstants()) {
+    for (auto &user : constant->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        list.push_back(constant);
+        break;
+      }
+    }
+  }
+  return list;
 }
 
 Function *Function::clone(llvm::StringRef newName,

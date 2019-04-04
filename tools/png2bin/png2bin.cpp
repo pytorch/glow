@@ -45,9 +45,16 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
   const char *filename = argv[1];
   const char *outfile = argv[2];
-  Tensor png =
-      readPngImageAndPreprocess(filename, imageNormMode, imageChannelOrder,
-                                imageLayout, useImagenetNormalization);
+  llvm::ArrayRef<float> mean = zeroMean;
+  llvm::ArrayRef<float> std = oneStd;
+
+  if (useImagenetNormalization) {
+    mean = imagenetNormMean;
+    std = imagenetNormStd;
+  }
+
+  Tensor png = readPngImageAndPreprocess(
+      filename, imageNormMode, imageChannelOrder, imageLayout, mean, std);
   if (!std::isnan(static_cast<float>(QuantizationScale))) {
     TensorQuantizationParams TQP{QuantizationScale, QuantizationOffset};
     png = quantization::quantizeTensor(png, TQP);

@@ -35,7 +35,7 @@ public:
   void runNetwork(const Graph *graph, std::unique_ptr<ExecutionContext> context,
                   runtime::ResultCBTy callback) override;
 
-  onnxStatus addNetwork(Module *module);
+  onnxStatus addNetwork(std::unique_ptr<Module> module);
 
   void removeNetwork(const Graph *graph) override;
 
@@ -76,7 +76,6 @@ public:
   const std::string &getName() const { return netName_; }
 
 private:
-  Module m_;
   std::string netName_;
 };
 

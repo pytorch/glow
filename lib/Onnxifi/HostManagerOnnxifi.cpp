@@ -37,8 +37,8 @@ void HostManagerBackendId::runNetwork(const Graph *graph,
                            std::move(callback));
 }
 
-onnxStatus HostManagerBackendId::addNetwork(Module *module) {
-  auto err = hostManager_->addNetwork(module);
+onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
+  auto err = hostManager_->addNetwork(std::move(module));
 
   if (errToBool(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
@@ -59,7 +59,8 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
-  Function *function = m_.createFunction(netName_);
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  Function *function = module->createFunction(netName_);
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
@@ -71,7 +72,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
   return static_cast<HostManagerBackendId *>(backendPtr_->getBackendId())
-      ->addNetwork(&m_);
+      ->addNetwork(std::move(module));
 }
 
 onnxStatus

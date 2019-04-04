@@ -106,7 +106,8 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
       // This isn't ideal, the placeholder exists but we have no weight.
       // Probably indicates a bug in the graph, best we can do is create a new
       // placeholder and weight for the instrumentation.
-      assert(!"could not find weight for existing instrumentation placeholder");
+      // assert(!"could not find weight for existing instrumentation
+      // placeholder");
       backingPH = nullptr;
     }
   }
@@ -120,6 +121,9 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
     assert(backingPH);
   }
 
+  // Add Placeholder to the graph so we can add it to the runtimeBundle later.
+  F->addMetadataPlaceholder(backingPH);
+
   // If we don't have a weight we need to create one too, whether or not we just
   // created a Placeholder.
   if (!backingWeight) {
@@ -132,6 +136,7 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   }
 
   traceInfo.enabled = true;
+  traceInfo.autoInstrumented = true;
   std::string lastName = "";
   size_t index = 0;
 
