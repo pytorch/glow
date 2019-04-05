@@ -91,6 +91,11 @@ class HabanaDeviceManager : public DeviceManager {
                        std::unique_ptr<ExecutionContext> ctx,
                        runtime::ResultCBTy resultCB);
 
+  /// Update the totalMemory_ and freeMemory_ counts for the device based once
+  /// per-function memory estimates. This function is not thread safe and should
+  /// only be invoked while holding synapseLock.
+  llvm::Error updateMemoryUsage();
+
 public:
   /// Constructor.
   HabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,

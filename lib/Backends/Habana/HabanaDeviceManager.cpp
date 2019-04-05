@@ -83,11 +83,7 @@ llvm::Error HabanaDeviceManager::init() {
   }
 
   // Fetch initial memory information.
-  status = synGetMemInfo(deviceId_, &freeMemory_, &totalMemory_);
-
-  if (status != synSuccess) {
-    RETURN_ERR("Failed to get memory info");
-  }
+  RETURN_IF_ERR(updateMemoryUsage());
 
   // Create thread pools for running functions and waiting on function results.
   runPool_ = llvm::make_unique<ThreadPool>(numRunners_);
@@ -95,6 +91,26 @@ llvm::Error HabanaDeviceManager::init() {
 
   if (!runPool_ || !waitPool_) {
     RETURN_ERR("Failed to create HabanaDeviceManager thread pools");
+  }
+
+  return llvm::Error::success();
+}
+
+llvm::Error HabanaDeviceManager::updateMemoryUsage() {
+  // TODO: Use synGetMemInfo once implemented.
+
+  // Amount of memory installed on each Habana device.
+  constexpr uint64_t deviceTotalMemory = 7516192768; // 7GB
+
+  totalMemory_ = deviceTotalMemory;
+  freeMemory_ = deviceTotalMemory;
+
+  // Account for the size used by each function loaded on the card.
+  for (const auto &pr : functions_) {
+    const auto &functionMeta = pr.second;
+    const auto &runtimeBundle = functionMeta.function->getRuntimeBundle();
+    freeMemory_ -= runtimeBundle.getConstantWeightSize();
+    freeMemory_ -= runtimeBundle.getMutableWeightSize();
   }
 
   return llvm::Error::success();
@@ -160,7 +176,11 @@ void HabanaDeviceManager::addNetwork(const Module *module,
   lk.unlock();
 
   // Update memory information after loading all the functions.
-  chk(synGetMemInfo(deviceId_, &freeMemory_, &totalMemory_));
+  if (auto err = updateMemoryUsage()) {
+    readyCB(module, std::move(err));
+    return;
+  }
+
   readyCB(module, llvm::Error::success());
 }
 
@@ -207,7 +227,10 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
   lk.unlock();
 
   // Update memory information after evicting the function.
-  chk(synGetMemInfo(deviceId_, &freeMemory_, &totalMemory_));
+  if (auto err = updateMemoryUsage()) {
+    evictCB(functionName, std::move(err));
+    return;
+  }
 
   evictCB(functionName, llvm::Error::success());
 }
