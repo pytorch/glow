@@ -329,9 +329,9 @@ uint8_t *HabanaIOBuffer::get(const Placeholder *p) const {
 }
 
 HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
-                                   const PlaceholderList &inputs,
-                                   const PlaceholderList &outputs,
-                                   unsigned numBuffers)
+                                       const PlaceholderList &inputs,
+                                       const PlaceholderList &outputs,
+                                       unsigned numBuffers)
     : deviceId_(deviceId), numBuffers_(numBuffers) {
   size_t currentOffset = 0;
 
@@ -394,8 +394,8 @@ HabanaWaitHandle::HabanaWaitHandle()
     : valid_(false), deviceId_(0), handle_(nullptr) {}
 
 HabanaWaitHandle::HabanaWaitHandle(uint32_t deviceId, synWaitHandle handle,
-                               std::vector<EnqueueTensorInfo> &&inputInfo,
-                               std::vector<EnqueueTensorInfo> &&outputInfo)
+                                   std::vector<EnqueueTensorInfo> &&inputInfo,
+                                   std::vector<EnqueueTensorInfo> &&outputInfo)
     : valid_(true), deviceId_(deviceId), handle_(handle),
       inputInfo_(std::move(inputInfo)), outputInfo_(std::move(outputInfo)) {}
 
@@ -406,7 +406,9 @@ HabanaWaitHandle::~HabanaWaitHandle() {
   }
 }
 
-HabanaWaitHandle::HabanaWaitHandle(HabanaWaitHandle &&o) { *this = std::move(o); }
+HabanaWaitHandle::HabanaWaitHandle(HabanaWaitHandle &&o) {
+  *this = std::move(o);
+}
 
 HabanaWaitHandle &HabanaWaitHandle::operator=(HabanaWaitHandle &&o) {
   std::swap(deviceId_, o.deviceId_);
@@ -428,8 +430,9 @@ bool HabanaWaitHandle::wait() {
 }
 
 HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
-                           const std::string &recipeName,
-                           PlaceholderList &&inputs, PlaceholderList &&outputs)
+                               const std::string &recipeName,
+                               PlaceholderList &&inputs,
+                               PlaceholderList &&outputs)
     : CompiledFunction(bundle), recipeName_(recipeName),
       inputs_(std::move(inputs)), outputs_(std::move(outputs)) {}
 
@@ -443,7 +446,8 @@ void HabanaFunction::beforeRun(const PlaceholderBindings &ctx) {}
 
 void HabanaFunction::execute(ExecutionContext *context) {
   uint32_t deviceId =
-      static_cast<HabanaBindings *>(context->getDeviceBindings())->getDeviceId();
+      static_cast<HabanaBindings *>(context->getDeviceBindings())
+          ->getDeviceId();
   uint64_t topologyId =
       static_cast<HabanaBindings *>(context->getDeviceBindings())
           ->getTopologyId();
@@ -494,7 +498,7 @@ void HabanaFunction::execute(ExecutionContext *context) {
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
-                                 std::move(outputInfo)));
+                                   std::move(outputInfo)));
 }
 
 void HabanaFunction::afterRun(const PlaceholderBindings &ctx) {}
@@ -1466,8 +1470,8 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 
 } // namespace
 
-bool HabanaBackend::transformPostLowering(Function *F,
-                                        const CompilationOptions &opts) const {
+bool HabanaBackend::transformPostLowering(
+    Function *F, const CompilationOptions &opts) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Separate any Slice nodes into several that only slice in one dimension
@@ -1484,8 +1488,8 @@ bool HabanaBackend::transformPostLowering(Function *F,
 
     // Fuse Convolution followed by relu.
     if (auto *relu = llvm::dyn_cast<ReluNode>(&node)) {
-      if (auto *conv =
-              llvm::dyn_cast<HabanaConvolutionNode>(relu->getInput().getNode())) {
+      if (auto *conv = llvm::dyn_cast<HabanaConvolutionNode>(
+              relu->getInput().getNode())) {
         changed |= fuseConvRelu(F, *conv, *relu);
         continue;
       } else if (auto *convAdd = llvm::dyn_cast<HabanaConvolutionAddNode>(
@@ -1505,7 +1509,7 @@ bool HabanaBackend::transformPostLowering(Function *F,
           F->createTranspose("weight_transpose", FC->getWeights(), {1, 0});
       auto *NF = F->addNode(
           new HabanaFullyConnectedNode(FC->getName(), FC->getResult().getType(),
-                                     FC->getInput(), weights, FC->getBias()));
+                                       FC->getInput(), weights, FC->getBias()));
       FC->getResult().replaceAllUsesOfWith(NF);
       changed = true;
       continue;
@@ -1526,7 +1530,8 @@ bool HabanaBackend::transformPostLowering(Function *F,
       continue;
     }
 
-    // Replace Reshape with HabanaReshape for better control over code generation.
+    // Replace Reshape with HabanaReshape for better control over code
+    // generation.
     if (auto *reshape = llvm::dyn_cast<ReshapeNode>(&node)) {
       auto *NR = F->addNode(new HabanaReshapeNode(
           reshape->getName(), reshape->getResult().getType(),

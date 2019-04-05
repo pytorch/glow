@@ -43,7 +43,8 @@ std::mutex HabanaDeviceManager::synapseMtx_;
 std::atomic<RunIdentifierTy> HabanaDeviceManager::runIdentifier_;
 
 HabanaDeviceManager::HabanaDeviceManager(std::unique_ptr<DeviceConfig> config,
-                                     unsigned numRunners, unsigned numWaiters)
+                                         unsigned numRunners,
+                                         unsigned numWaiters)
     : DeviceManager(BackendKind::Habana, std::move(config)),
       numRunners_(numRunners), numWaiters_(numWaiters) {
   std::lock_guard<std::mutex> lock(synapseMtx_);
@@ -100,7 +101,8 @@ llvm::Error HabanaDeviceManager::init() {
 }
 
 void HabanaDeviceManager::addNetwork(const Module *module,
-                                   FunctionMapTy functions, ReadyCBTy readyCB) {
+                                     FunctionMapTy functions,
+                                     ReadyCBTy readyCB) {
   std::unique_lock<std::mutex> lk(instanceMtx_);
   for (const auto &func : functions) {
     // Check if a function with the same name has already been added.
@@ -127,8 +129,9 @@ void HabanaDeviceManager::addNetwork(const Module *module,
     }
 
     if (status != synSuccess) {
-      llvm::errs() << "Unable to load recipe " << habanaFunction->getRecipeName()
-                   << " for function " << func.first << ".\n";
+      llvm::errs() << "Unable to load recipe "
+                   << habanaFunction->getRecipeName() << " for function "
+                   << func.first << ".\n";
       // TODO: Unload functions that were loaded successfully.
       lk.unlock();
       readyCB(module, MAKE_ERR("Unable to load recipe"));
@@ -138,10 +141,11 @@ void HabanaDeviceManager::addNetwork(const Module *module,
     // Insert the function into functions_.
     bool inserted = false;
     std::tie(std::ignore, inserted) = functions_.insert(std::make_pair(
-        func.first, HabanaFunctionMeta{topologyId, habanaFunction,
-                                     llvm::make_unique<HabanaIOBufferPool>(
-                                         deviceId_, habanaFunction->getInputs(),
-                                         habanaFunction->getOutputs())}));
+        func.first,
+        HabanaFunctionMeta{topologyId, habanaFunction,
+                           llvm::make_unique<HabanaIOBufferPool>(
+                               deviceId_, habanaFunction->getInputs(),
+                               habanaFunction->getOutputs())}));
 
     if (!inserted) {
       llvm::errs() << "Unable to add function " << func.first
@@ -161,7 +165,7 @@ void HabanaDeviceManager::addNetwork(const Module *module,
 }
 
 void HabanaDeviceManager::evictNetwork(std::string functionName,
-                                     EvictFunctionCBTy evictCB) {
+                                       EvictFunctionCBTy evictCB) {
   std::unique_lock<std::mutex> lk(instanceMtx_);
 
   // Check if a network with the given name exists on the device.
@@ -209,9 +213,9 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
 }
 
 void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
-                                        std::string functionName,
-                                        std::unique_ptr<ExecutionContext> ctx,
-                                        runtime::ResultCBTy resultCB) {
+                                          std::string functionName,
+                                          std::unique_ptr<ExecutionContext> ctx,
+                                          runtime::ResultCBTy resultCB) {
   // Try to find the function with the given name in functions_.
   uint64_t topologyId;
   HabanaFunction *function;
@@ -232,7 +236,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
   }
 
   // Execute the function.
-  auto deviceBindings = llvm::make_unique<HabanaBindings>(deviceId_, topologyId);
+  auto deviceBindings =
+      llvm::make_unique<HabanaBindings>(deviceId_, topologyId);
   deviceBindings->setIOBuffer(ioBufferPool->get());
   ctx->setDeviceBindings(std::move(deviceBindings));
   function->execute(ctx.get());
@@ -274,8 +279,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
 RunIdentifierTy
 HabanaDeviceManager::runFunction(std::string functionName,
-                               std::unique_ptr<ExecutionContext> ctx,
-                               runtime::ResultCBTy resultCB) {
+                                 std::unique_ptr<ExecutionContext> ctx,
+                                 runtime::ResultCBTy resultCB) {
   RunIdentifierTy runId = runIdentifier_++;
   runPool_->submit([this, runId, functionName = std::move(functionName),
                     ctx = std::move(ctx),
