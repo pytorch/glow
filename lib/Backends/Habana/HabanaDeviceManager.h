@@ -94,8 +94,8 @@ class HabanaDeviceManager : public DeviceManager {
 public:
   /// Constructor.
   HabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
-                    unsigned numRunners = kNumRunners,
-                    unsigned numWaiters = kNumWaiters);
+                      unsigned numRunners = kNumRunners,
+                      unsigned numWaiters = kNumWaiters);
 
   /// Destructor.
   virtual ~HabanaDeviceManager();

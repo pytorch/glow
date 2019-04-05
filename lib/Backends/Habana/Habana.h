@@ -36,7 +36,7 @@ class HabanaIOBuffer {
 public:
   /// Constructor.
   HabanaIOBuffer(uint32_t deviceId, uint8_t *buffer,
-               const std::unordered_map<const Placeholder *, off_t> &offsets);
+                 const std::unordered_map<const Placeholder *, off_t> &offsets);
   /// Destructor.
   ~HabanaIOBuffer() = default;
 
@@ -68,8 +68,8 @@ class HabanaIOBufferPool {
 public:
   /// Constructor.
   HabanaIOBufferPool(uint32_t deviceId, const PlaceholderList &inputs,
-                   const PlaceholderList &outputs,
-                   unsigned numBuffers = kDefaultNumBuffers);
+                     const PlaceholderList &outputs,
+                     unsigned numBuffers = kDefaultNumBuffers);
 
   /// Destructor.
   ~HabanaIOBufferPool();
@@ -92,11 +92,12 @@ private:
   /// The device that the underlying buffer resides on.
   uint32_t deviceId_;
   /// Offsets for different input/output Placeholders. This is the same for all
-  /// HabanaIOBuffer instances, so the real copy is kept here and all HabanaIOBuffer
-  /// instances in the pool receive const references to this one.
+  /// HabanaIOBuffer instances, so the real copy is kept here and all
+  /// HabanaIOBuffer instances in the pool receive const references to this one.
   std::unordered_map<const Placeholder *, off_t> offsets_;
   /// The size of all input and output Placeholders provided during
-  /// construction. This is the effective size of one HabanaIOBuffer in this pool.
+  /// construction. This is the effective size of one HabanaIOBuffer in this
+  /// pool.
   size_t perBufferSize_;
   /// The combined size of all HabanaIOBuffers in this pool (i.e. size_ *
   /// numBuffers_).
@@ -109,8 +110,8 @@ private:
   unsigned numBuffers_{kDefaultNumBuffers};
   static constexpr unsigned kDefaultNumBuffers{3};
 
-  /// Queue of HabanaIOBuffers and a mutex and condition variable for synchronized
-  /// access.
+  /// Queue of HabanaIOBuffers and a mutex and condition variable for
+  /// synchronized access.
   std::mutex mtx_;
   std::condition_variable cv_;
   std::queue<std::unique_ptr<HabanaIOBuffer>> ioBuffers_;
@@ -123,8 +124,8 @@ public:
   /// Constructors.
   HabanaWaitHandle();
   HabanaWaitHandle(uint32_t deviceId, synWaitHandle handle,
-                 std::vector<EnqueueTensorInfo> &&inputInfo,
-                 std::vector<EnqueueTensorInfo> &&outputInfo);
+                   std::vector<EnqueueTensorInfo> &&inputInfo,
+                   std::vector<EnqueueTensorInfo> &&outputInfo);
   /// Destructor.
   ~HabanaWaitHandle();
 
@@ -192,8 +193,8 @@ class HabanaFunction final : public CompiledFunction {
 public:
   /// Constructor.
   HabanaFunction(const runtime::RuntimeBundle &bundle,
-               const std::string &recipeName, PlaceholderList &&inputs,
-               PlaceholderList &&outputs);
+                 const std::string &recipeName, PlaceholderList &&inputs,
+                 PlaceholderList &&outputs);
 
   /// @name CompiledFunction interface
   ///@{
