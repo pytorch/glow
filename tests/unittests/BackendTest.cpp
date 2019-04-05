@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Backends/BackendUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -244,6 +245,43 @@ TEST_P(BackendTest, BundleSharedConstant) {
   auto it2 = table2.find(X->getName());
   EXPECT_TRUE(it != table1.end());
   EXPECT_TRUE(it2 != table2.end());
+}
+
+/// Test that the symbol category for a symbol is properly set.
+TEST_P(BackendTest, BundleSymbolCategory) {
+  Module mod;
+  PlaceholderBindings bindings;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 10, 10, 3});
+  inputs.getHandle().randomize(-2, 2, mod.getPRNG());
+
+  // Create a simple graph that has placeholders, constants, activations, and a
+  // tensor_view.
+  Function *F = mod.createFunction("main");
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
+
+  auto *ex = mod.createConstant(ElemKind::Int64ITy, {1, 1}, "exp");
+
+  auto *FC = F->createFullyConnected(bindings, "FC", input, 30);
+  auto *RL = F->createRELU("RL2", FC);
+  auto *SM = F->createSoftMax("sm", RL, ex);
+  auto *S = F->createSave("ret", SM);
+
+  EE_.compile(CompilationMode::Infer, F);
+  auto table = EE_.getCompiledFunction().getRuntimeBundle().getSymbolTable();
+  // Check that placeholders and constants are correctly labelled.
+  EXPECT_EQ(table.find(S->getName())->second.symbolCategory,
+            glow::runtime::SymbolCategory::Placeholder);
+  EXPECT_EQ(table.find(ex->getName())->second.symbolCategory,
+            glow::runtime::SymbolCategory::Constant);
+  // Check that activations are labelled correctly.
+  EXPECT_EQ(table.find("fc_add_bias_res")->second.symbolCategory,
+            glow::runtime::SymbolCategory::Activation);
+  // Check that tensor views have the same label as their parent symbol. In this
+  // case same as "input".
+  EXPECT_EQ(table.find("tensorview_reshape")->second.symbolCategory,
+            table.find(input->getName())->second.symbolCategory);
 }
 
 /// Test compiling a vector of functions completes without error.
