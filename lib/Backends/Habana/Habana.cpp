@@ -260,10 +260,7 @@ public:
                              synMemoryHost, false, name_.data());
     if (V->isQuantizedType() &&
         V->getElementType() != ElemKind::UInt8FusedQTy) {
-      GLOW_ASSERT(V->getOffset() == 0 &&
-                  "Only symmetric quantization is supported");
-      // TODO: Figure out how offset/zero_point works:
-      // desc.m_quantizationParams[0].m_zp = V->getOffset();
+      desc.m_quantizationParams[0].m_zp = V->getOffset();
       desc.m_quantizationParams[0].m_scale = V->getScale();
       desc.m_quantizationParams[0].m_qDataType = elemType;
     }

@@ -768,6 +768,38 @@ TEST_F(HabanaBackendTest, QuantizedFC) {
   }
 }
 
+TEST_F(HabanaBackendTest, QuantizedNonZeroOffset) {
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.08, 4);
+  TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.075, -5);
+  TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.075, -5);
+
+  auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "rhs", false);
+
+  ctx_.allocate(lhs)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  ctx_.allocate(rhs)->getHandle() = {0.1f, -0.2f, 0.3f, 9.0f};
+
+  auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F_->createQuantize("rhs.q", rhs, rhsTy);
+
+  auto *matmulq = F_->createSub("sub.q", resTy, lhsq, rhsq);
+
+  auto *rq = F_->createDequantize("dequant", matmulq);
+
+  auto *result = F_->createSave("save", rq);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  EXPECT_NEAR(H.at({0, 0}), 0.9f, 0.1);
+  EXPECT_NEAR(H.at({0, 1}), 2.2f, 0.1);
+  EXPECT_NEAR(H.at({1, 0}), 2.7f, 0.1);
+  EXPECT_NEAR(H.at({1, 1}), -5.0f, 0.1);
+}
+
 TEST_F(HabanaBackendTest, FC2) {
   constexpr unsigned batch = 2;
   constexpr unsigned inputs = 32;
