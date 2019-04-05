@@ -21,6 +21,11 @@
 
 namespace glow {
 namespace runtime {
+
+/// An enum to indicate what type each symbol in the bundle is. Current options
+/// are activations, constants, and placeholders.
+enum class SymbolCategory { Activation, Placeholder, Constant };
+
 /// Contains information for initialization and handling of symbol at runtime.
 struct RuntimeSymbolInfo {
   /// The size in bytes.
@@ -33,6 +38,8 @@ struct RuntimeSymbolInfo {
   bool input{true};
   /// Is the symbol an output for the function.
   bool output{true};
+  /// Indicates what category the symbol is.
+  SymbolCategory symbolCategory;
 };
 
 using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;
