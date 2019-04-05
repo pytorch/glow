@@ -68,6 +68,8 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     bfsQueue.push(node);
   }
 
+  auto *resultTraceContext = resultCtx_->getTraceContext();
+
   // Breadth-first search.
   while (!bfsQueue.empty()) {
     // Get the next node in the BFS queue.
@@ -78,8 +80,13 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     nodeParentsDone_[node] = 0;
 
     // Make an (empty) input context for the node.
-    inputCtxs_.insert(
-        std::make_pair(node, llvm::make_unique<ExecutionContext>()));
+    auto ctx = llvm::make_unique<ExecutionContext>();
+    if (resultTraceContext) {
+      ctx->setTraceContext(llvm::make_unique<TraceContext>(
+          resultTraceContext->getTraceLevel(),
+          resultTraceContext->getTraceThread()));
+    }
+    inputCtxs_.insert(std::make_pair(node, std::move(ctx)));
 
     // Push all unvisited children onto the BFS queue.
     for (const auto &child : node->children) {
@@ -184,6 +191,18 @@ void ExecutionState::insertIntoResultCtx(Placeholder *P, Tensor &&T) {
   }
 }
 
+void ExecutionState::insertIntoTraceContext(std::vector<TraceEvent> &events) {
+  if (!resultCtx_->getTraceContext()) {
+    events.clear();
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(bindingsMtx_);
+  std::move(
+      events.begin(), events.end(),
+      std::back_inserter(resultCtx_->getTraceContext()->getTraceEvents()));
+}
+
 std::unique_ptr<ExecutionContext> ExecutionState::getUniqueResultContextPtr() {
   // The result PlaceholderBindings should have been been created in the
   // constructor.
@@ -212,6 +231,8 @@ void ThreadPoolExecutor::shutdown() {
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<ExecutionContext> context,
                              RunIdentifierTy runId, ResultCBTy cb) {
+  ScopedTraceBlock preRunEvent(context->getTraceContext(), "EX_preRun");
+
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
     cb(runId,
@@ -274,6 +295,8 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 void ThreadPoolExecutor::propagatePlaceholdersForNode(
     std::shared_ptr<ExecutionState> executionState, const DAGNode *node,
     const ExecutionContext *ctx) {
+  ScopedTraceBlock(executionState->getRawResultContextPtr()->getTraceContext(),
+                   "EX_propagateInputs");
   // Get the symbol table for the node.
   const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
@@ -307,6 +330,8 @@ void ThreadPoolExecutor::executeDAGNode(
     return;
   }
 
+  auto startTS = TraceEvent::now();
+
   // Get the DeviceManager that can run the node.
   auto deviceManagerIt = deviceManagers_.find(node->deviceID);
 
@@ -325,17 +350,34 @@ void ThreadPoolExecutor::executeDAGNode(
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
+
+  TraceContext *traceContext = nodeCtx->getTraceContext();
+  int initialThread = 0;
+  if (traceContext) {
+    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "B", startTS);
+    TRACE_EVENT_END(traceContext, "EX_enqueue_" + node->name);
+    initialThread = traceContext->getTraceThread();
+    traceContext->setTraceThread(node->deviceID);
+  }
+
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
-      [this, executionState,
-       node](RunIdentifierTy id, llvm::Error err,
-             std::unique_ptr<ExecutionContext> resultCtx) {
+      [this, executionState, node,
+       initialThread](RunIdentifierTy id, llvm::Error err,
+                      std::unique_ptr<ExecutionContext> resultCtx) {
+        if (resultCtx->getTraceContext()) {
+          resultCtx->getTraceContext()->setTraceThread(initialThread);
+        }
+        TRACE_EVENT_BEGIN(resultCtx->getTraceContext(),
+                          "EX_deferResult_" + node->name);
         // Immediately move the handling of the result onto threadPool_ to
         // avoid doing work on the DeviceManager thread.
         this->threadPool_.submit([this, executionState, node,
                                   err = std::move(err),
                                   ctx = std::move(resultCtx)]() mutable {
+          TRACE_EVENT_END(ctx->getTraceContext(),
+                          "EX_deferResult_" + node->name);
           this->handleDeviceManagerResult(executionState, std::move(err),
                                           std::move(ctx), node);
         });
@@ -344,10 +386,12 @@ void ThreadPoolExecutor::executeDAGNode(
 
 void ThreadPoolExecutor::propagateOutputPlaceholders(
     std::shared_ptr<ExecutionState> executionState,
-    std::unique_ptr<ExecutionContext> ctx) {
-  // Copy all of the Placeholders in ctx into the result PlaceholderBindings for
-  // the run.
-  for (const auto &phTensorPair : ctx->getPlaceholderBindings()->pairs()) {
+    PlaceholderBindings *bindings) {
+  ScopedTraceBlock(executionState->getRawResultContextPtr()->getTraceContext(),
+                   "EX_propagateOutputs");
+  // Copy all of the Placeholders in bindings into the result
+  // PlaceholderBindings for the run.
+  for (const auto &phTensorPair : bindings->pairs()) {
     auto *placeholder = phTensorPair.first;
     auto *tensor = phTensorPair.second;
 
@@ -362,6 +406,9 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // while a node was executing. That should never happen.
   assert(executionState && "Execution state should not be null");
 
+  TraceContext *traceContext = ctx->getTraceContext();
+  TRACE_EVENT_BEGIN(traceContext, "EX_handleResult_" + node->name);
+
   auto runWasSuccess = !err;
 
   // Set the result code for the run.
@@ -373,7 +420,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     if ((node->children).empty()) {
       // If the node has no children, propagate its outputs to the result
       // PlaceholderBindings for the run.
-      propagateOutputPlaceholders(executionState, std::move(ctx));
+      propagateOutputPlaceholders(executionState,
+                                  ctx->getPlaceholderBindings());
     } else {
       // If the node has children, propagate its outputs to the input
       // PlaceholderBindings for any of its children that need them as inputs.
@@ -396,6 +444,11 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // Now, check if all nodes in the graph are done. If so, the callback can be
   // called and all state associated with the run can be erased.
   bool noNodesInflight = executionState->decrementInflightNodes();
+
+  if (traceContext) {
+    TRACE_EVENT_END(traceContext, "EX_handleResult_" + node->name);
+    executionState->insertIntoTraceContext(traceContext->getTraceEvents());
+  }
 
   if (noNodesInflight) {
     // If there are no nodes inflight, that means all nodes are done. Call

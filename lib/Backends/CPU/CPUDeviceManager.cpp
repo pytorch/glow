@@ -113,10 +113,12 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
 void CPUDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
-  context->logTraceEvent("DM_run", "B");
+  std::string eventName = "run_" + function + "_" + std::to_string(id);
+  TRACE_EVENT_BEGIN(context->getTraceContext(), eventName);
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
-    context->logTraceEvent("DM_run", "E", {{"reason", "function not found"}});
+    context->logTraceEvent(eventName, TraceEvent::EndType,
+                           {{"reason", "function not found"}});
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {0} not found", function).str()),
@@ -130,7 +132,7 @@ void CPUDeviceManager::runFunctionImpl(
   func->execute(context.get());
 
   // End the TraceEvent early to avoid time in the CB.
-  context->logTraceEvent("DM_run", "E");
+  TRACE_EVENT_END(context->getTraceContext(), eventName)
 
   // Fire the resultCB.
   resultCB(id, llvm::Error::success(), std::move(context));

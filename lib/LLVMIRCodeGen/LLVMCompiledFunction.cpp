@@ -75,7 +75,7 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseMutableWeightVarsAddress{nullptr};
 
   {
-    auto ev = context->scopedEvent("alloc");
+    auto ev = context->scopedEvent("allocBuffers");
     if (runtimeBundle_.getActivationsSize() != 0) {
       baseActivationsAddress = (uint8_t *)alignedAlloc(
           runtimeBundle_.getActivationsSize(), TensorAlignment);
@@ -85,15 +85,15 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
       baseMutableWeightVarsAddress = (uint8_t *)alignedAlloc(
           runtimeBundle_.getMutableWeightSize(), TensorAlignment);
     }
-
-    {
-      auto ev = context->scopedEvent("loadPlaceholders");
-      loadPlaceholders(context->getPlaceholderBindings(),
-                       baseMutableWeightVarsAddress);
-    }
   }
 
-  context->logTraceEvent("findJitmainSymbol", "B");
+  {
+    auto ev = context->scopedEvent("loadPlaceholders");
+    loadPlaceholders(context->getPlaceholderBindings(),
+                     baseMutableWeightVarsAddress);
+  }
+
+  TRACE_EVENT_BEGIN(context, "findJitmainSymbol");
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType =
@@ -102,7 +102,7 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    context->logTraceEvent("findJitmainSymbol", "E");
+    TRACE_EVENT_END(context, "findJitmainSymbol");
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
   } else {
@@ -116,7 +116,7 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   }
 
   {
-    auto ev = context->scopedEvent("free");
+    auto ev = context->scopedEvent("freeBuffers");
     alignedFree(baseMutableWeightVarsAddress);
     alignedFree(baseActivationsAddress);
   }
