@@ -95,6 +95,7 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
+    symbol.symbolCategory = SymbolCategory::Constant;
     symbolTable.emplace(V->getName(), symbol);
   }
 
@@ -106,6 +107,7 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
+    symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(V->getName(), symbol);
   }
 
@@ -132,6 +134,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.size = numBytes;
     symbol.offset = addr;
     symbol.type = *w->getType();
+    symbol.symbolCategory = SymbolCategory::Constant;
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
@@ -147,6 +150,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.offset = addr;
     symbol.size = numBytes;
     symbol.type = *w->getType();
+    symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
@@ -163,6 +167,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
       symbol.offset = addr;
       symbol.size = numBytes;
       symbol.type = *A->getType();
+      symbol.symbolCategory = SymbolCategory::Activation;
       symbolTable.emplace(std::string(A->getName()), symbol);
       continue;
     }
@@ -186,6 +191,8 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                       (offsetLength * TV->getType()->getElementSize());
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
+      symbol.symbolCategory =
+          symbolTable.find(tvSource->getName())->second.symbolCategory;
       symbolTable.emplace(std::string(TV->getName()), symbol);
       continue;
     }
