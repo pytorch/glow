@@ -54,24 +54,35 @@ void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
 }
 
 uint64_t TraceEvent::now() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
+  return std::chrono::duration_cast<std::chrono::microseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
 
-void TraceContext::logTraceEvent(llvm::StringRef name, llvm::StringRef type,
-                                 std::map<std::string, std::string> args) {
+void TraceContext::logTraceEvent(
+    llvm::StringRef name, llvm::StringRef type,
+    std::map<std::string, std::string> additionalAttributes) {
+  logTraceEvent(name, type, TraceEvent::now(), std::move(additionalAttributes));
+}
+
+void TraceContext::logTraceEvent(
+    llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
+    std::map<std::string, std::string> additionalAttributes) {
   if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
     return;
   }
-  TraceEvent ev(name, TraceEvent::now(), type, traceThread_, std::move(args));
-  traceEvents_.push_back(std::move(ev));
+  TraceEvent ev(name, timestamp, type, traceThread_,
+                std::move(additionalAttributes));
+  {
+    std::lock_guard<std::mutex> l(lock_);
+    traceEvents_.push_back(std::move(ev));
+  }
 }
 
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
     : context_(context), name_(name) {
   if (context_) {
-    context_->logTraceEvent(name_, "B", std::move(args_));
+    context_->logTraceEvent(name_, TraceEvent::BeginType, std::move(args_));
   }
 }
 
@@ -85,7 +96,7 @@ ScopedTraceBlock &ScopedTraceBlock::addArg(llvm::StringRef key,
 
 void ScopedTraceBlock::end() {
   if (!end_ && context_) {
-    context_->logTraceEvent(name_, "E", std::move(args_));
+    context_->logTraceEvent(name_, TraceEvent::EndType, std::move(args_));
   }
   end_ = true;
 }

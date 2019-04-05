@@ -89,6 +89,9 @@ public:
   /// getUniqueResultPlaceholderBindingsPtr().
   void insertIntoResultCtx(Placeholder *P, Tensor &&T);
 
+  /// Move all events from the provided vector into the top level resultContxt.
+  void insertIntoTraceContext(std::vector<TraceEvent> &events);
+
   /// \returns a unique pointer to the result bindings. This should not be
   /// called at the same time as getRawResultPlaceholderBindingsPtr() or
   /// insertIntoResultCtx().
@@ -155,7 +158,7 @@ private:
   /// ExecutionContext for the run corresponding to \p executionState.
   void
   propagateOutputPlaceholders(std::shared_ptr<ExecutionState> executionState,
-                              std::unique_ptr<ExecutionContext> ctx);
+                              PlaceholderBindings *bindings);
 
   /// Propagate Placeholders needed by \p node from \p ctx into
   /// the ExecutionContext for \p node within the run corresponding to \p

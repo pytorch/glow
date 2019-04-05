@@ -38,15 +38,23 @@ llvm::cl::opt<std::string>
                                   "png's with standard imagenet normalization"),
                    llvm::cl::init("../tests/images/imagenet/"),
                    llvm::cl::Positional, llvm::cl::cat(category));
-llvm::cl::opt<unsigned> numDevices("numDevices",
+llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
                                    llvm::cl::init(5), llvm::cl::value_desc("N"),
                                    llvm::cl::cat(category));
 llvm::cl::opt<unsigned>
-    maxImages("maxImages",
+    maxImages("max-images",
               llvm::cl::desc("Maximum number of images to load and classify"),
-              llvm::cl::init(1000), llvm::cl::value_desc("N"),
+              llvm::cl::init(100), llvm::cl::value_desc("N"),
               llvm::cl::cat(category));
+llvm::cl::opt<std::string> tracePath("trace-path",
+                                     llvm::cl::desc("Write trace logs to disk"),
+                                     llvm::cl::init(""),
+                                     llvm::cl::cat(category));
+
+std::vector<TraceEvent> allEvents;
+std::mutex eventLock;
+
 } // namespace
 
 /// Loads the model into /p module and returns the input and output
@@ -87,6 +95,13 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
                 .minMaxArg()
                 .second;
         llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
+
+        if (!tracePath.empty()) {
+          std::lock_guard<std::mutex> l(eventLock);
+          auto &newEvents = context->getTraceContext()->getTraceEvents();
+          std::move(newEvents.begin(), newEvents.end(),
+                    std::back_inserter(allEvents));
+        }
 
         if (++returned == maxImages) {
           finished.set_value();
@@ -163,6 +178,8 @@ int main(int argc, char **argv) {
         ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
     std::unique_ptr<ExecutionContext> context =
         llvm::make_unique<ExecutionContext>();
+    context->setTraceContext(
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 50));
 
     context->getPlaceholderBindings()->allocate(phLists[index]);
     Tensor batch = image.getUnowned(inputShape);
@@ -179,6 +196,11 @@ int main(int argc, char **argv) {
   finished.get_future().wait();
 
   llvm::outs() << "Finished classifying " << started << " images.\n";
+
+  if (!tracePath.empty()) {
+    std::lock_guard<std::mutex> l(eventLock);
+    TraceEvent::dumpTraceEvents(allEvents, tracePath);
+  }
 
   return 0;
 }

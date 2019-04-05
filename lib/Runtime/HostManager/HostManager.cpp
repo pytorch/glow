@@ -165,7 +165,8 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
-
+  ScopedTraceBlock(context->getTraceContext(),
+                   "runFunction_" + networkName.str());
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (networks_.find(networkName) == networks_.end()) {
@@ -190,13 +191,14 @@ HostManager::runNetwork(llvm::StringRef networkName,
     return currentRun;
   }
 
-  executor_->run(networks_[networkName].dag.root.get(), std::move(context),
-                 currentRun,
-                 [&activeRequest = this->activeRequestCount_,
-                  callback](RunIdentifierTy runID, llvm::Error err,
-                            std::unique_ptr<ExecutionContext> context) {
-                   --activeRequest;
-                   callback(runID, std::move(err), std::move(context));
-                 });
+  executor_->run(
+      networks_[networkName].dag.root.get(), std::move(context), currentRun,
+      [&activeRequest = this->activeRequestCount_, callback,
+       name = networkName.str()](RunIdentifierTy runID, llvm::Error err,
+                                 std::unique_ptr<ExecutionContext> context) {
+        --activeRequest;
+        TRACE_EVENT_INSTANT(context->getTraceContext(), "finish_" + name);
+        callback(runID, std::move(err), std::move(context));
+      });
   return currentRun;
 }

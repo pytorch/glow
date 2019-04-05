@@ -20,6 +20,7 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include <map>
+#include <mutex>
 #include <vector>
 
 namespace glow {
@@ -28,8 +29,13 @@ class PlaceholderBindings;
 
 /// An individual tracing event, such as the begin or end of an instruction.
 /// Designed to match the Google Trace Event Format for Chrome:
-// https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU
+/// https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU
 struct TraceEvent {
+  /// Event Types.
+  static constexpr auto BeginType = "B";
+  static constexpr auto EndType = "E";
+  static constexpr auto InstantType = "I";
+
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
 
@@ -121,21 +127,68 @@ class TraceContext {
   /// on different contexts.
   int traceThread_{0};
 
+  /// Lock around traceEvents_.
+  std::mutex lock_;
+
 public:
   TraceContext(TraceLevel level, int thread)
       : traceLevel_(level), traceThread_(thread) {}
+
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
+  /// \returns the integer thread id used for logged events in this context.
   int getTraceThread() const { return traceThread_; }
+
+  /// Sets the integer thread id used for logged events in this context.
   void setTraceThread(int tid) { traceThread_ = tid; }
 
+  /// \returns the level of verbosity allowed for TraceEvents.
   TraceLevel getTraceLevel() { return traceLevel_; }
+
+  /// Sets the level of verbosity for TraceEvents.
   void setTraceLevel(TraceLevel level) { traceLevel_ = level; }
 
-  void logTraceEvent(llvm::StringRef name, llvm::StringRef type = "i",
-                     std::map<std::string, std::string> args = {});
+  /// Logs a new TraceEvent at the current time with the given \p name, \p type
+  /// and optionally additional attributes.
+  void
+  logTraceEvent(llvm::StringRef name,
+                llvm::StringRef type = TraceEvent::InstantType,
+                std::map<std::string, std::string> additionalAttributes = {});
+
+  // Logs a new TraceEvent at the provided \p timestamp, with the given \p name,
+  // \p type and optionally additional attributes.
+  void
+  logTraceEvent(llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
+                std::map<std::string, std::string> additionalAttributes = {});
 };
+
+/// These macros predicate the logging of a TraceEvent on a validity of the
+/// given TraceContext.
+
+/// Logs a new "Begin" event, beginning an event with duration.
+#define TRACE_EVENT_BEGIN(ctx, name)                                           \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, TraceEvent::BeginType);                           \
+  }
+
+/// Logs a new "End" event, ending an event with duration.
+#define TRACE_EVENT_END(ctx, name)                                             \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, TraceEvent::EndType);                             \
+  }
+
+/// Logs a new "Instant" event, which has an associated time, but no duration.
+#define TRACE_EVENT_INSTANT(ctx, name)                                         \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, TraceEvent::InstantType);                         \
+  }
+
+/// Logs a new TraceEvent with the provided type and timestamp.
+#define TRACE_EVENT_LOG(ctx, name, type, ts)                                   \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, type, ts);                                        \
+  }
 
 /// Helper class which uses RAII for the start and end times of a TraceEvent.
 /// At creation will create a "begin" TraceEvent and at destuction (or end())

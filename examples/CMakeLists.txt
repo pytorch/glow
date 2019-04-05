@@ -91,6 +91,7 @@ if(GLOW_WITH_CPU)
   target_link_libraries(resnet-runtime
                         PRIVATE
                           Backends
+                          ExecutionContext
                           ExecutionEngine
                           HostManager
                           Partitioner
