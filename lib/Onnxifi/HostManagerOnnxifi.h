@@ -28,7 +28,7 @@ public:
   /// Create Glow ONNXIFI backend identifier using HostManager with the
   /// given Glow backend \p kind, whether to use onnx or caffe2 for models
   /// (\p useOnnx).
-  HostManagerBackendId(runtime::HostManager *hostManager,
+  HostManagerBackendId(std::shared_ptr<runtime::HostManager> hostManager,
                        glow::BackendKind kind, bool useOnnx)
       : BackendId(kind, useOnnx), hostManager_(hostManager) {}
 
@@ -45,7 +45,7 @@ public:
   createHostManager(glow::BackendKind kind);
 
 private:
-  runtime::HostManager *hostManager_;
+  std::shared_ptr<runtime::HostManager> hostManager_;
 };
 
 class HostManagerGraph : public Graph {
