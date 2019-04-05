@@ -4,16 +4,7 @@ else()
   find_program(CLANG_BIN clang++)
 endif()
 
-if(TARGET llvm-link)
-  set(LLVM_LINK_BIN $<TARGET_FILE:llvm-link>)
-else()
-  find_program(LLVM_LINK_BIN
-               NAMES
-                 llvm-link-${LLVM_VERSION_MAJOR}
-                 llvm-link-8
-                 llvm-link-7
-                 llvm-link)
-endif()
+set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/bin/llvm-link)
 
 set(CMAKE_LLIR_CREATE_SHARED_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
