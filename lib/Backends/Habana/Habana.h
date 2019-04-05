@@ -97,10 +97,10 @@ private:
   std::unordered_map<const Placeholder *, off_t> offsets_;
   /// The size of all input and output Placeholders provided during
   /// construction. This is the effective size of one HabanaIOBuffer in this pool.
-  size_t size_;
+  size_t perBufferSize_;
   /// The combined size of all HabanaIOBuffers in this pool (i.e. size_ *
   /// numBuffers_).
-  size_t totalSize_;
+  size_t allBuffersSize_;
   /// Buffer that backs all of the HOmaIOBuffers in this pool. The first buffer
   /// starts at buffer_, the second at buffer_ + size_, etc. The last *ends* at
   /// buffer_ + totalSize_.

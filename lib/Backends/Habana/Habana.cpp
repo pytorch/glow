@@ -349,18 +349,18 @@ HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
 
   // Now that the total size of one buffer has been determined, allocate storage
   // for the whole pool.
-  size_ = currentOffset;
-  totalSize_ = size_ * numBuffers_;
-  chk(synMalloc(deviceId_, totalSize_, synMemFlags::synMemHost,
+  perBufferSize_ = currentOffset;
+  allBuffersSize_ = perBufferSize_ * numBuffers_;
+  chk(synMalloc(deviceId_, allBuffersSize_, synMemFlags::synMemHost,
                 (void **)&buffer_));
 
   // Create HabanaIOBuffer instances for the pool with offsets into buffer_ that
-  // are size_ apart.
+  // are perBufferSize_ apart.
   uint8_t *copyOffset = buffer_;
   for (unsigned i = 0; i < numBuffers_; ++i) {
     ioBuffers_.push(
         llvm::make_unique<HabanaIOBuffer>(deviceId_, copyOffset, offsets_));
-    copyOffset += size_;
+    copyOffset += perBufferSize_;
   }
 }
 
