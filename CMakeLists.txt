@@ -108,6 +108,7 @@ endif()
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+set(LLVM_BIN_DIR ${LLVM_DIR}/../../../bin)
 
 if(NOT EXISTS "${GLOW_SOURCE_DIR}/tests/googlebenchmark/src")
   message(FATAL_ERROR "No googlebenchmark git submodule. Run: git submodule update --init --recursive")
