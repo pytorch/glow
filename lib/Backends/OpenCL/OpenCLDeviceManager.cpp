@@ -144,22 +144,16 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     if (functions_.count(func.first) != 0) {
       readyCB(
           module,
-          MAKE_ERR(
-              llvm::formatv(
-                  "Failed to add network: already have a function called {}",
-                  func.first)
-                  .str()));
+          MAKE_ERR("Failed to add network: already have a function called %s",
+                   func.first.c_str()));
       return;
     }
 
     if (func.second->getCompileBackendKind() != BackendKind::OpenCL) {
-      readyCB(
-          module,
-          MAKE_ERR(
-              llvm::formatv(
-                  "Failed to add network: function {} is not a OpenCL Function",
-                  func.first)
-                  .str()));
+      readyCB(module,
+              MAKE_ERR(
+                  "Failed to add network: function %s is not a OpenCL Function",
+                  func.first.c_str()));
     }
   }
   // Collect constants once, since currently the bundle grabs everything in the
@@ -249,11 +243,9 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
       usedMemoryBytes_ -= size;
     }
   } else {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {} to evict",
-                               functionName)
-                     .str());
+    err = MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   "Could not find function with name %s to evict",
+                   functionName.c_str());
   }
 
   if (evictCB) {
@@ -290,7 +282,7 @@ void OpenCLDeviceManager::runFunctionImpl(
                            {{"reason", "function not found"}});
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                      llvm::formatv("Function {} not found", function).str()),
+                      "Function %s not found", function.c_str()),
              std::move(context));
     return;
   }

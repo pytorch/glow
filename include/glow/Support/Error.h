@@ -98,21 +98,40 @@ public:
     }
   }
 
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message,
-          ErrorCode ec)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
-        ec_(ec) {}
-
+/// Construct a GlowErr for an error at a given \p lineNumber in a given \p
+/// fileName with a given ErrorCode \p ec. The final arguments to this
+/// constructor are a printf-style format string and the accompanying printf
+/// arguments from which the error message will be constructed.
+/// NOTE: This disables format-security warnings that enforce only string
+/// literals be passed to strFormat but GlowErr should only be constructed with
+/// formatStrings as string literals.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-security"
+  template <uint32_t FSize, typename... Args>
   GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec,
-          llvm::StringRef message)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
+          const char (&messageFormat)[FSize], Args &&... args)
+      : lineNumber_(lineNumber), fileName_(fileName),
+        message_(strFormat(messageFormat, std::forward<Args>(args)...)),
         ec_(ec) {}
+#pragma clang diagnostic pop
+
+/// Construct a GlowErr for an error at a given \p lineNumber in a given \p
+/// fileName. The final arguments to this constructor are a printf-style format
+/// string and the accompanying printf arguments from which the error message
+/// will be constructed. NOTE: This disables format-security warnings that
+/// enforce only string literals be passed to strFormat but GlowErr should only
+/// be constructed with formatStrings as string literals.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-security"
+  template <uint32_t FSize, typename... Args>
+  GlowErr(llvm::StringRef fileName, size_t lineNumber,
+          const char (&messageFormat)[FSize], Args &&... args)
+      : lineNumber_(lineNumber), fileName_(fileName),
+        message_(strFormat(messageFormat, std::forward<Args>(args)...)) {}
+#pragma clang diagnostic pop
 
   GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec)
       : lineNumber_(lineNumber), fileName_(fileName), ec_(ec) {}
-
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message) {}
 
 private:
   /// Convert ErrorCode values to string.

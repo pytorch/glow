@@ -50,11 +50,8 @@ public:
                   ReadyCBTy callback) override {
     for (const auto &func : functions) {
       if (functions_.count(func.first) != 0) {
-        callback(
-            module,
-            MAKE_ERR(
-                GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                llvm::formatv("Function {0} not found", func.first).str()));
+        callback(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                                  "Function %s not found", func.first.c_str()));
         return;
       }
     }
@@ -88,11 +85,10 @@ public:
                               ResultCBTy callback) override {
     auto funcIt = functions_.find(functionName);
     if (funcIt == functions_.end()) {
-      callback(
-          0,
-          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                   llvm::formatv("Function {0} not found", functionName).str()),
-          std::move(context));
+      callback(0,
+               MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                        "Function %s not found", functionName.c_str()),
+               std::move(context));
       return 0;
     }
 

@@ -43,11 +43,10 @@ bool isArrayConstant(const llvm::ArrayRef<size_t> a);
 
 /// Prints a single serialized protocol buffer node. This method is useful for
 /// debugging the network and printing errors.
-template <typename T>
-std::string unexpectedNodeErrorMessage(const T &node, llvm::StringRef message) {
+template <typename T> std::string nodeToString(const T &node) {
   std::string str;
   google::protobuf::TextFormat::PrintToString(node, &str);
-  return llvm::formatv("{0}\n{1}", message, str);
+  return str;
 }
 
 /// Reads a single integer.

@@ -660,8 +660,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
       size_t totalOriginalOutputSize = node->getNthResult(0).getType()->size();
       RETURN_ERR_IF_NOT(totalReshapeSize == totalOriginalOutputSize,
-                        strFormat("Cannot reshape from size %lu to size %lu",
-                                  totalOriginalOutputSize, totalReshapeSize));
+                        "Cannot reshape from size %lu to size %lu",
+                        totalOriginalOutputSize, totalReshapeSize);
 
       node = G_.createReshape("fc.out", node, reshapeDims);
     }
@@ -1059,7 +1059,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
+  RETURN_ERR("Unsupported operator:\n%s", nodeToString(op).c_str());
 }
 
 template <class TensorProtoType>
@@ -1145,10 +1145,9 @@ static llvm::Error fillTensor(Tensor &T, ElemKind kind,
   T.reset(kind, dim);
   auto TH = T.getHandle<ElemTy>();
   RETURN_ERR_IF_NOT((size_t)values.size() == T.size(),
-                    llvm::formatv("Wrong number of values for GivenTensorFill "
-                                  "({0} given, {1} expected)",
-                                  values.size(), T.size())
-                        .str());
+                    "Wrong number of values for GivenTensorFill "
+                    "(%lu given, %lu expected)",
+                    values.size(), T.size());
   size_t i = 0;
   for (auto num : values) {
     TH.raw(i++) = num;
@@ -1433,7 +1432,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
+  RETURN_ERR("Unsupported weight kind:\n%s", nodeToString(op).c_str());
 }
 
 llvm::Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {

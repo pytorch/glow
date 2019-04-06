@@ -55,10 +55,7 @@ public:
 
     if (!resultMap_.erase(functionName)) {
       err = MAKE_ERR(
-          GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-          llvm::formatv("Could not find function with name {0} to evict",
-                        functionName)
-              .str());
+          GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND, "Could not find function with name %s to evict", functionName.c_str());
     }
 
     if (evictCB) {

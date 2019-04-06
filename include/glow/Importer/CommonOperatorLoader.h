@@ -663,8 +663,8 @@ protected:
     if (axes.size() > 1) {
       auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
       if (it != shapeAxes.end()) {
-        RETURN_ERR("Axes values are not unique.",
-                   GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+        RETURN_ERR(GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE,
+                   "Axes values are not unique.");
       }
     }
 

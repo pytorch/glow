@@ -69,9 +69,10 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
     std::string name = F->getName();
     auto it = networks_.find(name);
     if (it != networks_.end()) {
-      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
-                      "Failed to add network: already have a function called " +
-                          name);
+      return MAKE_ERR(
+          GlowErr::ErrorCode::RUNTIME_ERROR,
+          "Failed to add network: already have a function called %s",
+          name.c_str());
     }
   }
   std::vector<DeviceInfo> deviceInfo;
@@ -170,24 +171,22 @@ HostManager::runNetwork(llvm::StringRef networkName,
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (networks_.find(networkName) == networks_.end()) {
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Function {0} not found", networkName).str()),
-        std::move(context));
+    callback(currentRun,
+             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                      "Function %s not found", networkName.data()),
+             std::move(context));
     return currentRun;
   }
 
   size_t activeRequestCount = activeRequestCount_++;
   if (activeRequestCount >= activeRequestLimit_) {
     activeRequestCount_--;
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-                 strFormat("The number of allowed requests has been exceeded. "
-                           "active requests: %lu allowed requests: %u",
-                           activeRequestCount, activeRequestLimit_)),
-        std::move(context));
+    callback(currentRun,
+             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                      "The number of allowed requests has been exceeded. "
+                      "active requests: %lu allowed requests: %u",
+                      activeRequestCount, activeRequestLimit_),
+             std::move(context));
     return currentRun;
   }
 

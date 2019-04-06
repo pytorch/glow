@@ -46,19 +46,15 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
     if (functions_.count(func.first) != 0) {
       readyCB(
           module,
-          MAKE_ERR(
-              llvm::formatv(
-                  "Failed to add network: already have a function called {0}",
-                  func.first)
-                  .str()));
+          MAKE_ERR("Failed to add network: already have a function called %s",
+                   func.first.c_str()));
       return;
     }
 
     if (func.second->getCompileBackendKind() != BackendKind::Interpreter) {
-      readyCB(module, MAKE_ERR(llvm::formatv("Failed to add network: function "
-                                             "{0} is not a InterpreterFunction",
-                                             func.first)
-                                   .str()));
+      readyCB(module, MAKE_ERR("Failed to add network: function "
+                               "%s is not a InterpreterFunction",
+                               func.first.c_str()));
       return;
     }
   }
@@ -91,11 +87,9 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {0} to evict",
-                               functionName)
-                     .str());
+    err = MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   "Could not find function with name %s to evict",
+                   functionName.c_str());
   }
 
   if (evictCB) {
@@ -115,7 +109,7 @@ void InterpreterDeviceManager::runFunctionImpl(
                            {{"reason", "function not found"}});
     resultCB(id,
              MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                      llvm::formatv("Function {0} not found", function).str()),
+                      "Function %s not found", function.c_str()),
              std::move(context));
     return;
   }
