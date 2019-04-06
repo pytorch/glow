@@ -44,7 +44,8 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
   for (const auto &phTensorPair : phMapA) {
     auto *placeholder = phTensorPair.first;
     const auto *tensorA = phTensorPair.second;
-    const auto *tensorB = B->get(placeholder);
+    const auto *tensorB =
+        B->get(B->getPlaceholderByName(placeholder->getName()));
 
     if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
       return false;
