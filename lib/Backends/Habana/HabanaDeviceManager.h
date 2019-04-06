@@ -57,6 +57,13 @@ class HabanaDeviceManager : public DeviceManager {
   /// The number of workers in wait pool.
   unsigned numWaiters_{kNumWaiters};
 
+  /// Track active topology on this device.  -1 is invalid.
+  uint64_t activeTopo_{(uint64_t)-1};
+  /// Number of requests in flight.  Used to block topo switching.
+  unsigned inflightRequests_{0};
+  /// Condition variable for signaling queue drain.
+  std::condition_variable cv_;
+
   /// This struct wraps a topology ID with its corresponding HabanaFunction so
   /// that only one map is needed to keep track of both.
   struct HabanaFunctionMeta {

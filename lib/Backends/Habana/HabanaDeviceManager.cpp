@@ -235,6 +235,21 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     ioBufferPool = (it->second).ioBufferPool.get();
   }
 
+  // If we need to switch topos, wait to drain the queue.
+  {
+    std::unique_lock<std::mutex> lock(instanceMtx_);
+    if (activeTopo_ == (uint64_t)-1) {
+      synActivateTopology(deviceId_, topologyId);
+      activeTopo_ = topologyId;
+    }
+    if (topologyId != activeTopo_) {
+      // FIXME: This can starve inactive topos.
+      cv_.wait(lock, [this] { return inflightRequests_ == 0; });
+      synActivateTopology(deviceId_, topologyId);
+      activeTopo_ = topologyId;
+    }
+    inflightRequests_++;
+  }
   // Execute the function.
   auto deviceBindings =
       llvm::make_unique<HabanaBindings>(deviceId_, topologyId);
@@ -253,6 +268,13 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     bool ok = habanaHandle.wait();
     std::unique_ptr<HabanaIOBuffer> ioBuffer =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getIOBuffer();
+
+    // Notify anything waiting for a topo switch.
+    {
+      std::lock_guard<std::mutex> lock(this->instanceMtx_);
+      inflightRequests_--;
+    }
+    cv_.notify_one();
 
     if (!ok) {
       // Return the IO buffer to the IO buffer pool.
