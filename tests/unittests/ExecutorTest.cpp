@@ -352,7 +352,7 @@ public:
     // 1) Create Placeholders and Tensors for inputs/output names that have not
     //    been mapped to a Placeholder yet.
     // 2) Assemble the input ExecutionContexts that the node is expected to be
-    // called with
+    //    called with
     //    and the ExecutionContexts that the node should produce as output.
     // 3) Generate the symbol table for the new node by generating
     //    RuntimeSymbolInfo objects for each input and output.
@@ -362,9 +362,13 @@ public:
     auto nodeInputContext = llvm::make_unique<ExecutionContext>();
     auto nodeOutputContext = llvm::make_unique<ExecutionContext>();
 
+    auto nodeInputBindings = nodeInputContext->getPlaceholderBindings();
+    auto nodeOutputBindings = nodeOutputContext->getPlaceholderBindings();
+
     for (const auto &input : inputs) {
-      insertSymbolIntoPlaceholderBindings(
-          input, nodeInputContext->getPlaceholderBindings());
+      // Both input and output bindings should contain bindings for the inputs.
+      insertSymbolIntoPlaceholderBindings(input, nodeInputBindings);
+      insertSymbolIntoPlaceholderBindings(input, nodeOutputBindings);
 
       RuntimeSymbolInfo runtimeSymbolInfo;
       runtimeSymbolInfo.size = type_->getSizeInBytes();
@@ -372,13 +376,18 @@ public:
       runtimeSymbolInfo.type = *type_;
       runtimeSymbolInfo.input = true;
       runtimeSymbolInfo.output = false;
+      runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
       symbolTable.insert(std::make_pair(input, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }
 
     for (const auto &output : outputs) {
-      insertSymbolIntoPlaceholderBindings(
-          output, nodeOutputContext->getPlaceholderBindings());
+      // Both input and output bindings should contain bindings for the outputs,
+      // but the bound Tensors should be zero-filled in the input bindings.
+      insertSymbolIntoPlaceholderBindings(output, nodeInputBindings);
+      nodeInputBindings->get(nodeInputBindings->getPlaceholderByName(output))
+          ->zero();
+      insertSymbolIntoPlaceholderBindings(output, nodeOutputBindings);
 
       RuntimeSymbolInfo runtimeSymbolInfo;
       runtimeSymbolInfo.size = type_->getSizeInBytes();
@@ -386,6 +395,7 @@ public:
       runtimeSymbolInfo.type = *type_;
       runtimeSymbolInfo.input = false;
       runtimeSymbolInfo.output = true;
+      runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
       symbolTable.insert(std::make_pair(output, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }

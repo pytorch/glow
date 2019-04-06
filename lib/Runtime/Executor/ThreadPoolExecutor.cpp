@@ -80,13 +80,34 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     nodeParentsDone_[node] = 0;
 
     // Make an (empty) input context for the node.
-    auto ctx = llvm::make_unique<ExecutionContext>();
+    auto nodeInputCtx = llvm::make_unique<ExecutionContext>();
+
     if (resultTraceContext) {
-      ctx->setTraceContext(llvm::make_unique<TraceContext>(
+      nodeInputCtx->setTraceContext(llvm::make_unique<TraceContext>(
           resultTraceContext->getTraceLevel(),
           resultTraceContext->getTraceThread()));
     }
-    inputCtxs_.insert(std::make_pair(node, std::move(ctx)));
+
+    auto nodeInputPhBindings = nodeInputCtx->getPlaceholderBindings();
+
+    // Get the symbol table for the node.
+    const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
+
+    // Create Placeholders for the symbols of all intermediate nodes. These are
+    // not in the ExecutionContext passed to Executor::run, so they must be
+    // created by the Executor.
+    for (const auto &symbolPair : symbolTable) {
+      const auto &symbolName = symbolPair.first;
+      const auto &symbolInfo = symbolPair.second;
+
+      if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
+        nodeInputPhBindings->allocate(
+            createOrGetPlaceholder(symbolName, &symbolInfo.type));
+      }
+    }
+
+    // Insert the prepared ExecutionContext into the input contexts map.
+    inputCtxs_.insert(std::make_pair(node, std::move(nodeInputCtx)));
 
     // Push all unvisited children onto the BFS queue.
     for (const auto &child : node->children) {
@@ -99,8 +120,8 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
   }
 }
 
-void ExecutionState::insertIntoNodeCtx(const DAGNode *node, Placeholder *P,
-                                       Tensor &&T) {
+void ExecutionState::insertIntoNodeCtx(const DAGNode *node,
+                                       llvm::StringRef name, Tensor &&T) {
   // Get a raw pointer to the input ExecutionContext for the node. It should
   // have been created in the constructor.
   auto ctxIt = inputCtxs_.find(node);
@@ -114,7 +135,9 @@ void ExecutionState::insertIntoNodeCtx(const DAGNode *node, Placeholder *P,
 
   // Insert the placeholder-tensor pair.
   std::lock_guard<std::mutex> lock(bindingsMtx_);
-  bindings->insert(P, std::move(T));
+  auto *tensor = bindings->get(bindings->getPlaceholderByName(name));
+  assert(tensor && "Placeholder should have already been created");
+  *tensor = std::move(T);
 }
 
 std::unique_ptr<ExecutionContext>
@@ -175,19 +198,19 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
   return (newValue == numParents);
 }
 
-void ExecutionState::insertIntoResultCtx(Placeholder *P, Tensor &&T) {
+void ExecutionState::insertIntoResultCtx(llvm::StringRef name, Tensor &&T) {
   // The result PlaceholderBindings should have been been created in the
   // constructor and should not yet have been moved out if this function is
   // being called.
   assert(resultCtx_ && resultCtx_->getPlaceholderBindings() &&
          "Execution result bindings should exist!");
   std::lock_guard<std::mutex> lock(bindingsMtx_);
-  Tensor *tensor = resultCtx_->getPlaceholderBindings()->get(P);
+  auto *resultBindings = resultCtx_->getPlaceholderBindings();
+  Tensor *tensor =
+      resultBindings->get(resultBindings->getPlaceholderByName(name));
 
   if (tensor) {
     *tensor = std::move(T);
-  } else {
-    resultCtx_->getPlaceholderBindings()->insert(P, std::move(T));
   }
 }
 
@@ -216,6 +239,27 @@ ExecutionContext *ExecutionState::getRawResultContextPtr() const {
   // being called.
   assert(resultCtx_ && "Execution result bindings should exist!");
   return resultCtx_.get();
+}
+
+Placeholder *ExecutionState::createOrGetPlaceholder(llvm::StringRef name,
+                                                    TypeRef type) {
+  auto it = intermediatePlaceholders_.find(name);
+  Placeholder *ph;
+
+  if (it != intermediatePlaceholders_.end()) {
+    // If the Placeholder already exists, return a pointer to it.
+    auto &storedPh = it->second;
+    ph = storedPh.get();
+  } else {
+    // If the Placeholder does not exist, create one, remember it, and return a
+    // pointer to it.
+    auto newPh =
+        llvm::make_unique<Placeholder>(name, type, /*isTrainable=*/false);
+    ph = newPh.get();
+    intermediatePlaceholders_.insert(std::make_pair(name, std::move(newPh)));
+  }
+
+  return ph;
 }
 
 void ThreadPoolExecutor::shutdown() {
@@ -302,19 +346,15 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
 
   for (const auto &symbolPair : symbolTable) {
     const auto &symbolName = symbolPair.first;
-    const auto &symbolInfo = symbolPair.second;
 
-    if (symbolInfo.input) {
-      // If the symbol is an input, look for a Placeholder in ctx with
-      // the same name and copy the corresponding Tensor into the input
-      // PlaceholderBindings being prepared for the node.
-      auto *placeholder =
-          ctx->getPlaceholderBindings()->getPlaceholderByName(symbolName);
+    auto *placeholder =
+        ctx->getPlaceholderBindings()->getPlaceholderByName(symbolName);
 
-      if (placeholder) {
-        const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
-        executionState->insertIntoNodeCtx(node, placeholder, tensor->clone());
-      }
+    // If ctx provides a mapping for the symbol, copy it into the context for
+    // the node.
+    if (placeholder) {
+      const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
+      executionState->insertIntoNodeCtx(node, symbolName, tensor->clone());
     }
   }
 }
@@ -395,7 +435,8 @@ void ThreadPoolExecutor::propagateOutputPlaceholders(
     auto *placeholder = phTensorPair.first;
     auto *tensor = phTensorPair.second;
 
-    executionState->insertIntoResultCtx(placeholder, std::move(*tensor));
+    executionState->insertIntoResultCtx(placeholder->getName(),
+                                        std::move(*tensor));
   }
 }
 
