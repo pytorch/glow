@@ -706,6 +706,8 @@ IOPlaceholders findIOPlaceholders(Function *F) {
 
 std::unique_ptr<CompiledFunction>
 HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
+  optimizeFunction(F, opts);
+
   chk(synCreateGraph(synDeviceGoya));
 
   // Allocate all the tensors.
