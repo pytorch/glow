@@ -30,6 +30,107 @@ namespace {
 using namespace glow;
 using namespace glow::quantization;
 
+/// Support quantized Log by replacing it with an IntLookupTable with a new
+/// mapping given the input and output quantization parameters.
+static void replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
+  TypeRef outTy = LN.getResult().getType();
+  TypeRef inTy = LN.getInput().getType();
+
+  auto inputRange = inTy->getQuantizedValueRange();
+  (void)inputRange;
+  assert(inputRange.first >= 0 &&
+         "Input range must not be negative since this is input to log().");
+
+  // Pass a function returning log here to create the mapping. Note that the
+  // interval is always extended to include zero, so we check if the input is
+  // zero and if so use log(float min), i.e. closest positive value to zero,
+  // as -inf is unsupported to convert to int.
+  auto logFun = [](float a) {
+    return (a == 0.0) ? log(std::numeric_limits<float>::min()) : log(a);
+  };
+  std::vector<int8_t> mapping =
+      glow::quantization::createMapping(inTy, outTy, logFun);
+
+  // Create a new int lookup table with this newly calculated mapping to
+  // implement this quantized log.
+  IntLookupTableNode *ILT = F.createIntLookupTable(
+      LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
+
+  LN.getResult().replaceAllUsesOfWith(ILT);
+}
+
+/// Support quantized Tanh by replacing it with an IntLookupTable.
+static void replaceQuantizedTanhWithLookupTable(Function &F,
+                                                const TanhNode &TN) {
+  // Quantized tanh operator expects input to be in a certain floating point
+  // range. This operator works based on the precomputed table and has to
+  // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
+  // +/-1.0 and is already +/-.995 at +/-3.0.
+  // The output quantization parameters are chosen to represent the floating
+  // point range of [-1.0, 1.0].
+  auto inputQuantizationParams =
+      glow::quantization::chooseQuantizationParams(-3.0, 3.0);
+  auto tanhInTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, TN.getResult().dims(), inputQuantizationParams.scale,
+      inputQuantizationParams.offset);
+
+  // Make sure input is clipped in [-3.0, 3.0] floating point range.
+  auto *rescaleInputNode =
+      F.createRescaleQuantized(TN.getName(), TN.getInput(), tanhInTy);
+
+  // Make sure output is clipped in [-1.0, 1.0] floating point range.
+  auto outputQuantizationParams =
+      glow::quantization::chooseQuantizationParams(-1.0, 1.0);
+  auto resultOutTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
+
+  // Note: The actual lookup table is created inside this call.
+  auto *quantizedNode =
+      F.createIntTanh(TN.getName(), rescaleInputNode, resultOutTy);
+
+  auto *rescaleOutputNode = F.createRescaleQuantized(
+      TN.getName(), quantizedNode, TN.getResult().getType());
+
+  TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+}
+
+/// Support quantized Sigmoid by replacing it with an IntLookupTable.
+static void replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                                   const SigmoidNode &SN) {
+  // Quantized sigmoid operator expects input to be in a certain floating
+  // point range. This operator works based on the precomputed table and has
+  // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
+  // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
+  // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
+  // parameters are chosen to represent the floating point range of [0, 1.0].
+  auto inputQuantizationParams =
+      glow::quantization::chooseQuantizationParams(-6.0, 6.0);
+  auto sigmoidInTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, SN.getResult().dims(), inputQuantizationParams.scale,
+      inputQuantizationParams.offset);
+
+  // Make sure input is clipped in [-6.0, 6.0] floating point range.
+  auto *rescaleInputNode =
+      F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
+
+  // Make sure output is clipped in [0.0, 1.0] floating point range.
+  auto outputQuantizationParams =
+      glow::quantization::chooseQuantizationParams(0.0, 1.0);
+  auto resultOutTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
+
+  // Note: The actual lookup table is created inside this call.
+  auto *quantizedNode =
+      F.createIntSigmoid(SN.getName(), rescaleInputNode, resultOutTy);
+
+  auto *rescaleOutputNode = F.createRescaleQuantized(
+      SN.getName(), quantizedNode, SN.getResult().getType());
+
+  SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+}
+
 /// This class produces a quantized function based on a provided profile.
 class FunctionQuantizer : public FunctionConverter {
 protected:
@@ -150,6 +251,13 @@ protected:
                            TQP.offset);
   }
 
+  /// Macro to be put in a switch for all nodes that may need to be replaced by
+  /// a LookupTable if the backend doesn't support the quantized node directly.
+#define casesForIntLookupTableReplacement                                      \
+  case Kinded::Kind::LogNodeKind:                                              \
+  case Kinded::Kind::TanhNodeKind:                                             \
+  case Kinded::Kind::SigmoidNodeKind
+
   /// \see FunctionConverter::canConvert.
   /// Only convert nodes that use floating point types and that
   /// weren't specifically marked as to-ignore with doNotQuantizeKinds_.
@@ -202,7 +310,23 @@ protected:
     }
 
     // Only convert the node if the backend supports the newly converted node.
-    return B_.isOpSupported(NodeInfo(node.getKind(), inputTypes, outputTypes));
+    bool isOpSupported =
+        B_.isOpSupported(NodeInfo(node.getKind(), inputTypes, outputTypes));
+
+    // Some nodes are only supported as quantized via lookup tables. Here we
+    // check if such nodes are supported without lookup tables; if so, then we
+    // convert them.  Otherwise, return whether we can support them as lookup
+    // tables instead, and they will be quantized as lookup tables.
+    switch (node.getKind()) {
+    casesForIntLookupTableReplacement:
+      if (isOpSupported) {
+        return true;
+      }
+      return B_.isOpSupported(NodeInfo(Kinded::Kind::IntLookupTableNodeKind,
+                                       inputTypes, outputTypes));
+    default:
+      return isOpSupported;
+    }
   }
 
   /// Helper that \returns whether quantization parameters exist
@@ -327,7 +451,9 @@ protected:
     }
   }
 
-  /// Update the nodeToTQP_ for the added conversions for \p node.
+  /// Perform post processing for \p node. E.g., update the nodeToTQP_ for the
+  /// added conversions for \p node, or convert nodes into lookup tables if not
+  /// supported by the backend.
   void postProcessing(Node &node) override {
     Node *quantizedNode = &node;
     switch (node.getKind()) {
@@ -387,6 +513,33 @@ protected:
       quantizedNode = rescale;
       dequantize->setNthInput(DequantizeNode::InputIdx, rescale);
       break;
+    }
+
+    casesForIntLookupTableReplacement : {
+      // If these nodes aren't supported then we convert them to a lookup table.
+      NodeInfo NI(node);
+      if (B_.isOpSupported(NI)) {
+        break;
+      }
+      assert(B_.isOpSupported(NodeInfo(Kinded::Kind::IntLookupTableNodeKind,
+                                       NI.getInTypes(), NI.getOutTypes())) &&
+             "Backend should support IntLookupTable at this point.");
+      switch (node.getKind()) {
+      case Kinded::Kind::LogNodeKind:
+        replaceQuantizedLogWithLookupTable(function_,
+                                           llvm::cast<LogNode>(node));
+        return;
+      case Kinded::Kind::TanhNodeKind:
+        replaceQuantizedTanhWithLookupTable(function_,
+                                            llvm::cast<TanhNode>(node));
+        return;
+      case Kinded::Kind::SigmoidNodeKind:
+        replaceQuantizedSigmoidWithLookupTable(function_,
+                                               llvm::cast<SigmoidNode>(node));
+        return;
+      default:
+        llvm_unreachable("Unsupported case for converting to lookup table.");
+      }
     }
     }
 
