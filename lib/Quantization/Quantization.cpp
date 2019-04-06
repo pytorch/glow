@@ -451,11 +451,10 @@ protected:
     }
   }
 
-  /// Perform post processing for \p node. E.g., update the nodeToTQP_ for the
-  /// added conversions for \p node, or convert nodes into lookup tables if not
-  /// supported by the backend.
+  /// Perform post processing for \p node. Handles special cases, e.g.
+  /// requirements for input/output quantization parameters, converting to
+  /// lookup tables, etc.
   void postProcessing(Node &node) override {
-    Node *quantizedNode = &node;
     switch (node.getKind()) {
     default:
       break;
@@ -510,7 +509,6 @@ protected:
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       auto *rescale =
           function_.createRescaleQuantized(node.getName(), val, outTy);
-      quantizedNode = rescale;
       dequantize->setNthInput(DequantizeNode::InputIdx, rescale);
       break;
     }
@@ -528,41 +526,21 @@ protected:
       case Kinded::Kind::LogNodeKind:
         replaceQuantizedLogWithLookupTable(function_,
                                            llvm::cast<LogNode>(node));
-        return;
+        break;
       case Kinded::Kind::TanhNodeKind:
         replaceQuantizedTanhWithLookupTable(function_,
                                             llvm::cast<TanhNode>(node));
-        return;
+        break;
       case Kinded::Kind::SigmoidNodeKind:
         replaceQuantizedSigmoidWithLookupTable(function_,
                                                llvm::cast<SigmoidNode>(node));
-        return;
+        break;
       default:
         llvm_unreachable("Unsupported case for converting to lookup table.");
       }
     }
     }
-
     assert(!lastMorphedNodeWithTypeChanges && "Type not fixed");
-    // Make sure that nodeToTQP_ is not lost after the addition of intermediate
-    // dequantized nodes.
-    for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum != e;
-         ++outNum) {
-      NodeValue val = quantizedNode->getNthResult(outNum);
-      if (!val.getType()->isQuantizedType()) {
-        continue;
-      }
-      assert(
-          val.hasOneUse() &&
-          llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser()) &&
-          "This node should only be used by the dequantize node");
-      auto *dequantize =
-          llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
-      TypeRef outTy = val.getType();
-      nodeToTQP_[NodeQuantizationInfo::generateNodeOutputName(
-          dequantize->getName(), outNum)] = {outTy->getScale(),
-                                             outTy->getOffset()};
-    }
   }
 
   void convertTensor(Tensor &tensor, TypeRef destTy) override {
