@@ -115,7 +115,7 @@ class Partitioner {
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, uint64_t &memSize);
 
-  /// Get the minimal memory requirement for each op in the representive
+  /// Get the minimal memory requirement for each op in the representative
   /// function.
   void initOpMemUsage();
 
@@ -123,14 +123,14 @@ class Partitioner {
   void initOpComputeTime();
 
   /// Combine the partitions if necessary : if all outside uses of the nodes in
-  /// /// partition1 is in partition2, and the sum of memory consumption of
+  /// partition1 is in partition2, and the sum of memory consumption of
   /// partition1 and partition2 is less than availableMemory, combine partition1
   /// and partition2.
   void partitionsCombine(NodeToFunctionMap &partitions,
                          FunctionToNodesMapTy &nodesSet,
                          uint64_t availableMemory);
 
-  /// After getting the intial partitions, ajust the partitions to miminize
+  /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
   void partitionsAdjust(NodeToFunctionMap &partitions,
                         uint64_t availableMemory);

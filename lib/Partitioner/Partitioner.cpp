@@ -50,7 +50,7 @@ Function *Partitioner::selectRepFunc(Module *parent, uint64_t &memSize) {
         }
       }
     }
-    // Find the function with largest required memory as the representive
+    // Find the function with largest required memory as the representative
     // function.
     if (size > memSize) {
       ret = F;
@@ -193,7 +193,7 @@ void Partitioner::initOpComputeTime() {
 
     /// Compute compute roofline as max of flops, DRAM, SRAM BW
     /// See https://bit.ly/2UdJ3mz
-    /// Add epsilons to prevent seg faults on unitialized peak values
+    /// Add epsilons to prevent seg faults on uninitialized peak values.
     computeTime_[&node] =
         std::max(totalOps * 1.0f / std::max(peakCompute, 1e-6f),
                  std::max(sizeDram * 1.0f / std::max(peakDramBw, 1e-6f),
@@ -262,7 +262,7 @@ void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
 
 void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
                                    uint64_t availableMemory) {
-  // For each partitioin, create a node set.
+  // For each partition, create a node set.
   FunctionToNodesMapTy nodesSet;
   for (NodeToFunctionMapTy::iterator it = partitions.begin();
        it != partitions.end(); ++it) {
@@ -286,7 +286,7 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
   bool gain = true;
   while (gain) {
     // gain is initialized as false, it will be set to be true if there is at
-    // least one node can be moved from one set to antoher set.
+    // least one node can be moved from one set to another set.
     gain = false;
     for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
          it != nodesSet.end(); ++it) {
@@ -321,7 +321,7 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
         // move won't change communication cost, according to rule 1 and rule 2,
         // the memory consumption of the partition where this node (i.e
         // outUsers[i]) belongs can be reduced. Therefore, it may trigger later
-        // node movement or paritionCombine.
+        // node movement or partitionsCombine.
         nSet.insert(outUsers[i]);
         GraphMemInfo cost = getGraphMemInfo(nSet);
         Function *suc = partitions[outUsers[i]];
@@ -434,7 +434,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 /// there is only 2 devices.
 void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
 
-/// Current only partition the representive function.
+/// Current only partition the representative function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
   rootDAGNodeTy DAGRoot = llvm::make_unique<DAGNode>();
@@ -548,7 +548,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
 
 DAGListTy &Partitioner::Partition() {
 
-  // Find the representive function for running partitioning algrithm.
+  // Find the representative function for running partitioning algorithm.
   F_ = selectRepFunc(module_, memSize_);
   uint64_t availMem = deviceInfo_[0].availableMemory;
 
