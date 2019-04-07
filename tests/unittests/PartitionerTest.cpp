@@ -66,7 +66,7 @@ static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
 }
 
 /// This one tests the model with this feature: after BFS, the memory
-/// comsumption of all the nodes in each level won't exceed the device memory
+/// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic1) {
   auto *input =
