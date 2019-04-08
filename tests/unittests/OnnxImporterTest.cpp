@@ -1145,6 +1145,55 @@ TEST(onnx, importSliceNoAxes) {
                   {2, 1, 2, 2} /* output */);
 }
 
+static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
+                       const llvm::ArrayRef<size_t> inputShape,
+                       ElemKind outputKind) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName.str();
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  {
+    Tensor data;
+    getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
+                inputShape[3]);
+    ONNXModelLoader onnxLD(NetFilename, {inputName.str().c_str()},
+                           {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
+  }
+
+  // ONNX importer loads a Cast operator and adds to the IR:
+  // - a ConvertTo node
+
+  // Check the graph structure.
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
+  auto *node = saveNode->getInput().getNode();
+  auto *castNode = llvm::dyn_cast<ConvertToNode>(node);
+  ASSERT_NE(nullptr, castNode);
+
+  // Check node output type.
+  ASSERT_EQ(castNode->getResult().getType()->getElementType(), outputKind);
+}
+
+TEST(onnx, importCastToFloat) {
+  importCast("castToFloat.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::FloatTy);
+}
+TEST(onnx, importCastToFloat16) {
+  importCast("castToFloat16.onnxtxt", "data", {1, 2, 2, 2},
+             ElemKind::Float16Ty);
+}
+TEST(onnx, importCastToInt32) {
+  importCast("castToInt32.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::Int32ITy);
+}
+TEST(onnx, importCastToInt64) {
+  importCast("castToInt64.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::Int64ITy);
+}
+
 static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<size_t> inputShape,
                       const llvm::ArrayRef<ssize_t> starts,
