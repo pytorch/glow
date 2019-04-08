@@ -253,7 +253,7 @@ protected:
 
   /// Macro to be put in a switch for all nodes that may need to be replaced by
   /// a LookupTable if the backend doesn't support the quantized node directly.
-#define casesForIntLookupTableReplacement                                      \
+#define CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT                                 \
   case Kinded::Kind::LogNodeKind:                                              \
   case Kinded::Kind::TanhNodeKind:                                             \
   case Kinded::Kind::SigmoidNodeKind
@@ -318,7 +318,7 @@ protected:
     // convert them.  Otherwise, return whether we can support them as lookup
     // tables instead, and they will be quantized as lookup tables.
     switch (node.getKind()) {
-    casesForIntLookupTableReplacement:
+    CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT:
       if (isOpSupported) {
         return true;
       }
@@ -378,7 +378,7 @@ protected:
   /// Note: The last case of the macro doesn't have ':' so we can put it
   /// where the macro is inserted to keep the nice code formatting.
   // clang-format off
-#define casesForSingleMatchingInOutType                                        \
+#define CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE                                  \
   CASE_SINGLE_MATCHING_INOUT_TYPE(LocalResponseNormalization, Input, Result):  \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Slice, Input, Result):                       \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Reshape, Input, Result):                     \
@@ -430,7 +430,7 @@ protected:
     switch (node.getKind()) {
       // Those cases need to be in sync with postProcessing, so we generate them
       // using macros.
-    casesForSingleMatchingInOutType : {
+    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE : {
       // The constraints on the IR says that the input type must
       // be the same as the output type.
       TypeRef inTy =
@@ -483,7 +483,7 @@ protected:
       CASE_ALL_INS_MATCH_SINGLE_OUT(InsertTensor);
 #undef CASE_ALL_INS_MATCH_SINGLE_OUT
 
-    casesForSingleMatchingInOutType : {
+    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE : {
       // Check that the main loop hands us the node in the order we expect:
       // morph then postprocessing.
       // If the assert breaks, that means that morphNode and postprocessing
@@ -515,7 +515,7 @@ protected:
       break;
     }
 
-    casesForIntLookupTableReplacement : {
+    CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT : {
       // If these nodes aren't supported then we convert them to a lookup table.
       NodeInfo NI(node);
       if (B_.isOpSupported(NI)) {
