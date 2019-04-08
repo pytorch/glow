@@ -68,7 +68,6 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
       auto compiled = backend_->compile(function, compileOptions);
       node->runtimeBundle =
           llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
-      node->runtimeBundle->setInputsandOutputs();
       functionMap.emplace(node->name, compiled.get());
       functions_.emplace(node->name, std::move(compiled));
       totalMemory += node->runtimeBundle->getConstantWeightSize();
