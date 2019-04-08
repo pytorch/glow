@@ -19,17 +19,11 @@
 using namespace glow;
 
 using llvm::cast;
+using llvm::dyn_cast;
 using llvm::isa;
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   collectConstants(F->getGraph()->getParent());
-}
-
-void glow::runtime::RuntimeBundle::setInputsandOutputs() {
-  for (auto &symbol : symbolTable_) {
-    symbol.second.input = true;
-    symbol.second.output = true;
-  }
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
@@ -81,6 +75,45 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   return it->second;
 }
 
+/// If \p PH is an output placeholder, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH) {
+  for (const auto &use : PH->getUsers()) {
+    // Look through the inputs of the PH's users. If an input is overwritten
+    // check if it's the PH, if it is return true.
+    auto *user = use.getUser();
+    for (unsigned i = 0, numInputs = user->getNumInputs(); i < numInputs; i++) {
+      // If the input is not overwritten we can continue.
+      if (!user->isOverwrittenNthInput(i)) {
+        continue;
+      }
+      auto input = use.getUser()->getNthInput(i);
+      if (input == PH) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// If \p PH is an input placeholder, \returns true.
+bool isInput(const Placeholder *PH) {
+  // Check that the PH is the input to a saveNode or is used by a non saveNode.
+  for (const auto &use : PH->getUsers()) {
+    // Check if PH is an input to a saveNode.
+    if (auto *save = dyn_cast<SaveNode>(use.getUser())) {
+      auto input = save->getInput();
+      // If the PH is not an input to the saveNode we keep looking.
+      if (input != PH) {
+        continue;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
 
@@ -95,6 +128,8 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
+    symbol.input = false;
+    symbol.output = false;
     symbol.symbolCategory = SymbolCategory::Constant;
     symbolTable.emplace(V->getName(), symbol);
   }
@@ -107,6 +142,8 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
+    symbol.output = isOutput(V);
+    symbol.input = isInput(V);
     symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(V->getName(), symbol);
   }
@@ -134,6 +171,8 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.size = numBytes;
     symbol.offset = addr;
     symbol.type = *w->getType();
+    symbol.input = false;
+    symbol.output = false;
     symbol.symbolCategory = SymbolCategory::Constant;
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
@@ -150,6 +189,8 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.offset = addr;
     symbol.size = numBytes;
     symbol.type = *w->getType();
+    symbol.output = isOutput(v);
+    symbol.input = isInput(v);
     symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
@@ -158,7 +199,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   // Compute the offsets for Activations.
 
   for (const auto &I : F.getInstrs()) {
-    if (auto *A = llvm::dyn_cast<AllocActivationInst>(&I)) {
+    if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
       size_t addr = activationsAllocator.allocate(numBytes, A);
       assert(!symbolTable.count(std::string(A->getName())) &&
@@ -167,12 +208,14 @@ runtime::RuntimeBundle::create(const IRFunction &F,
       symbol.offset = addr;
       symbol.size = numBytes;
       symbol.type = *A->getType();
+      symbol.input = false;
+      symbol.output = false;
       symbol.symbolCategory = SymbolCategory::Activation;
       symbolTable.emplace(std::string(A->getName()), symbol);
       continue;
     }
 
-    if (auto *TV = llvm::dyn_cast<TensorViewInst>(&I)) {
+    if (auto *TV = dyn_cast<TensorViewInst>(&I)) {
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
       assert(!symbolTable.count(std::string(TV->getName())) &&
@@ -191,6 +234,8 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                       (offsetLength * TV->getType()->getElementSize());
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
+      symbol.input = false;
+      symbol.output = false;
       auto parentCategory =
           symbolTable.find(tvSource->getName())->second.symbolCategory;
       if (parentCategory == SymbolCategory::Placeholder) {
@@ -202,7 +247,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
       continue;
     }
 
-    if (auto *D = llvm::dyn_cast<DeallocActivationInst>(&I)) {
+    if (auto *D = dyn_cast<DeallocActivationInst>(&I)) {
       auto *A = D->getAlloc();
       assert(symbolTable.count(std::string(A->getName())) &&
              "Invalid deallocation!");
