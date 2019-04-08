@@ -133,13 +133,17 @@ bool GlowOnnxifiManager::isValid(GraphPtr graph) const {
 }
 
 void GlowOnnxifiManager::release(BackendIdPtr backendId) {
-  size_t erased;
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    erased = backendIds_.erase(backendId);
-  }
+  // TODO: fix this so that a HostManager is deleted when all backendIds
+  // holding pointers to that HostManager are deleted.
+  std::lock_guard<std::mutex> lock(m_);
+  size_t erased = backendIds_.erase(backendId);
+
   if (erased) {
     delete backendId;
+  }
+
+  if (backendIds_.empty()) {
+    hostManagers_.clear();
   }
 }
 
