@@ -142,6 +142,9 @@ public:
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
+  /// \returns TraceEvents for the last run.
+  llvm::ArrayRef<TraceEvent> getTraceEvents() const { return traceEvents_; }
+
   /// \returns the integer thread id used for logged events in this context.
   int getTraceThread() const { return traceThread_; }
 

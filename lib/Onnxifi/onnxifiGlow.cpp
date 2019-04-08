@@ -456,10 +456,6 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors,
     onnxMemoryFenceV1 *outputFence, onnxTraceEventList *traceEvents) {
-  if (traceEvents) {
-    llvm::errs() << "Glow doesn't support tracing yet\n";
-  }
-
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
   if (!inputDescriptors || !outputDescriptors || !outputFence) {
@@ -501,7 +497,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
 
   // Set graph IO and run async
   return glowGraph->setIOAndRun(inputsCount, inputDescriptors, outputsCount,
-                                outputDescriptors, outputEvent);
+                                outputDescriptors, outputEvent, traceEvents);
 }
 
 /// Deinitialize an ONNXIFI graph and release associated resources.
@@ -527,7 +523,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents)(
   if (!traceEvents) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
-  llvm::errs() << "onnxReleaseTraceEvents not implemented\n";
+  glow::onnxifi::Graph::releaseTraceEvents(traceEvents);
   return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
