@@ -732,6 +732,10 @@ HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
   std::vector<TensorHandle> tempTensors;
 
   for (const auto &I : F->getNodes()) {
+    if (!isOpSupported(I)) {
+      llvm::errs() << "Unsupported operator: " << I.getDebugDesc() << "\n";
+      GLOW_UNREACHABLE("Unsupported operator");
+    }
     switch (I.getKind()) {
     case Kinded::Kind::HabanaFullyConnectedNodeKind: {
       auto *NI = llvm::cast<HabanaFullyConnectedNode>(&I);
