@@ -93,10 +93,10 @@ static std::string getKernelName(llvm::StringRef kernelBase, ElemKind kind) {
 }
 
 /// If \p PH is an output placeholder, \returns the SaveNode.
-static SaveNode *getOutputSave(Placeholder *PH) {
+static SaveNode *getOutputSave(Function *F, Placeholder *PH) {
   for (auto &use : PH->getUsers()) {
     if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
-      if (save->getPlaceholder() == PH) {
+      if (save->getParent() == F && save->getPlaceholder() == PH) {
         return save;
       }
     }
@@ -641,7 +641,7 @@ allocateGraphTensors(Function *F) {
     if (V->getNumUsers() == 0) {
       continue;
     }
-    if (auto *save = getOutputSave(V)) {
+    if (auto *save = getOutputSave(F, V)) {
       // We want to avoid emitting copies for save nodes by simply marking the
       // save input as an "output" tensor.  The exceptions are when the input
       // is itself a placeholder/constant, or a reshape.  (The reshape case is
@@ -695,7 +695,7 @@ IOPlaceholders findIOPlaceholders(Function *F) {
     if (!usedInFunction(V, F)) {
       continue;
     }
-    if (getOutputSave(V)) {
+    if (getOutputSave(F, V)) {
       io.outputs.push_back(V);
     } else {
       io.inputs.push_back(V);
