@@ -86,7 +86,7 @@ bool HabanaConvolutionAddNode::verify() const {
   bool isValid =
       verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
                         Kernels_, Strides_, Pads_, Group_);
-  isValid &= checkSameType(getAddend(), getResult(), this);
+  isValid &= checkSameShape(getAddend(), getResult(), this);
   return isValid;
 }
 
