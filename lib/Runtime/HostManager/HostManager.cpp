@@ -154,7 +154,7 @@ llvm::Error HostManager::clearHost() {
 
   for (auto &network : networks_) {
     for (auto &node : network.second.dag.nodes) {
-      devices_[node->deviceID]->evictNetwork(node->name, /*evictCB=*/nullptr);
+      devices_[node->deviceID]->evictNetwork(node->name);
     }
   }
   networks_.clear();
