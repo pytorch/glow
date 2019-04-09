@@ -62,6 +62,12 @@ HabanaDeviceManager::~HabanaDeviceManager() {
   std::lock_guard<std::mutex> lock(synapseMtx_);
   numActiveDevices_--;
 
+  // Explicitly clear this map to force synFree of the managed IOBuffers to
+  // happen now, before we synReleaseDevice.  Otherwise synReleaseDevice will
+  // free the buffers, and then the destructor will try to do it again.
+  functions_.clear();
+  chk(synReleaseDevice(deviceId_));
+
   // If this is the last HabanaDeviceManager to be destroyed, destroy the
   // Synapse API.
   if (numActiveDevices_ == 0) {
@@ -337,21 +343,8 @@ HabanaDeviceManager::runFunction(std::string functionName,
 }
 
 llvm::Error HabanaDeviceManager::stop(bool block) {
-  synStatus status = synFail;
-
-  {
-    std::lock_guard<std::mutex> lock(synapseMtx_);
-    functions_.clear();
-    status = synReleaseDevice(deviceId_);
-  }
-
-  if (status != synSuccess) {
-    return MAKE_ERR("Failed to release device");
-  }
-
   runPool_->stop(block);
   waitPool_->stop(block);
-
   return llvm::Error::success();
 }
 
