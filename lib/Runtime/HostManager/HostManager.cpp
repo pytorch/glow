@@ -90,7 +90,8 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
     }
   }
   auto partitioner = Partitioner(module.get(), deviceInfo);
-  auto nodeList = std::move(partitioner.Partition());
+  RETURN_IF_ERR(partitioner.Partition());
+  auto nodeList = std::move(partitioner.getPartitionResult());
 
   RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
 

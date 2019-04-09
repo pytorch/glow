@@ -546,7 +546,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   }
 }
 
-DAGListTy &Partitioner::Partition() {
+llvm::Error Partitioner::Partition() {
 
   // Find the representative function for running partitioning algorithm.
   F_ = selectRepFunc(module_, memSize_);
@@ -568,7 +568,7 @@ DAGListTy &Partitioner::Partition() {
       nodes.push_back(std::move(DAG1));
       partitions_.push_back({std::move(DAG0), std::move(nodes)});
     }
-    return partitions_;
+    return llvm::Error::success();
   }
 
   // Prepare 1: Get the min memory usage for each op.
@@ -581,6 +581,10 @@ DAGListTy &Partitioner::Partition() {
   // Use BFS to do the initial partitioning. Starting from the final node, BFS
   // until the memory limitation reached one by one.
   NodeToFunctionMap partitionMap = selectPartitions(F_, availMem);
+
+  RETURN_ERR_IF_NOT(partitionMap.getPartitions().size() <= deviceInfo_.size(),
+                    "Partition failed: the number of given devices is fewer "
+                    "than the required minimal partitions.");
 
   doPartitioning(F_, partitionMap);
 
@@ -597,5 +601,5 @@ DAGListTy &Partitioner::Partition() {
   // Check the computation time of each sub-module, and find out the "key"
   // sub-module to decide if duplicating the sub-module is necessary.
 
-  return partitions_;
+  return llvm::Error::success();
 }

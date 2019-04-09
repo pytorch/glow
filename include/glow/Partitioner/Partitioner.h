@@ -19,6 +19,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/PartitionerUtils.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/Error.h"
 
 namespace glow {
 
@@ -156,8 +157,11 @@ public:
   /// devices.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices);
 
-  /// Decompose each function in a module and return a list of DAGNodes.
-  DAGListTy &Partition();
+  /// Decompose each function in a module.
+  llvm::Error Partition();
+
+  /// Get the partitions.
+  DAGListTy &getPartitionResult() { return partitions_; }
 
   /// Get function for computeTime_
   ComputeTimeMapTy getComputeTime() const { return computeTime_; }
