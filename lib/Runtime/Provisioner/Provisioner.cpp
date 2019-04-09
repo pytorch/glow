@@ -55,10 +55,6 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     }
   }
 
-  RETURN_ERR_IF_NOT(
-      logicalDevices.size() <= devices_.size(),
-      "Provisioner found more logical devices than physical devices.");
-
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   std::map<DeviceIDTy, FunctionMapTy> functionMaps;
   // Compile functions and calculate required memory for each logical device.
