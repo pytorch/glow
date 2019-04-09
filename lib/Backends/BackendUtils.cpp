@@ -191,8 +191,13 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                       (offsetLength * TV->getType()->getElementSize());
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
-      symbol.symbolCategory =
+      auto parentCategory =
           symbolTable.find(tvSource->getName())->second.symbolCategory;
+      if (parentCategory == SymbolCategory::Placeholder) {
+        symbol.symbolCategory = SymbolCategory::PlaceholderTensorView;
+      } else {
+        symbol.symbolCategory = SymbolCategory::ConstantTensorView;
+      }
       symbolTable.emplace(std::string(TV->getName()), symbol);
       continue;
     }

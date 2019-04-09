@@ -281,7 +281,7 @@ TEST_P(BackendTest, BundleSymbolCategory) {
   // Check that tensor views have the same label as their parent symbol. In this
   // case same as "input".
   EXPECT_EQ(table.find("tensorview_reshape")->second.symbolCategory,
-            table.find(input->getName())->second.symbolCategory);
+            glow::runtime::SymbolCategory::PlaceholderTensorView);
 }
 
 /// Test compiling a vector of functions completes without error.
