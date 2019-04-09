@@ -76,7 +76,8 @@ public:
   /// up space on the device. \p evictCB will be called when the operation
   /// is completed or attempted and failed.
   virtual void evictNetwork(std::string functionName,
-                            EvictFunctionCBTy evictCB) = 0;
+                            EvictFunctionCBTy evictCB = [](std::string,
+                                                           llvm::Error) {}) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
