@@ -199,16 +199,21 @@ TEST(onnx, importUniBroadcastMultiOutput) {
   (void)onnxLD;
 }
 
-/// Test loading conv op from a ONNX model.
+/// Helper method to run the Conv operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
-/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
-TEST(onnx, importConv) {
+/// strides is {1, 1}, group is 1. Pads can vary.
+static void convTestHelper(std::string &filename,
+                           const llvm::ArrayRef<size_t> expectedDims,
+                           const llvm::ArrayRef<float> expectedValues) {
+
   ExecutionEngine EE{BackendKind::Interpreter};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/simpleConv.onnxtxt");
+  std::string NetFilename(GLOW_DATA_PATH filename);
 
   PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
@@ -252,12 +257,142 @@ TEST(onnx, importConv) {
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (size_t i = 0, e = expectedValues.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
+TEST(onnx, importConv) {
+  std::string filename("tests/models/onnxModels/simpleConv.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4 * 4; i++)
+  convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
+TEST(onnx, importConvAutoPadValid) {
+  std::string filename(
+      "tests/models/onnxModels/simpleConvAutoPadValid.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 2, 2};
+  std::vector<float> expectedValues = {10, 14, 22, 26};
+  convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
+TEST(onnx, importConvAutoPadSameUpper) {
+  std::string filename(
+      "tests/models/onnxModels/simpleConvAutoPadSameUpper.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {10, 14, 9, 22, 26, 15, 15, 17, 10};
+  convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
+TEST(onnx, importConvAutoPadSameLower) {
+  std::string filename(
+      "tests/models/onnxModels/simpleConvAutoPadSameLower.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {2, 3, 5, 5, 10, 14, 11, 22, 26};
+  convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Helper method to run the AveragePool operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
+/// \p global: GlobalAveragePool if true, AveragePool if false.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, group is 1. Pads can vary in filename.
+static void averagePoolTestHelper(std::string &filename,
+                                  const llvm::ArrayRef<size_t> expectedDims,
+                                  const llvm::ArrayRef<float> expectedValues) {
+
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename(GLOW_DATA_PATH filename);
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 3, 3);
+    ONNXModelLoader onnxLD(NetFilename, {"x"}, {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&data});
+  }
+
+  // ONNX importer loads a AveragePool node and converts it to 4 ops:
+  // Transpose (input)   -> AveragePool -> Transpose -> Save
+  EXPECT_EQ(F->getNodes().size(), 4);
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+
+  auto *saveNode = getSaveNodeFromDest(graphOutputVar);
+  auto *node = saveNode->getInput().getNode();
+
+  EXPECT_TRUE(node->getKind() == Kinded::Kind::TransposeNodeKind);
+  auto *poolNode = llvm::dyn_cast<TransposeNode>(node)->getInput().getNode();
+
+  EXPECT_TRUE(poolNode->getKind() == Kinded::Kind::AvgPoolNodeKind);
+  auto *tInNode = llvm::dyn_cast<AvgPoolNode>(poolNode)->getInput().getNode();
+
+  EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (size_t i = 0, e = expectedValues.size(); i < e; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading AveragePool op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, pads is auto_pad VALID (no padding), group is 1.
+TEST(onnx, importAveragePool2DAutoPadValid) {
+  std::string filename(
+      "tests/models/onnxModels/averagePool2DAutoPadValid.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 2, 2};
+  std::vector<float> expectedValues = {2, 3, 5, 6};
+  averagePoolTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading AveragePool op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, pads is auto_pad SAME_UPPER, group is 1.
+TEST(onnx, importAveragePool2DAutoPadSameUpper) {
+  std::string filename(
+      "tests/models/onnxModels/averagePool2DAutoPadSameUpper.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {2, 3, 1.75, 5, 6, 3.25, 3.25, 3.75, 2};
+  averagePoolTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading AveragePool op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, pads is auto_pad SAME_LOWER, group is 1.
+TEST(onnx, importAveragePool2DAutoPadSameLower) {
+  std::string filename(
+      "tests/models/onnxModels/averagePool2DAutoPadSameLower.onnxtxt");
+  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {0, 0.25, 0.75, 0.75, 2, 3, 2.25, 5, 6};
+  averagePoolTestHelper(filename, expectedDims, expectedValues);
 }
 
 TEST(onnx, importAveragePool3D) {
