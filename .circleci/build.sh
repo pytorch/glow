@@ -24,6 +24,19 @@ install_pocl() {
    cd ../
 }
 
+# Install Glow dependencies
+sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
+sudo apt-get update
+sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
+
+# Redirect clang
+sudo ln -s /usr/bin/clang-8 /usr/bin/clang
+sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
+sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
+
+sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 50
+sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 50
+
 # setup sccache wrappers
 if hash sccache 2>/dev/null; then
     SCCACHE_BIN_DIR="/tmp/sccache"
@@ -39,15 +52,6 @@ if hash sccache 2>/dev/null; then
 fi
 
 GLOW_DIR=$PWD
-
-# Install Glow dependencies
-sudo apt-get update
-sudo apt-get install -y llvm-6.0 llvm-6.0-dev libpng-dev libgoogle-glog-dev
-
-# Redirect clang
-sudo ln -s /usr/bin/clang-6.0 /usr/bin/clang
-sudo ln -s /usr/bin/clang++-6.0 /usr/bin/clang++
-sudo ln -s /usr/bin/llvm-symbolizer-6.0 /usr/bin/llvm-symbolizer
 
 # Install ninja and (newest version of) cmake through pip
 sudo pip install ninja cmake

@@ -160,18 +160,19 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
     auto *DIFunctionTy = DIBuilder_->createSubroutineType(
         DIBuilder_->getOrCreateTypeArray(paramTys));
     // Create a debug information for the current function.
-#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7
     DIFunction = DIBuilder_->createFunction(
         scope, F->getName(), "", file, lineNo, DIFunctionTy,
         false /* internal linkage */, true /* definition */, lineNo,
         llvm::DINode::FlagPrototyped, true /* isOptimized */);
-#else
+#else // LLVM_VERSION_MAJOR > 7
     DIFunction = DIBuilder_->createFunction(
         scope, F->getName(), "", file, lineNo, DIFunctionTy, lineNo,
         llvm::DINode::FlagPrototyped,
         DISubprogram::SPFlagLocalToUnit | DISubprogram::SPFlagDefinition |
             DISubprogram::SPFlagOptimized);
 #endif
+
     assert(DIFunction);
     F->setSubprogram(DIFunction);
   }
@@ -224,7 +225,6 @@ static void initBaseAddressesOfMemoryAreas(DebugInfo &dbgInfo,
 
 void LLVMIRGen::initDebugInfo() {
   if (!emitDebugInfo) {
-#if LLVM_VERSION_MAJOR >= 6
     // No debug information is going to be emitted for the code generated from
     // the Glow IR. But any debug information from the Glow's library (e.g.
     // libjit) should be stripped as well. Let's strip the debug info as early
@@ -234,7 +234,6 @@ void LLVMIRGen::initDebugInfo() {
     // earlier versions of LLVM had a bug in this function which resulted in
     // compiler crashes.
     llvm::StripDebugInfo(getModule());
-#endif
     return;
   }
   // Remove any existing debug info version flags from the module to

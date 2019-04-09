@@ -91,14 +91,12 @@ ExternalBackendsInit()
 # Prefer LLVM 7.
 find_package(LLVM 7 CONFIG)
 
-# If LLVM 7 not found, try building with LLVM 6.
+# If LLVM 7 not found, try building with another version of LLVM.
 if (NOT LLVM_FOUND)
-  # Fallback to LLVM 6
-  find_package(LLVM 6 CONFIG)
-
   # Fallback to whatever is available.
-  if (NOT LLVM_FOUND)
-    find_package(LLVM CONFIG)
+  find_package(LLVM CONFIG)
+  if (LLVM_PACKAGE_VERSION LESS 7)
+    message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
   endif()
 endif()
 if (NOT LLVM_FOUND)

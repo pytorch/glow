@@ -148,11 +148,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
               "Could not open the output file for saving the bundle code");
   if (fileName.endswith(".bc")) {
     // Emit the bitcode file.
-#if LLVM_VERSION_MAJOR > 6
     llvm::WriteBitcodeToFile(M, outputFile);
-#else
-    llvm::WriteBitcodeToFile(&M, outputFile);
-#endif
     outputFile.flush();
     if (!llvmCompiler.empty()) {
       // Compile bitcode using an external LLVM compiler.
@@ -178,13 +174,10 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     TM.addPassesToEmitFile(
         PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-#elif LLVM_VERSION_MAJOR > 6
+#else // LLVM_VERSION_MAJOR > 6
     TM.addPassesToEmitFile(
         PM, outputFile, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-#else
-    TM.addPassesToEmitFile(
-        PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
 #endif
 
     PM.run(M);

@@ -49,15 +49,15 @@ private:
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
-#elif LLVM_VERSION_MAJOR > 6
+#else // LLVM_VERSION_MAJOR > 6
   std::shared_ptr<SymbolStringPool> SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
-#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR < 8 //|| FACEBOOK_INTERNAL
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
-#else
+#else // LLVM_VERSION_MAJOR > 7
   LegacyRTDyldObjectLinkingLayer objectLayer_;
   LegacyIRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
 #endif
@@ -69,11 +69,7 @@ public:
 
   JITSymbol findSymbol(const std::string name);
 
-#if LLVM_VERSION_MAJOR > 6
   using ModuleHandle = orc::VModuleKey;
-#else
-  using ModuleHandle = decltype(compileLayer_)::ModuleHandleT;
-#endif
 
   ModuleHandle addModule(std::unique_ptr<Module> M);
 
