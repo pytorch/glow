@@ -22,9 +22,14 @@
 namespace glow {
 namespace runtime {
 
-/// An enum to indicate what type each symbol in the bundle is. Current options
-/// are activations, constants, and placeholders.
-enum class SymbolCategory { Activation, Placeholder, Constant };
+/// An enum to indicate what type each symbol in the bundle is.
+enum class SymbolCategory {
+  Activation,
+  Placeholder,
+  Constant,
+  PlaceholderTensorView,
+  ConstantTensorView
+};
 
 /// Contains information for initialization and handling of symbol at runtime.
 struct RuntimeSymbolInfo {
