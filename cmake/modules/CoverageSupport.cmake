@@ -44,7 +44,7 @@ if(GLOW_USE_COVERAGE)
     COMMAND echo "Cleaning is done. Running tests"
 
     # Run all tests.
-    COMMAND ctest -j 4
+    COMMAND ctest -V -j 4
 
     # Capture lcov counters based on the test run.
     COMMAND ${LCOV_PATH} --no-checksum --directory . --capture --output-file glow_coverage.info
