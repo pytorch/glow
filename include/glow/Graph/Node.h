@@ -230,6 +230,12 @@ public:
     }
   }
 
+  /// \returns the input types.
+  llvm::ArrayRef<TypeRef> getInTypes() { return inTypes_; }
+
+  /// \returns the output types.
+  llvm::ArrayRef<TypeRef> getOutTypes() { return outTypes_; }
+
   /// \returns the input type located at \p idx.
   const TypeRef getInTy(size_t idx) const {
     assert(idx < inTypes_.size());

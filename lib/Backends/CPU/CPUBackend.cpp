@@ -49,12 +49,6 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
-    // Note: Int8QTy Log, Tanh, and Sigmoid are lowered into a lookup
-    // table. However, we do not lower them until after they're quantized. So we
-    // need to return here that they are supported as Int8QTy.
-  case Kinded::Kind::LogNodeKind:
-  case Kinded::Kind::TanhNodeKind:
-  case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::CPUMaxSplatNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::MatMulNodeKind:
@@ -129,6 +123,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CPUConvDKKC8NodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
+  case Kinded::Kind::LogNodeKind:
+  case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
   case Kinded::Kind::ConvolutionNodeKind:

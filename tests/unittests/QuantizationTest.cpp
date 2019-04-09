@@ -88,7 +88,10 @@ public:
         NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||
         NI.getKind() == Kinded::Kind::SaveNodeKind ||
         NI.getKind() == Kinded::Kind::ReluNodeKind ||
-        NI.getKind() == Kinded::Kind::SelectNodeKind) {
+        NI.getKind() == Kinded::Kind::SelectNodeKind ||
+        NI.getKind() == Kinded::Kind::LogNodeKind ||
+        NI.getKind() == Kinded::Kind::SigmoidNodeKind ||
+        NI.getKind() == Kinded::Kind::TanhNodeKind) {
       return true;
     }
     return backend_->isOpSupported(NI);
@@ -426,6 +429,121 @@ TEST(Quantization, quantizeReLU) {
   ASSERT_TRUE(max->getResult().getType()->isQuantizedType());
   EXPECT_EQ(max->getResult().getType()->getOffset(), -128);
   EXPECT_EQ(max->getResult().getType()->getScale(), 0.2f);
+}
+
+/// Quantize Log, Sigmoid, and Tanh nodes and make sure that quantized versions
+/// are implemented as IntLookupTables, because the Interpreter only supports
+/// them as such.
+TEST(Quantization, quantizeLookupTables) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
+  auto *LN = F->createLog("log", input);
+  auto *SN = F->createSigmoid("sigmoid", LN);
+  auto *TN = F->createTanh("tanh", SN);
+  F->createSave("ret", TN);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.02f, -128}},
+      {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
+       {0.008f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.03f, 2}},
+      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
+       {0.04f, 3}}};
+  F = quantization::quantizeFunction(*EE.getBackend(),
+                                     quantization::Schema::Asymmetric, QI,
+                                     ElemKind::Int8QTy, F);
+  optimize(F, CompilationMode::Infer);
+
+  // Note: The scales/offsets used below are those expected based on
+  // Sigmoid/Tanh requirements, or on the input values for the Log.
+
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  auto *dequantizeTanh =
+      llvm::dyn_cast<DequantizeNode>(save->getInput().getNode());
+  ASSERT_TRUE(dequantizeTanh);
+  auto *tanhILT =
+      llvm::dyn_cast<IntLookupTableNode>(dequantizeTanh->getInput().getNode());
+  ASSERT_TRUE(tanhILT);
+  EXPECT_FLOAT_EQ(tanhILT->getResult().getType()->getScale(), 0.00784314);
+  EXPECT_EQ(tanhILT->getResult().getType()->getOffset(), 0);
+  EXPECT_FLOAT_EQ(tanhILT->getInput().getType()->getScale(), 0.02352941);
+  EXPECT_EQ(tanhILT->getInput().getType()->getOffset(), 0);
+
+  auto *rescaleSigmoid =
+      llvm::dyn_cast<RescaleQuantizedNode>(tanhILT->getInput().getNode());
+  ASSERT_TRUE(rescaleSigmoid);
+  auto *sigmoidILT =
+      llvm::dyn_cast<IntLookupTableNode>(rescaleSigmoid->getInput().getNode());
+  ASSERT_TRUE(sigmoidILT);
+  EXPECT_FLOAT_EQ(sigmoidILT->getResult().getType()->getScale(), 0.00392157);
+  EXPECT_EQ(sigmoidILT->getResult().getType()->getOffset(), -128);
+  EXPECT_FLOAT_EQ(sigmoidILT->getInput().getType()->getScale(), 0.047058824);
+  EXPECT_EQ(sigmoidILT->getInput().getType()->getOffset(), 0);
+
+  auto *rescaleLog =
+      llvm::dyn_cast<RescaleQuantizedNode>(sigmoidILT->getInput().getNode());
+  ASSERT_TRUE(rescaleLog);
+  auto *logILT =
+      llvm::dyn_cast<IntLookupTableNode>(rescaleLog->getInput().getNode());
+  ASSERT_TRUE(logILT);
+  EXPECT_FLOAT_EQ(logILT->getResult().getType()->getScale(), 0.008);
+  EXPECT_EQ(logILT->getResult().getType()->getOffset(), 0);
+  EXPECT_FLOAT_EQ(logILT->getInput().getType()->getScale(), 0.02);
+  EXPECT_EQ(logILT->getInput().getType()->getOffset(), -128);
+}
+
+/// Quantize Log, Sigmoid, and Tanh nodes and make sure that they are not
+/// replaced by LookupTables because the backend supports them directly.
+TEST(Quantization, quantizeWithoutLookupTables) {
+  ExecutionEngine EE;
+  EE.setBackend(new MockQuantBackend());
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
+  auto *LN = F->createLog("log", input);
+  auto *SN = F->createSigmoid("sigmoid", LN);
+  auto *TN = F->createTanh("tanh", SN);
+  F->createSave("ret", TN);
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.02f, -128}},
+      {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
+       {0.008f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.03f, 2}},
+      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
+       {0.04f, 3}}};
+  F = quantization::quantizeFunction(*EE.getBackend(),
+                                     quantization::Schema::Asymmetric, QI,
+                                     ElemKind::Int8QTy, F);
+  optimize(F, CompilationMode::Infer);
+
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  auto *dequantize = llvm::dyn_cast<DequantizeNode>(save->getInput().getNode());
+  ASSERT_TRUE(dequantize);
+  auto *tanh = llvm::dyn_cast<TanhNode>(dequantize->getInput());
+  ASSERT_TRUE(tanh);
+  EXPECT_FLOAT_EQ(tanh->getResult().getType()->getScale(), 0.04);
+  EXPECT_EQ(tanh->getResult().getType()->getOffset(), 3);
+  EXPECT_FLOAT_EQ(tanh->getInput().getType()->getScale(), 0.03);
+  EXPECT_EQ(tanh->getInput().getType()->getOffset(), 2);
+
+  auto *sigmoid = llvm::dyn_cast<SigmoidNode>(tanh->getInput());
+  ASSERT_TRUE(sigmoid);
+  EXPECT_FLOAT_EQ(sigmoid->getResult().getType()->getScale(), 0.03);
+  EXPECT_EQ(sigmoid->getResult().getType()->getOffset(), 2);
+  EXPECT_FLOAT_EQ(sigmoid->getInput().getType()->getScale(), 0.008);
+  EXPECT_EQ(sigmoid->getInput().getType()->getOffset(), 0);
+
+  auto *log = llvm::dyn_cast<LogNode>(sigmoid->getInput());
+  ASSERT_TRUE(log);
+  EXPECT_FLOAT_EQ(log->getResult().getType()->getScale(), 0.008);
+  EXPECT_EQ(log->getResult().getType()->getOffset(), 0);
+  EXPECT_FLOAT_EQ(log->getInput().getType()->getScale(), 0.02);
+  EXPECT_EQ(log->getInput().getType()->getOffset(), -128);
 }
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
