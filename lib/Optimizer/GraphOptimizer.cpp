@@ -2446,6 +2446,89 @@ void glow::convertPlaceholdersToConstants(Function *F,
   }
 }
 
+/// \returns True if the \p node sub-tree corresponds to a scalar
+/// (Constant or Splat) and return the float value in \p retFloat.
+static bool getFloatScalar(Node *node, float *retFloat) {
+  // Iterate across potential Tile Nodes (implied by broadcasting if any).
+  auto *n = node;
+  while (auto *TN = dyn_cast<TileNode>(n)) {
+    n = TN->getInput();
+  }
+
+  // After potential Tile nodes, it should be a singleton constant scalar node
+  // with any shape corresponding to one single element.
+  if (auto *constNode = dyn_cast<Constant>(n)) {
+    if ((constNode->getType()->getElementType() != ElemKind::FloatTy) ||
+        (constNode->getType()->size() != 1)) {
+      return false;
+    }
+    auto valueH = constNode->getHandle<float>();
+    std::vector<size_t> coord(constNode->getType()->dims().size(), 0);
+    *retFloat = valueH.at(coord);
+    return true;
+  }
+  if (auto *splatNode = dyn_cast<SplatNode>(n)) {
+    *retFloat = splatNode->getValue();
+    return true;
+  }
+
+  return false;
+}
+
+/// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
+/// and replace it by PRelu(Splat).
+static void foldLeakyRelu(Function *F) {
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    if (auto *maxNode = dyn_cast<MaxNode>(&node)) {
+      NodeValue otherMaxOperand;
+      MulNode *mulNode;
+      if ((mulNode = dyn_cast<MulNode>(maxNode->getRHS()))) {
+        otherMaxOperand = maxNode->getLHS();
+      } else if ((mulNode = dyn_cast<MulNode>(maxNode->getLHS()))) {
+        otherMaxOperand = maxNode->getRHS();
+      } else {
+        continue;
+      }
+      NodeValue otherMulOperand;
+      float value;
+      if (getFloatScalar(mulNode->getRHS(), &value)) {
+        otherMulOperand = maxNode->getLHS();
+      } else if (getFloatScalar(mulNode->getLHS(), &value)) {
+        otherMulOperand = maxNode->getRHS();
+      } else {
+        continue;
+      }
+      if ((value <= 1.0f) && (otherMulOperand == otherMaxOperand)) {
+        // The sub-tree is a Leaky-Relu, express it as a PRelu.
+        auto *splat = F->createSplat(maxNode->getName(),
+                                     mulNode->getResult().getType(), value);
+        auto *PRelu =
+            F->createPRELU(maxNode->getName(), otherMaxOperand, splat);
+        maxNode->getResult().replaceAllUsesOfWith(PRelu);
+      }
+    }
+  }
+}
+
+void glow::fold(Function *F, const CompilationOptions &opts) {
+  (void)opts;
+  // Get Reshape nodes merged into constants to simplify folding.
+  optimizeReshape(F);
+
+  // Fold sub-graphs corresponding to leakyRelu.
+  foldLeakyRelu(F);
+
+  // Perform Dead Code Elimination.
+  DCE(F);
+}
+
+void glow::fold(Function *F, CompilationMode mode) {
+  CompilationOptions opts;
+  opts.mode = mode;
+  fold(F, opts);
+}
+
 void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
