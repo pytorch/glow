@@ -1408,17 +1408,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *inputTensorInfoPtr = emitValueAddress(builder, inputTensor);
 
     auto *histDims = emitValueDims(builder, hist);
-    auto *inputTensorDims = emitValueDims(builder, inputTensor);
-
     assert(inputTensor->getElementType() == ElemKind::FloatTy &&
            "None float Tensor type for Quantization Profile Instruction.");
-    auto *srcDimsSize =
-        emitConstSizeT(builder, inputTensor->getType()->dims().size());
+    auto *tensorSize = emitConstSizeT(builder, inputTensor->getType()->size());
 
     auto *F = getFunction("quantization_profile");
-    createCall(builder, F,
-               {inputTensorInfoPtr, inputTensorDims, srcDimsSize, compInfoPtr,
-                histPtr, histDims});
+    createCall(
+        builder, F,
+        {inputTensorInfoPtr, tensorSize, compInfoPtr, histPtr, histDims});
     break;
   }
 
