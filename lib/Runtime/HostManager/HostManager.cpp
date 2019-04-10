@@ -46,9 +46,9 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
       config->setName(backend_->getBackendName() + std::to_string(deviceCount));
     }
 
-    auto kind = config->getBackendKind();
+    auto backendKind = config->getBackendKind();
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
-        DeviceManager::createDeviceManager(kind, std::move(config)));
+        DeviceManager::createDeviceManager(backendKind, std::move(config)));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
 
@@ -166,6 +166,14 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
+  auto *resultTraceContext = context->getTraceContext();
+
+  // Set the thread name for TraceEvents in the Runtime.
+  if (resultTraceContext) {
+    resultTraceContext->setThreadName(resultTraceContext->getTraceThread(),
+                                      "Glow Runtime (host)");
+  }
+
   ScopedTraceBlock(context->getTraceContext(),
                    "runFunction_" + networkName.str());
   auto currentRun = totalRequestCount_++;
