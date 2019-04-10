@@ -1634,15 +1634,9 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
 /// data collected from tensor \p inputTensor.
 /// Note: code ported from Profile.cpp: generateTensorHistogram
 __attribute__((noinline)) void
-libjit_quantization_profile(float *inputTensor, size_t *tensorDim,
-                            size_t numDimsTensor, float *compInfo,
-                            float *existingHistogram, size_t *histDim) {
-  size_t tensorSize = 1;
-  // calculating total size of the Tensor.
-  for (size_t i = 0; i < numDimsTensor; ++i) {
-    tensorSize *= tensorDim[i];
-  }
-
+libjit_quantization_profile(float *inputTensor, size_t tensorSize,
+                            float *compInfo, float *existingHistogram,
+                            size_t *histDim) {
   size_t nBins = histDim[0];
 
   // Min/max computed from previous runs. If this is the first run, compInfo is
