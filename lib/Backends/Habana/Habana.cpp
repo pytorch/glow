@@ -455,15 +455,10 @@ void HabanaFunction::execute(ExecutionContext *context) {
   std::vector<EnqueueTensorInfo> inputInfo;
   std::vector<EnqueueTensorInfo> outputInfo;
 
-  // Set up input/output buffers and record bindings for enqueuing.
-  auto phTensorMap = context->getPlaceholderBindings()->pairs();
-  for (const auto &pair : phTensorMap) {
-    Placeholder *P = pair.first;
-    Tensor *T = pair.second;
-
-    if (P->getNumUsers() == 0) {
-      continue;
-    }
+  // Set up input buffers and record bindings for enqueuing.
+  auto *bindings = context->getPlaceholderBindings();
+  for (auto *P : getInputs()) {
+    Tensor *T = bindings->get(P);
 
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
@@ -471,13 +466,22 @@ void HabanaFunction::execute(ExecutionContext *context) {
     eti.tensorSize = T->getSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
-    if (getOutputSave(P)) {
-      outputInfo.push_back(eti);
-    } else {
-      inputInfo.push_back(eti);
-      // Copy from the tensor into the designated IO buffer.
-      memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
-    }
+    inputInfo.push_back(eti);
+    // Copy from the tensor into the designated IO buffer.
+    memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
+  }
+
+  // Set up output buffers and record bindings for enqueuing.
+  for (auto *P : getOutputs()) {
+    Tensor *T = bindings->get(P);
+
+    EnqueueTensorInfo eti;
+    llvm::StringRef name = P->getName();
+    eti.tensorName = name.data();
+    eti.tensorSize = T->getSizeInBytes();
+    eti.pTensorData = (char *)ioBuffer->get(P);
+
+    outputInfo.push_back(eti);
   }
 
   EnqueueTensorInfo noInputEti = {"unused", (char *)nullptr, 0};
