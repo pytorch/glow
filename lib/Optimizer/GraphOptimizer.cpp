@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -2621,4 +2622,26 @@ void glow::optimize(Function *F, CompilationMode mode) {
   CompilationOptions opts;
   opts.mode = mode;
   optimize(F, opts);
+}
+
+void glow::optimizeFunction(Function *F, const Backend &B,
+                            const CompilationOptions &opts) {
+  // Verify the function pre-optimization/lowering.
+  assert(F->verify() && "Function must be valid");
+
+  // Optimize the graph.
+  ::glow::optimize(F, opts);
+
+  // Lower the graph into a sequence of low-level linear algebra operations.
+  ::glow::lower(F, /* loweredMap */ nullptr, &B);
+
+  // Optimize the graph again.
+  ::glow::optimize(F, opts);
+
+  // Allow the backend to transform the graph after lowering.
+  if (B.transformPostLowering(F, opts)) {
+    // Optimize the graph again after the backend transformation.
+    // In particular, DCE is very likely to be useful.
+    ::glow::optimize(F, opts);
+  }
 }

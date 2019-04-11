@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "gtest/gtest.h"
 
@@ -1494,7 +1495,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
   auto *backend = createBackend(BackendKind::Habana);
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
-  backend->optimizeFunction(F_, opts);
+  ::glow::optimizeFunction(F_, *backend, opts);
   auto compiledFunction = backend->compile(F_, opts);
   functions.emplace(F_->getName(), compiledFunction.get());
 

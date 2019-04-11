@@ -18,6 +18,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "gtest/gtest.h"
 
@@ -267,7 +268,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
@@ -306,7 +307,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend, opts);
   EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
@@ -355,7 +356,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend, opts);
 
   std::string name = F->getName();
   EE_.insertCompiledFunction(name, backend->compile(F, opts));

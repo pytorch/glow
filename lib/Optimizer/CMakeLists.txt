@@ -6,6 +6,7 @@ add_library(Optimizer
 
 target_link_libraries(Optimizer
                       PRIVATE
+                        Backend
                         Graph
                         IR
                         QuantizationBase)

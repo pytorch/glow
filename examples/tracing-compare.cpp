@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -81,7 +82,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
   opts.autoInstrument = true;
-  backend->optimizeFunction(F_, opts);
+  ::glow::optimizeFunction(F_, *backend, opts);
   return backend->compile(F_, opts);
 }
 

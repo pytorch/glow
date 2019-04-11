@@ -101,9 +101,6 @@ public:
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
 
-  /// Optimize the Function \p F given compilation options \p opts.
-  void optimizeFunction(Function *F, const CompilationOptions &opts) const;
-
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {

@@ -75,6 +75,10 @@ Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
 std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
                                                   bool shouldShareBuffers);
 
+/// Optimize the Function \p F given compilation options \p opts for Backend \B.
+void optimizeFunction(Function *F, const Backend &B,
+                      const CompilationOptions &opts);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H

@@ -17,6 +17,7 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -86,7 +87,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
     CompilationOptions opts;
     opts.mode = CompilationMode::Infer;
     for (auto F : module->getFunctions()) {
-      backend_->optimizeFunction(F, opts);
+      ::glow::optimizeFunction(F, *backend_, opts);
     }
   }
   auto partitioner = Partitioner(module.get(), deviceInfo);
