@@ -123,6 +123,10 @@ class ONNXModelLoader
   llvm::Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
                        const ArgumentDictionaryTy &dict);
 
+  /// Load LeakyRelu ONNX operator.
+  llvm::Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
