@@ -18,6 +18,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 // We have not written the piece in the HostManager that initializes and creates
@@ -78,7 +79,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module) {
 
   CompilationOptions opts;
   opts.mode = CompilationMode::Infer;
-  backend->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend, opts);
   return backend->compile(F, opts);
 }
 

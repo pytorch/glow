@@ -37,8 +37,7 @@ target_link_libraries(Backend
                         Base
                         CodeGen
                         Graph
-                        IR
-                        Optimizer)
+                        IR)
 add_library(Backends
               Backends.cpp)
 
