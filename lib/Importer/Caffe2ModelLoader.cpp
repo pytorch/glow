@@ -237,7 +237,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
   const std::string &opName = loadOperatorName(op);
 
-  if (typeName == "Conv" || typeName == "Int8Conv" ||
+  if (typeName == "Conv" || typeName == "ConvRelu" || typeName == "Int8Conv" ||
       typeName == "Int8ConvRelu") {
     // Load the inputs:
     std::vector<unsigned_t> strides;
@@ -267,7 +267,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Caffe2 "Conv" op always stores the weight as CKRS, while for "Int8Conv",
     // and "Int8ConvRelu", the weights always follows the "order" arg.
     Tensor wtag;
-    if (typeName != "Conv" && order == "NHWC") {
+    if ((typeName != "ConvRelu" && typeName != "Conv") && order == "NHWC") {
       wtag.assign(w);
     } else {
       w->transpose(&wtag, NCHW2NHWC);
@@ -298,7 +298,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     TypeRef outTy;
     Constant *filter;
     Constant *bias;
-    if (typeName == "Conv") {
+    if (typeName == "Conv" || typeName == "ConvRelu") {
       // Construct the Bias field.
       Tensor biasTensor(ElemKind::FloatTy, {depth});
       biasTensor.zero();
@@ -355,7 +355,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node = G_.createConv(opName, finalIn, filter, bias, outTy, kernels,
                                strides, pads, group);
-
+    if (typeName == "ConvRelu") {
+      node = G_.createRELU(opName + ".relu", node);
+    }
     if (order == "NCHW") {
       // Transpose the output back.
       node = G_.createTranspose(opName, node, NHWC2NCHW);
