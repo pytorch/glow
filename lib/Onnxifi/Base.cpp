@@ -109,9 +109,31 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &inPhPtr = inPhIt->getValue();
 
-    Tensor t(inOnnxBuffer, inPhPtr->getType());
+    std::vector<size_t> inOnnxTensorDims(inOnnxTensor.dimensions);
+    size_t inOnnxTensorSize = 1;
+    for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
+      inOnnxTensorDims[j] = inOnnxTensor.shape[j];
+      inOnnxTensorSize *= inOnnxTensorDims[j];
+    }
 
-    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(t));
+    if (inOnnxTensorSize > inPhPtr->getType()->size()) {
+      return ONNXIFI_STATUS_INVALID_SHAPE;
+    }
+
+    // Only re-allocate a tensor in case padding is required.
+    // Otherwise just back the tensor by memory provided by the caller.
+    Tensor inputTensor;
+    if (inPhPtr->dims().equals(inOnnxTensorDims)) {
+      inputTensor = Tensor(inOnnxBuffer, inPhPtr->getType());
+    } else {
+      inputTensor = Tensor(inPhPtr->getType());
+      unsigned elementSize = inPhPtr->getType()->getElementSize();
+      char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
+      std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
+                inputTensor.getUnsafePtr());
+    }
+
+    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
   }
 
   std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
