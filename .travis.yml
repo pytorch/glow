@@ -32,7 +32,7 @@ jobs:
         - TEST_NAME=COVERAGE
       before_install:
         - utils/install_protobuf.sh
-        - sudo apt-get install -y lcov
+        - sudo apt-get install -y lcov libgoogle-glog-dev
         - sudo pip install awscli --upgrade
         - sudo apt-get install -qq g++-4.8
         - sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-4.8 90

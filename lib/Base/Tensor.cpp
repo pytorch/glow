@@ -18,6 +18,7 @@
 
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/raw_ostream.h"
+#include <glog/logging.h>
 
 using namespace glow;
 
@@ -323,7 +324,9 @@ void glow::dumpImpl(const Tensor *T) { dumpImpl(T, llvm::outs()); }
 
 void glow::genericTranspose(const Tensor *src, Tensor *dest,
                             llvm::ArrayRef<unsigned_t> shuffle) {
-  assert(src->dims().size() == shuffle.size() && "Invalid dimensions");
+  DCHECK(src->dims().size() == shuffle.size())
+      << "Invalid dimensions " << src->dims().size()
+      << " != " << src->dims().size();
 
   size_t newSizes[max_tensor_dimensions];
 
@@ -437,8 +440,12 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       break;
     }
     case ElemKind::UInt8FusedQTy: {
-      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
-      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
+      DCHECK(dims().size() == 2)
+          << "Fused tensor must be 2-dimensional but instead has "
+          << dims().size() << " dimensions.";
+      DCHECK(dims()[1] > 8)
+          << "Fused tensor must have more than 8 columns but has " << dims()[1]
+          << " columns.";
       auto H = getHandle<uint8_t>();
       for (size_t i = 0; i < dims()[0]; i++) {
         for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
