@@ -109,7 +109,13 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &inPhPtr = inPhIt->getValue();
 
-    Tensor t(inOnnxBuffer, inPhPtr->getType());
+    std::vector<size_t> dims(inOnnxTensor.dimensions);
+    for (unsigned i = 0; i < inOnnxTensor.dimensions; ++i) {
+      dims[i] = inOnnxTensor.shape[i];
+    }
+    auto actualType = Type::newShape(*(inPhPtr->getType()), dims);
+    Tensor t(inOnnxBuffer, &actualType);
+    t.resize(*inPhPtr->getType());
 
     ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(t));
   }

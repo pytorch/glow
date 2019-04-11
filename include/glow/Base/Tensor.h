@@ -270,6 +270,32 @@ public:
     reset(t);
   }
 
+  void resize(const Type &T) {
+    // Do nothing if it's the same shape.
+    if (type_.dims().equals(T.dims())) {
+      return;
+    }
+
+    // Allocate memory for new tensor.
+    size_t count = T.size() * T.getElementSize();
+    auto newBuffer =
+        reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
+
+    // Copy data from previous tensor to a new one.
+    size_t copySize = std::min(size(), T.size()) * type_.getElementSize();
+    std::copy(data_, data_ + copySize, newBuffer);
+
+    // Zero the rest if needed.
+    if (T.size() > size()) {
+      std::fill(newBuffer + copySize, newBuffer + count, 0);
+    }
+
+    // We are allocating memory specifically for this tensor, thus, it owns it.
+    isUnowned_ = false;
+    data_ = newBuffer;
+    type_ = T;
+  }
+
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(const Type &T) {
     // If the new size is identical to the allocated size then there is no need
