@@ -15,7 +15,8 @@
  */
 
 #include "glow/Quantization/Serialization.h"
-#include "glow/Quantization/Quantization.h"
+
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/YAMLParser.h"

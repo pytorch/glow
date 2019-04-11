@@ -39,7 +39,9 @@ static void replaceAllUsesOfWith(LoweredInfoMap *loweredMap, NodeValue oldNV,
 
   std::string newOutputName = NodeQuantizationInfo::generateNodeOutputName(
       newNV.getNode()->getName(), newNV.getResNo());
-  (*loweredMap)[newOutputName].insert(NodeNameAndKind(oldNV));
+  (*loweredMap)[newOutputName].insert(
+      NodeNameAndKind(oldNV.getNode()->getName(), oldNV.getResNo(),
+                      oldNV.getNode()->getKind()));
 }
 
 static void lowerAddGradNode(Function *F, LoweredInfoMap *loweredMap,
