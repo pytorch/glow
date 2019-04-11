@@ -17,7 +17,7 @@
 #ifndef GLOW_QUANTIZATION_SERIALIZATION_H
 #define GLOW_QUANTIZATION_SERIALIZATION_H
 
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/APInt.h"
 

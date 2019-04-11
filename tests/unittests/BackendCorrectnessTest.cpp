@@ -22,7 +22,6 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Quantization.h"
 #include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"

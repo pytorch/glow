@@ -21,7 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/raw_ostream.h"
 

@@ -4,3 +4,5 @@ add_library(QuantizationBase
 target_link_libraries(QuantizationBase
   PRIVATE
   LLVMSupport)
+
+add_dependencies(QuantizationBase AutoGen)
