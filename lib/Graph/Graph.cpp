@@ -2993,3 +2993,19 @@ bool Function::verify() const {
   }
   return isValid;
 }
+
+SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
+  // if parent is set for PH, check if it is the same as provided Function.
+  auto *PHP = PH->getParent();
+  if (PHP != nullptr && F != PHP) {
+    return nullptr;
+  }
+  for (auto &use : PH->getUsers()) {
+    if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
+      if (save->getPlaceholder() == PH) {
+        return save;
+      }
+    }
+  }
+  return nullptr;
+}
