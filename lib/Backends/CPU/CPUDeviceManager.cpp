@@ -16,7 +16,13 @@
 #include "CPUDeviceManager.h"
 #include "CPUFunction.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+
+static llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
+llvm::cl::opt<unsigned>
+    cpuMaxMem("cpu-memory", llvm::cl::desc("CPU DeviceManager maximum memory"),
+              llvm::cl::init(0), llvm::cl::cat(CPUBackendCat));
 
 using namespace glow;
 using namespace glow::runtime;
@@ -24,6 +30,9 @@ using namespace glow::runtime;
 namespace glow {
 namespace runtime {
 DeviceManager *createCPUDeviceManager(std::unique_ptr<DeviceConfig> config) {
+  if (cpuMaxMem) {
+    return new CPUDeviceManager(std::move(config), cpuMaxMem);
+  }
   return new CPUDeviceManager(std::move(config));
 }
 } // namespace runtime
