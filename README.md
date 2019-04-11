@@ -52,7 +52,8 @@ The design philosophy is described in an [arXiv paper](https://arxiv.org/abs/180
 ### System Requirements
 
 Glow builds and runs on macOS and Linux. The software depends on a modern C++
-compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
+compiler that supports C++11, on CMake, LLVM, glog, protocol buffers, and
+libpng.
 
 #### Get Glow!
 
@@ -78,14 +79,14 @@ Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget
+  brew install cmake graphviz libpng ninja protobuf wget glog
   brew install llvm@7
   ```
 
 If using MacPorts, run:
 
   ```bash
-  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0
+  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0 google-glog
   ```
 
 Note that LLVM is installed in a non-default location to avoid conflicts with
@@ -122,7 +123,8 @@ following command should install the required dependencies:
 
   ```bash
   sudo apt-get install clang clang-6.0 cmake graphviz libpng-dev \
-      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget opencl-headers
+      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget \
+      opencl-headers libgoogle-glog-dev
   ```
 
 It may be desirable to use `update-alternatives` to manage the version of
