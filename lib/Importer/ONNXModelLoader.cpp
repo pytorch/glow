@@ -726,7 +726,7 @@ llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   const unsigned numInputs = op.input_size();
-  llvm::SmallVector<NodeValue, 4> inputs(4);
+  llvm::SmallVector<NodeValue, 4> inputs;
   inputs.reserve(numInputs);
   for (unsigned i = 0; i < numInputs; i++) {
     NodeValue in;
