@@ -33,23 +33,7 @@ sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
 sudo ln -s /usr/bin/clang-8 /usr/bin/clang
 sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
 sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
-
-sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 50
-sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 50
-
-# setup sccache wrappers
-if hash sccache 2>/dev/null; then
-    SCCACHE_BIN_DIR="/tmp/sccache"
-    mkdir -p "$SCCACHE_BIN_DIR"
-    for compiler in cc c++ gcc g++ x86_64-linux-gnu-gcc; do
-        (
-            echo "#!/bin/sh"
-            echo "exec $(which sccache) $(which $compiler) \"\$@\""
-        ) > "$SCCACHE_BIN_DIR/$compiler"
-        chmod +x "$SCCACHE_BIN_DIR/$compiler"
-    done
-    export PATH="$SCCACHE_BIN_DIR:$PATH"
-fi
+sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
 GLOW_DIR=$PWD
 
@@ -60,7 +44,11 @@ hash cmake ninja
 # Build glow
 cd ${GLOW_DIR}
 mkdir build && cd build
-CMAKE_ARGS=("-DCMAKE_CXX_FLAGS=-Werror")
+CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
+CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
