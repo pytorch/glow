@@ -57,18 +57,17 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
 
 /// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
 /// quantization parameters from the profile, given the lowered info passed in
-/// via \p loweredMap.
-static std::vector<NodeQuantizationInfo>
-profileAndGetNodeQuantizationInfo(PlaceholderBindings &bindings,
-                                  ExecutionEngine &EE, Function *origF,
-                                  const LoweredInfoMap &loweredMap) {
+/// via \p loweredMap, and the specified \p schema.
+static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
+    PlaceholderBindings &bindings, ExecutionEngine &EE, Function *origF,
+    const LoweredInfoMap &loweredMap, quantization::Schema schema) {
   Function *profileF = glow::profileQuantization(bindings, origF);
   EE.compile(CompilationMode::Infer, profileF);
 
   EE.run(bindings);
 
   return quantization::generateNodeQuantizationInfos(bindings, profileF,
-                                                     loweredMap);
+                                                     loweredMap, schema);
 }
 
 /// Helper to profile and quantize \p IF and/or \p BF if \p interpElemKind or \p
@@ -86,8 +85,8 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
   Function *PF = IF->clone("profile");
   LoweredInfoMap loweredMapForProf;
   lower(PF, &loweredMapForProf, IEE.getBackend());
-  std::vector<NodeQuantizationInfo> QI =
-      profileAndGetNodeQuantizationInfo(Ibindings, IEE, PF, loweredMapForProf);
+  std::vector<NodeQuantizationInfo> QI = profileAndGetNodeQuantizationInfo(
+      Ibindings, IEE, PF, loweredMapForProf, schema);
 
   if (isQuantizedElemKind(interpElemKind)) {
     // Lower only as the backends prefer for actually quantizing.
