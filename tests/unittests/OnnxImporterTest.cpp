@@ -213,7 +213,8 @@ static void convTestHelper(std::string &filename,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename(GLOW_DATA_PATH filename);
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
 
   PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
@@ -267,7 +268,7 @@ static void convTestHelper(std::string &filename,
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
 TEST(onnx, importConv) {
-  std::string filename("tests/models/onnxModels/simpleConv.onnxtxt");
+  std::string filename("simpleConv.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
@@ -278,8 +279,7 @@ TEST(onnx, importConv) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
 TEST(onnx, importConvAutoPadValid) {
-  std::string filename(
-      "tests/models/onnxModels/simpleConvAutoPadValid.onnxtxt");
+  std::string filename("simpleConvAutoPadValid.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {10, 14, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
@@ -289,8 +289,7 @@ TEST(onnx, importConvAutoPadValid) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
 TEST(onnx, importConvAutoPadSameUpper) {
-  std::string filename(
-      "tests/models/onnxModels/simpleConvAutoPadSameUpper.onnxtxt");
+  std::string filename("simpleConvAutoPadSameUpper.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {10, 14, 9, 22, 26, 15, 15, 17, 10};
   convTestHelper(filename, expectedDims, expectedValues);
@@ -300,8 +299,7 @@ TEST(onnx, importConvAutoPadSameUpper) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
 TEST(onnx, importConvAutoPadSameLower) {
-  std::string filename(
-      "tests/models/onnxModels/simpleConvAutoPadSameLower.onnxtxt");
+  std::string filename("simpleConvAutoPadSameLower.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 5, 5, 10, 14, 11, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
@@ -322,7 +320,8 @@ static void averagePoolTestHelper(std::string &filename,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string NetFilename(GLOW_DATA_PATH filename);
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
 
   PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
@@ -366,8 +365,7 @@ static void averagePoolTestHelper(std::string &filename,
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is auto_pad VALID (no padding), group is 1.
 TEST(onnx, importAveragePool2DAutoPadValid) {
-  std::string filename(
-      "tests/models/onnxModels/averagePool2DAutoPadValid.onnxtxt");
+  std::string filename("averagePool2DAutoPadValid.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {2, 3, 5, 6};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
@@ -377,8 +375,7 @@ TEST(onnx, importAveragePool2DAutoPadValid) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is auto_pad SAME_UPPER, group is 1.
 TEST(onnx, importAveragePool2DAutoPadSameUpper) {
-  std::string filename(
-      "tests/models/onnxModels/averagePool2DAutoPadSameUpper.onnxtxt");
+  std::string filename("averagePool2DAutoPadSameUpper.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 1.75, 5, 6, 3.25, 3.25, 3.75, 2};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
@@ -388,8 +385,7 @@ TEST(onnx, importAveragePool2DAutoPadSameUpper) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is auto_pad SAME_LOWER, group is 1.
 TEST(onnx, importAveragePool2DAutoPadSameLower) {
-  std::string filename(
-      "tests/models/onnxModels/averagePool2DAutoPadSameLower.onnxtxt");
+  std::string filename("averagePool2DAutoPadSameLower.onnxtxt");
   std::vector<size_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {0, 0.25, 0.75, 0.75, 2, 3, 2.25, 5, 6};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
