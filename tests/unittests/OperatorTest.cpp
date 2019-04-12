@@ -5711,6 +5711,15 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
                             /* enableRowwiseQuantization */ true);
 }
 
+/// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
+                            /* enableRowwiseQuantization */ true,
+                            quantization::Schema::Symmetric);
+}
+
 static FunctionTensorPair
 createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
                            glow::ExecutionEngine &EE) {

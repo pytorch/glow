@@ -341,6 +341,83 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   EE.run(bindings);
 }
 
+/// Test enabling RowwiseQuantizedFullyConnected with Symmetric quantization.
+TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  PlaceholderBindings bindings;
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10, 80}, "in", false);
+  auto *FC = F->createFullyConnected(bindings, "FC", input, 100);
+  auto *res = F->createSave("save", FC);
+  bindings.allocate(res->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+
+  // Note that we generate values for the Weights because they will be used
+  // during rowwise-quantization to select each row's scale/offset.
+  auto *WC = llvm::cast<Constant>(FC->getWeights());
+  WC->getPayload().getHandle().randomize(-0.7, 1.1, mod.getPRNG());
+  auto *BC = llvm::cast<Constant>(FC->getBias());
+
+  TensorQuantizationParams inputTQP = chooseQuantizationParams(
+      -1.0, 6.0, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  TensorQuantizationParams fcTQP = chooseQuantizationParams(
+      0.0, 10.0, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  TensorQuantizationParams biasTQP = chooseQuantizationParams(
+      0, 20, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+
+  EXPECT_EQ(inputTQP.offset, 0);
+  EXPECT_EQ(fcTQP.offset, 0);
+  EXPECT_EQ(biasTQP.offset, 0);
+
+  // Note: Using dummy offset for the weights, as it should be
+  // rowwise-quantized.
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       inputTQP},
+      {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {1.0f, 1}},
+      {NodeQuantizationInfo::generateNodeOutputName(BC->getName()), biasTQP},
+      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), fcTQP},
+  };
+
+  F = quantization::quantizeFunction(
+      *EE.getBackend(), quantization::Schema::Symmetric, QI, ElemKind::Int8QTy,
+      F, {}, "", {}, /*enableRowwise*/ true);
+
+  // Check the graph structure after quantization.
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
+  ASSERT_TRUE(saveNode);
+  auto *deqNode =
+      llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(deqNode);
+  auto *rwNode = llvm::dyn_cast<RowwiseQuantizedFullyConnectedNode>(
+      deqNode->getInput().getNode());
+  ASSERT_TRUE(rwNode);
+  auto *inNode = llvm::dyn_cast<QuantizeNode>(rwNode->getInput().getNode());
+  ASSERT_TRUE(inNode);
+  auto *biasNode = llvm::dyn_cast<QuantizeNode>(rwNode->getBias().getNode());
+  ASSERT_TRUE(biasNode);
+  auto *weightsNode = llvm::dyn_cast<Constant>(rwNode->getWeights().getNode());
+  ASSERT_TRUE(weightsNode);
+  auto *scalesNode = llvm::dyn_cast<Constant>(rwNode->getScales().getNode());
+  ASSERT_TRUE(scalesNode);
+  auto *offsetsNode = llvm::dyn_cast<Constant>(rwNode->getOffsets().getNode());
+  ASSERT_TRUE(offsetsNode);
+
+  // Because we're using symmetric quantization, the offsets should all be zero.
+  auto offsetsH = offsetsNode->getPayload().getHandle<int32_t>();
+  EXPECT_TRUE(offsetsH.isZero());
+
+  // Make sure that graph can be compiled and run. We check the correctness of
+  // RowwiseQuantizedFullyConnected in operatorTests.cpp.
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run(bindings);
+}
+
 /// Check that SLWS is correctly fused rowwise-quantized by the quantizer.
 TEST(Quantization, enableRowwiseQuantizedSLWS) {
   ExecutionEngine EE;
