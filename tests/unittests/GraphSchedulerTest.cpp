@@ -113,3 +113,51 @@ TEST(GraphScheduler, testMaxSizeLessThanResultSize) {
               std::distance(schedule.begin(), concatSmallIt));
   }
 }
+
+TEST(GraphScheduler, ScheduleQuantizationProfileRightAfterNodeBeingProfiled) {
+  Module MD;
+  PlaceholderBindings bindings;
+  auto *input1 =
+      MD.createPlaceholder(ElemKind::FloatTy, {1, 4, 4}, "input1", false);
+  bindings.allocate(input1);
+  auto *input2 =
+      MD.createPlaceholder(ElemKind::FloatTy, {1, 4, 4}, "input2", false);
+  bindings.allocate(input2);
+  Function *F = MD.createFunction("F");
+  Node *add = F->createAdd("add", input1, input2);
+  Node *sub = F->createSub("sub", input1, input2);
+  Node *mul = F->createMul("mul", add, sub);
+  Node *save = F->createSave("save", mul);
+  Node *quantizationProfileAdd =
+      F->createQuantizationProfile(bindings, "qpAdd", add);
+  Node *quantizationProfileSub =
+      F->createQuantizationProfile(bindings, "qpSub", sub);
+
+  // Since all of the tensors are Variables, they don't need
+  // memory for storing their outputs. Consequently, sliceBig
+  // should be scheduled before concatSmall in this example
+  // because the former frees up some memory while the latter
+  // uses up more memory after execution.
+  NodesPtrList schedule;
+  ChildMemSizeBasedScheduler scheduler(*F, schedule);
+  scheduler.schedule();
+
+  // Find the positions of add and quantizationProfileAdd in the schedule.
+  auto addIt = std::find(schedule.begin(), schedule.end(), add);
+  auto qpAddIt =
+      std::find(schedule.begin(), schedule.end(), quantizationProfileAdd);
+  // Expect the quantization profiling node to be scheduled right after the node
+  // being profiled.
+  EXPECT_EQ(++addIt, qpAddIt);
+
+  // Find the positions of sub and quantizationProfileSub in the schedule.
+  auto subIt = std::find(schedule.begin(), schedule.end(), sub);
+  auto qpSubIt =
+      std::find(schedule.begin(), schedule.end(), quantizationProfileSub);
+  // Expect the quantization profiling node to be scheduled right after the node
+  // being profiled.
+  EXPECT_EQ(++subIt, qpSubIt);
+
+  // Expect the save node to be the last in the schedule.
+  EXPECT_EQ(save, schedule.back());
+}
