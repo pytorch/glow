@@ -20,6 +20,7 @@ googlenetV1IdxArray=(281 222 340)
 googlenetV4IdxArray=(281 207 340)
 mnistIdxValues="0,1,2,3,4,5,6,7,8,9"
 mnistIdxArray=(0 1 2 3 4 5 6 7 8 9)
+ferplusIdxArray=(4 4 6 1 0 0 3 3 2 2)
 
 # Accumulate errors
 num_errors=0
@@ -142,6 +143,13 @@ done
 # Quantized Resnet50 Caffe2 model test
 ./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"
 num_errors=$(($num_errors + $?))
+
+# Emotion_ferplus onnx model test
+i=0
+for png_filename in tests/images/EmotionSampleImages/*.png; do
+  ./bin/image-classifier "$png_filename" -use-imagenet-normalization -expected-labels=${ferplusIdxArray[$i]} -image-mode=0to255 -m=emotion_ferplus/model.onnx -model-input-name=Input3 -compute-softmax "$@"
+  i=$(($i + 1))
+done
 
 if [ $num_errors -gt 0 ]
 then

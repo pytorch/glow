@@ -1,0 +1,6 @@
+Images taken from https://github.com/Microsoft/onnxjs-demo/tree/master/src/assets/EmotionSampleImages
+and converted to png using imagemagick:
+for i in *.jpg
+do
+convert $i -resize 64x64\! -colorspace gray ${i%.jpg}.png
+done

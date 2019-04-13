@@ -21,3 +21,8 @@ file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} other/*.png)
 foreach(filename ${files})
   configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
 endforeach(filename)
+
+file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} EmotionSampleImages/*.png)
+foreach(filename ${files})
+  configure_file(${filename} ${CMAKE_CURRENT_BINARY_DIR}/${filename} COPYONLY)
+endforeach(filename)
