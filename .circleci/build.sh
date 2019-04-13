@@ -10,10 +10,10 @@ install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev
 
    git clone https://github.com/pocl/pocl.git
-   cd pocl && git checkout 94fba9f510e678cd7f8fc988c01618e1ae93dfdf && cd ../
+   cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_ICD=ON ../pocl
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -27,7 +27,7 @@ install_pocl() {
 # Install Glow dependencies
 sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
 sudo apt-get update
-sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
+sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libclang-8-dev libpng-dev libgoogle-glog-dev opencl-headers
 
 # Redirect clang
 sudo ln -s /usr/bin/clang-8 /usr/bin/clang

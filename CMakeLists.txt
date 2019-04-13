@@ -88,7 +88,15 @@ endif ()
 # Top level setup for external backends
 ExternalBackendsInit()
 
-find_package(LLVM 8 CONFIG REQUIRED)
+find_package(LLVM 8 CONFIG)
+if (NOT LLVM_FOUND)
+  # Fallback to LLVM 7
+  find_package(LLVM 7 CONFIG)
+
+  if (NOT LLVM_FOUND)
+    message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
+  endif()
+endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
