@@ -57,11 +57,10 @@ TEST(Utils, deterministicPRNG) {
 TEST(Utils, readWriteTensor) {
   llvm::SmallString<64> path;
   llvm::sys::fs::createTemporaryFile("tensor", "bin", path);
-  ShapeVector dims({2, 2, 2});
-  Tensor output(ElemKind::FloatTy, dims);
+  Tensor output(ElemKind::FloatTy, {2, 1, 4});
   output.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
   writeToFile(output, path);
-  Tensor input(ElemKind::FloatTy, dims);
+  Tensor input;
   readFromFile(input, path);
   llvm::sys::fs::remove(path);
   EXPECT_TRUE(output.isEqual(input));
