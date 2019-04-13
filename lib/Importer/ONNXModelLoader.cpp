@@ -843,6 +843,37 @@ llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict) {
+  // Input Type.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ElemKind inputType = input.getType()->getElementType();
+
+  // Only supports float types.
+  RETURN_ERR_IF_NOT((inputType == ElemKind::FloatTy) ||
+                        (inputType == ElemKind::Float16Ty),
+                    "Unsupported Type for LeakyRelu");
+
+  // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
+  // like for others. The default example just omits alpha.
+  float alphaVal = 0.01f;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alphaVal, loadFloat(dict.at("alpha")));
+  }
+
+  // Create the node.
+  auto splatType = G_.getParent()->uniqueType(ElemKind::FloatTy, input.dims());
+  const std::string &opName = loadOperatorName(op);
+  Node *splatN = G_.createSplat(opName + "Alpha", splatType, alphaVal);
+  Node *N = G_.createPRELU(opName, input, splatN);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                                      const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -995,6 +1026,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Cast") {
     return loadCast(op, dict);
+  }
+  if (typeName == "LeakyRelu") {
+    return loadLeakyRelu(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",

@@ -114,6 +114,62 @@ importArithMultiBroadcastTest(std::string fileName,
   }
 }
 
+/// Test loading LeakyRelu op from an ONNX model.
+TEST(onnx, leakyRelu) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/leakyRelu.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {7});
+    x.getHandle() = {0, -1, -2, -3, 4, 5, 6};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  PReluNode *PRL = llvm::dyn_cast<PReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(PRL);
+  NodeValue slopeN = PRL->getSlope();
+  SplatNode *splatN = llvm::dyn_cast<SplatNode>(slopeN.getNode());
+  ASSERT_TRUE(splatN);
+  EXPECT_FLOAT_EQ(splatN->getValue(), 0.100000001);
+}
+
+/// Test Loading LeakyRelu op from an ONNX model with default alpha.
+TEST(onnx, leakyReluDefault) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/leakyReluDefault.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {7});
+    x.getHandle() = {0, -1, -2, -3, 4, 5, 6};
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  PReluNode *PRL = llvm::dyn_cast<PReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(PRL);
+  NodeValue slopeN = PRL->getSlope();
+  SplatNode *splatN = llvm::dyn_cast<SplatNode>(slopeN.getNode());
+  ASSERT_TRUE(splatN);
+  EXPECT_FLOAT_EQ(splatN->getValue(), 0.01);
+}
+
 TEST(onnx, importAddMultiBroadcastOp7) {
   importArithMultiBroadcastTest<AddNode>(
       "addMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
