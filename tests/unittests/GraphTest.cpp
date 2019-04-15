@@ -1527,3 +1527,35 @@ TEST(Graph, GroupTestConvNoLower) {
     EXPECT_EQ(CN->getGroup(), 8);
   }
 }
+
+/// Check that getOutputSave returns SaveNode object for the correct Placeholder
+/// and nullptr in other cases.
+TEST(Graph, GetOutputSaveTest) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Placeholder *I =
+      MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  Placeholder *O = MD.createPlaceholder(ElemKind::FloatTy, {3}, "output", true);
+  TopKNode *TKN = F->createTopK("topk", I, 3);
+  GatherNode *GN =
+      F->createGather("gather", TKN->getValues(), TKN->getIndices());
+  TanhNode *TN = F->createTanh("tanh", GN);
+  SaveNode *SN = F->createSave("save", TN, O);
+
+  // Check the return value of getOutputSave method.
+  // Placeholder parent is null.
+  auto *FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  // Placeholder parent is set to the correct value.
+  O->setParent(F);
+  EXPECT_EQ(F, O->getParent());
+  FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  // Invalid placeholder type is provided.
+  EXPECT_EQ(nullptr, glow::getOutputSave(F, I));
+}

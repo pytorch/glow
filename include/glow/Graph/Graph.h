@@ -1081,6 +1081,10 @@ Function *differentiate(Function *F, const TrainingConfig &config,
                         llvm::StringRef newFuncName = "",
                         VariableGradientsList *varGrads = nullptr);
 
+/// \returns the first SaveNode user of the placeholder \p PH or
+/// nullptr if none are found.
+SaveNode *getOutputSave(Function *F, Placeholder *PH);
+
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
