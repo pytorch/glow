@@ -73,19 +73,6 @@ if(GLOW_WITH_CPU)
                           Graph
                           Importer)
 
-  add_executable(resnet-concurrent
-                   resnet-concurrent.cpp)
-  target_link_libraries(resnet-concurrent
-                        PRIVATE
-                          Backend
-                          Backends
-                          DeviceManager
-                          ExecutionEngine
-                          Graph
-                          Importer
-                          Optimizer)
-  target_include_directories(resnet-concurrent PUBLIC ${CMAKE_SOURCE_DIR}/lib)
-
   add_executable(resnet-runtime
                    resnet-runtime.cpp)
   target_link_libraries(resnet-runtime
