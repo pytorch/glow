@@ -30,9 +30,11 @@ namespace {
 using namespace glow;
 using namespace glow::quantization;
 
-/// Support quantized Log by replacing it with an IntLookupTable with a new
-/// mapping given the input and output quantization parameters.
-static void replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
+/// Support quantized Log \p LN inside \p F by replacing it with an
+/// IntLookupTable with a new mapping given the input and output quantization
+/// parameters. \returns the new IntLookupTable created.
+static Node *replaceQuantizedLogWithLookupTable(Function &F,
+                                                const LogNode &LN) {
   TypeRef outTy = LN.getResult().getType();
   TypeRef inTy = LN.getInput().getType();
 
@@ -57,11 +59,14 @@ static void replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
       LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
 
   LN.getResult().replaceAllUsesOfWith(ILT);
+  return ILT;
 }
 
-/// Support quantized Tanh by replacing it with an IntLookupTable.
-static void replaceQuantizedTanhWithLookupTable(Function &F,
-                                                const TanhNode &TN) {
+/// Support quantized Tanh \p TN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Tanh via the IntLookupTable.
+static Node *replaceQuantizedTanhWithLookupTable(Function &F,
+                                                 const TanhNode &TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
   // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
@@ -93,11 +98,14 @@ static void replaceQuantizedTanhWithLookupTable(Function &F,
       TN.getName(), quantizedNode, TN.getResult().getType());
 
   TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode;
 }
 
-/// Support quantized Sigmoid by replacing it with an IntLookupTable.
-static void replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                                   const SigmoidNode &SN) {
+/// Support quantized Sigmoid \p SN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Sigmoid via the IntLookupTable.
+static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                                    const SigmoidNode &SN) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
@@ -129,6 +137,7 @@ static void replaceQuantizedSigmoidWithLookupTable(Function &F,
       SN.getName(), quantizedNode, SN.getResult().getType());
 
   SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode;
 }
 
 /// This class produces a quantized function based on a provided profile.
@@ -453,8 +462,10 @@ protected:
 
   /// Perform post processing for \p node. Handles special cases, e.g.
   /// requirements for input/output quantization parameters, converting to
-  /// lookup tables, etc.
+  /// lookup tables, etc. Also updates nodeToTQP_ with the added dequantization
+  /// nodes added for \p node.
   void postProcessing(Node &node) override {
+    Node *quantizedNode = &node;
     switch (node.getKind()) {
     default:
       break;
@@ -509,6 +520,7 @@ protected:
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       auto *rescale =
           function_.createRescaleQuantized(node.getName(), val, outTy);
+      quantizedNode = rescale;
       dequantize->setNthInput(DequantizeNode::InputIdx, rescale);
       break;
     }
@@ -524,16 +536,16 @@ protected:
              "Backend should support IntLookupTable at this point.");
       switch (node.getKind()) {
       case Kinded::Kind::LogNodeKind:
-        replaceQuantizedLogWithLookupTable(function_,
-                                           llvm::cast<LogNode>(node));
+        quantizedNode = replaceQuantizedLogWithLookupTable(
+            function_, llvm::cast<LogNode>(node));
         break;
       case Kinded::Kind::TanhNodeKind:
-        replaceQuantizedTanhWithLookupTable(function_,
-                                            llvm::cast<TanhNode>(node));
+        quantizedNode = replaceQuantizedTanhWithLookupTable(
+            function_, llvm::cast<TanhNode>(node));
         break;
       case Kinded::Kind::SigmoidNodeKind:
-        replaceQuantizedSigmoidWithLookupTable(function_,
-                                               llvm::cast<SigmoidNode>(node));
+        quantizedNode = replaceQuantizedSigmoidWithLookupTable(
+            function_, llvm::cast<SigmoidNode>(node));
         break;
       default:
         llvm_unreachable("Unsupported case for converting to lookup table.");
@@ -541,6 +553,31 @@ protected:
     }
     }
     assert(!lastMorphedNodeWithTypeChanges && "Type not fixed");
+
+    // Update nodeToTQP_ since we've added in dequantized nodes to the output of
+    // now-quantized nodes. This is necessary because later we try to quantize
+    // nodes only if we have a quantized type for its operands (i.e. a profile
+    // in nodeToTQP_). However its inputs may already have been quantized, which
+    // means its inputs are replaced by a dequantize node, and no profile would
+    // be found in nodeToTQP_ for the dequantize node_. Thus we add TQPs for
+    // the dequantize node given the scale/offset it is dequantizing from.
+    for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum != e;
+         ++outNum) {
+      NodeValue val = quantizedNode->getNthResult(outNum);
+      if (!val.getType()->isQuantizedType()) {
+        continue;
+      }
+      assert(
+          val.hasOneUse() &&
+          llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser()) &&
+          "This node should only be used by the dequantize node");
+      auto *dequantize =
+          llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
+      TypeRef outTy = val.getType();
+      nodeToTQP_[NodeQuantizationInfo::generateNodeOutputName(
+          dequantize->getName(), outNum)] = {outTy->getScale(),
+                                             outTy->getOffset()};
+    }
   }
 
   void convertTensor(Tensor &tensor, TypeRef destTy) override {

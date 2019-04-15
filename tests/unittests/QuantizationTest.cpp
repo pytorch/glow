@@ -280,6 +280,64 @@ TEST(Quantization, int8QuantizeGraph) { quantizeGraph(ElemKind::Int8QTy); }
 
 TEST(Quantization, int16QuantizeGraph) { quantizeGraph(ElemKind::Int16QTy); }
 
+/// Test that when a node is quantized before its users are quantized then the
+/// users correctly find the quantization parameters. This tests that updating
+/// the nodeToTQP_ map in FunctionQuantizer::postProcessing() works correctly.
+TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {3}, "input", true);
+  PlaceholderBindings bindings;
+  bindings.allocate(input);
+
+  // Note: Intentionally add successive reshapes so the GraphOptimizer merges
+  // them and creates a new one. This way the newly created Reshape will be
+  // placed at the end of the list of nodes in F, and then it will be quantized
+  // before SN. I think this is the most straightforward way to cover the logic
+  // path inside FunctionQuantizer::postProcessing() that updates nodeToTQP_.
+  auto *reshape1 = F->createReshape("reshape1", input, {3, 1});
+  auto *reshape2 = F->createReshape("reshape2", reshape1, {1, 3});
+  auto *SN = F->createSlice("slice", reshape2, {0, 1}, {1, 2});
+  auto *S = F->createSave("ret", SN);
+  bindings.allocate(S->getPlaceholder());
+
+  // We need to optimize here first so that the two reshapes are merged.
+  optimize(F, CompilationMode::Infer);
+
+  Node *newReshape = SN->getInput().getNode();
+  ASSERT_TRUE(newReshape);
+  ASSERT_TRUE(llvm::isa<ReshapeNode>(newReshape));
+
+  std::vector<NodeQuantizationInfo> QI{
+      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(newReshape->getName()),
+       {0.2f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.2f, 0}},
+  };
+
+  F = quantization::quantizeFunction(*EE.getBackend(),
+                                     quantization::Schema::Asymmetric, QI,
+                                     ElemKind::Int8QTy, F);
+
+  // Remove unnecessary conversions.
+  optimize(F, CompilationMode::Infer);
+
+  // Now we verify that the SliceNode was in fact quantized.
+  {
+    auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
+    ASSERT_TRUE(saveNode);
+    auto *deqNode =
+        llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
+    ASSERT_TRUE(deqNode);
+    auto *sliceNode = llvm::dyn_cast<SliceNode>(deqNode->getInput().getNode());
+    ASSERT_TRUE(sliceNode);
+    EXPECT_TRUE(sliceNode->getResult().getType()->isQuantizedType());
+  }
+}
+
 /// Test enabling RowwiseQuantizedFullyConnected in Glow quantization
 /// procuedure. A FC can be quantized and converted to a
 /// RowwiseQuantizedFullyConnected if:
