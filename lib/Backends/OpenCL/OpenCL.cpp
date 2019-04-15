@@ -56,14 +56,14 @@ typedef uint32_t cl_size_t;
 
 // This defines kernels for optimized convolutions.
 static const unsigned char kernels_fwd_conv_cl_src[] = {
-#include "glow/kernels_fwd_conv.inc"
+#include "glow/OpenCL/kernels_fwd_conv.cl.inc"
 };
 static const size_t kernels_fwd_conv_cl_src_size =
     sizeof(kernels_fwd_conv_cl_src);
 
 // This defines kernels for quantized optimized convolutions.
 static const unsigned char kernels_fwd_quantized_conv_cl_src[] = {
-#include "glow/kernels_fwd_quantized_conv.inc"
+#include "glow/OpenCL/kernels_fwd_quantized_conv.cl.inc"
 };
 static const size_t kernels_fwd_quantized_conv_cl_src_size =
     sizeof(kernels_fwd_quantized_conv_cl_src);
