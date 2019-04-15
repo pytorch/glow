@@ -26,17 +26,30 @@
 using namespace glow;
 using namespace runtime;
 
+namespace {
+// STL sorting algorithm cannot inline predicate if it got provided as a regular
+// function.
+// Template instantiation expands std::sort with predicate type as
+// (bool)(const std::pair<DeviceIDTy, uint64_t> &,
+//        const std::pair<DeviceIDTy, uint64_t> &).
+// It means any regular function with the above signature will match
+// the template instantiation, and compiler cannot inline the code of
+// one of the possible functions.
+// Declaring lambda, which has a unique type regardless its signature,
+// forces compiler to instantiate the template with a provided unique type and
+// correspondently compiler can inline the lambda code.
+auto sortMostMemory = [](const std::pair<DeviceIDTy, uint64_t> &a,
+                         const std::pair<DeviceIDTy, uint64_t> &b) -> bool {
+  return a.second > b.second;
+};
+} // namespace
+
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
   }
   auto backendKind = devices[0]->getBackendKind();
   backend_.reset(createBackend(backendKind));
-}
-
-bool sortMostMemory(const std::pair<DeviceIDTy, uint64_t> &a,
-                    const std::pair<DeviceIDTy, uint64_t> &b) {
-  return (a.second > b.second);
 }
 
 llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
