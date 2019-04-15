@@ -19,6 +19,22 @@
 using namespace glow;
 using llvm::isa;
 
+/// Check if the memory of \p node inputs is calculated already. \returns the
+/// total used memory after \p node is considered.
+static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
+                              std::set<Storage *> &newStorage, Node *node,
+                              uint64_t mem) {
+  uint64_t ret = mem;
+  for (size_t i = 0, e = node->getNumInputs(); i < e; i++) {
+    Storage *in = llvm::dyn_cast<Storage>(node->getNthInput(i).getNode());
+    if (in && usedStorage.find(in) == usedStorage.end()) {
+      ret += in->getType()->getSizeInBytes();
+      newStorage.insert(in);
+    }
+  }
+  return ret;
+}
+
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices)
     : module_(parent), deviceInfo_(devices) {
   memSize_ = module_->getConstantsSize();
@@ -338,8 +354,8 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
             // It is possible that after moving a node from Partition2 to
             // Partition1, Partition2 become empty. Remove the empty partition.
             partitions.deletePartition(suc);
-            module_->eraseFunction(suc);
             nodesSet.erase(suc);
+            module_->eraseFunction(suc);
           } else {
             GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc]);
             partitions.setGraphMemInfo(suc, newCost);
@@ -367,62 +383,35 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   size_t level = bfs.size();
-  // A list of cut. The graph can be partitioned by levels (cut[0], level - 1],
-  // (cut[1], cut[0] - 1], ..., (-1, cut[n] - 1].
-  std::vector<int> cut;
 
   // Step 1 : get the initial cut based on BFS levels and availableMemory.
-  // TODO .. need to remove the duplicated memory usage.
   uint64_t mem = 0;
-  for (int i = level - 1; i >= 0; i--) {
-    uint64_t tmp = 0;
-    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
-      Node *N = bfs[i][j];
-      tmp += memUsage_[N];
-    }
-    if (mem + tmp > availableMemory) {
-      // mem == 0 means the mem usage for one level exceeds the availableMem,
-      // accept it now and will do adjustment later. Otherwise, leave tmp to
-      // next stage by assigning it to mem.
-      if (mem == 0) {
-        cut.push_back(i - 1);
-      } else {
-        cut.push_back(i);
-        mem = tmp;
-      }
-    } else {
-      mem += tmp;
-    }
-  }
-
-  // The last border.
-  cut.push_back(-1);
-
-  // Step 2 : Create the initial mapping between node and functions.
   int color = 0;
   Function *newF;
-  for (size_t k = 0, e = cut.size(); k < e; k++) {
-    newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
-                                          std::to_string(++color));
-    mapping.createPartition(newF);
-    uint64_t mem = 0;
-    for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
-      for (size_t j = 0, e1 = bfs[i].size(); j < e1; j++) {
-        Node *N = bfs[i][j];
-        if (mem + memUsage_[N] > availableMemory) {
-          newF = F->getParent()->createFunction(
-              std::string(F->getName()) + "_part" + std::to_string(++color));
-          mapping.createPartition(newF);
-          mem = memUsage_[N];
-        } else {
-          mem += memUsage_[N];
-        }
-        mapping.add(N, newF);
+  newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
+                                        std::to_string(++color));
+  mapping.createPartition(newF);
+  std::set<Storage *> usedStorage;
+  for (int i = level - 1; i >= 0; i--) {
+    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
+      Node *N = bfs[i][j];
+      std::set<Storage *> newStorage;
+      uint64_t newMem = updateUsedMem(usedStorage, newStorage, N, mem);
+      if (newMem > availableMemory) {
+        newF = F->getParent()->createFunction(
+            std::string(F->getName()) + "_part" + std::to_string(++color));
+        mapping.createPartition(newF);
+        mem = memUsage_[N];
+        usedStorage = newStorage;
+      } else {
+        usedStorage.insert(newStorage.begin(), newStorage.end());
+        mem = newMem;
       }
+      mapping.add(N, newF);
     }
   }
 
-  // Step 3 : adjust the partition based on performance.
+  // Step 2 : adjust the partition based on performance.
   partitionsAdjust(mapping, availableMemory);
 
   return mapping;
