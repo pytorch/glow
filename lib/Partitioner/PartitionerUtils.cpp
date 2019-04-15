@@ -21,10 +21,12 @@ using llvm::isa;
 
 namespace glow {
 
-/// Used to sort 2 Nodes by their name.
-static bool compFunc(Node *n1, Node *n2) {
-  return (n1->getName().compare(n2->getName()) > 0);
-}
+namespace {
+/// Used to sort 2 Nodes by their name, i.e. n1->name < n2->name order.
+auto compFunc = [](const Node *n1, Node *n2) -> bool {
+  return n1->compareByName(*n2);
+};
+} // namespace
 
 /// The nodes in function \p F which be grouped into levels based on how far
 /// (the longest distance) they are from the roots.
