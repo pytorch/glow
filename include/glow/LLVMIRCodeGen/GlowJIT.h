@@ -49,15 +49,15 @@ private:
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
-#else // LLVM_VERSION_MAJOR > 6
+#else
   std::shared_ptr<SymbolStringPool> SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
-#if LLVM_VERSION_MAJOR < 8 //|| FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
-#else // LLVM_VERSION_MAJOR > 7
+#else
   LegacyRTDyldObjectLinkingLayer objectLayer_;
   LegacyIRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
 #endif

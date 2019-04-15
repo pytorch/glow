@@ -81,7 +81,7 @@ public:
     // the stepping functionality on platforms supporting it.
 #if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
     dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
-#else // LLVM_VERSION_MAJOR > 7
+#else
     dbgRegistrationListener_->notifyObjectLoaded(
         (llvm::JITEventListener::ObjectKey)&loadedObj, loadedObj, objInfo);
 #endif
@@ -122,7 +122,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                      return RTDyldObjectLinkingLayer::Resources{
                          std::make_shared<SectionMemoryManager>(), resolver_};
                    }),
-#else // LLVM_VERSION_MAJOR > 6
+#else
       SSP_(std::make_shared<SymbolStringPool>()), ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           ES_,

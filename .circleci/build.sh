@@ -7,7 +7,7 @@ set -ex
 export MAX_JOBS=8
 
 install_pocl() {
-   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev
+   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
    cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
@@ -27,7 +27,7 @@ install_pocl() {
 # Install Glow dependencies
 sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
 sudo apt-get update
-sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libclang-8-dev libpng-dev libgoogle-glog-dev opencl-headers
+sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
 
 # Redirect clang
 sudo ln -s /usr/bin/clang-8 /usr/bin/clang

@@ -174,7 +174,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     TM.addPassesToEmitFile(
         PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-#else // LLVM_VERSION_MAJOR > 6
+#else
     TM.addPassesToEmitFile(
         PM, outputFile, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);

@@ -12,7 +12,6 @@ else()
                  llvm-link-${LLVM_VERSION_MAJOR}
                  llvm-link-8
                  llvm-link-7
-                 llvm-link-6.0
                  llvm-link)
 endif()
 

@@ -290,7 +290,7 @@ void LLVMIRGen::performCodeGen() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#else // LLVM_VERSION_MAJOR > 6
+#else
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
