@@ -126,11 +126,15 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       inputTensor = Tensor(inOnnxBuffer, inPhPtr->getType());
     } else {
-      inputTensor = Tensor(inPhPtr->getType());
-      unsigned elementSize = inPhPtr->getType()->getElementSize();
       char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
-      std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
-                inputTensor.getUnsafePtr());
+      // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
+      // valid case for empty tensor, skip copying
+      if (inOnnxBuffer) {
+        inputTensor = Tensor(inPhPtr->getType());
+        unsigned elementSize = inPhPtr->getType()->getElementSize();
+        std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
+                  inputTensor.getUnsafePtr());
+      }
     }
 
     ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
