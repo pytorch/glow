@@ -102,8 +102,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
 
   // Try to add functions to devices in order from largest to smallest.
   for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
-    RETURN_ERR_IF_NOT(logicalDeviceSize[i].second * NETWORK_PADDING_FACTOR <
-                          deviceMemory[i].second,
+    RETURN_ERR_IF_NOT(logicalDeviceSize[i].second < deviceMemory[i].second,
                       "Not enough memory to provision functions onto devices");
 
     // Load functions on device.
