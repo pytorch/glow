@@ -1558,4 +1558,21 @@ TEST(Graph, GetOutputSaveTest) {
 
   // Invalid placeholder type is provided.
   EXPECT_EQ(nullptr, glow::getOutputSave(F, I));
+
+  // Save belongs to a different function
+  Function *F2 = MD.createFunction("F2");
+  TopKNode *TKN2 = F2->createTopK("topk", I, 3);
+  GatherNode *GN2 =
+      F2->createGather("gather", TKN2->getValues(), TKN2->getIndices());
+  TanhNode *TN2 = F2->createTanh("tanh", GN2);
+  SaveNode *SN2 = F2->createSave("save", TN2, O);
+
+  FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  O->setParent(F2);
+  FoundNode = glow::getOutputSave(F2, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN2, FoundNode);
 }

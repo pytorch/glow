@@ -3002,7 +3002,7 @@ SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
   }
   for (auto &use : PH->getUsers()) {
     if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
-      if (save->getPlaceholder() == PH) {
+      if (save->getParent() == F && save->getPlaceholder() == PH) {
         return save;
       }
     }
