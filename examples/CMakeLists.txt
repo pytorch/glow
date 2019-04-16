@@ -87,6 +87,19 @@ if(GLOW_WITH_CPU)
                           Optimizer)
   target_include_directories(resnet-runtime PUBLIC ${CMAKE_SOURCE_DIR}/lib)
 
+  add_executable(en2gr-runtime
+                   en2gr-runtime.cpp)
+  target_link_libraries(en2gr-runtime
+                        PRIVATE
+                          Backends
+                          ExecutionEngine
+                          HostManager
+                          Partitioner
+                          Graph
+                          Importer
+                          Optimizer)
+  target_include_directories(en2gr-runtime PUBLIC ${CMAKE_SOURCE_DIR}/lib)
+
   add_executable(tracing-compare
                    tracing-compare.cpp)
   target_link_libraries(tracing-compare
