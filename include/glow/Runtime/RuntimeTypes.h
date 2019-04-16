@@ -71,17 +71,26 @@ struct DAGNode {
   /// Pointers to the parents of this node. This is used by the executor for
   /// determining if a given node has all dependencies met.
   std::vector<DAGNode *> parents;
-  /// ID of the deviceManager that this network is assigned to.
-  DeviceIDTy deviceID;
+  /// IDs of the deviceManagers that this network is assigned to.
+  std::vector<DeviceIDTy> deviceIDs;
   /// The logicalDevice is an output of the Partitioner to indicate that two
-  /// networks should be assigned to the same device.
-  DeviceIDTy logicalDevice;
+  /// networks should be assigned to the same device. Multiple logical devices
+  /// indicates the network should be duplicated.
+  std::vector<DeviceIDTy> logicalDevices;
+  /// Index of the current deviceID in deviceIDs. This is used by the Executor
+  /// when picking a device to request a network run.
+  unsigned currentDeviceIdx{0};
   /// Name assigned to the sub-network, this is the id that will be passed to
   /// the DeviceManager when requesting a run of the network.
   std::string name;
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
+
+  DeviceIDTy getNextDevice() {
+    currentDeviceIdx++;
+    return deviceIDs[currentDeviceIdx % deviceIDs.size()];
+  }
 };
 
 /// This struct represents a DAG. The first element is the root of a DAG, and

@@ -179,7 +179,7 @@ private:
   /// Execute the DAG node specified by \p node within the run corresponding to
   /// \p executionState.
   void executeDAGNode(std::shared_ptr<ExecutionState> executionState,
-                      const DAGNode *node);
+                      DAGNode *node);
 
   /// Handle the result returned asynchronously by the DeviceManager.
   /// \p executionState is tracks the state of the run that the node that

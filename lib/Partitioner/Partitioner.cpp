@@ -428,10 +428,9 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
   rootDAGNodeTy DAGRoot = llvm::make_unique<DAGNode>();
   nodesDAGNodeTy nodes;
-  DAGRoot->logicalDevice = 0;
+  DAGRoot->logicalDevices = {0};
   DAGRoot->name = F->getName();
-  DAGRoot->deviceID = 0;
-  DAGRoot->logicalDevice = 0;
+  DAGRoot->deviceIDs = {0};
   DAGNode *root = DAGRoot.get();
   llvm::DenseMap<Node *, Node *> currToNew;
 
@@ -444,14 +443,14 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
 
   // For any dependency that crosses a partition, add a placeholder and save
   // node. Record the dependence in the function graph.
-  int logicalID = 0;
+  DeviceIDTy logicalID = 0;
   std::unordered_map<NodeValue, Placeholder *> placeholders;
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
       std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
-      subDAG->logicalDevice = logicalID++;
+      subDAG->logicalDevices = {logicalID++};
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -473,7 +472,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         if (funcDAG.find(inputF) == funcDAG.end()) {
           std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
-          subDAG->logicalDevice = logicalID++;
+          subDAG->logicalDevices = {logicalID++};
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
@@ -546,10 +545,10 @@ llvm::Error Partitioner::Partition() {
     // dummy function.
     for (auto F : module_->getFunctions()) {
       std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
-      DAG0->logicalDevice = 0;
+      DAG0->logicalDevices = {0};
       DAG0->name = F->getName();
       std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
-      DAG1->logicalDevice = 0;
+      DAG1->logicalDevices = {0};
       DAG1->name = F->getName();
       DAG1->parents.push_back(DAG0.get());
       DAG0->children.push_back(DAG1.get());
