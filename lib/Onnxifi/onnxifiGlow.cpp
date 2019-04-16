@@ -405,8 +405,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-static bool verifyDescriptors(uint32_t count,
-                              const onnxTensorDescriptorV1 *descriptors) {
+static int verifyDescriptors(uint32_t count,
+                             const onnxTensorDescriptorV1 *descriptors) {
   for (unsigned i = 0; i < count; i++) {
     const auto &descriptor = descriptors[i];
     if (descriptor.tag != ONNXIFI_TAG_TENSOR_DESCRIPTOR_V1) {
@@ -417,7 +417,8 @@ static bool verifyDescriptors(uint32_t count,
       return ONNXIFI_STATUS_INVALID_MEMORY_TYPE;
     }
 
-    if (!descriptor.buffer) {
+    if (!descriptor.buffer &&
+        !(descriptor.dimensions == 1 && descriptor.shape[0] == 0)) {
       return ONNXIFI_STATUS_INVALID_MEMORY_LOCATION;
     }
   }
