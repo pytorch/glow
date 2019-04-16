@@ -94,7 +94,13 @@ if (NOT LLVM_FOUND)
   find_package(LLVM 7 CONFIG)
 
   if (NOT LLVM_FOUND)
-    message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
+    # Fallback to whatever is available.
+    find_package(LLVM CONFIG)
+
+    if (NOT LLVM_FOUND OR LLVM_PACKAGE_VERSION VERSION_LESS "7.0")
+      message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
+    endif()
+
   endif()
 endif()
 
