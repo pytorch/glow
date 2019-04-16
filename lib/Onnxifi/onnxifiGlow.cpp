@@ -405,8 +405,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-static int verifyDescriptors(uint32_t count,
-                             const onnxTensorDescriptorV1 *descriptors) {
+/// Sanity check for tensor descriptors
+static onnxStatus verifyDescriptors(uint32_t count,
+                                    const onnxTensorDescriptorV1 *descriptors) {
   for (unsigned i = 0; i < count; i++) {
     const auto &descriptor = descriptors[i];
     if (descriptor.tag != ONNXIFI_TAG_TENSOR_DESCRIPTOR_V1) {

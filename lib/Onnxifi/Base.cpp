@@ -127,6 +127,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       inputTensor = Tensor(inOnnxBuffer, inPhPtr->getType());
     } else {
       char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
+      // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
+      // valid case for empty tensor, skip copying
       if (inOnnxBuffer) {
         inputTensor = Tensor(inPhPtr->getType());
         unsigned elementSize = inPhPtr->getType()->getElementSize();
