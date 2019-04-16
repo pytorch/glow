@@ -586,6 +586,14 @@ bool TransposeNode::verify() const {
   return isValid;
 }
 
+bool ChannelShuffleNode::verify() const {
+  bool isValid = expectCompareTrue("Channel shuffle into a different size.",
+                                   getResult().getType()->size(),
+                                   getInput().getType()->size(), this);
+  isValid &= checkTypeIgnoreShape(getResult(), getInput(), this);
+  return isValid;
+}
+
 bool SplatNode::verify() const { return true; }
 
 bool TraceEventNode::verify() const { return true; }

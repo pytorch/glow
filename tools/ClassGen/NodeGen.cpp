@@ -330,6 +330,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Average Mean operation on the Input given "
                     "Axes.");
 
+  BB.newNode("ChannelShuffle")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Kernel")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Channel shuffle.");
+
   BB.newNode("LengthsSum")
       .addInput("Data")
       .addInput("Lengths")
