@@ -402,7 +402,7 @@ public:
 
     // Set the name, device ID, and RuntimeBundle of the new node.
     newNode->name = name;
-    newNode->deviceID = deviceId;
+    newNode->deviceIDs = {deviceId};
 
     newNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
         symbolTable, /*constWeight=*/0, /*mutableWeight=*/0,

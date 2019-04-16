@@ -360,7 +360,7 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
 }
 
 void ThreadPoolExecutor::executeDAGNode(
-    std::shared_ptr<ExecutionState> executionState, const DAGNode *node) {
+    std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
   // If execution has already failed due to another node, don't bother running
   // this one.
   if (executionState->getErrorContainer().containsErr()) {
@@ -371,9 +371,9 @@ void ThreadPoolExecutor::executeDAGNode(
   }
 
   auto startTS = TraceEvent::now();
-
+  auto currentDevice = node->getNextDevice();
   // Get the DeviceManager that can run the node.
-  auto deviceManagerIt = deviceManagers_.find(node->deviceID);
+  auto deviceManagerIt = deviceManagers_.find(currentDevice);
 
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
@@ -391,7 +391,7 @@ void ThreadPoolExecutor::executeDAGNode(
   // be the name of the Device.
   if (executionState->getRawResultContextPtr()->getTraceContext()) {
     executionState->getRawResultContextPtr()->getTraceContext()->setThreadName(
-        node->deviceID, deviceManager->getDeviceConfig()->getName());
+        currentDevice, deviceManager->getDeviceConfig()->getName());
   }
 
   // Get the PlaceholderBindings containing all of the inputs for the node.
@@ -404,7 +404,7 @@ void ThreadPoolExecutor::executeDAGNode(
     TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "B", startTS);
     TRACE_EVENT_END(traceContext, "EX_enqueue_" + node->name);
     initialThread = traceContext->getTraceThread();
-    traceContext->setTraceThread(node->deviceID);
+    traceContext->setTraceThread(currentDevice);
   }
 
   // Run the node using the DeviceManager.

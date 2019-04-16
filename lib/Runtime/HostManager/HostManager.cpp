@@ -119,17 +119,19 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   }
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
-    std::promise<void> removeNetwork;
-    llvm::Error removeErr = llvm::Error::success();
-    auto done = removeNetwork.get_future();
-    devices_[node->deviceID]->evictNetwork(
-        node->name,
-        [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
-          removeErr = std::move(err);
-          removeNetwork.set_value();
-        });
-    done.get();
-    errToBool(std::move(removeErr));
+    for (auto device : node->deviceIDs) {
+      std::promise<void> removeNetwork;
+      llvm::Error removeErr = llvm::Error::success();
+      auto done = removeNetwork.get_future();
+      devices_[device]->evictNetwork(
+          node->name,
+          [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
+            removeErr = std::move(err);
+            removeNetwork.set_value();
+          });
+      done.get();
+      errToBool(std::move(removeErr));
+    }
     // Also remove compiledFunction from Provisioner.
     provisioner_->removeFunction(node->name);
   }
@@ -156,7 +158,9 @@ llvm::Error HostManager::clearHost() {
 
   for (auto &network : networks_) {
     for (auto &node : network.second.dag.nodes) {
-      devices_[node->deviceID]->evictNetwork(node->name);
+      for (auto device : node->deviceIDs) {
+        devices_[device]->evictNetwork(node->name);
+      }
     }
   }
   networks_.clear();

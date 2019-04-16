@@ -571,7 +571,7 @@ std::unique_ptr<DAG> createSingleNodeDAG(
   root->children.emplace_back(singleNode.get());
 
   singleNode->parents.emplace_back(root.get());
-  singleNode->deviceID = 0;
+  singleNode->deviceIDs = {0};
   singleNode->name = "singleNode";
   singleNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
       compiledFunctions["singleNode"]->getRuntimeBundle());

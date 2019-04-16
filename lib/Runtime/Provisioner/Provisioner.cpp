@@ -58,11 +58,11 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
 
   for (auto &network : networks) {
     for (auto &node : network.nodes) {
-      auto it = logicalDevices.find(node->logicalDevice);
+      auto it = logicalDevices.find(node->logicalDevices[0]);
       if (it != logicalDevices.end()) {
         it->second.push_back(node.get());
       } else {
-        logicalDevices.emplace(node->logicalDevice,
+        logicalDevices.emplace(node->logicalDevices[0],
                                std::vector<DAGNode *>{node.get()});
       }
     }
@@ -122,7 +122,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     RETURN_IF_ERR(addErr);
     // Set deviceID for each node added
     for (auto &node : logicalDevices[logicalID]) {
-      node->deviceID = deviceID;
+      node->deviceIDs = {deviceID};
     }
   }
   return llvm::Error::success();
