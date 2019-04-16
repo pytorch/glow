@@ -7,13 +7,13 @@ set -ex
 export MAX_JOBS=8
 
 install_pocl() {
-   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev
+   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
-   cd pocl && git checkout 94fba9f510e678cd7f8fc988c01618e1ae93dfdf && cd ../
+   cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_ICD=ON ../pocl
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -24,30 +24,18 @@ install_pocl() {
    cd ../
 }
 
-# setup sccache wrappers
-if hash sccache 2>/dev/null; then
-    SCCACHE_BIN_DIR="/tmp/sccache"
-    mkdir -p "$SCCACHE_BIN_DIR"
-    for compiler in cc c++ gcc g++ x86_64-linux-gnu-gcc; do
-        (
-            echo "#!/bin/sh"
-            echo "exec $(which sccache) $(which $compiler) \"\$@\""
-        ) > "$SCCACHE_BIN_DIR/$compiler"
-        chmod +x "$SCCACHE_BIN_DIR/$compiler"
-    done
-    export PATH="$SCCACHE_BIN_DIR:$PATH"
-fi
-
-GLOW_DIR=$PWD
-
 # Install Glow dependencies
+sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
 sudo apt-get update
-sudo apt-get install -y llvm-6.0 llvm-6.0-dev libpng-dev libgoogle-glog-dev
+sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
 
 # Redirect clang
-sudo ln -s /usr/bin/clang-6.0 /usr/bin/clang
-sudo ln -s /usr/bin/clang++-6.0 /usr/bin/clang++
-sudo ln -s /usr/bin/llvm-symbolizer-6.0 /usr/bin/llvm-symbolizer
+sudo ln -s /usr/bin/clang-8 /usr/bin/clang
+sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
+sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
+sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
+
+GLOW_DIR=$PWD
 
 # Install ninja and (newest version of) cmake through pip
 sudo pip install ninja cmake
@@ -56,7 +44,11 @@ hash cmake ninja
 # Build glow
 cd ${GLOW_DIR}
 mkdir build && cd build
-CMAKE_ARGS=("-DCMAKE_CXX_FLAGS=-Werror")
+CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
+CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then

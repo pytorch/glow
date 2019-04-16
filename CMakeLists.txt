@@ -88,21 +88,14 @@ endif ()
 # Top level setup for external backends
 ExternalBackendsInit()
 
-# Prefer LLVM 7.
-find_package(LLVM 7 CONFIG)
-
-# If LLVM 7 not found, try building with LLVM 6.
+find_package(LLVM 8 CONFIG)
 if (NOT LLVM_FOUND)
-  # Fallback to LLVM 6
-  find_package(LLVM 6 CONFIG)
+  # Fallback to LLVM 7
+  find_package(LLVM 7 CONFIG)
 
-  # Fallback to whatever is available.
   if (NOT LLVM_FOUND)
-    find_package(LLVM CONFIG)
+    message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
   endif()
-endif()
-if (NOT LLVM_FOUND)
-  message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")

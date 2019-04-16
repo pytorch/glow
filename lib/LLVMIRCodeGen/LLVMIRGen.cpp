@@ -95,11 +95,7 @@ static llvm::StringRef getHostCpuName() {
 
 /// Query the TargetMachine to get the pointer size in bits
 static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
-#if LLVM_VERSION_MAJOR >= 7
   return TM.getPointerSize(0) * 8;
-#else
-  return TM.getPointerSize() * 8;
-#endif
 }
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
@@ -177,16 +173,10 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
 /// Register a diagnostics handler that prevents the compiler from printing to
 /// stdout.
 static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
-#if LLVM_VERSION_MAJOR >= 6
   ctx.setDiagnosticHandlerCallBack(
       [](const llvm::DiagnosticInfo &DI, void *Context) {
         // Do not emit any warnings or diagnostics when JITting.
       });
-#else
-  ctx.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context) {
-    // Do not emit any warnings or diagnostics when JITting.
-  });
-#endif
 }
 
 void LLVMIRGen::initCodeGen() {
@@ -300,13 +290,10 @@ void LLVMIRGen::performCodeGen() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#elif LLVM_VERSION_MAJOR > 6
+#else
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#else
-    getTargetMachine().addPassesToEmitFile(
-        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
 #endif
 
     PM.run(*llmodule_);

@@ -72,19 +72,6 @@ public:
       : dbgRegistrationListener_(
             llvm::JITEventListener::createGDBRegistrationListener()) {}
 
-#if LLVM_VERSION_MAJOR <= 6
-  void operator()(llvm::orc::RTDyldObjectLinkingLayerBase::ObjHandleT,
-                  const llvm::orc::RTDyldObjectLinkingLayerBase::ObjectPtr &obj,
-                  const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
-    auto loadedObj = obj->getBinary();
-    // Inform the debugger about the loaded object file. This should allow for
-    // more complete stack traces under debugger. And even it should even enable
-    // the stepping functionality on platforms supporting it.
-    dbgRegistrationListener_->NotifyObjectEmitted(*loadedObj, objInfo);
-    // Dump symbol information for the JITed symbols.
-    dumpSymbolInfo(*loadedObj, objInfo);
-  }
-#else
   void operator()(llvm::orc::VModuleKey key,
                   const llvm::object::ObjectFile &obj,
                   const llvm::RuntimeDyld::LoadedObjectInfo &objInfo) {
@@ -92,16 +79,16 @@ public:
     // Inform the debugger about the loaded object file. This should allow for
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
-#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
     dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
 #else
     dbgRegistrationListener_->notifyObjectLoaded(
         (llvm::JITEventListener::ObjectKey)&loadedObj, loadedObj, objInfo);
 #endif
+
     // Dump symbol information for the JITed symbols.
     dumpSymbolInfo(loadedObj, objInfo);
   }
-#endif
 };
 
 } // namespace
@@ -135,7 +122,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                      return RTDyldObjectLinkingLayer::Resources{
                          std::make_shared<SectionMemoryManager>(), resolver_};
                    }),
-#elif LLVM_VERSION_MAJOR > 6
+#else
       SSP_(std::make_shared<SymbolStringPool>()), ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           ES_,
@@ -150,7 +137,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return nullptr;
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
-#if LLVM_VERSION_MAJOR < 8 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
       objectLayer_(ES_,
                    [this](llvm::orc::VModuleKey) {
                      return RTDyldObjectLinkingLayer::Resources{
@@ -165,40 +152,17 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                    },
                    NotifyLoadedFunctor(this)),
 #endif
-#else
-      objectLayer_([]() { return std::make_shared<SectionMemoryManager>(); },
-                   NotifyLoadedFunctor(this)),
 #endif
       compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
 }
 
 GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
-// Add the set to the JIT with the resolver and a newly created
-// SectionMemoryManager.
-#if LLVM_VERSION_MAJOR > 6
+  // Add the set to the JIT with the resolver and a newly created
+  // SectionMemoryManager.
   auto K = ES_.allocateVModule();
   cantFail(compileLayer_.addModule(K, std::move(M)));
   return K;
-#else
-  // Build our symbol resolver:
-  // Lambda 1: Look back into the JIT itself to find symbols that are part of
-  //           the same "logical dylib".
-  // Lambda 2: Search for external symbols in the host process.
-  auto resolver = createLambdaResolver(
-      [&](const std::string &name) {
-        if (auto sym = compileLayer_.findSymbol(name, false))
-          return sym;
-        return JITSymbol(nullptr);
-      },
-      [](const std::string &name) {
-        if (auto symAddr = RTDyldMemoryManager::getSymbolAddressInProcess(name))
-          return JITSymbol(symAddr, JITSymbolFlags::Exported);
-        return JITSymbol(nullptr);
-      });
-
-  return cantFail(compileLayer_.addModule(std::move(M), std::move(resolver)));
-#endif
 }
 
 void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {

@@ -117,11 +117,13 @@ TEST(Quantization, Serialize) {
   testSerialization(expected);
 }
 
+#if LLVM_VERSION_MAJOR < 8
 TEST(Quantization, SerializeEmpty) {
   std::vector<NodeQuantizationInfo> expected;
 
   testSerialization(expected);
 }
+#endif
 
 template <typename From, typename To> static To clip(From in) {
   static_assert(sizeof(From) >= sizeof(To),
