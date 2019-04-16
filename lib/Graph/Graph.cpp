@@ -1000,26 +1000,8 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
 
 Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
                                      size_t group, size_t kernel) {
-  auto inDims = input.dims();
-  assert(kernel < inDims.size());
-
-  ShapeVector dims(inDims.begin(), inDims.end());
-  auto D = dims[kernel];
-  assert(D % group == 0);
-
-  dims.erase(dims.begin() + kernel);
-  // Reshape {D1, ... D_k, ... D_n} -> {D1, ... group, D_k / group, ... D_n}
-  dims.insert(dims.begin() + kernel, D / group);
-  dims.insert(dims.begin() + kernel, group);
-  Node *R1 = createReshape(name.str() + ".reshape1", input, dims);
-
-  std::vector<unsigned_t> transpose(dims.size());
-  for (size_t i = 0; i < transpose.size(); i++)
-    transpose[i] = i;
-  std::swap(transpose[kernel], transpose[kernel + 1]);
-  Node *T = createTranspose(name.str() + ".transpose", R1, transpose);
-
-  return createReshape(name.str() + ".reshape2", T, inDims);
+  return addNode(
+      new ChannelShuffleNode(name, input.getType(), input, group, kernel));
 }
 
 ReshapeNode *Function::createSqueeze(llvm::StringRef name, NodeValue input,
