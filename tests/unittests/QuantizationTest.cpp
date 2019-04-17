@@ -33,11 +33,7 @@ namespace glow {
 
 using llvm::cast;
 
-class Quantization : public ::testing::TestWithParam<BackendKind> {
-protected:
-  ExecutionEngine interpreterEE{BackendKind::Interpreter};
-  ExecutionEngine backendSpecificEE{GetParam()};
-};
+class Quantization : public ::testing::TestWithParam<BackendKind> {};
 
 class Operator
     : public ::testing::TestWithParam<::std::tuple<BackendKind, BackendKind>> {
