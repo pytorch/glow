@@ -110,6 +110,7 @@ void LLVMIRGen::initTargetMachine(
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
+  llvm::InitializeAllAsmParsers();
 
   if (target.empty()) {
     TM_.reset(llvm::EngineBuilder()
