@@ -28,6 +28,17 @@ endif ()
 # to analyze the source code of the project.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(GLOW_USE_LLD)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES Clang)
+    message(SEND_ERROR "lld requires the use of the clang compiler")
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    message(SEND_ERROR "lld does not support MachO yet")
+  endif()
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+endif()
+
 include(GlowDefaults)
 include(GlowTestSupport)
 include(GlowExternalBackends)
