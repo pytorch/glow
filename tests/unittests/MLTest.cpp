@@ -1074,11 +1074,16 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
       quantization::generateNodeQuantizationInfos(bindings, PF,
                                                   loweredMapForProf)};
 
+  // Softmax is not supported in Int8QTy, so signal the quantizer it's OK to
+  // keep it unquantized.
+  KindSet doNotQuantizeKinds;
+  doNotQuantizeKinds.insert(Kinded::Kind::SoftMaxNodeKind);
+
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
   lower(F, &loweredMapForQuant, EE.getBackend());
   Function *QP = quantization::quantizeFunction(
-      F, quantConfig, *EE.getBackend(), loweredMapForQuant);
+      F, quantConfig, *EE.getBackend(), loweredMapForQuant, doNotQuantizeKinds);
 
   EE.compile(CompilationMode::Infer, QP);
 

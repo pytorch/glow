@@ -243,41 +243,52 @@ TEST(Quantization, quantizeTensorSymmetricUInt32) {
                               quantization::Schema::SymmetricWithUnsigned);
 }
 
-void quantizeGraph(ElemKind quantizationPrecision) {
+/// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
+static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
-  auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
-  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
+  auto *filter = mod.createConstant(ElemKind::FloatTy, {2, 2, 2, 1}, "filter");
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {2}, "bias");
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
   PlaceholderBindings bindings;
   bindings.allocate(input);
-  bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
-  auto *FC = F->createFullyConnected("FC", input, W, B);
-  auto *S = F->createSave("ret", FC);
+  auto *CN = F->createConv("Conv", input, filter, bias, outTy, {2, 2}, {1, 1},
+                           {0, 2, 1, 3}, 1);
+  auto *S = F->createSave("ret", CN);
   bindings.allocate(S->getPlaceholder());
 
   quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(W->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(filter->getName()),
+       {0.3f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(bias->getName()),
+       {0.4f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(CN->getName()), {0.6f, 0}},
   }};
 
   quantConfig.precision = quantizationPrecision;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
-  // Make sure that graph can be compiled.
+  // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 }
 
-TEST(Quantization, int8QuantizeGraph) { quantizeGraph(ElemKind::Int8QTy); }
+/// Test that a simple Conv graph can be quantized in Int8QTy.
+TEST(Quantization, int8QuantizeGraph) {
+  quantizeSimpleConvGraph(ElemKind::Int8QTy);
+}
 
-TEST(Quantization, int16QuantizeGraph) { quantizeGraph(ElemKind::Int16QTy); }
+/// Test that a simple Conv graph can be quantized in Int16QTy.
+TEST(Quantization, int16QuantizeGraph) {
+  quantizeSimpleConvGraph(ElemKind::Int16QTy);
+}
 
 /// Test that when a node is quantized before its users are quantized then the
 /// users correctly find the quantization parameters. This tests that updating
@@ -736,9 +747,16 @@ static Function *createSimpleGraphForQuantization(Module *M,
   return F;
 }
 
-void testQuantizationEnd2End(ExecutionEngine &profileEE,
-                             ExecutionEngine &backendSpecificEE,
-                             ElemKind quantizationPrecision) {
+/// Helper for an end to end test profiling a model on \p profileEE, then
+/// quantizing and running it on \p backendSpecificEE, quantizing with precision
+/// \p quantizationPrecision and disabling quantization for all Kinds in
+/// \p keepOriginalPrecisionForNodes. Results are compared from the profiling
+/// run and quantization run.
+static void
+testQuantizationEnd2End(ExecutionEngine &profileEE,
+                        ExecutionEngine &backendSpecificEE,
+                        ElemKind quantizationPrecision,
+                        const KindSet &keepOriginalPrecisionForNodes = {}) {
   auto *mod = &profileEE.getModule();
   PlaceholderBindings bindings;
 
@@ -772,7 +790,8 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   quantConfig.precision = quantizationPrecision;
   F2 = quantization::quantizeFunction(
-      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant);
+      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant,
+      keepOriginalPrecisionForNodes);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(bindings);
 
@@ -791,12 +810,21 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   }
 }
 
+/// End to end quantization test for Int8 quantization.
 TEST_P(Operator, end2endInt8) {
-  testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int8QTy);
-}
+  // The OpenCL backend does not support some of the nodes in the test;
+  // explicitly whitelist them here as staying in float, so that the quantizer
+  // does not complain.
+  KindSet keepOriginalPrecisionForNodes;
+  if (backendSpecificEE.getBackend()->getBackendKind() == BackendKind::OpenCL) {
+    keepOriginalPrecisionForNodes.insert(Kinded::Kind::SelectNodeKind);
+    keepOriginalPrecisionForNodes.insert(Kinded::Kind::CmpLTENodeKind);
+    keepOriginalPrecisionForNodes.insert(
+        Kinded::Kind::BatchedReduceAddNodeKind);
+  }
 
-TEST_P(InterpAndCPU, end2endInt16) {
-  testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int16QTy);
+  testQuantizationEnd2End(profileEE, backendSpecificEE, ElemKind::Int8QTy,
+                          keepOriginalPrecisionForNodes);
 }
 
 /// Fills the tensor \p H with some stable random integers with the seed \p seed
@@ -922,10 +950,21 @@ TEST_P(Operator, end2endGRU) {
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
+  // The OpenCL backend does not support some of the nodes in the test;
+  // explicitly whitelist them here as staying in float, so that the quantizer
+  // does not complain.
+  KindSet doNotQuantizeKinds;
+  if (backendSpecificEE.getBackend()->getBackendKind() == BackendKind::OpenCL) {
+    doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
+    doNotQuantizeKinds.insert(Kinded::Kind::SigmoidNodeKind);
+    doNotQuantizeKinds.insert(Kinded::Kind::GatherNodeKind);
+  }
+
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
-  F2 = quantization::quantizeFunction(
-      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant);
+  F2 = quantization::quantizeFunction(F2, quantConfig,
+                                      *backendSpecificEE.getBackend(),
+                                      loweredMapForQuant, doNotQuantizeKinds);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(bindings);
 
