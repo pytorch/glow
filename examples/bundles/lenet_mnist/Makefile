@@ -35,7 +35,7 @@ ifeq ($(QUANTIZE),YES)
 build/lenet_mnist.o: profile.yml
 	mkdir -p build
 	# Create bundle with quantized weights and computation graph.
-	${LOADER} ${IMAGES}/3_1020.png -image-mode=0to1 -load-profile=profile.yml -m lenet_mnist -model-input-name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
+	${LOADER} ${IMAGES}/3_1020.png -image-mode=0to1 -load-profile=profile.yml -m lenet_mnist -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax -model-input-name=${MODEL_INPUT_NAME} -cpu -emit-bundle build -g
 else
 build/lenet_mnist.o: download_weights
 	mkdir -p build

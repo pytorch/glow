@@ -22,6 +22,6 @@ TEMP_FILE="$(mktemp)"
 $BIN/text-translator -m "${MODELS_DIR}/en2gr" -keep-original-precision-for-nodes=Add -dump-profile=$TEMP_FILE -quantization-schema=symmetric <<< "My name is Bob ."
 
 # CHECK: mein Name ist Bob \.$
-$BIN/text-translator -m "${MODELS_DIR}/en2gr" -keep-original-precision-for-nodes=Add -load-profile=$TEMP_FILE <<< "My name is Bob ."
+$BIN/text-translator -m "${MODELS_DIR}/en2gr" -keep-original-precision-for-nodes=Add,SoftMax -assert-all-nodes-quantized -load-profile=$TEMP_FILE <<< "My name is Bob ."
 
 rm $TEMP_FILE
