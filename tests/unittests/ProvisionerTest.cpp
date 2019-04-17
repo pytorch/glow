@@ -44,7 +44,7 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
     rootNode->name = "root" + std::to_string(root);
     rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
-    firstNode->logicalDevices = {0};
+    firstNode->logicalDevices = {0, 1};
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
       auto newChild = llvm::make_unique<DAGNode>();

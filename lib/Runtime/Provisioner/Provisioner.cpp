@@ -55,15 +55,17 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
 llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
-
+  // For each network visit all the partitions (nodes) and add the node to each
+  // logical device it is assigned to.
   for (auto &network : networks) {
     for (auto &node : network.nodes) {
-      auto it = logicalDevices.find(node->logicalDevices[0]);
-      if (it != logicalDevices.end()) {
-        it->second.push_back(node.get());
-      } else {
-        logicalDevices.emplace(node->logicalDevices[0],
-                               std::vector<DAGNode *>{node.get()});
+      for (auto logical : node->logicalDevices) {
+        auto it = logicalDevices.find(logical);
+        if (it != logicalDevices.end()) {
+          it->second.push_back(node.get());
+        } else {
+          logicalDevices.emplace(logical, std::vector<DAGNode *>{node.get()});
+        }
       }
     }
   }
@@ -75,14 +77,22 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     uint64_t totalMemory = 0;
     FunctionMapTy functionMap;
     for (auto &node : device.second) {
-      Function *function = module.getFunction(node->name);
-      CompilationOptions compileOptions;
-      compileOptions.collectConstants = false;
-      auto compiled = backend_->compile(function, compileOptions);
-      node->runtimeBundle =
-          llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
-      functionMap.emplace(node->name, compiled.get());
-      functions_.emplace(node->name, std::move(compiled));
+      // Only compile if we haven't compiled before. If we have previously
+      // compiled the function reuse it.
+      auto it = functions_.find(node->name);
+      if (it == functions_.end()) {
+        Function *function = module.getFunction(node->name);
+        CompilationOptions compileOptions;
+        // Set collectConstants to false, this is because the DeviceManager will
+        // handle moving constants to the device, this way we can eliminate one
+        // copy operation.
+        compileOptions.collectConstants = false;
+        auto compiled = backend_->compile(function, compileOptions);
+        node->runtimeBundle =
+            llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
+        functions_.emplace(node->name, std::move(compiled));
+      }
+      functionMap.emplace(node->name, functions_[node->name].get());
       totalMemory += node->runtimeBundle->getConstantWeightSize();
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
