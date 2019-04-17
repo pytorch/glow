@@ -78,11 +78,13 @@ onnxStatus
 HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                       EventPtr outputEvent,
                       std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                          phNameToOnnxTensorOutputs) {
+                          phNameToOnnxTensorOutputs,
+                      onnxTraceEventList *traceEvents) {
   backendPtr_->getBackendId()->runNetwork(
       this, std::move(ctx),
       [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
-       outputEvent](runtime::RunIdentifierTy runId, llvm::Error err,
+       outputEvent,
+       traceEvents](runtime::RunIdentifierTy runId, llvm::Error err,
                     std::unique_ptr<ExecutionContext> ctx) {
         // If an Error occurred then log it in errToBool and signal the output
         // event.
@@ -102,6 +104,10 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
           Tensor *res = ph.second;
           memcpy(outputAddress, res->getUnsafePtr(),
                  res->size() * res->getType().getElementSize());
+        }
+
+        if (auto *traceContext = ctx->getTraceContext()) {
+          setTraceEvents(traceEvents, *traceContext);
         }
 
         outputEvent->signal();

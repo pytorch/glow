@@ -69,7 +69,8 @@ public:
   /// copy output placeholder tensors back to the given onnxifi tensors.
   onnxStatus run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
                  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                     phNameToOnnxTensorOutputs) override;
+                     phNameToOnnxTensorOutputs,
+                 onnxTraceEventList *traceEvents) override;
 
   /// \returns the unique string name of the HostManagerGraph that the
   /// underlying HostManagerGraph uses to identify this network.

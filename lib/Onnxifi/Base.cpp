@@ -94,8 +94,15 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               const onnxTensorDescriptorV1 *inputDescriptors,
                               uint32_t outputsCount,
                               const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent) {
+                              EventPtr outputEvent,
+                              onnxTraceEventList *traceEvents) {
   auto ctx = llvm::make_unique<ExecutionContext>();
+
+  if (traceEvents) {
+    // TODO: get thread ID
+    ctx->setTraceContext(
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0));
+  }
 
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
@@ -161,7 +168,48 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
 
-  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs));
+  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs),
+             traceEvents);
+}
+
+void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
+                           const TraceContext &traceContext) {
+  if (!traceEvents) {
+    return;
+  }
+
+  std::vector<onnxTraceEvent *> traceEventsVec;
+  for (const auto &glowTraceEvent : traceContext.getTraceEvents()) {
+    auto *traceEvent = new onnxTraceEvent();
+    assert(
+        glowTraceEvent.type.size() == 1 &&
+        "Events with types longer than a single char not supported by onnxifi");
+    traceEvent->eventType = glowTraceEvent.type[0];
+    traceEvent->timestamp = glowTraceEvent.timestamp;
+    traceEvent->tid = glowTraceEvent.tid;
+    char *eventName = new char[glowTraceEvent.name.size() + 1];
+    assert(eventName);
+    strcpy(eventName, glowTraceEvent.name.c_str());
+    traceEvent->eventName = eventName;
+    traceEventsVec.push_back(traceEvent);
+  }
+
+  traceEvents->numEvents = traceEventsVec.size();
+  traceEvents->traceEvents = new onnxTraceEvent *[traceEventsVec.size()];
+  assert(traceEvents->traceEvents);
+  std::copy(traceEventsVec.begin(), traceEventsVec.end(),
+            traceEvents->traceEvents);
+}
+
+void Graph::releaseTraceEvents(onnxTraceEventList *traceEvents) {
+  assert(traceEvents);
+  for (uint64_t i = 0; i < traceEvents->numEvents; ++i) {
+    onnxTraceEvent *traceEvent = traceEvents->traceEvents[i];
+    delete[] traceEvent->eventName;
+    delete traceEvent;
+  }
+
+  delete[] traceEvents->traceEvents;
 }
 
 Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
