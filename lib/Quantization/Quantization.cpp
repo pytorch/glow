@@ -328,14 +328,26 @@ protected:
     // tables instead, and they will be quantized as lookup tables.
     switch (node.getKind()) {
     CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT:
-      if (isOpSupported) {
-        return true;
+      if (!isOpSupported) {
+        isOpSupported = B_.isOpSupported(NodeInfo(
+            Kinded::Kind::IntLookupTableNodeKind, inputTypes, outputTypes));
       }
-      return B_.isOpSupported(NodeInfo(Kinded::Kind::IntLookupTableNodeKind,
-                                       inputTypes, outputTypes));
+      break;
     default:
-      return isOpSupported;
+      break;
     }
+
+    // Quantizer may be set up to die if a node is only skipped during
+    // quantization because the backend does not support it as quantized.
+    if (!isOpSupported && assertAllNodesQuantized_) {
+      llvm::errs() << B_.getBackendName()
+                   << " Backend does not support node as quantized in "
+                   << Type::getElementName(quantizationPrecision_) << ":\n"
+                   << node.getDebugDesc();
+      GLOW_UNREACHABLE("Quantizer failed on converting some node.");
+    }
+
+    return isOpSupported;
   }
 
   /// Helper that \returns whether quantization parameters exist
@@ -611,6 +623,9 @@ private:
   /// that were replaced by the NodeValue (whose output name is the key) that
   /// replaced them.
   const LoweredInfoMap &loweredMap_;
+  /// Used for debugging if we expect all nodes to be quantized by the
+  /// quantizer.
+  bool assertAllNodesQuantized_;
 
   /// \returns whether BatchedAddNode \p baN was originally lowered from a
   /// FullyConnectedNode based on loweredMap_.
@@ -638,16 +653,20 @@ public:
   /// Creates a function quantizer for \p F using the quantization
   /// parameters defined by \p quantizationInfos and target quantization
   /// precision defined by \p quantizationPrecision.
-  /// \p B and \p doNotQuantizeKinds are used to check which
-  /// nodes shouldn't be converted.
+  /// \p B and \p doNotQuantizeKinds are used to check which nodes shouldn't be
+  /// converted. \p assertAllNodesQuantized is used as a debugging tool; if
+  /// true then if the backend does not support a node as quantized for the
+  /// given \p quantizationPrecision then the program will exit with an error.
   FunctionQuantizer(Function &F, const Backend &B, quantization::Schema schema,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
-                    const LoweredInfoMap &loweredMap)
+                    const LoweredInfoMap &loweredMap,
+                    bool assertAllNodesQuantized)
       : FunctionConverter(F), mod_(*F.getParent()), B_(B), schema_(schema),
         quantizationPrecision_(quantizationPrecision),
-        doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap) {
+        doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap),
+        assertAllNodesQuantized_(assertAllNodesQuantized) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
@@ -655,6 +674,7 @@ public:
     }
     // Use for debug purposes.
     lastMorphedNodeWithTypeChanges = nullptr;
+    (void)assertAllNodesQuantized_;
   }
 
   /// Traverse all nodes to find applicable quantized nodes, and convert them
@@ -879,7 +899,7 @@ Function *quantizeFunction(Function *F,
 
   FunctionQuantizer quantizer(*G, B, quantConfig.schema, quantConfig.infos,
                               quantConfig.precision, doNotQuantizeKinds,
-                              loweredMap);
+                              loweredMap, quantConfig.assertAllNodesQuantized);
   quantizer.convert();
   if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();
