@@ -21,6 +21,8 @@
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 
+#include "llvm/ADT/SmallSet.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
@@ -103,7 +105,7 @@ inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
 /// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
 /// some NodeValue X is lowered from some NodeValue Y, then the output name of X
 /// is a key which maps to a set of names which contains the output name of Y.
-using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
+using LoweredInfoMap = llvm::StringMap<llvm::SmallSet<NodeNameAndKind, 2>>;
 
 namespace quantization {
 
