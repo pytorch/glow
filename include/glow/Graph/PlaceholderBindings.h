@@ -67,6 +67,10 @@ public:
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
 
+  /// Remove the placeholder \p P and return the backing tensor if it is mapped
+  /// otherwise return nullptr,
+  Tensor *remove(Placeholder *P);
+
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.
   Tensor *allocate(Placeholder *P);

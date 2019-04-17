@@ -325,11 +325,14 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   executionState->incrementInflightNodes(numChildren);
   inflightBarrier_.increment(numChildren);
 
-  for (auto const &node : root->children) {
+  for (size_t i = 0, e = root->children.size(); i < e; ++i) {
+    auto &node = root->children[i];
     // Propagate placeholders from the given starter PlaceholderBindings into
     // the input PlaceholderBindings for the current node being processed.
+    // TODO: do we always need to copy tensors here?
     propagatePlaceholdersForNode(executionState, node,
-                                 executionState->getRawResultContextPtr());
+                                 executionState->getRawResultContextPtr(),
+                                 /*cloneTensors*/ true);
 
     // Execute the node.
     executeDAGNode(executionState, node);
@@ -338,7 +341,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 
 void ThreadPoolExecutor::propagatePlaceholdersForNode(
     std::shared_ptr<ExecutionState> executionState, const DAGNode *node,
-    const ExecutionContext *ctx) {
+    ExecutionContext *ctx, bool cloneTensors) {
   ScopedTraceBlock(executionState->getRawResultContextPtr()->getTraceContext(),
                    "EX_propagateInputs");
   // Get the symbol table for the node.
@@ -353,8 +356,13 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
     // If ctx provides a mapping for the symbol, copy it into the context for
     // the node.
     if (placeholder) {
-      const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
-      executionState->insertIntoNodeCtx(node, symbolName, tensor->clone());
+      if (cloneTensors) {
+        const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
+        executionState->insertIntoNodeCtx(node, symbolName, tensor->clone());
+      } else {
+        auto *tensor = ctx->getPlaceholderBindings()->remove(placeholder);
+        executionState->insertIntoNodeCtx(node, symbolName, std::move(*tensor));
+      }
     }
   }
 }
@@ -387,8 +395,8 @@ void ThreadPoolExecutor::executeDAGNode(
 
   auto &deviceManager = deviceManagerIt->second;
 
-  // If tracing is enabled, set the thread name for TraceEvents for this node to
-  // be the name of the Device.
+  // If tracing is enabled, set the thread name for TraceEvents for this node
+  // to be the name of the Device.
   if (executionState->getRawResultContextPtr()->getTraceContext()) {
     executionState->getRawResultContextPtr()->getTraceContext()->setThreadName(
         currentDevice, deviceManager->getDeviceConfig()->getName());
@@ -473,8 +481,12 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     } else {
       // If the node has children, propagate its outputs to the input
       // PlaceholderBindings for any of its children that need them as inputs.
-      for (auto &child : node->children) {
-        propagatePlaceholdersForNode(executionState, child, ctx.get());
+      for (size_t i = 0, e = node->children.size(); i < e; ++i) {
+        auto &child = node->children[i];
+        // Clone tensors for all except the last child
+        bool cloneTensors = i < e - 1;
+        propagatePlaceholdersForNode(executionState, child, ctx.get(),
+                                     cloneTensors);
 
         // Execute any child that has no parent nodes left to execute.
         bool childReadyToExecute =

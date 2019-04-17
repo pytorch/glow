@@ -170,11 +170,12 @@ private:
 
   /// Propagate Placeholders needed by \p node from \p ctx into
   /// the ExecutionContext for \p node within the run corresponding to \p
-  /// executionState.
+  /// executionState. If \p cloneTensors then copy tensor values into tensors in
+  /// executionState otherwise destructively move them instead.
   void
   propagatePlaceholdersForNode(std::shared_ptr<ExecutionState> executionState,
-                               const DAGNode *node,
-                               const ExecutionContext *ctx);
+                               const DAGNode *node, ExecutionContext *ctx,
+                               bool cloneTensors);
 
   /// Execute the DAG node specified by \p node within the run corresponding to
   /// \p executionState.

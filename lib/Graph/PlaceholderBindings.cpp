@@ -81,6 +81,21 @@ void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
   nameMap_[P->getName()] = P;
 }
 
+Tensor *PlaceholderBindings::remove(Placeholder *P) {
+  auto it = map_.find(P);
+
+  if (it == map_.end()) {
+    return nullptr;
+  }
+
+  Tensor *t = it->second;
+
+  map_.erase(it);
+  nameMap_.erase(P->getName());
+
+  return t;
+}
+
 size_t PlaceholderBindings::count(Placeholder *P) const {
   assert((map_.size() == nameMap_.size()) &&
          "Placeholder map and name map out of sync");
