@@ -421,17 +421,17 @@ target_link_libraries(QuantizationTest
 add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/QuantizationTest -optimize-ir=false &&)
 
-add_executable(ExecutorTest
-               ExecutorTest.cpp)
-target_link_libraries(ExecutorTest
-                      PRIVATE
-                        DeviceManager
-                        Executor
-                        Graph
-                        gtest
-                        TestMain
-                        ThreadPool)
-add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
+# add_executable(ExecutorTest
+#                ExecutorTest.cpp)
+# target_link_libraries(ExecutorTest
+#                       PRIVATE
+#                         DeviceManager
+#                         Executor
+#                         Graph
+#                         gtest
+#                         TestMain
+#                         ThreadPool)
+# add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
 
 add_executable(TensorsTest
                TensorsTest.cpp)

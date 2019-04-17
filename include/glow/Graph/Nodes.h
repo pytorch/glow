@@ -108,20 +108,34 @@ public:
   bool verify() const;
 };
 
+uint32_t getNewPlaceholderId();
+
 /// Placeholder nodes are unbound-storage. The content tensors are attached to
 /// this node at runtime. Placeholders are used as inputs and output nodes to
 /// the network.
 class Placeholder : public Storage {
   /// Specifies if the placeholder is trainable.
   bool isTrainable_;
+  // TODO: comment
+  uint32_t id_;
 
 public:
   /// Create a new placeholder.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
-      : Storage(Kinded::Kind::PlaceholderKind, name),
-        isTrainable_(isTrainable) {
+      : Storage(Kinded::Kind::PlaceholderKind, name), isTrainable_(isTrainable),
+        id_(getNewPlaceholderId()) {
     addResult(Ty);
   }
+
+  /// Create a new placeholder.
+  Placeholder(llvm::StringRef name, uint32_t id, TypeRef Ty, bool isTrainable)
+      : Storage(Kinded::Kind::PlaceholderKind, name), isTrainable_(isTrainable),
+        id_(id) {
+    addResult(Ty);
+  }
+
+  // TODO: comment
+  uint32_t getId() const { return id_; }
 
   /// \returns True if the placeholder are trainable during
   /// differentiation.

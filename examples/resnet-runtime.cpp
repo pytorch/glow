@@ -59,8 +59,8 @@ std::unique_ptr<TraceContext> traceContext;
 
 /// Loads the model into /p module and returns the input and output
 /// Placeholders. Appending count to the function name.
-Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
-                               unsigned int count) {
+std::pair<Placeholder *, Placeholder *>
+loadResnet50Model(TypeRef inputType, Module *module, unsigned int count) {
   Function *F = module->createFunction("resnet50" + std::to_string(count));
 
   llvm::outs() << "Loading resnet50 model.\n";
@@ -70,7 +70,9 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
                            {inputName}, {inputType}, *F);
   Placeholder *input = llvm::cast<Placeholder>(
       EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
-  return input;
+  Placeholder *output =
+      llvm::cast<Placeholder>(EXIT_ON_ERR(loader.getSingleOutput()));
+  return {input, output};
 }
 
 /// Starts a run of resnet50 on the given image. The image must be already
@@ -78,22 +80,18 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
 /// If, at the end of the run the number of \p returned results is equal to
 /// maxImages, the \p finished promise is set.
 void dispatchClassify(unsigned int id, HostManager *hostManager,
-                      std::string path,
+                      Placeholder *outputPH, std::string path,
                       std::unique_ptr<ExecutionContext> context,
                       std::atomic<size_t> &returned,
                       std::promise<void> &finished) {
   auto runid = hostManager->runNetwork(
       "resnet50" + std::to_string(id), std::move(context),
-      [id, path, &returned,
+      [id, outputPH, path, &returned,
        &finished](RunIdentifierTy, llvm::Error err,
                   std::unique_ptr<ExecutionContext> context) {
         EXIT_ON_ERR(std::move(err));
         auto *bindings = context->getPlaceholderBindings();
-        size_t maxIdx =
-            bindings->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
-                ->getHandle()
-                .minMaxArg()
-                .second;
+        size_t maxIdx = bindings->get(outputPH)->getHandle().minMaxArg().second;
         llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
 
         if (!tracePath.empty()) {
@@ -136,14 +134,15 @@ int main(int argc, char **argv) {
 
   std::vector<size_t> inputShape{1, 3, 224, 224};
 
-  Placeholder *input;
   std::vector<Placeholder *> inputs;
+  std::vector<Placeholder *> outputs;
   std::vector<PlaceholderList> phLists;
   for (unsigned int i = 0; i < numDevices; i++) {
     std::unique_ptr<Module> module = llvm::make_unique<Module>();
     TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
-    input = loadResnet50Model(inputType, module.get(), i);
-    inputs.push_back(input);
+    auto inputAndOutputPHs = loadResnet50Model(inputType, module.get(), i);
+    inputs.push_back(inputAndOutputPHs.first);
+    outputs.push_back(inputAndOutputPHs.second);
     llvm::outs() << "Adding to HostManager\n";
     phLists.push_back(module->getPlaceholders());
     EXIT_ON_ERR(hostManager->addNetwork(std::move(module)));
@@ -191,7 +190,7 @@ int main(int argc, char **argv) {
     updateInputPlaceholders(*(context->getPlaceholderBindings()),
                             {inputs[index]}, {&batch});
 
-    dispatchClassify(index, hostManager.get(), std::move(path),
+    dispatchClassify(index, hostManager.get(), outputs[index], std::move(path),
                      std::move(context), returned, finished);
 
     dirIt.increment(code);

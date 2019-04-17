@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <atomic>
+
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -21,6 +23,11 @@
 #include "glow/Support/Support.h"
 
 using namespace glow;
+
+uint32_t glow::getNewPlaceholderId() {
+  static std::atomic<uint32_t> next{0};
+  return ++next;
+}
 
 void Node::setPredicate(const NodeValue &P) { predicate_ = P; }
 

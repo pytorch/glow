@@ -145,6 +145,7 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
     symbol.output = isOutput(V);
     symbol.input = isInput(V);
     symbol.symbolCategory = SymbolCategory::Placeholder;
+    symbol.placeholderId = V->getId();
     symbolTable.emplace(V->getName(), symbol);
   }
 
@@ -161,6 +162,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+
   // Compute the offsets for Constants.
   for (auto &v : F.findConstants()) {
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
@@ -192,6 +194,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.output = isOutput(v);
     symbol.input = isInput(v);
     symbol.symbolCategory = SymbolCategory::Placeholder;
+    symbol.placeholderId = v->getId();
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();

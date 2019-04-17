@@ -40,15 +40,12 @@ public:
   /// Maps placeholders to the tensors that back them.
   using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
 
-  /// Maps Placeholder names to Placeholders.
-  using PlaceholderNameMap = std::unordered_map<std::string, Placeholder *>;
-
 private:
   /// Maps Placeholders to Tensors.
   PlaceholderMap map_;
 
-  /// Maps Placeholder names to Placeholders.
-  PlaceholderNameMap nameMap_;
+  /// Maps Placeholder ids to Placeholders.
+  std::unordered_map<uint32_t, Placeholder *> idMap_;
 
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
@@ -60,9 +57,9 @@ public:
   /// tensor is not found.
   Tensor *get(Placeholder *P) const;
 
-  /// \returns the Placeholder named \name or null of the Placeholder is not
+  /// \returns the Placeholder with \p id or null of the Placeholder is not
   /// found.
-  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
+  Placeholder *getPlaceholderById(uint32_t id) const;
 
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
@@ -107,7 +104,7 @@ public:
                       llvm::ArrayRef<Tensor *> inputs);
 
   PlaceholderBindings(PlaceholderBindings &&other)
-      : map_(std::move(other.map_)), nameMap_(std::move(other.nameMap_)) {}
+      : map_(std::move(other.map_)), idMap_(std::move(other.idMap_)) {}
 
   ~PlaceholderBindings() { clear(); };
 

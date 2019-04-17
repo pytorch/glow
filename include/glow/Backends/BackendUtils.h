@@ -37,6 +37,8 @@ struct RuntimeSymbolInfo {
   size_t size{0};
   /// Offset in bytes from the base address.
   size_t offset{0};
+  /// TODO: comment
+  uint32_t placeholderId{0};
   /// Type of symbol.
   Type type;
   /// Is the symbol an input for the function.
