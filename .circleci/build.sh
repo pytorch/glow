@@ -8,6 +8,7 @@ export MAX_JOBS=8
 
 install_pocl() {
    sudo apt-get update
+   sudo apt-get install -y llvm-6.0 llvm-6.0-dev
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
