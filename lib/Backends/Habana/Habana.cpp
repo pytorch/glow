@@ -459,6 +459,10 @@ void HabanaFunction::execute(ExecutionContext *context) {
   auto *bindings = context->getPlaceholderBindings();
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
+    if (!T) {
+      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
+    }
+    GLOW_ASSERT(T);
 
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
@@ -474,6 +478,10 @@ void HabanaFunction::execute(ExecutionContext *context) {
   // Set up output buffers and record bindings for enqueuing.
   for (auto *P : getOutputs()) {
     Tensor *T = bindings->get(P);
+    if (!T) {
+      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
+    }
+    GLOW_ASSERT(T);
 
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
