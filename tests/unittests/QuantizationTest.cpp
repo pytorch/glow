@@ -2107,6 +2107,69 @@ TEST(Quantization, TestProfileQuantizationOfLoweredFCRowwise) {
       /* expectLoweredFC */ true, /* rowwiseQuantizeFC */ true);
 }
 
+/// Check that asserting quantization for the quantizer works as expected.
+TEST(Quantization, CheckAssertQuantization) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
+  auto *relu = F->createRELU("ReLU", input);
+  PlaceholderBindings bindings;
+  auto *save = F->createSave("ret", relu);
+  bindings.allocate(save->getPlaceholder());
+
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.2f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
+        {0.2f, -128}}}};
+  quantConfig.precision = ElemKind::Int16QTy;
+  quantConfig.assertAllNodesQuantized = true;
+  quantConfig.newFuncName = "quant_1";
+
+  // Expect this to die because quantizeFunction() is passed with
+  // assertAllNodesQuantized true, and the Interpreter backend does not support
+  // Int16QTy ReLU.
+  EXPECT_DEATH(quantization::quantizeFunction(F, quantConfig, *EE.getBackend()),
+               "");
+
+  {
+    quantConfig.assertAllNodesQuantized = false;
+    quantConfig.newFuncName = "quant_2";
+
+    // This works fine because quantizeFunction() is passed with
+    // assertAllNodesQuantized false, and so the ReLU will not be quantized as
+    // the Interpreter does not support Int16QTy ReLU.
+    auto *QF = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+
+    auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
+    ASSERT_TRUE(saveNode);
+    auto *reluNode = llvm::dyn_cast<ReluNode>(saveNode->getInput().getNode());
+    ASSERT_TRUE(reluNode);
+    EXPECT_TRUE(!reluNode->getResult().getType()->isQuantizedType());
+  }
+
+  {
+    quantConfig.assertAllNodesQuantized = true;
+    KindSet doNotQuantizeKinds;
+    doNotQuantizeKinds.insert(Kinded::Kind::ReluNodeKind);
+    quantConfig.newFuncName = "quant_3";
+
+    // This works fine because quantizeFunction() is passed with
+    // assertAllNodesQuantized true, but we explicitly tell the quantizer to
+    // keep ReLU in its original precision.
+    auto *QF =
+        quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                       /* loweredMap */ {}, doNotQuantizeKinds);
+
+    auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
+    ASSERT_TRUE(saveNode);
+    auto *reluNode = llvm::dyn_cast<ReluNode>(saveNode->getInput().getNode());
+    ASSERT_TRUE(reluNode);
+    EXPECT_TRUE(!reluNode->getResult().getType()->isQuantizedType());
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
 
