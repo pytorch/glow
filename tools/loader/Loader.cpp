@@ -306,20 +306,24 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // NodeValue's quantization parameters.
     ::lower(F_, &loweredMap_, EE_.getBackend());
 
-    auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
+    quantization::QuantizationConfiguration quantConfig{
+        deserializeFromYaml(loadProfileFileOpt)};
 
     // In AOT compilation mode the name of the symbol depends on the name of the
     // function. Our tutorial expects the quantized name to be identical to the
     // original name, so we rename the floating-point network and give the
     // quantized network a new name.
-    std::string oldName = F_->getName();
+    quantConfig.newFuncName = F_->getName();
     F_->setName("old");
 
     // Quantize the graph based on the captured profile.
-    auto *Q = quantization::quantizeFunction(
-        *EE_.getBackend(), quantizationSchema, quantizationInfos,
-        quantizationPrecision, F_, loweredMap_, oldName,
-        keepOriginalPrecisionForNodes, enableRowwiseOpt);
+    quantConfig.precision = quantizationPrecision;
+    quantConfig.schema = quantizationSchema;
+    quantConfig.enableRowwise = enableRowwiseOpt;
+
+    auto *Q = quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
+                                             loweredMap_,
+                                             keepOriginalPrecisionForNodes);
 
     // Erase the original function so that the redundant variables that are only
     // referenced by the original function will be removed.

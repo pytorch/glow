@@ -66,12 +66,13 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // -- Quantize --
   if (quantizationStep_ == OnnxifiQuantizationStep::Quantize) {
-    auto QI = deserializeFromYaml(getProfileFile(modelHash_));
-    std::string oldName = function_->getName();
+    quantization::QuantizationConfiguration quantConfig{
+        deserializeFromYaml(getProfileFile(modelHash_))};
+    quantConfig.schema = quantization::Schema::Symmetric;
+    quantConfig.newFuncName = function_->getName();
     function_->setName("old");
     auto *Q = quantization::quantizeFunction(
-        *executionEngine_.getBackend(), quantization::Schema::Symmetric, QI,
-        ElemKind::Int8QTy, function_, loweredMap_, oldName, {}, false);
+        function_, quantConfig, *executionEngine_.getBackend(), loweredMap_);
     Q->getParent()->eraseFunction(function_);
     function_ = Q;
   }

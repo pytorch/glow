@@ -30,6 +30,26 @@ class Backend;
 
 namespace quantization {
 
+/// Configuration for Quantization, passed into \ref quantizeFunction().
+struct QuantizationConfiguration {
+  /// Infos to use when determining scale and offset for all Nodes inside, and
+  /// Placeholders and Constants referenced by, a Function being quantized.
+  std::vector<NodeQuantizationInfo> infos{};
+
+  /// Precision to use when quantizing a Function.
+  ElemKind precision{ElemKind::Int8QTy};
+
+  /// Schema to use when quantizing a Function.
+  quantization::Schema schema{quantization::Schema::Asymmetric};
+
+  /// Whether to use rowwise quantization when quantizing a Function.
+  bool enableRowwise{false};
+
+  /// New name for the quantized function. If no name is given then
+  /// \ref quantizeFunction() will generate a name.
+  std::string newFuncName{""};
+};
+
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
 /// using the method specified by \p schema and target quantization precision \p
 /// quantizationPrecision. Profiling values will be written into context \p
@@ -43,23 +63,18 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
     ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
 /// Quantizes the function \p F into a new unoptimized partially quantized
-/// function based on \p quantizationInfos and target quantization precision
-/// \p quantizationPrecision. This method converts to integer as
-/// many nodes as permitted by the backend \p EE. The new quantized function is
-/// called \p newFuncName. If no name is given the method will generate a name.
-/// This method clones original function \p F and caller is responsible for
-/// cleaning up/erasing original function \p F if needed. Any nodes of kinds
-/// contained in \p doNotQuantizeKinds will not be quantized, even if a profile
-/// was gathered for them and the backend supports the quantized operation. If
-/// \p enableRowwise is true, during quantization, all quantized FullyConnected
-/// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
-/// quantized function.
-Function *quantizeFunction(
-    const Backend &B, quantization::Schema schema,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-    ElemKind quantizationPrecision, Function *F,
-    const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",
-    const KindSet &doNotQuantizeKinds = {}, bool enableRowwise = false);
+/// function based on configuration from \p quantConfig. This method converts to
+/// integer as many nodes as permitted by the backend \p B.
+/// \p doNotQuantizeKinds lists kinds to not quantize, even if a profile was
+/// gathered for them and the backend supports the quantized operation.  This
+/// method clones original function \p F and caller is responsible for cleaning
+/// up/erasing original function \p F if needed. \returns a new quantized
+/// function.
+Function *quantizeFunction(Function *F,
+                           const QuantizationConfiguration &quantConfig,
+                           const Backend &B,
+                           const LoweredInfoMap &loweredMap = {},
+                           const KindSet &doNotQuantizeKinds = {});
 
 } // namespace quantization
 } // namespace glow
