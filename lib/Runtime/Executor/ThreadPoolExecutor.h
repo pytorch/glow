@@ -111,10 +111,6 @@ public:
   RunIdentifierTy getRunId() const { return runId_; }
 
 private:
-  /// Create a Placeholder with name \p name and type \p type and store it in
-  /// intermediatePlaceholders_. If a Placeholder already exists, return that.
-  Placeholder *createOrGetPlaceholder(llvm::StringRef name, TypeRef type);
-
   /// The run identifier for this execution of a DAG.
   RunIdentifierTy runId_;
   /// The callback that should be called when execution is done.
@@ -141,6 +137,10 @@ private:
   /// Mutex used by bindings insertion functions to make sure only one thread
   /// writes to an ExecutionContext at a time.
   std::mutex bindingsMtx_;
+
+  /// Module for the network. This contains the PHs used by the functions in
+  /// this network.
+  Module *module_{nullptr};
 };
 
 /// This implementation of the Executor interface uses a thread pool to

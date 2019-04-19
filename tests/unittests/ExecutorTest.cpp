@@ -201,16 +201,20 @@ class ExecutorTest final {
 public:
   /// Constructor.
   ExecutorTest(const std::shared_ptr<Executor> &executor,
-               std::unique_ptr<DAGNode> root, std::unique_ptr<Type> type,
-               DAGNodeNameMapTy nodes, PlaceholderNameMapTy placeholders,
+               std::unique_ptr<DAGNode> root, std::unique_ptr<Module> module,
+               std::unique_ptr<Type> type, DAGNodeNameMapTy nodes,
+               PlaceholderNameMapTy placeholders,
                std::unique_ptr<ExecutionContext> inputContext,
                std::unique_ptr<ExecutionContext> outputContext,
                RunIdentifierTy runId, bool expectSuccess)
-      : executor_(executor), root_(std::move(root)), type_(std::move(type)),
-        nodes_(std::move(nodes)), placeholders_(std::move(placeholders)),
+      : executor_(executor), root_(std::move(root)), module_(std::move(module)),
+        type_(std::move(type)), nodes_(std::move(nodes)),
+        placeholders_(std::move(placeholders)),
         inputContext_(std::move(inputContext)),
         outputContext_(std::move(outputContext)), runId_(runId),
-        expectSuccess_(expectSuccess), testRun_(false) {}
+        expectSuccess_(expectSuccess), testRun_(false) {
+    root_->module = module_.get();
+  }
 
   /// Run the test.
   bool run() {
@@ -260,6 +264,8 @@ private:
   std::shared_ptr<Executor> executor_;
   /// The root node of the DAG being tested.
   std::unique_ptr<DAGNode> root_;
+  /// The Module containing the PHs.
+  std::unique_ptr<Module> module_;
   /// The Type for all of the Placeholders that will be used during execution.
   std::unique_ptr<Type> type_;
   /// All nodes in the DAG.
@@ -295,7 +301,8 @@ public:
   /// between ExecutionContexts correctly.
   ExecutorTestBuilder(const std::shared_ptr<Executor> &executor,
                       const DeviceManagerMapTy &deviceManagers)
-      : executor_(executor), root_(llvm::make_unique<DAGNode>()),
+      : executor_(executor), module_(llvm::make_unique<Module>()),
+        root_(llvm::make_unique<DAGNode>()),
         bindings_(llvm::make_unique<PlaceholderBindings>()),
         type_(
             std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {32, 64, 128}))),
@@ -465,16 +472,16 @@ public:
       insertSymbolIntoPlaceholderBindings(
           symbol, outputContext->getPlaceholderBindings());
     }
-
     // Create the test object.
-    ExecutorTest test(executor_, std::move(root_), std::move(type_),
-                      std::move(nodes_), std::move(placeholders_),
-                      std::move(inputContext), std::move(outputContext), runId_,
-                      success_);
+    ExecutorTest test(executor_, std::move(root_), std::move(module_),
+                      std::move(type_), std::move(nodes_),
+                      std::move(placeholders_), std::move(inputContext),
+                      std::move(outputContext), runId_, success_);
 
     // Reset builder state to allow a new test to be constructed with this
     // instance.
     root_ = llvm::make_unique<DAGNode>();
+    module_ = llvm::make_unique<Module>();
     bindings_->clear();
     type_ = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
     nodes_.clear();
@@ -537,28 +544,27 @@ private:
   /// mapped for the test being created, reuse the existing value.
   void insertSymbolIntoPlaceholderBindings(llvm::StringRef name,
                                            PlaceholderBindings *bindings) {
-    auto it = placeholders_.find(name);
+    auto ph = module_->getPlaceholderByName(name);
 
-    if (it == placeholders_.end()) {
+    if (!ph) {
       // This is a new symbol. Create a Placeholder and an initialize and new
       // Tensor for it.
-      auto placeholder = llvm::make_unique<Placeholder>(name, type_.get(),
-                                                        /*trainable=*/false);
-      auto *tensor = bindings_->allocate(placeholder.get());
+      auto placeholder = module_->createPlaceholder(type_.get(), name, false);
+      auto *tensor = bindings_->allocate(placeholder);
       tensor->init(Tensor::InitKind::Xavier, 1.0, rng_);
-      bindings->insert(placeholder.get(), tensor->clone());
-      placeholders_[name] = std::move(placeholder);
+      bindings->insert(placeholder, tensor->clone());
     } else {
       // This is a symbol that already has an associated Placeholder and Tensor.
       // Copy that Tensor.
-      auto *placeholder = (it->second).get();
-      const auto *tensor = bindings_->get(placeholder);
-      bindings->insert(placeholder, tensor->clone());
+      const auto *tensor = bindings_->get(ph);
+      bindings->insert(ph, tensor->clone());
     }
   }
 
   /// The Executor being tested.
   std::shared_ptr<Executor> executor_;
+  /// Module for holding PHs
+  std::unique_ptr<Module> module_;
   /// The root of the DAG being constructed.
   std::unique_ptr<DAGNode> root_;
   /// This PlaceholderBindings holds all created and initialized Placeholders
