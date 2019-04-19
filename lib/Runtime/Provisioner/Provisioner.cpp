@@ -131,7 +131,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     RETURN_IF_ERR(addErr);
     // Set deviceID for each node added
     for (auto &node : logicalDevices[logicalID]) {
-      node->deviceIDs = {deviceID};
+      node->deviceIDs.push_back(deviceID);
     }
   }
   return llvm::Error::success();

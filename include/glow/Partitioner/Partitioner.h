@@ -112,6 +112,10 @@ class Partitioner {
   /// The map of each operator and the compute runtime.
   ComputeTimeMapTy computeTime_;
 
+  /// Flag to set if the Partitioner should attempt to saturate the host, and
+  /// use all available devices.
+  bool saturateHost_;
+
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, uint64_t &memSize);
@@ -144,6 +148,9 @@ class Partitioner {
   /// constraits.
   void adjustLogicalDeviceID(DAGNode *DAG, int num);
 
+  /// Duplicates all networks in the module order to saturate the Host.
+  void saturateHost(unsigned logicalDeviceCount);
+
   /// Given the node-function mapping, do the actual partitioning.
   void doPartitioning(Function *F, NodeToFunctionMap &mapping);
 
@@ -155,7 +162,8 @@ public:
   /// identical. The required memory and computation cost for each op can be
   /// found in Module. The \p devices provides the cost model related to
   /// devices.
-  Partitioner(Module *parent, const std::vector<DeviceInfo> &devices);
+  Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
+              bool saturateHost = false);
 
   /// Decompose each function in a module.
   llvm::Error Partition();
