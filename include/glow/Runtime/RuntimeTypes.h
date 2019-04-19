@@ -87,6 +87,10 @@ struct DAGNode {
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
 
+  /// Pointer to module the function came from. This is so the executor can
+  /// access the associated PHs for the function that are stored in the Module.
+  Module *module{nullptr};
+
   DeviceIDTy getNextDevice() {
     currentDeviceIdx++;
     return deviceIDs[currentDeviceIdx % deviceIDs.size()];

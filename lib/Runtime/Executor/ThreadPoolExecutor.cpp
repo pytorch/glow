@@ -22,6 +22,8 @@
 #include <queue>
 #include <unordered_set>
 
+#include <glog/logging.h>
+
 namespace glow {
 namespace runtime {
 
@@ -59,7 +61,7 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0) {
+      inflightNodes_(0), module_(root->module) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
 
@@ -101,8 +103,10 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
       const auto &symbolInfo = symbolPair.second;
 
       if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
-        nodeInputPhBindings->allocate(
-            createOrGetPlaceholder(symbolName, &symbolInfo.type));
+        auto PH = module_->getPlaceholderByName(symbolName);
+        // If a PH name is provided it had to come from the Module originally.
+        DCHECK(PH) << "Placeholder: " << symbolName << " is not in the module";
+        nodeInputPhBindings->allocate(PH);
       }
     }
 
@@ -239,27 +243,6 @@ ExecutionContext *ExecutionState::getRawResultContextPtr() const {
   // being called.
   assert(resultCtx_ && "Execution result bindings should exist!");
   return resultCtx_.get();
-}
-
-Placeholder *ExecutionState::createOrGetPlaceholder(llvm::StringRef name,
-                                                    TypeRef type) {
-  auto it = intermediatePlaceholders_.find(name);
-  Placeholder *ph;
-
-  if (it != intermediatePlaceholders_.end()) {
-    // If the Placeholder already exists, return a pointer to it.
-    auto &storedPh = it->second;
-    ph = storedPh.get();
-  } else {
-    // If the Placeholder does not exist, create one, remember it, and return a
-    // pointer to it.
-    auto newPh =
-        llvm::make_unique<Placeholder>(name, type, /*isTrainable=*/false);
-    ph = newPh.get();
-    intermediatePlaceholders_.insert(std::make_pair(name, std::move(newPh)));
-  }
-
-  return ph;
 }
 
 void ThreadPoolExecutor::shutdown() {

@@ -460,6 +460,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   nodesDAGNodeTy nodes;
   DAGRoot->logicalDevices = {0};
   DAGRoot->name = F->getName();
+  DAGRoot->module = module_;
   DAGRoot->deviceIDs = {0};
   DAGNode *root = DAGRoot.get();
   llvm::DenseMap<Node *, Node *> currToNew;
@@ -580,6 +581,7 @@ llvm::Error Partitioner::Partition() {
       std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
       DAG0->logicalDevices = {0};
       DAG0->name = F->getName();
+      DAG0->module = module_;
       std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
       DAG1->logicalDevices = {0};
       DAG1->name = F->getName();
