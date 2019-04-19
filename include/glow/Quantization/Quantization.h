@@ -52,7 +52,7 @@ struct QuantizationConfiguration {
   /// If true, the quantizer will abort when encountering a node that it would
   /// like to quantize but the backend cannot support. Note that node kinds in
   /// doNotQuantizeKinds will skip this check and not cause an abort.
-  bool assertAllNodesQuantized{true};
+  bool assertAllNodesQuantized{false};
 
   QuantizationConfiguration() = default;
   QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)

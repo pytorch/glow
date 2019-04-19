@@ -173,7 +173,6 @@ struct Model {
           deserializeFromYaml(loadProfileFileOpt)};
 
       // Quantize the graph based on the captured profile.
-      quantConfig.assertAllNodesQuantized = false;
       auto *Q = quantization::quantizeFunction(F_, quantConfig,
                                                *EE_.getBackend(), loweredMap_);
 

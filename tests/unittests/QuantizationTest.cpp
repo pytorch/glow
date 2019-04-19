@@ -269,6 +269,7 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
   }};
 
   quantConfig.precision = quantizationPrecision;
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Make sure that graph can be compiled and run.
@@ -324,6 +325,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.2f, 0}},
   }};
 
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Remove unnecessary conversions.
@@ -375,6 +377,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   }};
 
   quantConfig.enableRowwise = true;
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
@@ -448,6 +451,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
   quantConfig.schema = quantization::Schema::Symmetric;
   quantConfig.enableRowwise = true;
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
@@ -521,6 +525,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
   }};
 
   quantConfig.enableRowwise = true;
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   EE.compile(CompilationMode::Infer, F);
@@ -553,6 +558,7 @@ TEST(Quantization, quantizeReLU) {
         {0.2f, 0}},
        {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
         {0.2f, -128}}}};
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   EE.compile(CompilationMode::Infer, F);
 
@@ -589,6 +595,7 @@ TEST(Quantization, quantizeLookupTables) {
         {0.03f, 2}},
        {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
         {0.04f, 3}}}};
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
@@ -652,6 +659,7 @@ TEST(Quantization, quantizeWithoutLookupTables) {
         {0.03f, 2}},
        {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
         {0.04f, 3}}}};
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
@@ -785,6 +793,7 @@ testQuantizationEnd2End(ExecutionEngine &profileEE,
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   quantConfig.precision = quantizationPrecision;
+  quantConfig.assertAllNodesQuantized = true;
   F2 = quantization::quantizeFunction(
       F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant,
       keepOriginalPrecisionForNodes);
@@ -958,6 +967,7 @@ TEST_P(Operator, end2endGRU) {
 
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
+  quantConfig.assertAllNodesQuantized = true;
   F2 = quantization::quantizeFunction(F2, quantConfig,
                                       *backendSpecificEE.getBackend(),
                                       loweredMapForQuant, doNotQuantizeKinds);
@@ -1276,6 +1286,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
        {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
         {0.4f, 0}}}};
 
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qLRNIt = std::find_if(
@@ -1328,6 +1339,7 @@ TEST(Quantization, quantizeSelect) {
        {NodeQuantizationInfo::generateNodeOutputName(select->getName()),
         selectQP}}};
 
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto it = std::find_if(
@@ -1372,6 +1384,7 @@ TEST(Quantization, quantizeAvgPool) {
       {NodeQuantizationInfo::generateNodeOutputName(s->getName()), {0.4f, 0}},
   }};
 
+  quantConfig.assertAllNodesQuantized = true;
   F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qPool = std::find_if(F->getNodes().begin(), F->getNodes().end(),
@@ -1421,6 +1434,7 @@ TEST(Quantization, quantizeGraphPartially) {
   KindSet doNotQuantizeKinds;
   doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
+  quantConfig.assertAllNodesQuantized = true;
   auto *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
                                      /* loweredMap */ {}, doNotQuantizeKinds);
@@ -1503,6 +1517,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   KindSet doNotQuantizeKinds;
   doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
+  quantConfig.assertAllNodesQuantized = true;
   auto *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
                                      /* loweredMap */ {}, doNotQuantizeKinds);
@@ -1595,6 +1610,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
   doNotQuantizeKinds.insert(Kinded::Kind::AddNodeKind);
 
+  quantConfig.assertAllNodesQuantized = true;
   auto *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
                                      /* loweredMap */ {}, doNotQuantizeKinds);
@@ -1678,6 +1694,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
   }};
 
+  quantConfig.assertAllNodesQuantized = true;
   Function *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
@@ -1742,6 +1759,7 @@ TEST(Quantization, quantizeSlice) {
        {0.4f, 0}},
   }};
 
+  quantConfig.assertAllNodesQuantized = true;
   Function *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
@@ -1812,6 +1830,7 @@ TEST(Quantization, quantizeReshape) {
        {0.4f, 0}},
   }};
 
+  quantConfig.assertAllNodesQuantized = true;
   Function *QF =
       quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
@@ -2017,6 +2036,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   // Quantize the function given the current backend we're testing along with
   // the quantization infos gathered.
   quantConfig.enableRowwise = rowwiseQuantizeFC;
+  quantConfig.assertAllNodesQuantized = true;
   backendF = quantization::quantizeFunction(
       backendF, quantConfig, *backendEE.getBackend(), loweredMapForQuant);
 

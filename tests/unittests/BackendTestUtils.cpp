@@ -90,6 +90,7 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
                                         schema)};
   quantConfig.enableRowwise = enableRowwiseQuantization;
   quantConfig.schema = schema;
+  quantConfig.assertAllNodesQuantized = true;
 
   if (isQuantizedElemKind(interpElemKind)) {
     quantConfig.precision = interpElemKind;

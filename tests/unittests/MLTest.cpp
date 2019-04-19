@@ -1073,6 +1073,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeQuantizationInfos(bindings, PF,
                                                   loweredMapForProf)};
+  quantConfig.assertAllNodesQuantized = true;
 
   // Softmax is not supported in Int8QTy, so signal the quantizer it's OK to
   // keep it unquantized.
@@ -1197,6 +1198,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeQuantizationInfos(bindings, PF,
                                                   loweredMapForProf)};
+  quantConfig.assertAllNodesQuantized = true;
 
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
