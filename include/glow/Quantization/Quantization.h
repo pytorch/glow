@@ -48,6 +48,10 @@ struct QuantizationConfiguration {
   /// New name for the quantized function. If no name is given then
   /// \ref quantizeFunction() will generate a name.
   std::string newFuncName{""};
+
+  QuantizationConfiguration() = default;
+  QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)
+      : infos(i) {}
 };
 
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
