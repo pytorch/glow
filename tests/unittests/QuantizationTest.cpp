@@ -260,17 +260,16 @@ void quantizeGraph(ElemKind quantizationPrecision) {
   auto *S = F->createSave("ret", FC);
   bindings.allocate(S->getPlaceholder());
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(W->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
-  };
+  }};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     quantizationPrecision, F);
+  quantConfig.precision = quantizationPrecision;
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Make sure that graph can be compiled.
   EE.compile(CompilationMode::Infer, F);
@@ -310,17 +309,15 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
   ASSERT_TRUE(newReshape);
   ASSERT_TRUE(llvm::isa<ReshapeNode>(newReshape));
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(newReshape->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.2f, 0}},
-  };
+  }};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Remove unnecessary conversions.
   optimize(F, CompilationMode::Infer);
@@ -362,17 +359,16 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   auto *S = F->createSave("ret", FC);
   bindings.allocate(S->getPlaceholder());
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
-  };
+  }};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F, {}, "", {}, true);
+  quantConfig.enableRowwise = true;
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
@@ -435,17 +431,17 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
   // Note: Using dummy offset for the weights, as it should be
   // rowwise-quantized.
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        inputTQP},
       {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {1.0f, 1}},
       {NodeQuantizationInfo::generateNodeOutputName(BC->getName()), biasTQP},
       {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), fcTQP},
-  };
+  }};
 
-  F = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Symmetric, QI, ElemKind::Int8QTy,
-      F, {}, "", {}, /*enableRowwise*/ true);
+  quantConfig.schema = quantization::Schema::Symmetric;
+  quantConfig.enableRowwise = true;
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
@@ -506,7 +502,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
       F, bindings, {indices, lengths, res->getPlaceholder()});
   bindings.allocate(res->getPlaceholder());
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(
            SLWS->getData().getNode()->getName()),
        {0.2f, 0}},
@@ -515,12 +511,10 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
        {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(SLWS->getName()),
        {0.4f, 0}},
-  };
+  }};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F, {}, "", {},
-                                     /* enableRowwiseQuantization */ true);
+  quantConfig.enableRowwise = true;
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -547,14 +541,12 @@ TEST(Quantization, quantizeReLU) {
   F->createSave("ret", relu);
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
-  std::vector<NodeQuantizationInfo> QI{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
-       {0.2f, -128}}};
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.2f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
+        {0.2f, -128}}}};
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   EE.compile(CompilationMode::Infer, F);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -581,17 +573,16 @@ TEST(Quantization, quantizeLookupTables) {
   auto *TN = F->createTanh("tanh", SN);
   F->createSave("ret", TN);
 
-  std::vector<NodeQuantizationInfo> QI{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.02f, -128}},
-      {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
-       {0.008f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.03f, 2}},
-      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
-       {0.04f, 3}}};
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.02f, -128}},
+       {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
+        {0.008f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
+        {0.03f, 2}},
+       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
+        {0.04f, 3}}}};
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
   // Note: The scales/offsets used below are those expected based on
@@ -645,17 +636,16 @@ TEST(Quantization, quantizeWithoutLookupTables) {
   auto *TN = F->createTanh("tanh", SN);
   F->createSave("ret", TN);
 
-  std::vector<NodeQuantizationInfo> QI{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.02f, -128}},
-      {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
-       {0.008f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.03f, 2}},
-      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
-       {0.04f, 3}}};
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.02f, -128}},
+       {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
+        {0.008f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
+        {0.03f, 2}},
+       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
+        {0.04f, 3}}}};
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -770,19 +760,19 @@ void testQuantizationEnd2End(ExecutionEngine &profileEE,
   profileEE.run(bindings);
 
   // Get quantization infos and build new quantized graph.
-  std::vector<NodeQuantizationInfo> QI =
+  quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeQuantizationInfos(
           bindings, F1, loweredMapForProf, quantization::Schema::Asymmetric,
-          quantizationPrecision);
+          quantizationPrecision)};
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
 
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
+  quantConfig.precision = quantizationPrecision;
   F2 = quantization::quantizeFunction(
-      *backendSpecificEE.getBackend(), quantization::Schema::Asymmetric, QI,
-      quantizationPrecision, F2, loweredMapForQuant);
+      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(bindings);
 
@@ -925,9 +915,9 @@ TEST_P(Operator, end2endGRU) {
   profileEE.run(bindings);
 
   // Get quantization infos and build new quantized graph.
-  std::vector<NodeQuantizationInfo> QI =
+  quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeQuantizationInfos(bindings, F1,
-                                                  loweredMapForProf);
+                                                  loweredMapForProf)};
 
   // STEP2 - Use the profile to quantize a network.
   SaveNode *result2 = cast<SaveNode>(F2->getNodeByName("save"));
@@ -935,8 +925,7 @@ TEST_P(Operator, end2endGRU) {
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   F2 = quantization::quantizeFunction(
-      *backendSpecificEE.getBackend(), quantization::Schema::Asymmetric, QI,
-      ElemKind::Int8QTy, F2, loweredMapForQuant);
+      F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(bindings);
 
@@ -1243,16 +1232,16 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto *SM = F->createSoftMax("softmax", LRN, selected);
   auto *SN = F->createSave("ret", SM);
 
-  std::vector<NodeQuantizationInfo> QI{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(LRN->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.4f, 0}}};
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.2f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(LRN->getName()),
+        {0.3f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
+        {0.4f, 0}}}};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qLRNIt = std::find_if(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
@@ -1298,15 +1287,13 @@ TEST(Quantization, quantizeSelect) {
   TensorQuantizationParams RHSQP = {0.3f, 0};
   TensorQuantizationParams selectQP = {0.4f, 0};
 
-  std::vector<NodeQuantizationInfo> QI{
-      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), LHSQP},
-      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), RHSQP},
-      {NodeQuantizationInfo::generateNodeOutputName(select->getName()),
-       selectQP}};
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), LHSQP},
+       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), RHSQP},
+       {NodeQuantizationInfo::generateNodeOutputName(select->getName()),
+        selectQP}}};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto it = std::find_if(
       F->getNodes().begin(), F->getNodes().end(),
@@ -1342,17 +1329,15 @@ TEST(Quantization, quantizeAvgPool) {
   auto *pool = F->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *s = F->createSave("save", pool);
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(pool->getName()),
        {0.3f, 1}},
       {NodeQuantizationInfo::generateNodeOutputName(s->getName()), {0.4f, 0}},
-  };
+  }};
 
-  F = quantization::quantizeFunction(*EE.getBackend(),
-                                     quantization::Schema::Asymmetric, QI,
-                                     ElemKind::Int8QTy, F);
+  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qPool = std::find_if(F->getNodes().begin(), F->getNodes().end(),
                             [](const Node &node) -> bool {
@@ -1390,20 +1375,20 @@ TEST(Quantization, quantizeGraphPartially) {
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
-  };
+  }};
 
   // Do not quantize any tanh nodes.
-  KindSet doNotQuantize;
-  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
+  KindSet doNotQuantizeKinds;
+  doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized", doNotQuantize);
+  auto *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                     /* loweredMap */ {}, doNotQuantizeKinds);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1470,22 +1455,22 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(TNLHS->getName()),
        {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
-  };
+  }};
 
   // Do not quantize any tanh nodes.
-  KindSet doNotQuantize;
-  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
+  KindSet doNotQuantizeKinds;
+  doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized", doNotQuantize);
+  auto *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                     /* loweredMap */ {}, doNotQuantizeKinds);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1562,22 +1547,22 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(CN->getName()), {0.6f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
-  };
+  }};
 
   // Do not quantize any tanh or add nodes.
-  KindSet doNotQuantize;
-  doNotQuantize.insert(Kinded::Kind::TanhNodeKind);
-  doNotQuantize.insert(Kinded::Kind::AddNodeKind);
+  KindSet doNotQuantizeKinds;
+  doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
+  doNotQuantizeKinds.insert(Kinded::Kind::AddNodeKind);
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized", doNotQuantize);
+  auto *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                     /* loweredMap */ {}, doNotQuantizeKinds);
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1652,15 +1637,14 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   // Note that we are creating quantization info even for nodes that will not be
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
-  };
+  }};
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized");
+  Function *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1716,16 +1700,15 @@ TEST(Quantization, quantizeSlice) {
   auto *result = save->getPlaceholder();
   bindings.allocate(result);
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(slice->getName()),
        {0.2f, -128}},
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.4f, 0}},
-  };
+  }};
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized");
+  Function *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1787,16 +1770,15 @@ TEST(Quantization, quantizeReshape) {
   auto *result = save->getPlaceholder();
   bindings.allocate(result);
 
-  std::vector<NodeQuantizationInfo> QI{
+  quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(reshape->getName()),
        {0.2f, -128}},
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.4f, 0}},
-  };
+  }};
 
-  auto *QF = quantization::quantizeFunction(
-      *EE.getBackend(), quantization::Schema::Asymmetric, QI, ElemKind::Int8QTy,
-      F, {}, "_quantized");
+  Function *QF =
+      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   QF->getParent()->eraseFunction(F);
   F = QF;
 
@@ -1940,16 +1922,16 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
 
   // Get quantization infos and build new quantized graph, passing in the
   // loweredMapForProf to include the unlowered components in QI.
-  std::vector<NodeQuantizationInfo> QI =
+  quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeQuantizationInfos(
           profilebindings, profileF, loweredMapForProf,
-          quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+          quantization::Schema::Asymmetric, ElemKind::Int8QTy)};
 
   // Verify that we have node quantization infos for the FC and the lowered
   // components of the FC (MM and BA).
   NodeQuantizationInfo *FCQI = nullptr, *MMQI = nullptr, *BAQI = nullptr,
                        *FCWQI = nullptr, *FCBQI = nullptr, *FCIQI = nullptr;
-  for (NodeQuantizationInfo &NQI : QI) {
+  for (NodeQuantizationInfo &NQI : quantConfig.infos) {
     if (NQI.nodeOutputName_ == outputNameFC) {
       FCQI = &NQI;
     } else if (NQI.nodeOutputName_ == outputNameMM) {
@@ -1999,10 +1981,9 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
 
   // Quantize the function given the current backend we're testing along with
   // the quantization infos gathered.
+  quantConfig.enableRowwise = rowwiseQuantizeFC;
   backendF = quantization::quantizeFunction(
-      *backendEE.getBackend(), quantization::Schema::Asymmetric, QI,
-      ElemKind::Int8QTy, backendF, loweredMapForQuant, "quant", {},
-      rowwiseQuantizeFC);
+      backendF, quantConfig, *backendEE.getBackend(), loweredMapForQuant);
 
   // Compile the graph to remove dead code and optimize away unnecessary
   // quantize nodes.

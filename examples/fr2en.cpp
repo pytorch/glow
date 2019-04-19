@@ -169,12 +169,12 @@ struct Model {
       // Lower however the backend prefers.
       ::lower(F_, &loweredMap_, EE_.getBackend());
 
-      auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
+      quantization::QuantizationConfiguration quantConfig{
+          deserializeFromYaml(loadProfileFileOpt)};
 
       // Quantize the graph based on the captured profile.
-      auto *Q = glow::quantization::quantizeFunction(
-          *EE_.getBackend(), quantization::Schema::Asymmetric,
-          quantizationInfos, ElemKind::Int8QTy, F_, loweredMap_);
+      auto *Q = quantization::quantizeFunction(F_, quantConfig,
+                                               *EE_.getBackend(), loweredMap_);
 
       // Erase the original function so that the redundant variables that are
       // only referenced by the original function will be removed.

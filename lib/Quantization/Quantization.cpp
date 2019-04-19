@@ -866,28 +866,22 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
   return quantizationInfos;
 }
 
-Function *
-quantizeFunction(const Backend &B, quantization::Schema schema,
-                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 ElemKind quantizationPrecision, Function *F,
-                 const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
-                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
-  assert((quantizationPrecision == ElemKind::Int8QTy ||
-          quantizationPrecision == ElemKind::Int16QTy) &&
+Function *quantizeFunction(Function *F,
+                           const QuantizationConfiguration &quantConfig,
+                           const Backend &B, const LoweredInfoMap &loweredMap,
+                           const KindSet &doNotQuantizeKinds) {
+  assert((quantConfig.precision == ElemKind::Int8QTy ||
+          quantConfig.precision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");
-  std::string tmpName;
-  if (newFuncName.empty()) {
-    tmpName = std::string(F->getName()) + "_quantized";
-    newFuncName = tmpName;
-  }
+  Function *G = F->clone(quantConfig.newFuncName.empty()
+                             ? F->getName().str() + "_quantized"
+                             : quantConfig.newFuncName);
 
-  Function *G = F->clone(newFuncName);
-
-  FunctionQuantizer quantizer(*G, B, schema, quantizationInfos,
-                              quantizationPrecision, doNotQuantizeKinds,
+  FunctionQuantizer quantizer(*G, B, quantConfig.schema, quantConfig.infos,
+                              quantConfig.precision, doNotQuantizeKinds,
                               loweredMap);
   quantizer.convert();
-  if (enableRowwise) {
+  if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();
   }
 
