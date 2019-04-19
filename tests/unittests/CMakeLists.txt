@@ -348,7 +348,9 @@ target_link_libraries(PartitionerTest
                         Partitioner
                         gtest
                         TestMain)
-add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
+add_glow_test(NAME PartitionerTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest

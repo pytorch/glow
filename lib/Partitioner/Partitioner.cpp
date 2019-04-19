@@ -16,6 +16,8 @@
 
 #include "glow/Partitioner/Partitioner.h"
 
+#include <fstream>
+
 using namespace glow;
 using llvm::isa;
 
@@ -532,6 +534,56 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   if (mapping.getPartitions().size() > deviceInfo_.size()) {
     adjustLogicalDeviceID(root, mapping.getPartitions().size());
   }
+}
+
+/// Get the partitions of a function \p funcName based on a config file with \p
+/// filename. It is a text file with the format:
+///
+/// # node_name_1 node_name_2 ...node_name_n # node_name_x1 node_name_x2 ...
+/// node_name_xn # ...
+///
+/// Once a "#" is encountered, a new partition should be created. All node
+/// followed by this "#" and before the next "#"(or end of the file) should be
+/// in the same partition.
+llvm::Error Partitioner::PartitionFromConfig(const std::string &funcName,
+                                             const std::string &filename) {
+  Function *F = module_->getFunction(funcName);
+  RETURN_ERR_IF_NOT(F, "Can't find the function in current module.");
+
+  std::ifstream ff(filename, std::ios::in);
+  RETURN_ERR_IF_NOT(ff, "Can't find the configuration file.");
+
+  NodeToFunctionMap partitionMap;
+  std::string str;
+  int color = 0;
+  Function *newF;
+  int num = 0;
+  while (ff >> str) {
+    if (str.compare("#") == 0) {
+      // Start a new partition.
+      newF = F->getParent()->createFunction(std::string(F->getName()) +
+                                            "_part" + std::to_string(++color));
+      partitionMap.createPartition(newF);
+    } else {
+      auto *N = F->getNodeByName(str);
+      assert(N && "Invalid node name");
+      partitionMap.add(N, newF);
+      num++;
+    }
+  }
+  ff.close();
+
+  assert(num == F->getNodes().size() && "Nodes missing");
+
+  doPartitioning(F, partitionMap);
+  module_->eraseFunction(F);
+
+  auto funcList = module_->getFunctions();
+  for (Function *F : funcList) {
+    (void)F;
+    assert(F->verify() && "Conversion led to invalid function");
+  }
+  return llvm::Error::success();
 }
 
 llvm::Error Partitioner::Partition() {

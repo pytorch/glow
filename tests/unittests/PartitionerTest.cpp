@@ -19,6 +19,10 @@
 
 #include "gtest/gtest.h"
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 
 class PartitionerTest : public ::testing::Test {
@@ -369,4 +373,73 @@ TEST_F(PartitionerTest, Basic1Roofline) {
 
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
+}
+
+/// This one tests reading a config from a file and do the partiton.
+TEST_F(PartitionerTest, Config1) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input1", false);
+  bindings_.allocate(input);
+  bindings_.allocate(input1);
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  L = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
+  L = F_->createSigmoid("left_sigmoid2", L);
+
+  // Right branch.
+  auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
+  R = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
+  R = F_->createSigmoid("right_sigmoid2", R);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L, R);
+  auto *save = F_->createSave("ret", mul);
+  auto &res = *bindings_.allocate(save->getPlaceholder());
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 16});
+  ExecutionEngine EE;
+
+  EE.compile(CompilationMode::Infer, F_);
+  updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
+  EE.run(bindings_);
+  Tensor ref = res.clone();
+
+  std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
+  Partitioner myPartitioner(&mod_, devices);
+  std::string configFileName(GLOW_DATA_PATH "tests/partition/config1.config");
+  auto err = myPartitioner.PartitionFromConfig("main", configFileName);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+  ASSERT_EQ(mod_.getFunctions().size(), 2);
+  ASSERT_EQ(myList.size(), 1);
+
+  // Run the paritioned graph and compare the results.
+  bindings_.allocate(mod_.getPlaceholders());
+  for (auto it = myList.begin(); it != myList.end(); ++it) {
+    bindings_.allocate(mod_.getPlaceholders());
+    executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
+    Tensor test = res.clone();
+    EXPECT_TRUE(ref.isEqual(test));
+  }
 }

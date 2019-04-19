@@ -4,6 +4,7 @@ add_subdirectory(unittests)
 add_subdirectory(images)
 add_subdirectory(benchmark)
 add_subdirectory(models)
+add_subdirectory(partition)
 
 # External backends
 ExternalBackendsTest()

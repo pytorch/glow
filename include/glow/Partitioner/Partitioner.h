@@ -157,6 +157,10 @@ public:
   /// devices.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices);
 
+  /// Decompose a function based on a config.
+  llvm::Error PartitionFromConfig(const std::string &funcName,
+                                  const std::string &filename);
+
   /// Decompose each function in a module.
   llvm::Error Partition();
 
