@@ -63,7 +63,8 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
-llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
+llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
+                                    bool saturateHost) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto functions = module->getFunctions();
   for (auto &F : functions) {
@@ -90,7 +91,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
       ::glow::optimizeFunction(F, *backend_, opts);
     }
   }
-  auto partitioner = Partitioner(module.get(), deviceInfo);
+  auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition());
   auto nodeList = std::move(partitioner.getPartitionResult());
 

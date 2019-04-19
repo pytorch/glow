@@ -35,8 +35,9 @@ static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
   return ret;
 }
 
-Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices)
-    : module_(parent), deviceInfo_(devices) {
+Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
+                         bool saturateHost)
+    : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost) {
   memSize_ = module_->getConstantsSize();
 }
 
@@ -423,6 +424,35 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 /// there is only 2 devices.
 void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
 
+/// Duplicate the network to saturate the number of devices. For example: If a
+/// network is partitioned into two parts (\p logicalDeviceCount) and there are
+/// six devices this would duplicate the network three times.
+void Partitioner::saturateHost(unsigned logicalDeviceCount) {
+  unsigned duplications = deviceInfo_.size() / logicalDeviceCount;
+  if (duplications < 2) {
+    return;
+  }
+  // Add additional logical devices to each node.
+  for (auto &network : partitions_) {
+    for (auto &node : network.nodes) {
+      // Build list of new logical devices to add to node.
+      std::vector<unsigned> newDevices;
+      for (auto logical : node->logicalDevices) {
+        // To ensure we do not have a logicalID collision we use the following
+        // scheme. We have an iterator starting at 1 for each duplication pass.
+        // The new ID we add is calcuated as follows:
+        // (iterator * logicalDeviceCount) + initialLogicalID
+        for (unsigned i = 1; i < duplications; i++) {
+          newDevices.push_back(logical + (i * logicalDeviceCount));
+        }
+      }
+      // Append the new logical devices to the node's logical device vector.
+      node->logicalDevices.insert(node->logicalDevices.end(),
+                                  newDevices.begin(), newDevices.end());
+    }
+  }
+}
+
 /// Current only partition the representative function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
@@ -531,11 +561,14 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // Adjust the logicalDevice for each DAGNode.
   if (mapping.getPartitions().size() > deviceInfo_.size()) {
     adjustLogicalDeviceID(root, mapping.getPartitions().size());
+  } else if (saturateHost_) {
+    // Attempt to saturate the host. Passing in the count of logical devices.
+    // Since logicalId starts at 0 we add one.
+    saturateHost(logicalID + 1);
   }
 }
 
 llvm::Error Partitioner::Partition() {
-
   // Find the representative function for running partitioning algorithm.
   F_ = selectRepFunc(module_, memSize_);
   uint64_t availMem = deviceInfo_[0].availableMemory;
@@ -555,6 +588,10 @@ llvm::Error Partitioner::Partition() {
       nodesDAGNodeTy nodes;
       nodes.push_back(std::move(DAG1));
       partitions_.push_back({std::move(DAG0), std::move(nodes)});
+    }
+    if (saturateHost_) {
+      // Saturate the Host.
+      saturateHost(1);
     }
     return llvm::Error::success();
   }

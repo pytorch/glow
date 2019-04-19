@@ -137,17 +137,14 @@ int main(int argc, char **argv) {
   std::vector<size_t> inputShape{1, 3, 224, 224};
 
   Placeholder *input;
-  std::vector<Placeholder *> inputs;
-  std::vector<PlaceholderList> phLists;
-  for (unsigned int i = 0; i < numDevices; i++) {
-    std::unique_ptr<Module> module = llvm::make_unique<Module>();
-    TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
-    input = loadResnet50Model(inputType, module.get(), i);
-    inputs.push_back(input);
-    llvm::outs() << "Adding to HostManager\n";
-    phLists.push_back(module->getPlaceholders());
-    EXIT_ON_ERR(hostManager->addNetwork(std::move(module)));
-  }
+  PlaceholderList phList;
+
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
+  input = loadResnet50Model(inputType, module.get(), 0);
+  phList = module->getPlaceholders();
+  EXIT_ON_ERR(
+      hostManager->addNetwork(std::move(module), /*saturateHost*/ true));
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";
   std::error_code code;
@@ -175,7 +172,7 @@ int main(int argc, char **argv) {
       }
       break;
     }
-    int index = currDevice % numDevices;
+
     std::string path = dirIt->path();
 
     auto image = readPngImageAndPreprocess(
@@ -186,13 +183,13 @@ int main(int argc, char **argv) {
     context->setTraceContext(
         llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 50));
 
-    context->getPlaceholderBindings()->allocate(phLists[index]);
+    context->getPlaceholderBindings()->allocate(phList);
     Tensor batch = image.getUnowned(inputShape);
-    updateInputPlaceholders(*(context->getPlaceholderBindings()),
-                            {inputs[index]}, {&batch});
+    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
+                            {&batch});
 
-    dispatchClassify(index, hostManager.get(), std::move(path),
-                     std::move(context), returned, finished);
+    dispatchClassify(0, hostManager.get(), std::move(path), std::move(context),
+                     returned, finished);
 
     dirIt.increment(code);
     currDevice++;

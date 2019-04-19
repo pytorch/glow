@@ -91,8 +91,11 @@ public:
   /// backends. Additionally DAGs are created for each function and stored
   /// in networks_. Returns an llvm::Error containing the results of the
   /// operation. This function consumes the \p module so any pointers to data
-  /// contained within the module should be considered invalid.
-  llvm::Error addNetwork(std::unique_ptr<Module> module);
+  /// contained within the module should be considered invalid. If \p
+  /// saturateHost is set to true the HostManager will try to use all available
+  /// devices on the host.
+  llvm::Error addNetwork(std::unique_ptr<Module> module,
+                         bool saturateHost = false);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.
