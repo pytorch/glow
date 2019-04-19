@@ -874,7 +874,7 @@ Function *quantizeFunction(Function *F,
           quantConfig.precision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");
   Function *G = F->clone(quantConfig.newFuncName.empty()
-                             ? quantConfig.newFuncName + "_quantized"
+                             ? F->getName().str() + "_quantized"
                              : quantConfig.newFuncName);
 
   FunctionQuantizer quantizer(*G, B, quantConfig.schema, quantConfig.infos,
