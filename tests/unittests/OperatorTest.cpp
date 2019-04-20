@@ -1928,20 +1928,6 @@ COMPARE_ARITH_FLOAT_VS_INT8(Max, Interpreter, CPU, OpenCL)
 COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
 #undef COMPARE_ARITH_FLOAT_VS_INT8
 
-#define COMPARE_ARITH_FLOAT_VS_INT16(_OP_NAME_, ...)                           \
-  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt16) {           \
-    ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Int16QTy, 0.02f);   \
-  }
-COMPARE_ARITH_FLOAT_VS_INT16(Add, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Sub, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Mul, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Div, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Max, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Min, Interpreter)
-#undef COMPARE_ARITH_FLOAT_VS_INT16
-
 #define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \

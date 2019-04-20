@@ -167,6 +167,17 @@ llvm::cl::opt<std::string>
                llvm::cl::desc("Output directory for the bundle serialization"),
                llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
+    "assert-all-nodes-quantized",
+    llvm::cl::desc(
+        "Debugging tool, used to assert the quantizer quantizes all nodes in "
+        "the model, or abort otherwise. When false, nodes that are unsupported "
+        "as quantized by the backend will be left unquantized, and may have "
+        "their inputs dequantized/outputs quantized as necessary. Can be used "
+        "in conjunction with -keep-original-precision-for-nodes to explicitly "
+        "whitelist node kinds that are allowed to be left unquantized."),
+    llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
@@ -320,6 +331,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
     quantConfig.precision = quantizationPrecision;
     quantConfig.schema = quantizationSchema;
     quantConfig.enableRowwise = enableRowwiseOpt;
+    quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
 
     auto *Q = quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
                                              loweredMap_,
