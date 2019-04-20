@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.7)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
@@ -18,6 +18,10 @@ set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Use highest packages found.
+set(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
+set(CMAKE_FIND_PACKAGE_SORT_DIRECTION DEC)
 
 if (NOT BUILD_SHARED_LIBS)
   set(CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -105,20 +109,13 @@ endif ()
 # Top level setup for external backends
 ExternalBackendsInit()
 
-find_package(LLVM 8 CONFIG)
+find_package(LLVM CONFIG)
 if (NOT LLVM_FOUND)
-  # Fallback to LLVM 7
-  find_package(LLVM 7 CONFIG)
+  message(FATAL_ERROR "No LLVM package was found; Glow requires LLVM 7.0 or higher.")
+endif()
 
-  if (NOT LLVM_FOUND)
-    # Fallback to whatever is available.
-    find_package(LLVM CONFIG)
-
-    if (NOT LLVM_FOUND OR LLVM_PACKAGE_VERSION VERSION_LESS "7.0")
-      message(FATAL_ERROR "LLVM minimum required version is 7. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
-    endif()
-
-  endif()
+if (LLVM_PACKAGE_VERSION VERSION_LESS "7.0")
+  message(FATAL_ERROR "LLVM minimum required version is 7.0. LLVM package version found: ${LLVM_PACKAGE_VERSION}.")
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
