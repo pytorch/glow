@@ -76,7 +76,7 @@ void InterpreterFunction::translateTraceEvents(
 
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = traceContext->getTraceThread();
+  int tid = TraceEvent::getThreadId();
   auto &traceEvents = traceContext->getTraceEvents();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);

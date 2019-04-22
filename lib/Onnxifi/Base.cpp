@@ -99,9 +99,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   auto ctx = llvm::make_unique<ExecutionContext>();
 
   if (traceEvents) {
-    // TODO: get thread ID
-    ctx->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0));
+    ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
   }
 
   // Create tensors for input placeholders

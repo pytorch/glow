@@ -1517,7 +1517,7 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
 
   std::unordered_map<std::string, cl_ulong> kernelToDuration;
   auto &traceEvents = context->getTraceContext()->getTraceEvents();
-  int tid = context->getTraceContext()->getTraceThread();
+  int tid = TraceEvent::getThreadId();
   std::vector<cl_ulong> manualTimestamps;
 
   for (auto &kl : kernelLaunches_) {

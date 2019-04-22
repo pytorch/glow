@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
   // If tracing is enabled, create a TraceContext to merge each runs events
   // into.
   if (!tracePath.empty()) {
-    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0);
+    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
 
   // Load model, create a context, and add to HostManager.
@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
     std::unique_ptr<ExecutionContext> context =
         llvm::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 50));
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
     context->getPlaceholderBindings()->allocate(phList);
     Tensor batch = image.getUnowned(inputShape);

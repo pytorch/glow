@@ -18,6 +18,7 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <atomic>
 #include <fstream>
 
 namespace glow {
@@ -69,6 +70,12 @@ uint64_t TraceEvent::now() {
       .count();
 }
 
+size_t TraceEvent::getThreadId() {
+  static std::atomic<std::size_t> thread_idx{0};
+  thread_local std::size_t id = thread_idx++;
+  return id;
+}
+
 void TraceContext::logTraceEvent(
     llvm::StringRef name, llvm::StringRef type,
     std::map<std::string, std::string> additionalAttributes) {
@@ -81,7 +88,7 @@ void TraceContext::logTraceEvent(
   if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
     return;
   }
-  TraceEvent ev(name, timestamp, type, traceThread_,
+  TraceEvent ev(name, timestamp, type, TraceEvent::getThreadId(),
                 std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
