@@ -524,7 +524,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents)(
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
   glow::onnxifi::Graph::releaseTraceEvents(traceEvents);
-  return ONNXIFI_STATUS_INTERNAL_ERROR;
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 /// Get pointer to onnxifi extension function with \p name.
