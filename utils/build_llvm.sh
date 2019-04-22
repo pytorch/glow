@@ -18,7 +18,7 @@
 set -euo pipefail
 
 if [ ! -e "./llvm_src/" ]; then
-  git clone --depth=1 -b release_60 https://github.com/llvm-mirror/llvm.git llvm_src
+  git clone --depth=1 -b release_80 https://github.com/llvm-mirror/llvm.git llvm_src
 fi
 
 mkdir -p llvm_build
