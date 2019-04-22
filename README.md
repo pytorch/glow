@@ -206,7 +206,7 @@ If LLVM is not available on your system you'll need to build it manually.  Run
 the script '`/utils/build_llvm.sh` to clone, build and install LLVM in a local
 directory. You will need to configure Glow with the flag `-DLLVM_DIR` to tell
 the build system where to find LLVM given the local directory you installed it
-in (e.g. `-DCMAKE_PREFIX_PATH=/path/to/llvm_install/lib/cmake/llvm` if using
+in (e.g. `-DLLVM_DIR=/path/to/llvm_install/lib/cmake/llvm` if using
 `build_llvm.sh`).
 
 ## Testing and Running
