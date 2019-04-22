@@ -98,7 +98,12 @@ struct DAGNode {
 using rootDAGNodeTy = std::unique_ptr<DAGNode>;
 using nodesDAGNodeTy = std::vector<std::unique_ptr<DAGNode>>;
 struct DAG {
+  /// This is a root node it does not map directly to a loaded function. It
+  /// contains the name of the network, a list of children, and a reference to
+  /// the Module the function came from.
   rootDAGNodeTy root;
+  /// This is a vector of all the DAGNodes. Structure is encoded in the DAGNodes
+  /// with pointers to parents and children.
   nodesDAGNodeTy nodes;
 };
 
@@ -111,7 +116,10 @@ using DAGListTy = std::vector<DAG>;
 /// and configure the device manager. Additionally it needs to set it's kind_
 /// member variable to it's correct BackendKind.
 class DeviceConfig {
+  /// An enum indicating what kind of backend this config is for. It is used in
+  /// checking the type of config before casting to a derived class.
   const BackendKind backendKind_;
+  /// A human readable name to identify the device.
   std::string name_;
 
 public:
