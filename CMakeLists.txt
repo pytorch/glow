@@ -58,6 +58,8 @@ file(GLOB_RECURSE header_files include/*.h tools/*.h lib/*.h)
 add_custom_target(CollectHeaders SOURCES ${header_files})
 
 find_package(PNG)
+find_package(glog)
+
 if(PNG_FOUND)
   add_definitions(-DWITH_PNG)
 endif()
