@@ -7,7 +7,7 @@ add_library(Base
 target_link_libraries(Base
                       PUBLIC
                         Support
-                        glog)
+                        glog::glog)
 
 if(PNG_FOUND)
   target_sources(Base PRIVATE Image.cpp)
