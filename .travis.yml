@@ -40,7 +40,7 @@ jobs:
         - mkdir build && cd build
         - CC=gcc-4.8 CXX=g++-4.8 cmake -G Ninja
           -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON
-          -DCMAKE_PREFIX_PATH=/usr/lib/llvm-7/include/
+          -DLLVM_DIR=/usr/lib/llvm-7/cmake
           -DCMAKE_CXX_FLAGS=-Werror
           -DGLOW_USE_COVERAGE=ON
           ../
