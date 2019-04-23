@@ -172,14 +172,6 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
-  auto *resultTraceContext = context->getTraceContext();
-
-  // Set the thread name for TraceEvents in the Runtime.
-  if (resultTraceContext) {
-    resultTraceContext->setThreadName(resultTraceContext->getTraceThread(),
-                                      "Glow Runtime (host)");
-  }
-
   ScopedTraceBlock(context->getTraceContext(),
                    "runFunction_" + networkName.str());
   auto currentRun = totalRequestCount_++;

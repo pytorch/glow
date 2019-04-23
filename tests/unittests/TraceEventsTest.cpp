@@ -119,7 +119,7 @@ public:
 TEST_P(TraceEventsTest, manualEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -168,7 +168,7 @@ TEST_P(TraceEventsTest, manualEvents) {
 TEST_P(TraceEventsTest, incompleteCoverage) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -212,7 +212,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 TEST_P(TraceEventsTest, internalGap) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -256,7 +256,7 @@ TEST_P(TraceEventsTest, internalGap) {
 TEST_P(TraceEventsTest, automaticInstrumentation) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   auto *n = part_one(F, context);
   n = part_two(F, context, n);
@@ -284,7 +284,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 TEST_P(TraceEventsTest, manualAndAutomatic) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -333,7 +333,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 TEST_P(TraceEventsTest, twoCompiles) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -348,7 +348,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
@@ -395,7 +395,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 TEST_P(TraceEventsTest, onlyTraceEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 16;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -435,7 +435,7 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 TEST_P(TraceEventsTest, multipleBackingTensors) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 6;
   auto *eventData1 = createEventPlaceholder(3);
@@ -494,7 +494,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -522,7 +522,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   // run twice
   EE_.run(context);
@@ -545,7 +545,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 TEST_P(TraceEventsTest, deviceManagerEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   auto *n = part_one(F, context);
   n = part_two(F, context, n);

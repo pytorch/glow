@@ -85,9 +85,8 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     auto nodeInputCtx = llvm::make_unique<ExecutionContext>();
 
     if (resultTraceContext) {
-      nodeInputCtx->setTraceContext(llvm::make_unique<TraceContext>(
-          resultTraceContext->getTraceLevel(),
-          resultTraceContext->getTraceThread()));
+      nodeInputCtx->setTraceContext(
+          llvm::make_unique<TraceContext>(resultTraceContext->getTraceLevel()));
     }
 
     auto nodeInputPhBindings = nodeInputCtx->getPlaceholderBindings();
@@ -370,44 +369,27 @@ void ThreadPoolExecutor::executeDAGNode(
 
   auto &deviceManager = deviceManagerIt->second;
 
-  // If tracing is enabled, set the thread name for TraceEvents for this node to
-  // be the name of the Device.
-  if (executionState->getRawResultContextPtr()->getTraceContext()) {
-    executionState->getRawResultContextPtr()->getTraceContext()->setThreadName(
-        currentDevice, deviceManager->getDeviceConfig()->getName());
-  }
-
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
 
   TraceContext *traceContext = nodeCtx->getTraceContext();
-  int initialThread = 0;
   if (traceContext) {
-    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "B", startTS);
+    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "b", startTS);
     TRACE_EVENT_END(traceContext, "EX_enqueue_" + node->name);
-    initialThread = traceContext->getTraceThread();
-    traceContext->setTraceThread(currentDevice);
   }
 
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
-      [this, executionState, node,
-       initialThread](RunIdentifierTy id, llvm::Error err,
-                      std::unique_ptr<ExecutionContext> resultCtx) {
-        if (resultCtx->getTraceContext()) {
-          resultCtx->getTraceContext()->setTraceThread(initialThread);
-        }
-        TRACE_EVENT_BEGIN(resultCtx->getTraceContext(),
-                          "EX_deferResult_" + node->name);
+      [this, executionState,
+       node](RunIdentifierTy id, llvm::Error err,
+             std::unique_ptr<ExecutionContext> resultCtx) {
         // Immediately move the handling of the result onto threadPool_ to
         // avoid doing work on the DeviceManager thread.
         this->threadPool_.submit([this, executionState, node,
                                   err = std::move(err),
                                   ctx = std::move(resultCtx)]() mutable {
-          TRACE_EVENT_END(ctx->getTraceContext(),
-                          "EX_deferResult_" + node->name);
           this->handleDeviceManagerResult(executionState, std::move(err),
                                           std::move(ctx), node);
         });

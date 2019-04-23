@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto context = llvm::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, i));
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     context->getPlaceholderBindings()->allocate(module.getPlaceholders());
     updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
                             {&batch});
