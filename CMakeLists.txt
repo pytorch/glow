@@ -45,6 +45,7 @@ if(GLOW_USE_LLD)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
 endif()
 
+include(Glog)
 include(GlowDefaults)
 include(GlowTestSupport)
 include(GlowExternalBackends)
