@@ -654,7 +654,7 @@ private:
     // from a FullyConnectedNode.
     auto &set = it->getValue();
     for (auto i = set.begin(), e = set.end(); i != e; ++i) {
-      if ((*i).getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
+      if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
         return true;
       }
     }
@@ -853,7 +853,7 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
   // and then recursively find and insert other names in case currOrigName was
   // also lowered from a previous node.
   for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
-    llvm::StringRef currOrigName = (*i).getName();
+    llvm::StringRef currOrigName = i->getName();
     quantizationInfos.emplace_back(currOrigName, TQP);
     findAndInsertLoweredInfos(currOrigName, loweredMap, quantizationInfos, TQP);
   }
