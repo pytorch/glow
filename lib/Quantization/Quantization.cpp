@@ -522,6 +522,11 @@ protected:
       auto outTy = mod_.uniqueType(quantizationPrecision_, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
       NodeValue val = node.getNthResult(SingleMatchingInOutTypeResultIdx);
+      // "val" may not have any users if the output goes unused, e.g. if we are
+      // quantizing a TopKNode and only indices is used.
+      if (val.getNumUsers() == 0) {
+        break;
+      }
       // "node" should have only one use, the dequantize node.
       // Update this use.
       assert(
@@ -577,6 +582,13 @@ protected:
          ++outNum) {
       NodeValue val = quantizedNode->getNthResult(outNum);
       if (!val.getType()->isQuantizedType()) {
+        continue;
+      }
+      // Not all float outputs will have a dequantize added to its quantized
+      // output, as we may just be using some outputs of a quantized node
+      // (e.g. when quantizing a TopK but only using the Indices output, no
+      // dequantize node is added to Values).
+      if (val.getNumUsers() == 0) {
         continue;
       }
       assert(

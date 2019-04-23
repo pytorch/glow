@@ -2190,6 +2190,42 @@ TEST(Quantization, CheckAssertQuantization) {
   }
 }
 
+/// Check that we can quantize nodes that have some quantized outputs as unused,
+/// e.g. a TopK node where values is unused but indices is.
+TEST(Quantization, QuantizationZeroUsersResult) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  PlaceholderBindings bindings;
+  Function *F = mod.createFunction("main");
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
+
+  bindings.allocate(input)->getHandle() = {
+      28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
+  };
+
+  // Note we intentionally do not save the topk's values result.
+  auto *TK = F->createTopK("TopK", input, 3);
+  auto *SN = F->createSave("save_indices", TK->getIndices());
+  bindings.allocate(SN->getPlaceholder());
+
+  quantization::QuantizationConfiguration quantConfig{
+      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
+        {0.2f, 0}},
+       {NodeQuantizationInfo::generateNodeOutputName(TK->getName(),
+                                                     TopKNode::ValuesIdx),
+        {0.2f, 0}}}};
+  quantConfig.assertAllNodesQuantized = true;
+
+  auto *QF = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+
+  auto *qSN = llvm::dyn_cast<SaveNode>(QF->getNodeByName("save_indices"));
+  ASSERT_TRUE(qSN);
+  auto *qTK = llvm::dyn_cast<TopKNode>(qSN->getInput().getNode());
+  ASSERT_TRUE(qTK);
+  EXPECT_TRUE(qTK->getValues().getType()->isQuantizedType());
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
                         ::testing::Values(BackendKind::Interpreter));
 
