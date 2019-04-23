@@ -132,7 +132,7 @@ public:
 
   virtual onnxStatus
   run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
-      std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
+      std::unordered_map<const Placeholder *, onnxTensorDescriptorV1>
           phNameToOnnxTensorOutputs,
       onnxTraceEventList *traceEvents) = 0;
 

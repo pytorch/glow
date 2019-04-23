@@ -20,42 +20,7 @@
 
 using namespace glow;
 
-bool PlaceholderBindings::compare(const PlaceholderBindings *A,
-                                  const PlaceholderBindings *B) {
-  // Trivial cases.
-  if (!A && !B) {
-    return true;
-  } else if ((!A && B) || (A && !B)) {
-    return false;
-  }
-
-  // Get the map of Placeholder -> Tensor mappings within the two
-  // PlaceholderBindingss.
-  const PlaceholderBindings::PlaceholderMap &phMapA = A->pairs();
-  const PlaceholderBindings::PlaceholderMap &phMapB = B->pairs();
-
-  // If the maps have different sizes, the PlaceholderBindingss cannot match.
-  if (phMapA.size() != phMapB.size()) {
-    return false;
-  }
-
-  // Iterate through all Placeholders in A, look up the corresponding tensors
-  // in A and B, and check if they match. If not, return false.
-  for (const auto &phTensorPair : phMapA) {
-    auto *placeholder = phTensorPair.first;
-    const auto *tensorA = phTensorPair.second;
-    const auto *tensorB =
-        B->get(B->getPlaceholderByName(placeholder->getName()));
-
-    if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-Tensor *PlaceholderBindings::get(Placeholder *P) const {
+Tensor *PlaceholderBindings::get(const Placeholder *P) const {
   auto it = map_.find(P);
   if (it == map_.end()) {
     return nullptr;
@@ -64,26 +29,13 @@ Tensor *PlaceholderBindings::get(Placeholder *P) const {
   return it->second;
 }
 
-Placeholder *
-PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
-  auto nameIt = nameMap_.find(name);
-  if (nameIt == nameMap_.end()) {
-    return nullptr;
-  }
-
-  return nameIt->second;
-}
-
-void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
+void PlaceholderBindings::insert(const Placeholder *P, Tensor &&T) {
   assert(!map_.count(P) && "Placeholder already registered");
   // Take ownership over the tensor.
   map_[P] = new Tensor(std::move(T));
-  nameMap_[P->getName()] = P;
 }
 
-size_t PlaceholderBindings::count(Placeholder *P) const {
-  assert((map_.size() == nameMap_.size()) &&
-         "Placeholder map and name map out of sync");
+size_t PlaceholderBindings::count(const Placeholder *P) const {
   return map_.count(P);
 }
 
@@ -94,13 +46,12 @@ void PlaceholderBindings::clear() {
   }
 
   map_.clear();
-  nameMap_.clear();
 }
 
 PlaceholderBindings PlaceholderBindings::clone() const {
   PlaceholderBindings cloned;
   for (auto PH : map_) {
-    Placeholder *P = PH.first;
+    const Placeholder *P = PH.first;
     Tensor *T = PH.second;
     cloned.insert(P, T->clone());
   }
@@ -108,11 +59,10 @@ PlaceholderBindings PlaceholderBindings::clone() const {
   return cloned;
 }
 
-Tensor *PlaceholderBindings::allocate(Placeholder *P) {
+Tensor *PlaceholderBindings::allocate(const Placeholder *P) {
   assert(!map_.count(P) && "Placeholder already registered");
   Tensor *T = new Tensor(P->getType());
   map_[P] = T;
-  nameMap_[P->getName()] = P;
   return T;
 }
 

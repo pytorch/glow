@@ -74,12 +74,11 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
       ->addNetwork(std::move(module));
 }
 
-onnxStatus
-HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
-                      EventPtr outputEvent,
-                      std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                          phNameToOnnxTensorOutputs,
-                      onnxTraceEventList *traceEvents) {
+onnxStatus HostManagerGraph::run(
+    std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
+    std::unordered_map<const Placeholder *, onnxTensorDescriptorV1>
+        phNameToOnnxTensorOutputs,
+    onnxTraceEventList *traceEvents) {
   backendPtr_->getBackendId()->runNetwork(
       this, std::move(ctx),
       [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),

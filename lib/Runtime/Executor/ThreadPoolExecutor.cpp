@@ -123,8 +123,9 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
   }
 }
 
-void ExecutionState::insertIntoNodeCtx(const DAGNode *node,
-                                       llvm::StringRef name, Tensor &&T) {
+void ExecutionState::insertIntoNodePHBinding(const DAGNode *node,
+                                             const Placeholder *placeholder,
+                                             Tensor &&T) {
   // Get a raw pointer to the input ExecutionContext for the node. It should
   // have been created in the constructor.
   auto ctxIt = inputCtxs_.find(node);
@@ -138,7 +139,7 @@ void ExecutionState::insertIntoNodeCtx(const DAGNode *node,
 
   // Insert the placeholder-tensor pair.
   std::lock_guard<std::mutex> lock(bindingsMtx_);
-  auto *tensor = bindings->get(bindings->getPlaceholderByName(name));
+  auto *tensor = bindings->get(placeholder);
   assert(tensor && "Placeholder should have already been created");
   *tensor = std::move(T);
 }
@@ -201,7 +202,8 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
   return (newValue == numParents);
 }
 
-void ExecutionState::insertIntoResultCtx(llvm::StringRef name, Tensor &&T) {
+void ExecutionState::insertIntoResultPHBindings(const Placeholder *placeholder,
+                                                Tensor &&T) {
   // The result PlaceholderBindings should have been been created in the
   // constructor and should not yet have been moved out if this function is
   // being called.
@@ -209,8 +211,7 @@ void ExecutionState::insertIntoResultCtx(llvm::StringRef name, Tensor &&T) {
          "Execution result bindings should exist!");
   std::lock_guard<std::mutex> lock(bindingsMtx_);
   auto *resultBindings = resultCtx_->getPlaceholderBindings();
-  Tensor *tensor =
-      resultBindings->get(resultBindings->getPlaceholderByName(name));
+  Tensor *tensor = resultBindings->get(placeholder);
 
   if (tensor) {
     *tensor = std::move(T);
@@ -327,17 +328,19 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
   const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
   for (const auto &symbolPair : symbolTable) {
-    const auto &symbolName = symbolPair.first;
+    const auto &symbolInfo = symbolPair.second;
 
-    auto *placeholder =
-        ctx->getPlaceholderBindings()->getPlaceholderByName(symbolName);
-
-    // If ctx provides a mapping for the symbol, copy it into the context for
-    // the node.
-    if (placeholder) {
-      const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
-      executionState->insertIntoNodeCtx(node, symbolName, tensor->clone());
+    if (symbolInfo.symbolCategory != SymbolCategory::Placeholder) {
+      continue;
     }
+
+    auto *placeholder = symbolInfo.placeholder;
+
+    assert(placeholder &&
+           "placeholder pointer wasn't set for placeholder symbol");
+
+    const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
+    executionState->insertIntoNodePHBinding(node, placeholder, tensor->clone());
   }
 }
 
@@ -407,8 +410,7 @@ void ThreadPoolExecutor::propagateOutputPlaceholders(
     auto *placeholder = phTensorPair.first;
     auto *tensor = phTensorPair.second;
 
-    executionState->insertIntoResultCtx(placeholder->getName(),
-                                        std::move(*tensor));
+    executionState->insertIntoResultPHBindings(placeholder, std::move(*tensor));
   }
 }
 

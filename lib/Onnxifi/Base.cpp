@@ -145,7 +145,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
   }
 
-  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
+  std::unordered_map<const Placeholder *, onnxTensorDescriptorV1>
       phNameToOnnxTensorOutputs;
 
   // Create tensors for output placeholders

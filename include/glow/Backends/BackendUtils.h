@@ -45,6 +45,8 @@ struct RuntimeSymbolInfo {
   bool output{true};
   /// Indicates what category the symbol is.
   SymbolCategory symbolCategory;
+  /// If the symbol is for a placeholder this is a pointer to that placeholder.
+  const Placeholder *placeholder{nullptr};
 };
 
 using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;

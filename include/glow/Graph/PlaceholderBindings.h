@@ -38,17 +38,11 @@ class Placeholder;
 class PlaceholderBindings final {
 public:
   /// Maps placeholders to the tensors that back them.
-  using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
-
-  /// Maps Placeholder names to Placeholders.
-  using PlaceholderNameMap = std::unordered_map<std::string, Placeholder *>;
+  using PlaceholderMap = std::unordered_map<const Placeholder *, Tensor *>;
 
 private:
   /// Maps Placeholders to Tensors.
   PlaceholderMap map_;
-
-  /// Maps Placeholder names to Placeholders.
-  PlaceholderNameMap nameMap_;
 
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
@@ -58,18 +52,14 @@ public:
 
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
-  Tensor *get(Placeholder *P) const;
-
-  /// \returns the Placeholder named \name or null of the Placeholder is not
-  /// found.
-  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
+  Tensor *get(const Placeholder *P) const;
 
   /// Inserts the Placeholder-Tensor pair.
-  void insert(Placeholder *P, Tensor &&T);
+  void insert(const Placeholder *P, Tensor &&T);
 
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.
-  Tensor *allocate(Placeholder *P);
+  Tensor *allocate(const Placeholder *P);
 
   /// Allocates zero-initialized backing tensors to all placeholders in \p lst
   /// that are not currently allocated in the bindings.
@@ -82,7 +72,7 @@ public:
   Placeholder *getFirstUnallocated(std::list<Placeholder *> &lst) const;
 
   /// \returns True if \p P is a registered Placeholder.
-  size_t count(Placeholder *P) const;
+  size_t count(const Placeholder *P) const;
 
   /// Deletes all tensors and clears the mapping between Placeholders and
   /// tensors.
@@ -107,7 +97,7 @@ public:
                       llvm::ArrayRef<Tensor *> inputs);
 
   PlaceholderBindings(PlaceholderBindings &&other)
-      : map_(std::move(other.map_)), nameMap_(std::move(other.nameMap_)) {}
+      : map_(std::move(other.map_)) {}
 
   ~PlaceholderBindings() { clear(); };
 
