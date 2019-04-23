@@ -1,18 +1,24 @@
 set(OpenCL_DIR ${CMAKE_BINARY_DIR}/glow/OpenCL)
 
 add_custom_command(
+    OUTPUT ${OpenCL_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${OpenCL_DIR})
+add_custom_target(make_opencl_dir
+    DEPENDS ${OpenCL_DIR})
+
+add_custom_command(
   OUTPUT "${OpenCL_DIR}/kernels.cl.inc"
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl"
           "${OpenCL_DIR}/kernels.cl.inc"
-  DEPENDS include-bin "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl")
+  DEPENDS make_opencl_dir include-bin "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl")
 
 add_custom_command(
   OUTPUT "${OpenCL_DIR}/kernels_fwd_conv.cl.inc"
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_conv.cl"
           "${OpenCL_DIR}/kernels_fwd_conv.cl.inc"
-  DEPENDS include-bin
+  DEPENDS make_opencl_dir include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_conv.cl")
 
 add_custom_command(
@@ -20,7 +26,7 @@ add_custom_command(
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl"
           "${OpenCL_DIR}/kernels_fwd_quantized_conv.cl.inc"
-  DEPENDS include-bin
+  DEPENDS make_opencl_dir include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl")
 
 add_library(OpenCLBackend
