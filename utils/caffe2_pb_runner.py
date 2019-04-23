@@ -118,6 +118,12 @@ model_props = dict(
         224,
         3,
     ),
+    imagenet=Model(
+        "data",
+        mode_0to256,
+        224,
+        3,
+    ),
 )
 
 MODEL = args.model_name
