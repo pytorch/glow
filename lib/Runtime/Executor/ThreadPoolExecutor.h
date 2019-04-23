@@ -134,10 +134,6 @@ private:
   /// Mutex used by bindings insertion functions to make sure only one thread
   /// writes to an ExecutionContext at a time.
   std::mutex bindingsMtx_;
-
-  /// Module for the network. This contains the PHs used by the functions in
-  /// this network.
-  Module *module_{nullptr};
 };
 
 /// This implementation of the Executor interface uses a thread pool to

@@ -20,13 +20,58 @@
 
 using namespace glow;
 
+bool PlaceholderBindings::compare(const PlaceholderBindings *A,
+                                  const PlaceholderBindings *B) {
+  // Trivial cases.
+  if (!A && !B) {
+    return true;
+  } else if ((!A && B) || (A && !B)) {
+    return false;
+  }
+
+  // Get the map of Placeholder -> Tensor mappings within the two
+  // PlaceholderBindingss.
+  const PlaceholderBindings::PlaceholderMap &phMapA = A->pairs();
+  const PlaceholderBindings::PlaceholderMap &phMapB = B->pairs();
+
+  // If the maps have different sizes, the PlaceholderBindingss cannot match.
+  if (phMapA.size() != phMapB.size()) {
+    return false;
+  }
+
+  // Iterate through all Placeholders in A, look up the corresponding tensors
+  // in A and B, and check if they match. If not, return false.
+  for (const auto &phTensorPair : phMapA) {
+    auto *placeholder = phTensorPair.first;
+    const auto *tensorA = phTensorPair.second;
+    const auto *tensorB = B->get(placeholder);
+
+    if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 Tensor *PlaceholderBindings::get(const Placeholder *P) const {
+  assert(P);
   auto it = map_.find(P);
   if (it == map_.end()) {
     return nullptr;
   }
 
   return it->second;
+}
+
+const Placeholder *
+PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
+  for (auto &kv : map_) {
+    if (kv.first->getName() == name) {
+      return kv.first;
+    }
+  }
+  return nullptr;
 }
 
 void PlaceholderBindings::insert(const Placeholder *P, Tensor &&T) {

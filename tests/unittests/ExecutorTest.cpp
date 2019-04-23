@@ -384,6 +384,7 @@ public:
       runtimeSymbolInfo.input = true;
       runtimeSymbolInfo.output = false;
       runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
+      runtimeSymbolInfo.placeholder = module_->getPlaceholderByName(input);
       symbolTable.insert(std::make_pair(input, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }
@@ -392,8 +393,7 @@ public:
       // Both input and output bindings should contain bindings for the outputs,
       // but the bound Tensors should be zero-filled in the input bindings.
       insertSymbolIntoPlaceholderBindings(output, nodeInputBindings);
-      nodeInputBindings->get(nodeInputBindings->getPlaceholderByName(output))
-          ->zero();
+      nodeInputBindings->get(module_->getPlaceholderByName(output))->zero();
       insertSymbolIntoPlaceholderBindings(output, nodeOutputBindings);
 
       RuntimeSymbolInfo runtimeSymbolInfo;
@@ -403,6 +403,7 @@ public:
       runtimeSymbolInfo.input = false;
       runtimeSymbolInfo.output = true;
       runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
+      runtimeSymbolInfo.placeholder = module_->getPlaceholderByName(output);
       symbolTable.insert(std::make_pair(output, runtimeSymbolInfo));
       offset += type_->getSizeInBytes();
     }
@@ -464,7 +465,7 @@ public:
     }
 
     for (const auto &symbol : outputSymbols) {
-      auto *placeholder = bindings_->getPlaceholderByName(symbol);
+      auto *placeholder = module_->getPlaceholderByName(symbol);
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }

@@ -61,7 +61,7 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0), module_(root->module) {
+      inflightNodes_(0) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
 
@@ -102,9 +102,10 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
       const auto &symbolInfo = symbolPair.second;
 
       if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
-        auto PH = module_->getPlaceholderByName(symbolName);
+        auto *PH = symbolInfo.placeholder;
         // If a PH name is provided it had to come from the Module originally.
         DCHECK(PH) << "Placeholder: " << symbolName << " is not in the module";
+
         nodeInputPhBindings->allocate(PH);
       }
     }
@@ -328,19 +329,20 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
   const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
 
   for (const auto &symbolPair : symbolTable) {
-    const auto &symbolInfo = symbolPair.second;
+    const auto *placeholder = symbolPair.second.placeholder;
 
-    if (symbolInfo.symbolCategory != SymbolCategory::Placeholder) {
+    if (!placeholder) {
       continue;
     }
 
-    auto *placeholder = symbolInfo.placeholder;
+    auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
 
-    assert(placeholder &&
-           "placeholder pointer wasn't set for placeholder symbol");
-
-    const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
-    executionState->insertIntoNodePHBinding(node, placeholder, tensor->clone());
+    // If ctx provides a mapping for the symbol, copy it into the context for
+    // the node.
+    if (tensor) {
+      executionState->insertIntoNodePHBinding(node, placeholder,
+                                              tensor->clone());
+    }
   }
 }
 

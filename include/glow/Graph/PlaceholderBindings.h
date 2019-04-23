@@ -54,6 +54,10 @@ public:
   /// tensor is not found.
   Tensor *get(const Placeholder *P) const;
 
+  /// \returns the Placeholder named \name or null of the Placeholder is not
+  /// found.
+  const Placeholder *getPlaceholderByName(llvm::StringRef name) const;
+
   /// Inserts the Placeholder-Tensor pair.
   void insert(const Placeholder *P, Tensor &&T);
 
