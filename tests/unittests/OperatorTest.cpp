@@ -4639,7 +4639,7 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 TEST_P(OperatorTest, SparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   /*
     DATA  = [
@@ -4741,7 +4741,7 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   /*
     DATA  =   [2.0, -0.5, 13]
