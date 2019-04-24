@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Runtime/Provisioner/Provisioner.h"
-#include "CPUDeviceManager.h"
+#include "../../lib/Backends/CPU/CPUDeviceManager.h"
 
 #include "gtest/gtest.h"
 
