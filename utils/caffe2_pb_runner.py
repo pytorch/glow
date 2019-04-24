@@ -118,7 +118,7 @@ model_props = dict(
         224,
         3,
     ),
-    imagenet=Model(
+    rcnn_ilsvrc13=Model(
         "data",
         mode_0to256,
         224,
