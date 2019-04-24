@@ -89,7 +89,7 @@ bool isOutput(const Placeholder *PH) {
         continue;
       }
       auto input = use.getUser()->getNthInput(i);
-      if (input == PH) {
+      if (input.getNode() == PH) {
         return true;
       }
     }
@@ -105,7 +105,7 @@ bool isInput(const Placeholder *PH) {
     if (auto *save = dyn_cast<SaveNode>(use.getUser())) {
       auto input = save->getInput();
       // If the PH is not an input to the saveNode we keep looking.
-      if (input != PH) {
+      if (input.getNode() != PH) {
         continue;
       }
     }
