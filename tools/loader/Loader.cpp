@@ -63,12 +63,6 @@ llvm::cl::opt<bool>
             llvm::cl::desc("Specify whether to run with verbose output"),
             llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<bool>
-    timeOpt("time",
-            llvm::cl::desc("Print timer output to stderr detailing how long it "
-                           "takes for the program to execute"),
-            llvm::cl::Optional, llvm::cl::cat(loaderCat));
-
 llvm::cl::opt<unsigned> iterationsOpt(
     "iterations", llvm::cl::desc("Number of iterations to perform"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(loaderCat));
@@ -188,6 +182,13 @@ llvm::cl::opt<std::string> networkName(
                    "and as a prefix for all the files that are generated."),
     llvm::cl::cat(loaderCat));
 } // namespace
+
+// timeOpt is outside the namespace so it can be used by the image-classifier.
+llvm::cl::opt<bool>
+    timeOpt("time",
+            llvm::cl::desc("Print timer output to stderr detailing how long it "
+                           "takes for the program to execute"),
+            llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
 llvm::StringRef Loader::getModelOptPath() {
   assert(modelPathOpt.size() == 1 &&
@@ -435,4 +436,5 @@ Loader::Loader(int argc, char **argv) {
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);
   F_ = M_->createFunction(modelPathOpt[0]);
+  functionName_ = modelPathOpt[0];
 }

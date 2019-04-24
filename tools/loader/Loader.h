@@ -38,6 +38,8 @@ class Loader {
   std::string caffe2NetWeightFilename_;
   /// ONNX model file name.
   std::string onnxModelFilename_;
+  /// Name of loaded function.
+  std::string functionName_;
   /// Host Manager for running the model.
   std::unique_ptr<glow::runtime::HostManager> hostManager_;
   /// Backend used for saving bundle and quantization.
@@ -53,9 +55,14 @@ class Loader {
   LoweredInfoMap loweredMap_;
 
 public:
+  /// Getter for the hostManager, this can be useful for calling int othe
+  /// HostManager directly.
+  runtime::HostManager *getHostManager() { return hostManager_.get(); }
   /// Getter for the Function. This should not be called after compile since the
   /// compile process is destructive on the original function.
   Function *getFunction() { return F_; }
+  /// Getter for function name.
+  std::string getFunctionName() { return functionName_; }
   /// Getter for the Module. This should not be called after compile since the
   /// compile process is destructive on the original function and module.
   Module *getModule() { return F_->getParent(); }
