@@ -3,8 +3,11 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 else()
   find_program(CLANG_BIN clang++)
 endif()
-
-set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/bin/llvm-link)
+if(MSVC)
+    set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/$(Configuration)/bin/llvm-link)
+else()
+    set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/bin/llvm-link)
+endif()
 
 set(CMAKE_LLIR_CREATE_SHARED_LIBRARY "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
 set(CMAKE_LLIR_CREATE_SHARED_MODULE "${LLVM_LINK_BIN} -o <TARGET> <OBJECTS>")
