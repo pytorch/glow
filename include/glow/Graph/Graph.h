@@ -181,7 +181,7 @@ public:
   /// Erase all the functions, variables, etc.
   void clear();
 
-  /// Strips payloads from constants and deletes functions. This is useful when
+  /// Strips payloads from constants. This is useful when
   /// the Module will be kept around for metadata but we want to reduce memory
   /// use. Unlike clear this leaves PHs and Constants in the module.
   void strip();

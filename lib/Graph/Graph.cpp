@@ -55,7 +55,6 @@ Function *Module::createFunction(llvm::StringRef name) {
 }
 
 void Module::strip() {
-  eraseFunctions();
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
     v->clearPayload();

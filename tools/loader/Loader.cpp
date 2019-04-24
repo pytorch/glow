@@ -18,10 +18,10 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
+#include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -316,7 +316,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // lowered, however all lowered and unlowered components have a profile, and
     // so the backend can lower however it prefers and always find all of its
     // NodeValue's quantization parameters.
-    ::lower(F_, &loweredMap_, EE_.getBackend());
+    ::lower(F_, &loweredMap_, backend_);
 
     quantization::QuantizationConfiguration quantConfig{
         deserializeFromYaml(loadProfileFileOpt)};
@@ -327,8 +327,8 @@ void Loader::compile(PlaceholderBindings &bindings) {
     quantConfig.enableRowwise = enableRowwiseOpt;
     quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
 
-    quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
-                                   loweredMap_, keepOriginalPrecisionForNodes);
+    quantization::quantizeFunction(F_, quantConfig, *backend_, loweredMap_,
+                                   keepOriginalPrecisionForNodes);
   }
 
   if (convertToFP16) {
@@ -341,19 +341,32 @@ void Loader::compile(PlaceholderBindings &bindings) {
 
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
+  // Store a raw pointer to the Module, we pass the unique_ptr to HostManager
+  // but the Module is stored by Hostmanager so the pointer will remain valid.
+  auto module = M_.get();
+
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(F_, cctx, emitBundle, networkName);
+    auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
+    EXIT_ON_ERR(std::move(error));
+    backend_->save(F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(F_, cctx);
+    auto error = hostManager_->addNetwork(std::move(M_), /*saturateHost*/ false,
+                                          profilingGraph());
+    EXIT_ON_ERR(std::move(error));
   }
-
   if (dumpGraphOpt) {
-    F_->dump();
+    for (auto function : module->getFunctions()) {
+      function->dump();
+    }
   }
   if (!dumpGraphDAGFileOpt.empty()) {
-    F_->dumpDAG(dumpGraphDAGFileOpt.c_str());
+    for (auto function : module->getFunctions()) {
+      std::string filename =
+          function->getName().str() + "_" + dumpGraphDAGFileOpt;
+      function->dumpDAG(filename.c_str());
+    }
   }
 }
 
@@ -366,7 +379,8 @@ void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterationsOpt; i++) {
-    EE_.run(bindings);
+    auto runErr = hostManager_->runNetworkBlocking(modelPathOpt[0], bindings);
+    EXIT_ON_ERR(std::move(runErr));
   }
   if (timeOpt) {
     timer.stopTimer();
@@ -414,7 +428,11 @@ Loader::Loader(int argc, char **argv) {
     caffe2NetDescFilename_ = modelPathOpt[0];
     caffe2NetWeightFilename_ = modelPathOpt[1];
   }
-
-  EE_.setBackend(ExecutionBackend);
-  F_ = EE_.getModule().createFunction(modelPathOpt[0]);
+  M_.reset(new Module);
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  auto config = llvm::make_unique<runtime::DeviceConfig>(ExecutionBackend);
+  configs.push_back(std::move(config));
+  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  backend_ = createBackend(ExecutionBackend);
+  F_ = M_->createFunction(modelPathOpt[0]);
 }

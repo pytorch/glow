@@ -17,6 +17,7 @@
 #define GLOW_TOOLS_LOADER_LOADER_H
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Runtime/HostManager/HostManager.h"
 
 namespace glow {
 
@@ -37,10 +38,14 @@ class Loader {
   std::string caffe2NetWeightFilename_;
   /// ONNX model file name.
   std::string onnxModelFilename_;
-  /// Execution engine for compiling and running.
-  ExecutionEngine EE_{};
+  /// Host Manager for running the model.
+  std::unique_ptr<glow::runtime::HostManager> hostManager_;
+  /// Backend used for saving bundle and quantization.
+  glow::Backend *backend_;
   /// Function containing the model.
   Function *F_{nullptr};
+  /// Module
+  std::unique_ptr<Module> M_;
   /// A map between quantization profiling names of NodeValues that were lowered
   /// from each other. Maps to a set of names of NodeValues and their NodeKinds
   /// that were replaced by the NodeValue (whose output name is the key) that
@@ -48,9 +53,11 @@ class Loader {
   LoweredInfoMap loweredMap_;
 
 public:
-  /// Getter for the Function.
+  /// Getter for the Function. This should not be called after compile since the
+  /// compile process is destructive on the original function.
   Function *getFunction() { return F_; }
-  /// Getter for the Module.
+  /// Getter for the Module. This should not be called after compile since the
+  /// compile process is destructive on the original function and module.
   Module *getModule() { return F_->getParent(); }
   /// Getter for the Caffe2 network file name.
   llvm::StringRef getCaffe2NetDescFilename() { return caffe2NetDescFilename_; }

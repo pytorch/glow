@@ -41,7 +41,7 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
 
 public:
   InterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
-                           size_t maxMemory = 1000)
+                           size_t maxMemory = 2000000000)
       : QueueBackedDeviceManager(BackendKind::Interpreter, std::move(config)),
         maxMemoryBytes_(maxMemory) {}
 
