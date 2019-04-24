@@ -1224,6 +1224,36 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
+    if (auto *SLWS = dyn_cast<SparseLengthsWeightedSumInst>(&I)) {
+      cl_kernel kernel = createKernel(kernelName);
+      // Set the device buffer as the first argument.
+      setKernelArg(kernel, 0, deviceBuffer_);
+      // Set all buffer arguments from the instruction (data, dest, weights,
+      // indices, lengths) as subsequent arguments.
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+
+      // Set the size of one slice of data as the last argument.
+      auto *data = SLWS->getData();
+      size_t dataSliceSize = data->size() / data->dims()[0];
+      setKernelArg<cl_uint>(kernel, numArgs + 1, dataSliceSize);
+
+      // Zero the destination buffer so that the kernel can accumulate (+=) into
+      // it.
+      auto *dest = SLWS->getDest();
+      fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(dest),
+                 dest->size(), 0, dest->getElementType());
+
+      // Get the number of segments. The output for each segment will be
+      // computed in parallel by setting the global size equal to the number of
+      // segments.
+      size_t segments = SLWS->getLengths()->size();
+
+      // Enqueue the kernel.
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {segments},
+                    kernelLaunches_);
+      continue;
+    }
+
     if (auto *DP = dyn_cast<DebugPrintInst>(&I)) {
       clFinish(commands_);
       auto *V = DP->getSrc();
@@ -1706,6 +1736,16 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy}, {ScatterAssignNode::IndicesIdx}) &&
            (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
             ElemKind::Int64ITy);
+
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy},
+               {SparseLengthsWeightedSumNode::IndicesIdx,
+                SparseLengthsWeightedSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
+            ElemKind::Int32ITy);
 
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) &&
