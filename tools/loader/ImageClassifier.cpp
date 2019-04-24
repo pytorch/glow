@@ -25,9 +25,12 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <atomic>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <queue>
@@ -166,9 +169,9 @@ createProtobufLoader(Loader &loader, TypeRef inputImageType) {
 
 /// Given \p loader, the \p bindings, and \p inputImageType, build the graph
 /// from the provided protobuf file found via \p loader. Then compiles and
-/// \returns a pair of pointers to the input Placeholder and output Tensor for
-/// the Softmax.
-static std::pair<Placeholder *, Tensor *>
+/// \returns a pair of pointers to the input Placeholder and output Placeholder
+/// for the Softmax.
+static std::pair<Placeholder *, Placeholder *>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   TypeRef inputImageType) {
   auto LD = createProtobufLoader(loader, inputImageType);
@@ -198,9 +201,8 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   // Get the Tensor from the Placeholder that the final expected Softmax writes
   // into at the end of image inference.
   Placeholder *SMPH = EXIT_ON_ERR(LD->getSingleOutput());
-  Tensor *SMT = bindings.get(SMPH);
 
-  return std::make_pair(inputImagePH, SMT);
+  return std::make_pair(inputImagePH, SMPH);
 }
 
 /// A pair representing a float and the index where the float was found.
@@ -365,7 +367,11 @@ static void parseInputImageList(const std::string &inputImageListFile) {
 }
 
 int main(int argc, char **argv) {
-  PlaceholderBindings bindings;
+
+  auto context = llvm::make_unique<ExecutionContext>();
+  llvm::Timer timer("Infer", "Infer");
+
+  PlaceholderBindings *bindings = context->getPlaceholderBindings();
   // The loader verifies/initializes command line parameters, and initializes
   // the ExecutionEngine and Function.
   Loader loader(argc, argv);
@@ -397,14 +403,14 @@ int main(int argc, char **argv) {
   }
 
   // Stream input mode.
-  const bool streamInputFilenamesMode =
+  bool streamInputFilenamesMode =
       inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
 
   GLOW_ASSERT(!(streamInputFilenamesMode && emittingBundle()) &&
               "Cannot emit a bundle and also stream inputs.");
 
   // Mini-batch mode.
-  const bool miniBatchMode = miniBatch > 0;
+  bool miniBatchMode = miniBatch > 0;
   GLOW_ASSERT(((!miniBatchMode) || (!streamInputFilenamesMode)) &&
               "The minibatch option is not compatible with the stream input "
               "image mode.");
@@ -412,11 +418,15 @@ int main(int argc, char **argv) {
       ((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)) &&
       "The number of input images must be a multiple of the mini-batch.");
 
+  GLOW_ASSERT(((!iterationsOpt) || (iterationsOpt % miniBatch == 0)) &&
+              "Benchmark count must be a multiple of the mini-batch.");
+
   // Used to make sure we only compile once, and run only once if not streaming.
   bool isFirstRun = true;
 
   // These will be set during the first run.
   Placeholder *inputImagePH = nullptr;
+  Placeholder *outputPH = nullptr;
   Tensor *SMT = nullptr;
 
   size_t minibatchIndex = 0;
@@ -430,25 +440,50 @@ int main(int argc, char **argv) {
   llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
 
   int numErrors = 0;
+
+  // Image tensors loaded up to be run at once for benchmark mode.
+  std::vector<std::unique_ptr<Tensor>> preLoadedImages;
+  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+
   while ((streamInputFilenamesMode &&
           getNextImageFilenames(&inputImageBatchFilenames)) ||
          (miniBatchMode &&
           getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
                            minibatchIndex, miniBatch)) ||
          isFirstRun) {
-    // Load and process the image data into the inputImageData Tensor.
-    loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
-                            imageNormMode, imageChannelOrder, imageLayout);
-
+    auto inputImageData = llvm::make_unique<Tensor>();
+    if (iterationsOpt) {
+      // Load one image so we know dimensions and can create the appropriate
+      // batch size.
+      streamInputFilenamesMode = false;
+      miniBatchMode = false;
+      std::vector<std::string> firstImage;
+      firstImage.push_back(inputImageBatchFilenames[0]);
+      loadImagesAndPreprocess(firstImage, inputImageData.get(), imageNormMode,
+                              imageChannelOrder, imageLayout);
+      ShapeVector imageSize(inputImageData->getType().dims().begin(),
+                            inputImageData->getType().dims().end());
+      if (miniBatch) {
+        imageSize[0] = miniBatch;
+      } else {
+        imageSize[0] = iterationsOpt;
+      }
+      // Resize the Tensor to the appropriate size.
+      inputImageData.get()->reset(ElemKind::FloatTy, imageSize);
+    } else {
+      // Load and process the image data into the inputImageData Tensor.
+      loadImagesAndPreprocess(inputImageBatchFilenames, inputImageData.get(),
+                              imageNormMode, imageChannelOrder, imageLayout);
+    }
     // If this is the first run, then we need to build and compile the model.
     if (isFirstRun) {
       isFirstRun = false;
 
       // Build and compile the graph, and then get back the input Placeholder
-      // and output Softmax Tensor.
-      std::pair<Placeholder *, Tensor *> inputOutputPair =
-          buildAndCompileAndGetInAndOutPair(loader, bindings,
-                                            &inputImageData.getType());
+      // and output Placeholder.
+      std::pair<Placeholder *, Placeholder *> inputOutputPair =
+          buildAndCompileAndGetInAndOutPair(loader, *bindings,
+                                            &inputImageData->getType());
 
       // If in bundle mode, the bundle has been saved by the above call, so we
       // can safely return.
@@ -457,34 +492,87 @@ int main(int argc, char **argv) {
       }
 
       inputImagePH = inputOutputPair.first;
-      SMT = inputOutputPair.second;
+      outputPH = inputOutputPair.second;
+      SMT = bindings->get(outputPH);
     }
     assert(inputImagePH && SMT && "Input and output must be valid.");
-    GLOW_ASSERT(inputImagePH->dims() == inputImageData.dims() &&
+    GLOW_ASSERT(inputImagePH->dims() == inputImageData->dims() &&
                 "New input shape does not match the compiled function.");
 
     // Convert the raw input to fp16. This must be done every time we get new
     // image data.
     if (convertInAndOutToFp16) {
-      inputImageData.convertToType(ElemKind::Float16Ty);
+      inputImageData->convertToType(ElemKind::Float16Ty);
     }
 
     // About to run inference, so update the input image Placeholder's backing
     // Tensor with inputImageData.
-    updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
+    updateInputPlaceholders(*bindings, {inputImagePH}, {inputImageData.get()});
 
     // Perform the inference execution, updating SMT.
-    auto batchSize = inputImageData.dims()[0];
-    loader.runInference(bindings, batchSize);
+    auto batchSize = inputImageData->dims()[0];
+    if (iterationsOpt) {
+      unsigned requestCount = 1;
+      if (miniBatch) {
+        requestCount = iterationsOpt / miniBatch;
+      }
+      // Setup list of inference requests to be run.
+      for (unsigned i = 0; i < requestCount; i++) {
+        auto newImage = llvm::make_unique<Tensor>(inputImageData->getType());
+        auto newContext = llvm::make_unique<ExecutionContext>();
+        auto ph = newContext->getPlaceholderBindings();
+        ph->allocate(inputImagePH);
+        ph->allocate(outputPH);
+        updateInputPlaceholders(*ph, {inputImagePH}, {newImage.get()});
 
-    // Print the top-k results from the output Softmax tensor.
-    numErrors += processAndPrintResults(SMT, inputImageBatchFilenames);
+        preLoadedImages.push_back(std::move(newImage));
+        contexts.push_back(std::move(newContext));
+      }
+    } else {
+      loader.runInference(*bindings, batchSize);
+      // Print the top-k results from the output Softmax tensor.
+      numErrors += processAndPrintResults(SMT, inputImageBatchFilenames);
+    }
+  }
+  if (iterationsOpt) {
+    runtime::HostManager *hostManager = loader.getHostManager();
+    std::string name = loader.getFunctionName();
+    std::atomic<unsigned> inFlight(0);
+    std::promise<void> runPromise;
+    auto fut = runPromise.get_future();
+    if (timeOpt) {
+      timer.startTimer();
+    }
+    for (auto &batch : contexts) {
+      llvm::Error runErr = llvm::Error::success();
+      inFlight++;
+      hostManager->runNetwork(
+          name, std::move(batch),
+          [&runErr, &runPromise,
+           &inFlight](runtime::RunIdentifierTy, llvm::Error err,
+                      std::unique_ptr<ExecutionContext> contextPtr) {
+            runErr = std::move(err);
+            if (--inFlight == 0) {
+              runPromise.set_value();
+            }
+          });
+
+      EXIT_ON_ERR(std::move(runErr));
+    }
+    // wait for all to finish.
+    fut.wait();
+    if (timeOpt) {
+      timer.stopTimer();
+      llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
+                                    timer.getTotalTime().getWallTime() /
+                                        iterationsOpt);
+    }
   }
 
   // If profiling, generate and serialize the quantization infos now that we
   // have run inference one or more times to gather the profile.
   if (profilingGraph()) {
-    loader.generateAndSerializeQuantizationInfos(bindings);
+    loader.generateAndSerializeQuantizationInfos(*bindings);
   }
 
   return numErrors;
