@@ -153,7 +153,7 @@ for png_filename in tests/images/EmotionSampleImages/*.png; do
 done
 
 # R-CNN ILSVRC13 ONNX Model: See Table 8 of https://arxiv.org/pdf/1311.2524.pdf
-# for the classication labels, they differ from thoes defined by imagenet.
+# for the classification labels, they differ from those defined by imagenet.
 i=0
 for png_filename in tests/images/imagenet/*.png; do
   ./bin/image-classifier "$png_filename" -expected-labels=${ilsvrc13IdxArray[$i]} -image-mode=0to255 -m=bvlc_reference_rcnn_ilsvrc13/model.onnx -model-input-name=data_0 "$@"
