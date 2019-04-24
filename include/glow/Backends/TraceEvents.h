@@ -39,7 +39,7 @@ struct TraceEvent {
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
 
-  /// Time of the event, in milliseconds since epoch.
+  /// Time of the event, in microseconds since epoch.
   uint64_t timestamp;
 
   /// Type of the event, a (usually) one char code (see Event Descriptions in
