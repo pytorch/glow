@@ -21,6 +21,7 @@ googlenetV4IdxArray=(281 207 340)
 mnistIdxValues="0,1,2,3,4,5,6,7,8,9"
 mnistIdxArray=(0 1 2 3 4 5 6 7 8 9)
 ferplusIdxArray=(4 4 6 1 0 0 3 3 2 2)
+ilsvrc13IdxArray=(58 57 199)
 
 # Accumulate errors
 num_errors=0
@@ -148,6 +149,15 @@ num_errors=$(($num_errors + $?))
 i=0
 for png_filename in tests/images/EmotionSampleImages/*.png; do
   ./bin/image-classifier "$png_filename" -use-imagenet-normalization -expected-labels=${ferplusIdxArray[$i]} -image-mode=0to255 -m=emotion_ferplus/model.onnx -model-input-name=Input3 -compute-softmax "$@"
+  i=$(($i + 1))
+done
+
+# R-CNN ILSVRC13 ONNX Model: See Table 8 of https://arxiv.org/pdf/1311.2524.pdf
+# for the classification labels, they differ from those defined by imagenet.
+i=0
+for png_filename in tests/images/imagenet/*.png; do
+  ./bin/image-classifier "$png_filename" -expected-labels=${ilsvrc13IdxArray[$i]} -image-mode=0to255 -m=bvlc_reference_rcnn_ilsvrc13/model.onnx -model-input-name=data_0 "$@"
+  num_errors=$(($num_errors + $?))
   i=$(($i + 1))
 done
 
