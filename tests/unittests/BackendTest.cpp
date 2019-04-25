@@ -36,7 +36,7 @@ TEST(Interpreter, NotImplementedSave) {
   // Interpreter backend does not support a save method.
   // Exercise it and make sure that it fails.
   ExecutionEngine EE;
-  PlaceholderBindings ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
 
   // Create a few nodes to make sure IR can be normally generated.
@@ -51,7 +51,7 @@ TEST(Interpreter, NotImplementedSave) {
 
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
-  PlaceholderBindings ctx;
+  PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -59,20 +59,20 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
   auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
-  Node *O = F->createFullyConnected(ctx, "fc", A, 4);
+  Node *O = F->createFullyConnected(bindings, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
-  ::glow::profileQuantization(ctx, F);
+  ::glow::profileQuantization(bindings, F);
 
-  ctx.allocate(A);
-  ctx.allocate(Ex);
+  bindings.allocate(A);
+  bindings.allocate(Ex);
   EE.compile(CompilationMode::Infer, F);
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&inputs});
+  EE.run(bindings);
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
@@ -89,8 +89,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   EXPECT_TRUE(profile != nullptr);
 
-  auto CI =
-      ctx.get(profile->getComputationInfoPlaceholder())->getHandle<float>();
+  auto CI = bindings.get(profile->getComputationInfoPlaceholder())
+                ->getHandle<float>();
   float min = CI.raw(0);
   float max = CI.raw(1);
   EXPECT_NEAR(0.5, min, 0.00001);
@@ -98,8 +98,8 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  updateInputPlaceholders(ctx, {A}, {&inputs});
-  EE.run(ctx);
+  updateInputPlaceholders(bindings, {A}, {&inputs});
+  EE.run(bindings);
   min = CI.raw(0);
   max = CI.raw(1);
   EXPECT_NEAR(0.2, min, 0.00001);
@@ -165,7 +165,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
 
 TEST_P(BackendTest, simpleInference) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
-  PlaceholderBindings ctx;
+  PlaceholderBindings bindings;
 
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -175,30 +175,30 @@ TEST_P(BackendTest, simpleInference) {
 
   auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
 
-  auto *CV0 = F->createConv(ctx, "conv1", input, 16, 5, 1, 2, 1);
+  auto *CV0 = F->createConv(bindings, "conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv(ctx, "conv2", MP0, 20, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv2", MP0, 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu2", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv(ctx, "conv3", MP1, 20, 5, 1, 2, 1);
+  auto *CV2 = F->createConv(bindings, "conv3", MP1, 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu3", CV2);
   auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
 
-  auto *FCL1 = F->createFullyConnected(ctx, "fc", MP2, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP2, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
   auto *S = F->createSave("ret", SM);
 
-  ctx.allocate(input);
-  ctx.allocate(ex);
-  ctx.allocate(S->getPlaceholder());
+  bindings.allocate(input);
+  bindings.allocate(ex);
+  bindings.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F);
 
-  updateInputPlaceholders(ctx, {input}, {&inputs});
-  EE_.run(ctx);
+  updateInputPlaceholders(bindings, {input}, {&inputs});
+  EE_.run(bindings);
 }
 
 /// Test that the DebugPrint instruction works correctly for the backend. Note
@@ -231,14 +231,14 @@ TEST_P(BackendTest, debugPrint) {
 /// collectConstants is false.
 TEST_P(BackendTest, CompileWithoutConstants) {
   Module mod;
-  PlaceholderBindings ctx;
+  PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
   auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
-  auto *XTensor = ctx.allocate(X);
+  auto *XTensor = bindings.allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
-  ctx.allocate(save->getPlaceholder());
+  bindings.allocate(save->getPlaceholder());
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   BackendOptions opts;
   opts.collectConstants = false;
@@ -326,15 +326,15 @@ TEST_P(BackendTest, compileVectorOfFunctions) {
 /// Later we execute the code and check that things work.
 TEST_P(BackendTest, decoupleCodegenFromGraph) {
   Module mod;
-  PlaceholderBindings ctx;
+  PlaceholderBindings bindings;
 
   Function *F = mod.createFunction("main");
   auto *X = mod.createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
-  auto *XTensor = ctx.allocate(X);
+  auto *XTensor = bindings.allocate(X);
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
-  auto *saveTensor = ctx.allocate(save->getPlaceholder());
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
   EE_.compile(CompilationMode::Infer, F);
 
   // Collect constants to fill out the RuntimeBundle.
@@ -346,7 +346,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
 
   // We can run the compiled code without having the graph representation
   // around.
-  EE_.run(ctx);
+  EE_.run(bindings);
 
   auto HX = saveTensor->getHandle();
   EXPECT_NEAR(HX.at({0}), 1, 1E-5);
@@ -361,12 +361,12 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {4}, "input", false);
-  PlaceholderBindings ctx({input}, {&data});
+  PlaceholderBindings bindings({input}, {&data});
   SaveNode *S = F->createSave("ret", input);
-  auto *STensor = ctx.allocate(S->getPlaceholder());
+  auto *STensor = bindings.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F);
-  EE_.run(ctx);
+  EE_.run(bindings);
   EXPECT_TRUE(STensor->isEqual(data));
 }
 
