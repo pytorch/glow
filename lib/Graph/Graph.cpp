@@ -1172,18 +1172,9 @@ IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
   return addNode(new IsNaNNode(name, OT, input));
 }
 
-Node *Function::createReplaceNaN(llvm::StringRef name, NodeValue input,
-                                 float value) {
-  // Create IsNaN node.
-  auto *INN = createIsNaN(name.str() + ".isNaN", input);
-
-  // Create Splat node.
-  auto *S = createSplat(name.str() + ".splat", input.getType(), value);
-
-  // Create Select node to pick between original and replacement values.
-  auto *SN = createSelect(name.str() + ".select", INN, S, input);
-
-  return SN;
+ReplaceNaNNode *Function::createReplaceNaN(llvm::StringRef name,
+                                           NodeValue input, float value) {
+  return addNode(new ReplaceNaNNode(name, input.getType(), input, value));
 }
 
 PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {

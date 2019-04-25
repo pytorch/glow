@@ -1163,6 +1163,10 @@ bool IsNaNNode::verify() const {
   return isValid;
 }
 
+bool ReplaceNaNNode::verify() const {
+  return checkSameType(getResult(), getInput(), this);
+}
+
 bool SelectNode::verify() const {
   bool isValid = checkSameShape(getResult(), getLHS(), this);
   isValid &= checkSameShape(getResult(), getRHS(), this);

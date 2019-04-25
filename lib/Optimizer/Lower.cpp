@@ -714,6 +714,25 @@ static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, BRM.getResult(), DN);
 }
 
+/// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
+/// inputs, a Splat node created using value from \p RN as the other input, and
+/// an IsNaN node as the comparator input.
+static void lowerReplaceNaNNode(Function *F, LoweredInfoMap *loweredMap,
+                                const ReplaceNaNNode &RN) {
+  // Create IsNaN node.
+  auto *INN = F->createIsNaN(RN.getName().str() + ".isNaN", RN.getInput());
+
+  // Create Splat node.
+  auto *S = F->createSplat(RN.getName().str() + ".splat",
+                           RN.getInput().getType(), RN.getValue());
+
+  // Create Select node to pick between original and replacement values.
+  auto *SN =
+      F->createSelect(RN.getName().str() + ".select", INN, S, RN.getInput());
+
+  replaceAllUsesOfWith(loweredMap, RN.getResult(), SN);
+}
+
 /// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
 /// log the lowering info of what was replaced by what via output names.
 static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
@@ -764,6 +783,8 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
     lowerTileNode(F, loweredMap, *TN);
   } else if (auto *CSN = dyn_cast<ChannelShuffleNode>(node)) {
     lowerChannelShuffleNode(F, loweredMap, *CSN);
+  } else if (auto *RN = dyn_cast<ReplaceNaNNode>(node)) {
+    lowerReplaceNaNNode(F, loweredMap, *RN);
   }
 }
 

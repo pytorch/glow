@@ -995,16 +995,14 @@ TEST(caffe2, replaceNaN) {
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // High level checks on the content of the graph.
-  // We have 1 IsNaN, 1 Splat, 1 Select and 1 Output.
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // We have 1 ReplaceNaN and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *selectNode = llvm::dyn_cast<SelectNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(selectNode);
-  auto *isNaNNode = llvm::dyn_cast<IsNaNNode>(selectNode->getCond().getNode());
-  ASSERT_TRUE(isNaNNode);
-  auto *splatNode = llvm::dyn_cast<SplatNode>(selectNode->getLHS().getNode());
-  ASSERT_TRUE(splatNode);
-  auto *inputNode = llvm::dyn_cast<Placeholder>(selectNode->getRHS().getNode());
+  auto *replaceNaNNode =
+      llvm::dyn_cast<ReplaceNaNNode>(saveNode->getInput().getNode());
+  EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
+  auto *inputNode =
+      llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("input"));
 
   // We have one input and one output.
