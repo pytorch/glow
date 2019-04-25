@@ -1473,6 +1473,10 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     RETURN_IF_ERR(loadWeightsFromNet(weightsDef));
     RETURN_IF_ERR(loadNetwork(networkDef));
 
+    // This is to ensure that the same processing done with
+    // the same network, even if order of operators is different.
+    F.orderNodes();
+
     RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
 
     return llvm::Error::success();

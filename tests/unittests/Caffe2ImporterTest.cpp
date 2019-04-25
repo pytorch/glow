@@ -2242,3 +2242,32 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
 
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
 }
+
+/// Load big enough model and validate node order.
+TEST(caffe2, validateNodeOrder) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/parallel_matmul_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
+  Tensor inputs_1(ElemKind::FloatTy, {3, 7, 10});
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"inputs_0", "inputs_1"},
+                               {&inputs_0.getType(), &inputs_1.getType()}, *F);
+  }
+
+  // We have 6 slices, 3 matmuls, 1 concat, 7 reshapes, 1 save.
+  EXPECT_EQ(F->getNodes().size(), 18);
+  // Make sure that nodes are sorted by name.
+  EXPECT_TRUE(std::is_sorted(
+      F->getNodes().begin(), F->getNodes().end(),
+      [](const Node &a, const Node &b) { return a.getName() < b.getName(); }));
+}

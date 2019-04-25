@@ -228,6 +228,15 @@ public:
 
   Module *getParent() { return parent_; }
 
+  /// Perform ordering of nodes_ based on node's name.
+  /// This is to make sure that performing optimizations have a deterministic
+  /// behavior on the graphs which have the same ops but different ordering in
+  /// nodes_.
+  void orderNodes() {
+    nodes_.sort(
+        [](const Node &a, const Node &b) { return a.getName() < b.getName(); });
+  }
+
   /// Search the Module containing the function to gather and return a list of
   /// placeholders that are used by the Function.
   PlaceholderList findPlaceholders();
