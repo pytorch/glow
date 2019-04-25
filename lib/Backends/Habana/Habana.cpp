@@ -714,7 +714,7 @@ IOPlaceholders findIOPlaceholders(Function *F) {
 }
 
 std::unique_ptr<CompiledFunction>
-HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
+HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
   // Allocate all the tensors.
@@ -1480,7 +1480,7 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 } // namespace
 
 bool HabanaBackend::transformPostLowering(
-    Function *F, const CompilationOptions &opts) const {
+    Function *F, const CompilationContext &cctx) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Separate any Slice nodes into several that only slice in one dimension

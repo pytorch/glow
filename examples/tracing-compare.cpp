@@ -79,11 +79,11 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   Function *F_ = F->clone("resnet50" + std::to_string((int)backendKind));
 
   llvm::outs() << "Starting compile on " << (int)backendKind << ".\n";
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  ::glow::optimizeFunction(F_, *backend, opts);
-  return backend->compile(F_, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F_, *backend, cctx);
+  return backend->compile(F_, cctx.backendOpts);
 }
 
 std::future<void> addToDevice(unsigned int id, DeviceManager *device,

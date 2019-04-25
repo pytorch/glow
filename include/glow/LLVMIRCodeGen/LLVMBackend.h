@@ -46,7 +46,7 @@ public:
   compileIRWithoutConstants(IRFunction *IR) const;
 
   virtual std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override;
+  compile(Function *F, const BackendOptions &opts) const override;
 
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef networkName) const override;

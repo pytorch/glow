@@ -138,9 +138,9 @@ TEST_P(TraceEventsTest, manualEvents) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -185,9 +185,9 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -228,9 +228,9 @@ TEST_P(TraceEventsTest, internalGap) {
   n = part_four(F, context, n);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -265,11 +265,12 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, opts);
-  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
+  EE_.insertCompiledFunction(F->getName(),
+                             backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -304,11 +305,12 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, opts);
-  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
+  EE_.insertCompiledFunction(F->getName(),
+                             backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -353,16 +355,16 @@ TEST_P(TraceEventsTest, twoCompiles) {
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
 
   std::string name = F->getName();
-  EE_.insertCompiledFunction(name, backend->compile(F, opts));
+  EE_.insertCompiledFunction(name, backend->compile(F, cctx.backendOpts));
 
   std::string name2 = name + "2";
-  EE_.insertCompiledFunction(name2, backend->compile(F, opts));
+  EE_.insertCompiledFunction(name2, backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -409,9 +411,9 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   }
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -460,9 +462,9 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   F->createTraceEvent("event3", "E", eventData4, 0);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -513,9 +515,9 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -554,9 +556,9 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});

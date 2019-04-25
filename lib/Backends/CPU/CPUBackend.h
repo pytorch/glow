@@ -40,7 +40,7 @@ public:
   std::string getBackendName() const override { return "CPU"; }
 
   bool transformPostLowering(Function *F,
-                             const CompilationOptions &opts) const override;
+                             const CompilationContext &cctx) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 

@@ -16,7 +16,6 @@
 
 #include "benchmark/benchmark.h"
 
-#include "glow/Backends/CompilationOptions.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Runtime/Executor/Executor.h"
@@ -120,11 +119,11 @@ void setUpDeviceManagerCommon(
   }
 
   FunctionMapTy funcs;
-  CompilationOptions opts;
+  CompilationContext cctx;
 
   // Compile all functions in the module.
   for (auto *function : mod->getFunctions()) {
-    ::glow::optimizeFunction(function, *backend, opts);
+    ::glow::optimizeFunction(function, *backend, cctx);
     std::unique_ptr<CompiledFunction> compiledFunction =
         backend->compile(function);
     funcs.insert(std::make_pair(function->getName(), compiledFunction.get()));

@@ -15,6 +15,7 @@
  */
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"

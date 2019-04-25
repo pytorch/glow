@@ -1639,7 +1639,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
 }
 
 std::unique_ptr<CompiledFunction>
-OCLBackend::compile(Function *F, const CompilationOptions &opts) const {
+OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
 
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
