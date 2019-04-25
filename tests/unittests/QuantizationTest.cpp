@@ -270,7 +270,7 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
 
   quantConfig.precision = quantizationPrecision;
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Make sure that graph can be compiled and run.
   EE.compile(CompilationMode::Infer, F);
@@ -326,7 +326,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
   }};
 
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Remove unnecessary conversions.
   optimize(F, CompilationMode::Infer);
@@ -378,7 +378,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
 
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
@@ -452,7 +452,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   quantConfig.schema = quantization::Schema::Symmetric;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
@@ -526,7 +526,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
 
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -559,7 +559,7 @@ TEST(Quantization, quantizeReLU) {
        {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
         {0.2f, -128}}}};
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   EE.compile(CompilationMode::Infer, F);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -596,7 +596,7 @@ TEST(Quantization, quantizeLookupTables) {
        {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
         {0.04f, 3}}}};
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
   // Note: The scales/offsets used below are those expected based on
@@ -660,7 +660,7 @@ TEST(Quantization, quantizeWithoutLookupTables) {
        {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
         {0.04f, 3}}}};
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
   optimize(F, CompilationMode::Infer);
 
   auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
@@ -794,7 +794,7 @@ testQuantizationEnd2End(ExecutionEngine &profileEE,
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   quantConfig.precision = quantizationPrecision;
   quantConfig.assertAllNodesQuantized = true;
-  F2 = quantization::quantizeFunction(
+  quantization::quantizeFunction(
       F2, quantConfig, *backendSpecificEE.getBackend(), loweredMapForQuant,
       keepOriginalPrecisionForNodes);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
@@ -968,9 +968,9 @@ TEST_P(Operator, end2endGRU) {
   LoweredInfoMap loweredMapForQuant;
   lower(F2, &loweredMapForQuant, backendSpecificEE.getBackend());
   quantConfig.assertAllNodesQuantized = true;
-  F2 = quantization::quantizeFunction(F2, quantConfig,
-                                      *backendSpecificEE.getBackend(),
-                                      loweredMapForQuant, doNotQuantizeKinds);
+  quantization::quantizeFunction(F2, quantConfig,
+                                 *backendSpecificEE.getBackend(),
+                                 loweredMapForQuant, doNotQuantizeKinds);
   backendSpecificEE.compile(CompilationMode::Infer, F2);
   backendSpecificEE.run(bindings);
 
@@ -1287,7 +1287,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
         {0.4f, 0}}}};
 
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qLRNIt = std::find_if(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
@@ -1340,7 +1340,7 @@ TEST(Quantization, quantizeSelect) {
         selectQP}}};
 
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto it = std::find_if(
       F->getNodes().begin(), F->getNodes().end(),
@@ -1385,7 +1385,7 @@ TEST(Quantization, quantizeAvgPool) {
   }};
 
   quantConfig.assertAllNodesQuantized = true;
-  F = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   auto qPool = std::find_if(F->getNodes().begin(), F->getNodes().end(),
                             [](const Node &node) -> bool {
@@ -1435,11 +1435,8 @@ TEST(Quantization, quantizeGraphPartially) {
   doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
   quantConfig.assertAllNodesQuantized = true;
-  auto *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                     /* loweredMap */ {}, doNotQuantizeKinds);
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 /* loweredMap */ {}, doNotQuantizeKinds);
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
@@ -1518,11 +1515,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   doNotQuantizeKinds.insert(Kinded::Kind::TanhNodeKind);
 
   quantConfig.assertAllNodesQuantized = true;
-  auto *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                     /* loweredMap */ {}, doNotQuantizeKinds);
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 /* loweredMap */ {}, doNotQuantizeKinds);
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
@@ -1611,11 +1605,8 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   doNotQuantizeKinds.insert(Kinded::Kind::AddNodeKind);
 
   quantConfig.assertAllNodesQuantized = true;
-  auto *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                     /* loweredMap */ {}, doNotQuantizeKinds);
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 /* loweredMap */ {}, doNotQuantizeKinds);
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
@@ -1695,10 +1686,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   }};
 
   quantConfig.assertAllNodesQuantized = true;
-  Function *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   optimize(F, CompilationMode::Infer);
 
@@ -1760,10 +1748,7 @@ TEST(Quantization, quantizeSlice) {
   }};
 
   quantConfig.assertAllNodesQuantized = true;
-  Function *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   optimize(F, CompilationMode::Infer);
 
@@ -1831,10 +1816,7 @@ TEST(Quantization, quantizeReshape) {
   }};
 
   quantConfig.assertAllNodesQuantized = true;
-  Function *QF =
-      quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
-  QF->getParent()->eraseFunction(F);
-  F = QF;
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
   optimize(F, CompilationMode::Infer);
 
@@ -2037,8 +2019,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   // the quantization infos gathered.
   quantConfig.enableRowwise = rowwiseQuantizeFC;
   quantConfig.assertAllNodesQuantized = true;
-  backendF = quantization::quantizeFunction(
-      backendF, quantConfig, *backendEE.getBackend(), loweredMapForQuant);
+  quantization::quantizeFunction(backendF, quantConfig, *backendEE.getBackend(),
+                                 loweredMapForQuant);
 
   // Compile the graph to remove dead code and optimize away unnecessary
   // quantize nodes.
@@ -2145,22 +2127,22 @@ TEST(Quantization, CheckAssertQuantization) {
         {0.2f, -128}}}};
   quantConfig.precision = ElemKind::Int16QTy;
   quantConfig.assertAllNodesQuantized = true;
-  quantConfig.newFuncName = "quant_1";
 
   // Expect this to die because quantizeFunction() is passed with
   // assertAllNodesQuantized true, and the Interpreter backend does not support
   // Int16QTy ReLU.
-  EXPECT_DEATH(quantization::quantizeFunction(F, quantConfig, *EE.getBackend()),
-               "");
+  Function *QF = F->clone("quant_clone1");
+  EXPECT_DEATH(
+      quantization::quantizeFunction(QF, quantConfig, *EE.getBackend()), "");
 
   {
+    Function *QF = F->clone("quant_clone2");
     quantConfig.assertAllNodesQuantized = false;
-    quantConfig.newFuncName = "quant_2";
 
     // This works fine because quantizeFunction() is passed with
     // assertAllNodesQuantized false, and so the ReLU will not be quantized as
     // the Interpreter does not support Int16QTy ReLU.
-    auto *QF = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+    quantization::quantizeFunction(QF, quantConfig, *EE.getBackend());
 
     auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
     ASSERT_TRUE(saveNode);
@@ -2170,17 +2152,16 @@ TEST(Quantization, CheckAssertQuantization) {
   }
 
   {
+    Function *QF = F->clone("quant_clone3");
     quantConfig.assertAllNodesQuantized = true;
     KindSet doNotQuantizeKinds;
     doNotQuantizeKinds.insert(Kinded::Kind::ReluNodeKind);
-    quantConfig.newFuncName = "quant_3";
 
     // This works fine because quantizeFunction() is passed with
     // assertAllNodesQuantized true, but we explicitly tell the quantizer to
     // keep ReLU in its original precision.
-    auto *QF =
-        quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                       /* loweredMap */ {}, doNotQuantizeKinds);
+    quantization::quantizeFunction(QF, quantConfig, *EE.getBackend(),
+                                   /* loweredMap */ {}, doNotQuantizeKinds);
 
     auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
     ASSERT_TRUE(saveNode);
@@ -2217,9 +2198,9 @@ TEST(Quantization, QuantizationZeroUsersResult) {
         {0.2f, 0}}}};
   quantConfig.assertAllNodesQuantized = true;
 
-  auto *QF = quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
 
-  auto *qSN = llvm::dyn_cast<SaveNode>(QF->getNodeByName("save_indices"));
+  auto *qSN = llvm::dyn_cast<SaveNode>(F->getNodeByName("save_indices"));
   ASSERT_TRUE(qSN);
   auto *qTK = llvm::dyn_cast<TopKNode>(qSN->getInput().getNode());
   ASSERT_TRUE(qTK);

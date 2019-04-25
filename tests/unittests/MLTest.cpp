@@ -1083,10 +1083,10 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
   lower(F, &loweredMapForQuant, EE.getBackend());
-  Function *QP = quantization::quantizeFunction(
-      F, quantConfig, *EE.getBackend(), loweredMapForQuant, doNotQuantizeKinds);
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 loweredMapForQuant, doNotQuantizeKinds);
 
-  EE.compile(CompilationMode::Infer, QP);
+  EE.compile(CompilationMode::Infer, F);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
@@ -1203,10 +1203,10 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
   lower(F, &loweredMapForQuant, EE.getBackend());
-  Function *QP = quantization::quantizeFunction(
-      F, quantConfig, *EE.getBackend(), loweredMapForQuant);
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 loweredMapForQuant);
 
-  EE.compile(CompilationMode::Infer, QP);
+  EE.compile(CompilationMode::Infer, F);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});

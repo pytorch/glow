@@ -98,16 +98,16 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(IF, &loweredMapForQuant, IEE.getBackend());
-    IF = quantization::quantizeFunction(IF, quantConfig, *IEE.getBackend(),
-                                        loweredMapForQuant);
+    quantization::quantizeFunction(IF, quantConfig, *IEE.getBackend(),
+                                   loweredMapForQuant);
   }
   if (isQuantizedElemKind(backendElemKind)) {
     quantConfig.precision = backendElemKind;
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(BF, &loweredMapForQuant, BEE.getBackend());
-    BF = quantization::quantizeFunction(BF, quantConfig, *BEE.getBackend(),
-                                        loweredMapForQuant);
+    quantization::quantizeFunction(BF, quantConfig, *BEE.getBackend(),
+                                   loweredMapForQuant);
   }
 }
 

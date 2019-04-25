@@ -174,13 +174,8 @@ struct Model {
           deserializeFromYaml(loadProfileFileOpt)};
 
       // Quantize the graph based on the captured profile.
-      auto *Q = quantization::quantizeFunction(F_, quantConfig,
-                                               *EE_.getBackend(), loweredMap_);
-
-      // Erase the original function so that the redundant variables that are
-      // only referenced by the original function will be removed.
-      Q->getParent()->eraseFunction(F_);
-      F_ = Q;
+      quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
+                                     loweredMap_);
     }
 
     // Do not create constants if we're profiling; the newly allocate histogram

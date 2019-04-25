@@ -898,26 +898,20 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
   return quantizationInfos;
 }
 
-Function *quantizeFunction(Function *F,
-                           const QuantizationConfiguration &quantConfig,
-                           const Backend &B, const LoweredInfoMap &loweredMap,
-                           const KindSet &doNotQuantizeKinds) {
+void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
+                      const Backend &B, const LoweredInfoMap &loweredMap,
+                      const KindSet &doNotQuantizeKinds) {
   assert((quantConfig.precision == ElemKind::Int8QTy ||
           quantConfig.precision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");
-  Function *G = F->clone(quantConfig.newFuncName.empty()
-                             ? F->getName().str() + "_quantized"
-                             : quantConfig.newFuncName);
 
-  FunctionQuantizer quantizer(*G, B, quantConfig.schema, quantConfig.infos,
+  FunctionQuantizer quantizer(*F, B, quantConfig.schema, quantConfig.infos,
                               quantConfig.precision, doNotQuantizeKinds,
                               loweredMap, quantConfig.assertAllNodesQuantized);
   quantizer.convert();
   if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();
   }
-
-  return G;
 }
 
 } // namespace quantization
