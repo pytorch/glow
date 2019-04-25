@@ -63,6 +63,19 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
+/// \returns an error if any nodes inside \p F are not supported by \p B.
+static llvm::Error checkAllNodesSupported(Function &F, Backend &B) {
+  for (const Node &N : F.getNodes()) {
+    if (!B.isOpSupported(N)) {
+      return MAKE_ERR(
+          GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+          "Error while compiling a node from Function " + F.getName().str() +
+              ": " + N.getDebugDesc());
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
                                     bool saturateHost) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
@@ -89,6 +102,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     cctx.mode = CompilationMode::Infer;
     for (auto F : module->getFunctions()) {
       ::glow::optimizeFunction(F, *backend_, cctx);
+      RETURN_IF_ERR(checkAllNodesSupported(*F, *backend_));
     }
   }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
