@@ -1006,18 +1006,18 @@ TEST(onnx, importReplaceNaN) {
     updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
   }
 
-  // Verify structure: Input, IsNan, Splat -> Select -> Save.
-  ASSERT_EQ(mod.getPlaceholders().size(), 2);
-  ASSERT_EQ(F->getNodes().size(), 4);
-  auto *save = getSaveNodeFromDest(output);
-  auto *select = llvm::dyn_cast<SelectNode>(save->getInput().getNode());
-  ASSERT_TRUE(select);
-  auto *isNaN = llvm::dyn_cast<IsNaNNode>(select->getCond().getNode());
-  ASSERT_TRUE(isNaN);
-  auto *splat = llvm::dyn_cast<SplatNode>(select->getLHS().getNode());
-  ASSERT_TRUE(splat);
-  auto *input = llvm::dyn_cast<Placeholder>(select->getRHS().getNode());
-  ASSERT_EQ(input, mod.getPlaceholderByName("x"));
+  // Verify structure: Input -> ReplaceNaN -> Save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *replaceNaNNode =
+      llvm::dyn_cast<ReplaceNaNNode>(saveNode->getInput().getNode());
+  EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
+  auto *inputNode =
+      llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
+  ASSERT_EQ(inputNode, mod.getPlaceholderByName("x"));
+
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
 /// Test loading SparseToDense op from an ONNX model.

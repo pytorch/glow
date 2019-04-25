@@ -448,6 +448,12 @@ int main(int argc, char **argv) {
                   "generates a mask that can be consumed by a Select node.");
   // clang-format on
 
+  BB.newNode("ReplaceNaN")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Value")
+      .addResultFromCtorArg()
+      .setDocstring("Replaces NaNs found in Input with Value.");
+
   BB.newNode("Modulo")
       .addInput("Input")
       .addMember(MemberType::Int64, "Divisor")
