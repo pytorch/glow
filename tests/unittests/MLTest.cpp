@@ -1405,7 +1405,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
 /// Simple test case that learns the embedding table for a
 /// SparseLengthsWeightedSum operator.
-TEST_P(InterpreterAndCPU, learnSparseLengthsWeightedSum) {
+TEST_P(MLTest, learnSparseLengthsWeightedSum) {
   TrainingConfig TC;
   TC.learningRate = 0.3;
   TC.batchSize = 1;

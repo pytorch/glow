@@ -1502,7 +1502,7 @@ __kernel void sparselengthsweightedsumK(__global float *dest,
                                         __global float *weights,
                                         __global cl_uint64_t *indices,
                                         __global cl_int32_t *lengths,
-                                        cl_uint32_t dataSliceSize) {
+                                        cl_uint32_t sliceSize) {
   // Get the global ID. This corresponds to the segment that this kernel will
   // compute, and therefore also the index into the output buffer at which this
   // kernel will write its output.
@@ -1526,9 +1526,8 @@ __kernel void sparselengthsweightedsumK(__global float *dest,
 
     // Read an entire slice of data at index dataIdx, multiply it by the weight
     // and store it into dest at index idx (same as the segment number).
-    for (cl_uint64_t k = 0; k < dataSliceSize; ++k) {
-      dest[idx * dataSliceSize + k] +=
-          weight * data[dataIdx * dataSliceSize + k];
+    for (cl_uint32_t k = 0; k < sliceSize; ++k) {
+      dest[idx * sliceSize + k] += weight * data[dataIdx * sliceSize + k];
     }
 
     // Increment the index.
@@ -1543,6 +1542,49 @@ __kernel void sparselengthsweightedsumW(__global void *mem, cl_uint32_t dest,
                                         cl_uint32_t dataSliceSize) {
   sparselengthsweightedsumK(&mem[dest], &mem[data], &mem[weights],
                             &mem[indices], &mem[lengths], dataSliceSize);
+}
+
+__kernel void sparselengthsweightedsumgradK(
+    __global float *destGrad, __global float *dataGrad, __global float *weights,
+    __global cl_uint64_t *indices, __global cl_int32_t *lengths,
+    cl_uint32_t segments, cl_uint32_t sliceSize) {
+
+  // This is an index into the indices and weights buffer. This is incremented
+  // in the same fashion as the loop variable j below, but is not reset at the
+  // end of every segment.
+  cl_uint32_t curIdx = 0;
+
+  // For each segment:
+  for (cl_uint32_t i = 0; i < segments; ++i) {
+    // For each index in the segment:
+    for (cl_int32_t j = 0; j < lengths[i]; ++j) {
+      // Get the weight for the current index.
+      float weight = weights[curIdx];
+      // Get the index into dataGrad corresponding to the current index.
+      cl_uint64_t dataGradIdx = indices[curIdx];
+
+      // Read an entire slice of destGrad at index i (same as the segment
+      // number), multiply it by the weight and store it into dataGrad at index
+      // dataGradIdx.
+      for (cl_uint32_t k = 0; k < sliceSize; ++k) {
+        dataGrad[dataGradIdx * sliceSize + k] +=
+            weight * destGrad[i * sliceSize + k];
+      }
+
+      // Increment the current index.
+      curIdx++;
+    }
+  }
+}
+
+__kernel void
+sparselengthsweightedsumgradW(__global void *mem, cl_uint32_t weights,
+                              cl_uint32_t indices, cl_uint32_t lengths,
+                              cl_uint32_t destGrad, cl_uint32_t dataGrad,
+                              cl_uint32_t segments, cl_uint32_t sliceSize) {
+  sparselengthsweightedsumgradK(&mem[destGrad], &mem[dataGrad], &mem[weights],
+                                &mem[indices], &mem[lengths], segments,
+                                sliceSize);
 }
 
 /// An empty kernel used as a checkpoint for TraceEvents.
