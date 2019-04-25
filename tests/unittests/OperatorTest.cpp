@@ -2128,15 +2128,14 @@ TEST_P(OperatorStatelessTest, IntConcat) {
 TEST_P(OperatorTest, FCWithFlatten) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
-  auto *weights =
-      mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "weights", true);
-  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "bias", true);
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
 
   bindings_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  bindings_.allocate(weights)->getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                              2.0f, 5.0f, 8.0f, 11.0f, //
-                                              3.0f, 6.0f, 9.0f, 12.0f};
-  bindings_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+  weights->getPayload().getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                       2.0f, 5.0f, 8.0f, 11.0f, //
+                                       3.0f, 6.0f, 9.0f, 12.0f};
+  bias->getPayload().getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *S = F_->createSave("save", FC);
