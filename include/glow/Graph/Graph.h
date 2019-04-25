@@ -1043,8 +1043,9 @@ public:
   /// Dumps the textual representation of the network.
   void dump() const;
 
-  /// Dump a dotty graph that depicts the function.
-  void dumpDAG();
+  /// Dump a dotty graph that depicts the function into a file.
+  /// \returns full path to the file.
+  std::string dumpDAG();
 
   /// Dump a dotty graph that depicts the function.
   void dumpDAG(llvm::StringRef dotFilename);

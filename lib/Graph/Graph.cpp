@@ -2621,11 +2621,12 @@ public:
   }
 };
 
-void Function::dumpDAG() {
+std::string Function::dumpDAG() {
   llvm::SmallString<64> dotPath;
   llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
   dumpDAG(dotPath);
-  llvm::sys::fs::remove(dotPath);
+
+  return std::string(dotPath.begin(), dotPath.end());
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {

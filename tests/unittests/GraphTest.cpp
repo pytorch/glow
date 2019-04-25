@@ -25,6 +25,7 @@
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "gtest/gtest.h"
 
@@ -86,13 +87,14 @@ TEST(Graph, simpleTestConv) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Check that a createConv3D can be run.
@@ -109,13 +111,14 @@ TEST(Graph, simpleTestConv3D) {
   K = F->createRELU("Relu", K);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Tests custom lowering from Node to Instruction IR
@@ -133,7 +136,7 @@ TEST(Graph, simpleTestConvCustomLower) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackendCustomIRGen();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
@@ -149,6 +152,7 @@ TEST(Graph, simpleTestConvCustomLower) {
   }
 
   EXPECT_EQ(customHappened, true);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Check that we can create convolution with float16.
@@ -370,13 +374,14 @@ TEST(Graph, simpleTestFC) {
   O = F->createRegression("Regression", O, Ex);
   F->createSave("Save", O);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 TEST(Graph, QuantizationProfileNodes) {
@@ -1505,12 +1510,15 @@ TEST(Graph, GroupTestConvNoLower) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
 
   {
     // Before we lower, we should have a single Conv node with group = 8.
     ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    if (!CN) {
+      llvm::sys::fs::remove(filePath);
+    }
     ASSERT_TRUE(CN);
     EXPECT_EQ(CN->getGroup(), 8);
   }
@@ -1523,6 +1531,9 @@ TEST(Graph, GroupTestConvNoLower) {
   {
     // Now have lowered but should still have a single Conv node with group = 8.
     ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    if (!CN) {
+      llvm::sys::fs::remove(filePath);
+    }
     ASSERT_TRUE(CN);
     EXPECT_EQ(CN->getGroup(), 8);
   }
