@@ -26,7 +26,7 @@
 using namespace glow;
 
 std::unique_ptr<CompiledFunction>
-Interpreter::compile(Function *F, const CompilationOptions &opts) const {
+Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
 

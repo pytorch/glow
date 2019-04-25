@@ -101,24 +101,24 @@ public:
   }
 
   /// Optimize the Function \p f and pass it to the backend to compile it for a
-  /// specific target. If \p clearOtherFunctions is false then the function will
-  /// be added to the collection of previously compiled functions otherwise any
-  /// previously compiled functions will be removed first. This method should be
-  /// invoked before the run method.
-  void compile(Function *F, const CompilationOptions &opts,
+  /// specific target, all given \p cctx. If \p clearOtherFunctions is false
+  /// then the function will be added to the collection of previously compiled
+  /// functions otherwise any previously compiled functions will be removed
+  /// first. This method should be invoked before the run method.
+  void compile(Function *F, const CompilationContext &cctx,
                bool clearOtherFunctions = true);
 
   /// A convenience function for the most common type of compile.
   void compile(CompilationMode mode, Function *F,
                bool clearOtherFunctions = true);
 
-  /// Save a bundle for a standalone execution. This method takes care of
-  /// everything when preparing the bundle for saving. There is no need to
-  /// invoke the compile method before it.
+  /// Save a bundle for a standalone execution given \p cctx. This method takes
+  /// care of everything when preparing the bundle for saving. There is no need
+  /// to invoke the compile method before it.
   /// Make \p networkName the function name for
   /// the entry point of the network and prepend all generated
   /// files with this name.
-  void save(Function *F, const CompilationOptions &opts,
+  void save(Function *F, const CompilationContext &cctx,
             llvm::StringRef outputDir, llvm::StringRef networkName);
 
   /// Context aware single execution of a function. If more than one

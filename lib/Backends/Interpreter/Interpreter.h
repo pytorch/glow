@@ -47,7 +47,7 @@ public:
   compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override;
+  compile(Function *F, const BackendOptions &opts) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 

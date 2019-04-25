@@ -28,17 +28,17 @@ are two pure virtual functions all backends must implement:
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
 
   - This function takes a `Function *F` to compile with default
-  [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
+  [`BackendOptions`](#backendoptions-helper-struct). It should return a unique pointer to the
     [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
 
-- `virtual std::unique_ptr<CompiledFunction> compile(Function *F, CompilationOptions &opts) const;`
+- `virtual std::unique_ptr<CompiledFunction> compile(Function *F, BackendOptions &opts) const;`
 
   - This function takes a `Function *F` and the provided
-  [`CompilationOptions`](#compilationoptions-abstract-class). It should return a unique pointer to the
+  [`BackendOptions`](#backendoptions-helper-struct). It should return a unique pointer to the
     [`CompiledFunction`](#compiledfunction-abstract-class) of `F`. If the backend uses Glow low-level IR, it can call `generateAndOptimizeIR()` to generate an optimized `IRFunction`.
 
-- `virtual std::vector<std::unique_ptr<CompiledFunction>> compileFunctions(llvm::ArrayRef<Function *> functions, CompilationOptions &opts) const;`
-    - This function takes an `ArrayRef` of `Function *`s and compiles them using the same `CompilationOptions` object for all functions. This allows the compiler to reason over things like shared constants between functions.
+- `virtual std::vector<std::unique_ptr<CompiledFunction>> compileFunctions(llvm::ArrayRef<Function *> functions, BackendOptions &opts) const;`
+    - This function takes an `ArrayRef` of `Function *`s and compiles them using the same `BackendOptions` object for all functions. This allows the compiler to reason over things like shared constants between functions.
 
 - `virtual bool isOpSupported(const NodeInfo &NI) const;`
 
@@ -52,11 +52,11 @@ are two pure virtual functions all backends must implement:
 
 Additionally, there are virtual functions that backends can override:
 
-- `virtual bool transformPostLowering(Function *F, const CompilationOptions &opts) const;`
+- `virtual bool transformPostLowering(Function *F, const CompilationContext &cctx) const;`
 
   - Allow the backend to transform the `Function *F` after [node
     lowering](https://github.com/pytorch/glow/blob/master/docs/IR.md#node-lowering)
-    occurs, given some `CompilationOptions`. For example, the CPU backend
+    occurs, given the `CompilationContext`. For example, the CPU backend
     prefers to transform MaxNodes, which take a SplatNode as an input, into a
     [backend-specific](https://github.com/pytorch/glow/blob/master/docs/NewBackendSpecificNode.md)
     CPUMaxSplatNode, which takes a scalar value as a member input instead of a
@@ -124,10 +124,9 @@ to a context, and allows the `Function` to be freed after compilation. The symbo
 is stored in a table where the key is the symbol name and the payload contains symbol information
 including, size, offset, type, and whether it is an input or output of the function. `RuntimeBundle` also  contains a pointer that may point to a block of memory that contains the constants for the `CompiledFunction` if that `Backend` uses it.
 
-### `CompilationOptions` Helper Class
+### `BackendOptions` Helper Struct
 
-`CompilationOptions` is a helper class that contains the options for compilation. The options include:
-- `CompilationMode mode` - This can be Infer or Train. Default: Infer
+`BackendOptions` is a helper struct that contains the options relevant to the backend for compilation. The options include:
 - `bool collectConstants` - Whether constants should be collected and stored in the `CompiledFunction`'s [RuntimeBundle](#runtimebundle-helper-class). Default: True
 - `bool autoInstrument` - Whether `TraceEvents` should be inserted for profiling. Default: False
 

@@ -2525,8 +2525,8 @@ static void foldChannelShuffle(Function *F) {
   }
 }
 
-void glow::fold(Function *F, const CompilationOptions &opts) {
-  (void)opts;
+void glow::fold(Function *F, const CompilationContext &cctx) {
+  (void)cctx;
   // Get Reshape nodes merged into constants to simplify folding.
   optimizeReshape(F);
 
@@ -2541,12 +2541,12 @@ void glow::fold(Function *F, const CompilationOptions &opts) {
 }
 
 void glow::fold(Function *F, CompilationMode mode) {
-  CompilationOptions opts;
-  opts.mode = mode;
-  fold(F, opts);
+  CompilationContext cctx;
+  cctx.mode = mode;
+  fold(F, cctx);
 }
 
-void glow::optimize(Function *F, const CompilationOptions &opts) {
+void glow::optimize(Function *F, const CompilationContext &cctx) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2570,7 +2570,7 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
   optimizeReshape(F);
-  if (opts.mode == CompilationMode::Infer) {
+  if (cctx.mode == CompilationMode::Infer) {
     transposeConstants(F);
   }
 
@@ -2595,7 +2595,7 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Perform Dead Code Elimination.
   DCE(F);
 
-  if (opts.mode == CompilationMode::Infer) {
+  if (cctx.mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
@@ -2635,29 +2635,29 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
-  CompilationOptions opts;
-  opts.mode = mode;
-  optimize(F, opts);
+  CompilationContext cctx;
+  cctx.mode = mode;
+  optimize(F, cctx);
 }
 
 void glow::optimizeFunction(Function *F, const Backend &B,
-                            const CompilationOptions &opts) {
+                            const CompilationContext &cctx) {
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
   // Optimize the graph.
-  ::glow::optimize(F, opts);
+  ::glow::optimize(F, cctx);
 
   // Lower the graph into a sequence of low-level linear algebra operations.
   ::glow::lower(F, /* loweredMap */ nullptr, &B);
 
   // Optimize the graph again.
-  ::glow::optimize(F, opts);
+  ::glow::optimize(F, cctx);
 
   // Allow the backend to transform the graph after lowering.
-  if (B.transformPostLowering(F, opts)) {
+  if (B.transformPostLowering(F, cctx)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, opts);
+    ::glow::optimize(F, cctx);
   }
 }

@@ -13,21 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_COMPILEOPTIONS_H
-#define GLOW_BACKENDS_COMPILEOPTIONS_H
+#ifndef GLOW_BACKENDS_BACKENDOPTIONS_H
+#define GLOW_BACKENDS_BACKENDOPTIONS_H
 
 namespace glow {
 
-enum class CompilationMode {
-  Train, /// Compile the graph in preperation for training.
-  Infer, /// Compile the graph for inference. Notice that this operation
-         /// changes the graph in a way that is not reversible.
-};
-
-/// Configuration options for the compile() method on Backend.
-struct CompilationOptions {
-  CompilationMode mode{CompilationMode::Infer};
-
+/// Options relevant to Backends during compilation.
+struct BackendOptions {
   /// Allocate and collect constant Tensors in the RuntimeBundle.
   bool collectConstants{true};
 
@@ -37,4 +29,4 @@ struct CompilationOptions {
 
 }; // namespace glow
 
-#endif // GLOW_BACKENDS_COMPILEOPTIONS_H
+#endif // GLOW_BACKENDS_BACKENDOPTIONS_H

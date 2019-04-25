@@ -44,9 +44,9 @@ TEST(Interpreter, NotImplementedSave) {
   F->createSave("save",
                 mod.createPlaceholder(ElemKind::FloatTy, {2}, "A", false));
 
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EXPECT_DEATH(EE.save(F, opts, "output", "network"), "");
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EXPECT_DEATH(EE.save(F, cctx, "output", "network"), "");
 }
 
 TEST(Interpreter, profileQuantizationForANetwork) {
@@ -240,7 +240,7 @@ TEST_P(BackendTest, CompileWithoutConstants) {
   auto *save = F->createSave("save", pow);
   ctx.allocate(save->getPlaceholder());
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  CompilationOptions opts;
+  BackendOptions opts;
   opts.collectConstants = false;
   auto function = backend->compile(F, opts);
 }
@@ -317,7 +317,7 @@ TEST_P(BackendTest, compileVectorOfFunctions) {
     functions.push_back(F);
   }
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  CompilationOptions opts;
+  BackendOptions opts;
   auto function = backend->compileFunctions(functions, opts);
 }
 

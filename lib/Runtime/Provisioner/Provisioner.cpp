@@ -82,12 +82,12 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
       auto it = functions_.find(node->name);
       if (it == functions_.end()) {
         Function *function = module.getFunction(node->name);
-        CompilationOptions compileOptions;
+        BackendOptions opts;
         // Set collectConstants to false, this is because the DeviceManager will
         // handle moving constants to the device, this way we can eliminate one
         // copy operation.
-        compileOptions.collectConstants = false;
-        auto compiled = backend_->compile(function, compileOptions);
+        opts.collectConstants = false;
+        auto compiled = backend_->compile(function, opts);
         node->runtimeBundle =
             llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
         functions_.emplace(node->name, std::move(compiled));

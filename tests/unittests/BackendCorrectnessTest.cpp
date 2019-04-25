@@ -179,7 +179,7 @@ public:
   std::string getBackendName() const override { return "MockCPUBackend"; }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override {
+  compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }
 

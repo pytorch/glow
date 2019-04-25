@@ -20,6 +20,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -351,14 +352,14 @@ void Loader::compile(PlaceholderBindings &bindings) {
     ::optimize(F_, glow::CompilationMode::Infer);
   }
 
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(F_, opts, emitBundle, networkName);
+    EE_.save(F_, cctx, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(F_, opts);
+    EE_.compile(F_, cctx);
   }
 
   if (dumpGraphOpt) {

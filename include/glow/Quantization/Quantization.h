@@ -30,35 +30,6 @@ class Backend;
 
 namespace quantization {
 
-/// Configuration for Quantization, passed into \ref quantizeFunction().
-struct QuantizationConfiguration {
-  /// Infos to use when determining scale and offset for all Nodes inside, and
-  /// Placeholders and Constants referenced by, a Function being quantized.
-  std::vector<NodeQuantizationInfo> infos{};
-
-  /// Precision to use when quantizing a Function.
-  ElemKind precision{ElemKind::Int8QTy};
-
-  /// Schema to use when quantizing a Function.
-  quantization::Schema schema{quantization::Schema::Asymmetric};
-
-  /// Whether to use rowwise quantization when quantizing a Function.
-  bool enableRowwise{false};
-
-  /// New name for the quantized function. If no name is given then
-  /// \ref quantizeFunction() will generate a name.
-  std::string newFuncName{""};
-
-  /// If true, the quantizer will abort when encountering a node that it would
-  /// like to quantize but the backend cannot support. Note that node kinds in
-  /// doNotQuantizeKinds will skip this check and not cause an abort.
-  bool assertAllNodesQuantized{false};
-
-  QuantizationConfiguration() = default;
-  QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)
-      : infos(i) {}
-};
-
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
 /// using the method specified by \p schema and target quantization precision \p
 /// quantizationPrecision. Profiling values will be written into context \p

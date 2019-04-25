@@ -85,10 +85,10 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // Optimize functions before passing to partitioner.
   // Currently hardcoding inference.
   if (backend_) {
-    CompilationOptions opts;
-    opts.mode = CompilationMode::Infer;
+    CompilationContext cctx;
+    cctx.mode = CompilationMode::Infer;
     for (auto F : module->getFunctions()) {
-      ::glow::optimizeFunction(F, *backend_, opts);
+      ::glow::optimizeFunction(F, *backend_, cctx);
     }
   }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);

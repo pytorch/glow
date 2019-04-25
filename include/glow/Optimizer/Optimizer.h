@@ -16,8 +16,7 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
-#include "glow/Backends/CompilationOptions.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Optimizer/CompilationContext.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -34,10 +33,10 @@ class Placeholder;
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, const CompilationOptions &opts);
+void optimize(Function *F, const CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, const CompilationOptions &opts);
+void fold(Function *F, const CompilationContext &cctx);
 void fold(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
@@ -75,9 +74,9 @@ Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
 std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
                                                   bool shouldShareBuffers);
 
-/// Optimize the Function \p F given compilation options \p opts for Backend \B.
+/// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 void optimizeFunction(Function *F, const Backend &B,
-                      const CompilationOptions &opts);
+                      const CompilationContext &cctx);
 
 } // namespace glow
 
