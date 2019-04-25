@@ -1504,7 +1504,7 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
 
 void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
-void OpenCLFunction::collectConstants(Module *module) {
+void OpenCLFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
 }
 

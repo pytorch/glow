@@ -115,7 +115,7 @@ public:
   void execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
-  void collectConstants(Module *module) override;
+  void collectConstants(const Module *module) override;
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const override {

@@ -28,7 +28,7 @@ LLVMCompiledFunction::LLVMCompiledFunction(
 
 LLVMCompiledFunction::~LLVMCompiledFunction() { tearDownRuns(); }
 
-void LLVMCompiledFunction::collectConstants(Module *module) {
+void LLVMCompiledFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
 }
 
