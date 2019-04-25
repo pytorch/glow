@@ -775,7 +775,7 @@ testQuantizationEnd2End(ExecutionEngine &profileEE,
 
   LoweredInfoMap loweredMapForProf;
   lower(F1, &loweredMapForProf);
-  F1 = glow::profileQuantization(bindings, F1);
+  glow::profileQuantization(bindings, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
@@ -941,7 +941,7 @@ TEST_P(Operator, end2endGRU) {
 
   LoweredInfoMap loweredMapForProf;
   lower(F1, &loweredMapForProf);
-  F1 = glow::profileQuantization(bindings, F1);
+  glow::profileQuantization(bindings, F1);
   profileEE.compile(CompilationMode::Infer, F1);
 
   // Run graph to capture profile.
@@ -1950,7 +1950,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   auto outputNameBA = NodeQuantizationInfo::generateNodeOutputName(
       loweredBA->getName(), BatchedAddNode::ResultIdx);
 
-  profileF = glow::profileQuantization(profilebindings, profileF);
+  glow::profileQuantization(profilebindings, profileF);
 
   // Compile/run to capture profile.
   profileEE.compile(CompilationMode::Infer, profileF);

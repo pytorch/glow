@@ -406,7 +406,7 @@ TEST(Graph, QuantizationProfileNodes) {
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
-  F = ::glow::profileQuantization(bindings, F);
+  ::glow::profileQuantization(bindings, F);
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Infer);

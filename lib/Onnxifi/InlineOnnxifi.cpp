@@ -61,7 +61,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
     lower(function_, &loweredMap_, executionEngine_.getBackend());
     PlaceholderBindings dummyCtx;
-    function_ = profileQuantization(dummyCtx, function_);
+    profileQuantization(dummyCtx, function_);
   }
 
   // -- Quantize --

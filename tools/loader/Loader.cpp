@@ -292,7 +292,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
             doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    F_ = ::profileQuantization(bindings, F_);
+    ::profileQuantization(bindings, F_);
   }
 
   // By default, when converting models, all nodes that can be

@@ -63,7 +63,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
 
-  F = ::glow::profileQuantization(ctx, F);
+  ::glow::profileQuantization(ctx, F);
 
   ctx.allocate(A);
   ctx.allocate(Ex);

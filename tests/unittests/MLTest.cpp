@@ -1061,7 +1061,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   lower(PF, &loweredMapForProf);
 
   // Profiling:
-  PF = glow::profileQuantization(bindings, PF);
+  glow::profileQuantization(bindings, PF);
   EE.compile(CompilationMode::Infer, PF);
   runBatch(EE, bindings, 100, sampleCounter, {input}, {&images});
 
@@ -1183,7 +1183,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   lower(PF, &loweredMapForProf);
 
   // Profile the fully lowered 'F', 'PF'.
-  PF = glow::profileQuantization(bindings, PF);
+  glow::profileQuantization(bindings, PF);
   EE.compile(CompilationMode::Infer, PF);
 
   // Run the graph to capture the profile.

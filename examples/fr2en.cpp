@@ -157,7 +157,7 @@ struct Model {
       ::lower(F_, &loweredMap_);
 
       // Instrument the graph to capture profiles for nodes' outputs.
-      F_ = glow::profileQuantization(bindings, F_);
+      glow::profileQuantization(bindings, F_);
     }
 
     // Load the quantization profile and transform the graph.
