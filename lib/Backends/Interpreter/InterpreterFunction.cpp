@@ -37,7 +37,7 @@ InterpreterFunction::~InterpreterFunction() {
   tearDownRuns();
 }
 
-void InterpreterFunction::collectConstants(Module *module) {
+void InterpreterFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
   if (constants_.empty()) {
     if (runtimeBundle_.getConstantWeightSize()) {

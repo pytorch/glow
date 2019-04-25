@@ -59,7 +59,7 @@ public:
   runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
 
   /// Collects constants for runtime.
-  virtual void collectConstants(Module *){};
+  virtual void collectConstants(const Module *){};
 
   /// Setter for TraceEvent lookup. Note: does not enable tracing automatically.
   void setTraceInfo(TraceInfo &&info) { traceInfo_ = std::move(info); }
