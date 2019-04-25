@@ -33,43 +33,58 @@
 #include <vector>
 
 namespace glow {
-/// Loads tensor \p T from the input \p in.
-inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
+
+/// Result of loadWeight function.
+struct LoadWeightResult {
+  /// Main Glow tensor loaded from the onnxTensorDescriptorV1, this is always
+  /// non-null.
+  std::unique_ptr<Tensor> t;
+  /// Glow tensor containing quantization biases. This should only be non-null
+  /// if there is more than 1 quantization parameter in the
+  /// onnxTensorDescriptorV1.
+  std::unique_ptr<Tensor> biases;
+  /// Glow tensor containing quantization scales. This should only be non-null
+  /// if there is more than 1 quantization parameter in the
+  /// onnxTensorDescriptorV1.
+  std::unique_ptr<Tensor> scales;
+};
+
+/// Loads the onnxTensorDescriptorV1 \p and \returns a LoadWeightResult where
+/// result.t is the main contents of the the onnxTensorDescriptorV1 and
+/// result.biases and result.scales are the quantization scales and offsets of
+/// the onnxTensorDescriptorV1 if there were more than 1. If there is exactly 1
+/// scale and offset then result.t will be a quantized glow tensor.
+inline llvm::Expected<LoadWeightResult>
+loadWeight(const onnxTensorDescriptorV1 &in) {
   // Only support CPU memory tensors.
   if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
     RETURN_ERR("Only support CPU memory tensors.");
   }
 
+  // Only support quantizationAxis=1 for now.
+  if (in.quantizationParams > 0 && in.quantizationAxis != 1) {
+    RETURN_ERR(strFormat(
+        "Glow can only import quantized tensors with quantizationAxis=1 but "
+        "the tensor %s has quantizationAxis=%u",
+        in.name, in.quantizationAxis));
+  }
+
   // This is a caffe2 offset shift.
-  const int32_t OFFSETSHIFT = 128;
+  constexpr int32_t OFFSETSHIFT = 128;
+
+  LoadWeightResult result;
+  result.t = llvm::make_unique<Tensor>();
+
   std::vector<size_t> dims;
   for (unsigned i = 0; i < in.dimensions; ++i) {
     dims.push_back(in.shape[i]);
   }
-  if (in.is_quantized == 1) {
-    if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
-      T->reset(ElemKind::Int8QTy, dims, in.scale, in.bias - OFFSETSHIFT);
 
-      auto TH = T->getHandle<int8_t>();
-      uint8_t *data = (uint8_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
-      }
-    } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      T->reset(ElemKind::Int32QTy, dims, in.scale, in.bias);
-      auto TH = T->getHandle<int32_t>();
-      int32_t *data = (int32_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = data[i];
-      }
-    } else {
-      RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
-    }
-  } else {
+  if (in.quantizationParams == 0) {
     if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
-      T->reset(ElemKind::FloatTy, dims);
+      result.t->reset(ElemKind::FloatTy, dims);
 
-      auto TH = T->getHandle<>();
+      auto TH = result.t->getHandle<>();
       float *data = (float *)in.buffer;
       for (size_t i = 0; i < TH.size(); ++i) {
         TH.raw(i) = data[i];
@@ -77,9 +92,9 @@ inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
     } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
                in.dataType == ONNXIFI_DATATYPE_INT64) {
       const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
-      T->reset(ElemKind::Int64ITy, dims);
+      result.t->reset(ElemKind::Int64ITy, dims);
 
-      auto TH = T->getHandle<int64_t>();
+      auto TH = result.t->getHandle<int64_t>();
       int64_t *data = (int64_t *)in.buffer;
       for (size_t i = 0; i < TH.size(); ++i) {
         RETURN_ERR_IF_NOT(
@@ -88,26 +103,50 @@ inline llvm::Error loadWeight(const onnxTensorDescriptorV1 &in, Tensor *T) {
         TH.raw(i) = data[i];
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      T->reset(ElemKind::Int32ITy, dims);
+      result.t->reset(ElemKind::Int32ITy, dims);
 
-      auto TH = T->getHandle<int32_t>();
+      auto TH = result.t->getHandle<int32_t>();
       int32_t *data = (int32_t *)in.buffer;
       for (size_t i = 0; i < TH.size(); ++i) {
         TH.raw(i) = data[i];
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
-      T->reset(ElemKind::Int8QTy, dims, 1.0, 0);
-      auto TH = T->getHandle<int8_t>();
+      result.t->reset(ElemKind::Int8QTy, dims, 1.0, 0);
+      auto TH = result.t->getHandle<int8_t>();
       uint8_t *data = (uint8_t *)in.buffer;
       for (size_t i = 0; i < TH.size(); ++i) {
-        constexpr uint8_t OFFSETSHIFT = 128;
         TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
       }
     } else {
       RETURN_ERR("Only float and index tensors are supported.");
     }
+  } else if (in.quantizationParams == 1) {
+    if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      result.t->reset(ElemKind::Int8QTy, dims, in.scales[0],
+                      in.biases[0] - OFFSETSHIFT);
+
+      auto TH = result.t->getHandle<int8_t>();
+      uint8_t *data = (uint8_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+      }
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+      result.t->reset(ElemKind::Int32QTy, dims, in.scales[0], in.biases[0]);
+      auto TH = result.t->getHandle<int32_t>();
+      int32_t *data = (int32_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = data[i];
+      }
+    } else {
+      RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
+    }
+  } else {
+    // TODO: implement multiple quantization parameters case.
+    RETURN_ERR(
+        "Multiple quantization parameters per tensor not supported yet.");
   }
-  return llvm::Error::success();
+
+  return llvm::Expected<LoadWeightResult>(std::move(result));
 }
 
 /// Contains loaders for operators, which are common to ONNX and Caffe2 formats.
@@ -150,9 +189,26 @@ protected:
   llvm::Error loadWeights(uint32_t weightsCount,
                           const onnxTensorDescriptorV1 *weightDescriptors) {
     for (uint32_t i = 0; i < weightsCount; ++i) {
-      std::unique_ptr<Tensor> T(new Tensor());
-      RETURN_IF_ERR(loadWeight(weightDescriptors[i], T.get()));
-      tensors_[weightDescriptors[i].name] = std::move(T);
+      const char *name = weightDescriptors[i].name;
+
+      LoadWeightResult loadWeightResult;
+      if (auto resOrErr = loadWeight(weightDescriptors[i])) {
+        loadWeightResult = std::move(*resOrErr);
+      } else {
+        return resOrErr.takeError();
+      }
+
+      tensors_[name] = std::move(loadWeightResult.t);
+
+      if (loadWeightResult.biases) {
+        auto biasesName = strFormat("%s_loaded_biases", name);
+        tensors_[biasesName] = std::move(loadWeightResult.biases);
+      }
+
+      if (loadWeightResult.scales) {
+        auto scalesName = strFormat("%s_loaded_scales", name);
+        tensors_[scalesName] = std::move(loadWeightResult.scales);
+      }
     }
 
     return llvm::Error::success();
