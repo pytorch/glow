@@ -2189,7 +2189,7 @@ TEST_P(OperatorStatelessTest, IntFC) {
 TEST_P(OperatorStatelessTest, FC_Float16) {
   ENABLED_BACKENDS(Interpreter);
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
