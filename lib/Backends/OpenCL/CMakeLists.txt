@@ -3,14 +3,14 @@ add_custom_command(
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl"
           "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels.cl.inc"
-  DEPENDS include-bin CPURuntime "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl")
+  DEPENDS include-bin "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cl")
 
 add_custom_command(
   OUTPUT "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels_fwd_conv.cl.inc"
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_conv.cl"
           "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels_fwd_conv.cl.inc"
-  DEPENDS include-bin CPURuntime
+  DEPENDS include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_conv.cl")
 
 add_custom_command(
@@ -18,7 +18,7 @@ add_custom_command(
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl"
           "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels_fwd_quantized_conv.cl.inc"
-  DEPENDS include-bin CPURuntime
+  DEPENDS include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl")
 
 add_library(OpenCLBackend
