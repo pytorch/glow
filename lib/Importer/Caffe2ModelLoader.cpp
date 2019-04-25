@@ -48,6 +48,11 @@ using ArgumentDictionaryTy =
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
+/// Legacy padding modes supported in caffe2.  These are used by MaxPool
+/// operators, and are defined in caffe2_legacy.proto in the caffe2 source
+/// tree.
+enum LegacyPaddingMode { NOTSET, VALID, SAME, CAFFE_LEGACY_POOLING, N_MODES };
+
 namespace {
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
@@ -450,6 +455,20 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto Ty = in.getType();
       kernels[0] = Ty->dims()[2];
       kernels[1] = Ty->dims()[3];
+    }
+
+    // Check the padding style.
+    if (dict.count("legacy_pad")) {
+      int mode;
+      ASSIGN_VALUE_OR_RETURN_ERR(mode, loadInt(dict["legacy_pad"]));
+      // Caffe1 (legacy) rounded-up and Caffe2 rounds down.
+      // This style is deprecated according to caffe2's caffe2_legacy.proto
+      // definition.
+      if (static_cast<LegacyPaddingMode>(mode) ==
+          LegacyPaddingMode::CAFFE_LEGACY_POOLING) {
+        RETURN_ERR("MaxPool nodes with legacy caffe padding are "
+                   "deprecated and not supported.");
+      }
     }
 
     Node *node = nullptr;
