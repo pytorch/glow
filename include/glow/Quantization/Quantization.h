@@ -42,19 +42,15 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
     const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
-/// Quantizes the function \p F into a new unoptimized partially quantized
-/// function based on configuration from \p quantConfig. This method converts to
-/// integer as many nodes as permitted by the backend \p B.
+/// Quantizes the function \p F into an unoptimized partially quantized function
+/// based on configuration from \p quantConfig. This method converts to integer
+/// as many nodes as permitted by the backend \p B. \p loweredMap contains info
+/// about what nodes were lowered from what, to be used during quantization.
 /// \p doNotQuantizeKinds lists kinds to not quantize, even if a profile was
-/// gathered for them and the backend supports the quantized operation.  This
-/// method clones original function \p F and caller is responsible for cleaning
-/// up/erasing original function \p F if needed. \returns a new quantized
-/// function.
-Function *quantizeFunction(Function *F,
-                           const QuantizationConfiguration &quantConfig,
-                           const Backend &B,
-                           const LoweredInfoMap &loweredMap = {},
-                           const KindSet &doNotQuantizeKinds = {});
+/// gathered for them and the backend supports the quantized operation.
+void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
+                      const Backend &B, const LoweredInfoMap &loweredMap = {},
+                      const KindSet &doNotQuantizeKinds = {});
 
 } // namespace quantization
 } // namespace glow

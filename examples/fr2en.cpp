@@ -157,7 +157,7 @@ struct Model {
       ::lower(F_, &loweredMap_);
 
       // Instrument the graph to capture profiles for nodes' outputs.
-      F_ = glow::profileQuantization(bindings, F_);
+      glow::profileQuantization(bindings, F_);
     }
 
     // Load the quantization profile and transform the graph.
@@ -174,13 +174,8 @@ struct Model {
           deserializeFromYaml(loadProfileFileOpt)};
 
       // Quantize the graph based on the captured profile.
-      auto *Q = quantization::quantizeFunction(F_, quantConfig,
-                                               *EE_.getBackend(), loweredMap_);
-
-      // Erase the original function so that the redundant variables that are
-      // only referenced by the original function will be removed.
-      Q->getParent()->eraseFunction(F_);
-      F_ = Q;
+      quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
+                                     loweredMap_);
     }
 
     // Do not create constants if we're profiling; the newly allocate histogram

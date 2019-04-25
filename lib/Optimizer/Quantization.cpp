@@ -23,24 +23,13 @@
 
 using namespace glow;
 
-Function *glow::profileQuantization(PlaceholderBindings &bindings, Function *F,
-                                    llvm::StringRef newFuncName) {
-  // Create a new name for the differentiated function, if none is given.
-  std::string tmpName;
-  if (newFuncName.empty()) {
-    tmpName = std::string(F->getName()) + "_profile";
-    newFuncName = tmpName;
-  }
-
-  // Clone the function.
-  Function *G = F->clone(newFuncName);
-
+void glow::profileQuantization(PlaceholderBindings &bindings, Function *F) {
   // Iterate over all nodes in the graph and insert QuantizationProfile nodes
   // to observe tensor values from every node's output.
   std::unordered_set<NodeValue> nodesToInstrument;
 
   // Add Quantization Profile node to all of the floating point outputs.
-  for (auto &node : G->getNodes()) {
+  for (auto &node : F->getNodes()) {
     for (unsigned i = 0, e = node.getNumResults(); i < e; ++i) {
       if (node.getElementType(i) != ElemKind::FloatTy) {
         continue;
@@ -50,7 +39,7 @@ Function *glow::profileQuantization(PlaceholderBindings &bindings, Function *F,
   }
 
   // Add Quantization Profile node to all floating point vars.
-  for (const auto &var : G->getParent()->getConstants()) {
+  for (const auto &var : F->getParent()->getConstants()) {
     if (var->getOutput().getElementType() != ElemKind::FloatTy) {
       continue;
     }
@@ -58,7 +47,7 @@ Function *glow::profileQuantization(PlaceholderBindings &bindings, Function *F,
   }
 
   // Add Quantization Profile node to all floating point placeholders.
-  for (const auto &PH : G->getParent()->getPlaceholders()) {
+  for (const auto &PH : F->getParent()->getPlaceholders()) {
     if (PH->getOutput().getElementType() != ElemKind::FloatTy) {
       continue;
     }
@@ -66,9 +55,7 @@ Function *glow::profileQuantization(PlaceholderBindings &bindings, Function *F,
   }
 
   for (const auto &NV : nodesToInstrument) {
-    G->createQuantizationProfile(bindings,
+    F->createQuantizationProfile(bindings,
                                  "QP_" + NV.getNode()->getName().str(), NV);
   }
-
-  return G;
 }

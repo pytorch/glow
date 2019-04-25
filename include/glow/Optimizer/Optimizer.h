@@ -61,11 +61,8 @@ void convertPlaceholdersToConstants(Function *F,
 
 /// Instrument function \p F by inserting quantization profile nodes for
 /// capturing stats for quantization. The nodes will refer to tensors allocate
-/// in in context \p bindings. The new quantized function is called \p
-/// newFuncName. If no name is given the method will generate a name.  \returns
-/// a new function with the added quantization nodes.
-Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
-                              llvm::StringRef newFuncName = "");
+/// in context \p bindings.
+void profileQuantization(PlaceholderBindings &bindings, Function *F);
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.

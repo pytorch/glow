@@ -292,7 +292,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
             doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    F_ = ::profileQuantization(bindings, F_);
+    ::profileQuantization(bindings, F_);
   }
 
   // By default, when converting models, all nodes that can be
@@ -321,27 +321,14 @@ void Loader::compile(PlaceholderBindings &bindings) {
     quantization::QuantizationConfiguration quantConfig{
         deserializeFromYaml(loadProfileFileOpt)};
 
-    // In AOT compilation mode the name of the symbol depends on the name of the
-    // function. Our tutorial expects the quantized name to be identical to the
-    // original name, so we rename the floating-point network and give the
-    // quantized network a new name.
-    quantConfig.newFuncName = F_->getName();
-    F_->setName("old");
-
     // Quantize the graph based on the captured profile.
     quantConfig.precision = quantizationPrecision;
     quantConfig.schema = quantizationSchema;
     quantConfig.enableRowwise = enableRowwiseOpt;
     quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
 
-    auto *Q = quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
-                                             loweredMap_,
-                                             keepOriginalPrecisionForNodes);
-
-    // Erase the original function so that the redundant variables that are only
-    // referenced by the original function will be removed.
-    Q->getParent()->eraseFunction(F_);
-    F_ = Q;
+    quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
+                                   loweredMap_, keepOriginalPrecisionForNodes);
   }
 
   if (convertToFP16) {
