@@ -191,7 +191,7 @@ under "Command Line Tools".
 #### Building with dependencies (LLVM)
 
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
-5.0 or later. If you have LLVM installed in a non-default location (for
+7.0 or later. If you have LLVM installed in a non-default location (for
 example, if you installed it using Homebrew on macOS), you need to tell CMake
 where to find llvm using `-DLLVM_DIR`. For example, if LLVM were
 installed in `/usr/local/opt`:
