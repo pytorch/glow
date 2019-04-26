@@ -608,19 +608,27 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
                           {module->getPlaceholderByName("main_input")},
                           {&input1});
 
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture;
+
+  std::tie(runPromise, runFuture) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
   deviceManager.runFunction(
       "main", std::move(context1),
-      [&context1](RunIdentifierTy, llvm::Error err,
-                  std::unique_ptr<ExecutionContext> context) {
-        context1 = std::move(context);
+      [&runPromise](RunIdentifierTy, llvm::Error err,
+                    std::unique_ptr<ExecutionContext> context) {
+        callbackHelper(runPromise, std::move(context), std::move(err));
       });
 
-  ASSERT_TRUE(context1);
+  runFuture.wait_for(std::chrono::seconds(2));
+  std::unique_ptr<ExecutionContext> context2 = runFuture.get();
 
-  Tensor *result1 = context1->getPlaceholderBindings()->get(
+  ASSERT_TRUE(context2);
+
+  Tensor *result = context2->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
-  ASSERT_TRUE(result1);
-  EXPECT_TRUE(result1->isEqual(output1));
+  ASSERT_TRUE(result);
+  EXPECT_TRUE(result->isEqual(output1));
 
   EXPECT_FALSE(errToBool(deviceManager.stop()));
 }
