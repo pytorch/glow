@@ -16,7 +16,7 @@
 #ifndef GLOW_BACKENDS_BACKEND_H
 #define GLOW_BACKENDS_BACKEND_H
 
-#include "glow/Backends/CompilationOptions.h"
+#include "glow/Backends/BackendOptions.h"
 #include "glow/Backends/CompiledFunction.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/Optimizer.h"
@@ -54,7 +54,7 @@ public:
   /// support shared constants between functions.
   virtual std::vector<std::unique_ptr<CompiledFunction>>
   compileFunctions(llvm::ArrayRef<Function *> functions,
-                   CompilationOptions &opts) const {
+                   BackendOptions &opts) const {
     std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
     for (auto &function : functions) {
       compiledFunctions.push_back(compile(function, opts));
@@ -63,13 +63,13 @@ public:
   }
 
   virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
-    CompilationOptions opts;
+    BackendOptions opts;
     return compile(F, opts);
   }
 
-  /// Generate code for input function \param F.
+  /// Generate code for input function \param F given settings in \p opts.
   virtual std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const = 0;
+  compile(Function *F, const BackendOptions &opts) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution
   /// in \p outputDir. Make \p networkName the function name for
@@ -86,7 +86,7 @@ public:
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
   virtual bool transformPostLowering(Function *F,
-                                     const CompilationOptions &opts) const {
+                                     const CompilationContext &cctx) const {
     return false;
   }
 
@@ -100,9 +100,6 @@ public:
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
-
-  /// Optimize the Function \p F given compilation options \p opts.
-  void optimizeFunction(Function *F, const CompilationOptions &opts) const;
 
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.

@@ -22,6 +22,8 @@
 #include <queue>
 #include <unordered_set>
 
+#include <glog/logging.h>
+
 namespace glow {
 namespace runtime {
 
@@ -59,7 +61,7 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0) {
+      inflightNodes_(0), module_(root->module) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
 
@@ -80,13 +82,35 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
     nodeParentsDone_[node] = 0;
 
     // Make an (empty) input context for the node.
-    auto ctx = llvm::make_unique<ExecutionContext>();
+    auto nodeInputCtx = llvm::make_unique<ExecutionContext>();
+
     if (resultTraceContext) {
-      ctx->setTraceContext(llvm::make_unique<TraceContext>(
-          resultTraceContext->getTraceLevel(),
-          resultTraceContext->getTraceThread()));
+      nodeInputCtx->setTraceContext(
+          llvm::make_unique<TraceContext>(resultTraceContext->getTraceLevel()));
     }
-    inputCtxs_.insert(std::make_pair(node, std::move(ctx)));
+
+    auto nodeInputPhBindings = nodeInputCtx->getPlaceholderBindings();
+
+    // Get the symbol table for the node.
+    const SymbolTableTy &symbolTable = node->runtimeBundle->getSymbolTable();
+
+    // Create Placeholders for the symbols of all intermediate nodes. These are
+    // not in the ExecutionContext passed to Executor::run, so they must be
+    // created by the Executor.
+    for (const auto &symbolPair : symbolTable) {
+      const auto &symbolName = symbolPair.first;
+      const auto &symbolInfo = symbolPair.second;
+
+      if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
+        auto PH = module_->getPlaceholderByName(symbolName);
+        // If a PH name is provided it had to come from the Module originally.
+        DCHECK(PH) << "Placeholder: " << symbolName << " is not in the module";
+        nodeInputPhBindings->allocate(PH);
+      }
+    }
+
+    // Insert the prepared ExecutionContext into the input contexts map.
+    inputCtxs_.insert(std::make_pair(node, std::move(nodeInputCtx)));
 
     // Push all unvisited children onto the BFS queue.
     for (const auto &child : node->children) {
@@ -99,8 +123,8 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
   }
 }
 
-void ExecutionState::insertIntoNodeCtx(const DAGNode *node, Placeholder *P,
-                                       Tensor &&T) {
+void ExecutionState::insertIntoNodeCtx(const DAGNode *node,
+                                       llvm::StringRef name, Tensor &&T) {
   // Get a raw pointer to the input ExecutionContext for the node. It should
   // have been created in the constructor.
   auto ctxIt = inputCtxs_.find(node);
@@ -114,7 +138,9 @@ void ExecutionState::insertIntoNodeCtx(const DAGNode *node, Placeholder *P,
 
   // Insert the placeholder-tensor pair.
   std::lock_guard<std::mutex> lock(bindingsMtx_);
-  bindings->insert(P, std::move(T));
+  auto *tensor = bindings->get(bindings->getPlaceholderByName(name));
+  assert(tensor && "Placeholder should have already been created");
+  *tensor = std::move(T);
 }
 
 std::unique_ptr<ExecutionContext>
@@ -175,19 +201,19 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
   return (newValue == numParents);
 }
 
-void ExecutionState::insertIntoResultCtx(Placeholder *P, Tensor &&T) {
+void ExecutionState::insertIntoResultCtx(llvm::StringRef name, Tensor &&T) {
   // The result PlaceholderBindings should have been been created in the
   // constructor and should not yet have been moved out if this function is
   // being called.
   assert(resultCtx_ && resultCtx_->getPlaceholderBindings() &&
          "Execution result bindings should exist!");
   std::lock_guard<std::mutex> lock(bindingsMtx_);
-  Tensor *tensor = resultCtx_->getPlaceholderBindings()->get(P);
+  auto *resultBindings = resultCtx_->getPlaceholderBindings();
+  Tensor *tensor =
+      resultBindings->get(resultBindings->getPlaceholderByName(name));
 
   if (tensor) {
     *tensor = std::move(T);
-  } else {
-    resultCtx_->getPlaceholderBindings()->insert(P, std::move(T));
   }
 }
 
@@ -302,25 +328,21 @@ void ThreadPoolExecutor::propagatePlaceholdersForNode(
 
   for (const auto &symbolPair : symbolTable) {
     const auto &symbolName = symbolPair.first;
-    const auto &symbolInfo = symbolPair.second;
 
-    if (symbolInfo.input) {
-      // If the symbol is an input, look for a Placeholder in ctx with
-      // the same name and copy the corresponding Tensor into the input
-      // PlaceholderBindings being prepared for the node.
-      auto *placeholder =
-          ctx->getPlaceholderBindings()->getPlaceholderByName(symbolName);
+    auto *placeholder =
+        ctx->getPlaceholderBindings()->getPlaceholderByName(symbolName);
 
-      if (placeholder) {
-        const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
-        executionState->insertIntoNodeCtx(node, placeholder, tensor->clone());
-      }
+    // If ctx provides a mapping for the symbol, copy it into the context for
+    // the node.
+    if (placeholder) {
+      const auto *tensor = ctx->getPlaceholderBindings()->get(placeholder);
+      executionState->insertIntoNodeCtx(node, symbolName, tensor->clone());
     }
   }
 }
 
 void ThreadPoolExecutor::executeDAGNode(
-    std::shared_ptr<ExecutionState> executionState, const DAGNode *node) {
+    std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
   // If execution has already failed due to another node, don't bother running
   // this one.
   if (executionState->getErrorContainer().containsErr()) {
@@ -331,9 +353,9 @@ void ThreadPoolExecutor::executeDAGNode(
   }
 
   auto startTS = TraceEvent::now();
-
+  auto currentDevice = node->getNextDevice();
   // Get the DeviceManager that can run the node.
-  auto deviceManagerIt = deviceManagers_.find(node->deviceID);
+  auto deviceManagerIt = deviceManagers_.find(currentDevice);
 
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
@@ -352,32 +374,22 @@ void ThreadPoolExecutor::executeDAGNode(
       executionState->getUniqueNodeContextPtr(node);
 
   TraceContext *traceContext = nodeCtx->getTraceContext();
-  int initialThread = 0;
   if (traceContext) {
-    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "B", startTS);
+    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "b", startTS);
     TRACE_EVENT_END(traceContext, "EX_enqueue_" + node->name);
-    initialThread = traceContext->getTraceThread();
-    traceContext->setTraceThread(node->deviceID);
   }
 
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
-      [this, executionState, node,
-       initialThread](RunIdentifierTy id, llvm::Error err,
-                      std::unique_ptr<ExecutionContext> resultCtx) {
-        if (resultCtx->getTraceContext()) {
-          resultCtx->getTraceContext()->setTraceThread(initialThread);
-        }
-        TRACE_EVENT_BEGIN(resultCtx->getTraceContext(),
-                          "EX_deferResult_" + node->name);
+      [this, executionState,
+       node](RunIdentifierTy id, llvm::Error err,
+             std::unique_ptr<ExecutionContext> resultCtx) {
         // Immediately move the handling of the result onto threadPool_ to
         // avoid doing work on the DeviceManager thread.
         this->threadPool_.submit([this, executionState, node,
                                   err = std::move(err),
                                   ctx = std::move(resultCtx)]() mutable {
-          TRACE_EVENT_END(ctx->getTraceContext(),
-                          "EX_deferResult_" + node->name);
           this->handleDeviceManagerResult(executionState, std::move(err),
                                           std::move(ctx), node);
         });
@@ -395,7 +407,8 @@ void ThreadPoolExecutor::propagateOutputPlaceholders(
     auto *placeholder = phTensorPair.first;
     auto *tensor = phTensorPair.second;
 
-    executionState->insertIntoResultCtx(placeholder, std::move(*tensor));
+    executionState->insertIntoResultCtx(placeholder->getName(),
+                                        std::move(*tensor));
   }
 }
 

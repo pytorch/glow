@@ -20,6 +20,8 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/CommonOperatorLoader.h"
 
+#include "onnx/onnx_pb.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -44,6 +46,11 @@ class ONNXModelLoader
   /// \returns True if the operator with the name \p typeName has support for
   /// multidirectional broadcasting.
   bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) override;
+
+  /// Converts a ONNX TensorProto DataType enum to the Glow element type.
+  /// Supports only non quantized and signed types.
+  llvm::Expected<ElemKind>
+  convertTensorProtoDataType(ONNX_NAMESPACE::TensorProto_DataType t);
 
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network. \returns Error if operator \p op cannot be loaded.
@@ -111,6 +118,14 @@ class ONNXModelLoader
   /// Load Pad ONNX operator.
   llvm::Error loadPad(const ONNX_NAMESPACE::NodeProto &op,
                       const ArgumentDictionaryTy &dict);
+
+  /// Load Cast ONNX operator.
+  llvm::Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
+
+  /// Load LeakyRelu ONNX operator.
+  llvm::Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict);
 
 protected:
   /// Load the network operators from the GraphProto.

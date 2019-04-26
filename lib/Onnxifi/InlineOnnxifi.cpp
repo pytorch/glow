@@ -61,19 +61,16 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
     lower(function_, &loweredMap_, executionEngine_.getBackend());
     PlaceholderBindings dummyCtx;
-    function_ = profileQuantization(dummyCtx, function_);
+    profileQuantization(dummyCtx, function_);
   }
 
   // -- Quantize --
   if (quantizationStep_ == OnnxifiQuantizationStep::Quantize) {
-    auto QI = deserializeFromYaml(getProfileFile(modelHash_));
-    std::string oldName = function_->getName();
-    function_->setName("old");
-    auto *Q = quantization::quantizeFunction(
-        *executionEngine_.getBackend(), quantization::Schema::Symmetric, QI,
-        ElemKind::Int8QTy, function_, loweredMap_, oldName, {}, false);
-    Q->getParent()->eraseFunction(function_);
-    function_ = Q;
+    quantization::QuantizationConfiguration quantConfig{
+        deserializeFromYaml(getProfileFile(modelHash_))};
+    quantConfig.schema = quantization::Schema::Symmetric;
+    quantization::quantizeFunction(function_, quantConfig,
+                                   *executionEngine_.getBackend(), loweredMap_);
   }
 
   executionEngine_.compile(CompilationMode::Infer, function_);
@@ -84,8 +81,8 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 onnxStatus
 InlineGraph::run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
                  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                     phNameToOnnxTensorOutputs) {
-
+                     phNameToOnnxTensorOutputs,
+                 onnxTraceEventList *traceEvents) {
   executionEngine_.run(*ctx);
 
   // Dump profile if requested.
@@ -95,6 +92,10 @@ InlineGraph::run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
         *(ctx->getPlaceholderBindings()), function_, loweredMap_,
         quantization::Schema::Symmetric, ElemKind::Int8QTy);
     serializeToYaml(getProfileFile(modelHash_), QI);
+  }
+
+  if (auto *traceContext = ctx->getTraceContext()) {
+    setTraceEvents(traceEvents, *traceContext);
   }
 
   outputEvent->signal();

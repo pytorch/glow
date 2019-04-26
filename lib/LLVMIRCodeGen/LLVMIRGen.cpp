@@ -95,11 +95,7 @@ static llvm::StringRef getHostCpuName() {
 
 /// Query the TargetMachine to get the pointer size in bits
 static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
-#if LLVM_VERSION_MAJOR >= 7
   return TM.getPointerSize(0) * 8;
-#else
-  return TM.getPointerSize() * 8;
-#endif
 }
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
@@ -114,6 +110,7 @@ void LLVMIRGen::initTargetMachine(
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
+  llvm::InitializeAllAsmParsers();
 
   if (target.empty()) {
     TM_.reset(llvm::EngineBuilder()
@@ -177,16 +174,10 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
 /// Register a diagnostics handler that prevents the compiler from printing to
 /// stdout.
 static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
-#if LLVM_VERSION_MAJOR >= 6
   ctx.setDiagnosticHandlerCallBack(
       [](const llvm::DiagnosticInfo &DI, void *Context) {
         // Do not emit any warnings or diagnostics when JITting.
       });
-#else
-  ctx.setDiagnosticHandler([](const llvm::DiagnosticInfo &DI, void *Context) {
-    // Do not emit any warnings or diagnostics when JITting.
-  });
-#endif
 }
 
 void LLVMIRGen::initCodeGen() {
@@ -300,13 +291,10 @@ void LLVMIRGen::performCodeGen() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#elif LLVM_VERSION_MAJOR > 6
+#else
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#else
-    getTargetMachine().addPassesToEmitFile(
-        PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
 #endif
 
     PM.run(*llmodule_);
@@ -1408,17 +1396,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *inputTensorInfoPtr = emitValueAddress(builder, inputTensor);
 
     auto *histDims = emitValueDims(builder, hist);
-    auto *inputTensorDims = emitValueDims(builder, inputTensor);
-
     assert(inputTensor->getElementType() == ElemKind::FloatTy &&
            "None float Tensor type for Quantization Profile Instruction.");
-    auto *srcDimsSize =
-        emitConstSizeT(builder, inputTensor->getType()->dims().size());
+    auto *tensorSize = emitConstSizeT(builder, inputTensor->getType()->size());
 
     auto *F = getFunction("quantization_profile");
-    createCall(builder, F,
-               {inputTensorInfoPtr, inputTensorDims, srcDimsSize, compInfoPtr,
-                histPtr, histDims});
+    createCall(
+        builder, F,
+        {inputTensorInfoPtr, tensorSize, compInfoPtr, histPtr, histDims});
     break;
   }
 
@@ -2232,6 +2217,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, lengthsPtr, segments,
                 lineSize});
+    break;
+  }
+
+  case Kinded::Kind::SparseLengthsWeightedSumGradInstKind: {
+    auto *SI = cast<SparseLengthsWeightedSumGradInst>(I);
+    auto *destGrad = SI->getDestGrad();
+    auto *dataGrad = SI->getDataGrad();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *lengths = SI->getLengths();
+    auto *destGradPtr = emitValueAddress(builder, destGrad);
+    auto *dataGradPtr = emitValueAddress(builder, dataGrad);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *dataGradRawSize =
+        emitConstSizeT(builder, dataGrad->size() * sizeof(float));
+    auto *lineSize =
+        emitConstSizeT(builder, dataGrad->size() / dataGrad->dims()[0]);
+    auto *F = getFunction("sparse_lengths_weighted_sum_grad",
+                          destGrad->getElementType());
+    createCall(builder, F,
+               {destGradPtr, dataGradPtr, weightsPtr, indicesPtr, lengthsPtr,
+                segments, lineSize, dataGradRawSize});
     break;
   }
 

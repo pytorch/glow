@@ -16,8 +16,8 @@
 
 #include "benchmark/benchmark.h"
 
-#include "glow/Backends/CompilationOptions.h"
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
@@ -119,11 +119,11 @@ void setUpDeviceManagerCommon(
   }
 
   FunctionMapTy funcs;
-  CompilationOptions opts;
+  CompilationContext cctx;
 
   // Compile all functions in the module.
   for (auto *function : mod->getFunctions()) {
-    backend->optimizeFunction(function, opts);
+    ::glow::optimizeFunction(function, *backend, cctx);
     std::unique_ptr<CompiledFunction> compiledFunction =
         backend->compile(function);
     funcs.insert(std::make_pair(function->getName(), compiledFunction.get()));
@@ -570,7 +570,7 @@ std::unique_ptr<DAG> createSingleNodeDAG(
   root->children.emplace_back(singleNode.get());
 
   singleNode->parents.emplace_back(root.get());
-  singleNode->deviceID = 0;
+  singleNode->deviceIDs = {0};
   singleNode->name = "singleNode";
   singleNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
       compiledFunctions["singleNode"]->getRuntimeBundle());

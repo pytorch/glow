@@ -18,6 +18,7 @@
 #define GLOW_QUANTIZATION_BASE_BASE_H
 
 #include "glow/Base/Tensor.h"
+#include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 
 #include <algorithm>
@@ -57,6 +58,53 @@ struct QuantizationTransform32To8 {
   }
 };
 
+/// Tensor quantization parameters for a given node.
+struct NodeQuantizationInfo {
+  std::string nodeOutputName_;
+  TensorQuantizationParams tensorQuantizationParams_;
+
+  NodeQuantizationInfo() = default;
+  NodeQuantizationInfo(const std::string &nodeOutputName,
+                       const TensorQuantizationParams &tensorQuantizationParams)
+      : nodeOutputName_(nodeOutputName),
+        tensorQuantizationParams_(tensorQuantizationParams) {}
+
+  float Scale() const { return tensorQuantizationParams_.scale; }
+  int32_t Offset() const { return tensorQuantizationParams_.offset; }
+
+  /// Get the full node output name based on the node name and output number.
+  /// The following format is used: nodename:outputNumber
+  static std::string generateNodeOutputName(const std::string &nodeName,
+                                            unsigned outputNumber = 0) {
+    return nodeName + ":" + std::to_string(outputNumber);
+  }
+};
+
+/// Struct containing the output name string and node kind for use in the
+/// LoweredInfoMap for keeping track of lowered node info.
+struct NodeNameAndKind : public Named, public Kinded {
+public:
+  NodeNameAndKind(llvm::StringRef name, size_t resNo, Kinded::Kind k)
+      : Named(NodeQuantizationInfo::generateNodeOutputName(name, resNo)),
+        Kinded(k) {}
+};
+
+/// Overload < operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator<(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() < y.getName();
+}
+
+/// Overload == operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() == y.getName();
+}
+
+/// Used to keep track of the origin of lowered Nodes via output names as
+/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
+/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
+/// is a key which maps to a set of names which contains the output name of Y.
+using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
+
 namespace quantization {
 
 enum Schema {
@@ -70,6 +118,35 @@ enum Schema {
   /// version of the quantized type with an offset of zero:
   /// For example, int8 is [-128; 127] - (-128) == uint8 [0; 255] - 0
   SymmetricWithUnsigned,
+};
+
+/// Configuration for Quantization, passed into \ref quantizeFunction().
+struct QuantizationConfiguration {
+  /// Infos to use when determining scale and offset for all Nodes inside, and
+  /// Placeholders and Constants referenced by, a Function being quantized.
+  std::vector<NodeQuantizationInfo> infos{};
+
+  /// Precision to use when quantizing a Function.
+  ElemKind precision{ElemKind::Int8QTy};
+
+  /// Schema to use when quantizing a Function.
+  quantization::Schema schema{quantization::Schema::Asymmetric};
+
+  /// Whether to use rowwise quantization when quantizing a Function.
+  bool enableRowwise{false};
+
+  /// New name for the quantized function. If no name is given then
+  /// \ref quantizeFunction() will generate a name.
+  std::string newFuncName{""};
+
+  /// If true, the quantizer will abort when encountering a node that it would
+  /// like to quantize but the backend cannot support. Note that node kinds in
+  /// doNotQuantizeKinds will skip this check and not cause an abort.
+  bool assertAllNodesQuantized{false};
+
+  QuantizationConfiguration() = default;
+  QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)
+      : infos(i) {}
 };
 
 /// \returns the value \p in as clipped to the range of \p DestTy.

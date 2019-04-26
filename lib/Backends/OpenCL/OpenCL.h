@@ -115,7 +115,7 @@ public:
   void execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
-  void collectConstants(Module *module) override;
+  void collectConstants(const Module *module) override;
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const override {
@@ -198,10 +198,10 @@ public:
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override;
+  compile(Function *F, const BackendOptions &opts) const override;
 
   bool transformPostLowering(Function *F,
-                             const CompilationOptions &opts) const override;
+                             const CompilationContext &cctx) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 

@@ -18,6 +18,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "gtest/gtest.h"
 
@@ -118,7 +119,7 @@ public:
 TEST_P(TraceEventsTest, manualEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -137,9 +138,9 @@ TEST_P(TraceEventsTest, manualEvents) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -167,7 +168,7 @@ TEST_P(TraceEventsTest, manualEvents) {
 TEST_P(TraceEventsTest, incompleteCoverage) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -184,9 +185,9 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -211,7 +212,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 TEST_P(TraceEventsTest, internalGap) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -227,9 +228,9 @@ TEST_P(TraceEventsTest, internalGap) {
   n = part_four(F, context, n);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -255,7 +256,7 @@ TEST_P(TraceEventsTest, internalGap) {
 TEST_P(TraceEventsTest, automaticInstrumentation) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   auto *n = part_one(F, context);
   n = part_two(F, context, n);
@@ -264,11 +265,12 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
-  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
+  EE_.insertCompiledFunction(F->getName(),
+                             backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -283,7 +285,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 TEST_P(TraceEventsTest, manualAndAutomatic) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -303,11 +305,12 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
-  EE_.insertCompiledFunction(F->getName(), backend->compile(F, opts));
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
+  EE_.insertCompiledFunction(F->getName(),
+                             backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -332,7 +335,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 TEST_P(TraceEventsTest, twoCompiles) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -347,21 +350,21 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
   auto *backend = EE_.getBackend();
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  backend->optimizeFunction(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F, *backend, cctx);
 
   std::string name = F->getName();
-  EE_.insertCompiledFunction(name, backend->compile(F, opts));
+  EE_.insertCompiledFunction(name, backend->compile(F, cctx.backendOpts));
 
   std::string name2 = name + "2";
-  EE_.insertCompiledFunction(name2, backend->compile(F, opts));
+  EE_.insertCompiledFunction(name2, backend->compile(F, cctx.backendOpts));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -394,7 +397,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 TEST_P(TraceEventsTest, onlyTraceEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 16;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -408,9 +411,9 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   }
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -434,7 +437,7 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 TEST_P(TraceEventsTest, multipleBackingTensors) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 6;
   auto *eventData1 = createEventPlaceholder(3);
@@ -459,9 +462,9 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   F->createTraceEvent("event3", "E", eventData4, 0);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -493,7 +496,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -512,16 +515,16 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   // run twice
   EE_.run(context);
@@ -544,7 +547,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 TEST_P(TraceEventsTest, deviceManagerEvents) {
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 0));
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   auto *n = part_one(F, context);
   n = part_two(F, context, n);
@@ -553,9 +556,9 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  EE_.compile(F, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  EE_.compile(F, cctx);
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});

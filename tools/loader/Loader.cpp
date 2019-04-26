@@ -20,6 +20,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/IR/IR.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -167,6 +168,17 @@ llvm::cl::opt<std::string>
                llvm::cl::desc("Output directory for the bundle serialization"),
                llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
+    "assert-all-nodes-quantized",
+    llvm::cl::desc(
+        "Debugging tool, used to assert the quantizer quantizes all nodes in "
+        "the model, or abort otherwise. When false, nodes that are unsupported "
+        "as quantized by the backend will be left unquantized, and may have "
+        "their inputs dequantized/outputs quantized as necessary. Can be used "
+        "in conjunction with -keep-original-precision-for-nodes to explicitly "
+        "whitelist node kinds that are allowed to be left unquantized."),
+    llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
@@ -246,7 +258,15 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
-  // Handle the request to profile the graph in preperation for quantization.
+  // Fold low-level operators into higher-level operators.
+  // This is useful when compiling an input model where some high-level
+  // operators have been lowered (this can be for instance a side effect of
+  // model converters, like converters from Tensorflow to ONNX). In this
+  // situation, such folding can then enable more optimizations and also improve
+  // the performance backends that support natively such high-level operators.
+  ::fold(F_, glow::CompilationMode::Infer);
+
+  // Handle the request to profile the graph in preparation for quantization.
   if (!dumpProfileFileOpt.empty()) {
     // Perform the high-level optimizations before instrumenting the graph. This
     // optimization phase will remove stuff like repetitive transpose operations
@@ -272,7 +292,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
             doNotLowerNodesForProfiling);
 
     // Instrument the graph to capture profiles for nodes' outputs.
-    F_ = ::profileQuantization(bindings, F_);
+    ::profileQuantization(bindings, F_);
   }
 
   // By default, when converting models, all nodes that can be
@@ -298,25 +318,17 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // NodeValue's quantization parameters.
     ::lower(F_, &loweredMap_, EE_.getBackend());
 
-    auto quantizationInfos = deserializeFromYaml(loadProfileFileOpt);
-
-    // In AOT compilation mode the name of the symbol depends on the name of the
-    // function. Our tutorial expects the quantized name to be identical to the
-    // original name, so we rename the floating-point network and give the
-    // quantized network a new name.
-    std::string oldName = F_->getName();
-    F_->setName("old");
+    quantization::QuantizationConfiguration quantConfig{
+        deserializeFromYaml(loadProfileFileOpt)};
 
     // Quantize the graph based on the captured profile.
-    auto *Q = quantization::quantizeFunction(
-        *EE_.getBackend(), quantizationSchema, quantizationInfos,
-        quantizationPrecision, F_, loweredMap_, oldName,
-        keepOriginalPrecisionForNodes, enableRowwiseOpt);
+    quantConfig.precision = quantizationPrecision;
+    quantConfig.schema = quantizationSchema;
+    quantConfig.enableRowwise = enableRowwiseOpt;
+    quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
 
-    // Erase the original function so that the redundant variables that are only
-    // referenced by the original function will be removed.
-    Q->getParent()->eraseFunction(F_);
-    F_ = Q;
+    quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
+                                   loweredMap_, keepOriginalPrecisionForNodes);
   }
 
   if (convertToFP16) {
@@ -327,14 +339,14 @@ void Loader::compile(PlaceholderBindings &bindings) {
     ::optimize(F_, glow::CompilationMode::Infer);
   }
 
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
   if (emittingBundle()) {
     // Emit IR for the graph, compile it and save as a bundle.
-    EE_.save(F_, opts, emitBundle, networkName);
+    EE_.save(F_, cctx, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    EE_.compile(F_, opts);
+    EE_.compile(F_, cctx);
   }
 
   if (dumpGraphOpt) {

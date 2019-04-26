@@ -53,6 +53,17 @@ llvm::cl::opt<std::string> inputImageListFile(
     llvm::cl::value_desc("string_name"), llvm::cl::Optional,
     llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> miniBatch(
+    "minibatch",
+    llvm::cl::desc(
+        "Size of mini-batches. Split the input image list into a set of "
+        "mini-batches. The input model is compiled for an input tensor batch "
+        "size equal to the specified mini-batch size and mini-batches of "
+        "images are inferred separatly. The number of input images must be a "
+        "multiple of the mini-batch size. By default, splitting the input "
+        "image list into mini-batches is deactivated."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
+
 llvm::cl::opt<unsigned> labelOffset(
     "label-offset",
     llvm::cl::desc("Label offset for TF ONNX models with 1001 classes"),
@@ -62,9 +73,12 @@ llvm::cl::opt<bool> computeSoftmax(
     "compute-softmax", llvm::cl::desc("Compute softmax of the network output"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(imageLoaderCat));
 
-llvm::cl::opt<unsigned> topKCount(
-    "topk", llvm::cl::desc("Number of highest likelihood labels to print"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(imageLoaderCat));
+llvm::cl::opt<unsigned>
+    topKCount("topk",
+              llvm::cl::desc("Number of highest likelihood labels to print and "
+                             "match the correspondent expected-lables"),
+              llvm::cl::Optional, llvm::cl::init(1),
+              llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<std::string> modelInputName(
     "model-input-name",
@@ -76,6 +90,12 @@ llvm::cl::opt<bool> convertInAndOutToFp16(
     "convert-inout-to-fp16",
     llvm::cl::desc(
         "Convert the input and output tensors of the network to fp16"),
+    llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::list<unsigned> expectedMatchingLabels(
+    "expected-labels",
+    llvm::cl::desc("The comma delimited list of the matching lables"),
+    llvm::cl::value_desc("int"), llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
     llvm::cl::cat(imageLoaderCat));
 } // namespace
 
@@ -99,6 +119,26 @@ static bool getNextImageFilenames(std::vector<std::string> *filenames) {
   }
 
   return !filenames->empty();
+}
+
+/// Generate in \p imageList the list of filenames corresponding to the next
+/// mini-batch of size \p miniBatchSize extracted from \p totalImageList at
+/// index \p minibatchIndex. /returns true if the index is valid, false
+/// otherwise. In case the function returns true, \p minibatchIndex is
+/// incremented by \p miniBatchSize.
+static bool getNextMiniBatch(std::vector<std::string> &imageList,
+                             llvm::ArrayRef<std::string> totalImageList,
+                             size_t &minibatchIndex, size_t miniBatchSize) {
+  if (minibatchIndex >= totalImageList.size()) {
+    return false;
+  }
+  imageList.clear();
+  size_t endIndex = minibatchIndex + miniBatchSize;
+  for (size_t index = minibatchIndex; index < endIndex; index++) {
+    imageList.push_back(totalImageList[index]);
+  }
+  minibatchIndex += miniBatchSize;
+  return true;
 }
 
 /// Creates and \returns the ProtobufLoader given \p loader and the
@@ -218,6 +258,25 @@ static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
   }
 }
 
+/// Checks if \p topKPairs have the index that matches the provided index,
+/// \returns 0 on success and 1 if mismatches found.
+static int checkExpectedLabel(llvm::ArrayRef<FloatIndexPair> topKPairs,
+                              llvm::StringRef fileName,
+                              unsigned expectedCategoryIndex) {
+  // Loop through pairs and try to find a matching label.
+  for (const auto &p : topKPairs) {
+    if (p.second - labelOffset == expectedCategoryIndex) {
+      return 0;
+    }
+  }
+
+  llvm::outs() << " File: " << fileName
+               << " doesn't match index: " << expectedCategoryIndex
+               << " in the top " << topKPairs.size() << " pairs\n";
+
+  return 1;
+}
+
 /// Apply the softmax function to the given handle.
 template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
@@ -232,20 +291,18 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
   }
 }
 
-/// Given the output Softmax Tensor \p SMT and \p functionName, print the
-/// results of inference.
+/// Given the output Softmax Tensor \p SMT and \p imageList, prints the
+/// results of inference and returns number of incorrect predictions,
+/// \returns the number of found mismatches.
 template <typename ElemTy>
-static void processAndPrintResultsImpl(Tensor *SMT,
-                                       llvm::StringRef functionName) {
-  // Print out the inferred image classification.
-  llvm::outs() << "Model: " << functionName << "\n";
-
+static int processAndPrintResultsImpl(Tensor *SMT,
+                                      llvm::ArrayRef<std::string> imageList) {
   // Softmax should have at least two dims: batchSize, numLabels, and then
   // optionally trailing 1s.
   assert(SMT->dims().size() >= 2 && "Softmax should have at least 2 dims.");
   const size_t batchSize = SMT->dims()[0];
   (void)batchSize;
-  assert(batchSize == inputImageFilenames.size() &&
+  assert(batchSize == imageList.size() &&
          "Softmax batch size must equal the input number of images.");
   for (size_t i = 2; i < SMT->dims().size(); i++) {
     assert(SMT->dims()[i] == 1 && "Trailing dims must be 1 for Softmax.");
@@ -253,8 +310,10 @@ static void processAndPrintResultsImpl(Tensor *SMT,
   const size_t numLabels = SMT->dims()[1];
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
-  for (unsigned i = 0; i < inputImageFilenames.size(); i++) {
-    llvm::outs() << " File: " << inputImageFilenames[i];
+  int retVal = 0;
+  for (unsigned i = 0; i < imageList.size(); i++) {
+    const auto &fileName = imageList[i];
+    llvm::outs() << " File: " << fileName;
 
     // batchSize is the first dimension, so update it to get the next slice.
     sliceOffset[0] = i;
@@ -267,20 +326,25 @@ static void processAndPrintResultsImpl(Tensor *SMT,
 
     auto topKPairs = getTopKPairs(SH);
     printTopKPairs(topKPairs);
+    if (!expectedMatchingLabels.empty()) {
+      retVal +=
+          checkExpectedLabel(topKPairs, fileName, expectedMatchingLabels[i]);
+    }
   }
+
+  return retVal;
 }
 
 /// Given the output Softmax Tensor \p SMT and \p functionName, switch between
 /// the correct element type to print the results of inference as contained in
-/// \p SMT.
-static void processAndPrintResults(Tensor *SMT, llvm::StringRef functionName) {
+/// \p SMT, \returns the number of found mismatches.
+static int processAndPrintResults(Tensor *SMT,
+                                  llvm::ArrayRef<std::string> imageList) {
   switch (SMT->getElementType()) {
   case ElemKind::FloatTy:
-    processAndPrintResultsImpl<float>(SMT, functionName);
-    break;
+    return processAndPrintResultsImpl<float>(SMT, imageList);
   case ElemKind::Float16Ty:
-    processAndPrintResultsImpl<float16_t>(SMT, functionName);
-    break;
+    return processAndPrintResultsImpl<float16_t>(SMT, imageList);
   default:
     llvm_unreachable("Type not supported");
   }
@@ -321,11 +385,32 @@ int main(int argc, char **argv) {
     parseInputImageList(inputImageListFile);
   }
 
+  if (!expectedMatchingLabels.empty()) {
+    // The number of category indices must match the number of files.
+    if (expectedMatchingLabels.size() != inputImageFilenames.size()) {
+      llvm::errs() << "Number of matching indices: "
+                   << expectedMatchingLabels.size()
+                   << " doesn't match the number of files: "
+                   << inputImageFilenames.size() << "\n";
+      return 1;
+    }
+  }
+
+  // Stream input mode.
   const bool streamInputFilenamesMode =
       inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
 
   GLOW_ASSERT(!(streamInputFilenamesMode && emittingBundle()) &&
               "Cannot emit a bundle and also stream inputs.");
+
+  // Mini-batch mode.
+  const bool miniBatchMode = miniBatch > 0;
+  GLOW_ASSERT(((!miniBatchMode) || (!streamInputFilenamesMode)) &&
+              "The minibatch option is not compatible with the stream input "
+              "image mode.");
+  GLOW_ASSERT(
+      ((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)) &&
+      "The number of input images must be a multiple of the mini-batch.");
 
   // Used to make sure we only compile once, and run only once if not streaming.
   bool isFirstRun = true;
@@ -334,13 +419,26 @@ int main(int argc, char **argv) {
   Placeholder *inputImagePH = nullptr;
   Tensor *SMT = nullptr;
 
+  size_t minibatchIndex = 0;
   Tensor inputImageData;
+  std::vector<std::string> inputImageBatchFilenames;
+  if ((!miniBatchMode) && (!streamInputFilenamesMode)) {
+    inputImageBatchFilenames = inputImageFilenames;
+  }
+
+  // Print out the inferred image classification.
+  llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
+
+  int numErrors = 0;
   while ((streamInputFilenamesMode &&
-          getNextImageFilenames(&inputImageFilenames)) ||
+          getNextImageFilenames(&inputImageBatchFilenames)) ||
+         (miniBatchMode &&
+          getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
+                           minibatchIndex, miniBatch)) ||
          isFirstRun) {
     // Load and process the image data into the inputImageData Tensor.
-    loadImagesAndPreprocess(inputImageFilenames, &inputImageData, imageNormMode,
-                            imageChannelOrder, imageLayout);
+    loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
+                            imageNormMode, imageChannelOrder, imageLayout);
 
     // If this is the first run, then we need to build and compile the model.
     if (isFirstRun) {
@@ -380,7 +478,7 @@ int main(int argc, char **argv) {
     loader.runInference(bindings, batchSize);
 
     // Print the top-k results from the output Softmax tensor.
-    processAndPrintResults(SMT, loader.getFunction()->getName());
+    numErrors += processAndPrintResults(SMT, inputImageBatchFilenames);
   }
 
   // If profiling, generate and serialize the quantization infos now that we
@@ -389,5 +487,5 @@ int main(int argc, char **argv) {
     loader.generateAndSerializeQuantizationInfos(bindings);
   }
 
-  return 0;
+  return numErrors;
 }

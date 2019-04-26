@@ -64,7 +64,7 @@ function(add_output_check_test)
     NAME ${ARG_NAME}
     COMMAND ${TEST_COMMAND}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    DEPENDS text-translator resnet-runtime resnet-concurrent)
+    DEPENDS text-translator resnet-runtime)
 
   # Append test command to OUTPUTCHECK_TESTS so that it will be run with the output_check_tests target.
   LIST(APPEND OUTPUTCHECK_TESTS ${TEST_COMMAND})

@@ -51,10 +51,6 @@ private:
   /// functions.
   std::unordered_map<std::string, std::unique_ptr<CompiledFunction>> functions_;
 
-  /// Padding factor to account for generated code size. Should be greater
-  /// than 1.0.
-  const float NETWORK_PADDING_FACTOR = 1.1;
-
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
 };

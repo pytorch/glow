@@ -25,6 +25,7 @@
 #include "glow/IR/Instrs.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "gtest/gtest.h"
 
@@ -86,13 +87,14 @@ TEST(Graph, simpleTestConv) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Check that a createConv3D can be run.
@@ -109,13 +111,14 @@ TEST(Graph, simpleTestConv3D) {
   K = F->createRELU("Relu", K);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Tests custom lowering from Node to Instruction IR
@@ -133,7 +136,7 @@ TEST(Graph, simpleTestConvCustomLower) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackendCustomIRGen();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
@@ -149,6 +152,7 @@ TEST(Graph, simpleTestConvCustomLower) {
   }
 
   EXPECT_EQ(customHappened, true);
+  llvm::sys::fs::remove(filePath);
 }
 
 /// Check that we can create convolution with float16.
@@ -370,13 +374,14 @@ TEST(Graph, simpleTestFC) {
   O = F->createRegression("Regression", O, Ex);
   F->createSave("Save", O);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
   EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
 }
 
 TEST(Graph, QuantizationProfileNodes) {
@@ -406,7 +411,7 @@ TEST(Graph, QuantizationProfileNodes) {
 
   // Simulate actual usage.
   ::optimize(F, CompilationMode::Infer);
-  F = ::glow::profileQuantization(bindings, F);
+  ::glow::profileQuantization(bindings, F);
   auto backend = MockBackend();
   lower(F, /* loweredMap */ nullptr, &backend);
   ::optimize(F, CompilationMode::Infer);
@@ -1505,12 +1510,15 @@ TEST(Graph, GroupTestConvNoLower) {
   K = F->createSoftMax("SoftMax", K, S);
   F->createSave("Save", K);
   F->dump();
-  F->dumpDAG();
+  auto filePath = F->dumpDAG();
   auto backend = MockBackend();
 
   {
     // Before we lower, we should have a single Conv node with group = 8.
     ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    if (!CN) {
+      llvm::sys::fs::remove(filePath);
+    }
     ASSERT_TRUE(CN);
     EXPECT_EQ(CN->getGroup(), 8);
   }
@@ -1523,7 +1531,59 @@ TEST(Graph, GroupTestConvNoLower) {
   {
     // Now have lowered but should still have a single Conv node with group = 8.
     ConvolutionNode *CN = findSingleInstanceOfNode<ConvolutionNode>(F);
+    if (!CN) {
+      llvm::sys::fs::remove(filePath);
+    }
     ASSERT_TRUE(CN);
     EXPECT_EQ(CN->getGroup(), 8);
   }
+}
+
+/// Check that getOutputSave returns SaveNode object for the correct Placeholder
+/// and nullptr in other cases.
+TEST(Graph, GetOutputSaveTest) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Placeholder *I =
+      MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  Placeholder *O = MD.createPlaceholder(ElemKind::FloatTy, {3}, "output", true);
+  TopKNode *TKN = F->createTopK("topk", I, 3);
+  GatherNode *GN =
+      F->createGather("gather", TKN->getValues(), TKN->getIndices());
+  TanhNode *TN = F->createTanh("tanh", GN);
+  SaveNode *SN = F->createSave("save", TN, O);
+
+  // Check the return value of getOutputSave method.
+  // Placeholder parent is null.
+  auto *FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  // Placeholder parent is set to the correct value.
+  O->setParent(F);
+  EXPECT_EQ(F, O->getParent());
+  FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  // Invalid placeholder type is provided.
+  EXPECT_EQ(nullptr, glow::getOutputSave(F, I));
+
+  // Save belongs to a different function
+  Function *F2 = MD.createFunction("F2");
+  TopKNode *TKN2 = F2->createTopK("topk", I, 3);
+  GatherNode *GN2 =
+      F2->createGather("gather", TKN2->getValues(), TKN2->getIndices());
+  TanhNode *TN2 = F2->createTanh("tanh", GN2);
+  SaveNode *SN2 = F2->createSave("save", TN2, O);
+
+  FoundNode = glow::getOutputSave(F, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN, FoundNode);
+
+  O->setParent(F2);
+  FoundNode = glow::getOutputSave(F2, O);
+  EXPECT_NE(nullptr, FoundNode);
+  EXPECT_EQ(SN2, FoundNode);
 }

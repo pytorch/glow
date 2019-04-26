@@ -33,7 +33,7 @@ BackendIdPtr GlowOnnxifiManager::createBackendId(glow::BackendKind kind,
   if (forQuantization) {
     backendId = new onnxifi::BackendId(kind, useOnnx);
   } else {
-    auto *hostManager = getOrCreateHostManager(kind);
+    auto hostManager = getOrCreateHostManager(kind);
     backendId = new onnxifi::HostManagerBackendId(hostManager, kind, useOnnx);
   }
 
@@ -93,21 +93,23 @@ GlowOnnxifiManager::createGraph(BackendPtr backend,
   return graph;
 }
 
-runtime::HostManager *
+std::shared_ptr<runtime::HostManager>
 GlowOnnxifiManager::getOrCreateHostManager(BackendKind backendKind) {
+  std::shared_ptr<runtime::HostManager> hostManager;
+
   auto it = hostManagers_.find(backendKind);
 
-  // If a HostManager doesn't exist yet for this BackendKind then create one
-  if (it == hostManagers_.end()) {
-    auto newHostManager =
-        onnxifi::HostManagerBackendId::createHostManager(backendKind);
-    assert(newHostManager != nullptr);
-    auto ptr = newHostManager.get();
-    hostManagers_[backendKind] = std::move(newHostManager);
-    return ptr;
+  if (it != hostManagers_.end()) {
+    hostManager = it->second.lock();
   }
 
-  return it->second.get();
+  if (!hostManager) {
+    hostManager = onnxifi::HostManagerBackendId::createHostManager(backendKind);
+    assert(hostManager);
+    hostManagers_[backendKind] = hostManager;
+  }
+
+  return hostManager;
 }
 
 bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) const {
@@ -131,13 +133,17 @@ bool GlowOnnxifiManager::isValid(GraphPtr graph) const {
 }
 
 void GlowOnnxifiManager::release(BackendIdPtr backendId) {
-  size_t erased;
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    erased = backendIds_.erase(backendId);
-  }
+  // TODO: fix this so that a HostManager is deleted when all backendIds
+  // holding pointers to that HostManager are deleted.
+  std::lock_guard<std::mutex> lock(m_);
+  size_t erased = backendIds_.erase(backendId);
+
   if (erased) {
     delete backendId;
+  }
+
+  if (backendIds_.empty()) {
+    hostManagers_.clear();
   }
 }
 

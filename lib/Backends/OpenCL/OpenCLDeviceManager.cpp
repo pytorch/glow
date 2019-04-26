@@ -34,7 +34,7 @@ using namespace glow::runtime;
 
 // This defines kernels for most operations.
 static const unsigned char kernels_cl_src[] = {
-#include "glow/kernels.inc"
+#include "glow/OpenCL/kernels.cl.inc"
 };
 static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
 

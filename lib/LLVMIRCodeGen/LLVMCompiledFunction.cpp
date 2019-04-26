@@ -28,7 +28,7 @@ LLVMCompiledFunction::LLVMCompiledFunction(
 
 LLVMCompiledFunction::~LLVMCompiledFunction() { tearDownRuns(); }
 
-void LLVMCompiledFunction::collectConstants(Module *module) {
+void LLVMCompiledFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
 }
 
@@ -103,8 +103,10 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     TRACE_EVENT_END(context, "findJitmainSymbol");
+    TRACE_EVENT_BEGIN(context, "execute");
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
+    TRACE_EVENT_END(context, "execute");
   } else {
     GLOW_UNREACHABLE("Error getting address");
   }
@@ -143,7 +145,7 @@ void LLVMCompiledFunction::translateTraceEvents(
 
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = traceContext->getTraceThread();
+  int tid = TraceEvent::getThreadId();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);
     assert(backingTensor);

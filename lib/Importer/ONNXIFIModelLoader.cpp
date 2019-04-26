@@ -81,6 +81,10 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     // loadNetwork, maybe we should make it a separate function?
     RETURN_IF_ERR(c2Loader->loadNetwork(networkDef));
 
+    // This is to ensure that the same processing done with
+    // the same network, even if order of operators is different.
+    F.orderNodes();
+
     loader->onnxNameToInputVars_ = c2Loader->getInputVarsMapping();
 
     // Keep hold of the context

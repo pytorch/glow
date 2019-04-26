@@ -67,6 +67,65 @@ TEST(caffe2, importConv) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
 
+/// Test loading ConvRelu op from a Caffe2 model.
+/// The input is N*C*H*W (1*1*3*3), the kernel is 2,
+/// stride is 1, pad is 1, group is 1.
+TEST(caffe2, importConvRelu) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convrelu_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convrelu_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 3, 3);
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // transpose => conv => relu => transpose => save
+  EXPECT_EQ(F->getNodes().size(), 5);
+  auto *saveNode = getSaveNodeFromDest(output);
+
+  auto *transNode1 =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode1);
+  auto *reluNode = llvm::dyn_cast<ReluNode>(transNode1->getInput().getNode());
+  ASSERT_TRUE(reluNode);
+  auto *convNode =
+      llvm::dyn_cast<ConvolutionNode>(reluNode->getInput().getNode());
+  ASSERT_TRUE(convNode);
+  auto *transNode2 =
+      llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
+  ASSERT_TRUE(transNode2);
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer, F);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {1, 1, 4, 4};
+  std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
+                                       11, 22, 26, 15, 8, 15, 17, 10};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 4 * 4; i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*H*W*C (1*3*3*1), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
@@ -936,16 +995,14 @@ TEST(caffe2, replaceNaN) {
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // High level checks on the content of the graph.
-  // We have 1 IsNaN, 1 Splat, 1 Select and 1 Output.
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // We have 1 ReplaceNaN and 1 Output.
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *selectNode = llvm::dyn_cast<SelectNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(selectNode);
-  auto *isNaNNode = llvm::dyn_cast<IsNaNNode>(selectNode->getCond().getNode());
-  ASSERT_TRUE(isNaNNode);
-  auto *splatNode = llvm::dyn_cast<SplatNode>(selectNode->getLHS().getNode());
-  ASSERT_TRUE(splatNode);
-  auto *inputNode = llvm::dyn_cast<Placeholder>(selectNode->getRHS().getNode());
+  auto *replaceNaNNode =
+      llvm::dyn_cast<ReplaceNaNNode>(saveNode->getInput().getNode());
+  EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
+  auto *inputNode =
+      llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("input"));
 
   // We have one input and one output.
@@ -2182,4 +2239,33 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   };
 
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
+/// Load big enough model and validate node order.
+TEST(caffe2, validateNodeOrder) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/parallel_matmul_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
+  Tensor inputs_1(ElemKind::FloatTy, {3, 7, 10});
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"inputs_0", "inputs_1"},
+                               {&inputs_0.getType(), &inputs_1.getType()}, *F);
+  }
+
+  // We have 6 slices, 3 matmuls, 1 concat, 7 reshapes, 1 save.
+  EXPECT_EQ(F->getNodes().size(), 18);
+  // Make sure that nodes are sorted by name.
+  EXPECT_TRUE(std::is_sorted(
+      F->getNodes().begin(), F->getNodes().end(),
+      [](const Node &a, const Node &b) { return a.getName() < b.getName(); }));
 }

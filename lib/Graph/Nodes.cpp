@@ -223,9 +223,9 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                    src.dims().size(), parent);
   isValid &= expectCompareTrue("FC weights must be 2D", size_t(2),
                                weights.dims().size(), parent);
-  isValid &= expectCompareTrue("Mismatch on expected source dimensions",
+  isValid &= expectCompareTrue("Mismatch between source and dest dimensions",
                                src.dims()[0], dest.dims()[0], parent);
-  isValid &= expectCompareTrue("Mismatch on expected source dimensions",
+  isValid &= expectCompareTrue("Mismatch between source and weight dimensions",
                                src.dims()[1], weights.dims()[0], parent);
   isValid &= expectCompareTrue("Inconsistent bias/dest sizes", bias.dims()[0],
                                weights.dims()[1], parent);
@@ -372,6 +372,29 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
                              NodeValue expected) {
   return checkSameType(src, dest, dest.getNode()) &&
          checkSameType(dest, expected, dest.getNode());
+}
+
+static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
+                                           NodeValue weights, NodeValue indices,
+                                           NodeValue lengths) {
+  bool isValid = checkType(dest, data.getElementType(), dest.getNode());
+  isValid &= checkType(weights, data.getElementType(), dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Lengths must be a 1D vector", lengths.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 1D vector", weights.dims().size(),
+                        size_t(1), dest.getNode());
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        weights.dims()[0], indices.dims()[0], dest.getNode());
+  return isValid;
 }
 
 bool PadNode::verify() const {
@@ -583,6 +606,14 @@ bool TransposeNode::verify() const {
   bool isValid = expectCompareTrue("Invalid transpose dims", dest.dims(),
                                    llvm::makeArrayRef(shape), this);
   isValid &= checkTypeIgnoreShape(dest, src, this);
+  return isValid;
+}
+
+bool ChannelShuffleNode::verify() const {
+  bool isValid = expectCompareTrue("Channel shuffle into a different size.",
+                                   getResult().getType()->size(),
+                                   getInput().getType()->size(), this);
+  isValid &= checkTypeIgnoreShape(getResult(), getInput(), this);
   return isValid;
 }
 
@@ -821,20 +852,23 @@ bool BatchedReduceMeanNode::verify() const {
 }
 
 bool SparseLengthsWeightedSumNode::verify() const {
-  bool isValid = checkType(getResult(), getData().getElementType(), this);
-  isValid &= checkType(getWeights(), getData().getElementType(), this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
-  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
-  isValid &= expectCompareTrue("Indices must be a 1D vector",
-                               getIndices().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Lengths must be a 1D vector",
-                               getLengths().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Weights must be a 1D vector",
-                               getWeights().dims().size(), size_t(1), this);
+  return verifySparseLengthsWeightedSum(getResult(), getData(), getWeights(),
+                                        getIndices(), getLengths());
+}
 
-  isValid &=
-      expectCompareTrue("Weights and Indices must have the same size",
-                        getWeights().dims()[0], getIndices().dims()[0], this);
+bool SparseLengthsWeightedSumGradNode::verify() const {
+  // Same checks as SparseLengthsWeightedSumNode.
+  bool isValid =
+      verifySparseLengthsWeightedSum(getOriginalOutputForResult(), getData(),
+                                     getWeights(), getIndices(), getLengths());
+
+  // Checks on gradient inputs/outputs.
+  isValid &= checkSameType(getGradOfOriginalOutputNamedResult(),
+                           getOriginalOutputForResult(), this);
+  isValid &= checkSameType(getGradOfInputNamedData(), getData(), this);
+  isValid &= checkSameType(getGradOfInputNamedWeights(), getWeights(), this);
+  isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
+  isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
   return isValid;
 }
 
@@ -1153,6 +1187,10 @@ bool IsNaNNode::verify() const {
   bool isValid = checkSameShape(getResult(), getInput(), this);
   isValid &= checkType(getResult(), ElemKind::BoolTy, this);
   return isValid;
+}
+
+bool ReplaceNaNNode::verify() const {
+  return checkSameType(getResult(), getInput(), this);
 }
 
 bool SelectNode::verify() const {

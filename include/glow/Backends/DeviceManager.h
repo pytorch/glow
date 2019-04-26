@@ -76,7 +76,8 @@ public:
   /// up space on the device. \p evictCB will be called when the operation
   /// is completed or attempted and failed.
   virtual void evictNetwork(std::string functionName,
-                            EvictFunctionCBTy evictCB) = 0;
+                            EvictFunctionCBTy evictCB = [](std::string,
+                                                           llvm::Error) {}) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
@@ -106,6 +107,9 @@ public:
   /// \returns true if we expect a Module with the estimated constant size will
   /// fit on the device.
   virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
+
+  /// \returns the DeviceConfig which initialized this device.
+  const DeviceConfig *getDeviceConfig() { return config_.get(); }
 };
 
 } // namespace runtime

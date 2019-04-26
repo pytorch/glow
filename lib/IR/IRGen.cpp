@@ -380,11 +380,28 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(TKN->getIndices(), V->getIndices());
     break;
   }
-
   case glow::Kinded::Kind::TraceEventNodeKind: {
     auto *TEN = cast<TraceEventNode>(N);
     auto *dataTensor = valueForNode(TEN->getData());
     builder_.createTraceEventInst(TEN->getName(), dataTensor, TEN->getIndex());
+    break;
+  }
+  case glow::Kinded::Kind::SparseLengthsWeightedSumGradNodeKind: {
+    auto *SLWSG = cast<SparseLengthsWeightedSumGradNode>(N);
+
+    auto *weights = valueForNode(SLWSG->getWeights());
+    auto *indices = valueForNode(SLWSG->getIndices());
+    auto *lengths = valueForNode(SLWSG->getLengths());
+
+    auto *destGrad = valueForNode(SLWSG->getGradOfOriginalOutputNamedResult());
+
+    auto *dataGrad = builder_.createAllocActivationInst(
+        "slws.data.G", SLWSG->getGradOfInputNamedData().getType());
+
+    builder_.createSparseLengthsWeightedSumGradInst(
+        N->getName(), weights, indices, lengths, destGrad, dataGrad);
+
+    registerIR(SLWSG->getGradOfInputNamedData(), dataGrad);
     break;
   }
   }

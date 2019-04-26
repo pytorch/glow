@@ -1089,6 +1089,30 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
+void libjit_sparse_lengths_weighted_sum_grad_f(
+    const float *destGrad, float *dataGrad, const float *weights,
+    const size_t *indices, const int32_t *lengths, size_t segments,
+    size_t lineSize, size_t dataGradRawSize) {
+  // The data gradients not touched by this operation should
+  // be 0, so set the entire buffer to 0 to start with.
+  memset(dataGrad, 0, dataGradRawSize);
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      // For each index in each segment, accumulate into the corresponding data
+      // gradient the product of the gradient of the result it was added to and
+      // the weight that it was multiplied by during the
+      // SparseLengthsWeightedSum operation.
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dataGrad[line * lineSize + k] += weight * destGrad[i * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f(
     float *dest, int8_t *data, float *scales, float *offsets, float *weights,
     size_t *indices, int32_t *lengths, size_t segments, size_t lineSize) {
@@ -1630,40 +1654,41 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
 }
 
-// code ported from Profile.cpp: generateTensorHistogram
+/// Update min/max values \p compInfo and histogram \p existingHistogram with
+/// data collected from tensor \p inputTensor.
+/// Note: code ported from Profile.cpp: generateTensorHistogram
 __attribute__((noinline)) void
-libjit_quantization_profile(float *inputTensor, size_t *tensorDim,
-                            size_t numDimsTensor, float *compInfo,
-                            float *existingHistogram, size_t *histDim) {
-  float minInput = inputTensor[0];
-  float maxInput = inputTensor[0];
-
-  size_t tensorSize = 1;
-  // calculating total size of the Tensor.
-  for (size_t i = 0; i < numDimsTensor; ++i) {
-    tensorSize *= tensorDim[i];
-  }
-
+libjit_quantization_profile(float *inputTensor, size_t tensorSize,
+                            float *compInfo, float *existingHistogram,
+                            size_t *histDim) {
   size_t nBins = histDim[0];
 
-  // finding min/max value for entire tensor
-  find_min_max_f(inputTensor, tensorSize, minInput, maxInput);
-
+  // Min/max computed from previous runs. If this is the first run, compInfo is
+  // expected to be initialized as following:
+  // compInfo[0]: std::numeric_limits<float>::max()
+  // compInfo[1]: std::numeric_limits<float>::lowest()
   float min = compInfo[0];
   float max = compInfo[1];
-  if (check_all_zeros(existingHistogram, nBins) == 1) {
-    compInfo[0] = minInput;
-    compInfo[1] = maxInput;
 
+  // Min/max value for entire current input tensor.
+  float minInput;
+  float maxInput;
+  find_min_max_f(inputTensor, tensorSize, minInput, maxInput);
+
+  // Update the global min/max.
+  float newMin = MIN(minInput, min);
+  float newMax = MAX(maxInput, max);
+  compInfo[0] = newMin;
+  compInfo[1] = newMax;
+
+  // Initial profile.
+  if (check_all_zeros(existingHistogram, nBins) == 1) {
     min = minInput;
     max = maxInput;
   }
 
-  // Check if we need to rescale histogram.
-  if (minInput < min || maxInput > max) {
-    float newMin = MIN(minInput, min);
-    float newMax = MAX(maxInput, max);
-
+  // If the min/max range changes, there is the need to rescale the histogram.
+  if (newMin < min || newMax > max) {
     float destBinWidth = (newMax - newMin) / nBins;
     float srcBinWidth = (max - min) / nBins;
     float scaledHistogram[nBins];
@@ -1712,6 +1737,7 @@ libjit_quantization_profile(float *inputTensor, size_t *tensorDim,
     max = newMax;
   }
 
+  // Update the histogram with the values of the current input tensor.
   float binWidth = (max - min) / nBins;
   for (size_t i = 0, e = tensorSize; i < e; ++i) {
     size_t newBin = get_bin(nBins, binWidth, min, inputTensor[i]);

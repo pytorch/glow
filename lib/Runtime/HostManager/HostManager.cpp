@@ -17,6 +17,7 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -46,9 +47,9 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
       config->setName(backend_->getBackendName() + std::to_string(deviceCount));
     }
 
-    auto kind = config->getBackendKind();
+    auto backendKind = config->getBackendKind();
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
-        DeviceManager::createDeviceManager(kind, std::move(config)));
+        DeviceManager::createDeviceManager(backendKind, std::move(config)));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
 
@@ -62,7 +63,8 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
-llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
+llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
+                                    bool saturateHost) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto functions = module->getFunctions();
   for (auto &F : functions) {
@@ -83,14 +85,15 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module) {
   // Optimize functions before passing to partitioner.
   // Currently hardcoding inference.
   if (backend_) {
-    CompilationOptions opts;
-    opts.mode = CompilationMode::Infer;
+    CompilationContext cctx;
+    cctx.mode = CompilationMode::Infer;
     for (auto F : module->getFunctions()) {
-      backend_->optimizeFunction(F, opts);
+      ::glow::optimizeFunction(F, *backend_, cctx);
     }
   }
-  auto partitioner = Partitioner(module.get(), deviceInfo);
-  auto nodeList = std::move(partitioner.Partition());
+  auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
+  RETURN_IF_ERR(partitioner.Partition());
+  auto nodeList = std::move(partitioner.getPartitionResult());
 
   RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
 
@@ -117,17 +120,19 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   }
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
-    std::promise<void> removeNetwork;
-    llvm::Error removeErr = llvm::Error::success();
-    auto done = removeNetwork.get_future();
-    devices_[node->deviceID]->evictNetwork(
-        node->name,
-        [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
-          removeErr = std::move(err);
-          removeNetwork.set_value();
-        });
-    done.get();
-    errToBool(std::move(removeErr));
+    for (auto device : node->deviceIDs) {
+      std::promise<void> removeNetwork;
+      llvm::Error removeErr = llvm::Error::success();
+      auto done = removeNetwork.get_future();
+      devices_[device]->evictNetwork(
+          node->name,
+          [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
+            removeErr = std::move(err);
+            removeNetwork.set_value();
+          });
+      done.get();
+      errToBool(std::move(removeErr));
+    }
     // Also remove compiledFunction from Provisioner.
     provisioner_->removeFunction(node->name);
   }
@@ -154,7 +159,9 @@ llvm::Error HostManager::clearHost() {
 
   for (auto &network : networks_) {
     for (auto &node : network.second.dag.nodes) {
-      devices_[node->deviceID]->evictNetwork(node->name, /*evictCB=*/nullptr);
+      for (auto device : node->deviceIDs) {
+        devices_[device]->evictNetwork(node->name);
+      }
     }
   }
   networks_.clear();

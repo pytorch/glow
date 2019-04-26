@@ -28,54 +28,6 @@ namespace glow {
 
 class Backend;
 
-/// Tensor quantization parameters for a given node.
-struct NodeQuantizationInfo {
-  std::string nodeOutputName_;
-  TensorQuantizationParams tensorQuantizationParams_;
-
-  NodeQuantizationInfo() = default;
-  NodeQuantizationInfo(const std::string &nodeOutputName,
-                       const TensorQuantizationParams &tensorQuantizationParams)
-      : nodeOutputName_(nodeOutputName),
-        tensorQuantizationParams_(tensorQuantizationParams) {}
-
-  float Scale() const { return tensorQuantizationParams_.scale; }
-  int32_t Offset() const { return tensorQuantizationParams_.offset; }
-
-  /// Get the full node output name based on the node name and output number.
-  /// The following format is used: nodename:outputNumber
-  static std::string generateNodeOutputName(const std::string &nodeName,
-                                            unsigned outputNumber = 0) {
-    return nodeName + ":" + std::to_string(outputNumber);
-  }
-};
-
-/// Struct containing the output name string and node kind for use in the
-/// LoweredInfoMap for keeping track of lowered node info.
-struct NodeNameAndKind : public Named, public Kinded {
-public:
-  NodeNameAndKind(const NodeValue &NV)
-      : Named(NodeQuantizationInfo::generateNodeOutputName(
-            NV.getNode()->getName(), NV.getResNo())),
-        Kinded(NV.getNode()->getKind()) {}
-};
-
-/// Overload < operator for NodeNameAndKind to allow for usage with std::set.
-inline bool operator<(const NodeNameAndKind &x, const NodeNameAndKind &y) {
-  return x.getName() < y.getName();
-}
-
-/// Overload == operator for NodeNameAndKind to allow for usage with std::set.
-inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
-  return x.getName() == y.getName();
-}
-
-/// Used to keep track of the origin of lowered Nodes via output names as
-/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
-/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
-/// is a key which maps to a set of names which contains the output name of Y.
-using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
-
 namespace quantization {
 
 /// Generate NodeQuantizationInfo for all required nodes from function \p F
@@ -90,24 +42,15 @@ std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
     const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy);
 
-/// Quantizes the function \p F into a new unoptimized partially quantized
-/// function based on \p quantizationInfos and target quantization precision
-/// \p quantizationPrecision. This method converts to integer as
-/// many nodes as permitted by the backend \p EE. The new quantized function is
-/// called \p newFuncName. If no name is given the method will generate a name.
-/// This method clones original function \p F and caller is responsible for
-/// cleaning up/erasing original function \p F if needed. Any nodes of kinds
-/// contained in \p doNotQuantizeKinds will not be quantized, even if a profile
-/// was gathered for them and the backend supports the quantized operation. If
-/// \p enableRowwise is true, during quantization, all quantized FullyConnected
-/// nodes will be converted to RowwiseQuantizedFullyConnected. \returns a new
-/// quantized function.
-Function *quantizeFunction(
-    const Backend &B, quantization::Schema schema,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-    ElemKind quantizationPrecision, Function *F,
-    const LoweredInfoMap &loweredMap = {}, llvm::StringRef newFuncName = "",
-    const KindSet &doNotQuantizeKinds = {}, bool enableRowwise = false);
+/// Quantizes the function \p F into an unoptimized partially quantized function
+/// based on configuration from \p quantConfig. This method converts to integer
+/// as many nodes as permitted by the backend \p B. \p loweredMap contains info
+/// about what nodes were lowered from what, to be used during quantization.
+/// \p doNotQuantizeKinds lists kinds to not quantize, even if a profile was
+/// gathered for them and the backend supports the quantized operation.
+void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
+                      const Backend &B, const LoweredInfoMap &loweredMap = {},
+                      const KindSet &doNotQuantizeKinds = {});
 
 } // namespace quantization
 } // namespace glow

@@ -21,7 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -1928,20 +1928,6 @@ COMPARE_ARITH_FLOAT_VS_INT8(Max, Interpreter, CPU, OpenCL)
 COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
 #undef COMPARE_ARITH_FLOAT_VS_INT8
 
-#define COMPARE_ARITH_FLOAT_VS_INT16(_OP_NAME_, ...)                           \
-  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt16) {           \
-    ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Int16QTy, 0.02f);   \
-  }
-COMPARE_ARITH_FLOAT_VS_INT16(Add, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Sub, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Mul, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Div, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Max, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT16(Min, Interpreter)
-#undef COMPARE_ARITH_FLOAT_VS_INT16
-
 #define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
@@ -2142,15 +2128,14 @@ TEST_P(OperatorStatelessTest, IntConcat) {
 TEST_P(OperatorTest, FCWithFlatten) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
-  auto *weights =
-      mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "weights", true);
-  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "bias", true);
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
 
   bindings_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  bindings_.allocate(weights)->getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                              2.0f, 5.0f, 8.0f, 11.0f, //
-                                              3.0f, 6.0f, 9.0f, 12.0f};
-  bindings_.allocate(bias)->getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+  weights->getPayload().getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                       2.0f, 5.0f, 8.0f, 11.0f, //
+                                       3.0f, 6.0f, 9.0f, 12.0f};
+  bias->getPayload().getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *S = F_->createSave("save", FC);
@@ -2203,7 +2188,7 @@ TEST_P(OperatorStatelessTest, IntFC) {
 TEST_P(OperatorStatelessTest, FC_Float16) {
   ENABLED_BACKENDS(Interpreter);
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
@@ -4653,7 +4638,7 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 TEST_P(OperatorTest, SparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   /*
     DATA  = [
@@ -4755,7 +4740,7 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -5709,6 +5694,15 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
   compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
                             /* enableRowwiseQuantization */ true);
+}
+
+/// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
+                            /* enableRowwiseQuantization */ true,
+                            quantization::Schema::Symmetric);
 }
 
 static FunctionTensorPair

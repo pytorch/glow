@@ -22,6 +22,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "gtest/gtest.h"
 
@@ -57,18 +58,23 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
 
 /// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
 /// quantization parameters from the profile, given the lowered info passed in
-/// via \p loweredMap.
+/// via \p loweredMap, and the specified \p schema.
 static std::vector<NodeQuantizationInfo>
 profileAndGetNodeQuantizationInfo(PlaceholderBindings &bindings,
                                   ExecutionEngine &EE, Function *origF,
-                                  const LoweredInfoMap &loweredMap) {
-  Function *profileF = glow::profileQuantization(bindings, origF);
+                                  quantization::Schema schema) {
+  // Lower everything for profiling in a cloned PF, keeping track of lowered
+  // info in loweredMap, which is then used when generating QI.
+  Function *profileF = origF->clone("profile");
+  LoweredInfoMap loweredMap;
+  lower(profileF, &loweredMap, EE.getBackend());
+  glow::profileQuantization(bindings, profileF);
   EE.compile(CompilationMode::Infer, profileF);
 
   EE.run(bindings);
 
   return quantization::generateNodeQuantizationInfos(bindings, profileF,
-                                                     loweredMap);
+                                                     loweredMap, schema);
 }
 
 /// Helper to profile and quantize \p IF and/or \p BF if \p interpElemKind or \p
@@ -81,29 +87,27 @@ static void profileAndQuantize(PlaceholderBindings &Ibindings,
                                ElemKind backendElemKind,
                                quantization::Schema schema,
                                bool enableRowwiseQuantization) {
-  // Lower everything for profiling in a cloned PF, keeping track of lowered
-  // info in loweredMap, which is then used when generating QI.
-  Function *PF = IF->clone("profile");
-  LoweredInfoMap loweredMapForProf;
-  lower(PF, &loweredMapForProf, IEE.getBackend());
-  std::vector<NodeQuantizationInfo> QI =
-      profileAndGetNodeQuantizationInfo(Ibindings, IEE, PF, loweredMapForProf);
+  quantization::QuantizationConfiguration quantConfig{
+      profileAndGetNodeQuantizationInfo(Ibindings, IEE, IF, schema)};
+  quantConfig.enableRowwise = enableRowwiseQuantization;
+  quantConfig.schema = schema;
+  quantConfig.assertAllNodesQuantized = true;
 
   if (isQuantizedElemKind(interpElemKind)) {
+    quantConfig.precision = interpElemKind;
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(IF, &loweredMapForQuant, IEE.getBackend());
-    IF = quantization::quantizeFunction(*IEE.getBackend(), schema, QI,
-                                        interpElemKind, IF, loweredMapForQuant,
-                                        "quant", {}, enableRowwiseQuantization);
+    quantization::quantizeFunction(IF, quantConfig, *IEE.getBackend(),
+                                   loweredMapForQuant);
   }
   if (isQuantizedElemKind(backendElemKind)) {
+    quantConfig.precision = backendElemKind;
     // Lower only as the backends prefer for actually quantizing.
     LoweredInfoMap loweredMapForQuant;
     lower(BF, &loweredMapForQuant, BEE.getBackend());
-    BF = quantization::quantizeFunction(*BEE.getBackend(), schema, QI,
-                                        backendElemKind, BF, loweredMapForQuant,
-                                        "quant", {}, enableRowwiseQuantization);
+    quantization::quantizeFunction(BF, quantConfig, *BEE.getBackend(),
+                                   loweredMapForQuant);
   }
 }
 

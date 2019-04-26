@@ -228,6 +228,15 @@ public:
 
   Module *getParent() { return parent_; }
 
+  /// Perform ordering of nodes_ based on node's name.
+  /// This is to make sure that performing optimizations have a deterministic
+  /// behavior on the graphs which have the same ops but different ordering in
+  /// nodes_.
+  void orderNodes() {
+    nodes_.sort(
+        [](const Node &a, const Node &b) { return a.getName() < b.getName(); });
+  }
+
   /// Search the Module containing the function to gather and return a list of
   /// placeholders that are used by the Function.
   PlaceholderList findPlaceholders();
@@ -568,12 +577,9 @@ public:
   /// element in \p input is NaN or not.
   IsNaNNode *createIsNaN(llvm::StringRef name, NodeValue input);
 
-  /// Implements an operation that replaces all instances of NaN in \p input
-  /// with \p value. This operation is lowered to a Select node with \p input
-  /// as one of the inputs, a Splat node created using \p value as the other
-  /// input, and an IsNaN node as the comparator input.
-  /// \returns the Select node.
-  Node *createReplaceNaN(llvm::StringRef name, NodeValue input, float value);
+  /// \returns a ReplaceNaNNode given \p name, \p input, and \p value.
+  ReplaceNaNNode *createReplaceNaN(llvm::StringRef name, NodeValue input,
+                                   float value);
 
   PowNode *createPow(llvm::StringRef name, NodeValue base, float exp);
 
@@ -1043,8 +1049,9 @@ public:
   /// Dumps the textual representation of the network.
   void dump() const;
 
-  /// Dump a dotty graph that depicts the function.
-  void dumpDAG();
+  /// Dump a dotty graph that depicts the function into a file.
+  /// \returns full path to the file.
+  std::string dumpDAG();
 
   /// Dump a dotty graph that depicts the function.
   void dumpDAG(llvm::StringRef dotFilename);
@@ -1080,6 +1087,10 @@ using VariableGradientsList =
 Function *differentiate(Function *F, const TrainingConfig &config,
                         llvm::StringRef newFuncName = "",
                         VariableGradientsList *varGrads = nullptr);
+
+/// \returns the first SaveNode user of the placeholder \p PH or
+/// nullptr if none are found.
+SaveNode *getOutputSave(Function *F, Placeholder *PH);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \

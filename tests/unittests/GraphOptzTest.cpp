@@ -35,6 +35,8 @@ protected:
   PlaceholderBindings bindings_;
 };
 
+class GraphFold : public GraphOptz {};
+
 /// \returns the number of nodes in \p F of kind \p kind.
 static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   unsigned count = 0;
@@ -2028,6 +2030,95 @@ TEST_F(GraphOptz, fusePadIntoConvNeg2) {
                       1 /* convStride */, 16 /* convNumKernels */);
 }
 
+/// This test checks that a lowered LeakyRelu is corrected folded:
+/// Max(A, Mult(A, Splat)) -> PRelu(Splat)
+TEST_F(GraphFold, foldLeakyReluFromSplat) {
+  std::vector<size_t> dims = {5, 2};
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", true);
+
+  const float leakyAlpha = 0.05f;
+  auto OutTy = mod_.uniqueType(ElemKind::FloatTy, dims);
+  SplatNode *splatNode = F_->createSplat("splat", OutTy, leakyAlpha);
+  MulNode *mulNode = F_->createMul("mul", input, splatNode);
+  MaxNode *maxNode = F_->createMax("max", input, mulNode);
+  SaveNode *output = F_->createSave("save", maxNode);
+
+  EXPECT_EQ(4, F_->getNodes().size());
+
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  // Check the resulting graph after folding.
+  EXPECT_EQ(3, F_->getNodes().size());
+  auto *newPReluNode = llvm::dyn_cast<PReluNode>(output->getInput());
+  ASSERT_TRUE(newPReluNode);
+  auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
+  ASSERT_TRUE(newSplatNode);
+  EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
+  EXPECT_EQ(input, newPReluNode->getInput());
+}
+
+/// This test checks that a lowered LeakyRelu is corrected folded:
+/// Max(A, Mult(A, broadcasted Const)) -> PRelu(Splat)
+TEST_F(GraphFold, foldLeakyReluFromConst) {
+  std::vector<size_t> dims = {5, 2};
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", true);
+
+  const float leakyAlpha = 0.99f;
+  auto *alphaConst = mod_.createConstant(ElemKind::FloatTy, {1}, "alphaConst");
+  alphaConst->getHandle() = {leakyAlpha};
+  ReshapeNode *reshapeNode = F_->createReshape("reshape", alphaConst, {1, 1});
+  TileNode *tileNode1 = F_->createTile("tile1", reshapeNode, 2, 1);
+  TileNode *tileNode2 = F_->createTile("tile2", tileNode1, 5, 0);
+  MulNode *mulNode = F_->createMul("mul", input, tileNode2);
+  MaxNode *maxNode = F_->createMax("max", input, mulNode);
+  SaveNode *output = F_->createSave("save", maxNode);
+
+  EXPECT_EQ(6, F_->getNodes().size());
+
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  // Check the resulting graph after folding. Reshape must have been merged into
+  // the constant and LeakyRelu must have been folded.
+  EXPECT_EQ(3, F_->getNodes().size());
+  auto *newPReluNode = llvm::dyn_cast<PReluNode>(output->getInput());
+  ASSERT_TRUE(newPReluNode);
+  auto *newSplatNode = llvm::dyn_cast<SplatNode>(newPReluNode->getSlope());
+  ASSERT_TRUE(newSplatNode);
+  EXPECT_EQ(leakyAlpha, newSplatNode->getValue());
+  EXPECT_EQ(input, newPReluNode->getInput());
+}
+
+/// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
+TEST_F(GraphFold, foldChannelShuffle) {
+  const size_t inputDims[] = {3, 136, 28, 28};
+
+  Node *K =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  K = F_->createReshape("CS_reshape1", K, {3, 4, 34, 28, 28});
+  K = F_->createTranspose("CS_transpose", K, {0, 2, 1, 3, 4});
+  K = F_->createReshape("CS_reshape2", K, {3, 136, 28, 28});
+  auto *save = F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  // Fold RN->TR->RN into ChannelShuffle
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  ASSERT_EQ(F_->getNodes().size(), 2);
+
+  // Check for ChannelShuffle node.
+  auto *CS = llvm::dyn_cast<ChannelShuffleNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, CS);
+
+  // Ensure ChannelShuffle node has the same dimensions as the input.
+  EXPECT_EQ(CS->getResult().dims(), llvm::makeArrayRef(inputDims));
+
+  // Ensure Group and Kernel are as expected.
+  EXPECT_EQ(CS->getGroup(), 4);
+  EXPECT_EQ(CS->getKernel(), 1);
+}
+
 /// This test ensures that if there is a RescaleNode whose input has multiple
 /// users that the input is not cloned, as this duplicates the node.
 TEST_F(GraphOptz, MultipleUsersRescaleCombineNoOpt) {
@@ -2634,7 +2725,7 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
 }
 
 /// Test that Transpose is sunk below ChannelShuffle and cancels with an
-/// inverse transpose below the ChannelShuffle. This test is models a pattern
+/// inverse transpose below the ChannelShuffle. This test models a pattern
 /// that has has been observed in shufflenet during graph optimization.
 TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   const size_t inputDims[] = {3, 28, 28, 136};
@@ -2646,37 +2737,24 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   K = F_->createTranspose("unnecessary_transpose_2", K, {0, 2, 3, 1});
   auto *save = F_->createSave("ret", K);
 
-  EXPECT_EQ(F_->getNodes().size(), 6);
+  EXPECT_EQ(F_->getNodes().size(), 4);
 
   // Optimize away the unnecessary transposes.
   optimize(F_, CompilationMode::Infer);
 
   // Ensure the two unnecessary transposes are gone.
-  ASSERT_EQ(F_->getNodes().size(), 4);
+  ASSERT_EQ(F_->getNodes().size(), 2);
 
-  // Check that the channel shuffle nodes are still there.
-  auto *postShuffleRN = llvm::dyn_cast<ReshapeNode>(save->getInput().getNode());
-  ASSERT_NE(nullptr, postShuffleRN);
-  auto *shuffleTR =
-      llvm::dyn_cast<TransposeNode>(postShuffleRN->getInput().getNode());
-  ASSERT_NE(nullptr, shuffleTR);
-  auto *preShuffleRN =
-      llvm::dyn_cast<ReshapeNode>(shuffleTR->getInput().getNode());
-  ASSERT_NE(nullptr, preShuffleRN);
+  // Check that the channel shuffle node is still there.
+  auto *CSN = llvm::dyn_cast<ChannelShuffleNode>(save->getInput().getNode());
+  ASSERT_NE(nullptr, CSN);
 
-  // Ensure last reshape has the same dimensions as the input.
-  EXPECT_EQ(postShuffleRN->getDims(), llvm::makeArrayRef(inputDims));
+  // Ensure ChannelShuffle node has the same dimensions as the input.
+  EXPECT_EQ(CSN->getResult().dims(), llvm::makeArrayRef(inputDims));
 
-  // Ensure the transpose in the middle of the reshapes shuffles the last
-  // dimension of the input.
-  const unsigned_t expectedShuffleTRShuffle[] = {0, 1, 2, 4, 3};
-  EXPECT_EQ(shuffleTR->getShuffle(),
-            llvm::makeArrayRef(expectedShuffleTRShuffle));
-
-  // Ensure the first reshape expands the last dimension of the input.
-  const size_t expectedPreShuffleRNDims[] = {3, 28, 28, 4, 34};
-  EXPECT_EQ(preShuffleRN->getDims(),
-            llvm::makeArrayRef(expectedPreShuffleRNDims));
+  // Ensure Group and Kernel are as expected.
+  EXPECT_EQ(CSN->getGroup(), 4);
+  EXPECT_EQ(CSN->getKernel(), 3);
 }
 
 /// Test that convertPlaceholdersToConstants works properly with quantized

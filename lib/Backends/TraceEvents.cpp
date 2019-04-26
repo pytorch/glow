@@ -18,13 +18,18 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <atomic>
 #include <fstream>
 
 namespace glow {
 
-void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
-                                 llvm::StringRef filename) {
+void TraceEvent::dumpTraceEvents(
+    std::vector<TraceEvent> &events, llvm::StringRef filename,
+    const std::string &processName,
+    const std::map<int, std::string> &threadNames) {
   llvm::errs() << "dumping " << events.size() << " trace events.\n";
+
+  auto process = processName.empty() ? "glow" : processName;
 
   std::ofstream file(filename);
   file << "[\n";
@@ -33,8 +38,14 @@ void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
     file << "\", \"cat\": \"glow\",";
     file << "\"ph\": \"" << event.type;
     file << "\", \"ts\": " << event.timestamp;
-    file << ", \"pid\": " << 0;
-    file << ", \"tid\": " << event.tid;
+    file << ", \"pid\": \"" << process << "\"";
+
+    auto nameIt = threadNames.find(event.tid);
+    if (nameIt != threadNames.end()) {
+      file << ", \"tid\": \"" << nameIt->second << "\"";
+    } else {
+      file << ", \"tid\": " << event.tid;
+    }
 
     if (!event.args.empty()) {
       file << ", \"args\": {";
@@ -55,8 +66,14 @@ void TraceEvent::dumpTraceEvents(std::vector<TraceEvent> &events,
 
 uint64_t TraceEvent::now() {
   return std::chrono::duration_cast<std::chrono::microseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
+             std::chrono::system_clock::now().time_since_epoch())
       .count();
+}
+
+size_t TraceEvent::getThreadId() {
+  static std::atomic<std::size_t> thread_idx{0};
+  thread_local std::size_t id = thread_idx++;
+  return id;
 }
 
 void TraceContext::logTraceEvent(
@@ -71,12 +88,32 @@ void TraceContext::logTraceEvent(
   if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
     return;
   }
-  TraceEvent ev(name, timestamp, type, traceThread_,
+  TraceEvent ev(name, timestamp, type, TraceEvent::getThreadId(),
                 std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
     traceEvents_.push_back(std::move(ev));
   }
+}
+
+void TraceContext::setThreadName(int tid, llvm::StringRef name) {
+  threadNames_[tid] = name;
+}
+
+void TraceContext::dump(llvm::StringRef filename,
+                        const std::string &processName) {
+  TraceEvent::dumpTraceEvents(getTraceEvents(), filename,
+                              std::move(processName), getThreadNames());
+}
+
+void TraceContext::merge(TraceContext *other) {
+  std::lock_guard<std::mutex> l(lock_);
+  auto &newEvents = other->getTraceEvents();
+  std::move(newEvents.begin(), newEvents.end(),
+            std::back_inserter(getTraceEvents()));
+  auto &names = other->getThreadNames();
+  threadNames_.insert(names.begin(), names.end());
+  names.clear();
 }
 
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)

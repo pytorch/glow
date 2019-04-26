@@ -35,3 +35,9 @@ for modelname in googlenet_v1_slim googlenet_v4_slim resnet50_tf; do
   wget -nc -P $modelname \
       http://fb-glow-assets.s3.amazonaws.com/models/$modelname.onnx
 done
+
+wget -nc https://onnxzoo.blob.core.windows.net/models/opset_8/emotion_ferplus/emotion_ferplus.tar.gz
+tar -xzvf emotion_ferplus.tar.gz emotion_ferplus/model.onnx
+
+wget -nc https://s3.amazonaws.com/download.onnx/models/opset_8/bvlc_reference_rcnn_ilsvrc13.tar.gz
+tar -xzvf bvlc_reference_rcnn_ilsvrc13.tar.gz bvlc_reference_rcnn_ilsvrc13/model.onnx

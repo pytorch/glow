@@ -26,6 +26,24 @@
 using namespace glow;
 using namespace runtime;
 
+namespace {
+// STL sorting algorithm cannot inline predicate if it got provided as a regular
+// function.
+// Template instantiation expands std::sort with predicate type as
+// (bool)(const std::pair<DeviceIDTy, uint64_t> &,
+//        const std::pair<DeviceIDTy, uint64_t> &).
+// It means any regular function with the above signature will match
+// the template instantiation, and compiler cannot inline the code of
+// one of the possible functions.
+// Declaring lambda, which has a unique type regardless its signature,
+// forces compiler to instantiate the template with a provided unique type and
+// correspondently compiler can inline the lambda code.
+auto sortMostMemory = [](const std::pair<DeviceIDTy, uint64_t> &a,
+                         const std::pair<DeviceIDTy, uint64_t> &b) -> bool {
+  return a.second > b.second;
+};
+} // namespace
+
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
@@ -34,30 +52,23 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   backend_.reset(createBackend(backendKind));
 }
 
-bool sortMostMemory(const std::pair<DeviceIDTy, uint64_t> &a,
-                    const std::pair<DeviceIDTy, uint64_t> &b) {
-  return (a.second > b.second);
-}
-
 llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
-
+  // For each network visit all the partitions (nodes) and add the node to each
+  // logical device it is assigned to.
   for (auto &network : networks) {
     for (auto &node : network.nodes) {
-      auto it = logicalDevices.find(node->logicalDevice);
-      if (it != logicalDevices.end()) {
-        it->second.push_back(node.get());
-      } else {
-        logicalDevices.emplace(node->logicalDevice,
-                               std::vector<DAGNode *>{node.get()});
+      for (auto logical : node->logicalDevices) {
+        auto it = logicalDevices.find(logical);
+        if (it != logicalDevices.end()) {
+          it->second.push_back(node.get());
+        } else {
+          logicalDevices.emplace(logical, std::vector<DAGNode *>{node.get()});
+        }
       }
     }
   }
-
-  RETURN_ERR_IF_NOT(
-      logicalDevices.size() <= devices_.size(),
-      "Provisioner found more logical devices than physical devices.");
 
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   std::map<DeviceIDTy, FunctionMapTy> functionMaps;
@@ -66,15 +77,22 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     uint64_t totalMemory = 0;
     FunctionMapTy functionMap;
     for (auto &node : device.second) {
-      Function *function = module.getFunction(node->name);
-      CompilationOptions compileOptions;
-      compileOptions.collectConstants = false;
-      auto compiled = backend_->compile(function, compileOptions);
-      node->runtimeBundle =
-          llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
-      node->runtimeBundle->setInputsandOutputs();
-      functionMap.emplace(node->name, compiled.get());
-      functions_.emplace(node->name, std::move(compiled));
+      // Only compile if we haven't compiled before. If we have previously
+      // compiled the function reuse it.
+      auto it = functions_.find(node->name);
+      if (it == functions_.end()) {
+        Function *function = module.getFunction(node->name);
+        BackendOptions opts;
+        // Set collectConstants to false, this is because the DeviceManager will
+        // handle moving constants to the device, this way we can eliminate one
+        // copy operation.
+        opts.collectConstants = false;
+        auto compiled = backend_->compile(function, opts);
+        node->runtimeBundle =
+            llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
+        functions_.emplace(node->name, std::move(compiled));
+      }
+      functionMap.emplace(node->name, functions_[node->name].get());
       totalMemory += node->runtimeBundle->getConstantWeightSize();
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
@@ -94,8 +112,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
 
   // Try to add functions to devices in order from largest to smallest.
   for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
-    RETURN_ERR_IF_NOT(logicalDeviceSize[i].second * NETWORK_PADDING_FACTOR <
-                          deviceMemory[i].second,
+    RETURN_ERR_IF_NOT(logicalDeviceSize[i].second < deviceMemory[i].second,
                       "Not enough memory to provision functions onto devices");
 
     // Load functions on device.
@@ -114,7 +131,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
     RETURN_IF_ERR(addErr);
     // Set deviceID for each node added
     for (auto &node : logicalDevices[logicalID]) {
-      node->deviceID = deviceID;
+      node->deviceIDs.push_back(deviceID);
     }
   }
   return llvm::Error::success();

@@ -22,7 +22,6 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Quantization/Quantization.h"
 #include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"
@@ -180,7 +179,7 @@ public:
   std::string getBackendName() const override { return "MockCPUBackend"; }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &opts) const override {
+  compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }
 

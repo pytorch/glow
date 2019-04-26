@@ -33,7 +33,7 @@ public:
   virtual ~LLVMCompiledFunction() override;
   virtual void execute(ExecutionContext *context) override;
 
-  virtual void collectConstants(Module *module) override;
+  virtual void collectConstants(const Module *module) override;
 
   /// Read trace events out of this func and write them into /p bindings
   virtual void translateTraceEvents(ExecutionContext *context) const override;

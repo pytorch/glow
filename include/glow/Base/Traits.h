@@ -39,6 +39,11 @@ public:
 
   /// Set the name of the instruction to \p name.
   void setName(llvm::StringRef name) { name_ = name; }
+
+  /// Compares by names, \returns true if name_ < x.name_.
+  bool compareByName(const Named &x) const {
+    return name_.compare(x.name_) > 0;
+  }
 };
 
 /// Subclasses of this class have a type associated with them.

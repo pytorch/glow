@@ -16,13 +16,24 @@
 #include "InterpreterDeviceManager.h"
 #include "Interpreter.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+
+static llvm::cl::OptionCategory
+    InterpreterBackendCat("Glow Interpreter Backend Options");
+llvm::cl::opt<unsigned> interpreterMaxMem(
+    "interpreter-memory",
+    llvm::cl::desc("Interpreter DeviceManager maximum memory"),
+    llvm::cl::init(0), llvm::cl::cat(InterpreterBackendCat));
 
 namespace glow {
 namespace runtime {
 
 DeviceManager *
 createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config) {
+  if (interpreterMaxMem) {
+    return new InterpreterDeviceManager(std::move(config), interpreterMaxMem);
+  }
   return new InterpreterDeviceManager(std::move(config));
 }
 
@@ -72,7 +83,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
   // Add to the function name lookup map.
   for (const auto &func : functions) {
     if (func.second->getRuntimeBundle().getConstants() == nullptr) {
-      func.second->getRuntimeBundle().collectConstants(module);
+      func.second->collectConstants(module);
     }
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize

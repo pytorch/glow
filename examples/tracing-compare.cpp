@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Optimizer/Optimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -78,11 +79,11 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   Function *F_ = F->clone("resnet50" + std::to_string((int)backendKind));
 
   llvm::outs() << "Starting compile on " << (int)backendKind << ".\n";
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  opts.autoInstrument = true;
-  backend->optimizeFunction(F_, opts);
-  return backend->compile(F_, opts);
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  cctx.backendOpts.autoInstrument = true;
+  ::glow::optimizeFunction(F_, *backend, cctx);
+  return backend->compile(F_, cctx.backendOpts);
 }
 
 std::future<void> addToDevice(unsigned int id, DeviceManager *device,
@@ -151,7 +152,7 @@ int main(int argc, char **argv) {
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto context = llvm::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, i));
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     context->getPlaceholderBindings()->allocate(module.getPlaceholders());
     updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
                             {&batch});

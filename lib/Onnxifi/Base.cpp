@@ -54,9 +54,9 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
 
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  if (glowBackend_->transformPostLowering(function, opts)) {
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  if (glowBackend_->transformPostLowering(function, cctx)) {
     glow::DCE(function);
   }
 
@@ -94,8 +94,13 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               const onnxTensorDescriptorV1 *inputDescriptors,
                               uint32_t outputsCount,
                               const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent) {
+                              EventPtr outputEvent,
+                              onnxTraceEventList *traceEvents) {
   auto ctx = llvm::make_unique<ExecutionContext>();
+
+  if (traceEvents) {
+    ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  }
 
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
@@ -109,9 +114,35 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &inPhPtr = inPhIt->getValue();
 
-    Tensor t(inOnnxBuffer, inPhPtr->getType());
+    std::vector<size_t> inOnnxTensorDims(inOnnxTensor.dimensions);
+    size_t inOnnxTensorSize = 1;
+    for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
+      inOnnxTensorDims[j] = inOnnxTensor.shape[j];
+      inOnnxTensorSize *= inOnnxTensorDims[j];
+    }
 
-    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(t));
+    if (inOnnxTensorSize > inPhPtr->getType()->size()) {
+      return ONNXIFI_STATUS_INVALID_SHAPE;
+    }
+
+    // Only re-allocate a tensor in case padding is required.
+    // Otherwise just back the tensor by memory provided by the caller.
+    Tensor inputTensor;
+    if (inPhPtr->dims().equals(inOnnxTensorDims)) {
+      inputTensor = Tensor(inOnnxBuffer, inPhPtr->getType());
+    } else {
+      inputTensor = Tensor(inPhPtr->getType());
+      // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
+      // valid case for empty tensor, skip copying
+      if (inOnnxBuffer) {
+        unsigned elementSize = inPhPtr->getType()->getElementSize();
+        char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
+        std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
+                  inputTensor.getUnsafePtr());
+      }
+    }
+
+    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
   }
 
   std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
@@ -135,7 +166,48 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
 
-  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs));
+  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs),
+             traceEvents);
+}
+
+void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
+                           const TraceContext &traceContext) {
+  if (!traceEvents) {
+    return;
+  }
+
+  std::vector<onnxTraceEvent *> traceEventsVec;
+  for (const auto &glowTraceEvent : traceContext.getTraceEvents()) {
+    auto *traceEvent = new onnxTraceEvent();
+    assert(
+        glowTraceEvent.type.size() == 1 &&
+        "Events with types longer than a single char not supported by onnxifi");
+    traceEvent->eventType = glowTraceEvent.type[0];
+    traceEvent->timestamp = glowTraceEvent.timestamp;
+    traceEvent->tid = glowTraceEvent.tid;
+    char *eventName = new char[glowTraceEvent.name.size() + 1];
+    assert(eventName);
+    strcpy(eventName, glowTraceEvent.name.c_str());
+    traceEvent->eventName = eventName;
+    traceEventsVec.push_back(traceEvent);
+  }
+
+  traceEvents->numEvents = traceEventsVec.size();
+  traceEvents->traceEvents = new onnxTraceEvent *[traceEventsVec.size()];
+  assert(traceEvents->traceEvents);
+  std::copy(traceEventsVec.begin(), traceEventsVec.end(),
+            traceEvents->traceEvents);
+}
+
+void Graph::releaseTraceEvents(onnxTraceEventList *traceEvents) {
+  assert(traceEvents);
+  for (uint64_t i = 0; i < traceEvents->numEvents; ++i) {
+    onnxTraceEvent *traceEvent = traceEvents->traceEvents[i];
+    delete[] traceEvent->eventName;
+    delete traceEvent;
+  }
+
+  delete[] traceEvents->traceEvents;
 }
 
 Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}

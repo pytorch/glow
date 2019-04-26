@@ -39,7 +39,7 @@ struct TraceEvent {
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
 
-  /// Time of the event, in milliseconds since epoch.
+  /// Time of the event, in microseconds since epoch.
   uint64_t timestamp;
 
   /// Type of the event, a (usually) one char code (see Event Descriptions in
@@ -60,10 +60,16 @@ struct TraceEvent {
              std::map<std::string, std::string> a)
       : name(n), timestamp(ts), type(c), tid(t), args(a) {}
 
-  static void dumpTraceEvents(std::vector<TraceEvent> &events,
-                              llvm::StringRef filename);
+  static void
+  dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
+                  const std::string &processName = "",
+                  const std::map<int, std::string> &threadNames = {});
 
+  // Return the current time in microseconds in the timestamp domain.
   static uint64_t now();
+
+  // Returns a unique id associated with the current thread.
+  static size_t getThreadId();
 };
 
 /// Tracing / Profiling events map for a CompiledFunction.
@@ -120,28 +126,23 @@ class TraceContext {
   /// The list of materialized Events filled out with timestamp and metadata.
   std::vector<TraceEvent> traceEvents_;
 
+  /// Human readable name mapping for trace Threads.
+  std::map<int, std::string> threadNames_;
+
   /// The detail level of tracing for this run.
   TraceLevel traceLevel_{TraceLevel::NONE};
-
-  /// The thread (tid) used in the output tracing, allowing separation of events
-  /// on different contexts.
-  int traceThread_{0};
 
   /// Lock around traceEvents_.
   std::mutex lock_;
 
 public:
-  TraceContext(TraceLevel level, int thread)
-      : traceLevel_(level), traceThread_(thread) {}
+  TraceContext(TraceLevel level) : traceLevel_(level) {}
 
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
-  /// \returns the integer thread id used for logged events in this context.
-  int getTraceThread() const { return traceThread_; }
-
-  /// Sets the integer thread id used for logged events in this context.
-  void setTraceThread(int tid) { traceThread_ = tid; }
+  /// \returns TraceEvents for the last run.
+  llvm::ArrayRef<TraceEvent> getTraceEvents() const { return traceEvents_; }
 
   /// \returns the level of verbosity allowed for TraceEvents.
   TraceLevel getTraceLevel() { return traceLevel_; }
@@ -161,6 +162,22 @@ public:
   void
   logTraceEvent(llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
                 std::map<std::string, std::string> additionalAttributes = {});
+
+  /// Sets the human readable \p name for thread \tid.
+  void setThreadName(int tid, llvm::StringRef name);
+  /// \returns the list of human readable thread names.
+  std::map<int, std::string> &getThreadNames() { return threadNames_; }
+
+  /// Dumps all TraceEvents in json format to the given \p filename, optionally
+  /// with a provided \p processName.
+  void dump(llvm::StringRef filename, const std::string &processName = "");
+
+  /// Moves all TraceEvents and thread names in \p other into this context.
+  void merge(TraceContext *other);
+
+  /// Moves all TraceEvents and thread names in \p other into this context. This
+  /// version is destructive of the other TraceContext.
+  void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
 };
 
 /// These macros predicate the logging of a TraceEvent on a validity of the

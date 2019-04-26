@@ -52,8 +52,8 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
 
-std::vector<TraceEvent> allEvents;
 std::mutex eventLock;
+std::unique_ptr<TraceContext> traceContext;
 
 } // namespace
 
@@ -98,9 +98,8 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
 
         if (!tracePath.empty()) {
           std::lock_guard<std::mutex> l(eventLock);
-          auto &newEvents = context->getTraceContext()->getTraceEvents();
-          std::move(newEvents.begin(), newEvents.end(),
-                    std::back_inserter(allEvents));
+          // Merge this run's TraceEvents into the global TraceContext.
+          traceContext->merge(context->getTraceContext());
         }
 
         if (++returned == maxImages) {
@@ -127,22 +126,25 @@ int main(int argc, char **argv) {
   std::unique_ptr<HostManager> hostManager =
       llvm::make_unique<HostManager>(std::move(configs));
 
+  // If tracing is enabled, create a TraceContext to merge each runs events
+  // into.
+  if (!tracePath.empty()) {
+    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  }
+
   // Load model, create a context, and add to HostManager.
 
   std::vector<size_t> inputShape{1, 3, 224, 224};
 
   Placeholder *input;
-  std::vector<Placeholder *> inputs;
-  std::vector<PlaceholderList> phLists;
-  for (unsigned int i = 0; i < numDevices; i++) {
-    std::unique_ptr<Module> module = llvm::make_unique<Module>();
-    TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
-    input = loadResnet50Model(inputType, module.get(), i);
-    inputs.push_back(input);
-    llvm::outs() << "Adding to HostManager\n";
-    phLists.push_back(module->getPlaceholders());
-    EXIT_ON_ERR(hostManager->addNetwork(std::move(module)));
-  }
+  PlaceholderList phList;
+
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
+  input = loadResnet50Model(inputType, module.get(), 0);
+  phList = module->getPlaceholders();
+  EXIT_ON_ERR(
+      hostManager->addNetwork(std::move(module), /*saturateHost*/ true));
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";
   std::error_code code;
@@ -170,7 +172,7 @@ int main(int argc, char **argv) {
       }
       break;
     }
-    int index = currDevice % numDevices;
+
     std::string path = dirIt->path();
 
     auto image = readPngImageAndPreprocess(
@@ -179,15 +181,15 @@ int main(int argc, char **argv) {
     std::unique_ptr<ExecutionContext> context =
         llvm::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD, 50));
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
-    context->getPlaceholderBindings()->allocate(phLists[index]);
+    context->getPlaceholderBindings()->allocate(phList);
     Tensor batch = image.getUnowned(inputShape);
-    updateInputPlaceholders(*(context->getPlaceholderBindings()),
-                            {inputs[index]}, {&batch});
+    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
+                            {&batch});
 
-    dispatchClassify(index, hostManager.get(), std::move(path),
-                     std::move(context), returned, finished);
+    dispatchClassify(0, hostManager.get(), std::move(path), std::move(context),
+                     returned, finished);
 
     dirIt.increment(code);
     currDevice++;
@@ -198,8 +200,7 @@ int main(int argc, char **argv) {
   llvm::outs() << "Finished classifying " << started << " images.\n";
 
   if (!tracePath.empty()) {
-    std::lock_guard<std::mutex> l(eventLock);
-    TraceEvent::dumpTraceEvents(allEvents, tracePath);
+    traceContext->dump(tracePath, "resnet-runtime");
   }
 
   return 0;

@@ -1000,26 +1000,8 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
 
 Node *Function::createChannelShuffle(llvm::StringRef name, NodeValue input,
                                      size_t group, size_t kernel) {
-  auto inDims = input.dims();
-  assert(kernel < inDims.size());
-
-  ShapeVector dims(inDims.begin(), inDims.end());
-  auto D = dims[kernel];
-  assert(D % group == 0);
-
-  dims.erase(dims.begin() + kernel);
-  // Reshape {D1, ... D_k, ... D_n} -> {D1, ... group, D_k / group, ... D_n}
-  dims.insert(dims.begin() + kernel, D / group);
-  dims.insert(dims.begin() + kernel, group);
-  Node *R1 = createReshape(name.str() + ".reshape1", input, dims);
-
-  std::vector<unsigned_t> transpose(dims.size());
-  for (size_t i = 0; i < transpose.size(); i++)
-    transpose[i] = i;
-  std::swap(transpose[kernel], transpose[kernel + 1]);
-  Node *T = createTranspose(name.str() + ".transpose", R1, transpose);
-
-  return createReshape(name.str() + ".reshape2", T, inDims);
+  return addNode(
+      new ChannelShuffleNode(name, input.getType(), input, group, kernel));
 }
 
 ReshapeNode *Function::createSqueeze(llvm::StringRef name, NodeValue input,
@@ -1190,18 +1172,9 @@ IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
   return addNode(new IsNaNNode(name, OT, input));
 }
 
-Node *Function::createReplaceNaN(llvm::StringRef name, NodeValue input,
-                                 float value) {
-  // Create IsNaN node.
-  auto *INN = createIsNaN(name.str() + ".isNaN", input);
-
-  // Create Splat node.
-  auto *S = createSplat(name.str() + ".splat", input.getType(), value);
-
-  // Create Select node to pick between original and replacement values.
-  auto *SN = createSelect(name.str() + ".select", INN, S, input);
-
-  return SN;
+ReplaceNaNNode *Function::createReplaceNaN(llvm::StringRef name,
+                                           NodeValue input, float value) {
+  return addNode(new ReplaceNaNNode(name, input.getType(), input, value));
 }
 
 PowNode *Function::createPow(llvm::StringRef name, NodeValue base, float exp) {
@@ -1647,11 +1620,16 @@ Function::createQuantizationProfile(PlaceholderBindings &bindings,
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
-  auto *computationInfo = getParent()->createPlaceholder(
+  auto *computationInfoPH = getParent()->createPlaceholder(
       ElemKind::FloatTy, {2}, "CI_" + name.str(), false);
-  bindings.allocate(computationInfo);
+  bindings.allocate(computationInfoPH);
+  auto *computationInfoTensor = bindings.get(computationInfoPH);
+  auto handle = computationInfoTensor->getHandle<float>();
+  handle.raw(0) = std::numeric_limits<float>::max();
+  handle.raw(1) = std::numeric_limits<float>::lowest();
+
   return addNode(new QuantizationProfileNode(
-      "QI_" + name.str(), input, histogram, computationInfo,
+      "QI_" + name.str(), input, histogram, computationInfoPH,
       input.getNode()->getName().str(), input.getResNo()));
 }
 
@@ -2634,11 +2612,12 @@ public:
   }
 };
 
-void Function::dumpDAG() {
+std::string Function::dumpDAG() {
   llvm::SmallString<64> dotPath;
   llvm::sys::fs::createTemporaryFile("dotty_graph_dump", "dot", dotPath);
   dumpDAG(dotPath);
-  llvm::sys::fs::remove(dotPath);
+
+  return std::string(dotPath.begin(), dotPath.end());
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
@@ -2987,4 +2966,20 @@ bool Function::verify() const {
     }
   }
   return isValid;
+}
+
+SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
+  // if parent is set for PH, check if it is the same as provided Function.
+  auto *PHP = PH->getParent();
+  if (PHP != nullptr && F != PHP) {
+    return nullptr;
+  }
+  for (auto &use : PH->getUsers()) {
+    if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
+      if (save->getParent() == F && save->getPlaceholder() == PH) {
+        return save;
+      }
+    }
+  }
+  return nullptr;
 }

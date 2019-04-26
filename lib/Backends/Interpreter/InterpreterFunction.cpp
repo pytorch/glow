@@ -37,7 +37,7 @@ InterpreterFunction::~InterpreterFunction() {
   tearDownRuns();
 }
 
-void InterpreterFunction::collectConstants(Module *module) {
+void InterpreterFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
   if (constants_.empty()) {
     if (runtimeBundle_.getConstantWeightSize()) {
@@ -76,7 +76,7 @@ void InterpreterFunction::translateTraceEvents(
 
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = traceContext->getTraceThread();
+  int tid = TraceEvent::getThreadId();
   auto &traceEvents = traceContext->getTraceEvents();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);

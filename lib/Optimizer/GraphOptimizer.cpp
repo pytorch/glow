@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "glow/Backends/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -185,92 +186,25 @@ static Node *simplifyNode(Node *node, Function *F) {
   return node;
 }
 
-/// Parameters that are used to define ChannelShuffle operators.
-struct ChannelShuffleParams {
-  size_t group;
-  size_t kernel;
-};
-
-/// Compute the original parameters to the ChannelShuffle operator (represented
-/// as ReshapeNode->TransposeNode->ReshapeNode) for which \p node is the leading
-/// ReshapeNode. \returns The original ChannelShuffle parameters if possible and
-/// empty Optional otherwise.
-static llvm::Optional<ChannelShuffleParams>
-getChannelShuffleParams(const ReshapeNode &node) {
-  auto resM = llvm::Optional<ChannelShuffleParams>();
-
-  llvm::ArrayRef<size_t> inputDims = node.getInput().dims();
-  llvm::ArrayRef<size_t> resultDims = node.getDims();
-
-  // Check that there is one more output dimension than input dimension.
-  if (resultDims.size() != inputDims.size() + 1) {
-    return resM;
-  }
-
-  // Find the first output dimension that doesn't match its corresponding input
-  // dimension.
-  ChannelShuffleParams params;
-  bool found = false;
-  for (size_t i = 0, e = resultDims.size(); i < e - 1; ++i) {
-    if (inputDims[i] != resultDims[i]) {
-      params.kernel = i;
-      params.group = resultDims[i];
-      found = true;
-      break;
-    }
-  }
-
-  // Double check the property that the mismatched output found dimension and
-  // its successor together evenly multiply to the input dimension they
-  // mismatched on.
-  if (found && resultDims[params.kernel] * resultDims[params.kernel + 1] ==
-                   inputDims[params.kernel]) {
-    resM = params;
-  }
-
-  return resM;
-}
-
-/// Sink Transpose below ChannelShuffle node sequence ending with \p
-/// postShuffleRN. For example (Transpose_1->Reshape_1->Transpose_2->Reshape_2)
-/// becomes (Reshape_1->Transpose_2->Reshape_2->Transpose_1). \returns true if
-/// tranpose was sunk below ChannelShuffle node sequence and false otherwise.
+/// Sink Transpose below ChannelShuffle node.
 static bool sinkTranposeBelowChannelShuffle(Function *F,
-                                            ReshapeNode *postShuffleRN) {
-  auto *shuffleTR = dyn_cast<TransposeNode>(postShuffleRN->getInput());
-  if (!shuffleTR) {
+                                            ChannelShuffleNode *CS) {
+  auto *TR = dyn_cast<TransposeNode>(CS->getInput());
+  if (!TR) {
     return false;
   }
 
-  auto *preShuffleRN = dyn_cast<ReshapeNode>(shuffleTR->getInput());
-  if (!preShuffleRN) {
-    return false;
-  }
-
-  auto *sinkingTR = dyn_cast<TransposeNode>(preShuffleRN->getInput());
-  if (!sinkingTR) {
-    return false;
-  }
-
-  // Compute the original parameters to ChannelShuffle.
-  auto paramsM = getChannelShuffleParams(*preShuffleRN);
-
-  if (!paramsM.hasValue()) {
-    return false;
-  }
-
-  // Create a new ChannelShuffle with kernel parameter tranposed by the
-  // sinkingTR's shuffle because that Transpose will now be moved below this
+  // Create a new ChannelShuffle with kernel parameter transposed by the
+  // sinking TR's shuffle because that Transpose will now be moved below this
   // ChannelShuffle operator.
-  auto *newChannelShuffle = F->createChannelShuffle(
-      "channel_shuffle", sinkingTR->getInput(), paramsM->group,
-      sinkingTR->getShuffle()[paramsM->kernel]);
+  auto *newCS =
+      F->createChannelShuffle(CS->getName(), TR->getInput(), CS->getGroup(),
+                              TR->getShuffle()[CS->getKernel()]);
 
   // Create a copy of sinkingTR and insert after newChannelShuffle.
-  auto *newSinkingTR = F->createTranspose(
-      sinkingTR->getName(), newChannelShuffle, sinkingTR->getShuffle());
+  auto *newTR = F->createTranspose(TR->getName(), newCS, TR->getShuffle());
 
-  postShuffleRN->getResult().replaceAllUsesOfWith(newSinkingTR);
+  CS->getResult().replaceAllUsesOfWith(newTR);
 
   return true;
 }
@@ -441,9 +375,9 @@ static bool sinkCode(Function *F) {
       continue;
     }
 
-    if (auto *RN = dyn_cast<ReshapeNode>(node)) {
+    if (auto *CS = dyn_cast<ChannelShuffleNode>(node)) {
       // Sink Transpose below ChannelShuffle.
-      if (sinkTranposeBelowChannelShuffle(F, RN)) {
+      if (sinkTranposeBelowChannelShuffle(F, CS)) {
         changed = true;
         continue;
       }
@@ -2446,7 +2380,173 @@ void glow::convertPlaceholdersToConstants(Function *F,
   }
 }
 
-void glow::optimize(Function *F, const CompilationOptions &opts) {
+/// \returns True if the \p node sub-tree corresponds to a scalar
+/// (Constant or Splat) and return the float value in \p retFloat.
+static bool getFloatScalar(Node *node, float *retFloat) {
+  // Iterate across potential Tile Nodes (implied by broadcasting if any).
+  auto *n = node;
+  while (auto *TN = dyn_cast<TileNode>(n)) {
+    n = TN->getInput();
+  }
+
+  // After potential Tile nodes, it should be a singleton constant scalar node
+  // with any shape corresponding to one single element.
+  if (auto *constNode = dyn_cast<Constant>(n)) {
+    if ((constNode->getType()->getElementType() != ElemKind::FloatTy) ||
+        (constNode->getType()->size() != 1)) {
+      return false;
+    }
+    auto valueH = constNode->getHandle<float>();
+    std::vector<size_t> coord(constNode->getType()->dims().size(), 0);
+    *retFloat = valueH.at(coord);
+    return true;
+  }
+  if (auto *splatNode = dyn_cast<SplatNode>(n)) {
+    *retFloat = splatNode->getValue();
+    return true;
+  }
+
+  return false;
+}
+
+/// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
+/// and replace it by PRelu(Splat).
+static void foldLeakyRelu(Function *F) {
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    if (auto *maxNode = dyn_cast<MaxNode>(&node)) {
+      NodeValue otherMaxOperand;
+      MulNode *mulNode;
+      if ((mulNode = dyn_cast<MulNode>(maxNode->getRHS()))) {
+        otherMaxOperand = maxNode->getLHS();
+      } else if ((mulNode = dyn_cast<MulNode>(maxNode->getLHS()))) {
+        otherMaxOperand = maxNode->getRHS();
+      } else {
+        continue;
+      }
+      NodeValue otherMulOperand;
+      float value;
+      if (getFloatScalar(mulNode->getRHS(), &value)) {
+        otherMulOperand = maxNode->getLHS();
+      } else if (getFloatScalar(mulNode->getLHS(), &value)) {
+        otherMulOperand = maxNode->getRHS();
+      } else {
+        continue;
+      }
+      if ((value <= 1.0f) && (otherMulOperand == otherMaxOperand)) {
+        // The sub-tree is a Leaky-Relu, express it as a PRelu.
+        auto *splat = F->createSplat(maxNode->getName(),
+                                     mulNode->getResult().getType(), value);
+        auto *PRelu =
+            F->createPRELU(maxNode->getName(), otherMaxOperand, splat);
+        maxNode->getResult().replaceAllUsesOfWith(PRelu);
+      }
+    }
+  }
+}
+
+/// Parameters that are used to define ChannelShuffle operators.
+struct ChannelShuffleParams {
+  size_t group;
+  size_t kernel;
+};
+
+/// Compute the original parameters to the ChannelShuffle operator (represented
+/// as ReshapeNode->TransposeNode->ReshapeNode) for which \p node is the leading
+/// ReshapeNode. \returns The original ChannelShuffle parameters if possible and
+/// empty Optional otherwise.
+static llvm::Optional<ChannelShuffleParams>
+getChannelShuffleParams(const ReshapeNode &node) {
+  auto resM = llvm::Optional<ChannelShuffleParams>();
+
+  llvm::ArrayRef<size_t> inputDims = node.getInput().dims();
+  llvm::ArrayRef<size_t> resultDims = node.getDims();
+
+  // Check that there is one more output dimension than input dimension.
+  if (resultDims.size() != inputDims.size() + 1) {
+    return resM;
+  }
+
+  // Find the first output dimension that doesn't match its corresponding input
+  // dimension.
+  ChannelShuffleParams params;
+  bool found = false;
+  for (size_t i = 0, e = resultDims.size(); i < e - 1; ++i) {
+    if (inputDims[i] != resultDims[i]) {
+      params.kernel = i;
+      params.group = resultDims[i];
+      found = true;
+      break;
+    }
+  }
+
+  // Double check the property that the mismatched output found dimension and
+  // its successor together evenly multiply to the input dimension they
+  // mismatched on.
+  if (found && resultDims[params.kernel] * resultDims[params.kernel + 1] ==
+                   inputDims[params.kernel]) {
+    resM = params;
+  }
+
+  return resM;
+}
+
+// Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
+static void foldChannelShuffle(Function *F) {
+
+  auto &nodes = F->getNodes();
+  for (auto &node : nodes) {
+    auto *RN2 = dyn_cast<ReshapeNode>(&node);
+    if (!RN2) {
+      continue;
+    }
+
+    auto *TR = dyn_cast<TransposeNode>(RN2->getInput());
+    if (!TR) {
+      continue;
+    }
+
+    auto *RN1 = dyn_cast<ReshapeNode>(TR->getInput());
+    if (!RN1) {
+      continue;
+    }
+
+    // Compute the original parameters to ChannelShuffle.
+    auto paramsM = getChannelShuffleParams(*RN1);
+    if (!paramsM.hasValue()) {
+      continue;
+    }
+
+    // Create a new ChannelShuffle with kernel parameter tranposed by the
+    // TR's shuffle.
+    auto *newCS = F->createChannelShuffle("channel_shuffle", RN1->getInput(),
+                                          paramsM->group, paramsM->kernel);
+    RN2->getResult().replaceAllUsesOfWith(newCS);
+  }
+}
+
+void glow::fold(Function *F, const CompilationContext &cctx) {
+  (void)cctx;
+  // Get Reshape nodes merged into constants to simplify folding.
+  optimizeReshape(F);
+
+  // Fold sub-graphs corresponding to leakyRelu.
+  foldLeakyRelu(F);
+
+  // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
+  foldChannelShuffle(F);
+
+  // Perform Dead Code Elimination.
+  DCE(F);
+}
+
+void glow::fold(Function *F, CompilationMode mode) {
+  CompilationContext cctx;
+  cctx.mode = mode;
+  fold(F, cctx);
+}
+
+void glow::optimize(Function *F, const CompilationContext &cctx) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2470,7 +2570,7 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
   optimizeReshape(F);
-  if (opts.mode == CompilationMode::Infer) {
+  if (cctx.mode == CompilationMode::Infer) {
     transposeConstants(F);
   }
 
@@ -2495,7 +2595,7 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
   // Perform Dead Code Elimination.
   DCE(F);
 
-  if (opts.mode == CompilationMode::Infer) {
+  if (cctx.mode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
@@ -2535,7 +2635,29 @@ void glow::optimize(Function *F, const CompilationOptions &opts) {
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
-  CompilationOptions opts;
-  opts.mode = mode;
-  optimize(F, opts);
+  CompilationContext cctx;
+  cctx.mode = mode;
+  optimize(F, cctx);
+}
+
+void glow::optimizeFunction(Function *F, const Backend &B,
+                            const CompilationContext &cctx) {
+  // Verify the function pre-optimization/lowering.
+  assert(F->verify() && "Function must be valid");
+
+  // Optimize the graph.
+  ::glow::optimize(F, cctx);
+
+  // Lower the graph into a sequence of low-level linear algebra operations.
+  ::glow::lower(F, /* loweredMap */ nullptr, &B);
+
+  // Optimize the graph again.
+  ::glow::optimize(F, cctx);
+
+  // Allow the backend to transform the graph after lowering.
+  if (B.transformPostLowering(F, cctx)) {
+    // Optimize the graph again after the backend transformation.
+    // In particular, DCE is very likely to be useful.
+    ::glow::optimize(F, cctx);
+  }
 }

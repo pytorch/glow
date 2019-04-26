@@ -30,9 +30,11 @@ namespace {
 using namespace glow;
 using namespace glow::quantization;
 
-/// Support quantized Log by replacing it with an IntLookupTable with a new
-/// mapping given the input and output quantization parameters.
-static void replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
+/// Support quantized Log \p LN inside \p F by replacing it with an
+/// IntLookupTable with a new mapping given the input and output quantization
+/// parameters. \returns the new IntLookupTable created.
+static Node *replaceQuantizedLogWithLookupTable(Function &F,
+                                                const LogNode &LN) {
   TypeRef outTy = LN.getResult().getType();
   TypeRef inTy = LN.getInput().getType();
 
@@ -57,11 +59,14 @@ static void replaceQuantizedLogWithLookupTable(Function &F, const LogNode &LN) {
       LN.getName().str() + ".log", LN.getInput(), mapping, outTy);
 
   LN.getResult().replaceAllUsesOfWith(ILT);
+  return ILT;
 }
 
-/// Support quantized Tanh by replacing it with an IntLookupTable.
-static void replaceQuantizedTanhWithLookupTable(Function &F,
-                                                const TanhNode &TN) {
+/// Support quantized Tanh \p TN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Tanh via the IntLookupTable.
+static Node *replaceQuantizedTanhWithLookupTable(Function &F,
+                                                 const TanhNode &TN) {
   // Quantized tanh operator expects input to be in a certain floating point
   // range. This operator works based on the precomputed table and has to
   // process input in a range of [-3.0, 3.0]. Tanh asymptotically approaches
@@ -93,11 +98,14 @@ static void replaceQuantizedTanhWithLookupTable(Function &F,
       TN.getName(), quantizedNode, TN.getResult().getType());
 
   TN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode;
 }
 
-/// Support quantized Sigmoid by replacing it with an IntLookupTable.
-static void replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                                   const SigmoidNode &SN) {
+/// Support quantized Sigmoid \p SN inside \p F by replacing it with an
+/// IntLookupTable. \returns final node in the chain implementing the quantized
+/// Sigmoid via the IntLookupTable.
+static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                                    const SigmoidNode &SN) {
   // Quantized sigmoid operator expects input to be in a certain floating
   // point range. This operator works based on the precomputed table and has
   // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
@@ -129,6 +137,7 @@ static void replaceQuantizedSigmoidWithLookupTable(Function &F,
       SN.getName(), quantizedNode, SN.getResult().getType());
 
   SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode;
 }
 
 /// This class produces a quantized function based on a provided profile.
@@ -319,14 +328,26 @@ protected:
     // tables instead, and they will be quantized as lookup tables.
     switch (node.getKind()) {
     CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT:
-      if (isOpSupported) {
-        return true;
+      if (!isOpSupported) {
+        isOpSupported = B_.isOpSupported(NodeInfo(
+            Kinded::Kind::IntLookupTableNodeKind, inputTypes, outputTypes));
       }
-      return B_.isOpSupported(NodeInfo(Kinded::Kind::IntLookupTableNodeKind,
-                                       inputTypes, outputTypes));
+      break;
     default:
-      return isOpSupported;
+      break;
     }
+
+    // Quantizer may be set up to die if a node is only skipped during
+    // quantization because the backend does not support it as quantized.
+    if (!isOpSupported && assertAllNodesQuantized_) {
+      llvm::errs() << B_.getBackendName()
+                   << " Backend does not support node as quantized in "
+                   << Type::getElementName(quantizationPrecision_) << ":\n"
+                   << node.getDebugDesc();
+      GLOW_UNREACHABLE("Quantizer failed on converting some node.");
+    }
+
+    return isOpSupported;
   }
 
   /// Helper that \returns whether quantization parameters exist
@@ -451,9 +472,10 @@ protected:
     }
   }
 
-  /// Perform post processing for \p node. E.g., update the nodeToTQP_ for the
-  /// added conversions for \p node, or convert nodes into lookup tables if not
-  /// supported by the backend.
+  /// Perform post processing for \p node. Handles special cases, e.g.
+  /// requirements for input/output quantization parameters, converting to
+  /// lookup tables, etc. Also updates nodeToTQP_ with the added dequantization
+  /// nodes added for \p node.
   void postProcessing(Node &node) override {
     Node *quantizedNode = &node;
     switch (node.getKind()) {
@@ -500,6 +522,11 @@ protected:
       auto outTy = mod_.uniqueType(quantizationPrecision_, outputTy->dims(),
                                    outputTy->getScale(), outputTy->getOffset());
       NodeValue val = node.getNthResult(SingleMatchingInOutTypeResultIdx);
+      // "val" may not have any users if the output goes unused, e.g. if we are
+      // quantizing a TopKNode and only indices is used.
+      if (val.getNumUsers() == 0) {
+        break;
+      }
       // "node" should have only one use, the dequantize node.
       // Update this use.
       assert(
@@ -526,30 +553,42 @@ protected:
              "Backend should support IntLookupTable at this point.");
       switch (node.getKind()) {
       case Kinded::Kind::LogNodeKind:
-        replaceQuantizedLogWithLookupTable(function_,
-                                           llvm::cast<LogNode>(node));
-        return;
+        quantizedNode = replaceQuantizedLogWithLookupTable(
+            function_, llvm::cast<LogNode>(node));
+        break;
       case Kinded::Kind::TanhNodeKind:
-        replaceQuantizedTanhWithLookupTable(function_,
-                                            llvm::cast<TanhNode>(node));
-        return;
+        quantizedNode = replaceQuantizedTanhWithLookupTable(
+            function_, llvm::cast<TanhNode>(node));
+        break;
       case Kinded::Kind::SigmoidNodeKind:
-        replaceQuantizedSigmoidWithLookupTable(function_,
-                                               llvm::cast<SigmoidNode>(node));
-        return;
+        quantizedNode = replaceQuantizedSigmoidWithLookupTable(
+            function_, llvm::cast<SigmoidNode>(node));
+        break;
       default:
         llvm_unreachable("Unsupported case for converting to lookup table.");
       }
     }
     }
-
     assert(!lastMorphedNodeWithTypeChanges && "Type not fixed");
-    // Make sure that nodeToTQP_ is not lost after the addition of intermediate
-    // dequantized nodes.
+
+    // Update nodeToTQP_ since we've added in dequantized nodes to the output of
+    // now-quantized nodes. This is necessary because later we try to quantize
+    // nodes only if we have a quantized type for its operands (i.e. a profile
+    // in nodeToTQP_). However its inputs may already have been quantized, which
+    // means its inputs are replaced by a dequantize node, and no profile would
+    // be found in nodeToTQP_ for the dequantize node_. Thus we add TQPs for
+    // the dequantize node given the scale/offset it is dequantizing from.
     for (unsigned outNum = 0, e = quantizedNode->getNumResults(); outNum != e;
          ++outNum) {
       NodeValue val = quantizedNode->getNthResult(outNum);
       if (!val.getType()->isQuantizedType()) {
+        continue;
+      }
+      // Not all float outputs will have a dequantize added to its quantized
+      // output, as we may just be using some outputs of a quantized node
+      // (e.g. when quantizing a TopK but only using the Indices output, no
+      // dequantize node is added to Values).
+      if (val.getNumUsers() == 0) {
         continue;
       }
       assert(
@@ -596,6 +635,9 @@ private:
   /// that were replaced by the NodeValue (whose output name is the key) that
   /// replaced them.
   const LoweredInfoMap &loweredMap_;
+  /// Used for debugging if we expect all nodes to be quantized by the
+  /// quantizer.
+  bool assertAllNodesQuantized_;
 
   /// \returns whether BatchedAddNode \p baN was originally lowered from a
   /// FullyConnectedNode based on loweredMap_.
@@ -623,16 +665,20 @@ public:
   /// Creates a function quantizer for \p F using the quantization
   /// parameters defined by \p quantizationInfos and target quantization
   /// precision defined by \p quantizationPrecision.
-  /// \p B and \p doNotQuantizeKinds are used to check which
-  /// nodes shouldn't be converted.
+  /// \p B and \p doNotQuantizeKinds are used to check which nodes shouldn't be
+  /// converted. \p assertAllNodesQuantized is used as a debugging tool; if
+  /// true then if the backend does not support a node as quantized for the
+  /// given \p quantizationPrecision then the program will exit with an error.
   FunctionQuantizer(Function &F, const Backend &B, quantization::Schema schema,
                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
-                    const LoweredInfoMap &loweredMap)
+                    const LoweredInfoMap &loweredMap,
+                    bool assertAllNodesQuantized)
       : FunctionConverter(F), mod_(*F.getParent()), B_(B), schema_(schema),
         quantizationPrecision_(quantizationPrecision),
-        doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap) {
+        doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap),
+        assertAllNodesQuantized_(assertAllNodesQuantized) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
@@ -640,6 +686,7 @@ public:
     }
     // Use for debug purposes.
     lastMorphedNodeWithTypeChanges = nullptr;
+    (void)assertAllNodesQuantized_;
   }
 
   /// Traverse all nodes to find applicable quantized nodes, and convert them
@@ -851,32 +898,20 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
   return quantizationInfos;
 }
 
-Function *
-quantizeFunction(const Backend &B, quantization::Schema schema,
-                 llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
-                 ElemKind quantizationPrecision, Function *F,
-                 const LoweredInfoMap &loweredMap, llvm::StringRef newFuncName,
-                 const KindSet &doNotQuantizeKinds, bool enableRowwise) {
-  assert((quantizationPrecision == ElemKind::Int8QTy ||
-          quantizationPrecision == ElemKind::Int16QTy) &&
+void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
+                      const Backend &B, const LoweredInfoMap &loweredMap,
+                      const KindSet &doNotQuantizeKinds) {
+  assert((quantConfig.precision == ElemKind::Int8QTy ||
+          quantConfig.precision == ElemKind::Int16QTy) &&
          "Only Int8 and Int16 quantization supported");
-  std::string tmpName;
-  if (newFuncName.empty()) {
-    tmpName = std::string(F->getName()) + "_quantized";
-    newFuncName = tmpName;
-  }
 
-  Function *G = F->clone(newFuncName);
-
-  FunctionQuantizer quantizer(*G, B, schema, quantizationInfos,
-                              quantizationPrecision, doNotQuantizeKinds,
-                              loweredMap);
+  FunctionQuantizer quantizer(*F, B, quantConfig.schema, quantConfig.infos,
+                              quantConfig.precision, doNotQuantizeKinds,
+                              loweredMap, quantConfig.assertAllNodesQuantized);
   quantizer.convert();
-  if (enableRowwise) {
+  if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();
   }
-
-  return G;
 }
 
 } // namespace quantization

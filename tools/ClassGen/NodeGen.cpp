@@ -330,6 +330,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Average Mean operation on the Input given "
                     "Axes.");
 
+  BB.newNode("ChannelShuffle")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Kernel")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Channel shuffle.");
+
   BB.newNode("LengthsSum")
       .addInput("Data")
       .addInput("Lengths")
@@ -346,6 +353,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Lengths")
       .addResultFromCtorArg()
+      .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
                     "len(Lengths) entries: first Lengths[0] slices are "
@@ -439,6 +447,12 @@ int main(int argc, char **argv) {
     .setDocstring("Determines whether each element of the Input is NaN and "
                   "generates a mask that can be consumed by a Select node.");
   // clang-format on
+
+  BB.newNode("ReplaceNaN")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Value")
+      .addResultFromCtorArg()
+      .setDocstring("Replaces NaNs found in Input with Value.");
 
   BB.newNode("Modulo")
       .addInput("Input")

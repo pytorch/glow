@@ -93,10 +93,10 @@ static std::string getKernelName(llvm::StringRef kernelBase, ElemKind kind) {
 }
 
 /// If \p PH is an output placeholder, \returns the SaveNode.
-static SaveNode *getOutputSave(Placeholder *PH) {
+static SaveNode *getOutputSave(Function *F, Placeholder *PH) {
   for (auto &use : PH->getUsers()) {
     if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
-      if (save->getPlaceholder() == PH) {
+      if (save->getParent() == F && save->getPlaceholder() == PH) {
         return save;
       }
     }
@@ -260,10 +260,7 @@ public:
                              synMemoryHost, false, name_.data());
     if (V->isQuantizedType() &&
         V->getElementType() != ElemKind::UInt8FusedQTy) {
-      GLOW_ASSERT(V->getOffset() == 0 &&
-                  "Only symmetric quantization is supported");
-      // TODO: Figure out how offset/zero_point works:
-      // desc.m_quantizationParams[0].m_zp = V->getOffset();
+      desc.m_quantizationParams[0].m_zp = V->getOffset();
       desc.m_quantizationParams[0].m_scale = V->getScale();
       desc.m_quantizationParams[0].m_qDataType = elemType;
     }
@@ -458,15 +455,14 @@ void HabanaFunction::execute(ExecutionContext *context) {
   std::vector<EnqueueTensorInfo> inputInfo;
   std::vector<EnqueueTensorInfo> outputInfo;
 
-  // Set up input/output buffers and record bindings for enqueuing.
-  auto phTensorMap = context->getPlaceholderBindings()->pairs();
-  for (const auto &pair : phTensorMap) {
-    Placeholder *P = pair.first;
-    Tensor *T = pair.second;
-
-    if (P->getNumUsers() == 0) {
-      continue;
+  // Set up input buffers and record bindings for enqueuing.
+  auto *bindings = context->getPlaceholderBindings();
+  for (auto *P : getInputs()) {
+    Tensor *T = bindings->get(P);
+    if (!T) {
+      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
     }
+    GLOW_ASSERT(T);
 
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
@@ -474,13 +470,26 @@ void HabanaFunction::execute(ExecutionContext *context) {
     eti.tensorSize = T->getSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
-    if (getOutputSave(P)) {
-      outputInfo.push_back(eti);
-    } else {
-      inputInfo.push_back(eti);
-      // Copy from the tensor into the designated IO buffer.
-      memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
+    inputInfo.push_back(eti);
+    // Copy from the tensor into the designated IO buffer.
+    memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
+  }
+
+  // Set up output buffers and record bindings for enqueuing.
+  for (auto *P : getOutputs()) {
+    Tensor *T = bindings->get(P);
+    if (!T) {
+      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
     }
+    GLOW_ASSERT(T);
+
+    EnqueueTensorInfo eti;
+    llvm::StringRef name = P->getName();
+    eti.tensorName = name.data();
+    eti.tensorSize = T->getSizeInBytes();
+    eti.pTensorData = (char *)ioBuffer->get(P);
+
+    outputInfo.push_back(eti);
   }
 
   EnqueueTensorInfo noInputEti = {"unused", (char *)nullptr, 0};
@@ -641,7 +650,7 @@ allocateGraphTensors(Function *F) {
     if (V->getNumUsers() == 0) {
       continue;
     }
-    if (auto *save = getOutputSave(V)) {
+    if (auto *save = getOutputSave(F, V)) {
       // We want to avoid emitting copies for save nodes by simply marking the
       // save input as an "output" tensor.  The exceptions are when the input
       // is itself a placeholder/constant, or a reshape.  (The reshape case is
@@ -695,7 +704,7 @@ IOPlaceholders findIOPlaceholders(Function *F) {
     if (!usedInFunction(V, F)) {
       continue;
     }
-    if (getOutputSave(V)) {
+    if (getOutputSave(F, V)) {
       io.outputs.push_back(V);
     } else {
       io.inputs.push_back(V);
@@ -705,7 +714,7 @@ IOPlaceholders findIOPlaceholders(Function *F) {
 }
 
 std::unique_ptr<CompiledFunction>
-HabanaBackend::compile(Function *F, const CompilationOptions &opts) const {
+HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
   // Allocate all the tensors.
@@ -1471,7 +1480,7 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 } // namespace
 
 bool HabanaBackend::transformPostLowering(
-    Function *F, const CompilationOptions &opts) const {
+    Function *F, const CompilationContext &cctx) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Separate any Slice nodes into several that only slice in one dimension

@@ -1497,5 +1497,53 @@ __kernel void scatterassignW(__global void *mem, cl_uint32_t data,
   scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
 
+__kernel void sparselengthsweightedsumK(__global float *dest,
+                                        __global float *data,
+                                        __global float *weights,
+                                        __global cl_uint64_t *indices,
+                                        __global cl_int32_t *lengths,
+                                        cl_uint32_t dataSliceSize) {
+  // Get the global ID. This corresponds to the segment that this kernel will
+  // compute, and therefore also the index into the output buffer at which this
+  // kernel will write its output.
+  cl_int32_t idx = get_global_id(0);
+
+  // Add together the segment lengths of the segments being processed by kernels
+  // with global ID 0 .. idx - 1. This is the index into the indices buffer
+  // at which *this* kernel should start reading indices with which to index
+  // into the data buffer and weights that the data should be multiplied by.
+  cl_int32_t curIdx = 0;
+  for (cl_int32_t i = 0; i < idx; ++i) {
+    curIdx += lengths[i];
+  }
+
+  // For each index in the segment:
+  for (cl_int32_t j = 0; j < lengths[idx]; ++j) {
+    // Read the weight.
+    float weight = weights[curIdx];
+    // Read the data index.
+    cl_uint64_t dataIdx = indices[curIdx];
+
+    // Read an entire slice of data at index dataIdx, multiply it by the weight
+    // and store it into dest at index idx (same as the segment number).
+    for (cl_uint64_t k = 0; k < dataSliceSize; ++k) {
+      dest[idx * dataSliceSize + k] +=
+          weight * data[dataIdx * dataSliceSize + k];
+    }
+
+    // Increment the index.
+    curIdx++;
+  }
+}
+
+__kernel void sparselengthsweightedsumW(__global void *mem, cl_uint32_t dest,
+                                        cl_uint32_t data, cl_uint32_t weights,
+                                        cl_uint32_t indices,
+                                        cl_uint32_t lengths,
+                                        cl_uint32_t dataSliceSize) {
+  sparselengthsweightedsumK(&mem[dest], &mem[data], &mem[weights],
+                            &mem[indices], &mem[lengths], dataSliceSize);
+}
+
 /// An empty kernel used as a checkpoint for TraceEvents.
 __kernel void checkpoint(__global void *mem) {}

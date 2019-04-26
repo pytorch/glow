@@ -28,6 +28,24 @@ endif ()
 # to analyze the source code of the project.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(GLOW_USE_LLD)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES Clang)
+    message(FATAL_ERROR "lld requires the use of the clang compiler")
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+    message(FATAL_ERROR "lld does not support MachO yet")
+  endif()
+  include(CheckCXXCompilerFlag)
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -fuse-ld=lld")
+  CHECK_CXX_COMPILER_FLAG("-fuse-ld=lld" HAS_LLD_FLAG)
+  if(NOT HAS_LLD_FLAG)
+    message(FATAL_ERROR "lld is not supported by the compiler")
+  endif()
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+endif()
+
+include(Glog)
 include(GlowDefaults)
 include(GlowTestSupport)
 include(GlowExternalBackends)
@@ -88,21 +106,9 @@ endif ()
 # Top level setup for external backends
 ExternalBackendsInit()
 
-# Prefer LLVM 7.
-find_package(LLVM 7 CONFIG)
-
-# If LLVM 7 not found, try building with LLVM 6.
-if (NOT LLVM_FOUND)
-  # Fallback to LLVM 6
-  find_package(LLVM 6 CONFIG)
-
-  # Fallback to whatever is available.
-  if (NOT LLVM_FOUND)
-    find_package(LLVM CONFIG)
-  endif()
-endif()
-if (NOT LLVM_FOUND)
-  message(FATAL_ERROR "Could not find LLVM. Build LLVM manually and configure the project with -DCMAKE_PREFIX_PATH=/path/to/llvm/install")
+find_package(LLVM CONFIG)
+if(NOT LLVM_FOUND OR LLVM_VERSION VERSION_LESS 7.0)
+  message(SEND_ERROR "LLVM >= 7.0 is required to build Glow")
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")

@@ -52,7 +52,8 @@ The design philosophy is described in an [arXiv paper](https://arxiv.org/abs/180
 ### System Requirements
 
 Glow builds and runs on macOS and Linux. The software depends on a modern C++
-compiler that supports C++11, on CMake, LLVM, protocol buffers, and libpng.
+compiler that supports C++11, on CMake, LLVM, glog, protocol buffers, and
+libpng.
 
 #### Get Glow!
 
@@ -78,14 +79,14 @@ Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget
+  brew install cmake graphviz libpng ninja protobuf wget glog
   brew install llvm@7
   ```
 
 If using MacPorts, run:
 
   ```bash
-  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0
+  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0 google-glog
   ```
 
 Note that LLVM is installed in a non-default location to avoid conflicts with
@@ -122,7 +123,8 @@ following command should install the required dependencies:
 
   ```bash
   sudo apt-get install clang clang-6.0 cmake graphviz libpng-dev \
-      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget opencl-headers
+      libprotobuf-dev llvm-6.0 ninja-build protobuf-compiler wget \
+      opencl-headers libgoogle-glog-dev
   ```
 
 It may be desirable to use `update-alternatives` to manage the version of
@@ -191,20 +193,21 @@ under "Command Line Tools".
 By default, Glow will use a system provided LLVM.  Note that Glow requires LLVM
 5.0 or later. If you have LLVM installed in a non-default location (for
 example, if you installed it using Homebrew on macOS), you need to tell CMake
-where to find llvm using `-DCMAKE_PREFIX_PATH`. For example, if LLVM were
+where to find llvm using `-DLLVM_DIR`. For example, if LLVM were
 installed in `/usr/local/opt`:
 
   ```bash
   cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_PREFIX_PATH=/usr/local/opt/llvm@7
+      -DLLVM_DIR=/usr/local/opt/llvm@7/lib/cmake/llvm
   ```
 
 If LLVM is not available on your system you'll need to build it manually.  Run
 the script '`/utils/build_llvm.sh` to clone, build and install LLVM in a local
-directory. You will need to configure Glow with the flag `-DCMAKE_PREFIX_PATH`
-to tell the build system where to find LLVM (e.g. the location of
-`llvm_install/` if using `build_llvm.sh`).
+directory. You will need to configure Glow with the flag `-DLLVM_DIR` to tell
+the build system where to find LLVM given the local directory you installed it
+in (e.g. `-DLLVM_DIR=/path/to/llvm_install/lib/cmake/llvm` if using
+`build_llvm.sh`).
 
 ## Testing and Running
 

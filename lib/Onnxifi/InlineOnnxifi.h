@@ -44,7 +44,8 @@ public:
 
   onnxStatus run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
                  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                     phNameToOnnxTensorOutputs) override;
+                     phNameToOnnxTensorOutputs,
+                 onnxTraceEventList *traceEvents) override;
 
 private:
   ExecutionEngine executionEngine_;

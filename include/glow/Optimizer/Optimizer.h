@@ -16,8 +16,7 @@
 #ifndef GLOW_OPTIMIZER_OPTIMIZER_H
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
-#include "glow/Backends/CompilationOptions.h"
-#include "glow/Quantization/Quantization.h"
+#include "glow/Optimizer/CompilationContext.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -34,8 +33,11 @@ class Placeholder;
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, const CompilationOptions &opts);
+void optimize(Function *F, const CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
+/// Fold nodes that were expressed lowered in the input model.
+void fold(Function *F, const CompilationContext &cctx);
+void fold(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent
@@ -59,11 +61,8 @@ void convertPlaceholdersToConstants(Function *F,
 
 /// Instrument function \p F by inserting quantization profile nodes for
 /// capturing stats for quantization. The nodes will refer to tensors allocate
-/// in in context \p bindings. The new quantized function is called \p
-/// newFuncName. If no name is given the method will generate a name.  \returns
-/// a new function with the added quantization nodes.
-Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
-                              llvm::StringRef newFuncName = "");
+/// in context \p bindings.
+void profileQuantization(PlaceholderBindings &bindings, Function *F);
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.
@@ -71,6 +70,10 @@ Function *profileQuantization(PlaceholderBindings &bindings, Function *F,
 /// Instruction IR.
 std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
                                                   bool shouldShareBuffers);
+
+/// Optimize the Function \p F given compilation options \p cctx for Backend \B.
+void optimizeFunction(Function *F, const Backend &B,
+                      const CompilationContext &cctx);
 
 } // namespace glow
 

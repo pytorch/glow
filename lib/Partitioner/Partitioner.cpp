@@ -19,8 +19,25 @@
 using namespace glow;
 using llvm::isa;
 
-Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices)
-    : module_(parent), deviceInfo_(devices) {
+/// Check if the memory of \p node inputs is calculated already. \returns the
+/// total used memory after \p node is considered.
+static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
+                              std::set<Storage *> &newStorage, Node *node,
+                              uint64_t mem) {
+  uint64_t ret = mem;
+  for (size_t i = 0, e = node->getNumInputs(); i < e; i++) {
+    Storage *in = llvm::dyn_cast<Storage>(node->getNthInput(i).getNode());
+    if (in && usedStorage.find(in) == usedStorage.end()) {
+      ret += in->getType()->getSizeInBytes();
+      newStorage.insert(in);
+    }
+  }
+  return ret;
+}
+
+Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
+                         bool saturateHost)
+    : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost) {
   memSize_ = module_->getConstantsSize();
 }
 
@@ -338,8 +355,8 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
             // It is possible that after moving a node from Partition2 to
             // Partition1, Partition2 become empty. Remove the empty partition.
             partitions.deletePartition(suc);
-            module_->eraseFunction(suc);
             nodesSet.erase(suc);
+            module_->eraseFunction(suc);
           } else {
             GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc]);
             partitions.setGraphMemInfo(suc, newCost);
@@ -367,62 +384,35 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   size_t level = bfs.size();
-  // A list of cut. The graph can be partitioned by levels (cut[0], level - 1],
-  // (cut[1], cut[0] - 1], ..., (-1, cut[n] - 1].
-  std::vector<int> cut;
 
   // Step 1 : get the initial cut based on BFS levels and availableMemory.
-  // TODO .. need to remove the duplicated memory usage.
   uint64_t mem = 0;
-  for (int i = level - 1; i >= 0; i--) {
-    uint64_t tmp = 0;
-    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
-      Node *N = bfs[i][j];
-      tmp += memUsage_[N];
-    }
-    if (mem + tmp > availableMemory) {
-      // mem == 0 means the mem usage for one level exceeds the availableMem,
-      // accept it now and will do adjustment later. Otherwise, leave tmp to
-      // next stage by assigning it to mem.
-      if (mem == 0) {
-        cut.push_back(i - 1);
-      } else {
-        cut.push_back(i);
-        mem = tmp;
-      }
-    } else {
-      mem += tmp;
-    }
-  }
-
-  // The last border.
-  cut.push_back(-1);
-
-  // Step 2 : Create the initial mapping between node and functions.
   int color = 0;
   Function *newF;
-  for (size_t k = 0, e = cut.size(); k < e; k++) {
-    newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
-                                          std::to_string(++color));
-    mapping.createPartition(newF);
-    uint64_t mem = 0;
-    for (int i = k > 0 ? cut[k - 1] : level - 1; i > cut[k]; i--) {
-      for (size_t j = 0, e1 = bfs[i].size(); j < e1; j++) {
-        Node *N = bfs[i][j];
-        if (mem + memUsage_[N] > availableMemory) {
-          newF = F->getParent()->createFunction(
-              std::string(F->getName()) + "_part" + std::to_string(++color));
-          mapping.createPartition(newF);
-          mem = memUsage_[N];
-        } else {
-          mem += memUsage_[N];
-        }
-        mapping.add(N, newF);
+  newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
+                                        std::to_string(++color));
+  mapping.createPartition(newF);
+  std::set<Storage *> usedStorage;
+  for (int i = level - 1; i >= 0; i--) {
+    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
+      Node *N = bfs[i][j];
+      std::set<Storage *> newStorage;
+      uint64_t newMem = updateUsedMem(usedStorage, newStorage, N, mem);
+      if (newMem > availableMemory) {
+        newF = F->getParent()->createFunction(
+            std::string(F->getName()) + "_part" + std::to_string(++color));
+        mapping.createPartition(newF);
+        mem = memUsage_[N];
+        usedStorage = newStorage;
+      } else {
+        usedStorage.insert(newStorage.begin(), newStorage.end());
+        mem = newMem;
       }
+      mapping.add(N, newF);
     }
   }
 
-  // Step 3 : adjust the partition based on performance.
+  // Step 2 : adjust the partition based on performance.
   partitionsAdjust(mapping, availableMemory);
 
   return mapping;
@@ -434,15 +424,44 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 /// there is only 2 devices.
 void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
 
+/// Duplicate the network to saturate the number of devices. For example: If a
+/// network is partitioned into two parts (\p logicalDeviceCount) and there are
+/// six devices this would duplicate the network three times.
+void Partitioner::saturateHost(unsigned logicalDeviceCount) {
+  unsigned duplications = deviceInfo_.size() / logicalDeviceCount;
+  if (duplications < 2) {
+    return;
+  }
+  // Add additional logical devices to each node.
+  for (auto &network : partitions_) {
+    for (auto &node : network.nodes) {
+      // Build list of new logical devices to add to node.
+      std::vector<unsigned> newDevices;
+      for (auto logical : node->logicalDevices) {
+        // To ensure we do not have a logicalID collision we use the following
+        // scheme. We have an iterator starting at 1 for each duplication pass.
+        // The new ID we add is calcuated as follows:
+        // (iterator * logicalDeviceCount) + initialLogicalID
+        for (unsigned i = 1; i < duplications; i++) {
+          newDevices.push_back(logical + (i * logicalDeviceCount));
+        }
+      }
+      // Append the new logical devices to the node's logical device vector.
+      node->logicalDevices.insert(node->logicalDevices.end(),
+                                  newDevices.begin(), newDevices.end());
+    }
+  }
+}
+
 /// Current only partition the representative function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
   rootDAGNodeTy DAGRoot = llvm::make_unique<DAGNode>();
   nodesDAGNodeTy nodes;
-  DAGRoot->logicalDevice = 0;
+  DAGRoot->logicalDevices = {0};
   DAGRoot->name = F->getName();
-  DAGRoot->deviceID = 0;
-  DAGRoot->logicalDevice = 0;
+  DAGRoot->module = module_;
+  DAGRoot->deviceIDs = {0};
   DAGNode *root = DAGRoot.get();
   llvm::DenseMap<Node *, Node *> currToNew;
 
@@ -455,14 +474,14 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
 
   // For any dependency that crosses a partition, add a placeholder and save
   // node. Record the dependence in the function graph.
-  int logicalID = 0;
+  DeviceIDTy logicalID = 0;
   std::unordered_map<NodeValue, Placeholder *> placeholders;
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
       std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
-      subDAG->logicalDevice = logicalID++;
+      subDAG->logicalDevices = {logicalID++};
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -484,7 +503,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
         if (funcDAG.find(inputF) == funcDAG.end()) {
           std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
-          subDAG->logicalDevice = logicalID++;
+          subDAG->logicalDevices = {logicalID++};
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
@@ -543,11 +562,14 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // Adjust the logicalDevice for each DAGNode.
   if (mapping.getPartitions().size() > deviceInfo_.size()) {
     adjustLogicalDeviceID(root, mapping.getPartitions().size());
+  } else if (saturateHost_) {
+    // Attempt to saturate the host. Passing in the count of logical devices.
+    // Since logicalId starts at 0 we add one.
+    saturateHost(logicalID + 1);
   }
 }
 
-DAGListTy &Partitioner::Partition() {
-
+llvm::Error Partitioner::Partition() {
   // Find the representative function for running partitioning algorithm.
   F_ = selectRepFunc(module_, memSize_);
   uint64_t availMem = deviceInfo_[0].availableMemory;
@@ -557,10 +579,11 @@ DAGListTy &Partitioner::Partition() {
     // dummy function.
     for (auto F : module_->getFunctions()) {
       std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
-      DAG0->logicalDevice = 0;
+      DAG0->logicalDevices = {0};
       DAG0->name = F->getName();
+      DAG0->module = module_;
       std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
-      DAG1->logicalDevice = 0;
+      DAG1->logicalDevices = {0};
       DAG1->name = F->getName();
       DAG1->parents.push_back(DAG0.get());
       DAG0->children.push_back(DAG1.get());
@@ -568,7 +591,11 @@ DAGListTy &Partitioner::Partition() {
       nodes.push_back(std::move(DAG1));
       partitions_.push_back({std::move(DAG0), std::move(nodes)});
     }
-    return partitions_;
+    if (saturateHost_) {
+      // Saturate the Host.
+      saturateHost(1);
+    }
+    return llvm::Error::success();
   }
 
   // Prepare 1: Get the min memory usage for each op.
@@ -581,6 +608,10 @@ DAGListTy &Partitioner::Partition() {
   // Use BFS to do the initial partitioning. Starting from the final node, BFS
   // until the memory limitation reached one by one.
   NodeToFunctionMap partitionMap = selectPartitions(F_, availMem);
+
+  RETURN_ERR_IF_NOT(partitionMap.getPartitions().size() <= deviceInfo_.size(),
+                    "Partition failed: the number of given devices is fewer "
+                    "than the required minimal partitions.");
 
   doPartitioning(F_, partitionMap);
 
@@ -597,5 +628,5 @@ DAGListTy &Partitioner::Partition() {
   // Check the computation time of each sub-module, and find out the "key"
   // sub-module to decide if duplicating the sub-module is necessary.
 
-  return partitions_;
+  return llvm::Error::success();
 }

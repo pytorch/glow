@@ -24,7 +24,6 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
-#include "onnx/onnx_pb.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -130,6 +129,22 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
   return false;
 }
 
+llvm::Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
+    ONNX_NAMESPACE::TensorProto_DataType t) {
+  switch (t) {
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    return ElemKind::FloatTy;
+  case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+    return ElemKind::Float16Ty;
+  case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+    return ElemKind::Int32ITy;
+  case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+    return ElemKind::Int64ITy;
+  default:;
+  }
+  RETURN_ERR("Non supported ONNX type");
+}
+
 llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   irVersion_ = MP.ir_version();
   opsetVersion_ = 0;
@@ -198,7 +213,14 @@ namespace {
 using Pads = std::vector<unsigned_t>;
 } // namespace
 
-llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict) {
+/// Get the Pads value based on setting for auto_pad.
+/// \p kdim : kernel sizes (HW)
+/// \p sdim: stride sizes (HW)
+/// \p idim: input sizes (HW)
+llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
+                             llvm::ArrayRef<unsigned_t> kdim,
+                             llvm::ArrayRef<unsigned_t> sdim,
+                             llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
     return getShape<unsigned_t>(dict.at("pads"));
   }
@@ -208,8 +230,38 @@ llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict) {
     if (padStr == "VALID") {
       // Return default value 0 for pads.
       return Pads({0, 0, 0, 0});
+    } else if (padStr == "SAME_UPPER" || padStr == "SAME_LOWER") {
+      unsigned_t top, left, bottom, right;
+      // From https://arxiv.org/pdf/1603.07285.pdf 2.4,
+      // o = floor((i + 2*p - k)/s) + 1
+      // Also, from https://github.com/onnx/onnx/blob/master/docs/Operators.md
+      // output_spatial_shape[i] =
+      //     ceil(input_spatial_shape[i] / strides_spatial_shape[i])
+      // pad_shape[i] =
+      //     (output_spatial_shape[i] - 1) * strides_spatial_shape[i]
+      //         + kernel_spatial_shape[i] - input_spatial_shape[i]
+      // Use the smallest padding possible out of the possible options.
+      llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+      for (size_t i = 0, e = pdim.size(); i < e; i++) {
+        pdim[i] = sdim[i] * (idim[i] - 1) + kdim[i] - idim[i];
+      }
+      if (padStr == "SAME_UPPER") {
+        // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
+        top = pdim[0] / 2;
+        bottom = top + (pdim[0] & 0x1);
+        left = pdim[1] / 2;
+        right = left + (pdim[1] & 0x1);
+      } else {
+        // SAME_LOWER: if odd number for pdim[i], use extra padding at the
+        // beginning.
+        bottom = pdim[0] / 2;
+        top = bottom + (pdim[0] & 0x1);
+        right = pdim[1] / 2;
+        left = right + (pdim[1] & 0x1);
+      }
+      return Pads({top, left, bottom, right});
     }
-    RETURN_ERR("only auto_pad==VALID is supported");
+    RETURN_ERR("only auto_pad==VALID, SAME_UPPER and SAME_LOWER are supported");
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});
@@ -435,10 +487,6 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
-  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
-  Pads pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
-
   // Load the inputs
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in,
@@ -460,7 +508,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   size_t depth = filterTransposedValue.dims()[0];
 
   // Get the kernel shape from the input.
-  std::vector<unsigned_t> kernelShape(2);
+  llvm::SmallVector<unsigned_t, 2> kernelShape(2);
   kernelShape[0] = filterTransposedValue.dims()[1];
   kernelShape[1] = filterTransposedValue.dims()[2];
 
@@ -498,6 +546,15 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[2];
+  idimHW[1] = in.dims()[3];
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
+
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides, pads);
   std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
@@ -534,9 +591,6 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<unsigned_t> kernels =
       getShape<unsigned_t>(dict.at("kernel_shape"));
 
-  Pads pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
-
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
     RETURN_ERR("Glow only handles 2D pooling currently.",
@@ -552,6 +606,14 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     kernels[0] = Ty->dims()[2];
     kernels[1] = Ty->dims()[3];
   }
+
+  // NHWC
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[1];
+  idimHW[1] = in.dims()[2];
+
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
 
   Node *node = nullptr;
   if (typeName == "MaxPool") {
@@ -578,12 +640,13 @@ ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
     strides = getShape<unsigned_t>(dict.at("strides"));
   }
 
-  std::vector<unsigned_t> kernels(2);
+  llvm::SmallVector<unsigned_t, 2> kernels(2);
   kernels[0] = in.dims()[2];
   kernels[1] = in.dims()[3];
 
   Pads pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      pads, getPads(dict, kernels, strides, kernels /* input sizes*/));
 
   auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
   Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
@@ -780,6 +843,37 @@ llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict) {
+  // Input Type.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ElemKind inputType = input.getType()->getElementType();
+
+  // Only supports float types.
+  RETURN_ERR_IF_NOT((inputType == ElemKind::FloatTy) ||
+                        (inputType == ElemKind::Float16Ty),
+                    "Unsupported Type for LeakyRelu");
+
+  // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
+  // like for others. The default example just omits alpha.
+  float alphaVal = 0.01f;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alphaVal, loadFloat(dict.at("alpha")));
+  }
+
+  // Create the node.
+  auto splatType = G_.getParent()->uniqueType(ElemKind::FloatTy, input.dims());
+  const std::string &opName = loadOperatorName(op);
+  Node *splatN = G_.createSplat(opName + "Alpha", splatType, alphaVal);
+  Node *N = G_.createPRELU(opName, input, splatN);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                                      const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -832,6 +926,45 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create the IR node.
   Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Input type
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ElemKind inputKind = input.getType()->getElementType();
+
+  // Target type.
+  ElemKind targetKind;
+  RETURN_ERR_IF_NOT(dict.count("to"), "Cast: missing 'to' attribute");
+  int toONNXTypeValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(toONNXTypeValue, loadInt(dict.at("to")));
+  RETURN_ERR_IF_NOT(
+      ONNX_NAMESPACE::TensorProto_DataType_IsValid(toONNXTypeValue),
+      "Cast: invalid target type",
+      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      targetKind, convertTensorProtoDataType(
+                      ONNX_NAMESPACE::TensorProto_DataType(toONNXTypeValue)));
+
+  // Only support non quantized types.
+  RETURN_ERR_IF_NOT((!isQuantizedElemKind(inputKind)) &&
+                        (!isQuantizedElemKind(targetKind)),
+                    "Unsupported Cast");
+
+  // Create the node.
+  auto inputDims = input.dims();
+  auto outTy = G_.getParent()->uniqueType(targetKind, inputDims);
+
+  // Create the IR node.
+  Node *N = G_.createConvertTo(opName, input, outTy);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return llvm::Error::success();
@@ -890,6 +1023,12 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Pad") {
     return loadPad(op, dict);
+  }
+  if (typeName == "Cast") {
+    return loadCast(op, dict);
+  }
+  if (typeName == "LeakyRelu") {
+    return loadLeakyRelu(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",

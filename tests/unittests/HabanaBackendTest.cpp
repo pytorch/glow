@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Optimizer/Optimizer.h"
 
 #include "gtest/gtest.h"
 
@@ -60,7 +61,7 @@ TEST_F(HabanaBackendTest, SurroundTile) {
   SaveNode *SN = F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
   EXPECT_TRUE(changed);
 
   // Invoke dead code elimination.
@@ -111,7 +112,7 @@ TEST_F(HabanaBackendTest, DoNotSurroundTile) {
   F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
 
   // Graph should not change since input to Tile is already 4D.
   EXPECT_FALSE(changed);
@@ -139,7 +140,7 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -212,7 +213,7 @@ TEST_F(HabanaBackendTest, FuseConvAdd) {
   SaveNode *SN = F_->createSave("save", AN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -302,7 +303,7 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -377,7 +378,7 @@ TEST_F(HabanaBackendTest, ConvertFC) {
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {16}, "bias");
   auto *FC = F_->createFullyConnected("fc", input, weight, bias);
   auto *save = F_->createSave("save", FC);
-  backend.transformPostLowering(F_, CompilationOptions());
+  backend.transformPostLowering(F_, CompilationContext());
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaFullyConnectedNode>(save->getInput()));
 }
@@ -390,7 +391,7 @@ TEST_F(HabanaBackendTest, ConvertConv) {
   ConvolutionNode *conv = F_->createConv(ctx_, "conv", input, 3, 5, 1, 2, 1);
   SaveNode *save = F_->createSave("save", conv);
 
-  bool changed = backend.transformPostLowering(F_, CompilationOptions());
+  bool changed = backend.transformPostLowering(F_, CompilationContext());
   EXPECT_TRUE(changed);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaConvolutionNode>(save->getInput()));
@@ -766,6 +767,38 @@ TEST_F(HabanaBackendTest, QuantizedFC) {
   for (size_t i = 0; i < H.size(); i++) {
     EXPECT_EQ(H.raw(i), 32);
   }
+}
+
+TEST_F(HabanaBackendTest, QuantizedNonZeroOffset) {
+  TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.08, 4);
+  TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.075, -5);
+  TypeRef rhsTy = mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, 0.075, -5);
+
+  auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "rhs", false);
+
+  ctx_.allocate(lhs)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  ctx_.allocate(rhs)->getHandle() = {0.1f, -0.2f, 0.3f, 9.0f};
+
+  auto *lhsq = F_->createQuantize("lhs.q", lhs, lhsTy);
+  auto *rhsq = F_->createQuantize("rhs.q", rhs, rhsTy);
+
+  auto *matmulq = F_->createSub("sub.q", resTy, lhsq, rhsq);
+
+  auto *rq = F_->createDequantize("dequant", matmulq);
+
+  auto *result = F_->createSave("save", rq);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  EXPECT_NEAR(H.at({0, 0}), 0.9f, 0.1);
+  EXPECT_NEAR(H.at({0, 1}), 2.2f, 0.1);
+  EXPECT_NEAR(H.at({1, 0}), 2.7f, 0.1);
+  EXPECT_NEAR(H.at({1, 1}), -5.0f, 0.1);
 }
 
 TEST_F(HabanaBackendTest, FC2) {
@@ -1459,11 +1492,11 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 
   // Compile function.
   glow::runtime::FunctionMapTy functions;
-  auto *backend = createBackend(BackendKind::Habana);
-  CompilationOptions opts;
-  opts.mode = CompilationMode::Infer;
-  backend->optimizeFunction(F_, opts);
-  auto compiledFunction = backend->compile(F_, opts);
+  auto backend = std::unique_ptr<Backend>(createBackend(BackendKind::Habana));
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  ::glow::optimizeFunction(F_, *backend, cctx);
+  auto compiledFunction = backend->compile(F_, cctx.backendOpts);
   functions.emplace(F_->getName(), compiledFunction.get());
 
   // Add the function to each device.

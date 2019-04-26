@@ -17,14 +17,13 @@
 #include "glow/Backends/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "glow/IR/IR.h"
-
-#include "llvm/Support/Casting.h"
-
-#include "glow/Backends/Backend.h"
 #include "glow/Graph/Node.h"
+#include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRGen.h"
+#include "glow/Quantization/Base/Base.h"
+
+#include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
 
@@ -113,7 +112,7 @@ class MockBackend : public Backend {
   std::string getBackendName() const override { return "MockBackend"; }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &) const override {
+  compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
@@ -146,7 +145,7 @@ class MockBackendCustomIRGen : public Backend {
   std::string getBackendName() const override { return "MockBackend"; }
 
   std::unique_ptr<CompiledFunction>
-  compile(Function *F, const CompilationOptions &) const override {
+  compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 

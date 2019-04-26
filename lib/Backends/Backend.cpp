@@ -18,31 +18,8 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Optimizer/Optimizer.h"
 
 using namespace glow;
-
-void Backend::optimizeFunction(Function *F,
-                               const CompilationOptions &opts) const {
-  // Verify the function pre-optimization/lowering.
-  assert(F->verify() && "Function must be valid");
-
-  // Optimize the graph.
-  ::glow::optimize(F, opts);
-
-  // Lower the graph into a sequence of low-level linear algebra operations.
-  ::glow::lower(F, /* loweredMap */ nullptr, this);
-
-  // Optimize the graph again.
-  ::glow::optimize(F, opts);
-
-  // Allow the backend to transform the graph after lowering.
-  if (transformPostLowering(F, opts)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, opts);
-  }
-}
 
 TraceInfo Backend::buildManualTraceInfo(Function *F) const {
   TraceInfo info(false, getTraceEventDataSize());

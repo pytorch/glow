@@ -115,12 +115,14 @@ public:
   /// Set input memory addresses for inputs based on the \p inputDescriptors.
   /// Set output memory addresses for outputs based on the \p
   /// outputDescriptors. Will async signal the \p outputEvent when run is
-  /// complete.
+  /// complete. \p traceEvents is a pointer to onnxTraceEventList, if it is not
+  /// null then it is expected that this will be populated with trace events
+  /// from the run before signalling the outputEvent.
   onnxStatus setIOAndRun(uint32_t inputsCount,
                          const onnxTensorDescriptorV1 *inputDescriptors,
                          uint32_t outputsCount,
                          const onnxTensorDescriptorV1 *outputDescriptors,
-                         EventPtr outputEvent);
+                         EventPtr outputEvent, onnxTraceEventList *traceEvents);
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
   /// static trained weights \p weightDescriptors.
@@ -131,7 +133,17 @@ public:
   virtual onnxStatus
   run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
       std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-          phNameToOnnxTensorOutputs) = 0;
+          phNameToOnnxTensorOutputs,
+      onnxTraceEventList *traceEvents) = 0;
+
+  /// Copy any trace events \p traceContext into \p traceEvents. If
+  /// \p traceEvents is null then do nothing.
+  static void setTraceEvents(onnxTraceEventList *traceEvents,
+                             const TraceContext &traceContext);
+
+  /// Free all memory that was allocated by setTraceEvents when creating \p
+  /// traceEvents.
+  static void releaseTraceEvents(onnxTraceEventList *traceEvents);
 
 protected:
   BackendPtr backendPtr_;

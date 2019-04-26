@@ -236,12 +236,12 @@ void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
 
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
                               bool clearOtherFunctions) {
-  CompilationOptions opts;
-  opts.mode = mode;
-  compile(F, opts, clearOtherFunctions);
+  CompilationContext cctx;
+  cctx.mode = mode;
+  compile(F, cctx, clearOtherFunctions);
 }
 
-void ExecutionEngine::compile(Function *F, const CompilationOptions &opts,
+void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
                               bool clearOtherFunctions) {
   llvm::StringRef name = F->getName();
 
@@ -252,7 +252,7 @@ void ExecutionEngine::compile(Function *F, const CompilationOptions &opts,
   assert(!compiledFunctions_.count(name) &&
          "A function with this name has already been compiled.");
 
-  backend_->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend_, cctx);
 
   for (const Node &N : F->getNodes()) {
     (void)N;
@@ -260,13 +260,13 @@ void ExecutionEngine::compile(Function *F, const CompilationOptions &opts,
            "Backend must support all nodes after high-level optimizations.");
   }
 
-  auto func = backend_->compile(F, opts);
+  auto func = backend_->compile(F, cctx.backendOpts);
   insertCompiledFunction(name, std::move(func));
 }
 
-void ExecutionEngine::save(Function *F, const CompilationOptions &opts,
+void ExecutionEngine::save(Function *F, const CompilationContext &cctx,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
-  backend_->optimizeFunction(F, opts);
+  ::glow::optimizeFunction(F, *backend_, cctx);
   backend_->save(F, outputDir, networkName);
 }

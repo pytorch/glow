@@ -39,7 +39,9 @@ static void replaceAllUsesOfWith(LoweredInfoMap *loweredMap, NodeValue oldNV,
 
   std::string newOutputName = NodeQuantizationInfo::generateNodeOutputName(
       newNV.getNode()->getName(), newNV.getResNo());
-  (*loweredMap)[newOutputName].insert(NodeNameAndKind(oldNV));
+  (*loweredMap)[newOutputName].insert(
+      NodeNameAndKind(oldNV.getNode()->getName(), oldNV.getResNo(),
+                      oldNV.getNode()->getKind()));
 }
 
 static void lowerAddGradNode(Function *F, LoweredInfoMap *loweredMap,
@@ -641,6 +643,37 @@ static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, TN.getResult(), IN);
 }
 
+static void lowerChannelShuffleNode(Function *F, LoweredInfoMap *loweredMap,
+                                    const ChannelShuffleNode &CSN) {
+  auto input = CSN.getInput();
+  auto group = CSN.getGroup();
+  auto kernel = CSN.getKernel();
+
+  auto inDims = input.dims();
+  assert(kernel < inDims.size());
+
+  ShapeVector dims(inDims.begin(), inDims.end());
+  auto D = dims[kernel];
+  assert(D % group == 0);
+
+  dims.erase(dims.begin() + kernel);
+  // Reshape {D1, ... D_k, ... D_n} -> {D1, ... group, D_k / group, ... D_n}
+  dims.insert(dims.begin() + kernel, D / group);
+  dims.insert(dims.begin() + kernel, group);
+  auto *R1 = F->createReshape(CSN.getName().str() + ".reshape1", input, dims);
+
+  std::vector<unsigned_t> transpose(dims.size());
+  for (size_t i = 0; i < transpose.size(); i++) {
+    transpose[i] = i;
+  }
+  std::swap(transpose[kernel], transpose[kernel + 1]);
+  auto *T =
+      F->createTranspose(CSN.getName().str() + ".transpose", R1, transpose);
+
+  auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims);
+  replaceAllUsesOfWith(loweredMap, CSN.getResult(), R2);
+}
+
 static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
                                      const BatchedReduceMeanNode &BRM) {
   auto input = BRM.getBatch();
@@ -679,6 +712,25 @@ static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
   auto *DN = F->createDiv(BRM.getName().str() + ".div", outTy, BRA, SN);
 
   replaceAllUsesOfWith(loweredMap, BRM.getResult(), DN);
+}
+
+/// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
+/// inputs, a Splat node created using value from \p RN as the other input, and
+/// an IsNaN node as the comparator input.
+static void lowerReplaceNaNNode(Function *F, LoweredInfoMap *loweredMap,
+                                const ReplaceNaNNode &RN) {
+  // Create IsNaN node.
+  auto *INN = F->createIsNaN(RN.getName().str() + ".isNaN", RN.getInput());
+
+  // Create Splat node.
+  auto *S = F->createSplat(RN.getName().str() + ".splat",
+                           RN.getInput().getType(), RN.getValue());
+
+  // Create Select node to pick between original and replacement values.
+  auto *SN =
+      F->createSelect(RN.getName().str() + ".select", INN, S, RN.getInput());
+
+  replaceAllUsesOfWith(loweredMap, RN.getResult(), SN);
 }
 
 /// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
@@ -729,6 +781,10 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
       lowerGroupConvolutionNode(F, loweredMap, *CN);
   } else if (auto *TN = dyn_cast<TileNode>(node)) {
     lowerTileNode(F, loweredMap, *TN);
+  } else if (auto *CSN = dyn_cast<ChannelShuffleNode>(node)) {
+    lowerChannelShuffleNode(F, loweredMap, *CSN);
+  } else if (auto *RN = dyn_cast<ReplaceNaNNode>(node)) {
+    lowerReplaceNaNNode(F, loweredMap, *RN);
   }
 }
 

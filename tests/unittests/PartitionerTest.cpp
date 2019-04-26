@@ -125,8 +125,9 @@ TEST_F(PartitionerTest, Basic1) {
 
   std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
   Partitioner myPartitioner(&mod_, devices);
-
-  DAGListTy myList = std::move(myPartitioner.Partition());
+  auto err = myPartitioner.Partition();
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
 
@@ -194,8 +195,9 @@ TEST_F(PartitionerTest, Basic2) {
 
   std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
   Partitioner myPartitioner(&mod_, devices);
-
-  DAGListTy myList = std::move(myPartitioner.Partition());
+  auto err = myPartitioner.Partition();
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
   ASSERT_EQ(myList.size(), 1);
 
@@ -207,6 +209,63 @@ TEST_F(PartitionerTest, Basic2) {
     Tensor test = res.clone();
     EXPECT_TRUE(ref.isEqual(test));
   }
+}
+
+/// This one tests the error msg: if the number of partitions is larger than
+/// given number of devices, report an error.
+TEST_F(PartitionerTest, Error1) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input1", false);
+  bindings_.allocate(input);
+  bindings_.allocate(input1);
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  L = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
+  L = F_->createSigmoid("left_sigmoid2", L);
+
+  // Right branch.
+  auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
+  R = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
+  R = F_->createSigmoid("right_sigmoid2", R);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L, R);
+  auto *save = F_->createSave("ret", mul);
+  auto &res = *bindings_.allocate(save->getPlaceholder());
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 16});
+  ExecutionEngine EE;
+
+  EE.compile(CompilationMode::Infer, F_);
+  updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
+  EE.run(bindings_);
+  Tensor ref = res.clone();
+
+  std::vector<DeviceInfo> devices = {{2048}};
+  Partitioner myPartitioner(&mod_, devices);
+  auto err = myPartitioner.Partition();
+  EXPECT_TRUE(errToBool(std::move(err)));
 }
 
 /// This one tests the roofline computed with compute, memory and communication
@@ -275,8 +334,10 @@ TEST_F(PartitionerTest, Basic1Roofline) {
                                      {3072, 100, 10, 0.1, 1, 0.05},
                                      {3072, 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
+  auto err = myPartitioner.Partition();
+  EXPECT_FALSE(errToBool(std::move(err)));
 
-  DAGListTy myList = std::move(myPartitioner.Partition());
+  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
 
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
