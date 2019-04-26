@@ -252,7 +252,7 @@ void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
   assert(!compiledFunctions_.count(name) &&
          "A function with this name has already been compiled.");
 
-  ::glow::optimizeFunction(F, *backend_, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
 
   for (const Node &N : F->getNodes()) {
     (void)N;
@@ -267,6 +267,6 @@ void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
 void ExecutionEngine::save(Function *F, const CompilationContext &cctx,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
-  ::glow::optimizeFunction(F, *backend_, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
   backend_->save(F, outputDir, networkName);
 }

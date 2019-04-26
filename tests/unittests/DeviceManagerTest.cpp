@@ -58,7 +58,7 @@ compileFunctions(BackendKind backendKind, Module *module,
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
   for (auto *F : module->getFunctions()) {
-    ::glow::optimizeFunction(F, *backend, cctx);
+    EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
     auto f = backend->compile(F, cctx.backendOpts);
     backing.push_back(std::move(f));
     results.emplace(F->getName(), backing.back().get());

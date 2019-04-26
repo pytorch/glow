@@ -123,7 +123,7 @@ void setUpDeviceManagerCommon(
 
   // Compile all functions in the module.
   for (auto *function : mod->getFunctions()) {
-    ::glow::optimizeFunction(function, *backend, cctx);
+    EXIT_ON_ERR(::glow::optimizeFunction(function, *backend, cctx));
     std::unique_ptr<CompiledFunction> compiledFunction =
         backend->compile(function);
     funcs.insert(std::make_pair(function->getName(), compiledFunction.get()));
