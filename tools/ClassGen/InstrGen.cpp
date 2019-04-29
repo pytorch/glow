@@ -237,7 +237,8 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"})
-      .addGradientInstr({"Weights", "Indices", "Lengths"}, {"Dest", "Data"});
+      .addGradientInstr({"Data", "Weights", "Indices", "Lengths"},
+                        {"Dest", "Data", "Weights"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)

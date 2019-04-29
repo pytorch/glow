@@ -2224,11 +2224,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *SI = cast<SparseLengthsWeightedSumGradInst>(I);
     auto *destGrad = SI->getDestGrad();
     auto *dataGrad = SI->getDataGrad();
+    auto *weightsGrad = SI->getWeightsGrad();
+    auto *data = SI->getData();
     auto *weights = SI->getWeights();
     auto *indices = SI->getIndices();
     auto *lengths = SI->getLengths();
     auto *destGradPtr = emitValueAddress(builder, destGrad);
     auto *dataGradPtr = emitValueAddress(builder, dataGrad);
+    auto *weightsGradPtr = emitValueAddress(builder, weightsGrad);
+    auto *dataPtr = emitValueAddress(builder, data);
     auto *weightsPtr = emitValueAddress(builder, weights);
     auto *indicesPtr = emitValueAddress(builder, indices);
     auto *lengthsPtr = emitValueAddress(builder, lengths);
@@ -2240,8 +2244,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("sparse_lengths_weighted_sum_grad",
                           destGrad->getElementType());
     createCall(builder, F,
-               {destGradPtr, dataGradPtr, weightsPtr, indicesPtr, lengthsPtr,
-                segments, lineSize, dataGradRawSize});
+               {destGradPtr, dataGradPtr, weightsGradPtr, dataPtr, weightsPtr,
+                indicesPtr, lengthsPtr, segments, lineSize, dataGradRawSize});
     break;
   }
 
