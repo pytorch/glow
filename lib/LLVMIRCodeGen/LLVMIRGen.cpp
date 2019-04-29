@@ -2357,3 +2357,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 unsigned LLVMIRGen::getTargetSizeTWidth() const {
   return getPointerNumBits(*TM_);
 }
+
+bool LLVMIRGen::isEligibleForSpecialization(const llvm::CallInst *call) {
+  return true;
+}
