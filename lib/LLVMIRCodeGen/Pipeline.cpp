@@ -54,27 +54,31 @@ using namespace glow;
 using llvm::dyn_cast;
 using llvm::isa;
 
+bool LLVMIRGen::preserveSymbol(const llvm::GlobalValue &GV) {
+  auto name = GV.getName();
+  // Do not preserve any internal symbols, which typically have no name or
+  // start with libjit_.
+  if (name.empty() || name.startswith("libjit_"))
+    return false;
+  return true;
+}
+
 void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
   auto *M = F->getParent();
 
   // Make all of the definitions from libjit and unnamed symbols internal and
   // optimizable. Everything else should be preserved as is.
-  auto preserveSymbols = [=](const llvm::GlobalValue &GV) {
-    auto name = GV.getName();
+  auto preserveSymbolCallback = [&](const llvm::GlobalValue &GV) -> bool {
     // Do not internalize declarations.
-    if (GV.isDeclaration())
+    if (GV.isDeclaration()) {
       return true;
-    // Do not preserve any internal symbols, which typically have no name or
-    // start with jit_
-    if (name.empty() || name.startswith("libjit_"))
-      return false;
-    return true;
+    }
+    return preserveSymbol(GV);
   };
 
-  // Internalize functions libjit. In this part of the code we change the
-  // visibility of the symbols in the module and make 'main' the only visibile
-  // function.
-  llvm::internalizeModule(*M, preserveSymbols);
+  // Internalize functions in the module using a backend-specific logic.
+  // Typically only the entry point would be preserved.
+  llvm::internalizeModule(*M, preserveSymbolCallback);
 
   // Next, we remove all of the 'no-inline' attributes that clang in -O0 adds to
   // all functions.
