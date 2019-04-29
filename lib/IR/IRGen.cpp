@@ -389,19 +389,23 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::SparseLengthsWeightedSumGradNodeKind: {
     auto *SLWSG = cast<SparseLengthsWeightedSumGradNode>(N);
 
+    auto *data = valueForNode(SLWSG->getData());
     auto *weights = valueForNode(SLWSG->getWeights());
     auto *indices = valueForNode(SLWSG->getIndices());
     auto *lengths = valueForNode(SLWSG->getLengths());
 
     auto *destGrad = valueForNode(SLWSG->getGradOfOriginalOutputNamedResult());
-
     auto *dataGrad = builder_.createAllocActivationInst(
         "slws.data.G", SLWSG->getGradOfInputNamedData().getType());
+    auto *weightsGrad = builder_.createAllocActivationInst(
+        "slws.weights.G", SLWSG->getGradOfInputNamedWeights().getType());
 
-    builder_.createSparseLengthsWeightedSumGradInst(
-        N->getName(), weights, indices, lengths, destGrad, dataGrad);
+    builder_.createSparseLengthsWeightedSumGradInst(N->getName(), data, weights,
+                                                    indices, lengths, destGrad,
+                                                    dataGrad, weightsGrad);
 
     registerIR(SLWSG->getGradOfInputNamedData(), dataGrad);
+    registerIR(SLWSG->getGradOfInputNamedWeights(), weightsGrad);
     break;
   }
   }

@@ -2367,7 +2367,9 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
          "Input type must be float");
 
   auto destGrad = getTensor(I->getDestGrad());
+  auto data = getTensor(I->getData());
   auto dataGrad = getTensor(I->getDataGrad());
+  auto weightsGrad = getTensor(I->getWeightsGrad());
   auto weights = getTensor(I->getWeights());
   auto indices = getTensor(I->getIndices());
   auto lengths = getTensor(I->getLengths());
@@ -2381,7 +2383,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
 
   size_t segments = lengths->dims()[0];
   size_t totalLength = 0;
-  for (size_t i = 0; i < segments; i++) {
+  for (size_t i = 0; i < segments; ++i) {
     totalLength += LH.raw(i);
   }
   assert(totalLength == indices->dims()[0] &&
@@ -2391,20 +2393,31 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
 
   auto IGH = destGrad->getHandle();
   auto WH = weights->getHandle();
+  auto WGH = weightsGrad->getHandle();
+  auto DH = data->getHandle();
   auto OGH = dataGrad->getHandle();
 
-  // For each index in each segment, accumulate into the corresponding data
-  // gradient the product of the gradient of the result it was added to and
-  // the weight that it was multiplied by during the
-  // SparseLengthsWeightedSum operation.
-  size_t curIdx = 0;
-  for (size_t i = 0; i < segments; i++) {
-    size_t offsetIn = i * lineSize;
-    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+  // For each index in each segment:
+  //    1) accumulate into the corresponding data gradient the product of the
+  //    gradient of the result it was added to and the weight that it was
+  //    multiplied by during the SparseLengthsWeightedSum operation.
+  //
+  //    2) accumulate into each weight gradient the reduced sum of the
+  //    elementwise product of the result slice that the corresponding weight
+  //    produced and the input slice that the weight was multiplied with.
+  for (size_t i = 0, curIdx = 0; i < segments; ++i) {
+    size_t destOffset = i * lineSize;
+    for (size_t j = 0, e = LH.raw(i); j < e; ++j, ++curIdx) {
+      float weightGrad = 0.0f;
       float weight = WH.raw(curIdx);
-      size_t offsetOut = IH.raw(curIdx++) * lineSize;
-      for (size_t k = 0; k < lineSize; k++)
-        OGH.raw(offsetOut++) += IGH.raw(offsetIn) * weight;
+      size_t dataOffset = IH.raw(curIdx) * lineSize;
+
+      for (size_t k = 0; k < lineSize; ++k) {
+        OGH.raw(dataOffset + k) += IGH.raw(destOffset + k) * weight;
+        weightGrad += IGH.raw(destOffset + k) * DH.raw(dataOffset + k);
+      }
+
+      WGH.raw(curIdx) = weightGrad;
     }
   }
 }

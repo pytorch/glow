@@ -1405,7 +1405,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
 /// Simple test case that learns the embedding table for a
 /// SparseLengthsWeightedSum operator.
-TEST_P(MLTest, learnSparseLengthsWeightedSum) {
+TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   TrainingConfig TC;
   TC.learningRate = 0.3;
   TC.batchSize = 1;
@@ -1452,6 +1452,78 @@ TEST_P(MLTest, learnSparseLengthsWeightedSum) {
   // during training so that the final result is this.
   auto EH = bindings.allocate(expectedP)->getHandle();
   EH = {1, 2, 3, 4, 5};
+
+  // Allocate and store a handle to the result for testing later.
+  auto RH = bindings.allocate(result->getPlaceholder())->getHandle();
+
+  // Train the network.
+  Function *trainingGradientFunction = glow::differentiate(F, TC);
+  EE_.compile(CompilationMode::Train, trainingGradientFunction);
+
+  const size_t numIterations = 1000;
+
+  for (size_t i = 0; i < numIterations; ++i) {
+    EE_.run(bindings);
+  }
+
+  // Switch to inference mode and run the network.
+  EE_.compile(CompilationMode::Infer, F);
+  EE_.run(bindings);
+
+  // Make sure that the network output matches expectations after training.
+  for (size_t j = 0; j < EH.size(); ++j) {
+    EXPECT_NEAR(RH.raw(j), EH.raw(j), 0.02);
+  }
+}
+
+/// Simple test case that learns the weights for a
+/// SparseLengthsWeightedSum operator.
+TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
+  TrainingConfig TC;
+  TC.learningRate = 0.001;
+  TC.batchSize = 1;
+
+  PlaceholderBindings bindings;
+
+  Module &mod = EE_.getModule();
+  PseudoRNG &PRNG = mod.getPRNG();
+
+  // Create a model consisting of one SparseLengthsWeightedSum operator followed
+  // by a Regression node to get some non-zero gradients.
+  Function *F = mod.createFunction("SparseLengthsWeightedSum");
+  Placeholder *dataP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "dataP",
+                                             /*isTrainable=*/false);
+  Placeholder *indicesP = mod.createPlaceholder(
+      ElemKind::Int64ITy, {10}, "indicesP", /*isTrainable=*/false);
+  Placeholder *weightsP = mod.createPlaceholder(
+      ElemKind::FloatTy, {10}, "weightsP", /*isTrainable=*/true);
+  Placeholder *lengthsP = mod.createPlaceholder(
+      ElemKind::Int32ITy, {5}, "lengthsP", /*isTrainable=*/false);
+  Placeholder *expectedP = mod.createPlaceholder(
+      ElemKind::FloatTy, {5}, "expectedP", /*isTrainable=*/false);
+
+  auto *SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weightsP,
+                                                 indicesP, lengthsP);
+  auto *reg = F->createRegression("reg", SLWS, expectedP);
+  auto *result = F->createSave("save", reg);
+
+  // Allocate and set embeddings.
+  bindings.allocate(dataP)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+  // Allocate and set indices such that input embeddings are reversed.
+  bindings.allocate(indicesP)->getHandle<int64_t>() = {9, 8, 7, 6, 5,
+                                                       4, 3, 2, 1, 0};
+  // Allocate and randomly initialize weights.
+  auto WH = bindings.allocate(weightsP)->getHandle();
+  WH.randomize(-1.0, 1.0, PRNG);
+
+  // Allocate and set lengths.
+  bindings.allocate(lengthsP)->getHandle<int32_t>() = {2, 2, 2, 2, 2};
+
+  // Allocate and set expected outputs. The weighs will be adjusted
+  // during training so that the final result is this.
+  auto EH = bindings.allocate(expectedP)->getHandle();
+  EH = {10, 7, 6, 3, 2};
 
   // Allocate and store a handle to the result for testing later.
   auto RH = bindings.allocate(result->getPlaceholder())->getHandle();

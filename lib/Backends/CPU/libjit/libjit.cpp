@@ -1090,25 +1090,33 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
 }
 
 void libjit_sparse_lengths_weighted_sum_grad_f(
-    const float *destGrad, float *dataGrad, const float *weights,
-    const size_t *indices, const int32_t *lengths, size_t segments,
-    size_t lineSize, size_t dataGradRawSize) {
+    const float *destGrad, float *dataGrad, float *weightsGrad,
+    const float *data, const float *weights, const size_t *indices,
+    const int32_t *lengths, size_t segments, size_t lineSize,
+    size_t dataGradRawSize) {
   // The data gradients not touched by this operation should
   // be 0, so set the entire buffer to 0 to start with.
   memset(dataGrad, 0, dataGradRawSize);
-  size_t curIndex = 0;
-  for (size_t i = 0; i < segments; i++) {
-    for (int32_t j = 0; j < lengths[i]; j++) {
-      // For each index in each segment, accumulate into the corresponding data
-      // gradient the product of the gradient of the result it was added to and
-      // the weight that it was multiplied by during the
-      // SparseLengthsWeightedSum operation.
+
+  for (size_t i = 0, curIndex = 0; i < segments; ++i) {
+    for (int32_t j = 0; j < lengths[i]; ++j, ++curIndex) {
+      // For each index in each segment:
+      //    1) accumulate into the corresponding data gradient the product of
+      //    the gradient of the result it was added to and the weight that it
+      //    was multiplied by during the SparseLengthsWeightedSum operation.
+      //
+      //    2) accumulate into each weight gradient the reduced sum of the
+      //    elementwise product of the result slice that the corresponding
+      //    weight produced and the input slice that the weight was multiplied
+      //    with.
+      float weightGrad = 0.0f;
       float weight = weights[curIndex];
       size_t line = indices[curIndex];
-      for (size_t k = 0; k < lineSize; k++) {
+      for (size_t k = 0; k < lineSize; ++k) {
         dataGrad[line * lineSize + k] += weight * destGrad[i * lineSize + k];
+        weightGrad += destGrad[i * lineSize + k] * data[line * lineSize + k];
       }
-      curIndex++;
+      weightsGrad[curIndex] = weightGrad;
     }
   }
 }

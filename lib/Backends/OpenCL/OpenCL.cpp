@@ -1278,7 +1278,10 @@ void OpenCLFunction::execute(ExecutionContext *context) {
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(dataGrad),
                  dataGrad->size(), 0, dataGrad->getElementType());
 
-      // Enqueue the kernel.
+      // Enqueue the kernel. Set the global size to 1 so that all segments are
+      // processed sequentially to avoid two kernel instances accumulating into
+      // the same data gradient slice. This could potentially be relaxed by
+      // using an atomic add in the kernel.
       enqueueKernel(I.getName(), commands_, kernel, deviceId_, {1},
                     kernelLaunches_);
       continue;
