@@ -31,9 +31,27 @@ class PlaceholderBindings;
 class LLVMIRGen;
 
 class LLVMBackend : public BackendUsingGlowIR {
-public:
-  LLVMBackend() = default;
+  /// Target used by this backend.
+  std::string target_;
+  /// Arch used by this backend.
+  std::string arch_;
+  /// Cpu used by this backend.
+  std::string cpu_;
 
+public:
+  LLVMBackend();
+  /// \returns target used by this backend.
+  llvm::StringRef getTarget() const { return target_; }
+  /// Sets target used by this backend.
+  void setTarget(llvm::StringRef target) { target_ = target; }
+  /// \returns arch used by this backend.
+  llvm::StringRef getArch() const { return arch_; }
+  /// Sets arch used by this backend.
+  void setArch(llvm::StringRef arch) { arch_ = arch; }
+  /// \returns cpu used by this backend.
+  llvm::StringRef getCPU() const { return cpu_; }
+  /// Sets cpu used by this backend.
+  void setCPU(llvm::StringRef cpu) { cpu_ = cpu; }
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{

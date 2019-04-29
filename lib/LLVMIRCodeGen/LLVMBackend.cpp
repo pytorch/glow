@@ -48,6 +48,13 @@ void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
 
 } // end namespace
 
+LLVMBackend::LLVMBackend() {
+  // Initialize using command-line options by default.
+  arch_ = llvmArch;
+  target_ = llvmTarget;
+  cpu_ = llvmCPU;
+}
+
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
 ///   void jitmain(uint8_t *baseConstantWeightVars,
@@ -99,12 +106,9 @@ std::unique_ptr<CompiledFunction>
 LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
-  llvm::StringRef target = llvmTarget.getValue();
-  llvm::StringRef arch = llvmArch.getValue();
-  llvm::StringRef cpu = llvmCPU.getValue();
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
-  irgen->initTargetMachine(target, arch, cpu, targetFeatures,
+  irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
                            llvm::CodeModel::Model::Large);
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
@@ -148,12 +152,10 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
 
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
                        llvm::StringRef networkName) const {
-  llvm::StringRef target = llvmTarget.getValue();
-  llvm::StringRef arch = llvmArch.getValue();
-  llvm::StringRef cpu = llvmCPU.getValue();
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   BundleSaver(IR.get(), *this)
-      .save(target, arch, cpu, targetFeatures, outputDir, networkName);
+      .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
+            networkName);
 }
