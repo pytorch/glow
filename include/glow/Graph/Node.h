@@ -197,6 +197,8 @@ private:
   std::vector<TypeRef> inTypes_;
   /// The output types of the NodeInfo.
   std::vector<TypeRef> outTypes_;
+  /// The name of the node.
+  llvm::StringRef name_;
 
   /// Helper function for checking if all of the ElemKinds contained in \p types
   /// are equal to \p allowedElemKind. Indices in \p ignore are ignored when
@@ -228,6 +230,7 @@ public:
     for (unsigned idx = 0, end = N.getNumInputs(); idx != end; ++idx) {
       inTypes_.push_back(N.getNthInput(idx).getType());
     }
+    name_ = N.getName();
   }
 
   /// \returns the input types.
@@ -259,6 +262,9 @@ public:
     assert(idx < outTypes_.size());
     return outTypes_[idx]->getElementType();
   }
+
+  /// \returns the name of the node.
+  llvm::StringRef getName() const { return name_; }
 
   /// \returns whether all of the element types of inTypes_ and outTypes_ are
   /// all the same and one of those found in \p allowedElemKinds. \p ignoreIn
