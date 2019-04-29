@@ -17,7 +17,7 @@ op {
   }
   arg {
     name: "legacy_pad"
-    i: 0
+    i: 3
   }
 }
 external_output: "output"

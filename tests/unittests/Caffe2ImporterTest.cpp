@@ -203,6 +203,31 @@ TEST(caffe2, maxPoolNHWC) {
   EXPECT_EQ(mod.getConstants().size(), 0);
 }
 
+/// Test that loading MaxPool with legacy padding terminates early.
+TEST(caffe2, maxPoolLegacyPadding) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/maxpool_legacy_padding_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  llvm::Error err(llvm::Error::success());
+  Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                             {&inputs.getType()}, *F, &err);
+
+  // Test that the error is the expected one.
+  auto msg = llvm::toString(std::move(err));
+  ASSERT_NE(msg.find("MaxPool nodes with legacy caffe padding are "
+                     "deprecated and not supported."),
+            std::string::npos);
+}
+
 /// Test loading MaxPool with default NCHW order input.
 TEST(caffe2, maxPool) {
   ExecutionEngine EE{BackendKind::Interpreter};
