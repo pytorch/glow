@@ -254,6 +254,10 @@ class FunctionSpecializer {
     if (callee && callee->isDeclaration()) {
       return false;
     }
+    // Do not specialize calls if LLVMIRGen is against it.
+    if (!irgen_.isEligibleForSpecialization(call)) {
+      return false;
+    }
     // Do not specialize noinline functions, because it does not improve
     // anything.
     return callee != nullptr &&

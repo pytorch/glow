@@ -322,6 +322,8 @@ public:
   virtual void markArgAsUnspecialized(llvm::Value *val);
   /// \returns bit-width of the target size_t.
   virtual unsigned getTargetSizeTWidth() const;
+  /// \returns true if a call is eligible for specialization.
+  virtual bool isEligibleForSpecialization(const llvm::CallInst *call);
   /// \returns true if a global symbol \p GV needs to be preserved in the module
   /// and not interalized during optimizations.
   virtual bool preserveSymbol(const llvm::GlobalValue &GV);
