@@ -40,6 +40,13 @@ static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),
                     llvm::cl::init(false), llvm::cl::Hidden);
+
+static llvm::cl::list<std::string> instrumentDebugOnly(
+    "instrument-debug-only",
+    llvm::cl::desc(
+        "Instrument the IR for debugging, but only the listed instructions"),
+    llvm::cl::CommaSeparated, llvm::cl::Hidden);
+
 static llvm::cl::opt<bool> optimizeIR("optimize-ir",
                                       llvm::cl::desc("Enable IR optimizations"),
                                       llvm::cl::init(true), llvm::cl::Hidden);
@@ -1451,13 +1458,23 @@ void optimizeExtracts(IRFunction &M) {
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
 static void performDebugInstrumentation(IRFunction &M) {
-  if (!instrumentDebug)
+  if (!instrumentDebug && instrumentDebugOnly.empty())
     return;
 
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto *I = &*it;
     auto next = std::next(it);
+    // If current instruction is not one of the provided in the list, skip it.
+    if (!instrumentDebugOnly.empty()) {
+      if (std::find_if(instrumentDebugOnly.begin(), instrumentDebugOnly.end(),
+                       [&](const std::string &name) -> bool {
+                         return I->getName().contains(name);
+                       }) == instrumentDebugOnly.end()) {
+        it = next;
+        continue;
+      }
+    }
     if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
         isa<DeallocActivationInst>(I)) {
       it = next;
