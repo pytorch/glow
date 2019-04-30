@@ -208,3 +208,32 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
+
+/// Check that we can differentiate functions that use MatMulNode.
+TEST(GraphAutoGrad, checkMatMulToGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  // Construct the network:
+  TC.learningRate = 0.001;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
+  auto HandleA = Bindings.allocate(A)->getHandle<float>();
+  HandleA.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  auto *B = Mod.createPlaceholder(ElemKind::FloatTy, {13, 30}, "B", false);
+  auto HandleB = Bindings.allocate(B)->getHandle<float>();
+  HandleB.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  auto *MatMul = F->createMatMul("matMul", A, B);
+  auto *R = F->createSave("save", MatMul);
+  Bindings.allocate(R->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
+}
