@@ -19,7 +19,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-static llvm::cl::OptionCategory CPUBackendCat("Glow CPU Backend Options");
+static llvm::cl::OptionCategory CPUBackendCat("Glow CPU DeviceManager Options");
 llvm::cl::opt<unsigned>
     cpuMaxMem("cpu-memory", llvm::cl::desc("CPU DeviceManager maximum memory"),
               llvm::cl::init(0), llvm::cl::cat(CPUBackendCat));
