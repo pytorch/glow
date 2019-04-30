@@ -88,6 +88,10 @@ public:
   /// tensors.
   void clear();
 
+  /// Removes the Tensor backing Placeholder \p P;
+  /// \p P must be a valid Placeholder registered in the bindings.
+  void erase(Placeholder *P);
+
   /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
   /// to a new Tensor, with their own memory.
   PlaceholderBindings clone() const;
