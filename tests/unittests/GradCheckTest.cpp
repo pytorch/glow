@@ -200,6 +200,40 @@ TEST_P(InterpreterGrad, gradientCheckConcat) {
                    0.01);
 }
 
+TEST_P(InterpreterGrad, gradientCheckMatMul) {
+  PlaceholderBindings Bindings;
+  size_t NumDim = 10;
+
+  auto &Mod = EE_.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A =
+      Mod.createPlaceholder(ElemKind::FloatTy, {NumDim, NumDim}, "A", false);
+  auto *B =
+      Mod.createPlaceholder(ElemKind::FloatTy, {NumDim, NumDim}, "B", false);
+
+  auto HandleB = Bindings.allocate(B)->getHandle<float>();
+  HandleB.randomize(-1, 1, Mod.getPRNG());
+
+  auto *Exp =
+      Mod.createPlaceholder(ElemKind::FloatTy, {NumDim, NumDim}, "exp", false);
+  Node *MM = F->createMatMul("matmul", A, B);
+  auto *Reg = F->createRegression("reg", MM, Exp);
+  auto *Result = F->createSave("save", Reg);
+
+  Tensor Inputs(ElemKind::FloatTy, {{NumDim, NumDim}});
+  Tensor Outputs(ElemKind::FloatTy, {{NumDim, NumDim}});
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EE_, Bindings, Result, A, Exp, &Inputs, &Outputs, 0.001,
+                   0.01);
+}
+
 static void gradientCheckGroupConv(size_t depth, size_t group,
                                    ExecutionEngine &EE_) {
   PlaceholderBindings bindings;

@@ -232,6 +232,31 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
+    if (N->getKind() == Kind::MatMulNodeKind) {
+      MatMulNode *MMN = cast<MatMulNode>(N);
+      // Get gradient.
+      NodeValue OutputG = map.getGradient(MMN->getResult());
+
+      // Get LHS/RHS inputs and their transpose presentations.
+      NodeValue InputLHS = MMN->getLHS();
+      NodeValue InputRHS = MMN->getRHS();
+      auto *LT = G->createTranspose("lhs.T", InputLHS, {1, 0});
+      auto *RT = G->createTranspose("rhs.T", InputRHS, {1, 0});
+
+      // Grad for LHS = outputG x transpose(RHS).
+      auto *GradLHS =
+          new MatMulNode(MMN->getInputName(0), InputLHS.getType(), OutputG, RT);
+      // Grad for RHS = transpose(LHS) x outputG.
+      auto *GradRHS =
+          new MatMulNode(MMN->getInputName(1), InputRHS.getType(), LT, OutputG);
+
+      toAppend.push_back(GradLHS);
+      map.addGradient(InputLHS, GradLHS);
+      toAppend.push_back(GradRHS);
+      map.addGradient(InputRHS, GradRHS);
+      continue;
+    }
+
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
