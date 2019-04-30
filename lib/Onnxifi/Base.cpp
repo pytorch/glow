@@ -122,6 +122,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     }
 
     if (inOnnxTensorSize > inPhPtr->getType()->size()) {
+      llvm::errs() << "Input tensor is too large: " << inOnnxTensorSize
+                   << " vs " << inPhPtr->getType()->size() << ": "
+                   << inOnnxTensor.name << "\n";
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 
