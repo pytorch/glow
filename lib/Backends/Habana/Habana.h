@@ -99,12 +99,12 @@ private:
   /// construction. This is the effective size of one HabanaIOBuffer in this
   /// pool.
   size_t perBufferSize_;
-  /// The combined size of all HabanaIOBuffers in this pool (i.e. size_ *
-  /// numBuffers_).
+  /// The combined size of all HabanaIOBuffers in this pool (i.e. perBufferSize_
+  /// * numBuffers_).
   size_t allBuffersSize_;
   /// Buffer that backs all of the HOmaIOBuffers in this pool. The first buffer
-  /// starts at buffer_, the second at buffer_ + size_, etc. The last *ends* at
-  /// buffer_ + totalSize_.
+  /// starts at buffer_, the second at buffer_ + perBufferSize_, etc. The last
+  /// *ends* at buffer_ + allBuffersSize_.
   uint8_t *buffer_;
   /// The number of buffers in the pool.
   unsigned numBuffers_{kDefaultNumBuffers};

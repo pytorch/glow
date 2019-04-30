@@ -31,9 +31,17 @@ using namespace glow::runtime;
 
 class DeviceManagerTest : public ::testing::TestWithParam<BackendKind> {
 public:
-  void SetUp() override { backendKind = GetParam(); }
+  void SetUp() override {
+    backendKind = GetParam();
+    device.reset(DeviceManager::createDeviceManager(backendKind));
+    ASSERT_TRUE(device.get());
+    ASSERT_FALSE(errToBool(device->init()));
+  }
+
+  void TearDown() override { EXPECT_FALSE(errToBool(device->stop())); }
 
   BackendKind backendKind;
+  std::unique_ptr<DeviceManager> device{nullptr};
 };
 
 std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
@@ -44,7 +52,7 @@ std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
                                           functionName + "_input", false);
   auto *output = module->createPlaceholder(ElemKind::FloatTy, {1},
                                            functionName + "_output", false);
-  auto *p = F->createPow("pow2", input, 2.0f);
+  auto *p = F->createTanh("tanh2", input);
   F->createSave("ret", p, output);
 
   return module;
@@ -87,9 +95,6 @@ TEST_P(DeviceManagerTest, Basic) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
 
-  auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(errToBool(device->init()));
-
   std::promise<const Module *> promise;
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
@@ -108,8 +113,8 @@ TEST_P(DeviceManagerTest, Basic) {
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
-  input1.getHandle().clear(2);
-  output1.getHandle().clear(4);
+  input1.getHandle().clear(0.5);
+  output1.getHandle().clear(std::tanh(0.5));
 
   updateInputPlaceholders(*context->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},
@@ -134,9 +139,6 @@ TEST_P(DeviceManagerTest, Basic) {
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
-
-  EXPECT_FALSE(errToBool(device->stop()));
-  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiRun) {
@@ -144,8 +146,6 @@ TEST_P(DeviceManagerTest, MultiRun) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
-  auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -171,8 +171,8 @@ TEST_P(DeviceManagerTest, MultiRun) {
 
   Tensor output1(ElemKind::FloatTy, {1});
   Tensor output2(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(4.0f);
-  output2.getHandle().clear(9.0f);
+  output1.getHandle().clear(std::tanh(2.0f));
+  output2.getHandle().clear(std::tanh(3.0f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},
@@ -214,9 +214,6 @@ TEST_P(DeviceManagerTest, MultiRun) {
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
   EXPECT_TRUE(result2->isEqual(output2));
-
-  EXPECT_FALSE(errToBool(device->stop()));
-  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiFunction) {
@@ -232,7 +229,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   auto *inP = module->getPlaceholderByName("func1_input");
   auto *outP =
       module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
-  auto *p = F->createPow("pow3", inP, 3.0f);
+  auto *p = F->createTanh("tanh2", inP);
   F->createSave("ret2", p, outP);
 
   context2->getPlaceholderBindings()->allocate(inP);
@@ -242,8 +239,6 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   FunctionMapTy functions =
       compileFunctions(backendKind, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
-  auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -256,11 +251,11 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   EXPECT_EQ(future.get(), module.get());
 
   Tensor input(ElemKind::FloatTy, {1});
-  input.getHandle().clear(2.0f);
+  input.getHandle().clear(0.5f);
   Tensor output1(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(4.0f);
+  output1.getHandle().clear(std::tanh(0.5f));
   Tensor output2(ElemKind::FloatTy, {1});
-  output2.getHandle().clear(8.0f);
+  output2.getHandle().clear(std::tanh(0.5f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("func1_input")},
@@ -302,9 +297,6 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
   EXPECT_TRUE(result2->isEqual(output2));
-
-  EXPECT_FALSE(errToBool(device->stop()));
-  delete device;
 }
 
 TEST_P(DeviceManagerTest, MultiModule) {
@@ -316,8 +308,6 @@ TEST_P(DeviceManagerTest, MultiModule) {
       compileFunctions(backendKind, module1.get(), backing);
   FunctionMapTy functions2 =
       compileFunctions(backendKind, module2.get(), backing);
-  auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -341,9 +331,9 @@ TEST_P(DeviceManagerTest, MultiModule) {
       llvm::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module1->getPlaceholders());
   Tensor input(ElemKind::FloatTy, {1});
-  input.getHandle().clear(2.0f);
+  input.getHandle().clear(0.5f);
   Tensor output(ElemKind::FloatTy, {1});
-  output.getHandle().clear(4.0f);
+  output.getHandle().clear(std::tanh(0.5f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module1->getPlaceholderByName("func1_input")},
@@ -390,9 +380,6 @@ TEST_P(DeviceManagerTest, MultiModule) {
       module2->getPlaceholderByName("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output));
-
-  EXPECT_FALSE(errToBool(device->stop()));
-  delete device;
 }
 
 TEST_P(DeviceManagerTest, ReuseModule) {
@@ -408,7 +395,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   auto *inP = module->getPlaceholderByName("func1_input");
   auto *outP =
       module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
-  auto *p = F->createPow("pow3", inP, 3.0f);
+  auto *p = F->createTanh("tanh2", inP);
   F->createSave("ret2", p, outP);
 
   context2->getPlaceholderBindings()->allocate(inP);
@@ -425,8 +412,6 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   functions.erase("func2");
   EXPECT_EQ(functions.size(), 1);
   EXPECT_EQ(functions2.size(), 1);
-  auto *device = DeviceManager::createDeviceManager(backendKind);
-  ASSERT_FALSE(errToBool(device->init()));
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -447,11 +432,11 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_EQ(future.get(), module.get());
 
   Tensor input(ElemKind::FloatTy, {1});
-  input.getHandle().clear(2.0f);
+  input.getHandle().clear(0.5f);
   Tensor output1(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(4.0f);
+  output1.getHandle().clear(std::tanh(0.5f));
   Tensor output2(ElemKind::FloatTy, {1});
-  output2.getHandle().clear(8.0f);
+  output2.getHandle().clear(std::tanh(0.5f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("func1_input")},
@@ -494,9 +479,6 @@ TEST_P(DeviceManagerTest, ReuseModule) {
       module->getPlaceholderByName("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output2));
-
-  EXPECT_FALSE(errToBool(device->stop()));
-  delete device;
 }
 
 #ifdef GLOW_WITH_CPU
@@ -601,8 +583,8 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
-  input1.getHandle().clear(2.0f);
-  output1.getHandle().clear(4.0f);
+  input1.getHandle().clear(0.5f);
+  output1.getHandle().clear(std::tanh(0.5f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},
@@ -646,4 +628,9 @@ INSTANTIATE_TEST_CASE_P(CPU, DeviceManagerTest,
 #ifdef GLOW_WITH_OPENCL
 INSTANTIATE_TEST_CASE_P(OpenCL, DeviceManagerTest,
                         ::testing::Values(BackendKind::OpenCL));
-#endif
+#endif // GLOW_WITH_OPENCL
+
+#ifdef GLOW_WITH_HABANA
+INSTANTIATE_TEST_CASE_P(Habana, DeviceManagerTest,
+                        ::testing::Values(BackendKind::Habana));
+#endif // GLOW_WITH_HABANA

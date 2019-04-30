@@ -58,6 +58,7 @@ protected:
   const BackendKind Interpreter = BackendKind::Interpreter;
   const BackendKind CPU = BackendKind::CPU;
   const BackendKind OpenCL = BackendKind::OpenCL;
+  const BackendKind Habana = BackendKind::Habana;
 };
 
 class BackendTest : public BackendStatelessTest {
@@ -79,6 +80,9 @@ static const auto all_backends = ::testing::Values(
 #ifdef GLOW_WITH_OPENCL
     BackendKind::OpenCL,
 #endif // GLOW_WITHOPENCL
+#ifdef ENABLE_HABANA_IN_TESTS
+    BackendKind::Habana,
+#endif // ENABLE_HABANA_IN_TESTS
     BackendKind::Interpreter);
 
 // Instantiate parameterized test suite with all available backends.

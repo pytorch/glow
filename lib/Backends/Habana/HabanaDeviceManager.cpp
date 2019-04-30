@@ -20,6 +20,9 @@
 
 #include "synapse.h"
 
+#include <glog/logging.h>
+#include <limits>
+
 using namespace glow;
 using namespace glow::runtime;
 
@@ -52,6 +55,7 @@ HabanaDeviceManager::HabanaDeviceManager(std::unique_ptr<DeviceConfig> config,
   // If this is the first HabanaDeviceManager to be created, initialize the
   // Synapse API.
   if (numActiveDevices_ == 0) {
+    LOG(INFO) << "Using version " << synGetVersion();
     chk(synInitialize());
   }
 
@@ -59,6 +63,10 @@ HabanaDeviceManager::HabanaDeviceManager(std::unique_ptr<DeviceConfig> config,
 }
 
 HabanaDeviceManager::~HabanaDeviceManager() {
+  // If a device was never successfully acquired, there's nothing to clean up.
+  if (deviceId_ == INVALID_DEVICE) {
+    return;
+  }
   std::lock_guard<std::mutex> lock(synapseMtx_);
   numActiveDevices_--;
 
@@ -282,6 +290,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     }
     inflightRequests_++;
   }
+
   // Execute the function.
   auto deviceBindings =
       llvm::make_unique<HabanaBindings>(deviceId_, topologyId);

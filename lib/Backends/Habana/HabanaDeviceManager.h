@@ -34,8 +34,15 @@ namespace runtime {
 /// This class implements the DeviceManager interface for
 /// Habana devices.
 class HabanaDeviceManager : public DeviceManager {
+  using DeviceId = uint32_t;
+  using TopologyId = uint64_t;
+
+  static constexpr auto INVALID_DEVICE = std::numeric_limits<DeviceId>::max();
+  static constexpr auto INVALID_TOPOLOGY =
+      std::numeric_limits<TopologyId>::max();
+
   /// The ID of the device managed by this instance.
-  uint32_t deviceId_{0};
+  DeviceId deviceId_{INVALID_DEVICE};
   /// The available memory on the device.
   uint64_t freeMemory_{0};
   /// The total memory on the device.
@@ -57,8 +64,8 @@ class HabanaDeviceManager : public DeviceManager {
   /// The number of workers in wait pool.
   unsigned numWaiters_{kNumWaiters};
 
-  /// Track active topology on this device.  -1 is invalid.
-  uint64_t activeTopo_{(uint64_t)-1};
+  /// Track active topology on this device.
+  TopologyId activeTopo_{INVALID_TOPOLOGY};
   /// Number of requests in flight.  Used to block topo switching.
   unsigned inflightRequests_{0};
   /// Condition variable for signaling queue drain.
