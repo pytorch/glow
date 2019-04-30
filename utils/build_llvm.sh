@@ -17,8 +17,12 @@
 
 set -euo pipefail
 
-if [ ! -e "./llvm_src/" ]; then
-  git clone --depth=1 -b release_80 https://github.com/llvm-mirror/llvm.git llvm_src
+RELEASE=release_80
+if [ ! -e "./llvm/" ]; then
+    git clone --depth=1 -b "$RELEASE" https://github.com/llvm-mirror/llvm.git llvm
+fi
+if [ ! -e "./clang/" ]; then
+  git clone --depth=1 -b "$RELEASE" https://github.com/llvm-mirror/clang.git clang
 fi
 
 mkdir -p llvm_build
@@ -28,8 +32,9 @@ BASE=$PWD
 
 cd llvm_build
 # LLVM_INSTALL_UTILS adds the utilities like FileCheck to the install
-cmake ../llvm_src/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" \
-  -DCMAKE_BUILD_TYPE=Release -DLLVM_INSTALL_UTILS=ON
+cmake ../llvm/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" \
+      -DCMAKE_BUILD_TYPE=Release -DLLVM_INSTALL_UTILS=ON \
+      -DLLVM_ENABLE_PROJECTS=clang
 cmake --build . --target install
 
 echo "Built LLVM into " "$BASE/llvm_install"
