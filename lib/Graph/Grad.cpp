@@ -257,6 +257,24 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
+    if (N->getKind() == Kind::BatchedReduceAddNodeKind) {
+      BatchedReduceAddNode *BRA = cast<BatchedReduceAddNode>(N);
+      // Get gradient.
+      NodeValue OutputG = map.getGradient(BRA->getResult());
+      // Get input value.
+      NodeValue Input = BRA->getBatch();
+
+      // Gradient for BatchedReduceAddNode is TileNode,
+      // repeating OutputG batch times.
+      auto axis = BRA->getAxis();
+      auto Num = Input.dims()[axis] / OutputG.dims()[axis];
+      auto *TN = new TileNode("tile.grad", Input.getType(), OutputG, Num, axis);
+
+      toAppend.push_back(TN);
+      map.addGradient(Input, TN);
+      continue;
+    }
+
     llvm_unreachable("Invalid instruction type.");
   } // End of the for-each instr loop.
 
