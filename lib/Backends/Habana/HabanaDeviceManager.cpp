@@ -177,6 +177,9 @@ void HabanaDeviceManager::addNetwork(const Module *module,
       readyCB(module, MAKE_ERR("Unable to add function"));
       return;
     }
+
+    // Optimistically activate the topology
+    synActivateTopology(deviceId_, topologyId);
   }
 
   lk.unlock();
@@ -292,11 +295,13 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                      functionName = std::move(functionName),
                      ctx = std::move(ctx),
                      resultCB = std::move(resultCB)]() mutable {
+    TRACE_EVENT_BEGIN(ctx->getTraceContext(), "wait");
     auto &habanaHandle =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getHandle();
     bool ok = habanaHandle.wait();
     std::unique_ptr<HabanaIOBuffer> ioBuffer =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getIOBuffer();
+    TRACE_EVENT_END(ctx->getTraceContext(), "wait");
 
     // Notify anything waiting for a topo switch.
     {
