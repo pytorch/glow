@@ -442,6 +442,9 @@ void HabanaFunction::setupRuns() {}
 void HabanaFunction::beforeRun(const PlaceholderBindings &ctx) {}
 
 void HabanaFunction::execute(ExecutionContext *context) {
+  auto *tc = context->getTraceContext();
+  TRACE_EVENT_BEGIN(tc, "execute");
+
   uint32_t deviceId =
       static_cast<HabanaBindings *>(context->getDeviceBindings())
           ->getDeviceId();
@@ -456,6 +459,7 @@ void HabanaFunction::execute(ExecutionContext *context) {
   std::vector<EnqueueTensorInfo> outputInfo;
 
   // Set up input buffers and record bindings for enqueuing.
+  TRACE_EVENT_BEGIN(tc, "copyInputs");
   auto *bindings = context->getPlaceholderBindings();
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
@@ -474,7 +478,9 @@ void HabanaFunction::execute(ExecutionContext *context) {
     // Copy from the tensor into the designated IO buffer.
     memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
   }
+  TRACE_EVENT_END(tc, "copyInputs");
 
+  TRACE_EVENT_BEGIN(tc, "registerOutputs");
   // Set up output buffers and record bindings for enqueuing.
   for (auto *P : getOutputs()) {
     Tensor *T = bindings->get(P);
@@ -493,21 +499,29 @@ void HabanaFunction::execute(ExecutionContext *context) {
   }
 
   EnqueueTensorInfo noInputEti = {"unused", (char *)nullptr, 0};
+  TRACE_EVENT_END(tc, "registerOutputs");
 
   // Enqueue the run and wait for it to come back.
   synWaitHandle handle;
   {
     // Activate and enqueue need to be atomic.
+    TRACE_EVENT_BEGIN(tc, "getSynapseLock");
     std::lock_guard<std::mutex> g(synapseLock);
+    TRACE_EVENT_END(tc, "getSynapseLock");
+    TRACE_EVENT_BEGIN(tc, "synActivateTopology");
     chk(synActivateTopology(deviceId, topologyId));
+    TRACE_EVENT_END(tc, "synActivateTopology");
+    TRACE_EVENT_BEGIN(tc, "synEnqueue");
     chk(synEnqueueByName(
         deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
         inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
+    TRACE_EVENT_END(tc, "synEnqueue");
   }
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
                                    std::move(outputInfo)));
+  TRACE_EVENT_END(tc, "execute");
 }
 
 void HabanaFunction::afterRun(const PlaceholderBindings &ctx) {}

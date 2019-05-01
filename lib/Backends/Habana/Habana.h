@@ -108,7 +108,7 @@ private:
   uint8_t *buffer_;
   /// The number of buffers in the pool.
   unsigned numBuffers_{kDefaultNumBuffers};
-  static constexpr unsigned kDefaultNumBuffers{3};
+  static constexpr unsigned kDefaultNumBuffers{10};
 
   /// Queue of HabanaIOBuffers and a mutex and condition variable for
   /// synchronized access.

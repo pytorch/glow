@@ -49,9 +49,9 @@ class HabanaDeviceManager : public DeviceManager {
   /// Thread pool for waiting on the results of executing functions.
   std::unique_ptr<ThreadPool> waitPool_;
   /// The default number of workers in run pool (overridable).
-  constexpr static unsigned kNumRunners = 3;
+  constexpr static unsigned kNumRunners = 1;
   /// The default number of workers in wait pool (overridable).
-  constexpr static unsigned kNumWaiters = 3;
+  constexpr static unsigned kNumWaiters = 1;
   /// The number of workers in run pool.
   unsigned numRunners_{kNumRunners};
   /// The number of workers in wait pool.
