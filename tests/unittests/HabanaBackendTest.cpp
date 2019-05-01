@@ -1590,3 +1590,124 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
     EXPECT_FALSE(errToBool(deviceManager->stop()));
   }
 }
+
+TEST_F(HabanaBackendTest, FCPerf) {
+  // Create function.
+  const int fc_size = 1000;
+  auto *data =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, fc_size}, "data", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::FloatTy, {fc_size, fc_size},
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {fc_size}, "bias", false);
+
+  auto *fc = F_->createFullyConnected("fc", data, weights, bias);
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, fc_size}, "output", false);
+  F_->createSave("save", fc, output);
+
+  ctx_.allocate(data)->getHandle().clear(1);
+  ctx_.allocate(weights)->getHandle().clear(0);
+  ctx_.allocate(bias)->getHandle().clear(32);
+  ctx_.allocate(output);
+
+  glow::convertPlaceholdersToConstants(F_, ctx_, {data, output});
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+  struct timespec begin;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+  for (int i = 0; i < 10; i++)
+    EE_.run(ctx_);
+  struct timespec end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+  double elapsed_secs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
+                        (end.tv_sec - begin.tv_sec);
+  printf("Time: %lf\n", elapsed_secs);
+  uint64_t flops = 10 * fc_size * (uint64_t)fc_size * 16 * 2;
+  printf("Tflops: %lf\n", (flops) / elapsed_secs * 1e-12);
+}
+
+// Test performance of Gather.  Disabled due to unspecified bugs in Gather op.
+TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
+  // Create function.
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {50}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {3000}, "indices", false);
+
+  auto H = ctx_.allocate(data)->getHandle();
+  H.randomize(-1.0f, 1.0f, mod_.getPRNG());
+  auto H2 = ctx_.allocate(indices)->getHandle<int32_t>();
+  for (int i = 0; i < 50; i++) {
+    H2.raw(i) = rand() % 50;
+  }
+  for (int i = 50; i < 3000; i++) {
+    H2.raw(i) = 0;
+  }
+
+  // Create a gather (a single batch dimension).
+  auto *R = F_->createGather("gather", data, indices, 0);
+
+  auto *result = F_->createSave("save", R);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+  struct timespec begin;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+  for (int i = 0; i < 10; i++)
+    EE_.run(ctx_);
+  struct timespec end;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+  double elapsed_secs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
+                        (end.tv_sec - begin.tv_sec);
+  printf("Time: %lf\n", elapsed_secs);
+  printf("GBps: %lf\n", 10 * 3000 * 4.0 / elapsed_secs / 1000 / 1000 / 1000);
+}
+
+/// Disable gather op as it does not produce consistent results.
+TEST_F(HabanaBackendTest, DISABLED_BatchedGather) {
+  /*
+   DATA  = [
+    [1.0, 1.2, 2.4, 4.5],
+    [2.3, 3.4, 3.6, 2.3],
+    [4.5, 5.7, 1.2, 4.5],
+   ]
+
+   INDICES = [0, 2],
+
+   OUTPUT = [
+    [1.0, 2.4],
+    [2.3, 3.6],
+    [4.5, 1.2],
+   ]
+   */
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "indices", false);
+
+  ctx_.allocate(data)->getHandle() = {
+      1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
+  };
+  ctx_.allocate(indices)->getHandle<int32_t>() = {
+      0,
+      2,
+  };
+
+  // Create a batched gather (a single batch dimension).
+  auto *R = F_->createGather("gather", data, indices, 1);
+
+  auto *result = F_->createSave("save", R);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(ctx_);
+
+  auto H = ctx_.get(result->getPlaceholder())->getHandle();
+  EXPECT_FLOAT_EQ(H.at({0, 0}), 1.0);
+  EXPECT_FLOAT_EQ(H.at({0, 1}), 2.4);
+  EXPECT_FLOAT_EQ(H.at({1, 0}), 2.3);
+  EXPECT_FLOAT_EQ(H.at({1, 1}), 3.6);
+  EXPECT_FLOAT_EQ(H.at({2, 0}), 4.5);
+  EXPECT_FLOAT_EQ(H.at({2, 1}), 1.2);
+}
