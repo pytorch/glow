@@ -42,7 +42,7 @@ TEST(caffe2, importConv) {
   PlaceholderBindings bindings;
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
@@ -84,7 +84,7 @@ TEST(caffe2, importConvRelu) {
   PlaceholderBindings bindings;
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
@@ -145,7 +145,7 @@ TEST(caffe2, convNHWC) {
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -183,7 +183,7 @@ TEST(caffe2, maxPoolNHWC) {
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -245,7 +245,7 @@ TEST(caffe2, maxPool) {
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -290,7 +290,7 @@ TEST(caffe2, avgPoolNHWC) {
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -327,7 +327,7 @@ TEST(caffe2, avgPool) {
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -385,7 +385,7 @@ TEST(caffe2, concatAddAxis) {
   inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   inputs_2.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(
         NetDescFilename, NetWeightFilename,
@@ -461,7 +461,7 @@ TEST(caffe2, concat) {
   inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   inputs_2.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(
         NetDescFilename, NetWeightFilename,
@@ -536,7 +536,7 @@ TEST(caffe2, batchedMatmulRHS) {
   inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"},
@@ -597,7 +597,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   inputs_0.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   inputs_1.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"inputs_0", "inputs_1"},
@@ -674,7 +674,7 @@ TEST(caffe2, FC) {
   Placeholder *output;
   PlaceholderBindings bindings;
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Tensor inputs(ElemKind::FloatTy, {2, 3});
     inputs.getHandle() = {1, 2, 3, 4, 5, 6};
@@ -796,7 +796,7 @@ TEST(caffe2, FCTransposed) {
   PlaceholderBindings bindings;
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Tensor inputs(ElemKind::FloatTy, {2, 3});
     inputs.getHandle() = {1, 2, 3, 4, 5, 6};
@@ -919,7 +919,7 @@ TEST(caffe2, importClip) {
   Placeholder *output;
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
@@ -964,7 +964,7 @@ TEST(caffe2, importClipDefault) {
   Tensor inputs_0(ElemKind::FloatTy, {5, 5});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs_0"},
                                {&inputs_0.getType()}, *F);
@@ -1006,7 +1006,7 @@ TEST(caffe2, replaceNaN) {
   Tensor input(ElemKind::FloatTy, {10, 10});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
                                {&input.getType()}, *F);
@@ -1146,7 +1146,7 @@ TEST(caffe2, batchBoxCox) {
   Tensor lambda2(ElemKind::FloatTy, {kCols});
   Tensor O(ElemKind::FloatTy, {kRows, kCols});
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(
         NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
@@ -1379,7 +1379,7 @@ TEST(caffe2, sparseToDense) {
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(
         NetDescFilename, NetWeightFilename,
@@ -1477,7 +1477,7 @@ TEST(caffe2, testNCHW2NHWC) {
   Tensor inputs(ElemKind::FloatTy, {1, 2, 3, 4});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                                {&inputs.getType()}, *F);
@@ -1523,7 +1523,7 @@ TEST(caffe2, lengthsSum) {
   Tensor lengths(ElemKind::FloatTy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"data", "lengths"},
@@ -1738,7 +1738,7 @@ TEST(caffe2, elementwiseLinear) {
   Tensor w(ElemKind::FloatTy, {10}), b(ElemKind::FloatTy, {10});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"X", "w", "b"},
@@ -1818,7 +1818,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
   Tensor w(ElemKind::FloatTy, {10}), b(ElemKind::FloatTy, {10});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"X", "w", "b"},
@@ -1909,7 +1909,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"indices", "lengths"},
@@ -2013,7 +2013,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"indices", "lengths"},
@@ -2103,7 +2103,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"indices", "lengths"},
@@ -2207,7 +2207,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"indices", "lengths"},
