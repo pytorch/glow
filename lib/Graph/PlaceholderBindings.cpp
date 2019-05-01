@@ -97,6 +97,14 @@ void PlaceholderBindings::clear() {
   nameMap_.clear();
 }
 
+void PlaceholderBindings::erase(Placeholder *P) {
+  assert(nameMap_.count(P->getName()) &&
+         "Placeholder must already be registered");
+  nameMap_.erase(P->getName());
+  delete map_[P];
+  map_.erase(P);
+}
+
 PlaceholderBindings PlaceholderBindings::clone() const {
   PlaceholderBindings cloned;
   for (auto PH : map_) {

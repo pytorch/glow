@@ -72,11 +72,11 @@ public:
   /// call \p resultCB with it after checking that \p context contains the
   /// expected Placeholder-Tensor mappings.
   void doRunFunction(std::string functionName,
-                     std::shared_ptr<ExecutionContext> context,
+                     std::unique_ptr<ExecutionContext> context,
                      ResultCBTy resultCB) {
+
     RunIdentifierTy runId = 0;
     bool successResult = false;
-    std::unique_ptr<ExecutionContext> resultContext = nullptr;
 
     // Retrieve the registered response for the function if there is one.
     if (context && resultCB && resultMap_.count(functionName)) {
@@ -95,14 +95,18 @@ public:
         // ones.
         runId = registeredResult->runId;
         successResult = registeredResult->success;
-        resultContext = std::move(registeredResult->resultContext);
+
+        for (auto p : registeredResult->resultContext->getPlaceholderBindings()
+                          ->pairs()) {
+          context->getPlaceholderBindings()->get(p.first)->assign(p.second);
+        }
       }
     }
 
     if (successResult) {
-      resultCB(runId, llvm::Error::success(), std::move(resultContext));
+      resultCB(runId, llvm::Error::success(), std::move(context));
     } else {
-      resultCB(runId, MAKE_ERR("An error occurred"), std::move(resultContext));
+      resultCB(runId, MAKE_ERR("An error occurred"), std::move(context));
     }
   }
 
@@ -113,10 +117,10 @@ public:
               ResultCBTy resultCB) override {
     // Give the call to the thread pool to process to make the tests
     // multithreaded if needed.
-    std::shared_ptr<ExecutionContext> sharedContext = std::move(context);
-    this->threadPool_.submit([this, functionName, sharedContext, resultCB]() {
-      this->doRunFunction(functionName, sharedContext, resultCB);
-    });
+    this->threadPool_.submit(
+        [this, functionName, context = std::move(context), resultCB]() mutable {
+          this->doRunFunction(functionName, std::move(context), resultCB);
+        });
     return 0;
   }
 
