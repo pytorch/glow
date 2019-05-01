@@ -6,22 +6,20 @@ set -ex
 
 export MAX_JOBS=8
 
-install_pocl() {
-   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
+install_opencl_drivers() {
+  sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
 
-   git clone https://github.com/pocl/pocl.git
-   cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
-   mkdir build_pocl
-   cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
-   make -j`nproc`
-   sudo make install
-
-   sudo mkdir -p /etc/OpenCL/vendors/
-   sudo cp /usr/local/etc/OpenCL/vendors/pocl.icd /etc/OpenCL/vendors/
-
-   clinfo
-   cd ../
+  mkdir neo
+   
+  cd neo
+  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-gmmlib_19.1.1_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-igc-core_1.0.2-1787_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-igc-opencl_1.0.2-1787_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-opencl_19.16.12873_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-ocloc_19.16.12873_amd64.deb
+ 
+  sudo dpkg -i *.deb
+  cd ..
 }
 
 # Install Glow dependencies
@@ -71,7 +69,7 @@ elif [[ "$CIRCLE_JOB" == RELEASE_WITH_EXPENSIVE_TESTS ]]; then
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 else
-    install_pocl
+    install_opencl_drivers
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
