@@ -77,3 +77,80 @@ TEST(ThreadPool, completionFutureTest) {
   done.wait();
   EXPECT_EQ(output, 126);
 }
+
+/// Verify that we can get an Executor that runs tasks consistently on the same
+/// thread.
+TEST(ThreadPool, getExecutor) {
+  ThreadPool tp(3);
+
+  std::thread::id t1;
+  std::thread::id t2;
+
+  /// Check that runs on the same executor run on the same thread.
+  auto *ex = tp.getExecutor();
+  auto fut1 = ex->submit([&t1]() { t1 = std::this_thread::get_id(); });
+  auto fut2 = ex->submit([&t2]() { t2 = std::this_thread::get_id(); });
+
+  fut1.get();
+  fut2.get();
+
+  ASSERT_EQ(t1, t2);
+  ASSERT_NE(t1, std::thread::id());
+
+  /// Now verify this isn't always true.
+  t1 = t2 = std::thread::id();
+  auto *ex2 = tp.getExecutor();
+
+  fut1 = ex->submit([&t1] { t1 = std::this_thread::get_id(); });
+  fut2 = ex2->submit([&t2] { t2 = std::this_thread::get_id(); });
+
+  fut1.get();
+  fut2.get();
+
+  ASSERT_NE(t1, t2);
+  ASSERT_NE(t1, std::thread::id());
+}
+
+/// Verify that you can get more executors than there are threads in the pool.
+TEST(ThreadPool, getManyExecutors) {
+  ThreadPool tp(3);
+
+  std::atomic<size_t> left{20};
+  std::promise<void> finished;
+
+  auto F = [&left, &finished]() {
+    if (--left == 0) {
+      finished.set_value();
+    }
+  };
+
+  for (int i = 0; i < 10; ++i) {
+    auto *ex = tp.getExecutor();
+    // Submit two tasks
+    ex->submit(F);
+    ex->submit(F);
+  }
+
+  finished.get_future().get();
+  ASSERT_EQ(left, 0);
+}
+
+/// Verify we can run on all threads and that they are different.
+TEST(ThreadPool, runOnAllThreads) {
+  ThreadPool tp(3);
+  std::vector<std::thread::id> threadIds;
+
+  std::mutex vecLock;
+
+  auto fut = tp.runOnAllThreads([&threadIds, &vecLock]() {
+    std::lock_guard<std::mutex> l(vecLock);
+    threadIds.push_back(std::this_thread::get_id());
+  });
+
+  fut.get();
+
+  ASSERT_EQ(threadIds.size(), 3);
+  ASSERT_NE(threadIds[0], threadIds[1]);
+  ASSERT_NE(threadIds[1], threadIds[2]);
+  ASSERT_NE(threadIds[2], threadIds[0]);
+}

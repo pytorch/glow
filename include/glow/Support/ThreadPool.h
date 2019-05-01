@@ -27,8 +27,8 @@
 
 namespace glow {
 
-/// Thread pool for asynchronous execution of generic functions.
-class ThreadPool final {
+/// An executor that runs Tasks on a single thread.
+class ThreadExecutor final {
 #ifdef WIN32
   /// A copyable wrapper for a lambda function that has non-copyable objects in
   /// its lambda capture.
@@ -53,13 +53,11 @@ class ThreadPool final {
 #endif
 
 public:
-  /// Constructor. Initializes a thread pool with \p numWorkers
-  /// threads and has them all run ThreadPool::threadPoolWorkerMain.
-  ThreadPool(unsigned numWorkers = kNumWorkers);
+  /// Constructor. Initializes one thread backed by the workQueue_.
+  ThreadExecutor();
 
-  /// Destructor. Signals to all threads to stop and waits for all of them
-  /// to exit.
-  ~ThreadPool();
+  /// Destructor. Signals the thread to stop and waits for exit.
+  ~ThreadExecutor();
 
   /// Submit \p fn as a work item for the thread pool.
   /// \p fn must be a lambda with void return type and arguments.
@@ -83,19 +81,15 @@ public:
   /// Submit \p task as a work item for the thread pool.
   std::future<void> submit(std::packaged_task<void(void)> &&task);
 
-  /// Stop all threads and optionally wait for them to join.
   void stop(bool block = false);
 
-private:
+protected:
   /// Main loop run by the workers in the thread pool.
   void threadPoolWorkerMain();
 
-  /// The default number of workers in the thread pool (overridable).
-  constexpr static unsigned kNumWorkers = 10;
-
-  /// Flag checked by the workers in between work items to determine
-  /// whether they should stop and exit.
-  std::atomic<bool> shouldStop_;
+  /// Flag checked in between work items to determine whether we should stop and
+  /// exit.
+  std::atomic<bool> shouldStop_{false};
 
   /// Queue of work items.
   std::queue<std::packaged_task<void(void)>> workQueue_;
@@ -107,8 +101,76 @@ private:
   /// the work queue.
   std::condition_variable queueNotEmpty_;
 
+  /// Worker thread.
+  std::thread worker_;
+};
+
+/// Thread pool for asynchronous execution of generic functions.
+class ThreadPool final {
+public:
+  /// Constructor. Initializes a thread pool with \p numWorkers
+  /// threads and has them all run ThreadPool::threadPoolWorkerMain.
+  ThreadPool(unsigned numWorkers = kNumWorkers);
+
+  /// Destructor. Signals to all threads to stop and waits for all of them
+  /// to exit.
+  ~ThreadPool();
+
+  /// Stop all threads and optionally wait for them to join.
+  void stop(bool block = false);
+
+  /// Submit \p fn as a work item for the thread pool.
+  /// \p fn must be a lambda with void return type and arguments.
+  template <typename F> std::future<void> submit(F &&fn) {
+#ifdef WIN32
+    std::packaged_task<void(void)> task(make_shared_function(std::move(fn)));
+#else
+    std::packaged_task<void(void)> task(std::move(fn));
+#endif
+
+    return submit(std::move(task));
+  }
+
+  /// Submit \p task as a work item for the thread pool.
+  std::future<void> submit(std::packaged_task<void(void)> &&task);
+
+  /// Returns a ThreadExecutor that can be accessed directly, allowing
+  /// submitting multiple tasks to the same thread.
+  ThreadExecutor *getExecutor() {
+    size_t exIndex = nextWorker_++;
+    return workers_[exIndex % workers_.size()];
+  }
+
+  /// Run the provided function on every thread in the ThreadPool. The function
+  /// must be copyable.
+  template <typename F> std::future<void> runOnAllThreads(F &&fn) {
+    std::shared_ptr<std::atomic<size_t>> finished =
+        std::make_shared<std::atomic<size_t>>(0);
+    std::shared_ptr<std::promise<void>> promise =
+        std::make_shared<std::promise<void>>();
+    for (auto *w : workers_) {
+      w->submit([fn, finished, promise, total = workers_.size()]() {
+        fn();
+        if ((finished->fetch_add(1) + 1) >= total) {
+          promise->set_value();
+        }
+      });
+    }
+
+    return promise->get_future();
+  }
+
+private:
+  /// The default number of workers in the thread pool (overridable).
+  constexpr static unsigned kNumWorkers = 10;
+
   /// Vector of worker thread objects.
-  std::vector<std::thread> workers_;
+  /// It is safe to access this without a lock as it is const after
+  /// construction.
+  std::vector<ThreadExecutor *> workers_;
+
+  /// Round robin index for the next work thread.
+  std::atomic<size_t> nextWorker_{0};
 };
 } // namespace glow
 
