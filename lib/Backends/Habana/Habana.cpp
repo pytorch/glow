@@ -522,8 +522,10 @@ static std::unique_ptr<synConvolutionParams> makeSynConvolutionParams(
   params->dH = stride[0];
   params->dW = stride[1];
   // Padding
-  params->padH = pad[0];
-  params->padW = pad[1];
+  params->padT = pad[0];
+  params->padL = pad[1];
+  params->padB = pad[2];
+  params->padR = pad[3];
   // Dilation
   params->dilW = 1;
   params->dilH = 1;
