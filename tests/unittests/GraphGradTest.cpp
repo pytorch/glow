@@ -210,7 +210,7 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
 }
 
 /// Check that we can differentiate functions that use MatMulNode.
-TEST(GraphAutoGrad, checkMatMulToGradTest) {
+TEST(GraphAutoGrad, checkMatMulGradTest) {
   ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
@@ -231,6 +231,29 @@ TEST(GraphAutoGrad, checkMatMulToGradTest) {
 
   auto *MatMul = F->createMatMul("matMul", A, B);
   auto *R = F->createSave("save", MatMul);
+  Bindings.allocate(R->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
+}
+
+/// Check that we can differentiate functions that use BatchedReduceAddNode.
+TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  TypeRef Ty = Mod.uniqueType(ElemKind::FloatTy, {1, 10});
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "A", false);
+  auto HandleA = Bindings.allocate(A)->getHandle<float>();
+  HandleA.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  auto *BRA = F->createBatchedReduceAdd("BRA", Ty, A, 0 /*axis*/);
+  auto *R = F->createSave("save", BRA);
   Bindings.allocate(R->getPlaceholder());
 
   Function *TF = glow::differentiate(F, TC);
