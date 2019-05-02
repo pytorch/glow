@@ -1138,17 +1138,21 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
           makeConcatParams(CI->getDim(), tensors[CI].dims().size());
       std::vector<synTensor> inputs;
       for (auto const &N : CI->getInputs()) {
-        std::string memcpyNodeName =
-            llvm::formatv("{0}_memcpy_{1}", N.getNode()->getName(),
-                          inputs.size())
-                .str();
-        TensorHandle memcpy(N.getType(), memcpyNodeName);
-        chk(synCreateGenericNode(
-            &tensors[N].get(), &memcpy.get(), 1, 1, nullptr,
-            getKernelName("memcpy", N.getType()->getElementType()).c_str(),
-            memcpy.getName().c_str(), nullptr, nullptr));
-        inputs.push_back(memcpy.get());
-        tempTensors.emplace_back(std::move(memcpy));
+        if (N.getNumUsers() > 1) {
+          std::string memcpyNodeName =
+              llvm::formatv("{0}_memcpy_{1}", N.getNode()->getName(),
+                            inputs.size())
+                  .str();
+          TensorHandle memcpy(N.getType(), memcpyNodeName);
+          chk(synCreateGenericNode(
+              &tensors[N].get(), &memcpy.get(), 1, 1, nullptr,
+              getKernelName("memcpy", N.getType()->getElementType()).c_str(),
+              memcpy.getName().c_str(), nullptr, nullptr));
+          inputs.push_back(memcpy.get());
+          tempTensors.emplace_back(std::move(memcpy));
+        } else {
+          inputs.push_back(tensors[N].get());
+        }
       }
 
       chk(synCreateGenericNode(inputs.data(), &tensors[CI].get(), inputs.size(),
