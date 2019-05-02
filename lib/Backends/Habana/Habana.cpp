@@ -145,8 +145,8 @@ public:
 
 /// Enum describing how the tensor will be used by the model.
 enum class IOType {
-  /// Infer the tensor's usage from the nodes using it.
-  Default,
+  /// Intermediate result between nodes.
+  Intermediate,
   /// Tensor is a model input.
   Input,
   /// Tensor is a model output.
@@ -179,11 +179,13 @@ public:
 
   /// Constructor. Create a tensor from Glow IR Value \p V.
   TensorHandle(TypeRef V, llvm::StringRef name, void *buffer = nullptr,
-               IOType ioType = IOType::Default)
+               IOType ioType = IOType::Intermediate)
       : buffer_(buffer), name_(name) {
     if (!buffer_) {
       assert(V->getSizeInBytes());
-      buffer_ = malloc(V->getSizeInBytes());
+      assert(ioType != IOType::Static);
+      buffer_ = malloc(ioType == IOType::Intermediate ? sizeof(float)
+                                                      : V->getSizeInBytes());
       assert(buffer_);
       allocated_ = true;
     }
@@ -672,8 +674,8 @@ allocateGraphTensors(Function *F) {
       tensors.emplace(
           N, TensorHandle(V->getType(), V->getName(), nullptr, IOType::Output));
     } else {
-      tensors.emplace(V, TensorHandle(V->getType(), V->getName(), nullptr,
-                                      IOType::Default));
+      tensors.emplace(
+          V, TensorHandle(V->getType(), V->getName(), nullptr, IOType::Input));
     }
   }
 
@@ -688,7 +690,7 @@ allocateGraphTensors(Function *F) {
     }
     auto result = N.getNthResult(0);
     tensors.emplace(&N, TensorHandle(result.getType(), N.getName(), nullptr,
-                                     IOType::Default));
+                                     IOType::Intermediate));
   }
   return tensors;
 }
