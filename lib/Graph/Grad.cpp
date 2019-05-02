@@ -31,14 +31,12 @@ using llvm::cast;
 using llvm::isa;
 
 void GraphGradMapper::addGradient(NodeValue activation, NodeValue grad) {
-  if (map_.count(activation)) {
-    auto curr = map_[activation];
+  auto p = map_.insert({activation, grad});
+  if (!p.second) {
+    auto curr = p.first->second;
     auto *sum = F_->createAdd("updateGrad", curr, grad);
-    map_[activation] = sum;
-    return;
+    p.first->second = sum;
   }
-
-  map_[activation] = grad;
 }
 
 bool GraphGradMapper::hasGradient(NodeValue activation) {
@@ -272,6 +270,43 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       toAppend.push_back(TN);
       map.addGradient(Input, TN);
+      continue;
+    }
+
+    if (N->getKind() == Kind::GatherNodeKind) {
+      GatherNode *GN = cast<GatherNode>(N);
+      // Get gradient.
+      NodeValue Result = GN->getResult();
+      NodeValue OutputG = map.getGradient(Result);
+      // Get Data & Indices.
+      NodeValue Data = GN->getData();
+      NodeValue Indices = GN->getIndices();
+
+      // Reshape indices into a one-dimensional Tensor (Vector).
+      std::vector<size_t> IndicesDims{Indices.getType()->size()};
+      auto *RI = G->createReshape("reshape.indices.grad", Indices, IndicesDims);
+
+      // Reshape Gradient into N-k dimension, where k is Index dimensions,
+      // except the case when Indices is one-dimensional.
+      ReshapeNode *RG = nullptr;
+      auto K = Indices.dims().size();
+      if (K != 1) {
+        const auto &OrgDims = OutputG.dims();
+        std::vector<size_t> GDims{OrgDims.begin() + K - 1, OrgDims.end()};
+        for (size_t k = 0; k < K - 1; ++k) {
+          GDims[0] *= OrgDims[k];
+        }
+        RG = G->createReshape("reshape.output.grad", OutputG, GDims);
+      }
+      // Reshaped Indices Vector maps Reshaped Gradient Tensors
+      // to the correspondent Data Tensors, where Vector value
+      // points to Data Tensor.
+      auto *SN = G->createSplat("splat.grad", Data.getType(), 0);
+      auto *SA = new ScatterAssignNode("scatter.assign.grad", SN->getResult(),
+                                       RI->getResult(),
+                                       RG ? RG->getResult() : OutputG);
+      toAppend.push_back(SA);
+      map.addGradient(Data, SA);
       continue;
     }
 

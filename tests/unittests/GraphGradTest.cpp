@@ -260,3 +260,82 @@ TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
   EE.compile(CompilationMode::Train, TF);
   EE.compile(CompilationMode::Infer, F);
 }
+
+/// Check that we can differentiate functions that use GatherNode.
+TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "Data", false);
+  auto *Indices =
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "Indices", false);
+
+  auto HandleData = Bindings.allocate(Data)->getHandle<float>();
+  HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
+
+  auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
+  auto *R = F->createSave("save", G);
+  Bindings.allocate(R->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
+}
+
+TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "Data", false);
+  auto *Indices =
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "Indices", false);
+
+  auto HandleData = Bindings.allocate(Data)->getHandle<float>();
+  HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 1, 3};
+
+  auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
+  auto *R = F->createSave("save", G);
+  Bindings.allocate(R->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
+}
+
+TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "Data", false);
+  auto *Indices =
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "Indices", false);
+
+  auto HandleData = Bindings.allocate(Data)->getHandle<float>();
+  HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 1, 3, 4, 5, 7, 6};
+
+  auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
+  auto *R = F->createSave("save", G);
+  Bindings.allocate(R->getPlaceholder());
+
+  Function *TF = glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Infer, F);
+}

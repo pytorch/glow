@@ -266,6 +266,62 @@ TEST_P(InterpreterGrad, gradientCheckBatchedReduceAdd) {
                    0.01);
 }
 
+TEST_P(InterpreterGrad, gradientCheckGatherVec) {
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE_.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "A", false);
+  auto *Indices = Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "I", false);
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
+  auto *Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 4}, "exp", false);
+
+  Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
+  auto *Reg = F->createRegression("reg", G, Exp);
+  auto *Result = F->createSave("save", Reg);
+
+  Tensor Inputs(ElemKind::FloatTy, {{3, 4}});
+  Tensor Outputs(ElemKind::FloatTy, {{2, 4}});
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EE_, Bindings, Result, A, Exp, &Inputs, &Outputs, 0.001,
+                   0.01);
+}
+
+TEST_P(InterpreterGrad, gradientCheckGatherDim) {
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE_.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "A", false);
+  auto *Indices = Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "I", false);
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 3, 1};
+  auto *Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "exp", false);
+
+  Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
+  auto *Reg = F->createRegression("reg", G, Exp);
+  auto *Result = F->createSave("save", Reg);
+
+  Tensor Inputs(ElemKind::FloatTy, {{8, 4}});
+  Tensor Outputs(ElemKind::FloatTy, {{2, 2, 4}});
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EE_, Bindings, Result, A, Exp, &Inputs, &Outputs, 0.001,
+                   0.01);
+}
+
 static void gradientCheckGroupConv(size_t depth, size_t group,
                                    ExecutionEngine &EE_) {
   PlaceholderBindings bindings;
