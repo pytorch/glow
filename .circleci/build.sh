@@ -13,7 +13,7 @@ install_pocl() {
    cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=all" ../pocl
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -73,7 +73,6 @@ elif [[ "$CIRCLE_JOB" == RELEASE_WITH_EXPENSIVE_TESTS ]]; then
 else
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
-    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
         CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")

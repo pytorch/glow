@@ -9,7 +9,6 @@ export GLOW_BUILD_DIR=${GLOW_SRC}/build
 export LOADER=${GLOW_BUILD_DIR}/bin/image-classifier
 export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/suppressions.txt"
 export ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
-export ASAN_OPTIONS=symbolize=1
 
 # Pass in which tests to run (one of {test, test_unopt}).
 run_unit_tests() {
