@@ -7,16 +7,14 @@ set -ex
 export MAX_JOBS=8
 
 install_opencl_drivers() {
-  sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
+  sudo apt-get install -y ocl-icd-opencl-dev ocl-icd-libopencl1 clinfo libhwloc-dev opencl-headers
 
   mkdir neo
-   
   cd neo
-  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-gmmlib_19.1.1_amd64.deb
-  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-igc-core_1.0.2-1787_amd64.deb
-  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-igc-opencl_1.0.2-1787_amd64.deb
-  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-opencl_19.16.12873_amd64.deb
-  wget https://github.com/intel/compute-runtime/releases/download/19.16.12873/intel-ocloc_19.16.12873_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/18.45.11804/intel-gmmlib_18.4.0.348_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/18.45.11804/intel-igc-core_18.44.1060_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/18.45.11804/intel-igc-opencl_18.44.1060_amd64.deb
+  wget https://github.com/intel/compute-runtime/releases/download/18.45.11804/intel-opencl_18.45.11804_amd64.deb
  
   sudo dpkg -i *.deb
   cd ..
