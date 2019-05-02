@@ -142,7 +142,7 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
   // Load the base addresses at the beginning of the entry function once they
   // are set. They won't change after this point and all relative addressing
   // computations will simply use them.
-  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
+  auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
   baseActivationsAddr_ = builder.CreatePtrToInt(F->args().begin() + 2, sizeTTy);
   baseConstantWeightVarsAddr_ =
       builder.CreatePtrToInt(F->args().begin(), sizeTTy);
@@ -198,7 +198,7 @@ void LLVMIRGen::initCodeGen() {
 
   // Create the entry function into the LLVM module.
   auto int8PtrTy = llvm::Type::getInt8PtrTy(ctx_);
-  auto sizeTPtrTy = llvm::Type::getIntNPtrTy(ctx_, getTargetSizeTWidth());
+  auto sizeTPtrTy = llvm::Type::getIntNPtrTy(ctx_, getLibjitSizeTWidth());
   // The entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t
   // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
@@ -306,7 +306,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
                                          const glow::Value *val) {
   assert(allocationsInfo_.allocatedAddress_.count(val) &&
          "Value address was not allocated");
-  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
+  auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
   llvm::Type *T = nullptr;
 
   switch (val->getElementType()) {
@@ -369,7 +369,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 llvm::Value *
 LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                  const AllocationsInfo &allocationsInfo) {
-  auto sizeTType = builder.getIntNTy(getTargetSizeTWidth());
+  auto sizeTType = builder.getIntNTy(getLibjitSizeTWidth());
   std::vector<llvm::Constant *> elems(allocationsInfo.valueNumbers_.size());
   for (auto &I : allocationsInfo.valueNumbers_) {
     auto *V = I.first;
@@ -399,7 +399,7 @@ template <typename T>
 llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
                                             llvm::ArrayRef<T> vals) {
   assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
-  auto SizeTType = builder.getIntNTy(getTargetSizeTWidth());
+  auto SizeTType = builder.getIntNTy(getLibjitSizeTWidth());
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
     assert(I >= 0 && "Only allow casting positive values into size_t.");
@@ -443,7 +443,7 @@ llvm::Value *LLVMIRGen::emitValueDims(llvm::IRBuilder<> &builder,
 
 llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
                                       const glow::Value *val) {
-  return builder.getIntN(getTargetSizeTWidth(), val->size());
+  return builder.getIntN(getLibjitSizeTWidth(), val->size());
 }
 
 llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
@@ -459,7 +459,7 @@ llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
 }
 
 llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
-  return builder.getIntN(getTargetSizeTWidth(), val);
+  return builder.getIntN(getLibjitSizeTWidth(), val);
 }
 
 llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
@@ -564,7 +564,7 @@ llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
 std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
 LLVMIRGen::createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
                       llvm::Value *numElements) const {
-  auto sizeTTy = builder.getIntNTy(getTargetSizeTWidth());
+  auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
   auto *initVal = llvm::ConstantInt::get(sizeTTy, 0);
 
   // Make the new basic block for the loop header. Insert it after current
@@ -2360,6 +2360,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
 unsigned LLVMIRGen::getTargetSizeTWidth() const {
   return getPointerNumBits(*TM_);
+}
+
+unsigned LLVMIRGen::getLibjitSizeTWidth() const {
+  auto *sizeTVar = getModule().getGlobalVariable("libjit_sizeTVar",
+                                                 /* allowInternal */ true);
+  assert(sizeTVar && "libjit_sizeTVar is not found");
+  return sizeTVar->getType()->getPointerElementType()->getIntegerBitWidth();
 }
 
 bool LLVMIRGen::isEligibleForSpecialization(const llvm::CallInst *call) {

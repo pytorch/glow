@@ -302,7 +302,7 @@ public:
   /// The module cannot be used by the LLVMIRGen afterwards.
   std::unique_ptr<llvm::Module> borrowModule() { return std::move(llmodule_); }
   /// \returns current LLVM module.
-  llvm::Module &getModule() { return *llmodule_; }
+  llvm::Module &getModule() const { return *llmodule_; }
   /// \returns the IR function.
   const IRFunction *getIRFunction() { return F_; }
   /// Set output directory for bundles, debug info files, etc.
@@ -322,6 +322,9 @@ public:
   virtual void markArgAsUnspecialized(llvm::Value *val);
   /// \returns bit-width of the target size_t.
   virtual unsigned getTargetSizeTWidth() const;
+  /// \returns the sizeof(size_t) of the actual target-specific size_t type that
+  /// was used to compile libjit into LLVM bitcode.
+  unsigned getLibjitSizeTWidth() const;
   /// \returns true if a call is eligible for specialization.
   virtual bool isEligibleForSpecialization(const llvm::CallInst *call);
   /// \returns true if a global symbol \p GV needs to be preserved in the module

@@ -781,6 +781,10 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmin_kernel_i8, int8_t,
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_mul_kernel_i8, lhs *rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
 
+/// This is a variable used by Glow backends to determine the actual type used
+/// for size_t when libjit was compiled.
+size_t libjit_sizeTVar;
+
 int8_t libjit_element_cmp_eq_kernel_u(size_t idx, const size_t *LHS,
                                       const size_t *RHS) {
   return LHS[idx] == RHS[idx] ? 1 : 0;
