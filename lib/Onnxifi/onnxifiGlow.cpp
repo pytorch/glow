@@ -59,6 +59,11 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 #else
   constexpr bool withCPU = false;
 #endif
+#ifdef GLOW_WITH_HABANA
+  constexpr bool withHabana = true;
+#else
+  constexpr bool withHabana = false;
+#endif
 
   // Only return quantization backend if GLOW_DUMP_PROFILE.
   if (getenv("GLOW_DUMP_PROFILE")) {
@@ -79,8 +84,11 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
     backendIDs[0] = quantizationBackendOnnx;
     backendIDs[1] = quantizationBackendC2;
-  } else if (withCPU) {
+  } else if (withCPU || withHabana) {
     *numBackends = 4;
+
+    auto backendKind =
+        withHabana ? glow::BackendKind::Habana : glow::BackendKind::CPU;
 
     // In case backendIDs is nullptr or does not have enough capacity just
     // return the total number of supported backends.
@@ -88,12 +96,12 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *cpuBackendOnnx = manager.createBackendId(glow::BackendKind::CPU,
+    auto *cpuBackendOnnx = manager.createBackendId(backendKind,
                                                    /*useOnnx*/ true);
     auto *interpreterBackendOnnx =
         manager.createBackendId(glow::BackendKind::Interpreter,
                                 /*useOnnx*/ true);
-    auto *cpuBackendC2 = manager.createBackendId(glow::BackendKind::CPU,
+    auto *cpuBackendC2 = manager.createBackendId(backendKind,
                                                  /*useOnnx*/ false);
     auto *interpreterBackendC2 =
         manager.createBackendId(glow::BackendKind::Interpreter,

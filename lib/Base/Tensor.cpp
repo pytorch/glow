@@ -148,6 +148,8 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
   }
 
   os << "]\n";
+
+  os.flush();
 }
 
 template <class ElemTy>
@@ -188,6 +190,8 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   } else {
     llvm_unreachable("Invalid tensor size");
   }
+
+  os.flush();
 }
 
 /// This is a slow generic transpose. This method performs a single for loop

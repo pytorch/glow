@@ -54,7 +54,7 @@ static synDataType getSynType(ElemKind kind) {
   case ElemKind::FloatTy:
     return syn_type_single;
   case ElemKind::Float16Ty:
-    return syn_type_half;
+    GLOW_UNREACHABLE("Unhandled ElemKind: Float16Ty");
   case ElemKind::Int8QTy:
     return syn_type_fixed;
   case ElemKind::Int16QTy:
@@ -90,18 +90,6 @@ static const char *getKernelSuffix(ElemKind kind) {
 
 static std::string getKernelName(llvm::StringRef kernelBase, ElemKind kind) {
   return std::string(kernelBase) + getKernelSuffix(kind);
-}
-
-/// If \p PH is an output placeholder, \returns the SaveNode.
-static SaveNode *getOutputSave(Function *F, Placeholder *PH) {
-  for (auto &use : PH->getUsers()) {
-    if (auto *save = llvm::dyn_cast<SaveNode>(use.getUser())) {
-      if (save->getParent() == F && save->getPlaceholder() == PH) {
-        return save;
-      }
-    }
-  }
-  return nullptr;
 }
 
 namespace {
@@ -217,23 +205,6 @@ public:
     // Model params need to be floats, even if the tensor is integral or
     // quantized.
     if (ioType == IOType::Static) {
-      // Quantized types: dequantize into float buffer.
-      if (V->isQuantizedType()) {
-        // Check that a weight buffer was passed in; these are model params.
-        assert(!allocated_);
-        Type type = *V;
-        if (V->getElementType() == ElemKind::UInt8FusedQTy) {
-          // Fused quantized values just need to be passed through in raw form.
-          type = Type(ElemKind::Int8QTy, V->dims(), 1.0, 0);
-        }
-        Tensor DT = quantization::dequantizeTensor(Tensor(buffer_, &type),
-                                                   ElemKind::FloatTy);
-        auto bytes = DT.getSizeInBytes();
-        buffer_ = malloc(bytes);
-        memcpy(buffer_, DT.getUnsafePtr(), bytes);
-        allocated_ = true;
-      }
-
       // Int32ITy: Cast to floats.
       if (V->getElementType() == ElemKind::Int32ITy) {
         float *floats_ = (float *)malloc(V->size() * sizeof(float));
@@ -258,11 +229,19 @@ public:
     // Create tensor descriptor, with quantization params if needed.
     synTensorDescriptor desc(elemType, rdims.size(), rdims.data(), buffer_,
                              synMemoryHost, false, name_.data());
-    if (V->isQuantizedType() &&
-        V->getElementType() != ElemKind::UInt8FusedQTy) {
-      desc.m_quantizationParams[0].m_zp = V->getOffset();
-      desc.m_quantizationParams[0].m_scale = V->getScale();
+    if (V->isQuantizedType()) {
+      if (V->getElementType() == ElemKind::UInt8FusedQTy) {
+        desc.m_quantizationParams[0].m_zp = 0;
+        desc.m_quantizationParams[0].m_scale = 1;
+      } else {
+        desc.m_quantizationParams[0].m_zp = V->getOffset();
+        desc.m_quantizationParams[0].m_scale = V->getScale();
+      }
+
       desc.m_quantizationParams[0].m_qDataType = elemType;
+      if (ioType == IOType::Static) {
+        desc.m_isQuantized = true;
+      }
     }
 
     chk(synCreateTensor(&desc, &tensor_, ioType == IOType::Output, false,
@@ -306,6 +285,9 @@ public:
 
   /// Get the underlying data buffer.
   void *getData() const { return buffer_; }
+
+  /// Get the name of the managed tensor
+  const std::string &getName() const { return name_; }
 
   /// Get the dimensions of the stored tensor.
   llvm::ArrayRef<unsigned> dims() const { return dims_; }
@@ -665,15 +647,18 @@ allocateGraphTensors(Function *F) {
       continue;
     }
     if (auto *save = getOutputSave(F, V)) {
-      // We want to avoid emitting copies for save nodes by simply marking the
-      // save input as an "output" tensor.  The exceptions are when the input
-      // is itself a placeholder/constant, or a reshape.  (The reshape case is
-      // likely a Synapse bug.)
+      // Naively, we'd generate a memcpy for any SaveNode, but that's a waste
+      // so we want to avoid it.  We can optimize it away by mapping the
+      // SaveNode's input node (N, below) to the output tensor, and then simply
+      // not generating a memcpy if the SaveNode itself has no associated
+      // tensor.
       auto *N = save->getInput().getNode();
-      Node *proxy =
-          (llvm::isa<Storage>(N) || llvm::isa<HabanaReshapeNode>(N)) ? save : N;
-      tensors.emplace(proxy, TensorHandle(V->getType(), V->getName(), nullptr,
-                                          IOType::Output));
+      if (llvm::isa<Storage>(N) || llvm::isa<HabanaReshapeNode>(N) ||
+          N->getNumUsers() > 1) {
+        N = save;
+      }
+      tensors.emplace(
+          N, TensorHandle(V->getType(), V->getName(), nullptr, IOType::Output));
     } else {
       tensors.emplace(V, TensorHandle(V->getType(), V->getName(), nullptr,
                                       IOType::Default));
@@ -747,6 +732,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_ConstantKernel::Params>> constantParams;
   std::vector<std::unique_ptr<ns_TileKernel::Params>> tileParams;
   std::vector<std::unique_ptr<unsigned>> concatParams;
+  std::vector<std::unique_ptr<ns_TakeKernel::Params>> takeParams;
 
   // Keep references to tensor pointer arrays passed into multi-input nodes
   // until the compilation is done.
@@ -755,6 +741,10 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<TensorHandle> tempTensors;
 
   for (const auto &I : F->getNodes()) {
+    if (!isOpSupported(I)) {
+      llvm::errs() << "Unsupported operator: " << I.getDebugDesc() << "\n";
+      GLOW_UNREACHABLE("Unsupported operator");
+    }
     switch (I.getKind()) {
     case Kinded::Kind::HabanaFullyConnectedNodeKind: {
       auto *NI = llvm::cast<HabanaFullyConnectedNode>(&I);
@@ -1116,7 +1106,17 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
           makeConcatParams(CI->getDim(), tensors[CI].dims().size());
       std::vector<synTensor> inputs;
       for (auto const &N : CI->getInputs()) {
-        inputs.push_back(tensors[N].get());
+        std::string memcpyNodeName =
+            llvm::formatv("{0}_memcpy_{1}", N.getNode()->getName(),
+                          inputs.size())
+                .str();
+        TensorHandle memcpy(N.getType(), memcpyNodeName);
+        chk(synCreateGenericNode(
+            &tensors[N].get(), &memcpy.get(), 1, 1, nullptr,
+            getKernelName("memcpy", N.getType()->getElementType()).c_str(),
+            memcpy.getName().c_str(), nullptr, nullptr));
+        inputs.push_back(memcpy.get());
+        tempTensors.emplace_back(std::move(memcpy));
       }
 
       chk(synCreateGenericNode(inputs.data(), &tensors[CI].get(), inputs.size(),
@@ -1163,6 +1163,25 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
                                "sparse_lengths_weighted_sum_u8_2D_f32_embed",
                                RI->getName().data(), nullptr, nullptr));
       multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
+    case Kinded::Kind::GatherNodeKind: {
+      auto *gather = llvm::cast<GatherNode>(&I);
+      std::vector<synTensor> inputs = {tensors[gather->getData()].get(),
+                                       tensors[gather->getIndices()].get()};
+
+      auto params = llvm::make_unique<ns_TakeKernel::Params>();
+      params->axis =
+          gather->getData().dims().size() - gather->getBatchDims() - 1;
+      params->mode = 0;
+
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[gather].get(), inputs.size(), 1, params.get(),
+          getKernelName("take", gather->getResult().getElementType()).c_str(),
+          gather->getName().data(), nullptr, nullptr));
+
+      multiInputs.emplace_back(std::move(inputs));
+      takeParams.emplace_back(std::move(params));
       break;
     }
     default: {
