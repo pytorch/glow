@@ -684,6 +684,47 @@ static size_t get_bin(size_t nBins, float binWidth, float minValue,
           : MIN(static_cast<size_t>((value - minValue) / binWidth), nBins - 1);
   return result;
 }
+
+template <typename T>
+static void
+libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
+                              const size_t *inDims, const size_t *outDims) {
+  size_t inHeight = inDims[1];
+  size_t inWidth = inDims[2];
+  size_t inDepth = inDims[3];
+
+  size_t outBatch = outDims[0];
+  size_t outHeight = outDims[1];
+  size_t outWidth = outDims[2];
+  size_t outDepth = outDims[3];
+
+  for (size_t b = 0; b < outBatch; ++b) {
+    for (size_t h = 0; h < outHeight; ++h) {
+      for (size_t w = 0; w < outWidth; ++w) {
+        for (size_t c = 0; c < outDepth; ++c) {
+          // NHWC
+          // c +
+          // w * outDepth +
+          // h * outDepth * outWidth +
+          // b * outDepth * outWidth * outHeight
+          size_t outIndex = c + outDepth * (w + outWidth * (h + b * outHeight));
+
+          // Gets the block layer we are on
+          size_t blockDepthLayer = c / inDepth;
+          // every multiple of block size we reset to 0 offset
+          size_t iw = w * blockSize + blockDepthLayer % blockSize;
+          // every multiple of blockSize we start height traversal + 1
+          size_t ih = h * blockSize + blockDepthLayer / blockSize;
+          // at every multiple of inDepth index in to input depths resets to 0
+          size_t id = c % inDepth;
+
+          size_t inIndex = id + inDepth * (iw + inWidth * (ih + b * inHeight));
+          outPtr[outIndex] = inPtr[inIndex];
+        }
+      }
+    }
+  }
+}
 } // namespace
 
 extern "C" {
@@ -1615,6 +1656,19 @@ void libjit_insert_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
 }
 
+void libjit_space_to_depth_f(const float *inTensor, float *outTensor,
+                             size_t blockSize, const size_t *inDims,
+                             const size_t *outDims) {
+  libjit_space_to_depth_generic(inTensor, outTensor, blockSize, inDims,
+                                outDims);
+}
+
+void libjit_space_to_depth_i8(const int8_t *inTensor, int8_t *outTensor,
+                              size_t blockSize, const size_t *inDims,
+                              const size_t *outDims) {
+  libjit_space_to_depth_generic(inTensor, outTensor, blockSize, inDims,
+                                outDims);
+}
 __attribute__((noinline)) void
 libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
                    size_t elemKind, const char *name) {

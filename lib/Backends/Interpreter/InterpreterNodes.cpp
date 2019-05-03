@@ -1280,6 +1280,59 @@ void BoundInterpreterFunction::fwdBatchOneHotInst(
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSpaceToDepthInstImpl(
+    const glow::SpaceToDepthInst *I) {
+  auto *inT = getTensor(I->getSrc());
+  auto *outT = getTensor(I->getDest());
+
+  auto inH = inT->getHandle<ElemTy>();
+  auto outH = outT->getHandle<ElemTy>();
+
+  unsigned blockSize = I->getBlockSize();
+
+  size_t inDepth = inT->dims()[3];
+
+  size_t outBatch = outT->dims()[0];
+  size_t outHeight = outT->dims()[1];
+  size_t outWidth = outT->dims()[2];
+  size_t outDepth = outT->dims()[3];
+
+  for (size_t ob = 0; ob < outBatch; ++ob) {
+    for (size_t oh = 0; oh < outHeight; ++oh) {
+      for (size_t ow = 0; ow < outWidth; ++ow) {
+        for (size_t oc = 0; oc < outDepth; ++oc) {
+          // Gets the block layer we are on
+          size_t blockDepthLayer = oc / inDepth;
+          // every multiple of block size we reset to 0 offset
+          size_t iw = ow * blockSize + blockDepthLayer % blockSize;
+          // every multiple of blockSize we start height traversal + 1
+          size_t ih = oh * blockSize + blockDepthLayer / blockSize;
+          // at every multiple of inDepth index in to input depths resets to 0
+          size_t ic = oc % inDepth;
+
+          outH.at({ob, oh, ow, oc}) = inH.at({ob, ih, iw, ic});
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdSpaceToDepthInst(
+    const glow::SpaceToDepthInst *I) {
+  switch (I->getSrc()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdSpaceToDepthInstImpl<float>(I);
+    break;
+  case ElemKind::Int8QTy:
+    fwdSpaceToDepthInstImpl<int8_t>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+    break;
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//

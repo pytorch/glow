@@ -1172,6 +1172,22 @@ bool BatchOneHotNode::verify() const {
   return isValid;
 }
 
+bool SpaceToDepthNode::verify() const {
+  auto inputN = getInput();
+  auto resultN = getResult();
+  auto inputDims = inputN.dims();
+  auto outputDims = resultN.dims();
+  unsigned blockSize = getBlockSize();
+
+  bool sameType = checkTypeIgnoreShape(inputN, resultN, this);
+  bool dimTransform = inputDims[0] == outputDims[0] &&
+                      inputDims[1] == outputDims[1] * blockSize &&
+                      inputDims[2] == outputDims[2] * blockSize &&
+                      inputDims[3] * blockSize * blockSize == outputDims[3];
+
+  return sameType && dimTransform;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }

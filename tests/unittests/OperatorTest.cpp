@@ -64,6 +64,270 @@ static Tensor createTensorConditionallyQuantized(ElemKind T,
   return isQuantizedElemKind(T) ? Tensor(T, dims, 1.0, 0) : Tensor(T, dims);
 }
 
+// Helper to test SpaceToDepth using \p DTy.
+template <typename DataType>
+static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
+                                   glow::Module &mod, glow::Function *F,
+                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+  unsigned blockSize = 3;
+  auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 6, 6},
+                                                     "in", false);
+  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1});
+  auto *stdn = F->createSpaceToDepth("spacetodepth", tri, blockSize);
+  auto *tro = F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2});
+  auto *save = F->createSave("save", tro);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  /*
+    Example for first batch.
+  FROM:
+  C0:             C1:
+  [0  1  2  3  16 17]    [ 0  -1  -2  -3  -16 -17]
+  [4  5  6  7  18 19]    [-4  -5  -6  -7  -18 -19]
+  [8  9  10 11 20 21]    [-8  -9  -10 -11 -20 -21]
+  [12 13 14 15 22 23]    [-12 -13 -14 -15 -22 -23]
+  [24 25 26 27 28 29]    [-24 -25 -26 -27 -28 -29]
+  [30 31 32 33 34 35]    [-30 -31 -32 -33 -34 -35]
+
+  TO:
+  C = 0
+  [0,3]
+  [12,15]
+
+  C = 1
+  [0,-3]
+  [-12,-15]
+
+  C = 2
+  [1,16]
+  [13,22]
+
+  C = 3
+  [-1,-16]
+  [-13,-22]
+
+  C = 4
+  [2,17]
+  [14,23]
+
+  C = 5
+  [-2,-17]
+  [-14,-23]
+
+  C = 6
+  [4,7]
+  [24,27]
+
+  C = 7
+  [-4,-7]
+  [-24,-27]
+
+  C = 8
+  [5,18]
+  [25,28]
+
+  C = 9
+  [-5,-18]
+  [-25,-28]
+
+  C = 10
+  [6,19]
+  [26,29]
+
+  C = 11
+  [-6,-19]
+  [-26,-29]
+
+  C = 12
+  [8,11]
+  [30,33]
+
+  C = 13
+  [-8,-11]
+  [-30,-33]
+
+  C = 14
+  [9,20]
+  [31,34]
+
+  C = 15
+  [-9,-20]
+  [-31,-34]
+
+  C = 16
+  [10,21]
+  [32,35]
+
+  C = 17
+  [-10,-21]
+  [-32,-35]
+  */
+
+  bindings.allocate(in)->getHandle<DataType>() = {
+      0,   1,   2,   3,   16,  17,  4,   5,   6,   7,   18,  19,  8,   9,   10,
+      11,  20,  21,  12,  13,  14,  15,  22,  23,  24,  25,  26,  27,  28,  29,
+      30,  31,  32,  33,  34,  35,  0,   -1,  -2,  -3,  -16, -17, -4,  -5,  -6,
+      -7,  -18, -19, -8,  -9,  -10, -11, -20, -21, -12, -13, -14, -15, -22, -23,
+      -24, -25, -26, -27, -28, -29, -30, -31, -32, -33, -34, -35};
+
+  std::vector<DataType> refResult = {
+      0,   3,   12,  15,  0,  -3, -12, -15, 1,   16,  13,  22, -1, -16, -13,
+      -22, 2,   17,  14,  23, -2, -17, -14, -23, 4,   7,   24, 27, -4,  -7,
+      -24, -27, 5,   18,  25, 28, -5,  -18, -25, -28, 6,   19, 26, 29,  -6,
+      -19, -26, -29, 8,   11, 30, 33,  -8,  -11, -30, -33, 9,  20, 31,  34,
+      -9,  -20, -31, -34, 10, 21, 32,  35,  -10, -21, -32, -35};
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  Handle<DataType> resultH = result->getHandle<DataType>();
+
+  auto iDims = in->dims();
+  auto oDims = resultH.dims();
+  EXPECT_EQ(iDims[0], oDims[0]);
+  EXPECT_EQ(iDims[1] * blockSize * blockSize, oDims[1]);
+  EXPECT_EQ(iDims[2], oDims[2] * blockSize);
+  EXPECT_EQ(iDims[3], oDims[3] * blockSize);
+
+  // NCHW format
+  size_t resIndex = 0;
+  for (size_t on = 0; on < oDims[0]; ++on) {
+    for (size_t oc = 0; oc < oDims[1]; ++oc) {
+      for (size_t oh = 0; oh < oDims[2]; ++oh) {
+        for (size_t ow = 0; ow < oDims[3]; ++ow) {
+          DataType resultVal = resultH.at({on, oc, oh, ow});
+          DataType refVal = refResult[resIndex++];
+          EXPECT_EQ(resultVal, refVal);
+        }
+      }
+    }
+  }
+}
+
+/// Verify that the SpaceToDepth operator works correctly for int8. Block
+/// Size 3.
+TEST_P(OperatorTest, spaceToDepth_block3_int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSpaceToDepthBlock3<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Verify that the SpaceToDepth operator works correctly for Float. Block
+/// Size 3.
+TEST_P(OperatorTest, spaceToDepth_block3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSpaceToDepthBlock3<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+// Helper to test SpaceToDepth using \p DTy.
+template <typename DataType>
+static void testSpaceToDepth(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy) {
+  unsigned blockSize = 2;
+  auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {2, 2, 4, 4},
+                                                     "in", false);
+  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1});
+  auto *stdn = F->createSpaceToDepth("spacetodepth", tri, blockSize);
+  auto *tro = F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2});
+  auto *save = F->createSave("save", tro);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  /*
+    Example for first batch.
+  FROM:
+  C0:             C1:
+  [0  1  2  3]    [ 0  -1  -2  -3]
+  [4  5  6  7]    [-4  -5  -6  -7]
+  [8  9  10 11]   [-8  -9  -10 -11]
+  [12 13 14 15]   [-12 -13 -14 -15]
+
+  TO:
+  C0:
+  [0,  2]
+  [8,  10]
+
+  C1:
+  [ 0,  -2]
+  [-8, -10]
+
+  C2:
+  [1, 3]
+  [9, 11]
+
+  C3:
+  [-1, -3]
+  [-9, -11]
+
+  C4:
+  [4,  6]
+  [12, 14]
+
+  C5:
+  [-4,  -6]
+  [-12, -14]
+
+  C6:
+  [5, 7]
+  [13, 15]
+
+  C7:
+  [-5,  -7]
+  [-13, -15]
+  */
+
+  bindings.allocate(in)->getHandle<DataType>() = {
+      0, 1,   2,   3,   4,  5,  6,   7,   8,  9,  10,  11,  12,  13,  14,  15,
+      0, -1,  -2,  -3,  -4, -5, -6,  -7,  -8, -9, -10, -11, -12, -13, -14, -15,
+      0, 7,   9,   23,  24, 25, 26,  27,  8,  9,  10,  33,  12,  13,  14,  15,
+      0, -21, -22, -23, -4, -5, -26, -27, -8, -9, -10, -11, -12, -13, -14, -15};
+
+  std::vector<DataType> refResult = {
+      0,  2,  8,  10, 0,  -2,  -8,  -10, 1,  3,  9,  11, -1,  -3,  -9,  -11,
+      4,  6,  12, 14, -4, -6,  -12, -14, 5,  7,  13, 15, -5,  -7,  -13, -15,
+      0,  9,  8,  10, 0,  -22, -8,  -10, 7,  23, 9,  33, -21, -23, -9,  -11,
+      24, 26, 12, 14, -4, -26, -12, -14, 25, 27, 13, 15, -5,  -27, -13, -15};
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  Handle<DataType> resultH = result->getHandle<DataType>();
+
+  auto iDims = in->dims();
+  auto oDims = resultH.dims();
+  EXPECT_EQ(iDims[0], oDims[0]);
+  EXPECT_EQ(iDims[1] * blockSize * blockSize, oDims[1]);
+  EXPECT_EQ(iDims[2], oDims[2] * blockSize);
+  EXPECT_EQ(iDims[3], oDims[3] * blockSize);
+
+  // NCHW format
+  size_t resIndex = 0;
+  for (size_t on = 0; on < oDims[0]; ++on) {
+    for (size_t oc = 0; oc < oDims[1]; ++oc) {
+      for (size_t oh = 0; oh < oDims[2]; ++oh) {
+        for (size_t ow = 0; ow < oDims[3]; ++ow) {
+          DataType resultVal = resultH.at({on, oc, oh, ow});
+          DataType refVal = refResult[resIndex++];
+          EXPECT_EQ(resultVal, refVal);
+        }
+      }
+    }
+  }
+}
+
+/// Verify that the SpaceToDepth operator works correctly for int8. Block
+/// Size 2.
+TEST_P(OperatorTest, spaceToDepth_block2_int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSpaceToDepth<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Verify that the SpaceToDepth operator works correctly for Float. Block
+/// Size 2.
+TEST_P(OperatorTest, spaceToDepth_block2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSpaceToDepth<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
 TEST_P(OperatorTest, pow) {
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);

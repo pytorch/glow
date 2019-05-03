@@ -970,6 +970,33 @@ llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error
+ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+
+  // Input Type
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getNodeValueOrCreateConstantByName(op.input(0)));
+
+  int blockSize = 0;
+  if (dict.count("blocksize")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(blockSize, loadInt(dict.at("blocksize")));
+  } else {
+    RETURN_ERR("SpaceToDepth: missing 'blocksize' attribute");
+  }
+
+  // Create the node.
+  std::string opName = loadOperatorName(op);
+  auto *tr = G_.createTranspose(opName, input, NCHW2NHWC);
+  Node *nd = G_.createSpaceToDepth(opName, tr, blockSize);
+  auto *N = G_.createTranspose(opName, nd, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1029,6 +1056,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "LeakyRelu") {
     return loadLeakyRelu(op, dict);
+  }
+  if (typeName == "SpaceToDepth") {
+    return loadSpaceToDepth(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",

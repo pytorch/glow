@@ -537,6 +537,13 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoIRGen();
 
+  BB.newInstr("SpaceToDepth")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Unsigned, "BlockSize")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//
