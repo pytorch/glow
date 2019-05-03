@@ -73,6 +73,7 @@ elif [[ "$CIRCLE_JOB" == RELEASE_WITH_EXPENSIVE_TESTS ]]; then
 else
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
+    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
         CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")
