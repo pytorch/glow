@@ -35,6 +35,9 @@ sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
 sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
 sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
+sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 50
+sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 50
+
 GLOW_DIR=$PWD
 
 # Install ninja and (newest version of) cmake through pip
