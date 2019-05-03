@@ -82,7 +82,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
-  ::glow::optimizeFunction(F_, *backend, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
   return backend->compile(F_, cctx.backendOpts);
 }
 

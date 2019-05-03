@@ -17,6 +17,7 @@
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
 #include "glow/Optimizer/CompilationContext.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -72,8 +73,10 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
                                                   bool shouldShareBuffers);
 
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
-void optimizeFunction(Function *F, const Backend &B,
-                      const CompilationContext &cctx);
+/// \returns success if all nodes in the final resulting optimized Function are
+/// supported by \p B; if not, this represents a compiler error.
+llvm::Error optimizeFunction(Function *F, const Backend &B,
+                             const CompilationContext &cctx);
 
 } // namespace glow
 

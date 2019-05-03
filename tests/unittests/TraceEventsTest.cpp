@@ -268,7 +268,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
   EE_.insertCompiledFunction(F->getName(),
                              backend->compile(F, cctx.backendOpts));
 
@@ -308,7 +308,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
   EE_.insertCompiledFunction(F->getName(),
                              backend->compile(F, cctx.backendOpts));
 
@@ -358,7 +358,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   CompilationContext cctx;
   cctx.mode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
-  ::glow::optimizeFunction(F, *backend, cctx);
+  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
 
   std::string name = F->getName();
   EE_.insertCompiledFunction(name, backend->compile(F, cctx.backendOpts));

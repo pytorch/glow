@@ -88,7 +88,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     CompilationContext cctx;
     cctx.mode = CompilationMode::Infer;
     for (auto F : module->getFunctions()) {
-      ::glow::optimizeFunction(F, *backend_, cctx);
+      RETURN_IF_ERR(::glow::optimizeFunction(F, *backend_, cctx));
     }
   }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);

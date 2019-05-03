@@ -77,6 +77,8 @@ public:
     RUNTIME_REQUEST_REFUSED,
     // Runtime error, device wasn't found.
     RUNTIME_DEVICE_NOT_FOUND,
+    // Compilation error; node unsupported after optimizations.
+    COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -142,6 +144,8 @@ private:
       return "RUNTIME_REQUEST_REFUSED";
     case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
       return "RUNTIME_DEVICE_NOT_FOUND";
+    case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
+      return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
     };
 
     llvm_unreachable("unsupported ErrorCode");
