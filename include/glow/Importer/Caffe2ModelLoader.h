@@ -54,11 +54,17 @@ class Caffe2ModelLoader
   llvm::Error loadWeight(const caffe2::OperatorDef &op);
 
   /// Load the structure of the network from the 'net' file.
-  llvm::Error loadNetwork(caffe2::NetDef &net);
+  /// If Bindings are provided creates Placeholders vs Constants.
+  llvm::Error loadNetwork(caffe2::NetDef &net,
+                          PlaceholderBindings *bindings = nullptr);
 
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network.
-  llvm::Error loadOperator(const caffe2::OperatorDef &op);
+  /// \p bindings is an optional parameter. If it is provided,
+  /// the loaded weights will be discarded, replaced by trainable weights that
+  /// are initialized for training and added to the graph as Placeholders.
+  llvm::Error loadOperator(const caffe2::OperatorDef &op,
+                           PlaceholderBindings *bindings = nullptr);
 
   /// Reads a network (weights or structure) from the serialized protocol buffer
   /// file.
@@ -91,11 +97,15 @@ public:
   /// outputs with specific names and types.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
+  /// \p bindings is an optional parameter. If it is provided,
+  /// the loaded weights will be discarded, replaced by trainable weights that
+  /// are initialized for training and added to the graph as Placeholders.
   Caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<TypeRef> types, Function &F,
-                    llvm::Error *errPtr = nullptr);
+                    llvm::Error *errPtr = nullptr,
+                    PlaceholderBindings *bindings = nullptr);
 
   /// Creates a Caffe2 model loader to build \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned

@@ -1864,6 +1864,25 @@ TEST_P(OperatorTest, FP16Transpose2Dims) {
   EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
 
+/// Check that transpose is supported for BoolTy.
+TEST_P(OperatorTest, BoolTranspose2Dims) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {20, 13}, "A", false);
+  bindings_.allocate(A)->getHandle<bool>().randomize(0, 1, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave("saveTranspose", tr);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  Tensor dest(ElemKind::BoolTy, {13, 20});
+  bindings_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
+}
+
 /// Helper to check if the code generation of transposes
 /// is correct for tensors with 3 dimensions using \p DTy.
 /// Note: This assumes that Tensor::transpose is correct.

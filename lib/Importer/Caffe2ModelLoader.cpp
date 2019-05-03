@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/Support/Casting.h"
@@ -109,6 +110,40 @@ llvm::Error setTensorType(const caffe2::QTensorProto &in, Tensor *T) {
   } else {
     RETURN_ERR("Only uint8 and int32 qtensors are supported");
   }
+}
+
+Placeholder *createPlaceholderFromWeightTensor(
+    PlaceholderBindings *bindings, Function &f, const Tensor &weights,
+    const std::string &name,
+    std::function<void(Tensor *, Function &)> &&initializer,
+    bool isTrainable = true) {
+  auto *ph = isQuantizedElemKind(weights.getElementType())
+                 ? f.getParent()->createPlaceholder(
+                       weights.getElementType(), weights.dims(),
+                       weights.getType().getScale(),
+                       weights.getType().getOffset(), name, isTrainable)
+                 : f.getParent()->createPlaceholder(&weights.getType(), name,
+                                                    isTrainable);
+  bindings->insert(ph, weights.clone());
+  initializer(bindings->get(ph), f);
+  return ph;
+}
+
+Placeholder *createPlaceholderFromWeightTensor(
+    PlaceholderBindings *bindings, Function &f, Tensor &weights,
+    const std::string &name,
+    std::function<void(Tensor *, Function &)> &&initializer,
+    bool isTrainable = true) {
+  auto *ph = isQuantizedElemKind(weights.getElementType())
+                 ? f.getParent()->createPlaceholder(
+                       weights.getElementType(), weights.dims(),
+                       weights.getType().getScale(),
+                       weights.getType().getOffset(), name, isTrainable)
+                 : f.getParent()->createPlaceholder(&weights.getType(), name,
+                                                    isTrainable);
+  bindings->insert(ph, std::move(weights));
+  initializer(bindings->get(ph), f);
+  return ph;
 }
 } // namespace
 
@@ -238,7 +273,8 @@ bool Caffe2ModelLoader::hasMultidirectionalBroadcast(
   return false;
 }
 
-llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
+llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op,
+                                            PlaceholderBindings *bindings) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
 
@@ -309,54 +345,87 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         {idim.n, outSz.first, outSz.second, depth}};
 
     TypeRef outTy;
-    Constant *filter = W;
-    Constant *bias;
+    Storage *filter = nullptr, *bias = nullptr;
     if (typeName == "Conv" || typeName == "ConvRelu") {
-      // Construct the Bias field.
-      Constant *biasConstant = nullptr;
+      if (bindings) {
+        filter = createPlaceholderFromWeightTensor(
+            bindings, G_, W->getPayload(), "conv.filter",
+            [&kernels, &idim](Tensor *t, Function &f) {
+              llvm::ArrayRef<unsigned_t> arrKernels(kernels);
+              ShapeHW kdim(arrKernels);
+              size_t fanIn = kdim.height * kdim.width * idim.c;
+              // Init filter tensor the same way as createConv() does, applying
+              // Xavier algorithm.
+              t->init(glow::Tensor::InitKind::Xavier, fanIn, f.getPRNG());
+            });
 
-      // Check if we have a serialized bias.
-      if (op.input_size() > 2) {
-        const auto &biasName = op.input(2);
-        biasConstant = getConstantByNameOrNull(biasName);
-      }
-
-      // If no serialized bias was found then create a zero bias.
-      if (!biasConstant) {
+        // Construct the Bias field.
         Tensor biasTensor(ElemKind::FloatTy, {depth});
         biasTensor.zero();
-        biasConstant = G_.getParent()->createConstant("conv.bias", biasTensor);
-      }
+        bias = createPlaceholderFromWeightTensor(
+            bindings, G_, biasTensor, "conv.bias", [](Tensor *t, Function &f) {
+              // Init bias tensor the same way as createConv() does, applying
+              // broadcast of 0.1 value.
+              t->init(glow::Tensor::InitKind::Broadcast, 0.1, f.getPRNG());
+            });
+      } else {
+        filter = W;
 
+        // Check if we have a serialized bias vector.
+        if (op.input_size() > 2) {
+          const auto &biasName = op.input(2);
+          bias = getConstantByNameOrNull(biasName);
+        }
+        if (!bias) {
+          // If no serialized bias was found then create a zero bias.
+          Tensor biasTensor(ElemKind::FloatTy, {depth});
+          biasTensor.zero();
+          bias = G_.getParent()->createConstant("conv.bias", biasTensor);
+        }
+      }
       outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
-      bias = biasConstant;
     } else {
-      RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
-                        "missing zero point for quantized output type");
-      RETURN_ERR_IF_NOT(dict.count("Y_scale"),
-                        "missing Y_scale for quantized output type");
-      // Construct the Bias field.
-      Constant *biasConstant = nullptr;
+      // Construct the quantized Filter and bias field.
+      if (bindings) {
+        filter = createPlaceholderFromWeightTensor(
+            bindings, G_, W->getPayload(), "conv.filter",
+            [&kernels, &idim](Tensor *t, Function &f) {
+              llvm::ArrayRef<unsigned_t> arrKernels(kernels);
+              ShapeHW kdim(arrKernels);
+              size_t fanIn = kdim.height * kdim.width * idim.c;
+              // Init filter tensor the same way as createConv() does, applying
+              // Xavier algorithm.
+              t->init(glow::Tensor::InitKind::Xavier, fanIn, f.getPRNG());
+            });
 
-      // Check if we have a serialized bias vector.
-      if (op.input_size() > 2) {
-        const auto &biasName = op.input(2);
-        biasConstant = getConstantByNameOrNull(biasName);
-      }
-
-      // If no serialized bias was found then create a zero bias.
-      if (!biasConstant) {
         Tensor biasTensor(ElemKind::Int32QTy, {depth}, 1.0, 0);
         biasTensor.zero();
-        biasConstant = G_.getParent()->createConstant(
-            ElemKind::Int32QTy, biasTensor.dims(),
-            biasTensor.getType().getScale(), biasTensor.getType().getOffset(),
-            "conv.bias");
-        biasConstant->assign(&biasTensor);
+        bias = createPlaceholderFromWeightTensor(
+            bindings, G_, biasTensor, "conv.bias", [](Tensor *t, Function &f) {
+              // Init bias tensor the same way as createConv() does, applying
+              // broadcast of 0.1 value.
+              t->init(glow::Tensor::InitKind::Broadcast, 0.1, f.getPRNG());
+            });
+      } else {
+        filter = W;
+
+        // Check if we have a serialized bias vector.
+        if (op.input_size() > 2) {
+          const auto &biasName = op.input(2);
+          bias = getConstantByNameOrNull(biasName);
+        }
+        if (!bias) {
+          // If no serialized bias was found then create a zero bias.
+          Tensor biasTensor(ElemKind::Int32QTy, {depth}, 1.0, 0);
+          biasTensor.zero();
+          auto *cBias = G_.getParent()->createConstant(
+              ElemKind::Int32QTy, biasTensor.dims(),
+              biasTensor.getType().getScale(), biasTensor.getType().getOffset(),
+              "conv.bias");
+          cBias->assign(&biasTensor);
+          bias = cBias;
+        }
       }
-
-      bias = biasConstant;
-
       float scale;
       ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
       int32_t offset;
@@ -517,14 +586,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "SpatialBN") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    Constant *scale;
-    ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
-    Constant *bias;
-    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(op.input(2)));
-    Constant *mean;
-    ASSIGN_VALUE_OR_RETURN_ERR(mean, getConstantByName(op.input(3)));
-    Constant *var;
-    ASSIGN_VALUE_OR_RETURN_ERR(var, getConstantByName(op.input(4)));
+
     float epsilon = 1e-5f; // default
     auto epsilonIt = dict.find("epsilon");
     if (epsilonIt != dict.end()) {
@@ -533,9 +595,45 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     unsigned_t channel;
     ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
-    auto *node = G_.createBatchNormalization(opName, in, bias, scale, mean, var,
-                                             channel, epsilon);
 
+    Storage *scaleV, *biasV, *meanV, *varV;
+    if (bindings) {
+      Constant *scale, *bias, *mean, *var;
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
+      ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(op.input(2)));
+      ASSIGN_VALUE_OR_RETURN_ERR(mean, getConstantByName(op.input(3)));
+      ASSIGN_VALUE_OR_RETURN_ERR(var, getConstantByName(op.input(4)));
+
+      scaleV = createPlaceholderFromWeightTensor(
+          bindings, G_, scale->getPayload(), "scale",
+          [](Tensor *t, Function &f) {
+            t->init(glow::Tensor::InitKind::Zero, 0, f.getPRNG());
+          });
+
+      biasV = createPlaceholderFromWeightTensor(
+          bindings, G_, bias->getPayload(), "bias", [](Tensor *t, Function &f) {
+            t->init(glow::Tensor::InitKind::Broadcast, 0.1, f.getPRNG());
+          });
+
+      meanV = createPlaceholderFromWeightTensor(
+          bindings, G_, mean->getPayload(), "mean",
+          [](Tensor *t, Function &) { t->zero(); }, false /*non-trainable*/);
+
+      varV = createPlaceholderFromWeightTensor(
+          bindings, G_, var->getPayload(), "var",
+          [](Tensor *t, Function &f) {
+            t->init(glow::Tensor::InitKind::Broadcast, 1.0, f.getPRNG());
+          },
+          false /*non-trainable*/);
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(scaleV, getConstantByName(op.input(1)));
+      ASSIGN_VALUE_OR_RETURN_ERR(biasV, getConstantByName(op.input(2)));
+      ASSIGN_VALUE_OR_RETURN_ERR(meanV, getConstantByName(op.input(3)));
+      ASSIGN_VALUE_OR_RETURN_ERR(varV, getConstantByName(op.input(4)));
+    }
+
+    auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
+                                             varV, channel, epsilon);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
@@ -637,6 +735,23 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Constant *B;
     ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
 
+    Storage *filter, *bias;
+    if (bindings) {
+      filter = createPlaceholderFromWeightTensor(
+          bindings, G_, W->getPayload(), "weights",
+          [&in](Tensor *t, Function &f) {
+            t->init(glow::Tensor::InitKind::Xavier, in.dims()[1], f.getPRNG());
+          });
+
+      bias = createPlaceholderFromWeightTensor(
+          bindings, G_, B->getPayload(), "biases", [](Tensor *t, Function &f) {
+            t->init(Tensor::InitKind::Broadcast, 0.1, f.getPRNG());
+          });
+    } else {
+      filter = W;
+      bias = B;
+    }
+
     Node *node = nullptr;
     if (typeName == "Int8FC") {
       // Create the node with quantized type.
@@ -649,11 +764,12 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       int yZeroPoint;
       ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
       auto outTy = G_.getParent()->uniqueType(
-          ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
-          yScale, yZeroPoint - OFFSETSHIFT);
-      node = G_.createFullyConnected(opName, in, W, B, outTy, axis);
+          ElemKind::Int8QTy,
+          {in.getType()->dims()[0], bias->getType()->dims()[0]}, yScale,
+          yZeroPoint - OFFSETSHIFT);
+      node = G_.createFullyConnected(opName, in, filter, bias, outTy, axis);
     } else {
-      node = G_.createFullyConnected(opName, in, W, B, axis);
+      node = G_.createFullyConnected(opName, in, filter, bias, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output
@@ -1108,11 +1224,12 @@ llvm::Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
   return llvm::Error::success();
 }
 
-llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
+llvm::Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net,
+                                           PlaceholderBindings *bindings) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
-    RETURN_IF_ERR(loadOperator(op));
+    RETURN_IF_ERR(loadOperator(op, bindings));
   }
 
   RETURN_ERR_IF_NOT(net.external_output_size(),
@@ -1444,7 +1561,8 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<TypeRef> types, Function &F,
-                                     llvm::Error *errPtr)
+                                     llvm::Error *errPtr,
+                                     PlaceholderBindings *bindings)
     : CommonOperatorLoader(names, types, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -1463,7 +1581,7 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     ASSIGN_VALUE_OR_RETURN_ERR(weightsDef, loadProtoFile(netWeightFilename));
 
     RETURN_IF_ERR(loadWeightsFromNet(weightsDef));
-    RETURN_IF_ERR(loadNetwork(networkDef));
+    RETURN_IF_ERR(loadNetwork(networkDef, bindings));
 
     // This is to ensure that the same processing done with
     // the same network, even if order of operators is different.
