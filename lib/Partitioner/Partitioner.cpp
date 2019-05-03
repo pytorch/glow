@@ -456,8 +456,8 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount) {
 /// Current only partition the representative function.
 void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   // The dummy node.
-  rootDAGNodeTy DAGRoot = llvm::make_unique<DAGNode>();
-  nodesDAGNodeTy nodes;
+  DAGNodePtr DAGRoot = llvm::make_unique<DAGNode>();
+  DAGNodePtrVec nodes;
   DAGRoot->logicalDevices = {0};
   DAGRoot->name = F->getName();
   DAGRoot->module = module_;
@@ -587,7 +587,7 @@ llvm::Error Partitioner::Partition() {
       DAG1->name = F->getName();
       DAG1->parents.push_back(DAG0.get());
       DAG0->children.push_back(DAG1.get());
-      nodesDAGNodeTy nodes;
+      DAGNodePtrVec nodes;
       nodes.push_back(std::move(DAG1));
       partitions_.push_back({std::move(DAG0), std::move(nodes)});
     }

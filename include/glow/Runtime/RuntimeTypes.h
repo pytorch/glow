@@ -99,16 +99,17 @@ struct DAGNode {
 
 /// This struct represents a DAG. The first element is the root of a DAG, and
 /// the second one is a list of all rest nodes in this DAG.
-using rootDAGNodeTy = std::unique_ptr<DAGNode>;
-using nodesDAGNodeTy = std::vector<std::unique_ptr<DAGNode>>;
+using DAGNodePtr = std::unique_ptr<DAGNode>;
+using DAGNodePtrVec = std::vector<std::unique_ptr<DAGNode>>;
+
 struct DAG {
   /// This is a root node it does not map directly to a loaded function. It
   /// contains the name of the network, a list of children, and a reference to
   /// the Module the function came from.
-  rootDAGNodeTy root;
+  DAGNodePtr root;
   /// This is a vector of all the DAGNodes. Structure is encoded in the DAGNodes
   /// with pointers to parents and children.
-  nodesDAGNodeTy nodes;
+  DAGNodePtrVec nodes;
 };
 
 /// This list contains all the created DAGNodes from the Partitioner. The

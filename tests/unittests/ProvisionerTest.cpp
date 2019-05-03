@@ -41,7 +41,7 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
   DAGListTy partitions;
   unsigned currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
-    nodesDAGNodeTy nodes;
+    DAGNodePtrVec nodes;
     auto rootNode = llvm::make_unique<DAGNode>();
     auto firstNode = llvm::make_unique<DAGNode>();
     rootNode->name = "root" + std::to_string(root);
