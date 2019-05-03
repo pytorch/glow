@@ -609,9 +609,13 @@ llvm::Error Partitioner::Partition() {
   // until the memory limitation reached one by one.
   NodeToFunctionMap partitionMap = selectPartitions(F_, availMem);
 
-  RETURN_ERR_IF_NOT(partitionMap.getPartitions().size() <= deviceInfo_.size(),
-                    "Partition failed: the number of given devices is fewer "
-                    "than the required minimal partitions.");
+  RETURN_ERR_IF_NOT(
+      partitionMap.getPartitions().size() <= deviceInfo_.size(),
+      llvm::formatv(
+          "Partition failed: the number of given devices ({0}) is fewer "
+          "than the required minimal partitions ({1}).",
+          deviceInfo_.size(), partitionMap.getPartitions().size())
+          .str());
 
   doPartitioning(F_, partitionMap);
 
