@@ -123,8 +123,10 @@ TEST_F(PartitionerTest, Basic1) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{3072}, {3072}, {3072}};
-  Partitioner myPartitioner(&mod_, devices);
+  std::vector<DeviceInfo> devices = {{3072, BackendKind::Interpreter},
+                                     {3072, BackendKind::Interpreter},
+                                     {3072, BackendKind::Interpreter}};
+  Partitioner myPartitioner(&mod_, devices, false, true);
   auto err = myPartitioner.Partition();
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
@@ -330,9 +332,10 @@ TEST_F(PartitionerTest, Basic1Roofline) {
     nodeNamesMap[&node] = node.getName();
   }
 
-  std::vector<DeviceInfo> devices = {{3072, 100, 10, 0.1, 1, 0.05},
-                                     {3072, 100, 10, 0.1, 1, 0.05},
-                                     {3072, 100, 10, 0.1, 1, 0.05}};
+  std::vector<DeviceInfo> devices = {
+      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
+      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
+      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
   auto err = myPartitioner.Partition();
   EXPECT_FALSE(errToBool(std::move(err)));
@@ -384,4 +387,85 @@ TEST_F(PartitionerTest, SelectRepFunc) {
 
   auto err = myPartitioner.Partition();
   EXPECT_FALSE(errToBool(std::move(err)));
+}
+
+/// Create a mock backend with \p kind, and rewrite the isOpSupported function
+/// to un-support the op \p unsupportedOpKind.
+template <BackendKind kind, glow::Kinded::Kind unsupportedOpKind>
+class MockBackend : public Backend {
+  class MockFunction : public CompiledFunction {
+  public:
+    MockFunction(const runtime::RuntimeBundle &bundle)
+        : CompiledFunction(bundle) {}
+
+    void execute(ExecutionContext *) override {}
+
+    BackendKind getCompileBackendKind() const override {
+      return BackendKind::Interpreter;
+    }
+  };
+
+  BackendKind getBackendKind() const override { return kind; }
+
+  std::string getBackendName() const override { return "MockBackend"; }
+
+  std::unique_ptr<CompiledFunction>
+  compile(Function *F, const BackendOptions &opts) const override {
+    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+  }
+
+  bool isOpSupported(const NodeInfo &NI) const override {
+    if (NI.getKind() == unsupportedOpKind) {
+      return false;
+    }
+    return true;
+  }
+
+  bool shouldLower(const Node *N) const override { return false; }
+
+  bool generateInst(Node *N, IRGenVisitor &irgen) const override {
+    return false;
+  }
+};
+
+class BackendWithoutSub
+    : public MockBackend<BackendKind::CPU, Kinded::Kind::SubNodeKind> {};
+class BackendWithoutMul
+    : public MockBackend<BackendKind::Interpreter, Kinded::Kind::MulNodeKind> {
+};
+
+static void createSimpleModule(Module &mod) {
+  mod.clear();
+  auto *F = mod.createFunction("test");
+  auto *input1 =
+      mod.createPlaceholder(ElemKind::FloatTy, {16}, "input1", false);
+  auto *input2 =
+      mod.createPlaceholder(ElemKind::FloatTy, {16}, "input2", false);
+  auto *sub = F->createSub("sub", input1, input2);
+  auto *mul = F->createMul("mul", input1, input2);
+  auto *sum = F->createMul("add", sub, mul);
+  auto *save = F->createSave("ret", sum);
+  (void)save;
+}
+
+TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
+  {
+    createSimpleModule(mod_);
+    BackendWithoutSub backendWithoutSub;
+    BackendWithoutMul backendWithoutMul;
+    // Create two backends which support different ops, then do the partition by
+    // assigning the ops to the corresponding abackends.
+    std::vector<Backend *> backends;
+    backends.emplace_back(&backendWithoutSub);
+    backends.emplace_back(&backendWithoutMul);
+    std::vector<DeviceInfo> devices = {{3072, BackendKind::CPU},
+                                       {3072, BackendKind::Interpreter}};
+    auto partitioner = Partitioner(&mod_, devices, backends);
+    auto err = partitioner.Partition();
+    EXPECT_FALSE(errToBool(std::move(err)));
+    DAGListTy myList = std::move(partitioner.getPartitionResult());
+    ASSERT_EQ(mod_.getFunctions().size(), 2);
+    ASSERT_EQ(myList.size(), 1);
+    mod_.clear();
+  }
 }

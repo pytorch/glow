@@ -36,8 +36,17 @@ static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-                         bool saturateHost)
-    : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost) {
+                         const std::vector<Backend *> &backends,
+                         bool saturateHost, bool optimized)
+    : module_(parent), deviceInfo_(devices), backends_(backends),
+      saturateHost_(saturateHost), optimized_(optimized) {
+  memSize_ = module_->getConstantsSize();
+}
+
+Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
+                         bool saturateHost, bool optimized)
+    : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost),
+      optimized_(optimized) {
   memSize_ = module_->getConstantsSize();
 }
 
@@ -80,9 +89,9 @@ Function *Partitioner::selectRepFunc(Module *parent, uint64_t &memSize) {
 }
 
 /// Get the minimal memory requirement (constant) for each op in the function.
-void Partitioner::initOpMemUsage() {
+void Partitioner::initOpMemUsage(Function *F) {
   memUsage_.clear();
-  for (auto &node : F_->getNodes()) {
+  for (auto &node : F->getNodes()) {
     int n = node.getNumInputs();
     uint64_t size = 0;
     if (node.getKind() == Kinded::Kind::SaveNodeKind) {
@@ -101,7 +110,7 @@ void Partitioner::initOpMemUsage() {
 }
 
 /// Get the minimal compute time for each op in the function.
-void Partitioner::initOpComputeTime() {
+void Partitioner::initOpComputeTime(Function *F) {
   computeTime_.clear();
 
   // This code assumes all ops are BW limited from SRAM; except
@@ -111,7 +120,7 @@ void Partitioner::initOpComputeTime() {
   uint64_t sramCapacity = deviceInfo_[0].sramCapacity;
   float peakCompute = deviceInfo_[0].peakCompute;
 
-  for (auto &node : F_->getNodes()) {
+  for (auto &node : F->getNodes()) {
     /// compute memory side bytes for inputs from DRAM, SRAM.
     /// TODO: think about whether this is better off computed inside a Node.
 
@@ -382,7 +391,8 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
 
 /// Assign nodes to partitions and return the mapping.
 NodeToFunctionMap Partitioner::selectPartitions(Function *F,
-                                                uint64_t availableMemory) {
+                                                uint64_t availableMemory,
+                                                BackendKind backendKind) {
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   size_t level = bfs.size();
@@ -393,7 +403,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   Function *newF;
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
-  mapping.createPartition(newF);
+  mapping.createPartition(newF, backendKind);
   std::set<Storage *> usedStorage;
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
@@ -403,7 +413,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       if (newMem > availableMemory) {
         newF = F->getParent()->createFunction(
             std::string(F->getName()) + "_part" + std::to_string(++color));
-        mapping.createPartition(newF);
+        mapping.createPartition(newF, backendKind);
         mem = memUsage_[N];
         usedStorage = newStorage;
       } else {
@@ -456,22 +466,27 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount) {
 }
 
 /// Current only partition the representative function.
-void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
-  // The dummy node.
+void Partitioner::doPartitioning(llvm::StringRef funcName,
+                                 std::vector<Function *> funcs,
+                                 NodeToFunctionMap &mapping, bool saveDAG) {
+  // Add a dummy node to make sure that a DAG has a single entrance.
   DAGNodePtr DAGRoot = llvm::make_unique<DAGNode>();
   DAGNodePtrVec nodes;
   DAGRoot->logicalDevices = {0};
-  DAGRoot->name = F->getName();
+  DAGRoot->name = funcName;
   DAGRoot->module = module_;
   DAGRoot->deviceIDs = {0};
   DAGNode *root = DAGRoot.get();
+
   llvm::DenseMap<Node *, Node *> currToNew;
 
   // Clone nodes into target partition.
-  for (auto &N : F->getNodes()) {
-    auto *clone = N.clone();
-    currToNew[&N] = clone;
-    mapping[&N]->addNode(clone);
+  for (size_t i = 0, e = funcs.size(); i < e; i++) {
+    for (auto &N : funcs[i]->getNodes()) {
+      auto *clone = N.clone();
+      currToNew[&N] = clone;
+      mapping[&N]->addNode(clone);
+    }
   }
 
   // For any dependency that crosses a partition, add a placeholder and save
@@ -484,6 +499,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
       std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
       subDAG->logicalDevices = {logicalID++};
+      subDAG->backendKind = mapping.getPartitionBackendKind(subF);
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -493,10 +509,29 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
     for (auto &N : subF->getNodes()) {
       for (int inp = 0, e = N.getNumInputs(); inp < e; inp++) {
         auto input = N.getNthInput(inp);
-        if (isa<Storage>(input.getNode()))
+        // No need to check Constant since it won't be the result of another
+        // function.
+        if (isa<Constant>(input.getNode())) {
           continue;
+        }
 
-        auto *inputF = mapping[input.getNode()];
+        Function *inputF = nullptr;
+        // It is possible that one input is the output of anther function.
+        if (Placeholder *ph = llvm::dyn_cast<Placeholder>(input.getNode())) {
+          for (auto &user : ph->getUsers()) {
+            if (llvm::dyn_cast<SaveNode>(user.getUser())) {
+              inputF = mapping[user.getUser()];
+              break;
+            }
+          }
+          if (!inputF) {
+            continue;
+          }
+        }
+
+        if (!inputF) {
+          inputF = mapping[input.getNode()];
+        }
         if (subF == inputF)
           continue;
 
@@ -506,6 +541,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
           std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
           subDAG->logicalDevices = {logicalID++};
+          subDAG->backendKind = mapping.getPartitionBackendKind(inputF);
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
@@ -516,7 +552,6 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
           funcDAG[subF]->parents.push_back(funcDAG[inputF]);
           parents.insert(inputF);
         }
-
         // If we've already created a placeholder for this dependence, use it.
         auto it = placeholders.find(input);
         if (it != placeholders.end()) {
@@ -533,10 +568,12 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
     }
   }
 
-  DAG dag;
-  dag.root = std::move(DAGRoot);
-  dag.nodes = std::move(nodes);
-  partitions_.push_back(std::move(dag));
+  if (saveDAG) {
+    DAG dag;
+    dag.root = std::move(DAGRoot);
+    dag.nodes = std::move(nodes);
+    partitions_.push_back(std::move(dag));
+  }
 
   // Update links between nodes in the cloned functions. Add placeholders (and
   // save nodes) where a link crosses a partition boundary.
@@ -562,77 +599,217 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
   }
 
   // Adjust the logicalDevice for each DAGNode.
-  if (mapping.getPartitions().size() > deviceInfo_.size()) {
-    adjustLogicalDeviceID(root, mapping.getPartitions().size());
-  } else if (saturateHost_) {
-    // Attempt to saturate the host. Passing in the count of logical devices.
-    // Since logicalId starts at 0 we add one.
-    saturateHost(logicalID + 1);
+  if (saveDAG) {
+    if (mapping.getPartitions().size() > deviceInfo_.size()) {
+      adjustLogicalDeviceID(root, mapping.getPartitions().size());
+    } else if (saturateHost_) {
+      // Attempt to saturate the host. Passing in the count of logical devices.
+      // Since logicalId starts at 0 we add one.
+      saturateHost(logicalID + 1);
+    }
   }
 }
 
-llvm::Error Partitioner::Partition() {
-  // Find the representative function for running partitioning algorithm.
-  F_ = selectRepFunc(module_, memSize_);
-  uint64_t availMem = deviceInfo_[0].availableMemory;
+FunctionToBackendKindMapTy
+Partitioner::backendBasedPartition(Function *F,
+                                   std::vector<Backend *> &backends) {
+  FunctionToBackendKindMapTy ret;
+  NodeToFunctionMap mapping;
+  llvm::DenseMap<Node *, BackendKind> nodeToBackendKind;
 
-  if (memSize_ < availMem) {
-    // No partition is needed. Create DAGNode and return. This root is alway a
-    // dummy function.
-    for (auto F : module_->getFunctions()) {
-      std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
-      DAG0->logicalDevices = {0};
-      DAG0->name = F->getName();
-      DAG0->module = module_;
-      std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
-      DAG1->logicalDevices = {0};
-      DAG1->name = F->getName();
-      DAG1->parents.push_back(DAG0.get());
-      DAG0->children.push_back(DAG1.get());
-      DAGNodePtrVec nodes;
-      nodes.push_back(std::move(DAG1));
-      partitions_.push_back({std::move(DAG0), std::move(nodes)});
+  // For each node find a backend that supports it.
+  for (auto &N : F->getNodes()) {
+    for (auto &backend : backends) {
+      // Find the first backend that supports this node. The order of backends
+      // is important.
+      // TODO: the logic here need to be improved.
+      if (backend->shouldLower(&N) || backend->isOpSupported(N)) {
+        // Put this node into a partition for this backend.
+        nodeToBackendKind[&N] = backend->getBackendKind();
+        break;
+      }
     }
-    if (saturateHost_) {
-      // Saturate the Host.
-      saturateHost(1);
-    }
-    return llvm::Error::success();
+    assert(nodeToBackendKind.find(&N) != nodeToBackendKind.end() &&
+           "Node is not supported by any of the provided backends");
   }
 
-  // Prepare 1: Get the min memory usage for each op.
-  initOpMemUsage();
+  BFSLevel bfs = getBFSLevel(F);
+  size_t level = bfs.size();
+  int color = 0;
+  Function *newF;
+  newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
+                                        std::to_string(++color));
+  BackendKind backendKind = nodeToBackendKind[bfs[level - 1][0]];
+  mapping.createPartition(newF, backendKind);
+  ret[newF] = backendKind;
+  for (int i = level - 1; i >= 0; i--) {
+    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
+      Node *N = bfs[i][j];
+      auto bk = nodeToBackendKind[N];
+      if (bk != backendKind) {
+        backendKind = bk;
+        newF = F->getParent()->createFunction(
+            std::string(F->getName()) + "_part" + std::to_string(++color));
+        mapping.createPartition(newF, backendKind);
+        ret[newF] = backendKind;
+      }
+      mapping.add(N, newF);
+    }
+  }
 
-  // Prepare 2: Get the roofline memory bandwidth estimate for each op.
-  initOpComputeTime();
+  // Here we just need to split the function without generating DAG.
+  std::vector<Function *> funcs;
+  funcs.push_back(F);
+  doPartitioning(F->getName(), funcs, mapping, false);
 
-  // Partition
-  // Use BFS to do the initial partitioning. Starting from the final node, BFS
-  // until the memory limitation reached one by one.
-  NodeToFunctionMap partitionMap = selectPartitions(F_, availMem);
+  return ret;
+}
 
-  RETURN_ERR_IF_NOT(
-      partitionMap.getPartitions().size() <= deviceInfo_.size(),
-      llvm::formatv(
-          "Partition failed: the number of given devices ({0}) is fewer "
-          "than the required minimal partitions ({1}).",
-          deviceInfo_.size(), partitionMap.getPartitions().size())
-          .str());
+void Partitioner::getBackendMap(
+    std::map<BackendKind, BackendInfo> &backendMap,
+    std::vector<std::unique_ptr<Backend>> &backendsHolder,
+    std::vector<Backend *> &backends) {
+  // If the backends are created already, we use them directly.
+  bool hasBackends = backends_.size() != 0;
+  if (hasBackends) {
+    assert(backends_.size() == deviceInfo_.size() &&
+           "number of backends and devices is not match.");
+  }
 
-  doPartitioning(F_, partitionMap);
+  int n = 0;
+  for (size_t i = 0, e = deviceInfo_.size(); i < e; i++) {
+    BackendKind backendKind = deviceInfo_[i].backendKind;
+    if (hasBackends) {
+      assert(backends_[i]->getBackendKind() == backendKind &&
+             "Backend Type mismatch.");
+    }
+    if (backendMap.find(backendKind) == backendMap.end()) {
+      BackendInfo backendInfo;
+      backendInfo.num = 1;
+      backendInfo.memSize = deviceInfo_[i].availableMemory;
+      if (hasBackends) {
+        backendInfo.backend = backends_[i];
+      } else {
+        backendsHolder.emplace_back(createBackend(backendKind));
+        backendInfo.backend = backendsHolder[n++].get();
+      }
+      backendMap[backendKind] = backendInfo;
+      backends.push_back(backendMap[backendKind].backend);
+    } else {
+      backendMap[backendKind].num += 1;
+    }
+  }
+}
 
-  // Remove the original function after partitioning.
-  module_->eraseFunction(F_);
+llvm::Error Partitioner::createDAGWithoutPartition(
+    BackendKind backendKind, std::map<BackendKind, BackendInfo> &backendMap) {
+  for (auto F : module_->getFunctions()) {
+    if (!optimized_) {
+      auto backend = backendMap[backendKind].backend;
+      CompilationContext cctx;
+      cctx.mode = CompilationMode::Infer;
+      RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
+    }
+    std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
+    DAG0->logicalDevices = {0};
+    DAG0->name = F->getName();
+    DAG0->module = module_;
+    std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
+    DAG1->logicalDevices = {0};
+    DAG1->name = F->getName();
+    DAG1->backendKind = backendKind;
+    DAG1->parents.push_back(DAG0.get());
+    DAG0->children.push_back(DAG1.get());
+    DAGNodePtrVec nodes;
+    nodes.push_back(std::move(DAG1));
+    partitions_.push_back({std::move(DAG0), std::move(nodes)});
+  }
+  if (saturateHost_) {
+    // Saturate the Host.
+    saturateHost(1);
+  }
+  return llvm::Error::success();
+}
+
+llvm::Error Partitioner::Partition() {
+  // Prepare the mapping between BackendKind and BackendInfo.
+  std::map<BackendKind, BackendInfo> backendMap;
+  std::vector<Backend *> backends;
+  std::vector<std::unique_ptr<Backend>> backendHolder;
+  getBackendMap(backendMap, backendHolder, backends);
+
+  // Step 0: Find the representative function for running partitioning
+  // algorithm.
+  F_ = selectRepFunc(module_, memSize_);
+
+  // Step 1 : do the partition based on backends type.
+  FunctionToBackendKindMapTy funcToBackend;
+  std::string origName(F_->getName().data());
+  if (backends.size() == 1) {
+    // Only one type of backends, no need to backendKind based partition.
+    auto backendKind = backends[0]->getBackendKind();
+    funcToBackend[F_] = backendKind;
+
+    if (memSize_ < backendMap[backendKind].memSize) {
+      // No partition is needed. Create DAGNode and return. This root is alway a
+      // dummy function.
+      return createDAGWithoutPartition(backendKind, backendMap);
+    }
+  } else {
+    funcToBackend = backendBasedPartition(F_, backends);
+    module_->eraseFunction(F_);
+  }
+
+  // Step 2 : optimize each functions based on its backend type and apply the
+  // partition algorithm.
+  CompilationContext cctx;
+  cctx.mode = CompilationMode::Infer;
+  NodeToFunctionMap mapping;
+  std::vector<Function *> funcs;
+  for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
+    auto *func = i->first;
+    auto *backend = backendMap[i->second].backend;
+    auto availMem = backendMap[i->second].memSize;
+    auto num = backendMap[i->second].num;
+    funcs.push_back(func);
+    assert(func->verify() && "Conversion led to invalid function");
+    // Step 2.1 : Optimize a function if it has not been optimized yet.
+    if (!optimized_) {
+      RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
+    }
+
+    // Step 2.2 : Get the min memory usage and the roofline memory bandwidth
+    // estimate for each op.
+    initOpMemUsage(func);
+    initOpComputeTime(func);
+
+    // Step 2.3 : Apply graph partitioning algrithm to find out the partition.
+    NodeToFunctionMap partitionMap =
+        selectPartitions(func, availMem, i->second);
+
+    RETURN_ERR_IF_NOT(
+        partitionMap.getPartitions().size() <= num,
+        llvm::formatv(
+            "Partition failed: the number of given ({0}) devices ({1}) is "
+            "fewer than the required minimal partitions ({2}).",
+            backend->getBackendName(), num, partitionMap.getPartitions().size())
+            .str());
+
+    mapping.insert(partitionMap);
+  }
+
+  // Step 3: do the real partitioning for the function list.
+  doPartitioning(origName, funcs, mapping, true);
+
+  // Step 4: clean up.
+  for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
+    module_->eraseFunction(i->first);
+  }
 
   auto funcList = module_->getFunctions();
-  for (Function *F : funcList) {
-    (void)F;
-    assert(F->verify() && "Conversion led to invalid function");
+  for (Function *subF : funcList) {
+    (void)subF;
+    assert(subF->verify() && "Conversion led to invalid function");
   }
-
-  // TODO: Optional: if (k < number of devices)
-  // Check the computation time of each sub-module, and find out the "key"
-  // sub-module to decide if duplicating the sub-module is necessary.
-
   return llvm::Error::success();
 }

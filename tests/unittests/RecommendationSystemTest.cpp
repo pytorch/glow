@@ -526,9 +526,9 @@ protected:
 
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
-
+    auto backendKind = EE_.getBackend()->getBackendKind();
     std::cout << numDevices << " devices of size " << memSize << "\n";
-    std::vector<DeviceInfo> devices(numDevices, {memSize});
+    std::vector<DeviceInfo> devices(numDevices, {memSize, backendKind});
     Partitioner myPartitioner(&mod_, devices);
     EXIT_ON_ERR(myPartitioner.Partition());
 

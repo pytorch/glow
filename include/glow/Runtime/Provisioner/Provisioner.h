@@ -45,7 +45,7 @@ public:
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
   /// device to ensure the correct backed per device.
-  std::unique_ptr<Backend> backend_;
+  std::vector<std::unique_ptr<Backend>> backends_;
 
   /// Map of compiledFunction unique pointers. This maintains ownership of the
   /// functions.

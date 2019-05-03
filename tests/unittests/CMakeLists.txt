@@ -397,6 +397,8 @@ add_executable(PartitionerTest
                PartitionerTest.cpp)
 target_link_libraries(PartitionerTest
                       PRIVATE
+                        Backend
+                        Backends
                         ExecutionEngine
                         Graph
                         IR
