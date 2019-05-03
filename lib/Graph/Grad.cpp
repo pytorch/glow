@@ -266,9 +266,14 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Gradient for BatchedReduceAddNode is TileNode,
       // repeating OutputG batch times.
-      auto axis = BRA->getAxis();
-      auto Num = Input.dims()[axis] / OutputG.dims()[axis];
-      auto *TN = new TileNode("tile.grad", Input.getType(), OutputG, Num, axis);
+      auto Axis = BRA->getAxis();
+      // Copy input dimensions first.
+      std::vector<size_t> Dims{Input.dims()};
+      // Then set to 1 dimension size on axis.
+      Dims[Axis] = 1;
+      auto *RSN = G->createReshape("reshape.grad", OutputG, Dims);
+      auto *TN = new TileNode("tile.grad", Input.getType(), RSN->getResult(),
+                              Input.dims()[Axis], Axis);
 
       toAppend.push_back(TN);
       map.addGradient(Input, TN);

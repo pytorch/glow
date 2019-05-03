@@ -234,27 +234,61 @@ TEST_P(InterpreterGrad, gradientCheckMatMul) {
                    0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckBatchedReduceAdd) {
+TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis0) {
   PlaceholderBindings Bindings;
-  size_t BatchSize = 40;
-  size_t NumCols = 12;
+  size_t BatchSize = 4;
+  size_t NumRows = 3;
+  size_t NumCols = 5;
 
   auto &Mod = EE_.getModule();
   Function *F = Mod.createFunction("main");
 
-  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {BatchSize, NumCols}, "A",
-                                  false);
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy,
+                                  {BatchSize, NumRows, NumCols}, "A", false);
 
-  auto *Exp =
-      Mod.createPlaceholder(ElemKind::FloatTy, {1, NumCols}, "exp", false);
+  auto *Exp = Mod.createPlaceholder(ElemKind::FloatTy, {NumRows, NumCols},
+                                    "exp", false);
 
-  TypeRef Ty = Mod.uniqueType(ElemKind::FloatTy, {1, NumCols});
+  TypeRef Ty = Mod.uniqueType(ElemKind::FloatTy, {NumRows, NumCols});
   Node *BRA = F->createBatchedReduceAdd("BRA", Ty, A, 0 /*axis*/);
   auto *Reg = F->createRegression("reg", BRA, Exp);
   auto *Result = F->createSave("save", Reg);
 
-  Tensor Inputs(ElemKind::FloatTy, {{BatchSize, NumCols}});
-  Tensor Outputs(ElemKind::FloatTy, {{1, NumCols}});
+  Tensor Inputs(ElemKind::FloatTy, {{BatchSize, NumRows, NumCols}});
+  Tensor Outputs(ElemKind::FloatTy, {{NumRows, NumCols}});
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EE_, Bindings, Result, A, Exp, &Inputs, &Outputs, 0.001,
+                   0.01);
+}
+
+TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis1) {
+  PlaceholderBindings Bindings;
+  size_t NumRows = 3;
+  size_t BatchSize = 4;
+  size_t NumCols = 5;
+
+  auto &Mod = EE_.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy,
+                                  {NumRows, BatchSize, NumCols}, "A", false);
+
+  auto *Exp = Mod.createPlaceholder(ElemKind::FloatTy, {NumRows, NumCols},
+                                    "exp", false);
+
+  TypeRef Ty = Mod.uniqueType(ElemKind::FloatTy, {NumRows, NumCols});
+  Node *BRA = F->createBatchedReduceAdd("BRA", Ty, A, 1 /*axis*/);
+  auto *Reg = F->createRegression("reg", BRA, Exp);
+  auto *Result = F->createSave("save", Reg);
+
+  Tensor Inputs(ElemKind::FloatTy, {{NumRows, BatchSize, NumCols}});
+  Tensor Outputs(ElemKind::FloatTy, {{NumRows, NumCols}});
 
   auto InputsH = Inputs.getHandle<>();
   auto OutputsH = Outputs.getHandle<>();
