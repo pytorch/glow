@@ -36,7 +36,7 @@ target_link_libraries(BackendCorrectnessTest
                         gtest
                         TestMain)
 add_glow_test(BackendCorrectnessTest
-              ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest --gtest_output=xml:BackendCorrectnessTest.xml)
+              ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest)
 LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
 
 add_executable(BackendTest
@@ -50,7 +50,7 @@ target_link_libraries(BackendTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
+add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest)
 LIST(APPEND UNOPT_TESTS ./tests/BackendTest -optimize-ir=false &&)
 
 add_executable(BasicIRTest
@@ -61,7 +61,7 @@ target_link_libraries(BasicIRTest
                         IR
                         gtest
                         TestMain)
-add_glow_test(BasicIRTest ${GLOW_BINARY_DIR}/tests/BasicIRTest --gtest_output=xml:BasicIRTest.xml)
+add_glow_test(BasicIRTest ${GLOW_BINARY_DIR}/tests/BasicIRTest)
 
 add_executable(Caffe2ImporterTest
                Caffe2ImporterTest.cpp)
@@ -73,7 +73,7 @@ target_link_libraries(Caffe2ImporterTest
                         gtest
                         TestMain)
 add_glow_test(NAME Caffe2ImporterTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest --gtest_output=xml:Caffe2ImporterTest.xml
+              COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(ConvTest
@@ -104,7 +104,7 @@ target_link_libraries(DeviceManagerTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(DeviceManagerTest ${GLOW_BINARY_DIR}/tests/DeviceManagerTest --gtest_output=xml:DeviceManagerTest.xml)
+add_glow_test(DeviceManagerTest ${GLOW_BINARY_DIR}/tests/DeviceManagerTest)
 
 add_executable(ExecutorTest
         ExecutorTest.cpp)
@@ -116,7 +116,7 @@ target_link_libraries(ExecutorTest
         gtest
         TestMain
         ThreadPool)
-add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
+add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest)
 
 add_executable(Float16Test
                Float16Test.cpp)
@@ -125,7 +125,7 @@ target_link_libraries(Float16Test
                         Support
                         gtest
                         TestMain)
-add_glow_test(Float16Test ${GLOW_BINARY_DIR}/tests/Float16Test --gtest_output=xml:Float16Test.xml)
+add_glow_test(Float16Test ${GLOW_BINARY_DIR}/tests/Float16Test)
 
 if(GLOW_WITH_CPU AND NOT MSVC)
   add_executable(GemmTest
@@ -139,7 +139,7 @@ if(GLOW_WITH_CPU AND NOT MSVC)
                           Support
                           gtest
                           TestMain)
-  add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest --gtest_output=xml:GemmLTest.xml)
+  add_glow_test(GemmTest ${GLOW_BINARY_DIR}/tests/GemmTest)
   LIST(APPEND UNOPT_TESTS ./tests/GemmTest -optimize-ir=false &&)
 endif()
 
@@ -151,7 +151,7 @@ target_link_libraries(GlowOnnxifiManagerTest
                         gtest
                         TestMain)
 add_glow_test(NAME GlowOnnxifiManagerTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest --gtest_output=xml:GlowOnnxifiManagerTest.xml
+              COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(GradCheckTest
@@ -164,7 +164,7 @@ target_link_libraries(GradCheckTest
                         IR
                         gtest
                         TestMain)
-add_glow_test(GradCheckTest ${GLOW_BINARY_DIR}/tests/GradCheckTest --gtest_output=xml:GradCheckTest.xml)
+add_glow_test(GradCheckTest ${GLOW_BINARY_DIR}/tests/GradCheckTest)
 LIST(APPEND UNOPT_TESTS ./tests/GradCheckTest -optimize-ir=false &&)
 
 add_executable(GraphGradTest
@@ -176,7 +176,7 @@ target_link_libraries(GraphGradTest
                         ExecutionEngine
                         gtest
                         TestMain)
-add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
+add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest)
 LIST(APPEND UNOPT_TESTS ./tests/GraphGradTest -optimize-ir=false &&)
 
 add_executable(GraphOptzTest
@@ -188,7 +188,7 @@ target_link_libraries(GraphOptzTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(GraphOptzTest ${GLOW_BINARY_DIR}/tests/GraphOptzTest --gtest_output=xml:GraphOptzTest.xml)
+add_glow_test(GraphOptzTest ${GLOW_BINARY_DIR}/tests/GraphOptzTest)
 
 add_executable(GraphSchedulerTest
                GraphSchedulerTest.cpp)
@@ -198,7 +198,7 @@ target_link_libraries(GraphSchedulerTest
                         IR
                         gtest
                         TestMain)
-add_glow_test(GraphSchedulerTest ${GLOW_BINARY_DIR}/tests/GraphSchedulerTest --gtest_output=xml:GraphSchedulerTest.xml)
+add_glow_test(GraphSchedulerTest ${GLOW_BINARY_DIR}/tests/GraphSchedulerTest)
 
 add_executable(GraphTest
                GraphTest.cpp)
@@ -212,7 +212,7 @@ target_link_libraries(GraphTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:GraphTest.xml)
+add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest)
 LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_HABANA)
@@ -227,7 +227,7 @@ if(GLOW_WITH_HABANA)
           Optimizer
           gtest
           TestMain)
-  add_glow_test(HabanaBackendTest ${GLOW_BINARY_DIR}/tests/HabanaBackendTest --gtest_output=xml:HabanaBackendTest.xml)
+  add_glow_test(HabanaBackendTest ${GLOW_BINARY_DIR}/tests/HabanaBackendTest)
 
   add_executable(HabanaTest
           HabanaTest.cpp)
@@ -237,7 +237,7 @@ if(GLOW_WITH_HABANA)
           Support
           gtest
           TestMain)
-  add_glow_test(HabanaTest ${GLOW_BINARY_DIR}/tests/HabanaTest --gtest_output=xml:HabanaTest.xml)
+  add_glow_test(HabanaTest ${GLOW_BINARY_DIR}/tests/HabanaTest)
 endif()
 
 if(GLOW_WITH_CPU)
@@ -255,7 +255,7 @@ if(GLOW_WITH_CPU)
           gtest
           TestMain)
 
-  add_glow_test(HostManagerTest ${GLOW_BINARY_DIR}/tests/HostManagerTest --gtest_output=xml:ProvisionerTest.xml)
+  add_glow_test(HostManagerTest ${GLOW_BINARY_DIR}/tests/HostManagerTest)
 
   add_executable(HyphenTest
                  HyphenTest.cpp)
@@ -270,7 +270,7 @@ if(GLOW_WITH_CPU)
                           Support
                           gtest
                           TestMain)
-  add_glow_test(HyphenTest ${GLOW_BINARY_DIR}/tests/HyphenTest --gtest_output=xml:HyphenTest.xml)
+  add_glow_test(HyphenTest ${GLOW_BINARY_DIR}/tests/HyphenTest)
   list(APPEND UNOPT_TESTS ./tests/HyphenTest -optimize-ir=false &&)
 endif()
 
@@ -284,7 +284,7 @@ target_link_libraries(IROptTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest --gtest_output=xml:IROptTest.xml)
+add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest)
 
 if(PNG_FOUND)
   add_executable(ImageTest
@@ -294,7 +294,7 @@ if(PNG_FOUND)
           Base
           gtest
           TestMain)
-  add_glow_test(ImageTest ${GLOW_BINARY_DIR}/tests/ImageTest --gtest_output=xml:ImageTest.xml
+  add_glow_test(ImageTest ${GLOW_BINARY_DIR}/tests/ImageTest
           WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 
@@ -309,7 +309,7 @@ if(GLOW_WITH_CPU)
                           Support
                           gtest
                           TestMain)
-  add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest --gtest_output=xml:LLVMIRGenTest.xml)
+  add_glow_test(LLVMIRGenTest ${GLOW_BINARY_DIR}/tests/LLVMIRGenTest)
 endif()
 
 add_executable(MLTest
@@ -323,7 +323,7 @@ target_link_libraries(MLTest
         Quantization
         gtest
         TestMain)
-add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest --gtest_output=xml:MLTest.xml)
+add_glow_test(MLTest ${GLOW_BINARY_DIR}/tests/MLTest)
 LIST(APPEND UNOPT_TESTS ./tests/MLTest -optimize-ir=false &&)
 
 add_executable(MemoryAllocatorTest
@@ -334,7 +334,7 @@ target_link_libraries(MemoryAllocatorTest
                         gtest
                         Support
                         TestMain)
-add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest --gtest_output=xml:MemoryAllocatorTest.xml)
+add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest)
 
 
 
@@ -350,7 +350,7 @@ if(GLOW_WITH_OPENCL)
                           Optimizer
                           gtest
                           TestMain)
-  add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest --gtest_output=xml:OCLTest.xml)
+  add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest)
   LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
 endif()
 
@@ -365,7 +365,7 @@ target_link_libraries(OnnxImporterTest
                         gtest
                         TestMain)
 add_glow_test(NAME OnnxImporterTest
-              COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest --gtest_output=xml:OnnxImporterTest.xml
+              COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(OperatorGradTest
@@ -377,7 +377,7 @@ target_link_libraries(OperatorGradTest
         Graph
         gtest
         TestMain)
-add_glow_test(OperatorGradTest ${GLOW_BINARY_DIR}/tests/OperatorGradTest --gtest_output=xml:OperatorGradTest.xml)
+add_glow_test(OperatorGradTest ${GLOW_BINARY_DIR}/tests/OperatorGradTest)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorGradTest -optimize-ir=false &&)
 
 add_executable(OperatorTest
@@ -392,7 +392,7 @@ target_link_libraries(OperatorTest
         Optimizer
         gtest
         TestMain)
-add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
+add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorTest -optimize-ir=false &&)
 
 add_executable(PartitionerTest
@@ -405,7 +405,7 @@ target_link_libraries(PartitionerTest
                         Partitioner
                         gtest
                         TestMain)
-add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
+add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest)
 
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest
@@ -418,7 +418,7 @@ if(GLOW_WITH_CPU)
                           DeviceManager
                           gtest
                           TestMain)
-  add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest --gtest_output=xml:ProvisionerTest.xml)
+  add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest)
 
 endif()
 
@@ -434,7 +434,7 @@ target_link_libraries(QuantizationTest
                         Quantization
                         gtest
                         TestMain)
-add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
+add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest)
 LIST(APPEND UNOPT_TESTS ./tests/QuantizationTest -optimize-ir=false &&)
 
 add_executable(TensorsTest
@@ -445,7 +445,7 @@ target_link_libraries(TensorsTest
                         Base
                         gtest
                         TestMain)
-add_glow_test(TensorsTest ${GLOW_BINARY_DIR}/tests/TensorsTest --gtest_output=xml:TensorsTest.xml)
+add_glow_test(TensorsTest ${GLOW_BINARY_DIR}/tests/TensorsTest)
 
 add_executable(ThreadPoolTest
                ThreadPoolTest.cpp)
@@ -454,7 +454,7 @@ target_link_libraries(ThreadPoolTest
                         ThreadPool
                         gtest
                         TestMain)
-add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest --gtest_output=xml:ThreadPoolTest.xml)
+add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest)
 
 add_executable(TraceEventsTest
                TraceEventsTest.cpp)
@@ -467,7 +467,7 @@ target_link_libraries(TraceEventsTest
                         Optimizer
                         gtest
                         TestMain)
-add_glow_test(TraceEventsTest ${GLOW_BINARY_DIR}/tests/TraceEventsTest --gtest_output=xml:TraceEventsTest.xml)
+add_glow_test(TraceEventsTest ${GLOW_BINARY_DIR}/tests/TraceEventsTest)
 LIST(APPEND UNOPT_TESTS ./tests/TraceEventsTest -optimize-ir=false &&)
 
 add_executable(TypeAToTypeBFunctionConverterTest
@@ -481,7 +481,7 @@ target_link_libraries(TypeAToTypeBFunctionConverterTest
                         gtest
                         TestMain)
 add_glow_test(TypeAToTypeBFunctionConverterTest
-              ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml)
+              ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest)
 
 add_executable(UtilsTest
                StrCheck.cpp
@@ -495,7 +495,7 @@ target_link_libraries(UtilsTest
                         Testing
                         gtest
                         TestMain)
-add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml)
+add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest)
 
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}

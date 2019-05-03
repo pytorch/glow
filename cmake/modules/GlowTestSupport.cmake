@@ -41,6 +41,7 @@ function(add_glow_test)
 
   list(GET ARG_COMMAND 0 TEST_EXEC)
   list(APPEND ARG_DEPENDS ${TEST_EXEC})
+  list(INSERT ARG_COMMAND 1 "--gtest_output=xml:${ARG_NAME}.xml")
 
   set_property(GLOBAL APPEND PROPERTY GLOW_TEST_DEPENDS ${ARG_DEPENDS})
 
