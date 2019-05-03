@@ -61,6 +61,9 @@ public:
                           std::unique_ptr<ExecutionContext> resultContext,
                           ResultCBTy doneCb);
 
+  /// Does the BFS traversal and initializes the ExecutionState.
+  void init();
+
   /// \returns a unique pointer to an input bindings for \p node. This should
   /// not be called at the same time as insertIntoNodeCtx().
   std::unique_ptr<ExecutionContext>
@@ -103,6 +106,9 @@ public:
   /// \returns the run ID for the execution.
   RunIdentifierTy getRunId() const { return runId_; }
 
+  /// Whether or not this node has been initialized.
+  bool initialized_{false};
+
 private:
   /// The run identifier for this execution of a DAG.
   RunIdentifierTy runId_;
@@ -134,6 +140,9 @@ private:
   /// Module for the network. This contains the PHs used by the functions in
   /// this network.
   Module *module_{nullptr};
+
+  /// Root node of the DAG for this run.
+  const DAGNode *root_;
 };
 
 /// This implementation of the Executor interface uses a thread pool to

@@ -45,6 +45,10 @@ class HostManager final {
     // Module that was used to create this network. Everything except
     // placeholders and types have been removed from it.
     std::shared_ptr<Module> module;
+
+    /// use an atomic refcount rather than just store a shared_ptr for thread
+    /// safety.
+    std::atomic<size_t> refcount;
   };
 
   /// Count of current in-flight networks being run. Atomic to allow
