@@ -416,6 +416,7 @@ if(GLOW_WITH_CPU)
                           IR
                           Provisioner
                           DeviceManager
+                          Optimizer
                           gtest
                           TestMain)
   add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest --gtest_output=xml:ProvisionerTest.xml)

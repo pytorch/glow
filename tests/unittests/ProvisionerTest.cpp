@@ -22,16 +22,19 @@ using namespace glow;
 using namespace glow::runtime;
 
 class ProvisionerTest : public ::testing::Test {};
+
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  auto mod = llvm::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
-    Function *F = module->createFunction("function" + std::to_string(i));
-    auto *X = module->createPlaceholder(ElemKind::FloatTy, {3},
-                                        "X" + std::to_string(i), false);
-    auto *pow = F->createPow("Pow" + std::to_string(i), X, 2.0);
-    F->createSave("save" + std::to_string(i), pow);
+    auto *F = mod->createFunction("function" + std::to_string(i));
+    auto *X = mod->createPlaceholder(ElemKind::FloatTy, {16, 1024}, "X", false);
+    auto *W = mod->createConstant(ElemKind::FloatTy, {1024, 1024}, "W");
+    auto *B = mod->createConstant(ElemKind::FloatTy, {1024}, "B");
+    auto *FC = F->createFullyConnected("FC", X, W, B);
+    F->createSave("save", FC);
+    lower(F, nullptr);
   }
-  return module;
+  return mod;
 }
 
 DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
@@ -73,4 +76,19 @@ TEST_F(ProvisionerTest, provisionDag) {
   auto err = provisioner.provision(networks, *mod.get());
   // Expect that there was no Error when provisioning
   EXPECT_FALSE(errToBool(std::move(err)));
+}
+
+TEST_F(ProvisionerTest, provisionDagFail) {
+  auto mod = setupModule(6);
+  auto networks = setupDAG(2, 0);
+
+  DeviceManagerMapTy devices;
+  for (int i = 0; i < 6; i++) {
+    std::unique_ptr<DeviceManager> device(new CPUDeviceManager(nullptr, 1000));
+    devices.emplace(i, std::move(device));
+  }
+  auto provisioner = Provisioner(devices);
+  auto err = provisioner.provision(networks, *mod.get());
+  // Expect that there was no Error when provisioning
+  EXPECT_TRUE(errToBool(std::move(err)));
 }
