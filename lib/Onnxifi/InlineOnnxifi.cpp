@@ -95,7 +95,7 @@ InlineGraph::run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
   }
 
   if (auto *traceContext = ctx->getTraceContext()) {
-    setTraceEvents(traceEvents, *traceContext);
+    setTraceEvents(traceEvents, traceContext);
   }
 
   outputEvent->signal();

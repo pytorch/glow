@@ -139,7 +139,7 @@ public:
   /// Copy any trace events \p traceContext into \p traceEvents. If
   /// \p traceEvents is null then do nothing.
   static void setTraceEvents(onnxTraceEventList *traceEvents,
-                             const TraceContext &traceContext);
+                             TraceContext *traceContext);
 
   /// Free all memory that was allocated by setTraceEvents when creating \p
   /// traceEvents.

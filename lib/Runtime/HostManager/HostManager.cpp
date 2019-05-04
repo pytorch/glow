@@ -172,8 +172,7 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
-  ScopedTraceBlock(context->getTraceContext(),
-                   "runFunction_" + networkName.str());
+  TRACE_EVENT_SCOPE(context->getTraceContext(), "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (networks_.find(networkName) == networks_.end()) {

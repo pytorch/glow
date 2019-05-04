@@ -98,10 +98,14 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               onnxTraceEventList *traceEvents) {
   auto ctx = llvm::make_unique<ExecutionContext>();
 
+  TraceContext *traceContext = nullptr;
   if (traceEvents) {
     ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
   }
+  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
 
+  TRACE_EVENT_BEGIN(traceContext, "adjustInputs");
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -147,6 +151,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
   }
+  TRACE_EVENT_END(traceContext, "adjustInputs");
+  TRACE_EVENT_BEGIN(traceContext, "adjustOutputs");
 
   std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
       phNameToOnnxTensorOutputs;
@@ -169,18 +175,21 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
   }
 
+  TRACE_EVENT_END(traceContext, "adjustOutputs");
   return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs),
              traceEvents);
 }
 
 void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
-                           const TraceContext &traceContext) {
-  if (!traceEvents) {
+                           TraceContext *traceContext) {
+  if (!traceEvents || traceContext) {
     return;
   }
 
+  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setTraceEvents");
+
   std::vector<onnxTraceEvent *> traceEventsVec;
-  for (const auto &glowTraceEvent : traceContext.getTraceEvents()) {
+  for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {
     auto *traceEvent = new onnxTraceEvent();
     assert(
         glowTraceEvent.type.size() == 1 &&

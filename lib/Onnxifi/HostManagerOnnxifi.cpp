@@ -86,13 +86,16 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
        outputEvent,
        traceEvents](runtime::RunIdentifierTy runId, llvm::Error err,
                     std::unique_ptr<ExecutionContext> ctx) {
+        TRACE_EVENT_BEGIN(ctx->getTraceContext(), "Onnxifi::callback");
         // If an Error occurred then log it in errToBool and signal the output
         // event.
         if (errToBool(std::move(err))) {
           outputEvent->signal();
+          TRACE_EVENT_END(ctx->getTraceContext(), "Onnxifi::callback");
           return;
         }
 
+        TRACE_EVENT_BEGIN(ctx->getTraceContext(), "copyOutputs");
         for (auto &ph : ctx->getPlaceholderBindings()->pairs()) {
           if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
             continue;
@@ -105,9 +108,12 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
           memcpy(outputAddress, res->getUnsafePtr(),
                  res->size() * res->getType().getElementSize());
         }
+        TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
 
+        // End the trace event before we convert TraceEvents to the ONNX format.
+        TRACE_EVENT_END(ctx->getTraceContext(), "Onnxifi::callback");
         if (auto *traceContext = ctx->getTraceContext()) {
-          setTraceEvents(traceEvents, *traceContext);
+          setTraceEvents(traceEvents, traceContext);
         }
 
         outputEvent->signal();
