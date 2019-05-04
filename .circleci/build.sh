@@ -7,13 +7,13 @@ set -ex
 export MAX_JOBS=8
 
 install_pocl() {
-   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-8-dev opencl-headers
+   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-7-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
    cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
    mkdir build_pocl
    cd build_pocl
-   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
+   cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-7 -DCMAKE_C_COMPILER=/usr/bin/clang-7 -DENABLE_ICD=ON ../pocl
    make -j`nproc`
    sudo make install
 
@@ -25,15 +25,15 @@ install_pocl() {
 }
 
 # Install Glow dependencies
-sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-8 main"
+sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-7 main"
 sudo apt-get update
-sudo apt-get install -y llvm-8 clang-8 llvm-8-dev libpng-dev libgoogle-glog-dev
+sudo apt-get install -y llvm-7 clang-7 llvm-7-dev libpng-dev libgoogle-glog-dev
 
 # Redirect clang
-sudo ln -s /usr/bin/clang-8 /usr/bin/clang
-sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
-sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
-sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
+sudo ln -s /usr/bin/clang-7 /usr/bin/clang
+sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
+sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
+sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
 
 sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 50
 sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 50
@@ -47,8 +47,8 @@ hash cmake ninja
 # Build glow
 cd ${GLOW_DIR}
 mkdir build && cd build
-CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
-CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-7")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-7")
 CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
