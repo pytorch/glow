@@ -883,6 +883,58 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
+static void convertBroadcastedBatchMatMul(Function *F) {
+  for (auto &node : F->getNodes()) {
+    BatchMatMulNode *BMMN = dyn_cast<BatchMatMulNode>(&node);
+    if (!BMMN) {
+      continue;
+    }
+
+    NodeValue LHS = BMMN->getLHS();
+    NodeValue RHS = BMMN->getRHS();
+
+    // If RHS is a Tile along axis 0 and the input's dims()[0] == 1, then the
+    // RHS is fully broadcasted and we can perform the optimization.
+    TileNode *TN = dyn_cast<TileNode>(RHS);
+    if (!TN || TN->getAxis() != 0 || TN->getInput().dims()[0] != 1) {
+      continue;
+    }
+
+    // Can now convert the broadcasted BatchMatMul to a MatMul.
+    // LHS = {numBatches, N, M}
+    // RHS = {M, P}
+    // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
+    // {numBatches, N, P}
+    const size_t numBatches = LHS.dims()[0];
+    const size_t N = LHS.dims()[1];
+    const size_t M = LHS.dims()[2];
+    const size_t P = RHS.dims()[2];
+    auto name = BMMN->getName();
+
+    // Reshape the LHS to be a two-dimensional matrix, where each batch is
+    // essentially concatenated onto itself in the 0th dimension.
+    ReshapeNode *reshapeLHS =
+        F->createReshape(name.str() + ".reshapeLHS", LHS, {numBatches * N, M});
+    // Squeeze out the first dimension of the original Tile's input.
+    ReshapeNode *squeezedRHS =
+        F->createSqueeze(name.str() + ".squeezedRHS", TN->getInput(), {0});
+
+    // Perform a normal matmul, implementing the batch matmul.
+    MatMulNode *MMN = F->createMatMul(name, reshapeLHS, squeezedRHS);
+
+    assert(MMN->getResult().dims()[0] == (numBatches * N) &&
+           "Incorrect resulting dimension for batch matmul");
+    assert(MMN->getResult().dims()[1] == P &&
+           "Incorrect resulting dimension for batch matmul");
+
+    // Reshape the result back to the expected batch output shape, with the
+    // first dimension the number of batches.
+    ReshapeNode *finalReshape = F->createReshape(name.str() + ".reshapeResult",
+                                                 MMN, {numBatches, N, P});
+    BMMN->getResult().replaceAllUsesOfWith(finalReshape);
+  }
+}
+
 /// Find a sequence of slices in \p input that span the whole input.
 /// \returns True if a group of slices that span the whole input was found.
 /// The order of the slices is recorded in \p order.
@@ -2592,6 +2644,9 @@ void glow::optimize(Function *F, const CompilationContext &cctx) {
   // Merge ReduceMean into AveragePool if possible.
   optimizeReduceMean(F);
 
+  // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
+  convertBroadcastedBatchMatMul(F);
+
   // Perform Dead Code Elimination.
   DCE(F);
 
@@ -2629,6 +2684,9 @@ void glow::optimize(Function *F, const CompilationContext &cctx) {
     DCE(F);
     optimizeQuantization(F);
   }
+
+  // Optimize reshapes introduced during above optimizations.
+  optimizeReshape(F);
 
   // Perform Dead Code Elimination.
   DCE(F);

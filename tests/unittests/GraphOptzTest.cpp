@@ -2813,3 +2813,22 @@ TEST_F(GraphOptz, convertReduceMean2AvgPool) {
   auto *APN = llvm::dyn_cast<AvgPoolNode>(TN->getInput());
   ASSERT_NE(APN, nullptr);
 }
+
+/// Test Broadcasted RHS BatchMatMul is converted correctly to a single MatMul.
+TEST_F(GraphOptz, convertBroadcastedBatchMatMulToMatMul) {
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+  auto *BMMN = F_->createBatchMatMul("BMM", lhs, rhs);
+  F_->createSave("save", BMMN);
+
+  // Start with a BatchMatMul, not a MatMul.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 0);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Optimization should replace the BatchMatMul with a single MatMul.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 0);
+}
