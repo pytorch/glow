@@ -71,17 +71,16 @@ EventPtr GlowOnnxifiManager::createEvent() {
   return event;
 }
 
-GraphPtr
-GlowOnnxifiManager::createGraph(BackendPtr backend,
-                                OnnxifiQuantizationStep quantizationStep) {
+GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend,
+                                         QuantizationMode quantizationMode) {
   assert(isValid(backend));
 
   GraphPtr graph;
 
-  if (quantizationStep == OnnxifiQuantizationStep::None) {
+  if (quantizationMode == QuantizationMode::None) {
     graph = new onnxifi::HostManagerGraph(backend);
   } else {
-    graph = new onnxifi::InlineGraph(backend, quantizationStep);
+    graph = new onnxifi::InlineGraph(backend, quantizationMode);
   }
 
   std::lock_guard<std::mutex> lock(m_);

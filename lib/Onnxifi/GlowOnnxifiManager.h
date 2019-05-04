@@ -59,9 +59,9 @@ public:
 
   /// Create a new glow Graph associated with \p backend.
   /// Can be called safely by multiple threads concurrently.
-  GraphPtr createGraph(
-      BackendPtr backend,
-      OnnxifiQuantizationStep quantizationStep = OnnxifiQuantizationStep::None);
+  GraphPtr
+  createGraph(BackendPtr backend,
+              QuantizationMode quantizationMode = QuantizationMode::None);
 
   /// Check if \p backendId is a BackendId created and managed by glow.
   /// Can be called safely by multiple threads concurrently.

@@ -392,16 +392,16 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
 
-  glow::onnxifi::OnnxifiQuantizationStep quantizationStep;
+  glow::QuantizationMode quantizationMode;
   if (getenv("GLOW_DUMP_PROFILE")) {
-    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::Profile;
+    quantizationMode = glow::QuantizationMode::Profile;
   } else if (getenv("GLOW_LOAD_PROFILE")) {
-    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::Quantize;
+    quantizationMode = glow::QuantizationMode::Quantize;
   } else {
-    quantizationStep = glow::onnxifi::OnnxifiQuantizationStep::None;
+    quantizationMode = glow::QuantizationMode::None;
   }
 
-  auto *glowGraph = manager.createGraph(glowBackend, quantizationStep);
+  auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
   auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
                                   weightDescriptors);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
