@@ -1256,74 +1256,36 @@ MatMulNode *Function::createMatMul(llvm::StringRef name, NodeValue lhs,
   return createMatMul(name, ty, lhs, rhs);
 }
 
-Node *Function::createBroadcastedBatchMatMul(llvm::StringRef name,
-                                             NodeValue lhs, NodeValue rhs) {
-  assert(lhs.dims().size() == 3 && rhs.dims().size() == 2 &&
-         "Only supporting lhs 3d, rhs 2d for Broadcasted BatchMatMul.");
+BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
+                                             NodeValue LHS, NodeValue RHS) {
+  const size_t numDimsRHS = RHS.dims().size();
+  assert(LHS.dims().size() == 3 && "LHS must be 3 dimensional.");
+  assert((numDimsRHS == 2 || numDimsRHS == 3) &&
+         "RHS must be 2 or 3 dimensional.");
 
-  // LHS = {numBatches, N, M}
-  // RHS = {M, P}
-  // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
-  // {numBatches, N, P}
-  const auto numBatches = lhs.dims()[0];
-  const auto N = lhs.dims()[1];
-  const auto M = lhs.dims()[2];
-  const auto P = rhs.dims()[1];
-  assert((rhs.dims()[0] == M) && "Batch matmul dimensions are invalid.");
-
-  // Reshape the LHS to be a two-dimensional matrix, where each batch
-  // is essentially concatenated onto itself in the 0th dimension.
-  auto *reshapeLHS =
-      createReshape(name.str() + ".reshapeLHS", lhs, {numBatches * N, M});
-
-  // Perform a normal matmul, implementing the batch matmul.
-  auto *MMN = createMatMul(name, reshapeLHS, rhs);
-
-  assert(MMN->getResult().dims()[0] == (numBatches * N) &&
-         "Incorrect resulting dimension for batch matmul");
-  assert(MMN->getResult().dims()[1] == P &&
-         "Incorrect resulting dimension for batch matmul");
-
-  // Reshape the result back to the expected batch output shape, with the
-  // first dimension the number of batches.
-  return createReshape(name.str() + ".reshapeResult", MMN, {numBatches, N, P});
-}
-
-Node *Function::createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
-                                          NodeValue rhs) {
-  assert(lhs.dims().size() == 3 && rhs.dims().size() == 3 &&
-         "Only supporting lhs 3d, rhs 3d for Parallel BatchMatMul.");
+  // If necessary, expand the RHS input to be 3D by adding initial leading dim.
+  if (numDimsRHS == 2) {
+    RHS = createExpandDims(name.str() + ".reshapeRHS", RHS, {0});
+  }
+  // If necessary, Tile the RHS input so it matches the numBatches of LHS.
+  if (RHS.dims()[0] == 1) {
+    RHS = createTile(name.str() + ".tileRHS", RHS, LHS.dims()[0], /*axis */ 0);
+  }
 
   // LHS = {numBatches, N, M}
   // RHS = {numBatches, M, P}
-  // Multiply i-th LHS matrix {N, M} by i-th RHS matrix {M, P} to get final
-  // matrix
-  // {numBatches, N, P}
-  const auto numBatches = lhs.dims()[0];
-  const auto N = lhs.dims()[1];
-  const auto M = lhs.dims()[2];
-  const auto P = rhs.dims()[2];
-  assert((rhs.dims()[0] == numBatches) &&
-         "Batch matmul dimensions are invalid.");
-  assert((rhs.dims()[1] == M) && "Batch matmul dimensions are invalid.");
+  // Result = {numBatches, N, P}
+  const size_t numBatches = LHS.dims()[0];
+  const size_t N = LHS.dims()[1];
+  const size_t M = LHS.dims()[2];
+  (void)M;
+  const size_t P = RHS.dims()[2];
+  assert((RHS.dims()[0] == numBatches) && "Batch sizes are invalid.");
+  assert((RHS.dims()[1] == M) && "Batch matmul dimensions are invalid.");
 
-  std::vector<NodeValue> MMS(numBatches);
-  for (size_t i = 0; i < numBatches; i++) {
-    auto *sliceA = createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
-                               {i, 0, 0}, {i + 1, N, M});
-    auto *sliceB = createSlice(name.str() + ".sliceB." + std::to_string(i), rhs,
-                               {i, 0, 0}, {i + 1, M, P});
-    auto *reshapeA =
-        createReshape(sliceA->getName().str() + ".reshape", sliceA, {N, M});
-    auto *reshapeB =
-        createReshape(sliceB->getName().str() + ".reshape", sliceB, {M, P});
-    MMS[i] = createMatMul(name.str() + ".MatMul." + std::to_string(i), reshapeA,
-                          reshapeB);
-  }
-
-  auto *concat = createConcat(name.str() + ".concat", MMS, 0);
-  return createReshape(name.str() + ".FinalReshape", concat,
-                       {numBatches, N, P});
+  auto OT =
+      getParent()->uniqueTypeWithNewShape(LHS.getType(), {numBatches, N, P});
+  return addNode(new BatchMatMulNode(name, OT, LHS, RHS));
 }
 
 BatchedReduceAddNode *

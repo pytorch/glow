@@ -356,7 +356,7 @@ TEST_P(OperatorTest, BroadcastedBatchMatMul) {
                                           -1, -2, -3, -4, -5, -6};
   bindings_.allocate(rhs)->getHandle() = {7, 10};
 
-  auto *R = F_->createBroadcastedBatchMatMul("BMM", lhs, rhs);
+  auto *R = F_->createBatchMatMul("BMM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
@@ -382,7 +382,7 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
                                           -1, -2, -3, -4, -5, -6};
   bindings_.allocate(rhs)->getHandle() = {7, 10, 12, -1};
 
-  auto *R = F_->createParallelBatchMatMul("BMM", lhs, rhs);
+  auto *R = F_->createBatchMatMul("BMM", lhs, rhs);
 
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
