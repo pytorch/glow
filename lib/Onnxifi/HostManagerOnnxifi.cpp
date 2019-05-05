@@ -86,6 +86,11 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
+  // Make sure the pool is ready to go.
+  for (auto &obj : onnxInputToPlaceholder_) {
+    tensorPool_.reserve(obj.second->getType(), 10);
+  }
+
   return static_cast<HostManagerBackendId *>(backendPtr_->getBackendId())
       ->addNetwork(std::move(module));
 }

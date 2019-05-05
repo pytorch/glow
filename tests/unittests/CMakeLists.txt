@@ -446,6 +446,16 @@ target_link_libraries(TensorsTest
                         TestMain)
 add_glow_test(TensorsTest ${GLOW_BINARY_DIR}/tests/TensorsTest --gtest_output=xml:TensorsTest.xml)
 
+add_executable(TensorPoolTest
+               TensorPoolTest.cpp)
+target_link_libraries(TensorPoolTest
+                      PRIVATE
+                        Graph
+                        TensorPool
+                        gtest
+                        TestMain)
+add_glow_test(TensorPoolTest ${GLOW_BINARY_DIR}/tests/TensorPoolTest --gtest_output=xml:TensorPoolTest.xml)
+
 add_executable(ThreadPoolTest
                ThreadPoolTest.cpp)
 target_link_libraries(ThreadPoolTest

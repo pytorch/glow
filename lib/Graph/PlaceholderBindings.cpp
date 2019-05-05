@@ -17,6 +17,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Support/TensorPool.h"
 
 using namespace glow;
 
@@ -77,7 +78,14 @@ PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
 void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
   assert(!map_.count(P) && "Placeholder already registered");
   // Take ownership over the tensor.
-  map_[P] = new Tensor(std::move(T));
+  Tensor *t = new Tensor(std::move(T));
+  map_[P] = t;
+  nameMap_[P->getName()] = P;
+}
+
+void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
+  assert(!map_.count(P) && "Placeholder already registered");
+  map_[P] = T;
   nameMap_[P->getName()] = P;
 }
 
@@ -90,7 +98,11 @@ size_t PlaceholderBindings::count(Placeholder *P) const {
 void PlaceholderBindings::clear() {
   // Delete all of the tensors that are owned by the bindings.
   for (auto PH : map_) {
-    delete PH.second;
+    if (auto *tensorPool = PH.second->getOwningPool()) {
+      tensorPool->reclaim(PH.second);
+    } else {
+      delete PH.second;
+    }
   }
 
   map_.clear();
@@ -101,7 +113,14 @@ void PlaceholderBindings::erase(Placeholder *P) {
   assert(nameMap_.count(P->getName()) &&
          "Placeholder must already be registered");
   nameMap_.erase(P->getName());
-  delete map_[P];
+
+  auto *T = map_[P];
+  if (auto *tensorPool = T->getOwningPool()) {
+    tensorPool->reclaim(T);
+  } else {
+    delete T;
+  }
+
   map_.erase(P);
 }
 

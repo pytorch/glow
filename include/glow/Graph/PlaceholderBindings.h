@@ -67,6 +67,9 @@ public:
   /// Inserts the Placeholder-Tensor pair.
   void insert(Placeholder *P, Tensor &&T);
 
+  /// Inserts the Placeholder-Tensor pair. This takes ownership of the Tensor.
+  void insert(Placeholder *P, Tensor *T);
+
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.
   Tensor *allocate(Placeholder *P);

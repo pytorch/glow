@@ -20,6 +20,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/TensorPool.h"
 
 #include "foxi/onnxifi.h"
 #include "foxi/onnxifi_ext.h"
@@ -153,6 +154,9 @@ protected:
   /// Mapping between ONNX name for the output variable and Glow
   /// placeholder for output.
   llvm::StringMap<Placeholder *> onnxOutputToPlaceholder_;
+
+  /// An object pool for tensors, to share allocations.
+  TensorPool tensorPool_;
 };
 
 typedef Graph *GraphPtr;

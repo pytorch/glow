@@ -113,7 +113,8 @@ void ExecutionState::init() {
 
           // allocate into the resultBindings because they have the longest
           // lifetime.
-          resultBindings->allocate(PH);
+          resultBindings->insert(PH,
+                                 intermediateTensorPool_.get(PH->getType()));
           intermediatePlaceholders_.push_back(PH);
         }
 
