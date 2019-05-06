@@ -22,7 +22,7 @@
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Support/Register.h"
 
-#include <llvm/ADT/StringRef.h>
+#include "llvm/ADT/StringRef.h"
 
 namespace glow {
 
