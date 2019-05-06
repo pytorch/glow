@@ -18,6 +18,7 @@ add_library(onnxifi-glow-lib
 target_link_libraries(onnxifi-glow-lib
                       PUBLIC
                         Backends
+                        ExecutionContext
                         ExecutionEngine
                         Graph
                         HostManager
@@ -28,6 +29,7 @@ target_link_libraries(onnxifi-glow-lib
 target_link_libraries(onnxifi-glow
                       PUBLIC
                         Backends
+                        ExecutionContext
                         ExecutionEngine
                         Graph
                         HostManager
