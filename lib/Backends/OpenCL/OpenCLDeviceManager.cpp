@@ -50,6 +50,18 @@ DeviceManager *createOCLDeviceManager(std::unique_ptr<DeviceConfig> config) {
 } // namespace runtime
 } // namespace glow
 
+/// Helper method to parse a string parameter to an unsigned. \returns
+/// llvm::Expected with either the value or an error.
+static llvm::Expected<unsigned> parseInputAsUnsigned(std::string input) {
+  char *end;
+  auto parsed = strtol(input.c_str(), &end, 10);
+  if (end == input.c_str() || *end != '\0') {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                    "Invalid input expected integer got: " + input);
+  }
+  return parsed;
+}
+
 cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
@@ -62,17 +74,41 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
 OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
     : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
 
+llvm::Error OpenCLDeviceManager::parseConfig() {
+  auto it = config_->parameters.find("deviceId");
+  unsigned value;
+  if (it != config_->parameters.end()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
+    clDeviceId = value;
+  }
+  it = config_->parameters.find("platformId");
+  if (it != config_->parameters.end()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
+    clPlatformId = value;
+  }
+  it = config_->parameters.find("doProfile");
+  if (it != config_->parameters.end()) {
+    if (it->second == "true") {
+      clDoProfile = true;
+    } else if (it->second == "false") {
+      clDoProfile = false;
+    } else {
+      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                      "Invalid input expected true or false got: " +
+                          it->second);
+    }
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error OpenCLDeviceManager::init() {
-  // The OpenCl Backend defines three command line options: doProfile, deviceId,
-  // and platformId. If an OpenCLDeviceConfig is not provided we use the CL
+  // The OpenCL Backend defines three command line options: doProfile, deviceId,
+  // and platformId. If the parameter is not provided we use the CL
   // options from the OpenCl Backend.
 
-  if (config_ && config_->getBackendKind() == BackendKind::OpenCL) {
-    OpenCLDeviceConfig *config =
-        static_cast<OpenCLDeviceConfig *>(config_.get());
-    clDeviceId = config->deviceId;
-    clPlatformId = config->platformId;
-    clDoProfile = config->doProfile;
+  // Check if parameters are in map.
+  if (config_) {
+    RETURN_IF_ERR(parseConfig());
   }
 
   cl_uint numPlatforms{0};
