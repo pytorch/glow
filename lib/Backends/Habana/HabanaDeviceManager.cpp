@@ -256,6 +256,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                                           std::string functionName,
                                           std::unique_ptr<ExecutionContext> ctx,
                                           runtime::ResultCBTy resultCB) {
+  TRACE_EVENT_SCOPE(ctx->getTraceContext(), "HabanaDM::runnerThread");
   // Try to find the function with the given name in functions_.
   uint64_t topologyId;
   HabanaFunction *function;
@@ -304,6 +305,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                      functionName = std::move(functionName),
                      ctx = std::move(ctx),
                      resultCB = std::move(resultCB)]() mutable {
+    TRACE_EVENT_SCOPE(ctx->getTraceContext(), "HabanaDM::waiterThread");
     TRACE_EVENT_BEGIN(ctx->getTraceContext(), "wait");
     auto &habanaHandle =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getHandle();

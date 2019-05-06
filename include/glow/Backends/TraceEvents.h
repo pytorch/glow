@@ -207,6 +207,9 @@ public:
     ctx->logTraceEvent(name, type, ts);                                        \
   }
 
+/// Logs a new TraceEvent which begins and ends in the current scope block.
+#define TRACE_EVENT_SCOPE(ctx, name) ScopedTraceBlock __event__(ctx, name);
+
 /// Helper class which uses RAII for the start and end times of a TraceEvent.
 /// At creation will create a "begin" TraceEvent and at destuction (or end())
 /// will create an "end" TraceEvent.

@@ -239,7 +239,7 @@ void ThreadPoolExecutor::shutdown() {
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<ExecutionContext> context,
                              RunIdentifierTy runId, ResultCBTy cb) {
-  ScopedTraceBlock preRunEvent(context->getTraceContext(), "EX_preRun");
+  TRACE_EVENT_SCOPE(context->getTraceContext(), "ThreadPoolExecutor::run");
 
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
@@ -297,6 +297,8 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 
 void ThreadPoolExecutor::executeDAGNode(
     std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
+  TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
+                    "ThreadPoolExecutor::executeDAGNode");
   // If execution has already failed due to another node, don't bother running
   // this one.
   if (executionState->getErrorContainer().containsErr()) {
@@ -306,7 +308,6 @@ void ThreadPoolExecutor::executeDAGNode(
     return;
   }
 
-  auto startTS = TraceEvent::now();
   auto currentDevice = node->getNextDevice();
   // Get the DeviceManager that can run the node.
   auto deviceManagerIt = deviceManagers_.find(currentDevice);
@@ -326,12 +327,6 @@ void ThreadPoolExecutor::executeDAGNode(
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
-
-  TraceContext *traceContext = nodeCtx->getTraceContext();
-  if (traceContext) {
-    TRACE_EVENT_LOG(traceContext, "EX_enqueue_" + node->name, "b", startTS);
-    TRACE_EVENT_END(traceContext, "EX_enqueue_" + node->name);
-  }
 
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
@@ -359,7 +354,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   assert(executionState && "Execution state should not be null");
 
   TraceContext *traceContext = ctx->getTraceContext();
-  TRACE_EVENT_BEGIN(traceContext, "EX_handleResult_" + node->name);
+  TRACE_EVENT_BEGIN(traceContext, "ThreadPoolExecutor::handleResult");
 
   auto runWasSuccess = !err;
 
@@ -387,7 +382,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   bool noNodesInflight = executionState->decrementInflightNodes();
 
   if (traceContext) {
-    TRACE_EVENT_END(traceContext, "EX_handleResult_" + node->name);
+    TRACE_EVENT_END(traceContext, "ThreadPoolExecutor::handleResult");
     executionState->insertIntoTraceContext(traceContext->getTraceEvents());
   }
 
