@@ -1300,6 +1300,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::DequantizeNodeKind:
   case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
+  // case Kinded::Kind::GatherNodeKind:  Disabled for now
   case Kinded::Kind::HabanaFullyConnectedNodeKind:
   case Kinded::Kind::HabanaReshapeNodeKind:
   case Kinded::Kind::LogNodeKind:

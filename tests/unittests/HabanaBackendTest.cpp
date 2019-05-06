@@ -1711,3 +1711,52 @@ TEST_F(HabanaBackendTest, DISABLED_BatchedGather) {
   EXPECT_FLOAT_EQ(H.at({2, 0}), 4.5);
   EXPECT_FLOAT_EQ(H.at({2, 1}), 1.2);
 }
+
+TEST_F(HabanaBackendTest, DISABLED_BatchedGatherEx) {
+  unsigned M = 1000;
+  unsigned N = 1;
+
+  // Fill out the array with random data
+  std::vector<float> input_data;
+  input_data.resize(M);
+  for (unsigned int i =0; i < M; i++){
+    input_data[i]  = float(rand() % 1000) / 100;
+  }
+
+  // ID list, to be filled up
+  unsigned id_len = 10000;
+  std::vector<int> input_ids;
+  input_ids.resize(id_len);
+
+  // Create placeholder for data
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {N, M}, "data", false);
+  ctx_.allocate(data)->getHandle() = input_data;
+
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {id_len}, "indices", false);
+  auto indices_h = ctx_.allocate(indices)->getHandle<int32_t>();
+  indices_h = input_ids;
+
+  // create the net
+  auto *R = F_->createGather("gather", data, indices, 1);
+  auto *result = F_->createSave("save", R);
+  ctx_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  // run this multiple times
+  for (auto ntimes = 0; ntimes < 10; ntimes++) {
+    // fill up the ID list with random data
+    for (unsigned int i = 0; i < input_ids.size(); i++) {
+      input_ids[i] = rand() % M;
+    }
+    indices_h = input_ids;
+
+    EE_.run(ctx_);
+
+    auto H = ctx_.get(result->getPlaceholder())->getHandle();
+    for (unsigned i =0; i < id_len; i++) {
+      EXPECT_FLOAT_EQ(input_data[input_ids[i]], H.at({0, i}));
+    }
+  }
+}
