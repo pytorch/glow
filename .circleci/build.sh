@@ -10,7 +10,7 @@ install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev libclang-7-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
-   cd pocl && git checkout 94fba9f510e678cd7f8fc988c01618e1ae93dfdf && cd ../
+   cd pocl && git checkout a74c9e34ed65725e86a0067b38f034c6c752d6e4 && cd ../
    mkdir build_pocl
    cd build_pocl
    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-7 -DCMAKE_C_COMPILER=/usr/bin/clang-7 -DENABLE_ICD=ON ../pocl
