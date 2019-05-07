@@ -16,15 +16,24 @@
 
 #include "HostManagerOnnxifi.h"
 
+#include "llvm/Support/CommandLine.h"
+
 namespace glow {
 namespace onnxifi {
+
+int32_t GlowNumDevices = 1;
+
+static llvm::cl::opt<int32_t, true>
+    GlowNumDevicesOpt("glow-num-devices",
+                      llvm::cl::desc("Number of devices for Glow backend"),
+                      llvm::cl::location(GlowNumDevices));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackendId::createHostManager(glow::BackendKind kind) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-
-  auto config = llvm::make_unique<runtime::DeviceConfig>(kind);
-  configs.push_back(std::move(config));
+  for (int i = 0; i < GlowNumDevices; i++) {
+    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(kind));
+  }
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
