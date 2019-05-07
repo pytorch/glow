@@ -1724,16 +1724,16 @@ TEST_F(HabanaBackendTest, DISABLED_BatchedGatherEx) {
   }
 
   // ID list, to be filled up
-  unsigned id_len = 10000;
+  unsigned idLen = 10000;
   std::vector<int> inputIds;
-  inputIds.resize(id_len);
+  inputIds.resize(idLen);
 
   // Create placeholder for data
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {N, M}, "data", false);
   ctx_.allocate(data)->getHandle() = inputData;
 
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {id_len}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int32ITy, {idLen}, "indices", false);
   auto indices_h = ctx_.allocate(indices)->getHandle<int32_t>();
   indices_h = inputIds;
 
@@ -1755,7 +1755,7 @@ TEST_F(HabanaBackendTest, DISABLED_BatchedGatherEx) {
     EE_.run(ctx_);
 
     auto H = ctx_.get(result->getPlaceholder())->getHandle();
-    for (unsigned i = 0; i < id_len; i++) {
+    for (unsigned i = 0; i < idLen; i++) {
       EXPECT_FLOAT_EQ(inputData[inputIds[i]], H.at({0, i}));
     }
   }
