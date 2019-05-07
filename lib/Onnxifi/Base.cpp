@@ -198,9 +198,10 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
     traceEvent->timestamp = glowTraceEvent.timestamp;
     traceEvent->tid = glowTraceEvent.tid;
     traceEvent->duration = 0;
-    strncpy(traceEvent->eventName, glowTraceEvent.name.c_str(),
-            std::min(glowTraceEvent.name.size(),
-                     (size_t)ONNXIFI_TRACE_EVENT_NAME_SIZE));
+    size_t nameSize = std::min(glowTraceEvent.name.size(),
+                               (size_t)ONNXIFI_TRACE_EVENT_NAME_SIZE);
+    strncpy(traceEvent->eventName, glowTraceEvent.name.c_str(), nameSize);
+    traceEvent->eventName[nameSize] = '\0';
     traceEventsVec.push_back(traceEvent);
   }
 
