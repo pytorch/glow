@@ -198,16 +198,25 @@ protected:
         return resOrErr.takeError();
       }
 
-      tensors_[name] = std::move(loadWeightResult.t);
+      if (auto err = takeErr(createAndRegisterConstant(
+              name, std::move(*loadWeightResult.t)))) {
+        return err;
+      }
 
       if (loadWeightResult.biases) {
         auto biasesName = strFormat("%s_loaded_biases", name);
-        tensors_[biasesName] = std::move(loadWeightResult.biases);
+        if (auto err = takeErr(createAndRegisterConstant(
+                biasesName, std::move(*loadWeightResult.biases)))) {
+          return err;
+        }
       }
 
       if (loadWeightResult.scales) {
         auto scalesName = strFormat("%s_loaded_scales", name);
-        tensors_[scalesName] = std::move(loadWeightResult.scales);
+        if (auto err = takeErr(createAndRegisterConstant(
+                scalesName, std::move(*loadWeightResult.scales)))) {
+          return err;
+        }
       }
     }
 
@@ -276,14 +285,12 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in,
                                getNodeValueOrCreateConstantByName(op.input(0)));
 
-    // This is statically known data, and so we create a Tensor for it and
-    // register it in tensors_.
-    auto *T = new Tensor(ElemKind::Int64ITy, {in.dims().size()});
-    tensors_[opName].reset(T);
-    T->template getHandle<int64_t>() =
+    // This is statically known data, and so we create a Tensor for it.
+    Tensor T(ElemKind::Int64ITy, {in.dims().size()});
+    T.getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
-    if (auto resultOrErr = createAndRegisterConstant(opName, *T)) {
+    if (auto resultOrErr = createAndRegisterConstant(opName, std::move(T))) {
       return llvm::Error::success();
     } else {
       return resultOrErr.takeError();
@@ -592,13 +599,13 @@ protected:
     // First look at input tensors, then at the "shape" attribute.
     std::vector<int64_t> requestedDims;
     if (op.input_size() > 1) {
-      if (!tensors_.count(op.input(1))) {
+      if (!getConstantByNameOrNull(op.input(1))) {
         RETURN_ERR("Non-constant shape tensors are unsupported by Glow.");
       }
-      Tensor *constShapeTensor;
-      ASSIGN_VALUE_OR_RETURN_ERR(constShapeTensor,
-                                 getTensorByName(op.input(1)));
-      auto TH = constShapeTensor->getHandle<int64_t>();
+      const Constant *constShapeConst;
+      ASSIGN_VALUE_OR_RETURN_ERR(constShapeConst,
+                                 getConstantByName(op.input(1)));
+      auto TH = constShapeConst->getPayload().getHandle<int64_t>();
       for (auto dim : TH) {
         requestedDims.push_back(dim);
       }
@@ -1227,7 +1234,7 @@ private:
     }
     return llvm::Error::success();
   }
-};
+}; // namespace glow
 
 } // namespace glow
 

@@ -226,6 +226,14 @@ inline bool errToBool(llvm::Error err) {
   return false;
 }
 
+template <typename T> llvm::Error takeErr(llvm::Expected<T> e) {
+  if (!bool(e)) {
+    return e.takeError();
+  } else {
+    return llvm::Error::success();
+  }
+}
+
 /// This class holds an llvm::Error provided via the add method. If an Error is
 /// added when the class already holds an Error, it will discard the new Error
 /// in favor of the original one. All methods in OneErrOnly are thread-safe.

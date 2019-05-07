@@ -79,7 +79,7 @@ llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
                                         bool loadInputsAsPlaceholders) {
   for (const auto &in : net.input()) {
     // Skip static weights.
-    if (tensors_.count(in.name())) {
+    if (getConstantByNameOrNull(in.name())) {
       continue;
     }
 
@@ -94,7 +94,10 @@ llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
     } else {
       std::unique_ptr<Tensor> T(new Tensor());
       RETURN_IF_ERR(setTensorType(in.type(), T.get()));
-      tensors_[in.name()] = std::move(T);
+      if (auto err =
+              takeErr(createAndRegisterConstant(in.name(), std::move(*T)))) {
+        return err;
+      }
     }
   }
   return llvm::Error::success();
@@ -361,7 +364,7 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
   const auto &name = op.output(0);
   // If the tensor is pre-populated by the user of this class then we don't
   // need to allocate a new tensor.
-  if (tensors_.count(name)) {
+  if (getConstantByNameOrNull(name)) {
     return llvm::Error::success();
   }
 
@@ -372,7 +375,9 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 
   std::unique_ptr<Tensor> T(new Tensor());
   RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T.get()));
-  tensors_[name] = std::move(T);
+  if (auto err = takeErr(createAndRegisterConstant(name, std::move(*T)))) {
+    return err;
+  }
 
   return llvm::Error::success();
 }
@@ -526,20 +531,21 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Construct the Bias field.
-  Tensor biasTensor(ElemKind::FloatTy, {depth});
-  biasTensor.zero();
+  Constant *bias = nullptr;
 
   // Check if we have a serialized bias vector.
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
-    if (tensors_.count(biasTensorName)) {
-      // Load the serialized bias vector.
-      Tensor *b;
-      ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(biasTensorName));
-      biasTensor.assign(b);
-    }
+    // Load the serialized bias vector.
+    bias = getConstantByNameOrNull(biasTensorName);
   }
-  auto *bias = G_.getParent()->createConstant("conv.bias", biasTensor);
+
+  // If a serialized bias wasn't found then create a zero bias.
+  if (!bias) {
+    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    biasTensor.zero();
+    bias = G_.getParent()->createConstant("conv.bias", std::move(biasTensor));
+  }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
   auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -689,26 +695,22 @@ ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in,
                              getNodeValueOrCreateConstantByName(op.input(0)));
-  Tensor *scale;
-  ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorByName(op.input(1)));
-  Tensor *bias;
-  ASSIGN_VALUE_OR_RETURN_ERR(bias, getTensorByName(op.input(2)));
-  Tensor *mean;
-  ASSIGN_VALUE_OR_RETURN_ERR(mean, getTensorByName(op.input(3)));
-  Tensor *var;
-  ASSIGN_VALUE_OR_RETURN_ERR(var, getTensorByName(op.input(4)));
+  Constant *scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
+  Constant *bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(op.input(2)));
+  Constant *mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(mean, getConstantByName(op.input(3)));
+  Constant *var;
+  ASSIGN_VALUE_OR_RETURN_ERR(var, getConstantByName(op.input(4)));
   float epsilon = 1e-5f; // default
   auto epsilonIt = dict.find("epsilon");
   if (epsilonIt != dict.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
   }
 
-  auto *scaleV = G_.getParent()->createConstant("scale", *scale);
-  auto *biasV = G_.getParent()->createConstant("bias", *bias);
-  auto *meanV = G_.getParent()->createConstant("mean", *mean);
-  auto *varV = G_.getParent()->createConstant("var", *var);
-  auto *node = G_.createBatchNormalization(opName, in, biasV, scaleV, meanV,
-                                           varV, 1, epsilon);
+  auto *node = G_.createBatchNormalization(opName, in, bias, scale, mean, var,
+                                           1, epsilon);
 
   // BatchNormalization has 4 optional outputs that are not supported by glow.
   // Then: 1/ In case the optional outputs are present and used by other
@@ -759,26 +761,26 @@ ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
     in = G_.createFlatten("fc.in", in, axis);
   }
 
-  Tensor *w;
-  ASSIGN_VALUE_OR_RETURN_ERR(w, getTensorByName(op.input(1)));
-  Tensor *b;
-  ASSIGN_VALUE_OR_RETURN_ERR(b, getTensorByName(op.input(2)));
   unsigned_t axis_w = 1;
   if (dict.count("axis_w")) {
     ASSIGN_VALUE_OR_RETURN_ERR(axis_w, loadInt(dict.at("axis_w")));
   }
 
+  Constant *W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+
   // w is stored already transposed. No need to additionally transpose it.
-  Tensor tmp;
-  if (w->dims().size() > 2) {
-    auto wDims = flattenCdr(w->dims(), axis_w);
+  if (W->dims().size() > 2) {
+    Tensor tmp;
+    auto wDims = flattenCdr(W->dims(), axis_w);
     tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
-    tmp.copyRawFrom(w);
-    w = &tmp;
+    tmp.copyRawFrom(&W->getPayload());
+    W = G_.getParent()->createConstant(W->getName(), tmp);
   }
 
-  auto W = G_.getParent()->addConstant(new Constant("weights", std::move(*w)));
-  auto B = G_.getParent()->addConstant(new Constant("biases", std::move(*b)));
+  Constant *B;
+  ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+
   auto *node = G_.createFullyConnected(opName, in, W, B);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -1070,7 +1072,10 @@ llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.initializer()) {
     std::unique_ptr<Tensor> T(new Tensor());
     RETURN_IF_ERR(loadTensor(in, T.get()));
-    tensors_[in.name()] = std::move(T);
+    if (auto err =
+            takeErr(createAndRegisterConstant(in.name(), std::move(*T)))) {
+      return err;
+    }
   }
   return llvm::Error::success();
 }

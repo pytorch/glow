@@ -161,8 +161,6 @@ TEST(caffe2, convNHWC) {
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  // We have 2 constants: Weights and bias.
-  EXPECT_EQ(mod.getConstants().size(), 2);
 }
 
 /// Test loading MaxPool with NHWC order input.
@@ -661,7 +659,8 @@ TEST(caffe2, FC) {
 
   // Check the numerical values of the weights and biases.
   {
-    const Constant *constant = mod.getConstantByName("weights");
+    // NOTE: this is weights1 because the weights constant was transposed
+    const Constant *constant = mod.getConstantByName("weights1");
     ASSERT_TRUE(constant);
     const Tensor &weights = constant->getPayload();
     const std::vector<size_t> expectedDimensions = {3, 4};
@@ -677,7 +676,7 @@ TEST(caffe2, FC) {
     }
   }
   {
-    const Constant *constant = mod.getConstantByName("biases");
+    const Constant *constant = mod.getConstantByName("bias");
     ASSERT_TRUE(constant);
     const Tensor &bias = constant->getPayload();
     const std::vector<size_t> expectedDimensions = {4};
@@ -799,7 +798,7 @@ TEST(caffe2, FCTransposed) {
     }
   }
   {
-    const Constant *constant = mod.getConstantByName("biases");
+    const Constant *constant = mod.getConstantByName("bias");
     ASSERT_TRUE(constant);
     const Tensor &bias = constant->getPayload();
     const std::vector<size_t> expectedDimensions = {4};

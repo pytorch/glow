@@ -413,6 +413,11 @@ Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
   return V;
 }
 
+// TODO: delete
+Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor) {
+  return addConstant(new Constant(name, std::move(tensor)));
+}
+
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    llvm::StringSet<> &stringTable) {
   std::string legalName = legalizeName(name);
@@ -438,6 +443,7 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 
 Constant *Module::addConstant(Constant *V) {
   V->setName(uniqueName(V->getName(), uniqueVariableNames_));
+  V->setType(Constant::ResultIndices::OutputIdx, uniqueType(*V->getType()));
   constants_.push_back(V);
   return V;
 }
@@ -2641,6 +2647,10 @@ void Module::eraseConstant(ConstList::iterator I) {
 void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
 
 Constant *Module::getConstantByName(llvm::StringRef name) const {
+  for (auto *V : getConstants()) {
+    llvm::outs() << "constant name: " << V->getName() << "\n";
+  }
+
   for (auto *V : getConstants()) {
     if (V->getName() == name)
       return V;
