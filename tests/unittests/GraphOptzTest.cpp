@@ -2188,16 +2188,16 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
                                        "input", true);
 
   // slice -> rescale -> reshape -> rescale -> transpose -> maxpool -> save.
-  auto *slice = F_->createSlice("slice", input, {0, 0}, {3, 3});
+  auto *slice = F_->createSlice("slice", input, {0, 0}, {2, 4});
   auto *rescale = F_->createRescaleQuantized(
-      "rescale", slice, mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.4, 10));
-  auto *reshape = F_->createReshape("reshape", rescale, {1, 1, 3, 3});
+      "rescale", slice, mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 0.4, 10));
+  auto *reshape = F_->createReshape("reshape", rescale, {1, 2, 2, 2});
   auto *rescale2 = F_->createRescaleQuantized(
       "rescale", reshape,
-      mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 3}, 0.3, 9));
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 2, 2}, 0.3, 9));
   auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
   auto *maxpool =
-      F_->createMaxPool("maxpool", transpose, {3, 3}, {1, 1}, {0, 0, 0, 0});
+      F_->createMaxPool("maxpool", transpose, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *save = F_->createSave("ret", maxpool);
 
   EXPECT_EQ(F_->getNodes().size(), 7);
