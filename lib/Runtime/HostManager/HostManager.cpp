@@ -97,10 +97,10 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
 
-  // Clear everything but placeholders from the module then put it a shared_ptr
-  // to be shared between all of the networks created from each function in the
-  // module.
-  module->clear(/* clearPlaceholders */ false);
+  // Clear functions and constants contents from the module then put it a
+  // shared_ptr to be shared between all of the networks created from each
+  // function in the module.
+  module->strip();
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
 
   for (auto &node : nodeList) {
