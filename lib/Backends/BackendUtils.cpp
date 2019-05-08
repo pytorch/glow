@@ -16,11 +16,20 @@
 #include "glow/Backends/BackendUtils.h"
 #include "glow/IR/Instrs.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace glow;
 
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+
+static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
+
+static llvm::cl::opt<bool> reuseActivationsMemory(
+    "reuse-activation-memory-allocations",
+    llvm::cl::desc("Should activation memory allocations be reused"),
+    llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
   collectConstants(F->getGraph()->getParent());
@@ -251,7 +260,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
       auto *A = D->getAlloc();
       assert(symbolTable.count(std::string(A->getName())) &&
              "Invalid deallocation!");
-      activationsAllocator.deallocate(A);
+      if (reuseActivationsMemory) {
+        activationsAllocator.deallocate(A);
+      }
       continue;
     }
   }
