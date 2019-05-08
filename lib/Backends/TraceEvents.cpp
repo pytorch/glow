@@ -121,6 +121,10 @@ ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
   if (context_) {
     context_->logTraceEvent(name_, TraceEvent::BeginType, std::move(args_));
   }
+
+  // A local memory fence to prevent the compiler reordering instructions to
+  // before taking the begin timestamp.
+  std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
 ScopedTraceBlock::~ScopedTraceBlock() { end(); }
@@ -132,6 +136,10 @@ ScopedTraceBlock &ScopedTraceBlock::addArg(llvm::StringRef key,
 }
 
 void ScopedTraceBlock::end() {
+  /// A local memory fence to prevent the compiler reordering intructions to
+  /// after the end timestamp.
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+
   if (!end_ && context_) {
     context_->logTraceEvent(name_, TraceEvent::EndType, std::move(args_));
   }
