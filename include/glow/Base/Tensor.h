@@ -293,7 +293,14 @@ public:
     data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
     zero(getElementType() == ElemKind::UInt8FusedQTy);
   }
+  /// Releases the data buffer and sets the unOwned flag to true. This is useful
+  /// for keeping metadata around but not the actual contents.
+  void release() {
+    if (!isUnowned())
+      alignedFree(getData());
 
+    isUnowned_ = true;
+  }
   ~Tensor() {
     if (!isUnowned()) {
       alignedFree(getData());

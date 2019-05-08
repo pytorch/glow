@@ -176,9 +176,13 @@ public:
   /// Erase all of the functions from the module.
   void eraseFunctions();
 
-  /// Erase all the functions, variables, etc. If \p clearPlaceholders is false
-  /// then placeholders in the module will not be cleared out.
-  void clear(bool clearPlaceholders = true);
+  /// Erase all the functions, variables, etc.
+  void clear();
+
+  /// Strips payloads from constants and deletes functions. This is useful when
+  /// the Module will be kept around for metadata but we want to reduce memory
+  /// use. Unlike clear this leaves PHs and Constants in the module.
+  void strip();
 
   /// Erase a function \p F from the module.
   void eraseFunction(Function *F);

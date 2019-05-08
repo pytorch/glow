@@ -54,7 +54,15 @@ Function *Module::createFunction(llvm::StringRef name) {
   return F;
 }
 
-void Module::clear(bool clearPlaceholders) {
+void Module::strip() {
+  eraseFunctions();
+  for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
+    Constant *v = *it;
+    v->clearPayload();
+  }
+}
+
+void Module::clear() {
   eraseFunctions();
 
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
@@ -64,15 +72,13 @@ void Module::clear(bool clearPlaceholders) {
 
   constants_.clear();
 
-  if (clearPlaceholders) {
-    for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
-         it++) {
-      Placeholder *p = *it;
-      delete p;
-    }
-
-    placeholders_.clear();
+  for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
+       it++) {
+    Placeholder *p = *it;
+    delete p;
   }
+
+  placeholders_.clear();
 }
 
 Module::~Module() { clear(); }

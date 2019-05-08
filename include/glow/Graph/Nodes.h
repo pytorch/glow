@@ -105,6 +105,8 @@ public:
 
   llvm::hash_code getHash() const;
 
+  void clearPayload() { payload_.release(); }
+
   bool verify() const;
 };
 
