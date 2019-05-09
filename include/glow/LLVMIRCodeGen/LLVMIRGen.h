@@ -330,6 +330,14 @@ public:
   /// \returns true if a global symbol \p GV needs to be preserved in the module
   /// and not interalized during optimizations.
   virtual bool preserveSymbol(const llvm::GlobalValue &GV);
+  /// \returns true if an instruction \p I can be part of a data parallel
+  /// kernel. This gives backends a possibility to provide a custom logic to
+  /// decide on a per-instruction basis what can be part of data parallel
+  /// kernels. Typically an instruction which is isDataParallel() can be part of
+  /// a data parallel kernel. But a backend may decide that a specific
+  /// instruction \p I cannot be part of data-parallel kernels, because there is
+  /// no support for this functionality in this backend yet.
+  virtual bool canBePartOfDataParallelKernel(const glow::Instruction *I) const;
 };
 
 } // namespace glow

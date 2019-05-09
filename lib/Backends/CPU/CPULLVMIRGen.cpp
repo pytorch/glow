@@ -36,7 +36,7 @@ void CPULLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
 void CPULLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                           const glow::Instruction *I) {
   setCurrentDebugLocation(builder, I);
-  assert(!I->isDataParallel() &&
+  assert(!canBePartOfDataParallelKernel(I) &&
          "data parallel instructions are not handled here");
   // Perform any backend-specific code generation here and delegate everything
   // else to LLVMIRGen.
@@ -121,7 +121,8 @@ void CPULLVMIRGen::generateLLVMIRForDataParallelInstr(
     llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
     llvm::Value *loopCount) {
   setCurrentDebugLocation(builder, I);
-  assert(I->isDataParallel() && "Expected a data parallel instruction");
+  assert(canBePartOfDataParallelKernel(I) &&
+         "Expected a data parallel instruction");
   // Perform any backend-specific code generation here and delegate everything
   // else to LLVMIRGen.
   switch (I->getKind()) {
