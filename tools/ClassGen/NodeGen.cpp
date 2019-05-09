@@ -595,6 +595,16 @@ int main(int argc, char **argv) {
                     "row is one iff Values[i] equals to the corresponding "
                     "element of Data.");
 
+  BB.newNode("SpaceToDepth")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "BlockSize")
+      .addResultFromCtorArg()
+      .setDocstring("Given Input tensor of [N,H,W,C], where N is the batch "
+                    "axis, C is the channel or depth, H is the height and W is "
+                    "the width. This produces Output tensor of [N, "
+                    "H/BlockSize, W/BlockSize, C * "
+                    "BlockSize * BlockSize].");
+
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//

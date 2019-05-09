@@ -853,6 +853,13 @@ public:
   BatchOneHotNode *createBatchOneHot(llvm::StringRef name, NodeValue data,
                                      NodeValue lengths, NodeValue values);
 
+  /// Given Input tensor of [N,H,W,C], where N is the batch
+  /// axis, H is the height, W is
+  /// the width, C is the channel or depth. This produces Output tensor of [N,
+  /// H/blockSize, W/blockSize, C * blockSize * blockSize].
+  SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
+                                       unsigned blockSize);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.

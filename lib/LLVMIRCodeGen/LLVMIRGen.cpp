@@ -2003,6 +2003,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SpaceToDepthInstKind: {
+    auto *SI = cast<SpaceToDepthInst>(I);
+    auto *dest = SI->getDest();
+    auto *src = SI->getSrc();
+
+    auto *dstPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *dstDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+
+    unsigned blockSize = SI->getBlockSize();
+
+    auto *F = getFunction("space_to_depth", src->getElementType());
+    createCall(
+        builder, F,
+        {srcPtr, dstPtr, emitConstSizeT(builder, blockSize), srcDims, dstDims});
+    break;
+  }
+
   case Kinded::Kind::TransposeInstKind: {
     auto *TI = cast<TransposeInst>(I);
     auto *dest = TI->getDest();

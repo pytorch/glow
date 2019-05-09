@@ -73,6 +73,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::TransposeNodeKind:
   case Kinded::Kind::SliceNodeKind:
+  case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
 

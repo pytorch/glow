@@ -127,6 +127,10 @@ class ONNXModelLoader
   llvm::Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict);
 
+  /// Load SpaceToDepth ONNX operator.
+  llvm::Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.

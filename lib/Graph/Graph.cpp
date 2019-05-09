@@ -1765,6 +1765,22 @@ BatchOneHotNode *Function::createBatchOneHot(llvm::StringRef name,
   return addNode(new BatchOneHotNode(name, outTy, data, lengths, values));
 }
 
+SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
+                                               NodeValue input,
+                                               unsigned blockSize) {
+  assert(blockSize > 0 && "BlockSize must be >= 1.");
+
+  auto inputDim = input.dims();
+  assert(inputDim.size() == 4 && "Dimension size of 4 is expected.");
+  assert((inputDim[1] % blockSize == 0 && inputDim[2] % blockSize == 0) &&
+         "Height and Width needs to be multiple of blockSize.");
+  std::vector<size_t> newDim = {inputDim[0], inputDim[1] / blockSize,
+                                inputDim[2] / blockSize,
+                                inputDim[3] * blockSize * blockSize};
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
+  return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");

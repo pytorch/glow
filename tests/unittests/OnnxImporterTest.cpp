@@ -740,6 +740,36 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
   }
 }
 
+/// Test loading SpaceToDepth op from an ONNX model.
+TEST(onnx, spaceToDepth) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/spaceToDepth.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1, 2, 4, 4});
+    x.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  TransposeNode *TRN =
+      llvm::dyn_cast<TransposeNode>(save->getInput().getNode());
+  ASSERT_TRUE(TRN);
+  SpaceToDepthNode *STDN =
+      llvm::dyn_cast<SpaceToDepthNode>(TRN->getInput().getNode());
+  ASSERT_TRUE(STDN);
+  unsigned blockSize = STDN->getBlockSize();
+  EXPECT_EQ(blockSize, 2);
+}
+
 /// Test loading clip op from an ONNX model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(onnx, importClip) {
