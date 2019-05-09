@@ -368,17 +368,37 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   auto *S = F->createSave("ret", FC);
   bindings.allocate(S->getPlaceholder());
 
+  LoweredInfoMap loweredMapForQuant;
+  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+
+  // Get the MatMul node and the Batched_Add node.
+  Node *matMul, *batchedAdd;
+  for (Node &N : F->getNodes()) {
+    if (N.getKind() == Kinded::Kind::MatMulNodeKind) {
+      matMul = &N;
+    }
+    if (N.getKind() == Kinded::Kind::BatchedAddNodeKind) {
+      batchedAdd = &N;
+    }
+  }
+  ASSERT_TRUE(matMul);
+  ASSERT_TRUE(batchedAdd);
+
   quantization::QuantizationConfiguration quantConfig{{
       {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
        {0.2f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {0.3f, 0}},
       {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(matMul->getName()),
+       {0.6f, 0}},
+      {NodeQuantizationInfo::generateNodeOutputName(batchedAdd->getName()),
+       {0.6f, 0}},
   }};
 
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
-  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 loweredMapForQuant);
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
@@ -430,14 +450,33 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
   TensorQuantizationParams inputTQP = chooseQuantizationParams(
       -1.0, 6.0, quantization::Schema::Symmetric, ElemKind::Int8QTy);
-  TensorQuantizationParams fcTQP = chooseQuantizationParams(
+  TensorQuantizationParams matmulTQP = chooseQuantizationParams(
+      0.0, 10.0, quantization::Schema::Symmetric, ElemKind::Int8QTy);
+  TensorQuantizationParams batchedaddTQP = chooseQuantizationParams(
       0.0, 10.0, quantization::Schema::Symmetric, ElemKind::Int8QTy);
   TensorQuantizationParams biasTQP = chooseQuantizationParams(
       0, 20, quantization::Schema::Symmetric, ElemKind::Int8QTy);
 
   EXPECT_EQ(inputTQP.offset, 0);
-  EXPECT_EQ(fcTQP.offset, 0);
+  EXPECT_EQ(matmulTQP.offset, 0);
+  EXPECT_EQ(batchedaddTQP.offset, 0);
   EXPECT_EQ(biasTQP.offset, 0);
+
+  LoweredInfoMap loweredMapForQuant;
+  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+
+  // Get the MatMul node and the Batched_Add node.
+  Node *matMul, *batchedAdd;
+  for (Node &N : F->getNodes()) {
+    if (N.getKind() == Kinded::Kind::MatMulNodeKind) {
+      matMul = &N;
+    }
+    if (N.getKind() == Kinded::Kind::BatchedAddNodeKind) {
+      batchedAdd = &N;
+    }
+  }
+  ASSERT_TRUE(matMul);
+  ASSERT_TRUE(batchedAdd);
 
   // Note: Using dummy offset for the weights, as it should be
   // rowwise-quantized.
@@ -446,13 +485,17 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
        inputTQP},
       {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {1.0f, 1}},
       {NodeQuantizationInfo::generateNodeOutputName(BC->getName()), biasTQP},
-      {NodeQuantizationInfo::generateNodeOutputName(FC->getName()), fcTQP},
+      {NodeQuantizationInfo::generateNodeOutputName(matMul->getName()),
+       matmulTQP},
+      {NodeQuantizationInfo::generateNodeOutputName(batchedAdd->getName()),
+       batchedaddTQP},
   }};
 
   quantConfig.schema = quantization::Schema::Symmetric;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
-  quantization::quantizeFunction(F, quantConfig, *EE.getBackend());
+  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
+                                 loweredMapForQuant);
 
   // Check the graph structure after quantization.
   auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
