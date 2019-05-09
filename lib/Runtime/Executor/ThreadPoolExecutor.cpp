@@ -61,12 +61,14 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0), module_(root->module) {
+      inflightNodes_(0), module_(root->module), root_(root) {}
+
+void ExecutionState::init() {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<const DAGNode *> bfsQueue;
 
   // Place the root nodes in the queue.
-  for (const auto &node : root->children) {
+  for (const auto &node : root_->children) {
     bfsQueue.push(node);
   }
 
@@ -132,6 +134,7 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
       }
     }
   }
+  initialized_ = true;
 }
 
 std::unique_ptr<ExecutionContext>
@@ -257,26 +260,26 @@ void ThreadPoolExecutor::run(const DAGNode *root,
     return;
   }
 
-  std::shared_ptr<ExecutionState> executionState = nullptr;
+  std::shared_ptr<ExecutionState> executionState =
+      std::make_shared<ExecutionState>(runId, root, std::move(context),
+                                       std::move(cb));
+  executionState->init();
+
+  bool runIdAlreadyTaken = false;
   {
     std::lock_guard<std::mutex> lock(executionStatesMutex_);
+    auto result = executionStates_.emplace(runId, executionState);
+    runIdAlreadyTaken = !result.second;
+  }
 
-    // If the given run ID corresponds to a run already in progress, there is
-    // also nothing to do, but return an error. Give back the bindings so the
-    // caller can reuse it.
-    if (executionStates_.find(runId) != executionStates_.end()) {
-      cb(runId,
-         MAKE_ERR(
-             GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-             "ThreadPoolExecutor found another run with the same request id"),
-         std::move(context));
-      return;
-    }
-
-    // Otherwise, create execution state tracker object for this run ID.
-    executionState = std::make_shared<ExecutionState>(
-        runId, root, std::move(context), std::move(cb));
-    executionStates_.insert(std::make_pair(runId, executionState));
+  if (runIdAlreadyTaken) {
+    cb = executionState->getCallback();
+    cb(runId,
+       MAKE_ERR(
+           GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+           "ThreadPoolExecutor found another run with the same request id"),
+       executionState->getUniqueResultContextPtr());
+    return;
   }
 
   // Execute all child nodes of root.
@@ -299,6 +302,7 @@ void ThreadPoolExecutor::executeDAGNode(
     std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
                     "ThreadPoolExecutor::executeDAGNode");
+  assert(executionState->initialized_ && "Run state must be initialized");
   // If execution has already failed due to another node, don't bother running
   // this one.
   if (executionState->getErrorContainer().containsErr()) {

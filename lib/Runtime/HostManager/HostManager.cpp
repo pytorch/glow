@@ -118,6 +118,12 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
   if (networkIterator == networks_.end()) {
     return;
   }
+
+  // TODO: should return an error here rather than asserting:
+  // https://github.com/pytorch/glow/issues/2855
+  assert(networkIterator->second.refcount == 0 &&
+         "Cannot remove a network since there are outstanding runs");
+
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
@@ -174,8 +180,18 @@ HostManager::runNetwork(llvm::StringRef networkName,
                         ResultCBTy callback) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
-  std::lock_guard<std::mutex> networkLock(networkLock_);
-  if (networks_.find(networkName) == networks_.end()) {
+
+  NetworkData *network = nullptr;
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    auto it = networks_.find(networkName);
+    if (it != networks_.end()) {
+      network = &it->second;
+      network->refcount++;
+    }
+  }
+
+  if (network == nullptr) {
     callback(
         currentRun,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -187,6 +203,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   size_t activeRequestCount = activeRequestCount_++;
   if (activeRequestCount >= activeRequestLimit_) {
     activeRequestCount_--;
+    network->refcount--;
     callback(
         currentRun,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
@@ -199,10 +216,17 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   executor_->run(
       networks_[networkName].dag.root.get(), std::move(context), currentRun,
-      [&activeRequest = this->activeRequestCount_, callback,
+      [this, callback,
        name = networkName.str()](RunIdentifierTy runID, llvm::Error err,
                                  std::unique_ptr<ExecutionContext> context) {
-        --activeRequest;
+        --activeRequestCount_;
+        {
+          std::lock_guard<std::mutex> networkLock(networkLock_);
+          auto it = networks_.find(name);
+          if (it != networks_.end()) {
+            it->second.refcount--;
+          }
+        }
         TRACE_EVENT_INSTANT(context->getTraceContext(), "finish_" + name);
         callback(runID, std::move(err), std::move(context));
       });
