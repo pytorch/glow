@@ -145,15 +145,6 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {Convolution3DNode::BiasIdx}) &&
            (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
 
-  case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
-      return NI.allInputsAndOutputsHaveSameElemKind(
-          {ElemKind::FloatTy, ElemKind::Float16Ty});
-    }
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
-
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
