@@ -17,16 +17,23 @@
 #include "HostManagerOnnxifi.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace glow {
 namespace onnxifi {
 
 int32_t GlowNumDevices = 1;
+bool GlowDumpDebugTraces = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
                       llvm::cl::desc("Number of devices for Glow backend"),
                       llvm::cl::location(GlowNumDevices));
+
+static llvm::cl::opt<bool, true>
+    GlowDumpDebugTracesOpt("glow-dump-debug-traces",
+                           llvm::cl::desc("Dump a trace of each run to /tmp"),
+                           llvm::cl::location(GlowDumpDebugTraces));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackendId::createHostManager(glow::BackendKind kind) {
@@ -123,6 +130,13 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         TRACE_EVENT_END(ctx->getTraceContext(), "Onnxifi::callback");
         if (auto *traceContext = ctx->getTraceContext()) {
           setTraceEvents(traceEvents, traceContext);
+
+          if (GlowDumpDebugTraces) {
+            llvm::SmallString<64> path;
+            GLOW_ASSERT(!llvm::sys::fs::createTemporaryFile("glow-trace",
+                                                            "json", path));
+            traceContext->dump(path);
+          }
         }
 
         outputEvent->signal();

@@ -27,7 +27,8 @@ void TraceEvent::dumpTraceEvents(
     std::vector<TraceEvent> &events, llvm::StringRef filename,
     const std::string &processName,
     const std::map<int, std::string> &threadNames) {
-  llvm::errs() << "dumping " << events.size() << " trace events.\n";
+  llvm::errs() << "dumping " << events.size() << " trace events to "
+               << filename.str() << ".\n";
 
   auto process = processName.empty() ? "glow" : processName;
 
