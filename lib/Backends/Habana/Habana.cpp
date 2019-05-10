@@ -29,6 +29,7 @@
 
 #include "perf_lib_layer_params.h"
 
+#include <glog/logging.h>
 #include <mutex>
 #include <unordered_map>
 
@@ -410,6 +411,34 @@ bool HabanaWaitHandle::wait() {
   return status == synSuccess;
 }
 
+/// Retrieve and dump debug info about a topology.
+void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
+  uint32_t numOfInputs;
+  uint32_t numOfOutputs;
+  uint32_t numOfIntermediates;
+  chk(synGetIOTensorsAmount(deviceId, topologyId, numOfInputs, numOfOutputs,
+                            numOfIntermediates));
+
+  using TensorNames = char[ENQUEUE_TENSOR_NAME_MAX_SIZE];
+  std::vector<TensorNames> inputTensorNames(numOfInputs);
+  std::vector<TensorNames> outputTensorNames(numOfOutputs);
+  std::vector<TensorNames> intermediateTensorNames(numOfIntermediates);
+
+  chk(synGetTensorsName(deviceId, topologyId, inputTensorNames.data(),
+                        numOfInputs, outputTensorNames.data(), numOfOutputs,
+                        intermediateTensorNames.data(), numOfIntermediates));
+
+  for (auto const &in : inputTensorNames) {
+    VLOG(1) << "Topology input: " << in;
+  }
+  for (auto const &out : outputTensorNames) {
+    VLOG(1) << "Topology output: " << out;
+  }
+  for (auto const &intermediate : intermediateTensorNames) {
+    VLOG(1) << "Topology intermediate: " << intermediate;
+  }
+}
+
 HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
                                const std::string &recipeName,
                                PlaceholderList &&inputs,
@@ -494,6 +523,9 @@ void HabanaFunction::execute(ExecutionContext *context) {
     TRACE_EVENT_END(tc, "getSynapseLock");
     TRACE_EVENT_BEGIN(tc, "synActivateTopology");
     chk(synActivateTopology(deviceId, topologyId));
+    if (VLOG_IS_ON(1)) {
+      dumpTopologyInfo(deviceId, topologyId);
+    }
     TRACE_EVENT_END(tc, "synActivateTopology");
     TRACE_EVENT_BEGIN(tc, "synEnqueue");
     chk(synEnqueueByName(
