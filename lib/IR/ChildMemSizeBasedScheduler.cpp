@@ -98,24 +98,27 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
     orderedChildren.push_back(N->getPredicate());
   }
 
-  // SaveNode hack:
   // We don't model memory dependencies, but we still need to honor them.
-  // Make sure the SaveNode happens after the last use of the output
-  // placeholder.
-  if (auto *save = dyn_cast<SaveNode>(N)) {
-    auto *destination = save->getOutput().getNode();
+  // Make sure the a node mutating any of its inputs happens after the last
+  // non-mutating use of the operand being mutated. Some examples of such nodes
+  // would be SaveNode and QuantizationProfileNode.
+  for (unsigned idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
+    // We don't care about inputs that are not mutated by the node.
+    if (!N->isOverwrittenNthInput(idx)) {
+      continue;
+    }
+    auto mutatedInput = N->getNthInput(idx);
+    auto *destination = mutatedInput.getNode();
     for (NodeUse &use : destination->getUsers()) {
       Node *user = use.getUser();
-      if (user == save) {
+      if (user == N) {
         continue;
       }
-      // Storage nodes may have users scattered across different functions.
+      // Nodes may have users scattered across different functions.
       // Only accounts for the ones in that function.
       if (&G_ != user->getParent()) {
         continue;
       }
-      assert(!isa<SaveNode>(user) &&
-             "Placeholder must be saved at most once in each function");
       orderedChildren.push_back(user);
     }
   }
@@ -148,9 +151,34 @@ void ChildMemSizeBasedScheduler::orderChildNodesAndSchedule(Node *N) {
     orderChildNodesAndSchedule(child);
   }
 
-  // Schedule the node after all its children are scheduled.
-  DEBUG_GLOW(llvm::dbgs() << "Scheduled node: " << N->getName() << "\n");
+  // Schedule the node after all its children are scheduled. We need to perform
+  // an extra isScheduled check here, because the code below may have scheduled
+  // the current node while scheduling its children.
+  if (isScheduled(N)) {
+    return;
+  }
   scheduled_.push_back(N);
+  // If this node has a user which does not have any users and which does not
+  // require any additional memory, schedule it here, because we don't want to
+  // extend the lifetime of this value for no reason. We want to execute and get
+  // rid of this node as soon as possible to reduce the memory pressure.
+  for (NodeUse &use : N->getUsers()) {
+    Node *user = use.getUser();
+    // Users may be scattered across different functions.
+    // Only accounts for the ones in that function.
+    if (&G_ != user->getParent()) {
+      continue;
+    }
+    // Bail if a nodes has users, because nodes that have users can't be
+    // scheduled safely without violating dependencies.
+    if (user->getNumUsers()) {
+      continue;
+    }
+    // Schedule a node if it does not require any additional memory.
+    if (resultMemSize_[user] == 0) {
+      orderChildNodesAndSchedule(user);
+    }
+  }
 }
 
 void ChildMemSizeBasedScheduler::scheduleNodes() {
