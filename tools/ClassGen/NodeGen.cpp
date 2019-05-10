@@ -312,8 +312,16 @@ int main(int argc, char **argv) {
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
-      .setDocstring("Performs matrix multiplication between the LHS RHS."
+      .setDocstring("Performs matrix multiplication between the LHS and RHS."
                     "Example: (A, Z) x (Z, B) => (A, B)");
+
+  BB.newNode("BatchMatMul")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .setDocstring("Performs batch matrix multiplication between the LHS and "
+                    "RHS. The operands are a stack of two dimensional "
+                    "matrices. Example: (N, A, Z) x (N, Z, B) => (N, A, B)");
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")

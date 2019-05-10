@@ -477,14 +477,7 @@ protected:
     // BatchMatMul sometimes is actually just a matmul, depending on dimensions
     // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
     if (isBatched && LHS.dims().size() == 3) {
-      // BatchMatMul can be either multiplication of K matrices and another
-      // K matrices, or broadcasted multiplication of K matrices and one other
-      // matrix.
-      if (RHS.dims().size() == 3) {
-        node = G_.createParallelBatchMatMul(opName, LHS, RHS);
-      } else {
-        node = G_.createBroadcastedBatchMatMul(opName, LHS, RHS);
-      }
+      node = G_.createBatchMatMul(opName, LHS, RHS);
     } else {
       node = G_.createMatMul(opName, LHS, RHS);
     }

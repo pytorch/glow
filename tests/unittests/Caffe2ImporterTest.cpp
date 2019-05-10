@@ -554,28 +554,22 @@ TEST(caffe2, batchedMatmulRHS) {
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
   // starting from the output.
-  // Batched matmul with broadcasted RHS are lowered
-  // to a regular matmul, where LHS is reshaped from
-  // a 3D tensor to a flattened matrix.
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *reshapeResult =
-      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(reshapeResult);
-  auto *matmul =
-      llvm::dyn_cast<MatMulNode>(reshapeResult->getInput().getNode());
-  ASSERT_TRUE(matmul);
-  const size_t matmulDims[] = {30, 10};
-  EXPECT_EQ(matmul->dims(0), llvm::makeArrayRef(matmulDims));
-  auto *lhs = llvm::dyn_cast<ReshapeNode>(matmul->getLHS().getNode());
-  ASSERT_TRUE(lhs);
-  auto *lhsInput = lhs->getInput().getNode();
-  ASSERT_TRUE(llvm::isa<Placeholder>(lhsInput));
-  auto *transpose = llvm::dyn_cast<TransposeNode>(matmul->getRHS().getNode());
-  ASSERT_TRUE(transpose);
-  ASSERT_TRUE(llvm::isa<Placeholder>(transpose->getInput().getNode()));
+  auto *BMMN = llvm::dyn_cast<BatchMatMulNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(BMMN);
+  const size_t batchMatmulDims[] = {3, 10, 10};
+  EXPECT_EQ(BMMN->getResult().dims(), llvm::makeArrayRef(batchMatmulDims));
+  EXPECT_TRUE(llvm::isa<Placeholder>(BMMN->getLHS()));
+  auto *tileRHS = llvm::dyn_cast<TileNode>(BMMN->getRHS());
+  ASSERT_TRUE(tileRHS);
+  auto *reshapeRHS = llvm::dyn_cast<ReshapeNode>(tileRHS->getInput());
+  ASSERT_TRUE(reshapeRHS);
+  auto *transposeRHS = llvm::dyn_cast<TransposeNode>(reshapeRHS->getInput());
+  ASSERT_TRUE(transposeRHS);
+  EXPECT_TRUE(llvm::isa<Placeholder>(transposeRHS->getInput()));
   // Check that the last two dimensions are swapped.
   const unsigned_t shuffle[] = {1, 0};
-  EXPECT_EQ(transpose->getShuffle(), llvm::makeArrayRef(shuffle));
+  EXPECT_EQ(transposeRHS->getShuffle(), llvm::makeArrayRef(shuffle));
   // We don't actually check that the output is correct, because this
   // should be covered in the OperatorTest for MatMul already.
 }
@@ -605,12 +599,9 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
 
-  // Check that the shape of the output matches what Caffe2 expects.
-  std::vector<size_t> expectedDims = {3, 10, 10};
-  EXPECT_TRUE(output->dims().vec() == expectedDims);
   // High level check on the content of the graph.
-  // We have 6 slices, 3 matmuls, 1 concat, 7 reshapes, 1 save.
-  EXPECT_EQ(F->getNodes().size(), 18);
+  // We have a BatchMatMul and a Save.
+  EXPECT_EQ(F->getNodes().size(), 2);
   // With have 2 inputs and one outputs.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
@@ -618,44 +609,16 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   // Parallel Batched matmul is lowered to a sequence of slices, reshapes and
   // regular matmuls.
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *reshapeResult =
-      llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(reshapeResult);
-  auto *concat =
-      llvm::dyn_cast<ConcatNode>(reshapeResult->getInput().getNode());
-  ASSERT_TRUE(concat);
-  for (size_t i = 0; i < 3; i++) {
-    auto *matmul = llvm::dyn_cast<MatMulNode>(concat->getNthInput(i).getNode());
-    ASSERT_TRUE(matmul);
-    const size_t matmulDims[] = {10, 10};
-    EXPECT_EQ(matmul->dims(0), llvm::makeArrayRef(matmulDims));
+  auto *BMMN = llvm::dyn_cast<BatchMatMulNode>(saveNode->getInput());
+  ASSERT_TRUE(BMMN);
 
-    const size_t sliceStart[] = {i, 0, 0};
-    // LHS
-    auto *lhsReshape = llvm::dyn_cast<ReshapeNode>(matmul->getLHS().getNode());
-    ASSERT_TRUE(lhsReshape);
-    const size_t lhsReshapeDims[] = {10, 7};
-    EXPECT_EQ(lhsReshape->getDims(), llvm::makeArrayRef(lhsReshapeDims));
-    auto *lhsSlice =
-        llvm::dyn_cast<SliceNode>(lhsReshape->getInput().getNode());
-    ASSERT_TRUE(lhsSlice);
-    EXPECT_EQ(lhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *lhsInput =
-        llvm::dyn_cast<Placeholder>(lhsSlice->getInput().getNode());
-    ASSERT_TRUE(lhsInput);
-    // RHS
-    auto *rhsReshape = llvm::dyn_cast<ReshapeNode>(matmul->getRHS().getNode());
-    ASSERT_TRUE(rhsReshape);
-    const size_t rhsReshapeDims[] = {7, 10};
-    EXPECT_EQ(rhsReshape->getDims(), llvm::makeArrayRef(rhsReshapeDims));
-    auto *rhsSlice =
-        llvm::dyn_cast<SliceNode>(rhsReshape->getInput().getNode());
-    ASSERT_TRUE(rhsSlice);
-    EXPECT_EQ(rhsSlice->getStart(), llvm::makeArrayRef(sliceStart));
-    auto *rhsInput =
-        llvm::dyn_cast<Placeholder>(rhsSlice->getInput().getNode());
-    ASSERT_TRUE(rhsInput);
-  }
+  const size_t lhsDims[] = {3, 10, 7};
+  EXPECT_EQ(BMMN->getLHS().dims(), llvm::makeArrayRef(lhsDims));
+  const size_t rhsDims[] = {3, 7, 10};
+  EXPECT_EQ(BMMN->getRHS().dims(), llvm::makeArrayRef(rhsDims));
+  const size_t resultDims[] = {3, 10, 10};
+  EXPECT_EQ(BMMN->getResult().dims(), llvm::makeArrayRef(resultDims));
+
   // We don't actually check that the output is correct, because this
   // should be covered in the OperatorTest for MatMul already.
 }
@@ -2273,21 +2236,34 @@ TEST(caffe2, validateNodeOrder) {
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
       GLOW_DATA_PATH
-      "tests/models/caffe2Models/parallel_matmul_predict_net.pbtxt");
+      "tests/models/caffe2Models/batch_box_cox_predict_net.pbtxt");
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
 
-  Tensor inputs_0(ElemKind::FloatTy, {3, 10, 7});
-  Tensor inputs_1(ElemKind::FloatTy, {3, 7, 10});
+  PlaceholderBindings bindings;
+
+  // Input tensors.
+  const size_t kRows = 10;
+  const size_t kCols = 5;
+  Tensor data(ElemKind::FloatTy, {kRows, kCols});
+  Tensor lambda1(ElemKind::FloatTy, {kCols});
+  Tensor lambda2(ElemKind::FloatTy, {kCols});
+  Tensor O(ElemKind::FloatTy, {kRows, kCols});
   // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
+  // will not depend on anything from the loader.
   {
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"inputs_0", "inputs_1"},
-                               {&inputs_0.getType(), &inputs_1.getType()}, *F);
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
+        {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod,
+                                  {"data", "lambda1", "lambda2"},
+                                  {&data, &lambda1, &lambda2});
   }
 
-  // We have 6 slices, 3 matmuls, 1 concat, 7 reshapes, 1 save.
+  // We should have 2 Broadcast (2 Reshape and 2 Tile), 2 Add, 4 Splat,
+  // 1 Max, 1 Log, 1 Pow, 1 Sub, 1 Div, 1 CmpEQ, 1 Select and 1 Output =
+  // 18 nodes in total.
   EXPECT_EQ(F->getNodes().size(), 18);
   // Make sure that nodes are sorted by name.
   EXPECT_TRUE(std::is_sorted(

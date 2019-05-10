@@ -527,6 +527,38 @@ bool MatMulNode::verify() const {
   return isValid;
 }
 
+bool BatchMatMulNode::verify() const {
+  auto LHS = getLHS();
+  auto RHS = getRHS();
+  auto dest = getResult();
+
+  bool isValid = expectCompareTrue("LHS input must be 3 dimensional.",
+                                   LHS.dims().size(), size_t(3), this);
+  isValid &= expectCompareTrue("RHS input must be 3 dimensional.",
+                               RHS.dims().size(), size_t(3), this);
+  isValid &= expectCompareTrue("Result must be 3 dimensional.",
+                               dest.dims().size(), size_t(3), this);
+  isValid &= expectCompareTrue("LHS and RHS inputs must have same batch size.",
+                               LHS.dims()[0], RHS.dims()[0], this);
+  isValid &= expectCompareTrue("Result must have same batch size as inputs.",
+                               LHS.dims()[0], dest.dims()[0], this);
+
+  const size_t numBatches = LHS.dims()[0];
+  const size_t N = LHS.dims()[1];
+  const size_t M = LHS.dims()[2];
+  const size_t P = RHS.dims()[2];
+  isValid &= expectCompareTrue("Inputs have invalid dimensions.", RHS.dims()[1],
+                               M, this);
+  isValid &= expectCompareTrue("Result has invalid dimensions given inputs.",
+                               dest.dims(), {numBatches, N, P}, this);
+
+  auto elemType = dest.getType()->getElementType();
+  isValid &= checkType(LHS, elemType, this);
+  isValid &= checkType(RHS, elemType, this);
+
+  return isValid;
+}
+
 bool SigmoidNode::verify() const {
   return verifySigmoid(getInput(), getResult());
 }

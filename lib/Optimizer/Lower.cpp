@@ -733,6 +733,50 @@ static void lowerReplaceNaNNode(Function *F, LoweredInfoMap *loweredMap,
   replaceAllUsesOfWith(loweredMap, RN.getResult(), SN);
 }
 
+/// Implement BatchMatMul \p BMMN in \p F via a series of Slices, MatMuls, and a
+/// final Concat.
+static void lowerBatchMatMulNode(Function *F, LoweredInfoMap *loweredMap,
+                                 const BatchMatMulNode &BMMN) {
+  auto name = BMMN.getName();
+  NodeValue lhs = BMMN.getLHS();
+  NodeValue rhs = BMMN.getRHS();
+  NodeValue dest = BMMN.getResult();
+
+  // LHS = {numBatches, N, M}
+  // RHS = {numBatches, M, P}
+  const size_t numBatches = lhs.dims()[0];
+  const size_t N = lhs.dims()[1];
+  const size_t M = lhs.dims()[2];
+  const size_t P = rhs.dims()[2];
+
+  // Lower to Slices, MatMuls, and a final Concat. Multiply i-th LHS matrix
+  // {N, M} by i-th RHS matrix {M, P} to get final matrix {numBatches, N, P}.
+  std::vector<NodeValue> MMS(numBatches);
+  for (size_t i = 0; i < numBatches; i++) {
+    SliceNode *sliceA =
+        F->createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
+                       {i, 0, 0}, {i + 1, N, M});
+    SliceNode *sliceB =
+        F->createSlice(name.str() + ".sliceB." + std::to_string(i), rhs,
+                       {i, 0, 0}, {i + 1, M, P});
+    ReshapeNode *reshapeA =
+        F->createReshape(sliceA->getName().str() + ".reshape", sliceA, {N, M});
+    ReshapeNode *reshapeB =
+        F->createReshape(sliceB->getName().str() + ".reshape", sliceB, {M, P});
+    MMS[i] = F->createMatMul(name.str() + ".MatMul." + std::to_string(i),
+                             reshapeA, reshapeB);
+  }
+  // Concat all the resulting MatMuls back together.
+  ConcatNode *CN = F->createConcat(name.str() + ".concat", MMS, /* axis */ 0);
+
+  // Reshape the result back to the expected batch output shape, with the
+  // first dimension the number of batches.
+  ReshapeNode *RN =
+      F->createReshape(name.str() + ".reshapeResult", CN, {numBatches, N, P});
+
+  replaceAllUsesOfWith(loweredMap, BMMN.getResult(), RN);
+}
+
 /// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
 /// log the lowering info of what was replaced by what via output names.
 static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
@@ -785,6 +829,8 @@ static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
     lowerChannelShuffleNode(F, loweredMap, *CSN);
   } else if (auto *RN = dyn_cast<ReplaceNaNNode>(node)) {
     lowerReplaceNaNNode(F, loweredMap, *RN);
+  } else if (auto *BMMN = dyn_cast<BatchMatMulNode>(node)) {
+    lowerBatchMatMulNode(F, loweredMap, *BMMN);
   }
 }
 

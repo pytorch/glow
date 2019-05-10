@@ -600,20 +600,11 @@ public:
   MatMulNode *createMatMul(llvm::StringRef name, TypeRef outTy, NodeValue lhs,
                            NodeValue rhs);
 
-  /// \p lhs is a 3d matrix, where the leading dimension is the batch size. \p
-  /// rhs is a 2d matrix, which every batch from \p lhs (a 2d matrix) is
-  /// multiplied by. This is implemented via reshaping \p lhs to be a 2d matrix,
-  /// multiplying by \p rhs, and then reshaping the result back to 3d.
-  Node *createBroadcastedBatchMatMul(llvm::StringRef name, NodeValue lhs,
-                                     NodeValue rhs);
-
   /// \p lhs and \p rhs are 3d matrices, where the leading dimension is the
   /// batch size. For each batch element number i, lhs.slice(i) is multiplied by
-  /// rhs.slice(i). This is implemented by unrolling loop over batch size and
-  /// issuing multiple slice, reshape and matmul instructions, and then
-  /// concatenating results and bringing them back to 3d shape.
-  Node *createParallelBatchMatMul(llvm::StringRef name, NodeValue lhs,
-                                  NodeValue rhs);
+  /// rhs.slice(i).
+  BatchMatMulNode *createBatchMatMul(llvm::StringRef name, NodeValue lhs,
+                                     NodeValue rhs);
 
   /// Create a node, performing BatchedReduceAdd operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
