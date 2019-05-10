@@ -171,7 +171,7 @@ static Function *createNetwork(Module &mod, PlaceholderBindings &bindings,
                                   "expected", false);
   bindings.allocate(Y);
 
-  std::vector<Node *> slicesX;
+  std::vector<NodeValue> slicesX;
   std::vector<Node *> expectedX;
 
   for (unsigned t = 0; t < numSteps; t++) {

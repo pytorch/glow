@@ -994,9 +994,9 @@ public:
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
   void createSimpleRNN(PlaceholderBindings &bindings,
                        llvm::StringRef namePrefix,
-                       const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
-                       unsigned hiddenSize, unsigned outputSize,
-                       std::vector<NodeValue> &outputs);
+                       const llvm::ArrayRef<NodeValue> inputs,
+                       unsigned batchSize, unsigned hiddenSize,
+                       unsigned outputSize, std::vector<NodeValue> &outputs);
 
   /// Create an unrolled single-layer GRU cell with \p hiddenSize
   /// dimensionality of the hidden state and \p outputSize dimensionality of the
@@ -1007,7 +1007,7 @@ public:
   /// activation of the output layer, unrolled over time.
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
   void createGRU(PlaceholderBindings &bindings, llvm::StringRef namePrefix,
-                 const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                 const llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                  unsigned hiddenSize, unsigned outputSize,
                  std::vector<NodeValue> &outputs);
 
@@ -1020,7 +1020,7 @@ public:
   /// activation of the output layer, unrolled over time.
   // The dimensionality of the output variables is \p batchSize x \p outputSize.
   void createLSTM(PlaceholderBindings &bindings, llvm::StringRef namePrefix,
-                  const llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                  const llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
   /// @}

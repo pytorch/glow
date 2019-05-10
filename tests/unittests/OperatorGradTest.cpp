@@ -36,8 +36,8 @@ protected:
   /// outputNode's forward value, because RegressionNode's grad is outputNode-0.
   ///
   /// \param outputNode Node that contains result of H(Vars).
-  VariableGradientsList computeVarGrads(Node *outputNode) {
-    auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, outputNode->dims(0),
+  VariableGradientsList computeVarGrads(NodeValue outputNode) {
+    auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, outputNode.dims(),
                                        "exp", false);
     bindings_.allocate(Exp)->zero();
 

@@ -749,8 +749,7 @@ protected:
       keepDims = (bool)keepdims;
     }
 
-    Node *node = nullptr;
-
+    NodeValue node;
     if (typeName == "ReduceMean") {
       node = G_.createBatchedReduceMean(opName, in, axes);
     } else {
@@ -760,7 +759,7 @@ protected:
     // Our batched reduce add/mean does not keep the dim; reshape if necessary.
     if (keepDims) {
 
-      std::vector<size_t> shape = node->dims(0);
+      std::vector<size_t> shape = node.dims();
 
       // Add removed axes. Requires increasing order sort - done above.
       for (const auto &axis : shapeAxes) {

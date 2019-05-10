@@ -3358,7 +3358,7 @@ TEST_P(OperatorTest, simpleCmpSelectPredication) {
   bindings_.allocate(inputs)->getHandle().clear(1);
 
   Node *cnt = counters;
-  Node *data = inputs;
+  NodeValue data = inputs;
   Node *const1 = F_->createSplat("const1", counters->getType(), 1.0);
   Node *const0 = F_->createSplat("const0", counters->getType(), 0.0);
 
@@ -3366,8 +3366,7 @@ TEST_P(OperatorTest, simpleCmpSelectPredication) {
     cnt = F_->createSub("sub1", cnt, const1);
     Node *pred = F_->createCmpLTE("cmp", const0, cnt);
 
-    assert(data->getNumResults() == 1 && "Data should have a single output.");
-    Node *const2 = F_->createSplat("const2", data->getType(0), 2.0);
+    Node *const2 = F_->createSplat("const2", data.getType(), 2.0);
     Node *newData = F_->createMul("mul2x", data, const2);
 
     data = F_->createSelect("select", pred, newData, data);
@@ -5689,29 +5688,29 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
   bindings.allocate(tensor4D)->getHandle<DataType>().randomize(0, 100,
                                                                mod.getPRNG());
 
-  auto *reshape4Dto2DAxis1 = F->createFlatten("flat4Dto2Da1", tensor4D, 1);
-  EXPECT_EQ(reshape4Dto2DAxis1->dims(0).size(), 2);
-  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[0], 3);
-  EXPECT_EQ(reshape4Dto2DAxis1->dims(0)[1], 24);
+  NodeValue reshape4Dto2DAxis1 = F->createFlatten("flat4Dto2Da1", tensor4D, 1);
+  EXPECT_EQ(reshape4Dto2DAxis1.dims().size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis1.dims()[0], 3);
+  EXPECT_EQ(reshape4Dto2DAxis1.dims()[1], 24);
 
-  auto *reshape4Dto2DAxis2 = F->createFlatten("flat4Dto2Da2", tensor4D, 2);
-  EXPECT_EQ(reshape4Dto2DAxis2->dims(0).size(), 2);
-  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[0], 6);
-  EXPECT_EQ(reshape4Dto2DAxis2->dims(0)[1], 12);
+  NodeValue reshape4Dto2DAxis2 = F->createFlatten("flat4Dto2Da2", tensor4D, 2);
+  EXPECT_EQ(reshape4Dto2DAxis2.dims().size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis2.dims()[0], 6);
+  EXPECT_EQ(reshape4Dto2DAxis2.dims()[1], 12);
 
-  auto *reshape4Dto2DAxis3 = F->createFlatten("flat4Dto2Da3", tensor4D, 3);
-  EXPECT_EQ(reshape4Dto2DAxis3->dims(0).size(), 2);
-  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[0], 24);
-  EXPECT_EQ(reshape4Dto2DAxis3->dims(0)[1], 3);
+  NodeValue reshape4Dto2DAxis3 = F->createFlatten("flat4Dto2Da3", tensor4D, 3);
+  EXPECT_EQ(reshape4Dto2DAxis3.dims().size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis3.dims()[0], 24);
+  EXPECT_EQ(reshape4Dto2DAxis3.dims()[1], 3);
 
   // Now, let us do the fifth (4) axis.
   // This comes straight from caffe2 because flattening is
   // supported for every axis up and including the rank of a tensor.
   // The rank of this tensor is 4, so axis 4 is fine.
-  auto *reshape4Dto2DAxis4 = F->createFlatten("flat4Dto2Da4", tensor4D, 4);
-  EXPECT_EQ(reshape4Dto2DAxis4->dims(0).size(), 2);
-  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[0], 72);
-  EXPECT_EQ(reshape4Dto2DAxis4->dims(0)[1], 1);
+  NodeValue reshape4Dto2DAxis4 = F->createFlatten("flat4Dto2Da4", tensor4D, 4);
+  EXPECT_EQ(reshape4Dto2DAxis4.dims().size(), 2);
+  EXPECT_EQ(reshape4Dto2DAxis4.dims()[0], 72);
+  EXPECT_EQ(reshape4Dto2DAxis4.dims()[1], 1);
 
   // This one is weird because we flatten something that is already flat, but
   // again because flattening is supported for every axis up and including the
@@ -5721,10 +5720,10 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
   bindings.allocate(tensor1D)->getHandle<DataType>().randomize(0, 100,
                                                                mod.getPRNG());
 
-  auto *reshape1Dto2DAxis1 = F->createFlatten("flat1Dto2D", tensor1D, 1);
-  EXPECT_EQ(reshape1Dto2DAxis1->dims(0).size(), 2);
-  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[0], 15);
-  EXPECT_EQ(reshape1Dto2DAxis1->dims(0)[1], 1);
+  NodeValue reshape1Dto2DAxis1 = F->createFlatten("flat1Dto2D", tensor1D, 1);
+  EXPECT_EQ(reshape1Dto2DAxis1.dims().size(), 2);
+  EXPECT_EQ(reshape1Dto2DAxis1.dims()[0], 15);
+  EXPECT_EQ(reshape1Dto2DAxis1.dims()[1], 1);
 
   // Save all the reshapes so that the optimizations won't kill the network.
   auto *save1Dto2D = F->createSave("save1Dto2D", reshape1Dto2DAxis1);

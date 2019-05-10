@@ -550,29 +550,29 @@ TEST_P(MLTest, learnSingleValueConcat) {
 }
 
 void buildGRU(PlaceholderBindings &bindings, Function *F,
-              const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              const std::vector<NodeValue> &slicesX, unsigned hiddenSize,
               unsigned outputSize, std::vector<NodeValue> &outputs) {
   return F->createGRU(bindings, "GRU", slicesX, 1, hiddenSize, outputSize,
                       outputs);
 };
 
 void buildRNN(PlaceholderBindings &bindings, Function *F,
-              const std::vector<Node *> &slicesX, unsigned hiddenSize,
+              const std::vector<NodeValue> &slicesX, unsigned hiddenSize,
               unsigned outputSize, std::vector<NodeValue> &outputs) {
   return F->createSimpleRNN(bindings, "SimpleRNN", slicesX, 1, hiddenSize,
                             outputSize, outputs);
 };
 
 void buildLSTM(PlaceholderBindings &bindings, Function *F,
-               const std::vector<Node *> &slicesX, unsigned hiddenSize,
+               const std::vector<NodeValue> &slicesX, unsigned hiddenSize,
                unsigned outputSize, std::vector<NodeValue> &outputs) {
   return F->createLSTM(bindings, "LSTM", slicesX, 1, hiddenSize, outputSize,
                        outputs);
 };
 
 using TCellGenerator = void (*)(PlaceholderBindings &, Function *,
-                                const std::vector<Node *> &, unsigned, unsigned,
-                                std::vector<NodeValue> &);
+                                const std::vector<NodeValue> &, unsigned,
+                                unsigned, std::vector<NodeValue> &);
 
 void testRNNCell(TCellGenerator cell) {
   TrainingConfig TC;
@@ -601,7 +601,7 @@ void testRNNCell(TCellGenerator cell) {
   bindings.allocate(Y);
 
   // Extract a slice for each input.
-  std::vector<Node *> XSliced;
+  std::vector<NodeValue> XSliced;
 
   for (unsigned i = 0; i < NumVectors; ++i) {
     std::string Name{"X"};
