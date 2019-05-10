@@ -676,7 +676,8 @@ void LLVMIRGen::emitDataParallelKernelImpl(
   // instruction.
   for (auto &BI : bundle) {
     // Name of the stacked operation to be invoked.
-    assert(BI->isDataParallel() && "Data parallel operation is expected");
+    assert(canBePartOfDataParallelKernel(BI) &&
+           "Data parallel operation is expected");
     generateLLVMIRForDataParallelInstr(kernelBuilder, BI, kernelFunc,
                                        bufferToArgNum, kernelLoopIdx);
   }
@@ -786,7 +787,7 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
   // instructions and emit them.
   llvm::SmallVector<const Instruction *, 32> bundle;
   for (auto &I : instrs) {
-    if (!I.isDataParallel()) {
+    if (!canBePartOfDataParallelKernel(&I)) {
       // Ignore memory management instructions as they are handled by the
       // MemoryManager and are NOPs for a JIT.
       if (isa<AllocActivationInst>(&I) || isa<DeallocActivationInst>(&I) ||
@@ -845,7 +846,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     llvm::Function *kernel, llvm::DenseMap<Value *, int> &bufferToArgNum,
     llvm::Value *loopCount) {
   setCurrentDebugLocation(builder, I);
-  assert(I->isDataParallel() && "Expected a data parallel instruction");
+  assert(canBePartOfDataParallelKernel(I) &&
+         "Instruction cannot be part of a data parallel kernel");
   switch (I->getKind()) {
 
 #define ARITHMETIC_UNARY_OP_WITH_IMM_CASE(INST_NAME_, FUN_NAME_, VALUE_)       \
@@ -1341,7 +1343,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
 void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                        const glow::Instruction *I) {
   setCurrentDebugLocation(builder, I);
-  assert(!I->isDataParallel() &&
+  assert((!canBePartOfDataParallelKernel(I)) &&
          "data parallel instructions are not handled here");
   switch (I->getKind()) {
   case Kinded::Kind::MatMulInstKind: {
@@ -2391,4 +2393,9 @@ unsigned LLVMIRGen::getLibjitSizeTWidth() const {
 
 bool LLVMIRGen::isEligibleForSpecialization(const llvm::CallInst *call) {
   return true;
+}
+
+bool LLVMIRGen::canBePartOfDataParallelKernel(
+    const glow::Instruction *I) const {
+  return I->isDataParallel();
 }
