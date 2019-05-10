@@ -370,3 +370,18 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
 }
+
+TEST_F(PartitionerTest, SelectRepFunc) {
+  auto *inA = mod_.createConstant(ElemKind::FloatTy, {2}, "A");
+  auto *inB = mod_.createConstant(ElemKind::FloatTy, {2}, "B");
+  inA->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  inB->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+
+  auto *plus = F_->createAdd("AplusB", inA, inB);
+  F_->createSave("save", plus);
+
+  Partitioner myPartitioner(&mod_, {{1000000}, {1000000}, {1000000}});
+
+  auto err = myPartitioner.Partition();
+  EXPECT_FALSE(errToBool(std::move(err)));
+}
