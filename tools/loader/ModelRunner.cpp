@@ -45,6 +45,8 @@ int main(int argc, char **argv) {
   Placeholder *output = EXIT_ON_ERR(LD->getSingleOutput());
   auto *outputT = bindings.allocate(output);
 
+  std::string modelName = loader.getFunction()->getName().str();
+
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
   loader.compile(bindings);
@@ -53,10 +55,19 @@ int main(int argc, char **argv) {
   if (!emittingBundle()) {
     loader.runInference(bindings);
 
-    llvm::outs() << "Model: " << loader.getFunction()->getName() << "\n";
+    llvm::outs() << "Model: " << modelName << "\n";
 
     // Print out the result of output operator.
-    outputT->getHandle().dump();
+    switch (outputT->getElementType()) {
+    case ElemKind::FloatTy:
+      outputT->getHandle<float>().dump();
+      break;
+    case ElemKind::Int8QTy:
+      outputT->getHandle<int8_t>().dump();
+      break;
+    default:
+      GLOW_UNREACHABLE("Unexpected output type");
+    }
 
     // If profiling, generate and serialize the quantization infos now that we
     // have run inference to gather the profile.
