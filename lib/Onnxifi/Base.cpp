@@ -182,7 +182,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
 void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
                            TraceContext *traceContext) {
-  if (!traceEvents || traceContext) {
+  if (!traceEvents || !traceContext) {
     return;
   }
 
