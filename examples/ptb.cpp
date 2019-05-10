@@ -207,7 +207,7 @@ void testPTB() {
                                   "selected", false);
   bindings.allocate(Y);
 
-  std::vector<Node *> slicesX;
+  std::vector<NodeValue> slicesX;
 
   for (unsigned t = 0; t < numSteps; t++) {
     auto XtName = "X." + std::to_string(t);

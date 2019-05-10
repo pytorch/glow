@@ -2137,13 +2137,13 @@ Node *Function::createElementwiseLinear(llvm::StringRef name, NodeValue X,
 
 void Function::createGRU(PlaceholderBindings &bindings,
                          llvm::StringRef namePrefix,
-                         llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                         llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                          unsigned hiddenSize, unsigned outputSize,
                          std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims(0).back();
+  const unsigned inputSize = inputs.front().dims().back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
@@ -2285,14 +2285,14 @@ void Function::createGRU(PlaceholderBindings &bindings,
 
 void Function::createSimpleRNN(PlaceholderBindings &bindings,
                                llvm::StringRef namePrefix,
-                               llvm::ArrayRef<Node *> inputs,
+                               llvm::ArrayRef<NodeValue> inputs,
                                unsigned batchSize, unsigned hiddenSize,
                                unsigned outputSize,
                                std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims(0).back();
+  const unsigned inputSize = inputs.front().dims().back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the state to zero.
@@ -2348,13 +2348,13 @@ void Function::createSimpleRNN(PlaceholderBindings &bindings,
 
 void Function::createLSTM(PlaceholderBindings &bindings,
                           llvm::StringRef namePrefix,
-                          llvm::ArrayRef<Node *> inputs, unsigned batchSize,
+                          llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                           unsigned hiddenSize, unsigned outputSize,
                           std::vector<NodeValue> &outputs) {
   std::string nameBase = namePrefix;
   const unsigned timeSteps = inputs.size();
   assert(timeSteps > 0 && "empty input");
-  const unsigned inputSize = inputs.front()->dims(0).back();
+  const unsigned inputSize = inputs.front().dims().back();
   assert(inputSize > 0 && "input dimensionality is zero");
 
   // Initialize the hidden and cell states to zero.

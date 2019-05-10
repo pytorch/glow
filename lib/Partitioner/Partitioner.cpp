@@ -128,10 +128,10 @@ void Partitioner::initOpComputeTime() {
     if (node.getKind() == Kinded::Kind::SparseLengthsWeightedSumNodeKind) {
       auto *SLWSN = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node);
       /// compute how many entries of the embedding table we look up
-      auto numLookups = SLWSN->getIndices().getNode()->dims(0).front();
+      auto numLookups = SLWSN->getIndices().dims().front();
       /// compute how many bytes we read per lookup
-      auto tableSize = SLWSN->getData().getNode()->getType(0)->getSizeInBytes();
-      auto numRows = SLWSN->getData().getNode()->dims(0).front();
+      auto tableSize = SLWSN->getData().getType()->getSizeInBytes();
+      auto numRows = SLWSN->getData().dims().front();
       auto sizePerLookup = tableSize / numRows;
       /// compute total bytes read
       uint64_t sizeInput = numLookups * sizePerLookup;
@@ -144,13 +144,13 @@ void Partitioner::initOpComputeTime() {
       }
 
       /// we also read the indices, weights and lengths arrays
-      sizeSram += SLWSN->getIndices().getNode()->getType(0)->getSizeInBytes();
-      sizeSram += SLWSN->getWeights().getNode()->getType(0)->getSizeInBytes();
-      sizeSram += SLWSN->getLengths().getNode()->getType(0)->getSizeInBytes();
+      sizeSram += SLWSN->getIndices().getType()->getSizeInBytes();
+      sizeSram += SLWSN->getWeights().getType()->getSizeInBytes();
+      sizeSram += SLWSN->getLengths().getType()->getSizeInBytes();
     } else {
       /// for all other ops, iterate through all inputs and get size in bytes
       for (int i = 0; i < n; i++) {
-        auto ty = node.getNthInput(i).getNode()->getType(0);
+        auto ty = node.getNthInput(i).getType();
         uint64_t sizeInput = ty->getSizeInBytes();
         if (sizeInput > sramCapacity) {
           sizeDram += sizeInput;

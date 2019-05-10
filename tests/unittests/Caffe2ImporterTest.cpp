@@ -1418,7 +1418,7 @@ TEST(caffe2, SparseToDenseMask) {
   ASSERT_TRUE(N);
 
   // Check that no batch dimension was added because Lengths was not given.
-  EXPECT_TRUE(N->dims(0).equals({6, 10, 20, 30}));
+  EXPECT_TRUE(N->getResult().dims().equals({6, 10, 20, 30}));
   // Check that mask was read correctly.
   EXPECT_TRUE(N->getMask().equals({42, 100, 300, 1, 0, 312}));
 }
