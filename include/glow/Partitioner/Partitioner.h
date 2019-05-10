@@ -98,7 +98,7 @@ class Partitioner {
   Function *F_;
 
   /// The cost model related to device.
-  const std::vector<DeviceInfo> &deviceInfo_;
+  std::vector<DeviceInfo> deviceInfo_;
 
   /// The result of module partitioning.
   DAGListTy partitions_;

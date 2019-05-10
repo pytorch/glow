@@ -44,8 +44,9 @@ Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
 Function *Partitioner::selectRepFunc(Module *parent, uint64_t &memSize) {
   auto funcList = parent->getFunctions();
   Function *ret = nullptr;
+  uint64_t maxMemSize = 0;
   for (Function *F : funcList) {
-    uint64_t size = memSize;
+    uint64_t curSize = memSize;
 
     // The set to keep the placeholders (only for Inputs) whose size is
     // already calculated.
@@ -60,20 +61,21 @@ Function *Partitioner::selectRepFunc(Module *parent, uint64_t &memSize) {
       for (int i = 0; i < n; i++) {
         Placeholder *in =
             llvm::dyn_cast<Placeholder>(node.getNthInput(i).getNode());
-        if (in && pSet.count(in->getName()) == 0) {
+        if (in && pSet.find(in->getName()) == pSet.end()) {
           auto ty = in->getType();
-          size += ty->getSizeInBytes();
+          curSize += ty->getSizeInBytes();
           pSet.insert(in->getName());
         }
       }
     }
     // Find the function with largest required memory as the representative
     // function.
-    if (size > memSize) {
+    if (!ret || curSize > maxMemSize) {
       ret = F;
-      memSize = size;
+      maxMemSize = curSize;
     }
   }
+  memSize = maxMemSize;
   return ret;
 }
 
