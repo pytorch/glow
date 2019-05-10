@@ -16,6 +16,8 @@
 
 #include "glow/Support/Compiler.h"
 
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/FileSystem.h"
 #include "gtest/gtest.h"
 
 #include "synapse.h"
@@ -29,6 +31,18 @@
 
 #define chk(STATUS) GLOW_ASSERT(STATUS == synSuccess)
 
+class Habana : public ::testing::Test {
+protected:
+  Habana() { llvm::sys::fs::createTemporaryFile("Habana", "recipe", recipe_); }
+
+  ~Habana() { llvm::sys::fs::remove(recipe_); }
+
+  const char *recipe() { return recipe_.c_str(); }
+
+private:
+  llvm::SmallString<64> recipe_;
+};
+
 /// Init device.
 static uint32_t initDevice() {
   uint32_t deviceId;
@@ -41,13 +55,13 @@ static uint32_t initDevice() {
 static void destroyDevice() { chk(synDestroy()); }
 
 // Test device initialization.
-TEST(Habana, Init) {
+TEST_F(Habana, Init) {
   initDevice();
   destroyDevice();
 }
 
 // Test multithreaded device initialization.
-TEST(Habana, MultithreadedAcquireReleaseDevice) {
+TEST_F(Habana, MultithreadedAcquireReleaseDevice) {
   constexpr unsigned numThreads = 6;
   constexpr unsigned numIterations = 50;
 
@@ -90,7 +104,7 @@ TEST(Habana, MultithreadedAcquireReleaseDevice) {
 }
 
 /// Test device memory allocation.
-TEST(Habana, Allocate) {
+TEST_F(Habana, Allocate) {
   uint32_t deviceId = initDevice();
 
   // Allocate memory.
@@ -104,7 +118,7 @@ TEST(Habana, Allocate) {
 }
 
 /// Test tensor creation.
-TEST(Habana, CreateTensor) {
+TEST_F(Habana, CreateTensor) {
   uint32_t deviceId = initDevice();
 
   // Allocate memory.
@@ -206,17 +220,16 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
 }
 
 /// Test compilation (recipe creation).
-TEST(Habana, CompileFC) { compileFC("CompileFC.recipe", 4, 1024, 512); }
+TEST_F(Habana, CompileFC) { compileFC(recipe(), 4, 1024, 512); }
 
 /// Test compilation and running on device.
-TEST(Habana, RunFC) {
+TEST_F(Habana, RunFC) {
   constexpr unsigned batchSize = 2;
   constexpr unsigned inputF = 32;
   constexpr unsigned outputF = 32;
-  const char *recipe = "RunFC.recipe";
 
   // First, compile a recipe.
-  compileFC(recipe, batchSize, inputF, outputF);
+  compileFC(recipe(), batchSize, inputF, outputF);
 
   uint32_t deviceId = initDevice();
 
@@ -243,7 +256,7 @@ TEST(Habana, RunFC) {
 
   // Load the recipe.
   uint64_t topologyId = 0;
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
 
   // Run the recipe.
@@ -268,9 +281,8 @@ TEST(Habana, RunFC) {
   destroyDevice();
 }
 
-TEST(Habana, Relu) {
+TEST_F(Habana, Relu) {
   constexpr unsigned size = 32;
-  constexpr char recipe[] = "relu.recipe";
 
   uint32_t deviceId = initDevice();
 
@@ -299,11 +311,11 @@ TEST(Habana, Relu) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
   uint64_t topologyId = 0;
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
 
   // Set inputs.
@@ -332,10 +344,9 @@ TEST(Habana, Relu) {
   destroyDevice();
 }
 
-TEST(Habana, MatmulFp32) {
+TEST_F(Habana, MatmulFp32) {
   // For simplicity assuming two 2*2 matrices.
   constexpr unsigned N = 2;
-  constexpr char recipe[] = "matmulfp32.recipe";
 
   uint32_t deviceId = initDevice();
 
@@ -383,11 +394,11 @@ TEST(Habana, MatmulFp32) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
   uint64_t topologyId = 0;
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
 
   // Set inputs.
@@ -455,8 +466,7 @@ struct synPoolParams {
         dilW(1), dilH(1), poolingConvention(0) {}
 };
 
-TEST(Habana, MaxPoolRelu) {
-  constexpr char recipe[] = "maxpoolrelu.recipe";
+TEST_F(Habana, MaxPoolRelu) {
   uint32_t deviceId = initDevice();
 
   // Allocate input tensor.
@@ -504,11 +514,11 @@ TEST(Habana, MaxPoolRelu) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
   uint64_t topologyId = 0;
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
 
   // Run the recipe.
@@ -526,9 +536,8 @@ TEST(Habana, MaxPoolRelu) {
   destroyDevice();
 }
 
-TEST(Habana, Concat) {
+TEST_F(Habana, Concat) {
   constexpr unsigned size = 4;
-  constexpr char recipe[] = "concat.recipe";
 
   uint32_t deviceId = initDevice();
 
@@ -576,11 +585,11 @@ TEST(Habana, Concat) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
   uint64_t topologyId = 0;
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
 
   // Set inputs.
@@ -634,8 +643,7 @@ TEST(Habana, Concat) {
   destroyDevice();
 }
 
-TEST(Habana, NoInputs) {
-  constexpr char recipe[] = "noinputs.recipe";
+TEST_F(Habana, NoInputs) {
   constexpr unsigned size = 32;
 
   {
@@ -690,7 +698,7 @@ TEST(Habana, NoInputs) {
     CompilationAttribute compileParams[1];
     compileParams[0].type = VISUALIZATION;
     compileParams[0].u32 = 1;
-    chk(synCompileGraph(compileParams, 1, recipe));
+    chk(synCompileGraph(compileParams, 1, recipe()));
 
     chk(synDestroyTensor(p2Tensor));
     chk(synDestroyTensor(c2Tensor));
@@ -726,7 +734,7 @@ TEST(Habana, NoInputs) {
 
     // Load the recipe.
     uint64_t topologyId = 0;
-    chk(synLoadRecipe(deviceId, recipe, &topologyId));
+    chk(synLoadRecipe(deviceId, recipe(), &topologyId));
     chk(synActivateTopology(deviceId, topologyId));
 
     EnqueueTensorInfo etii = {"unused", (char *)nullptr, 0};
@@ -764,8 +772,7 @@ TEST(Habana, NoInputs) {
 ///   Do you need to synDestroy after each compilation? (I think not!  You can
 ///     synDestroyGraph instead.
 ///
-TEST(Habana, CompileInferenceInterleave) {
-  constexpr char recipe[] = "exploration.recipe";
+TEST_F(Habana, CompileInferenceInterleave) {
   constexpr unsigned batchSize = 2;
   constexpr unsigned inputF = 16;
   constexpr unsigned outputF = 16;
@@ -815,7 +822,7 @@ TEST(Habana, CompileInferenceInterleave) {
     CompilationAttribute compileParams[1];
     compileParams[0].type = VISUALIZATION;
     compileParams[0].u32 = 1;
-    chk(synCompileGraph(compileParams, 1, recipe));
+    chk(synCompileGraph(compileParams, 1, recipe()));
 
     chk(synDestroyTensor(outputT));
     chk(synDestroyTensor(biasT));
@@ -827,7 +834,7 @@ TEST(Habana, CompileInferenceInterleave) {
 
   auto execute = [&] {
     uint64_t topologyId = 0;
-    chk(synLoadRecipe(deviceId, recipe, &topologyId));
+    chk(synLoadRecipe(deviceId, recipe(), &topologyId));
     chk(synActivateTopology(deviceId, topologyId));
 
     std::vector<int8_t> input(batchSize * inputF);
@@ -874,9 +881,8 @@ TEST(Habana, CompileInferenceInterleave) {
 }
 
 // Test multithreaded inference.
-TEST(Habana, MultithreadedInference) {
+TEST_F(Habana, MultithreadedInference) {
   constexpr unsigned size = 32;
-  constexpr char recipe[] = "multithreaded.recipe";
   constexpr unsigned numThreads = 6;
   constexpr unsigned numIterations = 10;
   constexpr unsigned numEnqueues = 10;
@@ -912,7 +918,7 @@ TEST(Habana, MultithreadedInference) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   chk(synDestroyGraph());
 
@@ -932,7 +938,7 @@ TEST(Habana, MultithreadedInference) {
   for (unsigned i = 0; i < numThreads; ++i) {
     threads.emplace_back([&synapseMtx, numIterations = numIterations,
                           numEnqueues = numEnqueues, size = size,
-                          recipe = recipe]() {
+                          recipe = recipe()]() {
       for (unsigned j = 0; j < numIterations; ++j) {
         synStatus status = synFail;
         uint32_t deviceId;
@@ -995,9 +1001,7 @@ TEST(Habana, MultithreadedInference) {
   chk(synDestroy());
 }
 
-TEST(Habana, IntermediateReshapeMLP) {
-  constexpr char recipe[] = "IntermediateReshapeMLP.recipe";
-
+TEST_F(Habana, IntermediateReshapeMLP) {
   chk(synInitialize());
 
   std::vector<float> dense(1000 * 128);
@@ -1056,7 +1060,7 @@ TEST(Habana, IntermediateReshapeMLP) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 
   chk(synDestroyTensor(fc3T));
   chk(synDestroyTensor(weights2T));
@@ -1082,7 +1086,7 @@ TEST(Habana, IntermediateReshapeMLP) {
   synMap(deviceId, reshape.size() * sizeof(float), reshape.data());
   synMap(deviceId, fc3.size() * sizeof(float), fc3.data());
 
-  chk(synLoadRecipe(deviceId, recipe, &topologyId));
+  chk(synLoadRecipe(deviceId, recipe(), &topologyId));
   chk(synActivateTopology(deviceId, topologyId));
   chk(synEnqueueByName(deviceId, &eti[0], 1, &eti[1], 2, &handle));
   chk(synWaitForEvent(deviceId, handle));
@@ -1098,8 +1102,7 @@ TEST(Habana, IntermediateReshapeMLP) {
 
 template <typename T> void fill(T &t) { std::fill(t.begin(), t.end(), 1.0); }
 
-TEST(HabanaKernel, SparseLengthsSum) {
-  constexpr char recipe[] = "SparseLengthsSum.recipe";
+TEST_F(Habana, SparseLengthsSum) {
   chk(synInitialize());
 
   // MLP //////////////////////////////////////////////////////////////////////
@@ -1239,5 +1242,5 @@ TEST(HabanaKernel, SparseLengthsSum) {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipe));
+  chk(synCompileGraph(compileParams, 1, recipe()));
 }
