@@ -18,7 +18,7 @@
 
 #include "InterpreterFunction.h"
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 
 namespace glow {
 

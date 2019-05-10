@@ -16,7 +16,7 @@
 #ifndef GLOW_BACKENDS_EXECUTIONCONTEXT_H
 #define GLOW_BACKENDS_EXECUTIONCONTEXT_H
 
-#include "glow/Backends/TraceEvents.h"
+#include "glow/ExecutionContext/TraceEvents.h"
 #include "glow/Graph/PlaceholderBindings.h"
 
 #include "llvm/ADT/STLExtras.h"

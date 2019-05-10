@@ -16,7 +16,7 @@
 #ifndef GLOW_BASE_PLACEHOLDERBINDINGS_H
 #define GLOW_BASE_PLACEHOLDERBINDINGS_H
 
-#include "glow/Backends/TraceEvents.h"
+#include "glow/ExecutionContext/TraceEvents.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <list>

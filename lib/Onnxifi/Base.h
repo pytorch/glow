@@ -16,7 +16,7 @@
 #ifndef GLOW_ONNXIFI_BASE_H
 #define GLOW_ONNXIFI_BASE_H
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Runtime/RuntimeTypes.h"

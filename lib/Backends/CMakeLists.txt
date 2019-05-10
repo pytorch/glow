@@ -19,31 +19,19 @@ endforeach()
 # External backends
 ExternalBackendsRegister()
 
-add_library(ExecutionContext
-              TraceEvents.cpp)
-target_link_libraries(ExecutionContext
-                      PRIVATE
-                        Base
-                        Graph)
-
-add_library(Backend
-              Backend.cpp
-              BackendUtils.cpp
-              CompiledFunction.cpp)
-target_link_libraries(Backend
-                      PUBLIC
-                        ExecutionContext
-                      PRIVATE
-                        Base
-                        CodeGen
-                        Graph
-                        IR)
 add_library(Backends
-              Backends.cpp)
+              Backends.cpp
+              DeviceManagers.cpp)
 
 target_link_libraries(Backends
+                      PUBLIC
+                        ExecutionContext
+                        ThreadPool
+                        ${linked_device_managers}
                       PRIVATE
+                        Backend
                         Base
+                        Graph
                         Graph
                         Optimizer)
 
@@ -51,16 +39,3 @@ FOREACH(factory ${linked_factories})
   make_whole_archive(Backends ${factory})
   target_link_libraries(Backends PRIVATE ${factory})
 ENDFOREACH()
-
-add_library(DeviceManager
-              DeviceManagers.cpp)
-target_link_libraries(DeviceManager
-                      PUBLIC
-                        ThreadPool
-                        ExecutionContext
-                        ${linked_device_managers}
-                      PRIVATE
-                        Backend
-                        Backends
-                        Graph
-                        ThreadPool)

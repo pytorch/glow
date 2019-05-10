@@ -97,7 +97,6 @@ add_library(CPUDeviceManager
             CPUDeviceManager.cpp)
 target_link_libraries(CPUDeviceManager
                       PRIVATE
-                        Backends
                         Base
                         CodeGen
                         CPUBackend

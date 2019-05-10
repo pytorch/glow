@@ -17,7 +17,7 @@
 #include "ThreadPoolExecutor.h"
 
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Backends/ExecutionContext.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 
 #include <queue>
 #include <unordered_set>

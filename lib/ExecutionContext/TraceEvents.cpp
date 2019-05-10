@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Backends/TraceEvents.h"
+#include "glow/ExecutionContext/TraceEvents.h"
 
 #include "llvm/Support/raw_ostream.h"
 

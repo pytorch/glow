@@ -17,7 +17,7 @@
 #include "Interpreter.h"
 #include "InterpreterFunction.h"
 
-#include "glow/Backends/BackendUtils.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"

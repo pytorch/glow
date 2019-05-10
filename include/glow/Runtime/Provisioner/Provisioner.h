@@ -16,7 +16,7 @@
 #ifndef GLOW_RUNTIME_PROVISIONER_H
 #define GLOW_RUNTIME_PROVISIONER_H
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Error.h"

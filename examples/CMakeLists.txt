@@ -93,7 +93,6 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backend
                           Backends
-                          DeviceManager
                           ExecutionEngine
                           Graph
                           Importer

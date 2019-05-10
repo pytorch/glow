@@ -16,14 +16,15 @@
 #ifndef GLOW_BACKENDS_OPENCL_OPENCL_H
 #define GLOW_BACKENDS_OPENCL_OPENCL_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/BackendUtils.h"
-#include "glow/Backends/CompiledFunction.h"
-#include "glow/Backends/ExecutionContext.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/BackendUtils.h"
+#include "glow/Backend/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Traits.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Node.h"
 #include "glow/IR/IR.h"
+
 #include "llvm/ADT/ArrayRef.h"
 
 #include <unordered_map>

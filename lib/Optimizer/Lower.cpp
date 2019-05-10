@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"

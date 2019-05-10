@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/Backends/BackendUtils.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/IR/Instrs.h"
 
 #include "llvm/Support/CommandLine.h"

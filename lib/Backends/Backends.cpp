@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 
 namespace glow {
 

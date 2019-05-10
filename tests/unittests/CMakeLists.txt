@@ -97,7 +97,6 @@ target_link_libraries(DeviceManagerTest
                       PRIVATE
                         Backend
                         Backends
-                        DeviceManager
                         Graph
                         IR
                         ExecutionEngine
@@ -110,7 +109,7 @@ add_executable(ExecutorTest
         ExecutorTest.cpp)
 target_link_libraries(ExecutorTest
         PRIVATE
-        DeviceManager
+        Backends
         Executor
         Graph
         gtest
@@ -245,13 +244,13 @@ if(GLOW_WITH_CPU)
           HostManagerTest.cpp)
   target_link_libraries(HostManagerTest
           PRIVATE
+          Backends
           HostManager
           Executor
           Graph
           IR
           Partitioner
           Provisioner
-          DeviceManager
           gtest
           TestMain)
 
@@ -412,10 +411,10 @@ if(GLOW_WITH_CPU)
                  ProvisionerTest.cpp)
   target_link_libraries(ProvisionerTest
                         PRIVATE
+                          Backends
                           Graph
                           IR
                           Provisioner
-                          DeviceManager
                           Optimizer
                           gtest
                           TestMain)

@@ -1,0 +1,12 @@
+add_library(Backend
+              Backend.cpp
+              BackendUtils.cpp
+              CompiledFunction.cpp)
+target_link_libraries(Backend
+                      PUBLIC
+                        ExecutionContext
+                      PRIVATE
+                        Base
+                        CodeGen
+                        Graph
+                        IR)

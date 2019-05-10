@@ -16,8 +16,8 @@
 #ifndef GLOW_BACKENDS_HABANA_HABANA_H
 #define GLOW_BACKENDS_HABANA_HABANA_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/CompiledFunction.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/CompiledFunction.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 

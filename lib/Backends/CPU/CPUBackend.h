@@ -16,7 +16,7 @@
 #ifndef GLOW_BACKENDS_CPU_CPUBACKEND_H
 #define GLOW_BACKENDS_CPU_CPUBACKEND_H
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Base/Tensor.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 

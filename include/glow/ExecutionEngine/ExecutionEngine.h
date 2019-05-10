@@ -16,8 +16,8 @@
 #ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 #define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/CompiledFunction.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Base/Train.h"
 #include "glow/Base/Traits.h"

@@ -15,7 +15,7 @@
  */
 
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
-#include "glow/Backends/CompiledFunction.h"
+#include "glow/Backend/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
