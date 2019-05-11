@@ -70,11 +70,12 @@ endif(NOT MSVC)
 
 add_library(CPUBackend
             "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
-            CPUFunction.cpp
-            Transforms.cpp
             CPUBackend.cpp
-            CPULLVMIRGen.cpp)
-
+            CPUDeviceManager.cpp
+            CPUFactory.cpp
+            CPUFunction.cpp
+            CPULLVMIRGen.cpp
+            Transforms.cpp)
 target_link_libraries(CPUBackend
                       PUBLIC
                         Backend
@@ -87,22 +88,5 @@ target_link_libraries(CPUBackend
                         LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)
 
-add_library(CPUFactory
-              CPUFactory.cpp)
-target_link_libraries(CPUFactory
-                      PRIVATE
-                        CPUBackend)
-
-add_library(CPUDeviceManager
-            CPUDeviceManager.cpp)
-target_link_libraries(CPUDeviceManager
-                      PRIVATE
-                        Base
-                        CodeGen
-                        CPUBackend
-                        Graph
-                        IR
-                        Optimizer)
-
-set(linked_factories ${linked_factories} CPUFactory PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} CPUDeviceManager PARENT_SCOPE)
+set(linked_factories ${linked_factories} CPUBackend PARENT_SCOPE)
+set(linked_device_managers ${linked_device_managers} CPUBackend PARENT_SCOPE)
