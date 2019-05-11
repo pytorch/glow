@@ -9,8 +9,7 @@ target_link_libraries(HostManager
                         Optimizer
                         Partitioner
                         Provisioner
-                        Executor
-                        DeviceManager)
+                        Executor)
 
 if (GLOW_WITH_CPU)
   target_link_libraries(HostManager

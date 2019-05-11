@@ -16,8 +16,8 @@
 #ifndef GLOW_LLVMIRCODEGEN_LLVMBACKEND_H
 #define GLOW_LLVMIRCODEGEN_LLVMBACKEND_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/CompiledFunction.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
 

@@ -19,9 +19,9 @@
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
 #include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/BackendUtils.h"
-#include "glow/Backends/CompiledFunction.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/BackendUtils.h"
+#include "glow/Backend/CompiledFunction.h"
 
 namespace glow {
 /// A Glow IR function compiled for the CPU using LLVM.

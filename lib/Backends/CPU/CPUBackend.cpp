@@ -18,7 +18,7 @@
 #include "CPUFunction.h"
 #include "CPULLVMIRGen.h"
 
-#include "glow/Backends/BackendUtils.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/Instrs.h"
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"

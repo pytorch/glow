@@ -16,7 +16,7 @@
 #ifndef GLOW_IR_IRGEN_H
 #define GLOW_IR_IRGEN_H
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"

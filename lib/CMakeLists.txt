@@ -1,9 +1,11 @@
 add_custom_target(AutoGen)
 
+add_subdirectory(Backend)
 add_subdirectory(Backends)
 add_subdirectory(Base)
 add_subdirectory(CodeGen)
 add_subdirectory(Converter)
+add_subdirectory(ExecutionContext)
 add_subdirectory(ExecutionEngine)
 add_subdirectory(Graph)
 add_subdirectory(IR)

@@ -16,8 +16,8 @@
 #ifndef GLOW_BACKENDS_COMPILEDFUNCTION_H
 #define GLOW_BACKENDS_COMPILEDFUNCTION_H
 
-#include "glow/Backends/BackendUtils.h"
-#include "glow/Backends/ExecutionContext.h"
+#include "glow/Backend/BackendUtils.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Nodes.h"
 
 #include <unordered_map>

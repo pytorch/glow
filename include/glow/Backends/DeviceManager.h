@@ -16,9 +16,9 @@
 #ifndef GLOW_BACKENDS_DEVICEMANAGER_H
 #define GLOW_BACKENDS_DEVICEMANAGER_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/CompiledFunction.h"
-#include "glow/Backends/ExecutionContext.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/CompiledFunction.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Error.h"

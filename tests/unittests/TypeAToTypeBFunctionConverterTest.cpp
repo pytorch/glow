@@ -16,7 +16,7 @@
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include "llvm/Support/Casting.h"

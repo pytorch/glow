@@ -15,7 +15,7 @@
  */
 #ifndef GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H
 #define GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H
-#include "glow/Backends/Backend.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"

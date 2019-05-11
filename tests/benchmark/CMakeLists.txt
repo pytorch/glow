@@ -24,7 +24,6 @@ target_link_libraries(RuntimeBench
                         CPUBackend
                         ExecutionEngine
                         Executor
-                        DeviceManager
                         HostManager
                         Graph
                         Optimizer

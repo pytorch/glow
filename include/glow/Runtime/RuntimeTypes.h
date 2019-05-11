@@ -16,8 +16,8 @@
 #ifndef GLOW_RUNTIME_RUNTIMETYPES_H
 #define GLOW_RUNTIME_RUNTIMETYPES_H
 
-#include "glow/Backends/Backend.h"
-#include "glow/Backends/BackendUtils.h"
+#include "glow/Backend/Backend.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Error.h"
 

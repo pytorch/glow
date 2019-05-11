@@ -15,7 +15,7 @@
  */
 
 #include "glow/Runtime/HostManager/HostManager.h"
-#include "glow/Backends/ExecutionContext.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 
 #include "gtest/gtest.h"
 

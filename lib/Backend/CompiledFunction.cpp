@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "glow/Backends/CompiledFunction.h"
-#include "glow/Backends/BackendUtils.h"
+#include "glow/Backend/CompiledFunction.h"
+#include "glow/Backend/BackendUtils.h"
 
 using namespace glow;
 
