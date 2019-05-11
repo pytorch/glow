@@ -22,8 +22,7 @@ target_link_libraries(InterpreterDeviceManager
                         CodeGen
                         Graph
                         IR
-                        Optimizer
-                        ThreadPool)
+                        Optimizer)
 
 add_library(InterpreterFactory
               InterpreterFactory.cpp)

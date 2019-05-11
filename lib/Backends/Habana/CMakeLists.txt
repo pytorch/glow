@@ -27,8 +27,7 @@ target_link_libraries(HabanaDeviceManager
                         Base
                         Graph
                         IR
-                        Optimizer
-                        ThreadPool)
+                        Optimizer)
 
 add_library(HabanaFactory
             HabanaFactory.cpp)

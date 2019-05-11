@@ -26,7 +26,6 @@ add_library(Backends
 target_link_libraries(Backends
                       PUBLIC
                         ExecutionContext
-                        ThreadPool
                         ${linked_device_managers}
                       PRIVATE
                         Backend

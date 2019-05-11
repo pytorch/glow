@@ -52,8 +52,7 @@ target_link_libraries(OpenCLDeviceManager
                         CodeGen
                         Graph
                         IR
-                        Optimizer
-                        ThreadPool)
+                        Optimizer)
 
 add_library(OpenCLFactory
               OpenCLFactory.cpp)
