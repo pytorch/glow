@@ -1,5 +1,7 @@
 add_library(Habana
-            Habana.cpp)
+            Habana.cpp
+            HabanaDeviceManager.cpp
+            HabanaFactory.cpp)
 
 target_include_directories(Habana
                            PUBLIC
@@ -14,27 +16,10 @@ target_link_libraries(Habana
                         Graph
                         CodeGen
                         IR
+                        LLVMCore
                         Optimizer
                         QuantizationBase
                         Support)
 
-add_library(HabanaDeviceManager
-            HabanaDeviceManager.cpp)
-target_link_libraries(HabanaDeviceManager
-                      PRIVATE
-                        Backend
-                        Habana
-                        Base
-                        Graph
-                        IR
-                        Optimizer)
-
-add_library(HabanaFactory
-            HabanaFactory.cpp)
-target_link_libraries(HabanaFactory
-                      PRIVATE
-                        Habana
-                        LLVMCore)
-
-set(linked_factories ${linked_factories} HabanaFactory PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} HabanaDeviceManager PARENT_SCOPE)
+set(linked_factories ${linked_factories} Habana PARENT_SCOPE)
+set(linked_device_managers ${linked_device_managers} Habana PARENT_SCOPE)
