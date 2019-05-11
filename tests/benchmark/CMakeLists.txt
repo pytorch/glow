@@ -21,7 +21,6 @@ target_link_libraries(RuntimeBench
                       PRIVATE
                         Backend
                         Backends
-                        CPUBackend
                         ExecutionEngine
                         Executor
                         HostManager
