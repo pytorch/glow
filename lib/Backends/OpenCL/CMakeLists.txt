@@ -26,6 +26,8 @@ add_library(OpenCLBackend
             "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels_fwd_conv.cl.inc"
             "${CMAKE_BINARY_DIR}/glow/OpenCL/kernels_fwd_quantized_conv.cl.inc"
             OpenCL.cpp
+            OpenCLDeviceManager.cpp
+            OpenCLFactory.cpp
             Transforms.cpp)
 
 target_link_libraries(OpenCLBackend
@@ -35,6 +37,7 @@ target_link_libraries(OpenCLBackend
                       Graph
                       CodeGen
                       IR
+                      LLVMCore
                       Optimizer
                       QuantizationBase)
 
@@ -42,24 +45,5 @@ target_link_libraries(OpenCLBackend
                       PUBLIC
                       OpenCL::OpenCL)
 
-add_library(OpenCLDeviceManager
-            OpenCLDeviceManager.cpp)
-target_link_libraries(OpenCLDeviceManager
-                      PRIVATE
-                        Backend
-                        OpenCLBackend
-                        Base
-                        CodeGen
-                        Graph
-                        IR
-                        Optimizer)
-
-add_library(OpenCLFactory
-              OpenCLFactory.cpp)
-target_link_libraries(OpenCLFactory
-                      PRIVATE
-                        OpenCLBackend
-                        LLVMCore)
-
-set(linked_factories ${linked_factories} OpenCLFactory PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} OpenCLDeviceManager PARENT_SCOPE)
+set(linked_factories ${linked_factories} OpenCLBackend PARENT_SCOPE)
+set(linked_device_managers ${linked_device_managers} OpenCLBackend PARENT_SCOPE)
