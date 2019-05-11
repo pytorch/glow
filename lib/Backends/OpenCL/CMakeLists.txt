@@ -45,5 +45,4 @@ target_link_libraries(OpenCLBackend
                       PUBLIC
                       OpenCL::OpenCL)
 
-set(linked_factories ${linked_factories} OpenCLBackend PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} OpenCLBackend PARENT_SCOPE)
+set(linked_backends ${linked_backends} OpenCLBackend PARENT_SCOPE)

@@ -21,5 +21,4 @@ target_link_libraries(Habana
                         QuantizationBase
                         Support)
 
-set(linked_factories ${linked_factories} Habana PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} Habana PARENT_SCOPE)
+set(linked_backends ${linked_backends} Habana PARENT_SCOPE)

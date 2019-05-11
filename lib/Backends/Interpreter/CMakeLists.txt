@@ -15,5 +15,4 @@ target_link_libraries(Interpreter
                         Optimizer
                         QuantizationBase)
 
-set(linked_factories ${linked_factories} Interpreter PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} Interpreter PARENT_SCOPE)
+set(linked_backends ${linked_backends} Interpreter PARENT_SCOPE)

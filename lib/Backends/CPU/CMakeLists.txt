@@ -88,5 +88,4 @@ target_link_libraries(CPUBackend
                         LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)
 
-set(linked_factories ${linked_factories} CPUBackend PARENT_SCOPE)
-set(linked_device_managers ${linked_device_managers} CPUBackend PARENT_SCOPE)
+set(linked_backends ${linked_backends} CPUBackend PARENT_SCOPE)
