@@ -90,18 +90,14 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
       ->addNetwork(std::move(module));
 }
 
-onnxStatus
-HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
-                      EventPtr outputEvent,
-                      std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                          phNameToOnnxTensorOutputs,
-                      onnxTraceEventList *traceEvents) {
+onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
+                                 EventPtr outputEvent,
+                                 onnxTraceEventList *traceEvents) {
   backendPtr_->getBackendId()->runNetwork(
       this, std::move(ctx),
-      [phNameToOnnxTensorOutputs = std::move(phNameToOnnxTensorOutputs),
-       outputEvent,
-       traceEvents](runtime::RunIdentifierTy runId, llvm::Error err,
-                    std::unique_ptr<ExecutionContext> ctx) {
+      [outputEvent, traceEvents](runtime::RunIdentifierTy runId,
+                                 llvm::Error err,
+                                 std::unique_ptr<ExecutionContext> ctx) {
         TRACE_EVENT_BEGIN(ctx->getTraceContext(), "Onnxifi::callback");
         // If an Error occurred then log it in errToBool and signal the output
         // event.
@@ -110,21 +106,6 @@ HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
           TRACE_EVENT_END(ctx->getTraceContext(), "Onnxifi::callback");
           return;
         }
-
-        TRACE_EVENT_BEGIN(ctx->getTraceContext(), "copyOutputs");
-        for (auto &ph : ctx->getPlaceholderBindings()->pairs()) {
-          if (phNameToOnnxTensorOutputs.count(ph.first) == 0) {
-            continue;
-          }
-
-          auto &outOnnxTensor = phNameToOnnxTensorOutputs.at(ph.first);
-
-          void *outputAddress = reinterpret_cast<void *>(outOnnxTensor.buffer);
-          Tensor *res = ph.second;
-          memcpy(outputAddress, res->getUnsafePtr(),
-                 res->size() * res->getType().getElementSize());
-        }
-        TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
 
         // End the trace event before we convert TraceEvents to the ONNX format.
         TRACE_EVENT_END(ctx->getTraceContext(), "Onnxifi::callback");

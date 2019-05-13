@@ -130,11 +130,9 @@ public:
   initGraph(const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
             const onnxTensorDescriptorV1 *weightDescriptors) = 0;
 
-  virtual onnxStatus
-  run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
-      std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-          phNameToOnnxTensorOutputs,
-      onnxTraceEventList *traceEvents) = 0;
+  virtual onnxStatus run(std::unique_ptr<ExecutionContext> ctx,
+                         EventPtr outputEvent,
+                         onnxTraceEventList *traceEvents) = 0;
 
   /// Copy any trace events \p traceContext into \p traceEvents. If
   /// \p traceEvents is null then do nothing.
