@@ -405,6 +405,22 @@ target_link_libraries(PartitionerTest
                         TestMain)
 add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
 
+add_executable(RecommendationSystemTest
+               RecommendationSystemTest.cpp)
+target_link_libraries(RecommendationSystemTest
+                      PRIVATE
+                        BackendTestUtils
+                        Converter
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Quantization
+                        Optimizer
+                        Partitioner
+                        gtest
+                        TestMain)
+add_glow_test(EXPENSIVE RecommendationSystemTest ${GLOW_BINARY_DIR}/tests/RecommendationSystemTest --gtest_output=xml:RecommendationSystemTest.xml)
+
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest
                  ProvisionerTest.cpp)
