@@ -300,7 +300,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         {idim.n, outSz.first, outSz.second, depth}};
 
     TypeRef outTy;
-    Constant *filter;
+    Constant *filter = W;
     Constant *bias;
     if (typeName == "Conv" || typeName == "ConvRelu") {
       // Construct the Bias field.
@@ -320,7 +320,6 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       }
 
       outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
-      filter = W;
       bias = biasConstant;
     } else {
       RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
@@ -355,14 +354,6 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
       outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, scale,
                                          offset - OFFSETSHIFT);
-
-      // Construct the quantized Filter field.
-      // TODO: stop copying here
-      auto &wTensor = W->getPayload();
-      filter = G_.getParent()->createConstant(
-          ElemKind::Int8QTy, wTensor.dims(), wTensor.getType().getScale(),
-          wTensor.getType().getOffset(), "conv.filter");
-      filter->assign(&wTensor);
     }
 
     Node *node = G_.createConv(opName, finalIn, filter, bias, outTy, kernels,

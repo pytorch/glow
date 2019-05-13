@@ -110,13 +110,17 @@ protected:
   /// name.
   NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
 
-  // TODO: comment
+  /// \returns the Constant registered with the given \p name and nullptr if
+  /// no Constant has been registered with this name.
   Constant *getConstantByNameOrNull(llvm::StringRef name) const;
 
-  // TODO: comment
+  /// \returns an llvm::Expected of the Constant registered with the given \p
+  /// name and returns and Error if no Constant has been registered with this
+  /// name.
   llvm::Expected<Constant *> getConstantByName(llvm::StringRef name) const;
 
-  // TODO: comment
+  /// \returns whether or not a Constant has been registered with the given \p
+  /// name.
   bool hasConstantByName(llvm::StringRef name) const;
 
 public:
