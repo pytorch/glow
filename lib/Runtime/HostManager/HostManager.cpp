@@ -39,15 +39,15 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   if (configs.size() > 0) {
-    backend_.reset(createBackend(configs[0]->getBackendKind()));
+    backend_.reset(createBackend(configs[0]->backendKind));
   }
 
   for (auto &config : configs) {
     if (!config->hasName()) {
-      config->setName(backend_->getBackendName() + std::to_string(deviceCount));
+      config->name = backend_->getBackendName() + std::to_string(deviceCount);
     }
 
-    auto backendKind = config->getBackendKind();
+    auto backendKind = config->backendKind;
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
         DeviceManager::createDeviceManager(backendKind, std::move(config)));
 

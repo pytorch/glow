@@ -97,6 +97,9 @@ public:
 
   llvm::Error init() override;
 
+  /// Parse config object provided at initialization \returns llvm::Error
+  /// indicating success/failure.
+  llvm::Error parseConfig();
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.
   uint64_t getMaximumMemory() const override;
@@ -133,15 +136,6 @@ protected:
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
-};
-/// OpenCL Device Manager config object. This contains the information needed to
-/// target a specifc OpenCL device. This inherits from DeviceConfig and sets
-/// it's inherited member backendKind_ to OpenCL.
-struct OpenCLDeviceConfig : DeviceConfig {
-  OpenCLDeviceConfig() : DeviceConfig(BackendKind::OpenCL) {}
-  unsigned platformId;
-  unsigned deviceId;
-  bool doProfile;
 };
 
 } // namespace runtime

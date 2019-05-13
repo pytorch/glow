@@ -120,23 +120,25 @@ using DAGListTy = std::vector<DAG>;
 /// device can extend this class to contain information to identify
 /// and configure the device manager. Additionally it needs to set it's kind_
 /// member variable to it's correct BackendKind.
-class DeviceConfig {
+struct DeviceConfig {
   /// An enum indicating what kind of backend this config is for. It is used in
   /// checking the type of config before casting to a derived class.
-  const BackendKind backendKind_;
+  const BackendKind backendKind;
   /// A human readable name to identify the device.
-  std::string name_;
+  std::string name;
 
-public:
-  DeviceConfig(BackendKind kind) : backendKind_(kind) {}
+  /// A map of configuration parameters.
+  llvm::StringMap<std::string> parameters{};
+
+  DeviceConfig(BackendKind kind) : backendKind(kind) {}
   DeviceConfig(BackendKind kind, std::string name)
-      : backendKind_(kind), name_(name) {}
+      : backendKind(kind), name(name) {}
 
-  BackendKind getBackendKind() { return backendKind_; }
+  DeviceConfig(BackendKind kind, std::string name,
+               llvm::StringMap<std::string> parameters)
+      : backendKind(kind), name(name), parameters(parameters) {}
 
-  llvm::StringRef getName() const { return name_; }
-  bool hasName() const { return name_ != ""; }
-  void setName(llvm::StringRef name) { name_ = name; }
+  bool hasName() const { return name != ""; }
 };
 
 } // namespace runtime
