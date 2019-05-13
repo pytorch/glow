@@ -21,6 +21,8 @@
 
 namespace glow {
 namespace onnxifi {
+extern bool GlowDumpDebugTraces;
+
 namespace {
 const char *compatibilityFunctionName = "check";
 } // namespace
@@ -99,7 +101,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   auto ctx = llvm::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (traceEvents) {
+  if (traceEvents || GlowDumpDebugTraces) {
     ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
   }
