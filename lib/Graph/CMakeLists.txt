@@ -34,6 +34,7 @@ target_link_libraries(Graph
                       PUBLIC
                         Base
                         Support
-                        QuantizationBase)
+                        QuantizationBase
+                        TensorPool)
 
 add_dependencies(Graph AutoGen)

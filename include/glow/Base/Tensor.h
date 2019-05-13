@@ -35,6 +35,7 @@ namespace glow {
 template <class ElemTy> class Handle;
 
 class Tensor;
+class TensorPool;
 
 void genericTranspose(const Tensor *src, Tensor *dest,
                       llvm::ArrayRef<unsigned_t> shuffle);
@@ -64,6 +65,9 @@ private:
 
   /// If the tensor is unowned.
   bool isUnowned_{false};
+
+  /// The TensorPool that is managing this Tensor (if any).
+  TensorPool *tensorPool_{nullptr};
 
   template <class ElemTy> friend class Handle;
 
@@ -157,6 +161,10 @@ public:
   /// \returns the number of bytes required to store the tensor.
   uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
 
+  /// \returns the TensorPool managing this object, or nullptr if it is
+  /// unmanaged.
+  TensorPool *getOwningPool() { return tensorPool_; }
+
   /// Initialize an empty tensor.
   Tensor() = default;
 
@@ -201,6 +209,12 @@ public:
          int32_t offset)
       : data_(nullptr), type_(elemTy, dims, scale, offset), isUnowned_{false} {
     reset(type_);
+  }
+
+  /// Allocate a new Tensor managed by the \p tensorPool.
+  explicit Tensor(TypeRef ty, TensorPool *tensorPool)
+      : data_(nullptr), type_(*ty), tensorPool_(tensorPool) {
+    reset(*ty);
   }
 
   Tensor(const Tensor &other) = delete;
@@ -312,6 +326,7 @@ public:
     std::swap(data_, other.data_);
     std::swap(type_, other.type_);
     std::swap(isUnowned_, other.isUnowned_);
+    std::swap(tensorPool_, other.tensorPool_);
   }
 
   /// Move assignment operator.
@@ -319,6 +334,7 @@ public:
     std::swap(data_, other.data_);
     std::swap(type_, other.type_);
     std::swap(isUnowned_, other.isUnowned_);
+    std::swap(tensorPool_, other.tensorPool_);
     return *this;
   }
 

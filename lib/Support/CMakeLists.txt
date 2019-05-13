@@ -7,3 +7,8 @@ add_library(Support
 target_link_libraries(Support
                       PUBLIC
                         LLVMSupport)
+add_library(TensorPool
+              TensorPool.cpp)
+target_link_libraries(TensorPool
+                      PRIVATE
+                        Base)

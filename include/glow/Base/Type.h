@@ -390,6 +390,15 @@ struct Type final {
     return true;
   }
 
+  /// \returns a hash value for this Type. Hashes for Ty1 and Ty2 are equal if
+  /// Ty1.isEqual(Ty2).
+  llvm::hash_code equals_hash() const {
+    return llvm::hash_combine(
+        elementType_, dims(),
+        // hashing floats is tricky, fall back to std::hash
+        std::hash<float>{}(scale_), offset_);
+  }
+
   ElemKind getElementType() const { return elementType_; }
 
   /// \returns the shape of the tensor.

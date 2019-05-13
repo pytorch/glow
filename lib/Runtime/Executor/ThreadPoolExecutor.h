@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "glow/Runtime/Executor/Executor.h"
+#include "glow/Support/TensorPool.h"
 #include "glow/Support/ThreadPool.h"
 
 namespace glow {
@@ -136,13 +137,13 @@ private:
   /// Mutex used by bindings insertion functions to make sure only one thread
   /// writes to an ExecutionContext at a time.
   std::mutex bindingsMtx_;
-
   /// Module for the network. This contains the PHs used by the functions in
   /// this network.
   Module *module_{nullptr};
-
   /// Root node of the DAG for this run.
   const DAGNode *root_;
+  /// Object pool for intermediate tensors.
+  TensorPool intermediateTensorPool_;
 };
 
 /// This implementation of the Executor interface uses a thread pool to

@@ -134,22 +134,23 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     // Only re-allocate a tensor in case padding is required.
     // Otherwise just back the tensor by memory provided by the caller.
-    Tensor inputTensor;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
-      inputTensor = Tensor(inOnnxBuffer, inPhPtr->getType());
+      ctx->getPlaceholderBindings()->insert(
+          inPhPtr, new Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else {
-      inputTensor = Tensor(inPhPtr->getType());
+      Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
+      assert(inputTensor);
       // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
       // valid case for empty tensor, skip copying
       if (inOnnxBuffer) {
         unsigned elementSize = inPhPtr->getType()->getElementSize();
         char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
         std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
-                  inputTensor.getUnsafePtr());
+                  inputTensor->getUnsafePtr());
       }
-    }
 
-    ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
+      ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
+    }
   }
   TRACE_EVENT_END(traceContext, "adjustInputs");
   TRACE_EVENT_BEGIN(traceContext, "setOnnxifiOutputs");
