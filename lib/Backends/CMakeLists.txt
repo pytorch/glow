@@ -26,8 +26,6 @@ add_library(Backends
 target_link_libraries(Backends
                       PUBLIC
                         ExecutionContext
-                        ThreadPool
-                        ${linked_device_managers}
                       PRIVATE
                         Backend
                         Base
@@ -35,7 +33,7 @@ target_link_libraries(Backends
                         Graph
                         Optimizer)
 
-FOREACH(factory ${linked_factories})
-  make_whole_archive(Backends ${factory})
-  target_link_libraries(Backends PRIVATE ${factory})
+FOREACH(backend ${linked_backends})
+  make_whole_archive(Backends ${backend})
+  target_link_libraries(Backends PRIVATE ${backend})
 ENDFOREACH()

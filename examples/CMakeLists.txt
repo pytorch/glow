@@ -96,8 +96,7 @@ if(GLOW_WITH_CPU)
                           ExecutionEngine
                           Graph
                           Importer
-                          Optimizer
-                          ThreadPool)
+                          Optimizer)
 endif()
 
 

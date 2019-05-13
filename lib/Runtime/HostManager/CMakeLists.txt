@@ -10,9 +10,3 @@ target_link_libraries(HostManager
                         Partitioner
                         Provisioner
                         Executor)
-
-if (GLOW_WITH_CPU)
-  target_link_libraries(HostManager
-                        PRIVATE
-                          CPUDeviceManager)
-endif()

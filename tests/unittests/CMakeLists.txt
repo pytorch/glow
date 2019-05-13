@@ -113,8 +113,7 @@ target_link_libraries(ExecutorTest
         Executor
         Graph
         gtest
-        TestMain
-        ThreadPool)
+        TestMain)
 add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
 
 add_executable(Float16Test
@@ -451,7 +450,7 @@ add_executable(ThreadPoolTest
                ThreadPoolTest.cpp)
 target_link_libraries(ThreadPoolTest
                       PRIVATE
-                        ThreadPool
+                        Support
                         gtest
                         TestMain)
 add_glow_test(ThreadPoolTest ${GLOW_BINARY_DIR}/tests/ThreadPoolTest --gtest_output=xml:ThreadPoolTest.xml)
