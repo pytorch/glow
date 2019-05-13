@@ -420,22 +420,23 @@ void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
                             numOfIntermediates));
 
   using TensorNames = char[ENQUEUE_TENSOR_NAME_MAX_SIZE];
-  std::vector<TensorNames> inputTensorNames(numOfInputs);
-  std::vector<TensorNames> outputTensorNames(numOfOutputs);
-  std::vector<TensorNames> intermediateTensorNames(numOfIntermediates);
+  auto inputTensorNames = llvm::make_unique<TensorNames[]>(numOfInputs);
+  auto outputTensorNames = llvm::make_unique<TensorNames[]>(numOfOutputs);
+  auto intermediateTensorNames =
+      llvm::make_unique<TensorNames[]>(numOfIntermediates);
 
-  chk(synGetTensorsName(deviceId, topologyId, inputTensorNames.data(),
-                        numOfInputs, outputTensorNames.data(), numOfOutputs,
-                        intermediateTensorNames.data(), numOfIntermediates));
+  chk(synGetTensorsName(deviceId, topologyId, inputTensorNames.get(),
+                        numOfInputs, outputTensorNames.get(), numOfOutputs,
+                        intermediateTensorNames.get(), numOfIntermediates));
 
-  for (auto const &in : inputTensorNames) {
-    VLOG(1) << "Topology input: " << in;
+  for (uint32_t i = 0; i < numOfInputs; i++) {
+    VLOG(1) << "Topology input: " << inputTensorNames[i];
   }
-  for (auto const &out : outputTensorNames) {
-    VLOG(1) << "Topology output: " << out;
+  for (uint32_t i = 0; i < numOfOutputs; i++) {
+    VLOG(1) << "Topology output: " << outputTensorNames[i];
   }
-  for (auto const &intermediate : intermediateTensorNames) {
-    VLOG(1) << "Topology intermediate: " << intermediate;
+  for (uint32_t i = 0; i < numOfIntermediates; i++) {
+    VLOG(1) << "Topology intermediates: " << intermediateTensorNames[i];
   }
 }
 
