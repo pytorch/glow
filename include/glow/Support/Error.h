@@ -91,7 +91,7 @@ public:
   /// line number the GlowErr was created on as well as the message and/or error
   /// code the GlowErr was created with.
   void log(llvm::raw_ostream &OS) const override {
-    OS << "file: " << fileName_ << " line: " << lineNumber_;
+    OS << "location: " << fileName_ << ":" << lineNumber_;
     if (ec_ != ErrorCode::UNKNOWN) {
       OS << " error code: " << errorCodeToString(ec_);
     }
