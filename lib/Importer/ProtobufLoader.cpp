@@ -77,17 +77,20 @@ ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   return node;
 }
 
-llvm::Expected<Constant *>
-ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
-                                          Tensor &&tensor) {
-  RETURN_ERR_IF_NOT(
-      !hasNodeByName(name),
-      llvm::Twine("Creating an already existing node ", name).str());
+llvm::Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+                                                      Tensor &&tensor) {
+  auto it = nodeValueByName_.find(name);
+  if (it != nodeValueByName_.end()) {
+    if (llvm::dyn_cast<Placeholder>(it->second.getNode())) {
+      // Placeholders take precedents over Constants.
+      return llvm::Error::success();
+    }
+  }
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node = G_.getParent()->createConstant(name, std::move(tensor));
   nodeValueByName_[name] = node->getOutput();
-  return node;
+  return llvm::Error::success();
 }
 
 llvm::Expected<Placeholder *>

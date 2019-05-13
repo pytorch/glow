@@ -94,10 +94,7 @@ llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
     } else {
       std::unique_ptr<Tensor> T(new Tensor());
       RETURN_IF_ERR(setTensorType(in.type(), T.get()));
-      if (auto err =
-              takeErr(createAndRegisterConstant(in.name(), std::move(*T)))) {
-        return err;
-      }
+      RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
     }
   }
   return llvm::Error::success();
@@ -375,9 +372,7 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 
   std::unique_ptr<Tensor> T(new Tensor());
   RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T.get()));
-  if (auto err = takeErr(createAndRegisterConstant(name, std::move(*T)))) {
-    return err;
-  }
+  RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
 
   return llvm::Error::success();
 }
@@ -1053,10 +1048,7 @@ llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   for (const auto &in : net.initializer()) {
     std::unique_ptr<Tensor> T(new Tensor());
     RETURN_IF_ERR(loadTensor(in, T.get()));
-    if (auto err =
-            takeErr(createAndRegisterConstant(in.name(), std::move(*T)))) {
-      return err;
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
   }
   return llvm::Error::success();
 }

@@ -1064,10 +1064,7 @@ Caffe2ModelLoader::loadInputsWithTensorProtoType(const caffe2::NetDef &net,
   } else {
     std::unique_ptr<Tensor> T(new Tensor());
     RETURN_IF_ERR(setTensorType(in, T.get()));
-    if (auto err =
-            takeErr(createAndRegisterConstant(in.name(), std::move(*T)))) {
-      return err;
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
   }
   return llvm::Error::success();
 }
@@ -1183,10 +1180,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     } else {
       GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
     }
-    if (auto err = takeErr(
-            createAndRegisterConstant(op.output().Get(0), std::move(*T)))) {
-      return err;
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(*T)));
     return llvm::Error::success();
   }
 
@@ -1228,9 +1222,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR_IF_NOT(i == T->size(),
                         "The number of serialized values does not "
                         "match the size of the tensor.");
-      if (auto err = takeErr(createAndRegisterConstant(o, std::move(*T)))) {
-        return err;
-      }
+      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(*T)));
     }
     return llvm::Error::success();
   }
@@ -1302,9 +1294,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
                         "The number of serialized values does not "
                         "match the size of the tensor.");
 
-      if (auto err = takeErr(createAndRegisterConstant(o, std::move(*T)))) {
-        return err;
-      }
+      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(*T)));
     }
 
     return llvm::Error::success();
@@ -1378,9 +1368,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR("Unsupported datatype for ConstantFill.");
     }
 
-    if (auto err = takeErr(createAndRegisterConstant(name, std::move(*T)))) {
-      return err;
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
+
     return llvm::Error::success();
   }
 
@@ -1422,9 +1411,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       elem = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
 
-    if (auto err = takeErr(createAndRegisterConstant(name, std::move(*T)))) {
-      return err;
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
+
     return llvm::Error::success();
   }
 

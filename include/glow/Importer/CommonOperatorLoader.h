@@ -198,25 +198,19 @@ protected:
         return resOrErr.takeError();
       }
 
-      if (auto err = takeErr(createAndRegisterConstant(
-              name, std::move(*loadWeightResult.t)))) {
-        return err;
-      }
+      RETURN_IF_ERR(
+          createAndRegisterConstant(name, std::move(*loadWeightResult.t)));
 
       if (loadWeightResult.biases) {
         auto biasesName = strFormat("%s_loaded_biases", name);
-        if (auto err = takeErr(createAndRegisterConstant(
-                biasesName, std::move(*loadWeightResult.biases)))) {
-          return err;
-        }
+        RETURN_IF_ERR(createAndRegisterConstant(
+            biasesName, std::move(*loadWeightResult.biases)));
       }
 
       if (loadWeightResult.scales) {
         auto scalesName = strFormat("%s_loaded_scales", name);
-        if (auto err = takeErr(createAndRegisterConstant(
-                scalesName, std::move(*loadWeightResult.scales)))) {
-          return err;
-        }
+        RETURN_IF_ERR(createAndRegisterConstant(
+            scalesName, std::move(*loadWeightResult.scales)));
       }
     }
 
@@ -284,11 +278,8 @@ protected:
     T.getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
-    if (auto resultOrErr = createAndRegisterConstant(opName, std::move(T))) {
-      return llvm::Error::success();
-    } else {
-      return resultOrErr.takeError();
-    }
+    RETURN_IF_ERR(createAndRegisterConstant(opName, std::move(T)));
+
     return llvm::Error::success();
   }
 

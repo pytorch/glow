@@ -96,9 +96,10 @@ protected:
   llvm::StringMap<Placeholder *> outputVarsByName_;
 
   /// Create a new constant that's initialized with \p tensor, and register it
-  /// under the name \p name. \returns The newly created constant.
-  llvm::Expected<Constant *> createAndRegisterConstant(llvm::StringRef name,
-                                                       Tensor &&tensor);
+  /// under the name \p name. If an existing Placeholder is already registered
+  /// under the same name then the tensor is thrown out and no new Constant
+  /// is created.
+  llvm::Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
 
   /// Create a new Placeholder of type \p T, and register it
   /// under the name \p name. \returns The newly created placeholder.
