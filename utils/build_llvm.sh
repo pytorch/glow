@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-RELEASE=release_80
+RELEASE=${RELEASE:-release_80}
 if [ ! -e "./llvm/" ]; then
     git clone --depth=1 -b "$RELEASE" https://github.com/llvm-mirror/llvm.git llvm
 fi
