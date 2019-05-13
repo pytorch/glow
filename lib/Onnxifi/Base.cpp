@@ -152,14 +152,12 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
   }
   TRACE_EVENT_END(traceContext, "adjustInputs");
-  TRACE_EVENT_BEGIN(traceContext, "adjustOutputs");
-
-  std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-      phNameToOnnxTensorOutputs;
+  TRACE_EVENT_BEGIN(traceContext, "setOnnxifiOutputs");
 
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
+    auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
 
     auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
     if (outPhIt == onnxOutputToPlaceholder_.end()) {
@@ -168,16 +166,30 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &outPhPtr = outPhIt->getValue();
 
-    phNameToOnnxTensorOutputs[outPhPtr] = outOnnxTensor;
+    // Compute the total size of the onnxifi tensor.
+    std::vector<size_t> outOnnxTensorDims(outOnnxTensor.dimensions);
+    size_t outOnnxTensorSize = 1;
+    for (unsigned j = 0; j < outOnnxTensor.dimensions; ++j) {
+      outOnnxTensorDims[j] = outOnnxTensor.shape[j];
+      outOnnxTensorSize *= outOnnxTensorDims[j];
+    }
 
-    Tensor t(outPhPtr->getType());
+    // Check that tensor provided by onnxifi is the correct size.
+    if (!outPhPtr->dims().equals(outOnnxTensorDims)) {
+      llvm::outs() << "Output tensor is the wrong shape: " << outOnnxTensorSize
+                   << " total dims vs " << outPhPtr->getType()->size() << ": "
+                   << outOnnxTensor.name << "\n";
+      return ONNXIFI_STATUS_INVALID_SHAPE;
+    }
 
-    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(t));
+    // Create a Glow tensor backed by the memory from the provided onnxifi
+    // tensor and bind it to the appropriate placeholder for the graph output.
+    Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
+    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(outputTensor));
   }
 
-  TRACE_EVENT_END(traceContext, "adjustOutputs");
-  return run(std::move(ctx), outputEvent, std::move(phNameToOnnxTensorOutputs),
-             traceEvents);
+  TRACE_EVENT_END(traceContext, "setOnnxifiOutputs");
+  return run(std::move(ctx), outputEvent, traceEvents);
 }
 
 void Graph::setTraceEvents(onnxTraceEventList *traceEvents,

@@ -78,11 +78,9 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus
-InlineGraph::run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
-                 std::unordered_map<Placeholder *, onnxTensorDescriptorV1>
-                     phNameToOnnxTensorOutputs,
-                 onnxTraceEventList *traceEvents) {
+onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
+                            EventPtr outputEvent,
+                            onnxTraceEventList *traceEvents) {
   executionEngine_.run(*ctx);
 
   // Dump profile if requested.
