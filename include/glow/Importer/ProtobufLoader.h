@@ -124,12 +124,6 @@ public:
   /// \pre hasNodeByName(name)
   llvm::Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
 
-  /// \returns the NodeValue that was registered with the name \p name or
-  /// create a new Constant for a tensor with this name. In case a new
-  /// constant is created, this method registers it under \p name.
-  llvm::Expected<NodeValue>
-  getNodeValueOrCreateConstantByName(llvm::StringRef name);
-
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
 

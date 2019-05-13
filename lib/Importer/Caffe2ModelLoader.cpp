@@ -261,8 +261,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
     Constant *W;
     ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
@@ -387,11 +386,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(dict.count("Y_scale"),
                       "missing Y_scale for quantized output type");
     NodeValue in0;
-    ASSIGN_VALUE_OR_RETURN_ERR(in0,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
-    ASSIGN_VALUE_OR_RETURN_ERR(in1,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
     auto outDims = in0.getType()->dims();
     float yScale;
     ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
@@ -410,8 +407,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(dict.count("Y_scale"),
                       "missing Y_scale for quantized output type");
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto outDims = in.getType()->dims();
     float yScale;
     ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
@@ -426,8 +422,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Int8Dequantize") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto *node = G_.createDequantize(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
@@ -437,8 +432,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       typeName == "Int8MaxPool" || typeName == "Int8AveragePool") {
     // Load the inputs:
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     std::vector<unsigned_t> strides;
     ASSIGN_VALUE_OR_RETURN_ERR(strides, getSizeHW(dict, "stride", 1));
     std::vector<unsigned_t> kernels;
@@ -522,8 +516,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "SpatialBN") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     Constant *scale;
     ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
     Constant *bias;
@@ -553,8 +546,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     inputs.reserve(numInputs);
     for (unsigned i = 0; i < numInputs; i++) {
       NodeValue in;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          in, getNodeValueOrCreateConstantByName(op.input(i)));
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
       inputs.push_back(in);
     }
 
@@ -603,8 +595,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC") {
     // Load the inputs:
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
     auto originalInputDims = in.getType()->dims();
 
@@ -696,8 +687,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "ChannelShuffle") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
     size_t group;
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
@@ -711,8 +701,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Squeeze") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto dims = getShape(dict["dims"]);
     Node *node = G_.createSqueeze(opName, in, dims);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -722,8 +711,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Log") {
     // Load the inputs:
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     // Create the log:
     auto *R = G_.createLog(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
@@ -733,8 +721,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Logit") {
     // Load the input and (optional) epsilon clamping value:
     NodeValue input;
-    ASSIGN_VALUE_OR_RETURN_ERR(input,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
     auto epsIt = dict.find("eps");
     // default: 1e-6 (as in Caffe2)
     float eps = 1E-6f;
@@ -750,11 +737,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "EQ") {
     NodeValue in0;
-    ASSIGN_VALUE_OR_RETURN_ERR(in0,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
-    ASSIGN_VALUE_OR_RETURN_ERR(in1,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
     auto *node = G_.createCmpEQ(opName, in0, in1);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
@@ -762,8 +747,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Tile") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     unsigned_t tiles;
     ASSIGN_VALUE_OR_RETURN_ERR(tiles, loadInt(dict["tiles"]));
     unsigned_t axis;
@@ -780,8 +764,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
   if (typeName == "StopGradient") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     // Currently Caffe2 importer only supports inference.
     RETURN_IF_ERR(addNodeAsOutput(op, in));
     return llvm::Error::success();
@@ -794,8 +777,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "NCHW2NHWC") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto *node = G_.createTranspose(opName, in, NCHW2NHWC);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
@@ -807,16 +789,14 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Glow does not support any of these ops now, so implement them as
     // no-ops.
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     RETURN_IF_ERR(addNodeAsOutput(op, in));
     return llvm::Error::success();
   }
 
   if (typeName == "Slice") {
     NodeValue data;
-    ASSIGN_VALUE_OR_RETURN_ERR(data,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
 
     auto starts = getShape<ssize_t>(dict["starts"]);
     auto ends = getShape<ssize_t>(dict["ends"]);
@@ -852,8 +832,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Cast") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     int to;
     ASSIGN_VALUE_OR_RETURN_ERR(to, loadInt(dict["to"]));
 
@@ -879,14 +858,11 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "ScatterAssign") {
     NodeValue data;
-    ASSIGN_VALUE_OR_RETURN_ERR(data,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
     NodeValue indices;
-    ASSIGN_VALUE_OR_RETURN_ERR(indices,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
     NodeValue slices;
-    ASSIGN_VALUE_OR_RETURN_ERR(slices,
-                               getNodeValueOrCreateConstantByName(op.input(2)));
+    ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
     Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
@@ -901,11 +877,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "SigmoidCrossEntropyWithLogits") {
     NodeValue logits;
-    ASSIGN_VALUE_OR_RETURN_ERR(logits,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(logits, getNodeValueByName(op.input(0)));
     NodeValue targets;
-    ASSIGN_VALUE_OR_RETURN_ERR(targets,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(targets, getNodeValueByName(op.input(1)));
     Node *SCEL =
         G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
     RETURN_IF_ERR(addNodeAsOutput(op, SCEL));
@@ -919,12 +893,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // value should be 1.
     unsigned axis = 1;
 
-    ASSIGN_VALUE_OR_RETURN_ERR(X,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
-    ASSIGN_VALUE_OR_RETURN_ERR(w,
-                               getNodeValueOrCreateConstantByName(op.input(1)));
-    ASSIGN_VALUE_OR_RETURN_ERR(b,
-                               getNodeValueOrCreateConstantByName(op.input(2)));
+    ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(w, getNodeValueByName(op.input(1)));
+    ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
 
     if (dict.count("axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
@@ -937,8 +908,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "AveragedLoss") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto *node = G_.createBatchedReduceMean(opName, in, 0);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
@@ -946,8 +916,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Mod") {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     int64_t divisor;
     ASSIGN_VALUE_OR_RETURN_ERR(divisor, loadInt(dict["divisor"]));
 
@@ -987,19 +956,17 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     NodeValue data;
-    ASSIGN_VALUE_OR_RETURN_ERR(data,
-                               getNodeValueOrCreateConstantByName(op.input(0)));
+    ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
     NodeValue weights;
     if (isWeighted) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          weights, getNodeValueOrCreateConstantByName(op.input(1)));
+      ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(1)));
     }
     NodeValue indices;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        indices, getNodeValueOrCreateConstantByName(op.input(indicesIdx)));
+    ASSIGN_VALUE_OR_RETURN_ERR(indices,
+                               getNodeValueByName(op.input(indicesIdx)));
     NodeValue lengths;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        lengths, getNodeValueOrCreateConstantByName(op.input(lengthsIdx)));
+    ASSIGN_VALUE_OR_RETURN_ERR(lengths,
+                               getNodeValueByName(op.input(lengthsIdx)));
     Constant *dataC = llvm::dyn_cast<Constant>(data);
 
     const size_t numRows = data.dims()[0];
@@ -1041,9 +1008,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       }
     } else {
       NodeValue scalesBiases;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          scalesBiases,
-          getNodeValueOrCreateConstantByName(op.input(scalesBiasesIdx)));
+      ASSIGN_VALUE_OR_RETURN_ERR(scalesBiases,
+                                 getNodeValueByName(op.input(scalesBiasesIdx)));
 
       Constant *scalesBiasesC = llvm::dyn_cast<Constant>(scalesBiases);
       RETURN_ERR_IF_NOT(scalesBiasesC, "scales_biases must be Constant.");

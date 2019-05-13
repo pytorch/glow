@@ -386,8 +386,7 @@ llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                                        const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   NodeValue data;
-  ASSIGN_VALUE_OR_RETURN_ERR(data,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   auto dims = data.dims();
   auto numDims = dims.size();
 
@@ -494,11 +493,9 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   // Load the inputs
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   NodeValue filterValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(filterValue,
-                             getNodeValueOrCreateConstantByName(op.input(1)));
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
 
   // Transpose the filter to the right format. Glow expects to read the
   // weights in the format CRSK. ONNX stores the operators as KCRS.
@@ -588,8 +585,7 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   }
   // Load the inputs:
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
     strides = getShape<unsigned_t>(dict.at("strides"));
@@ -639,8 +635,7 @@ ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
 
   // Load the inputs:
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
     strides = getShape<unsigned_t>(dict.at("strides"));
@@ -666,8 +661,7 @@ llvm::Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -679,8 +673,7 @@ llvm::Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -693,8 +686,7 @@ ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   Constant *scale;
   ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
   Constant *bias;
@@ -732,8 +724,7 @@ llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   inputs.reserve(numInputs);
   for (unsigned i = 0; i < numInputs; i++) {
     NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in,
-                               getNodeValueOrCreateConstantByName(op.input(i)));
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
     inputs.push_back(in);
   }
 
@@ -751,8 +742,7 @@ ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   if (in.getType()->dims().size() > 2) {
     size_t axis = 1;
     if (dict.count("axis")) {
@@ -792,14 +782,11 @@ llvm::Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue A;
-  ASSIGN_VALUE_OR_RETURN_ERR(A,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(A, getNodeValueByName(op.input(0)));
   NodeValue B;
-  ASSIGN_VALUE_OR_RETURN_ERR(B,
-                             getNodeValueOrCreateConstantByName(op.input(1)));
+  ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(1)));
   NodeValue C;
-  ASSIGN_VALUE_OR_RETURN_ERR(C,
-                             getNodeValueOrCreateConstantByName(op.input(2)));
+  ASSIGN_VALUE_OR_RETURN_ERR(C, getNodeValueByName(op.input(2)));
 
   bool broadcastC;
   ASSIGN_VALUE_OR_RETURN_ERR(broadcastC, getBroadcast(dict));
@@ -834,11 +821,9 @@ llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   NodeValue LHS;
-  ASSIGN_VALUE_OR_RETURN_ERR(LHS,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
   NodeValue RHS;
-  ASSIGN_VALUE_OR_RETURN_ERR(RHS,
-                             getNodeValueOrCreateConstantByName(op.input(1)));
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
   Node *node = G_.createMatMul(opName, LHS, RHS);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -849,8 +834,7 @@ llvm::Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                                            const ArgumentDictionaryTy &dict) {
   // Input Type.
   NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
   ElemKind inputType = input.getType()->getElementType();
 
   // Only supports float types.
@@ -882,8 +866,7 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 
   // Input
   NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
   auto inputDims = input.dims();
   auto numDims = inputDims.size();
 
@@ -939,8 +922,7 @@ llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
 
   // Input type
   NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
   ElemKind inputKind = input.getType()->getElementType();
 
   // Target type.
@@ -978,8 +960,7 @@ ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 
   // Input Type
   NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getNodeValueOrCreateConstantByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
   int blockSize = 0;
   if (dict.count("blocksize")) {
@@ -1088,8 +1069,7 @@ llvm::Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.output_size(); i++) {
     const auto &outputName = net.output(i).name();
     NodeValue r;
-    ASSIGN_VALUE_OR_RETURN_ERR(r,
-                               getNodeValueOrCreateConstantByName(outputName));
+    ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
     SaveNode *SN = G_.createSave("save_" + outputName, r);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }

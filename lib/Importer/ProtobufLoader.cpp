@@ -100,17 +100,6 @@ ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
   return node;
 }
 
-// TODO: rename this?
-llvm::Expected<NodeValue>
-ProtobufLoader::getNodeValueOrCreateConstantByName(llvm::StringRef name) {
-  auto node = getNodeValueByNameOrNullNodeValue(name);
-  if (node.getNode()) {
-    return node;
-  }
-
-  RETURN_ERR(strFormat("Couldn't find Constant with name %s", name.data()));
-}
-
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
   return getNodeValueByNameOrNullNodeValue(name).getNode() != nullptr;
 }

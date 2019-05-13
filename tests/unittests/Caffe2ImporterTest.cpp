@@ -1567,15 +1567,14 @@ TEST(caffe2, tensorFillsTest) {
     Type unusedTy = Type(ElemKind::FloatTy, {1});
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                                {"unused_output"}, {&unusedTy}, *F);
-    tensorFillFloat = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_fill_float")));
-    tensorIntFill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_int_fill")));
-    tensorInt64Fill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
-        caffe2LD.getNodeValueOrCreateConstantByName("tensor_int64_fill")));
-    tensorStringToUInt8Fill = llvm::dyn_cast<Constant>(
-        EXIT_ON_ERR(caffe2LD.getNodeValueOrCreateConstantByName(
-            "tensor_string_to_uint8_fill")));
+    tensorFillFloat = llvm::dyn_cast<Constant>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("tensor_fill_float")));
+    tensorIntFill = llvm::dyn_cast<Constant>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("tensor_int_fill")));
+    tensorInt64Fill = llvm::dyn_cast<Constant>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("tensor_int64_fill")));
+    tensorStringToUInt8Fill = llvm::dyn_cast<Constant>(EXIT_ON_ERR(
+        caffe2LD.getNodeValueByName("tensor_string_to_uint8_fill")));
   }
 
   ASSERT_TRUE(tensorFillFloat);
