@@ -1062,9 +1062,9 @@ Caffe2ModelLoader::loadInputsWithTensorProtoType(const caffe2::NetDef &net,
         placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
     nameToInputVars_.try_emplace(in.name(), placeholder);
   } else {
-    std::unique_ptr<Tensor> T(new Tensor());
-    RETURN_IF_ERR(setTensorType(in, T.get()));
-    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
+    Tensor T;
+    RETURN_IF_ERR(setTensorType(in, &T));
+    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
   }
   return llvm::Error::success();
 }
