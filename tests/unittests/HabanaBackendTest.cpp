@@ -1592,18 +1592,17 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 }
 
 TEST_F(HabanaBackendTest, FCPerf) {
-  // Create function.
-  const int fc_size = 1000;
+  const int fcSize = 1000;
   auto *data =
-      mod_.createPlaceholder(ElemKind::FloatTy, {16, fc_size}, "data", false);
-  auto *weights = mod_.createPlaceholder(ElemKind::FloatTy, {fc_size, fc_size},
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, fcSize}, "data", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::FloatTy, {fcSize, fcSize},
                                          "weights", false);
   auto *bias =
-      mod_.createPlaceholder(ElemKind::FloatTy, {fc_size}, "bias", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {fcSize}, "bias", false);
 
   auto *fc = F_->createFullyConnected("fc", data, weights, bias);
   auto *output =
-      mod_.createPlaceholder(ElemKind::FloatTy, {16, fc_size}, "output", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, fcSize}, "output", false);
   F_->createSave("save", fc, output);
 
   ctx_.allocate(data)->getHandle().clear(1);
@@ -1621,11 +1620,11 @@ TEST_F(HabanaBackendTest, FCPerf) {
     EE_.run(ctx_);
   struct timespec end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-  double elapsed_secs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
-                        (end.tv_sec - begin.tv_sec);
-  printf("Time: %lf\n", elapsed_secs);
-  uint64_t flops = 10 * fc_size * (uint64_t)fc_size * 16 * 2;
-  printf("Tflops: %lf\n", (flops) / elapsed_secs * 1e-12);
+  double elapsedSecs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
+                       (end.tv_sec - begin.tv_sec);
+  printf("Time: %lf\n", elapsedSecs);
+  uint64_t flops = 10 * fcSize * (uint64_t)fcSize * 16 * 2;
+  printf("Tflops: %lf\n", (flops) / elapsedSecs * 1e-12);
 }
 
 // Test performance of Gather.  Disabled due to unspecified bugs in Gather op.
@@ -1659,10 +1658,10 @@ TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
     EE_.run(ctx_);
   struct timespec end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-  double elapsed_secs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
-                        (end.tv_sec - begin.tv_sec);
-  printf("Time: %lf\n", elapsed_secs);
-  printf("GBps: %lf\n", 10 * 3000 * 4.0 / elapsed_secs / 1000 / 1000 / 1000);
+  double elapsedSecs = (end.tv_nsec - begin.tv_nsec) / 1000000000.0 +
+                       (end.tv_sec - begin.tv_sec);
+  printf("Time: %lf\n", elapsedSecs);
+  printf("GBps: %lf\n", 10 * 3000 * 4.0 / elapsedSecs / 1000 / 1000 / 1000);
 }
 
 TEST_F(HabanaBackendTest, BatchedGather) {
