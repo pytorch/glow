@@ -4678,9 +4678,9 @@ static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
                         glow::Function *F, glow::ExecutionEngine &EE,
                         ElemKind DTy) {
   constexpr size_t size = 10;
-  auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
-  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
 
   auto *sigmoid = F->createSigmoid("sigmoid", input);
   auto *save = F->createSave("Save", sigmoid);
@@ -4689,11 +4689,11 @@ static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto RH = bindings.get(save->getPlaceholder())->getHandle();
-  auto inH = bindings.get(input)->getHandle();
+  auto RH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
 
   for (size_t i = 0; i < size; i++) {
-    float val = 1 / (1 + std::exp(-inH.at({i})));
+    float val = 1 / (1 + std::exp(-(float)inH.at({i})));
     EXPECT_NEAR(RH.at({i}), val, 0.001);
   }
 }
@@ -4706,7 +4706,7 @@ TEST_P(OperatorTest, Sigmoid_Float) {
 
 /// Verify that the Sigmoid operator works correctly with Float16Ty.
 TEST_P(OperatorTest, Sigmoid_Float16) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter);
   testSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
