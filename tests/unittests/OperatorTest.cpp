@@ -2396,10 +2396,10 @@ TEST_P(OperatorTest, FCWithFlatten) {
   Constant *bias = mod_.createConstant(ElemKind::FloatTy, {4}, "bias");
 
   bindings_.allocate(input)->getHandle() = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  weights->getPayload().getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                       2.0f, 5.0f, 8.0f, 11.0f, //
-                                       3.0f, 6.0f, 9.0f, 12.0f};
-  bias->getPayload().getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
+  weights->getPayloadMutable().getHandle() = {1.0f, 4.0f, 7.0f, 10.0f, //
+                                              2.0f, 5.0f, 8.0f, 11.0f, //
+                                              3.0f, 6.0f, 9.0f, 12.0f};
+  bias->getPayloadMutable().getHandle() = {0.1f, 0.2f, 0.3f, 0.4f};
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *S = F_->createSave("save", FC);
@@ -5133,7 +5133,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum) {
   };
 
   Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
-  weights->getPayload().getHandle<float>() = {
+  weights->getPayloadMutable().getHandle<float>() = {
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
@@ -5246,7 +5246,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
   };
 
   Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
-  weights->getPayload().getHandle<float>() = {
+  weights->getPayloadMutable().getHandle<float>() = {
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
@@ -5582,8 +5582,8 @@ TEST_P(OperatorTest, Select) {
 TEST_P(OperatorTest, CmpLTE) {
   Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
   Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
-  A->getPayload().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
-  B->getPayload().getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
+  A->getPayloadMutable().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
+  B->getPayloadMutable().getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
 
   auto *CMPLTE = F_->createCmpLTE("select", A, B);
   auto *result = F_->createSave("saveCMPLTE", CMPLTE);

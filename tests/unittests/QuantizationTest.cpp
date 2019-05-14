@@ -445,7 +445,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   // Note that we generate values for the Weights because they will be used
   // during rowwise-quantization to select each row's scale/offset.
   auto *WC = llvm::cast<Constant>(FC->getWeights());
-  WC->getPayload().getHandle().randomize(-0.7, 1.1, mod.getPRNG());
+  WC->getPayloadMutable().getHandle().randomize(-0.7, 1.1, mod.getPRNG());
   auto *BC = llvm::cast<Constant>(FC->getBias());
 
   TensorQuantizationParams inputTQP = chooseQuantizationParams(
@@ -518,7 +518,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   ASSERT_TRUE(offsetsNode);
 
   // Because we're using symmetric quantization, the offsets should all be zero.
-  auto offsetsH = offsetsNode->getPayload().getHandle<int32_t>();
+  const auto offsetsH = offsetsNode->getPayload().getHandle<int32_t>();
   EXPECT_TRUE(offsetsH.isZero());
 
   // Make sure that graph can be compiled and run. We check the correctness of
@@ -1712,7 +1712,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "lhs", true);
   auto *RHS = mod.createConstant(ElemKind::FloatTy, {3, 3}, "rhs");
   bindings.allocate(LHS)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
-  RHS->getPayload().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
+  RHS->getPayloadMutable().init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
 
   auto *MMN = F->createMatMul("matmul", LHS, RHS);
   auto *save = F->createSave("ret", MMN);

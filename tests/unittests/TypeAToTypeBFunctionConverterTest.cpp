@@ -532,12 +532,12 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
 
   auto *weights = mod.createConstant(
       mod.uniqueType(ElemKind::FloatTy, {13, 10}), "weights");
-  weights->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  weights->getPayloadMutable().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
   Tensor origWeights;
   origWeights.assign(&weights->getPayload());
   auto *bias =
       mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10, 20}), "bias");
-  bias->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  bias->getPayloadMutable().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
   Tensor origBias;
   origBias.assign(&bias->getPayload());
 
@@ -729,12 +729,12 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
 
   auto *weights = mod.createConstant(
       mod.uniqueType(ElemKind::FloatTy, {13, 10}), "weights");
-  weights->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  weights->getPayloadMutable().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
   Tensor origWeights;
   origWeights.assign(&weights->getPayload());
   auto *bias =
       mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10, 20}), "bias");
-  bias->getPayload().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
+  bias->getPayloadMutable().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
 
   TypeRef FCTy = mod.uniqueType(ElemKind::FloatTy, {20, 10});
   auto *FC = F->createFullyConnected("FC", input, weights, bias, FCTy);

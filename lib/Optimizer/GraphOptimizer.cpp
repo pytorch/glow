@@ -1145,7 +1145,7 @@ static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
 
   // If constant has more than one use, duplicate it and return the duplicate.
   auto *NC = M->createConstant(constant->getType(), constant->getName());
-  NC->getPayload().assign(&constant->getPayload());
+  NC->getPayloadMutable().assign(&constant->getPayload());
   return NC;
 }
 
@@ -1578,7 +1578,8 @@ static void transposeConstants(Function *F) {
     auto *NC =
         F->getParent()->createConstant(TN->getResult().getType(), C->getName());
     // Transpose the value of C into NC.
-    genericTranspose(&C->getPayload(), &NC->getPayload(), TN->getShuffle());
+    genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
+                     TN->getShuffle());
     // Rewrite uses of TN to reference NC.
     TN->getResult().replaceAllUsesOfWith(NC);
   }
@@ -1904,7 +1905,8 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     case ElemKind::Float16Ty: {
       // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
       Constant &constantToBeModified = modifyConstantTyAndGet();
-      constantToBeModified.getPayload().convertToType(dstTy->getElementType());
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
       return constantToBeModified.getOutput();
     }
     case ElemKind::Int32QTy:
@@ -1913,7 +1915,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Quantization: {FloatTy, Float16Ty} -> Quantized type.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
-      Tensor &tensorToBeModified = constantToBeModified.getPayload();
+      Tensor &tensorToBeModified = constantToBeModified.getPayloadMutable();
       // Right now we only quantize fp32 value.
       // Add an assert on that, so that if it changes, we adapt the
       // following code. Adapting the code would required to

@@ -282,7 +282,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // and "Int8ConvRelu", the weights always follows the "order" arg.
     if (!((typeName != "ConvRelu" && typeName != "Conv") && order == "NHWC")) {
       Tensor tmp;
-      W->getPayload().transpose(&tmp, NCHW2NHWC);
+      W->getPayloadMutable().transpose(&tmp, NCHW2NHWC);
       W = G_.getParent()->createConstant(W->getName(), tmp);
     }
 
@@ -630,7 +630,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     if (typeName == "FC" || typeName == "Int8FC") {
       Tensor tmp;
-      W->getPayload().transpose(&tmp, {1, 0});
+      W->getPayloadMutable().transpose(&tmp, {1, 0});
       W = G_.getParent()->createConstant(W->getName(), tmp);
     }
 
@@ -988,7 +988,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
                                                      dataC->dims(), 0.0, 0);
         dataC->setType(Storage::OutputIdx, fusedTy);
-        dataC->getPayload().setType(fusedTy);
+        dataC->getPayloadMutable().setType(fusedTy);
 
         // We also need to update the data to be unsigned instead of signed.
         auto dataCH = dataC->getHandle<uint8_t>();

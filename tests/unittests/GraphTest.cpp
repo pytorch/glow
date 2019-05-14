@@ -1266,9 +1266,93 @@ TEST(Graph, verifyConstantTensorTypeMatchesTensorTypeChanged) {
   auto *input = M.createConstant(ElemKind::FloatTy, {5}, "input");
   // Fresh constant should verify just fine.
   EXPECT_TRUE(input->verify());
-  input->getPayload().convertToType(ElemKind::Float16Ty);
+  input->getPayloadMutable().convertToType(ElemKind::Float16Ty);
 
   EXPECT_FALSE(input->verify());
+}
+
+/// Check that Constants backed by unowned Tensors are in fact unowned until
+/// a mutable reference to their payload is obtained at which point the backing
+/// Tensor is copied and becomes owned.
+TEST(Graph, verifyConstantWithUnownedTensorCopiesOnWrite) {
+  Module M;
+
+  Tensor originalT(ElemKind::FloatTy, {3});
+  Tensor unownedT = originalT.getUnowned({3});
+
+  auto originalH = originalT.getHandle();
+  auto unownedH = unownedT.getHandle();
+
+  for (size_t i = 0; i < originalT.size(); i++) {
+    originalH.raw(i) = i;
+  }
+
+  // Both Tensors should have the same values because unownedH has the same
+  // underlying memory as originalH.
+  for (size_t i = 0; i < unownedH.size(); i++) {
+    EXPECT_EQ(unownedH.raw(i), i);
+  }
+
+  Constant *originalC = M.createConstant("original", std::move(originalT));
+  Constant *unownedC = M.createConstant("unowned", std::move(unownedT));
+
+  const Tensor &originalCT = originalC->getPayload();
+  const Tensor &unownedCT = unownedC->getPayload();
+
+  const auto originalCTH = originalCT.getHandle();
+  const auto unownedCTH = unownedCT.getHandle();
+
+  ASSERT_EQ(originalCTH.size(), unownedCTH.size());
+
+  // Both Constants should have the same values because their Tensors have the
+  // same underlying memory.
+  for (size_t i = 0; i < originalCTH.size(); i++) {
+    EXPECT_EQ(i, originalCTH.raw(i));
+    EXPECT_EQ(i, unownedCTH.raw(i));
+  }
+
+  Tensor &originalCTM = originalC->getPayloadMutable();
+  auto originalCTMH = originalCTM.getHandle();
+
+  // Bump up the value in the original Constant, this change should be
+  // reflected in the unowned Constant as well.
+  for (size_t i = 0; i < originalCTMH.size(); i++) {
+    originalCTMH.raw(i) += 1;
+  }
+
+  // After changing the values in the original Constant, we should see an update
+  // in the values of the unowned Constant because they share the same
+  // underlying memory.
+  for (size_t i = 0; i < unownedCTH.size(); i++) {
+    EXPECT_EQ(unownedCTH.raw(i), i + 1);
+  }
+
+  Tensor &unownedCTM = unownedC->getPayloadMutable();
+  auto unownedCTMH = unownedCTM.getHandle();
+
+  ASSERT_EQ(originalCTH.size(), unownedCTMH.size());
+
+  // After getting a mutable reference to the unowned Constant's payload, the
+  // underlying memory should have been copied but should still contain the same
+  // values as it did previously at this point.
+  for (size_t i = 0; i < unownedCTMH.size(); i++) {
+    EXPECT_EQ(unownedCTMH.raw(i), i + 1);
+  }
+
+  // Bump up the value in the original Constant again, this change should not be
+  // reflected in the unowned Constant now because at this point, after a
+  // mutable reference to its payload has been obtained, it should have it's own
+  // memory.
+  for (size_t i = 0; i < originalCTMH.size(); i++) {
+    originalCTMH.raw(i) += 1;
+  }
+
+  // Now that the unowned Constant's payload has been obtained as mutable, it
+  // should have been copied and thus have its own memory and changes to the
+  // original constant should not be reflected in the unowned Constant.
+  for (size_t i = 0; i < unownedCTMH.size(); i++) {
+    EXPECT_EQ(unownedCTMH.raw(i), i + 1);
+  }
 }
 
 /// Check that hooking an intermediate node works.

@@ -718,15 +718,15 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
     // Since in FC, the weights is stored as transposed (i.e. I * W + B), but in
     // RowwiseQuantizedFullyConnected, the weights is stored as it is (i.e. I *
     // W(T) + B).
-    weights->getPayload().transpose(&wt, {1, 0});
+    weights->getPayloadMutable().transpose(&wt, {1, 0});
   } else {
     wt.assign(&(weights->getPayload()));
   }
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
   quantization::tensorRowwiseQuantization<int32_t>(
-      wt, qWeights->getPayload(), scales->getPayload(), offsets->getPayload(),
-      schema);
+      wt, qWeights->getPayloadMutable(), scales->getPayloadMutable(),
+      offsets->getPayloadMutable(), schema);
 
   return addNode(new RowwiseQuantizedFullyConnectedNode(
       name, outTy, input, qWeights, scales, offsets, B));
@@ -1438,8 +1438,8 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
 
   // Note: Using float offset here as that is what RWQ-SLWS expects.
   quantization::tensorRowwiseQuantization<float>(
-      data, rwqData->getPayload(), dataScales->getPayload(),
-      dataOffsets->getPayload(), schema);
+      data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
+      dataOffsets->getPayloadMutable(), schema);
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
@@ -1513,7 +1513,8 @@ quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
   Constant *rwqData = F->getParent()->createConstant(
       ElemKind::UInt8FusedQTy, {fDims.first, fDims.second + 8}, 0.0, 0, "data");
 
-  quantization::tensorFusedRowwiseQuantization(fData, rwqData->getPayload());
+  quantization::tensorFusedRowwiseQuantization(fData,
+                                               rwqData->getPayloadMutable());
   return F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, weights, indices, lengths);
 }
