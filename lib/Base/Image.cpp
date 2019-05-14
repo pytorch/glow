@@ -362,6 +362,19 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
                                        llvm::ArrayRef<float> mean,
                                        llvm::ArrayRef<float> stddev) {
   Tensor imageData;
+  readPngImageAndPreprocess(imageData, filename, imageNormMode,
+                            imageChannelOrder, imageLayout, mean, stddev);
+  return imageData;
+}
+
+void glow::readPngImageAndPreprocess(Tensor &imageData,
+                                     llvm::StringRef filename,
+                                     ImageNormalizationMode imageNormMode,
+                                     ImageChannelOrder imageChannelOrder,
+                                     ImageLayout imageLayout,
+                                     llvm::ArrayRef<float> mean,
+                                     llvm::ArrayRef<float> stddev) {
+
   auto range = normModeToRange(imageNormMode);
   bool loadSuccess =
       !readPngImage(&imageData, filename.data(), range, mean, stddev);
@@ -391,7 +404,6 @@ Tensor glow::readPngImageAndPreprocess(llvm::StringRef filename,
     imageData.transpose(&transposed, {2u, 0u, 1u});
     imageData = std::move(transposed);
   }
-  return imageData;
 }
 
 void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
