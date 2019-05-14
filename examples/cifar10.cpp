@@ -127,7 +127,8 @@ void testCIFAR10() {
 
   if (!dbInput.is_open()) {
     llvm::outs() << "Failed to open cifar10 data file, probably missing.\n";
-    llvm::outs() << "Run 'python ../glow/utils/download_test_db.py'\n";
+    llvm::outs() << "Run 'python ../glow/utils/download_datasets_and_models.py "
+                    "-d cifar10'\n";
     exit(1);
   }
 

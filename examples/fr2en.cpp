@@ -113,9 +113,10 @@ struct Vocabulary {
 void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
   std::ifstream file(filename.str(), std::ios::binary);
   if (!file.read(result.getUnsafePtr(), result.size() * sizeof(float))) {
-    std::cout << "Error reading file: " << filename.str() << '\n'
-              << "Need to be downloaded by calling:\n"
-              << "python ../glow/utils/download_test_db.py -d fr2en\n";
+    std::cout
+        << "Error reading file: " << filename.str() << '\n'
+        << "Need to be downloaded by calling:\n"
+        << "python ../glow/utils/download_datasets_and_models.py -d fr2en\n";
     exit(1);
   }
 }
