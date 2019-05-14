@@ -336,6 +336,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     } else {
       // Copy the execution outputs from the designated IO buffer back to the
       // PlaceholderBindings inside ctx.
+      TRACE_EVENT_BEGIN(ctx->getTraceContext(), "copyOutputs");
       auto bindings = ctx->getPlaceholderBindings();
       for (const auto &ph : function->getOutputs()) {
         auto *tensor = bindings->get(ph);
@@ -345,6 +346,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
         memcpy(tensor->getUnsafePtr(), ioBuffer->get(ph),
                ph->getType()->getSizeInBytes());
       }
+      TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
 
       // Return the IO buffer to the IO buffer pool.
       ioBufferPool->put(std::move(ioBuffer));
