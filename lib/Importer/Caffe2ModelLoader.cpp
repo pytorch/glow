@@ -1167,20 +1167,20 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     auto const &values = dict["values"];
     RETURN_ERR_IF_NOT(op.output_size() == 1,
                       "GivenTensorFill must have exactly 1 output");
-    std::unique_ptr<Tensor> T(new Tensor());
+    Tensor T;
     if (typeName == "GivenTensorFill") {
       RETURN_IF_ERR(
-          fillTensor<float>(*T, ElemKind::FloatTy, dim, values->floats()));
+          fillTensor<float>(T, ElemKind::FloatTy, dim, values->floats()));
     } else if (typeName == "GivenTensorIntFill") {
       RETURN_IF_ERR(
-          fillTensor<int32_t>(*T, ElemKind::Int32ITy, dim, values->ints()));
+          fillTensor<int32_t>(T, ElemKind::Int32ITy, dim, values->ints()));
     } else if (typeName == "GivenTensorInt64Fill") {
       RETURN_IF_ERR(
-          fillTensor<int64_t>(*T, ElemKind::Int64ITy, dim, values->ints()));
+          fillTensor<int64_t>(T, ElemKind::Int64ITy, dim, values->ints()));
     } else {
       GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
     }
-    RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(*T)));
+    RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(T)));
     return llvm::Error::success();
   }
 
@@ -1201,14 +1201,14 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      */
 
     for (auto &o : op.output()) {
-      std::unique_ptr<Tensor> T(new Tensor());
+      Tensor T;
       if (getConstantByNameOrNull(o)) {
         continue;
       }
       auto dim = getShape(dict["shape"]);
 
-      T->reset(ElemKind::Int8QTy, dim, 0.0, 0);
-      auto TH = T->getHandle<int8_t>();
+      T.reset(ElemKind::Int8QTy, dim, 0.0, 0);
+      auto TH = T.getHandle<int8_t>();
       assert(dict["values"]->strings().size() == 1 &&
              "Expect single string input for GivenTensorByteStringToUInt8Fill");
       const std::string str = dict["values"]->strings().Get(0);
@@ -1219,10 +1219,10 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       for (i = 0; i < str.size(); i++) {
         TH.raw(i) = (uint8_t)str.c_str()[i] - OFFSETSHIFT;
       }
-      RETURN_ERR_IF_NOT(i == T->size(),
+      RETURN_ERR_IF_NOT(i == T.size(),
                         "The number of serialized values does not "
                         "match the size of the tensor.");
-      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(*T)));
+      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(T)));
     }
     return llvm::Error::success();
   }
@@ -1255,7 +1255,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      }
      */
     for (auto &o : op.output()) {
-      std::unique_ptr<Tensor> T(new Tensor());
+      Tensor T;
       if (getConstantByNameOrNull(o)) {
         continue;
       }
@@ -1277,24 +1277,24 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         // the weights is stored in uint8_t format due to that Caffe2 requires
         // the type of input and weights must be the same. Therefore, we need
         // to convert it to int8 by subtracting 128.
-        T->reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
-        auto TH = T->getHandle<int8_t>();
+        T.reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
+        auto TH = T.getHandle<int8_t>();
         std::string str = dict["values"]->s();
         for (; i < str.size(); i++) {
           TH.raw(i) = ((uint8_t)(str.c_str()[i]) - OFFSETSHIFT);
         }
       } else {
-        T->reset(ElemKind::Int32QTy, dim, scale, offset);
-        auto TH = T->getHandle<int32_t>();
+        T.reset(ElemKind::Int32QTy, dim, scale, offset);
+        auto TH = T.getHandle<int32_t>();
         for (auto num : dict["values"]->ints()) {
           TH.raw(i++) = num;
         }
       }
-      RETURN_ERR_IF_NOT(i == T->size(),
+      RETURN_ERR_IF_NOT(i == T.size(),
                         "The number of serialized values does not "
                         "match the size of the tensor.");
 
-      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(*T)));
+      RETURN_IF_ERR(createAndRegisterConstant(o, std::move(T)));
     }
 
     return llvm::Error::success();
@@ -1319,7 +1319,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       return llvm::Error::success();
     }
 
-    std::unique_ptr<Tensor> T(new Tensor());
+    Tensor T;
 
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
@@ -1343,8 +1343,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
     switch (to) {
     case caffe2::TensorProto_DataType_FLOAT: {
-      T->reset(ElemKind::FloatTy, dims);
-      auto TH = T->getHandle<float>();
+      T.reset(ElemKind::FloatTy, dims);
+      auto TH = T.getHandle<float>();
       float f = 0.0f;
       if ((dict.count("value") && dict["value"]->has_f())) {
         ASSIGN_VALUE_OR_RETURN_ERR(f, loadFloat(dict["value"]));
@@ -1355,8 +1355,8 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     case caffe2::TensorProto_DataType_INT32:
     case caffe2::TensorProto_DataType_INT64:
     case caffe2::TensorProto_DataType_BOOL: {
-      T->reset(ElemKind::Int64ITy, dims);
-      auto TH = T->getHandle<int64_t>();
+      T.reset(ElemKind::Int64ITy, dims);
+      auto TH = T.getHandle<int64_t>();
       int i = 0;
       if ((dict.count("value") && dict["value"]->has_i())) {
         ASSIGN_VALUE_OR_RETURN_ERR(i, loadInt(dict["value"]));
@@ -1368,7 +1368,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_ERR("Unsupported datatype for ConstantFill.");
     }
 
-    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
+    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
 
     return llvm::Error::success();
   }
@@ -1393,10 +1393,10 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      }
     */
     const auto &name = op.output(0);
-    std::unique_ptr<Tensor> T(new Tensor());
+    Tensor T;
     auto dim = getShape(dict["shape"]);
-    T->reset(ElemKind::FloatTy, dim);
-    auto TH = T->getHandle<>();
+    T.reset(ElemKind::FloatTy, dim);
+    auto TH = T.getHandle<>();
     float tensorMin;
     ASSIGN_VALUE_OR_RETURN_ERR(tensorMin, loadFloat(dict["min"]));
     float tensorMax;
@@ -1411,7 +1411,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       elem = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
     }
 
-    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
+    RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
 
     return llvm::Error::success();
   }
@@ -1427,7 +1427,9 @@ llvm::Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {
 }
 
 Caffe2ModelLoader::Caffe2ModelLoader(Function &F, llvm::Error *errPtr)
-    : CommonOperatorLoader({}, {}, F, errPtr) {}
+    : CommonOperatorLoader({}, {}, F, errPtr) {
+  deleteUnusedConstants();
+}
 
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
@@ -1459,6 +1461,8 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     F.orderNodes();
 
     RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
+
+    deleteUnusedConstants();
 
     return llvm::Error::success();
   };

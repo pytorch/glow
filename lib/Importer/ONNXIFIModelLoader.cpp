@@ -57,6 +57,8 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
     RETURN_IF_ERR(onnxLoader->setOutputNodes(graphDef));
 
+    onnxLoader->deleteUnusedConstants();
+
     loader->onnxNameToInputVars_ = onnxLoader->getInputVarsMapping();
 
     // Keep hold of the context
@@ -87,9 +89,12 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
     loader->onnxNameToInputVars_ = c2Loader->getInputVarsMapping();
 
+    c2Loader->deleteUnusedConstants();
+
     // Keep hold of the context
     loader->core_ = std::move(c2Loader);
   }
+
   return llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
 }
 } // namespace glow

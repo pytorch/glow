@@ -92,9 +92,9 @@ llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
           placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
       onnxNameToInputVars_.try_emplace(in.name(), placeholder);
     } else {
-      std::unique_ptr<Tensor> T(new Tensor());
-      RETURN_IF_ERR(setTensorType(in.type(), T.get()));
-      RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
+      Tensor T;
+      RETURN_IF_ERR(setTensorType(in.type(), &T));
+      RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
     }
   }
   return llvm::Error::success();
@@ -370,9 +370,9 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                     "Only Tensor type constants are supported.",
                     GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
 
-  std::unique_ptr<Tensor> T(new Tensor());
-  RETURN_IF_ERR(loadTensor(dict.at("value")->t(), T.get()));
-  RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*T)));
+  Tensor T;
+  RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
+  RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
 
   return llvm::Error::success();
 }
@@ -1046,9 +1046,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializaers:
   for (const auto &in : net.initializer()) {
-    std::unique_ptr<Tensor> T(new Tensor());
-    RETURN_IF_ERR(loadTensor(in, T.get()));
-    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(*T)));
+    Tensor T;
+    RETURN_IF_ERR(loadTensor(in, &T));
+    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
   }
   return llvm::Error::success();
 }
@@ -1080,7 +1080,9 @@ llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
 }
 
 ONNXModelLoader::ONNXModelLoader(Function &F, llvm::Error *errPtr)
-    : CommonOperatorLoader({}, {}, F, errPtr) {}
+    : CommonOperatorLoader({}, {}, F, errPtr) {
+  deleteUnusedConstants();
+}
 
 llvm::Error
 ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
@@ -1142,6 +1144,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     RETURN_IF_ERR(setOutputNodes(graphDef));
 
     RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
+
+    deleteUnusedConstants();
 
     return llvm::Error::success();
   };

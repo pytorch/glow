@@ -161,6 +161,8 @@ TEST(caffe2, convNHWC) {
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 2 constants: Weights and bias.
+  EXPECT_EQ(mod.getConstants().size(), 2);
 }
 
 /// Test loading MaxPool with NHWC order input.
@@ -1551,7 +1553,7 @@ TEST(caffe2, tensorFillsTest) {
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      GLOW_DATA_PATH "tests/models/caffe2Models/empty_predict_net.pbtxt");
+      GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_predict_net.pbtxt");
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/fill_test_init_net.pbtxt");
 
@@ -1564,9 +1566,12 @@ TEST(caffe2, tensorFillsTest) {
     // Loaded protos must have at least one external output, so load an unused
     // output and type to satisfy it. It is named unused_output in
     // empty_predict_net.pbtxt.
-    Type unusedTy = Type(ElemKind::FloatTy, {1});
-    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
-                               {"unused_output"}, {&unusedTy}, *F);
+    Type unusedTy = Type(ElemKind::FloatTy, {4});
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename,
+        {"tensor_fill_float_eq", "tensor_int_fill_eq", "tensor_int64_fill_eq",
+         "tensor_string_to_uint8_fill_eq"},
+        {&unusedTy, &unusedTy, &unusedTy, &unusedTy}, *F);
     tensorFillFloat = llvm::dyn_cast<Constant>(
         EXIT_ON_ERR(caffe2LD.getNodeValueByName("tensor_fill_float")));
     tensorIntFill = llvm::dyn_cast<Constant>(
@@ -1911,9 +1916,9 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
-  // We have 5 constants: originally fused data (no longer used), data, scales,
-  // offsets, and weights.
-  EXPECT_EQ(mod.getConstants().size(), 5);
+  // We have 4 constants: data, scales, offsets, and weights. Originally fused
+  // data is no longer used and is removed by loader.
+  EXPECT_EQ(mod.getConstants().size(), 4);
 
   EE.compile(CompilationMode::Infer, F);
 
@@ -2013,9 +2018,9 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
-  // We have 5 constants: originally fused data (no longer used), data, scales,
-  // and offsets.
-  EXPECT_EQ(mod.getConstants().size(), 4);
+  // We have 5 constants: Data, scales, and offsets. Originally fused data is no
+  // longer used and is removed by loader.
+  EXPECT_EQ(mod.getConstants().size(), 3);
 
   EE.compile(CompilationMode::Infer, F);
 

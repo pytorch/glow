@@ -95,6 +95,11 @@ protected:
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
 
+  // Delete all Constants that have no users. This is useful because some
+  // Constants may have been copied and modified during loading instead of used
+  // directly so they may be unused.
+  void deleteUnusedConstants();
+
   /// Create a new constant that's initialized with \p tensor, and register it
   /// under the name \p name. If an existing Placeholder is already registered
   /// under the same name then the tensor is thrown out and no new Constant

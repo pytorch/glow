@@ -82,7 +82,7 @@ llvm::Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   auto it = nodeValueByName_.find(name);
   if (it != nodeValueByName_.end()) {
     if (llvm::dyn_cast<Placeholder>(it->second.getNode())) {
-      // Placeholders take precedents over Constants.
+      // Placeholders take precedence over Constants.
       return llvm::Error::success();
     }
   }
@@ -91,6 +91,26 @@ llvm::Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   Constant *node = G_.getParent()->createConstant(name, std::move(tensor));
   nodeValueByName_[name] = node->getOutput();
   return llvm::Error::success();
+}
+
+void ProtobufLoader::deleteUnusedConstants() {
+  std::vector<std::string> nodeValuesToRemove;
+  for (auto &kv : nodeValueByName_) {
+    auto *node = kv.second.getNode();
+    if (auto *c = llvm::dyn_cast<Constant>(node)) {
+      if (!c->hasUsers()) {
+        nodeValuesToRemove.push_back(kv.getKey());
+      }
+    }
+  }
+
+  for (auto &name : nodeValuesToRemove) {
+    auto it = nodeValueByName_.find(name);
+    auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
+    assert(c && "This should have been a Constant");
+    G_.getParent()->eraseConstant(c);
+    nodeValueByName_.erase(it);
+  }
 }
 
 llvm::Expected<Placeholder *>

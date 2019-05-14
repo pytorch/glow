@@ -1,0 +1,37 @@
+name: "fill_test_dummy_net"
+op {
+  input: "tensor_fill_float"
+  input: "tensor_fill_float"
+  output: "tensor_fill_float_eq"
+  name: ""
+  type: "EQ"
+}
+op {
+  input: "tensor_int_fill"
+  input: "tensor_int_fill"
+  output: "tensor_int_fill_eq"
+  name: ""
+  type: "EQ"
+}
+op {
+  input: "tensor_int64_fill"
+  input: "tensor_int64_fill"
+  output: "tensor_int64_fill_eq"
+  name: ""
+  type: "EQ"
+}
+op {
+  input: "tensor_string_to_uint8_fill"
+  input: "tensor_string_to_uint8_fill"
+  output: "tensor_string_to_uint8_fill_eq"
+  name: ""
+  type: "EQ"
+}
+external_input: "tensor_fill_float"
+external_input: "tensor_int_fill"
+external_input: "tensor_int64_fill"
+external_input: "tensor_string_to_uint8_fill"
+external_output: "tensor_fill_float_eq"
+external_output: "tensor_int_fill_eq"
+external_output: "tensor_int64_fill_eq"
+external_output: "tensor_string_to_uint8_fill_eq"
