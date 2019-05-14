@@ -229,7 +229,6 @@ public:
 private:
   Function *F_;
   std::string recipeName_;
-  const PlaceholderBindings *ctx_;
   PlaceholderList inputs_;
   PlaceholderList outputs_;
 };
