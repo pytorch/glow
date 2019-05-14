@@ -227,7 +227,7 @@ To run these programs, build Glow in Release mode, then run the following comman
 to download the cifar10, mnist and ptb databases.
 
   ```bash
-  python ../glow/utils/download_test_db.py --all
+  python ../glow/utils/download_datasets_and_models.py --all-datasets
   ```
 
 Now run the examples. Note that the databases should be in the current working

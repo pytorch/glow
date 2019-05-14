@@ -88,15 +88,14 @@ input model must be unrolled to some maximum input and output length. These can
 be specified on the command line via `-max-input-len` and
 `-max-output-len`. Additionally, the beam search size can be specified via
 `-beam-size`. The default options for the `text-translator` match those for the
-en2gr model currently downloaded via `utils/download_caffe2_models.sh`
+en2gr model currently downloaded via `utils/download_datasets_and_models.py`
 (`-max-input-len=10`, `-max-output-len=14`, `-beam-size=6`).
 
 ## Caffe2 and ONNX Models
 
 Model loader programs (e.g. `image-classifier` and `text-translator`) load
 pre-trained models from protobuf file (either Caffe2 or ONNX). These pre-trained
-models are downloaded via `download_caffe2_models.sh` and
-`download_onnx_models.sh` scripts located in `utils/`.
+models are downloaded via `download_datasets_and_models.py` script located in `utils/`.
 
 There is a more general way to run a pre-trained model, not related to images.
 The `model-runner` program loads and runs a self-contained model, i.e. a model,

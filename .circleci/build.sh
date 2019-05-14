@@ -61,7 +61,7 @@ elif [[ "${CIRCLE_JOB}" == "TSAN" ]]; then
 elif [[ "$CIRCLE_JOB" == RELEASE_WITH_EXPENSIVE_TESTS ]]; then
     # Download the models and tell cmake where to find them.
     MODELS_DIR="$GLOW_DIR/downloaded_models"
-    DOWNLOAD_EXE="$GLOW_DIR/utils/download_caffe2_models.sh"
+    DOWNLOAD_EXE="python $GLOW_DIR/utils/download_datasets_and_models.py --all-caffe2-models"
     mkdir $MODELS_DIR
     (
         cd $MODELS_DIR
