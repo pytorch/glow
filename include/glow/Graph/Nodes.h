@@ -101,6 +101,8 @@ public:
 
   void assign(const Tensor *t) { payload_.assign(t); }
 
+  void setPayloadType(TypeRef ty) { payload_.setType(ty); }
+
   std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;

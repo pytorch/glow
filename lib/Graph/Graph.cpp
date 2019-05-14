@@ -413,6 +413,10 @@ Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
   return V;
 }
 
+Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor) {
+  return addConstant(new Constant(name, std::move(tensor)));
+}
+
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    llvm::StringSet<> &stringTable) {
   std::string legalName = legalizeName(name);
@@ -438,6 +442,9 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 
 Constant *Module::addConstant(Constant *V) {
   V->setName(uniqueName(V->getName(), uniqueVariableNames_));
+  // Replace the Constant's output type with the equivalent unique type for this
+  // Module to maintain the invariant that each type in the Module is unique.
+  V->setType(Constant::ResultIndices::OutputIdx, uniqueType(*V->getType()));
   constants_.push_back(V);
   return V;
 }

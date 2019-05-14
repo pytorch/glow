@@ -27,11 +27,25 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   return true;
 }
 
-llvm::Expected<Tensor *> ProtobufLoader::getTensorByName(llvm::StringRef name) {
+Constant *ProtobufLoader::getConstantByNameOrNull(llvm::StringRef name) const {
+  auto it = nodeValueByName_.find(name);
+  if (it == nodeValueByName_.end()) {
+    return nullptr;
+  }
+  auto *res = llvm::dyn_cast<Constant>(it->second.getNode());
+  return res ? res : nullptr;
+}
+
+llvm::Expected<Constant *>
+ProtobufLoader::getConstantByName(llvm::StringRef name) const {
+  auto *ptr = getConstantByNameOrNull(name);
   RETURN_ERR_IF_NOT(
-      tensors_.count(name),
-      llvm::Twine("There is no tensor registered with name ", name).str());
-  return tensors_[name].get();
+      ptr, strFormat("could not find constant with name %s", name.data()));
+  return ptr;
+}
+
+bool ProtobufLoader::hasConstantByName(llvm::StringRef name) const {
+  return getConstantByNameOrNull(name) != nullptr;
 }
 
 llvm::Expected<Placeholder *>
@@ -63,17 +77,40 @@ ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   return node;
 }
 
-llvm::Expected<Constant *>
-ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
-                                          const Tensor &tensor) {
-  RETURN_ERR_IF_NOT(
-      !hasNodeByName(name),
-      llvm::Twine("Creating an already existing node ", name).str());
+llvm::Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+                                                      Tensor &&tensor) {
+  auto it = nodeValueByName_.find(name);
+  if (it != nodeValueByName_.end()) {
+    if (llvm::dyn_cast<Placeholder>(it->second.getNode())) {
+      // Placeholders take precedence over Constants.
+      return llvm::Error::success();
+    }
+  }
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
-  Constant *node = G_.getParent()->createConstant(name, tensor);
+  Constant *node = G_.getParent()->createConstant(name, std::move(tensor));
   nodeValueByName_[name] = node->getOutput();
-  return node;
+  return llvm::Error::success();
+}
+
+void ProtobufLoader::deleteUnusedConstants() {
+  std::vector<std::string> nodeValuesToRemove;
+  for (auto &kv : nodeValueByName_) {
+    auto *node = kv.second.getNode();
+    if (auto *c = llvm::dyn_cast<Constant>(node)) {
+      if (!c->hasUsers()) {
+        nodeValuesToRemove.push_back(kv.getKey());
+      }
+    }
+  }
+
+  for (auto &name : nodeValuesToRemove) {
+    auto it = nodeValueByName_.find(name);
+    auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
+    assert(c && "This should have been a Constant");
+    G_.getParent()->eraseConstant(c);
+    nodeValueByName_.erase(it);
+  }
 }
 
 llvm::Expected<Placeholder *>
@@ -84,20 +121,6 @@ ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
   Placeholder *node = G_.getParent()->createPlaceholder(T, name, false);
   nodeValueByName_[name] = node->getOutput();
   return node;
-}
-
-llvm::Expected<NodeValue>
-ProtobufLoader::getNodeValueOrCreateConstantByName(llvm::StringRef name) {
-  auto node = getNodeValueByNameOrNullNodeValue(name);
-  if (node.getNode()) {
-    return node;
-  }
-
-  Tensor *T;
-  ASSIGN_VALUE_OR_RETURN_ERR(T, getTensorByName(name));
-  Constant *c;
-  ASSIGN_VALUE_OR_RETURN_ERR(c, createAndRegisterConstant(name, *T));
-  return c->getOutput();
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {

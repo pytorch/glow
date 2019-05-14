@@ -92,18 +92,19 @@ protected:
   Function &G_;
   /// Saves network nodes by name.
   llvm::StringMap<NodeValue> nodeValueByName_;
-  /// A list of weight tensors indexed by name.
-  llvm::StringMap<std::unique_ptr<Tensor>> tensors_;
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
 
-  /// \returns the tensor that was registered under the name \p name.
-  llvm::Expected<Tensor *> getTensorByName(llvm::StringRef name);
+  // Delete all Constants that have no users. This is useful because some
+  // Constants may have been copied and modified during loading instead of used
+  // directly so they may be unused.
+  void deleteUnusedConstants();
 
   /// Create a new constant that's initialized with \p tensor, and register it
-  /// under the name \p name. \returns The newly created constant.
-  llvm::Expected<Constant *> createAndRegisterConstant(llvm::StringRef name,
-                                                       const Tensor &tensor);
+  /// under the name \p name. If an existing Placeholder is already registered
+  /// under the same name then the tensor is thrown out and no new Constant
+  /// is created.
+  llvm::Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
 
   /// Create a new Placeholder of type \p T, and register it
   /// under the name \p name. \returns The newly created placeholder.
@@ -115,25 +116,32 @@ protected:
   /// name.
   NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
 
+  /// \returns the Constant registered with the given \p name and nullptr if
+  /// no Constant has been registered with this name.
+  Constant *getConstantByNameOrNull(llvm::StringRef name) const;
+
+  /// \returns an llvm::Expected of the Constant registered with the given \p
+  /// name and returns and Error if no Constant has been registered with this
+  /// name.
+  llvm::Expected<Constant *> getConstantByName(llvm::StringRef name) const;
+
+  /// \returns whether or not a Constant has been registered with the given \p
+  /// name.
+  bool hasConstantByName(llvm::StringRef name) const;
+
 public:
   /// \returns the NodeValue that was registered with the name \p name.
   /// \pre hasNodeByName(name)
   llvm::Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
 
-  /// \returns the NodeValue that was registered with the name \p name or create
-  /// a new Constant for a tensor with this name. In case a new constant is
-  /// created, this method registers it under \p name.
-  llvm::Expected<NodeValue>
-  getNodeValueOrCreateConstantByName(llvm::StringRef name);
-
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
 
-  /// Constructs new ProtobufLoader object. It will populate the network into \p
-  /// F. The list \p types and \p names are used to initialized the inputs and
-  /// outputs with specific names and types.
-  /// If \p errPtr is not null then if an error occurs it will get assigned
-  /// there otherwise if an error occurs it will abort.
+  /// Constructs new ProtobufLoader object. It will populate the network into
+  /// \p F. The list \p types and \p names are used to initialized the inputs
+  /// and outputs with specific names and types. If \p errPtr is not null then
+  /// if an error occurs it will get assigned there otherwise if an error
+  /// occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function &F,
                  llvm::Error *errPtr = nullptr);
@@ -147,10 +155,10 @@ public:
     return outputVarsByName_;
   }
 
-  /// \returns the single final output of the network. The function assumes that
-  /// there is only one output, returns Error otherwise. For image
-  /// classification, this single final output is usually the result of the last
-  /// softmax or regression layer.
+  /// \returns the single final output of the network. The function assumes
+  /// that there is only one output, returns Error otherwise. For image
+  /// classification, this single final output is usually the result of the
+  /// last softmax or regression layer.
   llvm::Expected<Placeholder *> getSingleOutput() {
     RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
                       "There must be only one output.");

@@ -152,6 +152,8 @@ public:
 
   Constant *createConstant(llvm::StringRef name, const Tensor &tensor);
 
+  Constant *createConstant(llvm::StringRef name, Tensor &&tensor);
+
   ///@}
 
   /// Verify the correctness of the Module.
