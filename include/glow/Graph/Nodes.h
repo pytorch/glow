@@ -97,7 +97,7 @@ public:
     // If payload is unowned, make an owned copy of the payload for
     // modification.
     if (payload_.isUnowned()) {
-      return payload_ = payload_.clone();
+      payload_ = payload_.clone();
     }
     assert(!payload_.isUnowned() &&
            "Can only modify Constants with owned payloads");

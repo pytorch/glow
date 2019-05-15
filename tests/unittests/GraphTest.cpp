@@ -1281,17 +1281,14 @@ TEST(Graph, verifyConstantWithUnownedTensorCopiesOnWrite) {
   Tensor unownedT = originalT.getUnowned({3});
 
   auto originalH = originalT.getHandle();
-  auto unownedH = unownedT.getHandle();
 
   for (size_t i = 0; i < originalT.size(); i++) {
     originalH.raw(i) = i;
   }
 
-  // Both Tensors should have the same values because unownedH has the same
-  // underlying memory as originalH.
-  for (size_t i = 0; i < unownedH.size(); i++) {
-    EXPECT_EQ(unownedH.raw(i), i);
-  }
+  // Both Tensors should have the same underlying memory because unownedT shares
+  // originalT's memory.
+  EXPECT_EQ(originalT.getUnsafePtr(), unownedT.getUnsafePtr());
 
   Constant *originalC = M.createConstant("original", std::move(originalT));
   Constant *unownedC = M.createConstant("unowned", std::move(unownedT));
@@ -1335,6 +1332,7 @@ TEST(Graph, verifyConstantWithUnownedTensorCopiesOnWrite) {
   // After getting a mutable reference to the unowned Constant's payload, the
   // underlying memory should have been copied but should still contain the same
   // values as it did previously at this point.
+  EXPECT_NE(unownedCTM.getUnsafePtr(), originalCT.getUnsafePtr());
   for (size_t i = 0; i < unownedCTMH.size(); i++) {
     EXPECT_EQ(unownedCTMH.raw(i), i + 1);
   }
