@@ -51,6 +51,16 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::desc("Write trace logs to disk"),
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
+llvm::cl::opt<BackendKind> backend(
+                                    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
+                                    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                                                    "Use interpreter (default option)"),
+                                                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
+                                                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
+                                                     clEnumValN(BackendKind::Habana, "Habana", "Use Habana")
+                                                      ),
+                                    llvm::cl::init(BackendKind::Interpreter),
+                                    llvm::cl::cat(category));
 
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
@@ -119,7 +129,7 @@ int main(int argc, char **argv) {
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = llvm::make_unique<DeviceConfig>(BackendKind::CPU);
+    auto config = llvm::make_unique<DeviceConfig>(backend);
     configs.push_back(std::move(config));
   }
 
