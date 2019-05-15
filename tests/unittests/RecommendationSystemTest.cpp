@@ -189,7 +189,7 @@ protected:
           dbP + (j + 1) * outWidth - 2 * sizeof(float);
 
       // range (0, 255) -> (-0.1, 0.1)
-      float scale = 1 / 1275;
+      float scale = 1.0f / 1275;
       float offset = -0.1;
 
       memcpy(currRowScaleOffsetPtr, &scale, sizeof(float));
