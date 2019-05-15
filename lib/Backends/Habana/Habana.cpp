@@ -39,9 +39,6 @@ using namespace glow;
 // fail gracefully.
 #define chk(X) GLOW_ASSERT((X) == synSuccess)
 
-/// It isn't clear what's threadsafe in Synapse.  Lock everything for now.
-static std::mutex synapseLock;
-
 /// Get a path to a temporary file for the compiled recipe.
 static std::string getRecipeFile() {
   llvm::SmallString<64> path;
@@ -517,23 +514,14 @@ void HabanaFunction::execute(ExecutionContext *context) {
 
   // Enqueue the run and wait for it to come back.
   synWaitHandle handle;
-  {
-    // Activate and enqueue need to be atomic.
-    TRACE_EVENT_BEGIN(tc, "getSynapseLock");
-    std::lock_guard<std::mutex> g(synapseLock);
-    TRACE_EVENT_END(tc, "getSynapseLock");
-    TRACE_EVENT_BEGIN(tc, "synActivateTopology");
-    chk(synActivateTopology(deviceId, topologyId));
-    if (VLOG_IS_ON(1)) {
-      dumpTopologyInfo(deviceId, topologyId);
-    }
-    TRACE_EVENT_END(tc, "synActivateTopology");
-    TRACE_EVENT_BEGIN(tc, "synEnqueue");
-    chk(synEnqueueByName(
-        deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
-        inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
-    TRACE_EVENT_END(tc, "synEnqueue");
+  if (VLOG_IS_ON(1)) {
+    dumpTopologyInfo(deviceId, topologyId);
   }
+  TRACE_EVENT_BEGIN(tc, "synEnqueue");
+  chk(synEnqueueByName(
+      deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
+      inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
+  TRACE_EVENT_END(tc, "synEnqueue");
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
