@@ -62,10 +62,16 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     glow::DCE(function);
   }
 
-  const auto &nodes = function->getNodes();
+  if (!function->verify()) {
+    llvm::errs() << "ONNXIFI: Function verification failed.\n";
+    return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
 
+  const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
     if (!glowBackend_->isOpSupported(node)) {
+      llvm::errs() << "ONNXIFI: Not supported op: " << node.getDebugDesc()
+                   << "\n";
       // TODO: Use a more specific ONNXIFI error code here to denote what about
       // this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -179,7 +185,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     // Check that tensor provided by onnxifi is the correct size.
     if (!outPhPtr->dims().equals(outOnnxTensorDims)) {
-      llvm::outs() << "Output tensor is the wrong shape: " << outOnnxTensorSize
+      llvm::errs() << "Output tensor is the wrong shape: " << outOnnxTensorSize
                    << " total dims vs " << outPhPtr->getType()->size() << ": "
                    << outOnnxTensor.name << "\n";
       return ONNXIFI_STATUS_INVALID_SHAPE;
