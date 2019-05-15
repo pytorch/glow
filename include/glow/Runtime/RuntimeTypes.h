@@ -49,6 +49,8 @@ using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
 struct DeviceInfo {
   /// Available memory on device in bytes.
   uint64_t availableMemory;
+  /// Backend Type.
+  BackendKind backendKind;
   /// Available SRAM capacity in bytes.
   uint64_t sramCapacity;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.
@@ -73,6 +75,8 @@ struct DAGNode {
   std::vector<DAGNode *> parents;
   /// IDs of the deviceManagers that this network is assigned to.
   std::vector<DeviceIDTy> deviceIDs;
+  /// Backend kind for this network.
+  BackendKind backendKind;
   /// The logicalDevice is an output of the Partitioner to indicate that two
   /// networks should be assigned to the same device. Multiple logical devices
   /// indicates the network should be duplicated.

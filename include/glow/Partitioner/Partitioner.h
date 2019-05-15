@@ -30,6 +30,17 @@ using ComputeTimeMapTy = std::unordered_map<Node *, float>;
 using NodesSetTy = std::set<Node *>;
 using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
+/// Data structure that contains the info for each type of backend used for
+/// partitioning.
+struct BackendInfo {
+  /// Num of the devices which has the same type of backend.
+  size_t num = 0;
+  /// The memory constraints for this backend kind.
+  uint64_t memSize;
+  /// Backend pointer.
+  Backend *backend = nullptr;
+};
+
 /// Helper structure for building a partition. Records mapping of nodes in
 /// the original function to destination partitions, along with a list of the
 /// newly-created functions;
@@ -47,6 +58,9 @@ struct FunctionNameComparator {
 using FunctionToNodesMapTy =
     std::map<Function *, NodesSetTy, FunctionNameComparator>;
 
+using FunctionToBackendKindMapTy =
+    std::map<Function *, BackendKind, FunctionNameComparator>;
+
 class NodeToFunctionMap {
 
   /// Newly-created partitions.
@@ -55,18 +69,44 @@ class NodeToFunctionMap {
   /// Map of nodes in the original function to their target partition.
   NodeToFunctionMapTy nodeToFunction_;
 
+  FunctionToBackendKindMapTy functionToBackendKind_;
+
   /// Map of sub-functions to their memory consumption.
   PartitionCostMapTy partitionCost_;
 
 public:
-  /// Create a new partition \p F.
-  void createPartition(Function *F) { functions_.emplace_back(F); }
+  /// Create a new partition \p F, and map it with \p backendKind.
+  void createPartition(Function *F, BackendKind backendKind) {
+    functions_.emplace_back(F);
+    functionToBackendKind_[F] = backendKind;
+  }
+
+  BackendKind getPartitionBackendKind(Function *F) {
+    assert(functionToBackendKind_.find(F) != functionToBackendKind_.end() &&
+           "Unknown partition");
+    return functionToBackendKind_.find(F)->second;
+  }
 
   /// Add a new Node->Function mapping.
   void add(Node *N, Function *F) { nodeToFunction_[N] = F; }
 
   /// Get list of functions contained in this map.
   const FunctionList &getPartitions() const { return functions_; }
+
+  /// attach \p map to current mapping.
+  void insert(NodeToFunctionMap &map) {
+    FunctionList flist = map.getPartitions();
+    for (auto it = flist.begin(); it != flist.end(); ++it) {
+      Function *func = *it;
+      auto backendKind = map.getPartitionBackendKind(func);
+      createPartition(func, backendKind);
+    }
+    for (auto it = map.begin(); it != map.end(); ++it) {
+      Node *n = it->first;
+      Function *f = it->second;
+      add(n, f);
+    }
+  }
 
   /// Map API.
   NodeToFunctionMapTy::iterator find(Node *N) {
@@ -100,6 +140,9 @@ class Partitioner {
   /// The cost model related to device.
   std::vector<DeviceInfo> deviceInfo_;
 
+  /// The backend pointers.
+  std::vector<Backend *> backends_;
+
   /// The result of module partitioning.
   DAGListTy partitions_;
 
@@ -116,16 +159,20 @@ class Partitioner {
   /// use all available devices.
   bool saturateHost_;
 
+  // Flag to set if the funcitons in the module are areadly optimized. By
+  // default, the optimization should be done in Partitioner due to
+  // heterogeneous partition.
+  bool optimized_;
+
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, uint64_t &memSize);
 
-  /// Get the minimal memory requirement for each op in the representative
-  /// function.
-  void initOpMemUsage();
+  /// Get the minimal memory requirement for each op in the function \p F
+  void initOpMemUsage(Function *F);
 
-  /// Inititalize the minimal compute time for each op in the function.
-  void initOpComputeTime();
+  /// Inititalize the minimal compute time for each op in the function \p F.
+  void initOpComputeTime(Function *F);
 
   /// Combine the partitions if necessary : if all outside uses of the nodes in
   /// partition1 is in partition2, and the sum of memory consumption of
@@ -140,8 +187,9 @@ class Partitioner {
   void partitionsAdjust(NodeToFunctionMap &partitions,
                         uint64_t availableMemory);
 
-  /// Assign nodes to partitions and return the mapping.
-  NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory);
+  /// Assign nodes to partitions with \p backendKind and return the mapping.
+  NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory,
+                                     BackendKind backendKind);
 
   /// Adjust a logicalDevice ID to each DAGNode. It is possible that two
   /// sub-functions need to be assigned into 1 device due to the memory
@@ -151,8 +199,14 @@ class Partitioner {
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
 
-  /// Given the node-function mapping, do the actual partitioning.
-  void doPartitioning(Function *F, NodeToFunctionMap &mapping);
+  FunctionToBackendKindMapTy
+  backendBasedPartition(Function *F, std::vector<Backend *> &backends);
+
+  /// Given the node-function mapping, do the actual partitioning. If \p saveDAG
+  /// is true, the DAG will be saved into partitions_, which is the final
+  /// partition result.
+  void doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
+                      NodeToFunctionMap &mapping, bool saveDAG);
 
 public:
   /// \p parent is the module which contains the functions need to be divided.
@@ -163,9 +217,30 @@ public:
   /// found in Module. The \p devices provides the cost model related to
   /// devices.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-              bool saturateHost = false);
+              bool saturateHost = false, bool optimized = false);
 
-  /// Decompose each function in a module.
+  /// Users can create Mock Backends and pass their points to test Graph
+  /// Partitioning without actually register them in GLOW.
+  Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
+              const std::vector<Backend *> &backends, bool saturateHost = false,
+              bool optimized = false);
+
+  /// Get the map between the backendKind and the concrete backend info (e.g.
+  /// backend pointer, mem, number) used in this partiton. If there are backends
+  /// need to be created, we use \p backendsHolder to hold them for memory
+  /// purpose.
+  void getBackendMap(std::map<BackendKind, BackendInfo> &backendMap,
+                     std::vector<std::unique_ptr<Backend>> &backendsHolder,
+                     std::vector<Backend *> &backends);
+
+  /// If there is no need to do any partition, just generate the DAGNode based
+  /// on current functions in this module.
+  llvm::Error
+  createDAGWithoutPartition(BackendKind backendKind,
+                            std::map<BackendKind, BackendInfo> &backendMap);
+
+  /// Decompose each function in a module. Now we support partitioning a module
+  /// among different type of devices.
   llvm::Error Partition();
 
   /// Get the partitions.

@@ -38,13 +38,9 @@ llvm::Error
 HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
-  if (configs.size() > 0) {
-    backend_.reset(createBackend(configs[0]->backendKind));
-  }
-
   for (auto &config : configs) {
     if (!config->hasName()) {
-      config->name = backend_->getBackendName() + std::to_string(deviceCount);
+      config->name = "config" + std::to_string(deviceCount);
     }
 
     auto backendKind = config->backendKind;
@@ -80,17 +76,10 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   for (auto &device : devices_) {
     DeviceInfo info = DeviceInfo();
     info.availableMemory = device.second->getAvailableMemory();
+    info.backendKind = device.second->getBackendKind();
     deviceInfo.push_back(info);
   }
-  // Optimize functions before passing to partitioner.
-  // Currently hardcoding inference.
-  if (backend_) {
-    CompilationContext cctx;
-    cctx.mode = CompilationMode::Infer;
-    for (auto F : module->getFunctions()) {
-      RETURN_IF_ERR(::glow::optimizeFunction(F, *backend_, cctx));
-    }
-  }
+
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition());
   auto nodeList = std::move(partitioner.getPartitionResult());
