@@ -566,8 +566,7 @@ void Partitioner::doPartitioning(Function *F, NodeToFunctionMap &mapping) {
     adjustLogicalDeviceID(root, mapping.getPartitions().size());
   } else if (saturateHost_) {
     // Attempt to saturate the host. Passing in the count of logical devices.
-    // Since logicalId starts at 0 we add one.
-    saturateHost(logicalID + 1);
+    saturateHost(logicalID);
   }
 }
 
