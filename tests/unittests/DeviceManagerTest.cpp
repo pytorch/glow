@@ -64,7 +64,7 @@ compileFunctions(BackendKind backendKind, Module *module,
   FunctionMapTy results;
   auto *backend = createBackend(backendKind);
   CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
+  cctx.compMode = CompilationMode::Infer;
   for (auto *F : module->getFunctions()) {
     EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
     auto f = backend->compile(F, cctx.backendOpts);

@@ -2598,7 +2598,7 @@ void glow::fold(Function *F, const CompilationContext &cctx) {
 
 void glow::fold(Function *F, CompilationMode mode) {
   CompilationContext cctx;
-  cctx.mode = mode;
+  cctx.compMode = mode;
   fold(F, cctx);
 }
 
@@ -2626,7 +2626,7 @@ void glow::optimize(Function *F, const CompilationContext &cctx) {
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
   optimizeReshape(F);
-  if (cctx.mode == CompilationMode::Infer) {
+  if (cctx.compMode == CompilationMode::Infer) {
     transposeConstants(F);
   }
 
@@ -2654,7 +2654,7 @@ void glow::optimize(Function *F, const CompilationContext &cctx) {
   // Perform Dead Code Elimination.
   DCE(F);
 
-  if (cctx.mode == CompilationMode::Infer) {
+  if (cctx.compMode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
@@ -2698,7 +2698,7 @@ void glow::optimize(Function *F, const CompilationContext &cctx) {
 
 void glow::optimize(Function *F, CompilationMode mode) {
   CompilationContext cctx;
-  cctx.mode = mode;
+  cctx.compMode = mode;
   optimize(F, cctx);
 }
 
@@ -2773,7 +2773,7 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // model converters, like converters from Tensorflow to ONNX). In this
   // situation, such folding can then enable more optimizations and also improve
   // the performance backends that support natively such high-level operators.
-  ::glow::fold(F, glow::CompilationMode::Infer);
+  ::glow::fold(F, cctx.compMode);
 
   // Optimize the graph.
   ::glow::optimize(F, cctx);

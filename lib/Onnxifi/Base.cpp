@@ -57,7 +57,7 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
   CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
+  cctx.compMode = CompilationMode::Infer;
   if (glowBackend_->transformPostLowering(function, cctx)) {
     glow::DCE(function);
   }

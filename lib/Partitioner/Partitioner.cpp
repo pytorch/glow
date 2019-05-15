@@ -757,7 +757,7 @@ llvm::Error Partitioner::createDAGWithoutPartition(
     if (!optimized_) {
       auto backend = backendMap[backendKind].backend;
       CompilationContext cctx;
-      cctx.mode = CompilationMode::Infer;
+      cctx.compMode = CompilationMode::Infer;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
     std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
@@ -818,7 +818,7 @@ llvm::Error Partitioner::Partition() {
   // Step 2 : optimize each functions based on its backend type and apply the
   // partition algorithm.
   CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
+  cctx.compMode = CompilationMode::Infer;
   NodeToFunctionMap mapping;
   std::vector<Function *> funcs;
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {

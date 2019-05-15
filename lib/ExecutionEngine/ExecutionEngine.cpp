@@ -237,7 +237,7 @@ void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
 void ExecutionEngine::compile(CompilationMode mode, Function *F,
                               bool clearOtherFunctions) {
   CompilationContext cctx;
-  cctx.mode = mode;
+  cctx.compMode = mode;
   compile(F, cctx, clearOtherFunctions);
 }
 

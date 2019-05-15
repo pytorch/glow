@@ -45,7 +45,7 @@ TEST(Interpreter, NotImplementedSave) {
                 mod.createPlaceholder(ElemKind::FloatTy, {2}, "A", false));
 
   CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
+  cctx.compMode = CompilationMode::Infer;
   EXPECT_DEATH(EE.save(F, cctx, "output", "network"), "");
 }
 
