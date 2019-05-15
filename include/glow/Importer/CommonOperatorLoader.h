@@ -137,6 +137,14 @@ loadWeight(const onnxTensorDescriptorV1 &in) {
       for (size_t i = 0; i < TH.size(); ++i) {
         TH.raw(i) = data[i];
       }
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
+      result.t->reset(ElemKind::Int8QTy, dims, in.scales[0], in.biases[0]);
+
+      auto TH = result.t->getHandle<int8_t>();
+      int8_t *data = (int8_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = data[i];
+      }
     } else {
       RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
     }
