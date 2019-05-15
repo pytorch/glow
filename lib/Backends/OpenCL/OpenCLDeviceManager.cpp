@@ -71,6 +71,7 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   GLOW_ASSERT(buf && "Allocation failed!");
   return buf;
 }
+
 OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
     : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
 

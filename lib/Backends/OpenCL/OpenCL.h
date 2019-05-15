@@ -82,21 +82,11 @@ class OpenCLFunction final : public CompiledFunction {
   };
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
-  /// CL compute device id.
-  cl_device_id deviceId_;
-  /// CL compute context.
-  cl_context context_;
-  /// CL compute command queue.
-  cl_command_queue commands_;
   /// Cache of compiled programs.
   /// The same source code can be compile with different options (e.g. with
   /// different set of macro definitions) and/or for a different device and
   /// would result in different programs.
   std::unordered_map<ProgramKey, cl_program, ProgramKeyHash> programsCache_;
-  /// A pointer to the on-device memory buffer.
-  cl_mem deviceBuffer_{0};
-  /// Information about kernel launches.
-  std::vector<KernelLaunch> kernelLaunches_;
   /// is kernel level profiling (autoInstrumentation) enabled.
   bool kernelProfiling_{false};
   /// Manual trace events:
@@ -133,22 +123,43 @@ public:
                            cl_command_queue queue);
 
 private:
-  /// Copy the value from a device to a provided buffer.
-  /// \returns number of copied bytes.
-  uint64_t copyValueFromDevice(const Value *v, void *buf = nullptr);
-  /// Copy value from the provided buffer to the device.
-  /// \returns number of copied bytes.
-  uint64_t copyValueToDevice(const Value *v, void *buf = nullptr);
-  /// Fill the device \p buffer with a given \p value.
-  /// \param len number of buffer elements to be filled by the \p value.
-  /// Elements are considered to be of the type described by \p elemKind.
-  void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
-                  ElemKind elemKind);
+  /// Copy the value from a device buffer \p deviceBuffer to a provided buffer.
+  /// The operation is placed onto the command queue \p commands. \returns
+  /// number of copied bytes. Information about launched kernels is added to \p
+  /// kernelLaunches.
+  uint64_t copyValueFromDevice(std::vector<KernelLaunch> &kernelLaunches,
+                               cl_command_queue commands, cl_mem deviceBuffer,
+                               const Value *v, void *buf = nullptr);
 
-  /// Execution a convolution instruction which uses NCHW format.
-  void executeConvolution(const OCLConvolutionInst *CC);
-  /// Allocate a device buffer of required \p size.
-  cl_mem allocDeviceBuffer(uint64_t size);
+  /// Copy value from the provided buffer to a device buffer \p deviceBuffer.
+  /// The operation is placed onto the command queue \p commands. \returns
+  /// number of copied bytes. Information about launched kernels is added to \p
+  /// kernelLaunches.
+  uint64_t copyValueToDevice(std::vector<KernelLaunch> &kernelLaunches,
+                             cl_command_queue commands, cl_mem deviceBuffer,
+                             const Value *v, void *buf = nullptr);
+
+  /// Fill the device \p buffer on device \p deviceId with a given \p value
+  /// using command queue \p queue. \param len number of buffer elements to be
+  /// filled by the \p value. Elements are considered to be of the type
+  /// described by \p elemKind. Information about launched kernels is added to
+  /// \p kernelLaunches.
+  void fillBuffer(std::vector<KernelLaunch> &kernelLaunches,
+                  cl_device_id deviceId, cl_command_queue queue, cl_mem buffer,
+                  uint64_t start, uint64_t len, float value, ElemKind elemKind);
+
+  /// Execution a convolution instruction which uses NCHW format using ]p
+  /// deviceBuffer as the device buffer, the device specified by \p deviceId and
+  /// \p commands as the command queue. Information about launched kernels is
+  /// added to \p kernelLaunches.
+  void executeConvolution(std::vector<KernelLaunch> &kernelLaunches,
+                          cl_mem deviceBuffer, cl_device_id deviceId,
+                          cl_command_queue commands,
+                          const OCLConvolutionInst *CC);
+
+  /// Allocate a device buffer of required \p size using \p context.
+  cl_mem allocDeviceBuffer(cl_context context, uint64_t size);
+
   /// Frees a device buffer.
   void freeDeviceBuffer(cl_mem buf);
 
@@ -170,11 +181,19 @@ private:
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
 
-  /// Load inputs from \p bindings onto the device.
-  void loadPlaceholders(PlaceholderBindings *bindings);
+  /// Load inputs from \p bindings into \p deviceBuffer. The operation is
+  /// placed onto the command queue \p queue. Information about launched kernels
+  /// is added to \p kernelLaunches.
+  void loadPlaceholders(std::vector<KernelLaunch> &kernelLaunches,
+                        cl_command_queue queue, cl_mem deviceBuffer,
+                        PlaceholderBindings *bindings);
 
-  /// Load outputs from the device into \p bindings.
-  void updatePlaceholders(PlaceholderBindings *bindings);
+  /// Load outputs from \p deviceBuffer into \p bindings. The operation is
+  /// placed onto the command queue \p queue. Information about launched kernels
+  /// is added to \p kernelLaunches.
+  void updatePlaceholders(std::vector<KernelLaunch> &kernelLaunches,
+                          cl_command_queue queue, cl_mem deviceBuffer,
+                          PlaceholderBindings *bindings);
 
   /// Read trace events out of this func and write them into /p bindings
   void translateTraceEvents(ExecutionContext *context) const override;
@@ -252,6 +271,9 @@ struct OpenCLDeviceBindings : DeviceBindings {
   /// will take place in.
   ///
   cl_context context;
+
+  /// Information about kernel launches.
+  std::vector<KernelLaunch> kernelLaunches;
 };
 } // namespace runtime
 } // namespace glow
