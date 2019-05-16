@@ -58,18 +58,7 @@ HabanaDeviceManager::HabanaDeviceManager(std::unique_ptr<DeviceConfig> config,
                                          unsigned numRunners,
                                          unsigned numWaiters)
     : DeviceManager(BackendKind::Habana, std::move(config)),
-      numRunners_(numRunners), numWaiters_(numWaiters) {
-  std::lock_guard<std::mutex> lock(synapseMtx_);
-
-  // If this is the first HabanaDeviceManager to be created, initialize the
-  // Synapse API.
-  if (numActiveDevices_ == 0) {
-    LOG(INFO) << "Using version " << synGetVersion();
-    chk(synInitialize());
-  }
-
-  numActiveDevices_++;
-}
+      numRunners_(numRunners), numWaiters_(numWaiters) {}
 
 HabanaDeviceManager::~HabanaDeviceManager() {
   // If a device was never successfully acquired, there's nothing to clean up.
@@ -93,17 +82,22 @@ HabanaDeviceManager::~HabanaDeviceManager() {
 }
 
 llvm::Error HabanaDeviceManager::init() {
-  synStatus status = synFail;
+  std::lock_guard<std::mutex> lock(synapseMtx_);
 
-  // Acquire a device to work with for the lifetime of this instance.
-  {
-    std::lock_guard<std::mutex> lock(synapseMtx_);
-    status = synAcquireDevice(&deviceId_, nullptr);
+  // If this is the first HabanaDeviceManager to be created, initialize the
+  // Synapse API.
+  if (numActiveDevices_ == 0) {
+    LOG(INFO) << "Using version " << synGetVersion();
+    chk(synInitialize());
   }
 
+  // Acquire a device to work with for the lifetime of this instance.
+  synStatus status = synAcquireDevice(&deviceId_, nullptr);
   if (status != synSuccess) {
     RETURN_ERR("Failed to acquire device");
   }
+
+  numActiveDevices_++;
 
   // Fetch initial memory information.
   RETURN_IF_ERR(updateMemoryUsage());
