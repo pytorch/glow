@@ -74,10 +74,10 @@ private:
   /// \returns a pointer to the tensor data buffer.
   char *getData() const { return data_; }
 
+public:
   /// \returns true if it is an unowned tensor.
   bool isUnowned() const { return isUnowned_; }
 
-public:
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
 

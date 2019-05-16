@@ -82,35 +82,24 @@ loadWeight(const onnxTensorDescriptorV1 &in) {
 
   if (in.quantizationParams == 0) {
     if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
-      result.t->reset(ElemKind::FloatTy, dims);
-
-      auto TH = result.t->getHandle<>();
-      float *data = (float *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = data[i];
-      }
+      Type ty(ElemKind::FloatTy, dims);
+      *result.t = Tensor((void *)in.buffer, &ty);
     } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
                in.dataType == ONNXIFI_DATATYPE_INT64) {
       const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
-      result.t->reset(ElemKind::Int64ITy, dims);
-
-      auto TH = result.t->getHandle<int64_t>();
-      int64_t *data = (int64_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
+      Type ty(ElemKind::Int64ITy, dims);
+      *result.t = Tensor((void *)in.buffer, &ty);
+      for (size_t i = 0; i < result.t->size(); ++i) {
         RETURN_ERR_IF_NOT(
-            (inDataSigned || data[i] >= 0),
+            (inDataSigned || ((int64_t *)in.buffer)[i] >= 0),
             "Disallow overflow of loaded UINT64 data into Int64ITy.");
-        TH.raw(i) = data[i];
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      result.t->reset(ElemKind::Int32ITy, dims);
-
-      auto TH = result.t->getHandle<int32_t>();
-      int32_t *data = (int32_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = data[i];
-      }
+      Type ty(ElemKind::Int32ITy, dims);
+      *result.t = Tensor((void *)in.buffer, &ty);
     } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      // Must copy the weights here because we will need to modify them by
+      // adjusting for OFFSETSHIFT.
       result.t->reset(ElemKind::Int8QTy, dims, 1.0, 0);
       auto TH = result.t->getHandle<int8_t>();
       uint8_t *data = (uint8_t *)in.buffer;
@@ -122,6 +111,8 @@ loadWeight(const onnxTensorDescriptorV1 &in) {
     }
   } else if (in.quantizationParams == 1) {
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      // Must copy the weights here because we will need to modify them by
+      // adjusting for OFFSETSHIFT.
       result.t->reset(ElemKind::Int8QTy, dims, in.scales[0],
                       in.biases[0] - OFFSETSHIFT);
 
@@ -131,20 +122,11 @@ loadWeight(const onnxTensorDescriptorV1 &in) {
         TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      result.t->reset(ElemKind::Int32QTy, dims, in.scales[0], in.biases[0]);
-      auto TH = result.t->getHandle<int32_t>();
-      int32_t *data = (int32_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = data[i];
-      }
+      Type ty(ElemKind::Int32QTy, dims, in.scales[0], in.biases[0]);
+      *result.t = Tensor((void *)in.buffer, &ty);
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
-      result.t->reset(ElemKind::Int8QTy, dims, in.scales[0], in.biases[0]);
-
-      auto TH = result.t->getHandle<int8_t>();
-      int8_t *data = (int8_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = data[i];
-      }
+      Type ty(ElemKind::Int8QTy, dims, in.scales[0], in.biases[0]);
+      *result.t = Tensor((void *)in.buffer, &ty);
     } else {
       RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
     }
@@ -927,8 +909,8 @@ protected:
       // index-value pairs.
       auto *lengthsConstant = G_.getParent()->createConstant(
           ElemKind::Int32ITy, {}, "lengthsConstant");
-      lengthsConstant->getPayload().template getHandle<int32_t>().raw(0) =
-          indices.dims()[0];
+      lengthsConstant->getPayloadMutable().template getHandle<int32_t>().raw(
+          0) = indices.dims()[0];
       lengths = lengthsConstant->getOutput();
     }
 

@@ -803,7 +803,7 @@ public:
 
         auto *FRWQSLWS =
             function_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-                SLWS->getName(), dataC->getPayload(), weightsF,
+                SLWS->getName(), dataC->getPayloadMutable(), weightsF,
                 SLWS->getIndices(), SLWS->getLengths());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
