@@ -60,7 +60,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                                    bool saturateHost) {
+                                    bool saturateHost, bool profiling) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto functions = module->getFunctions();
   for (auto &F : functions) {
@@ -79,14 +79,25 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     info.backendKind = device.second->getBackendKind();
     deviceInfo.push_back(info);
   }
-
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition());
   auto nodeList = std::move(partitioner.getPartitionResult());
+  if (profiling) {
+    // Check that all functions were not partitioned.
+    for (auto &network : nodeList) {
+      if (network.nodes.size() > 1) {
+        return MAKE_ERR(
+            GlowErr::ErrorCode::RUNTIME_ERROR,
+            "Failed to add network for profiling: Network was "
+            "partitioned, this is likely because the network was "
+            "larger than the configured memory of a single device manager.");
+      }
+    }
+  }
 
   RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
 
-  // Clear functions and constants contents from the module then put it a
+  // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
   module->strip();
@@ -161,6 +172,32 @@ llvm::Error HostManager::clearHost() {
   }
   networks_.clear();
   return errContainer.get();
+}
+
+llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
+                                            PlaceholderBindings &bindings) {
+  std::unique_ptr<PlaceholderBindings> phBindings(&bindings);
+  std::unique_ptr<ExecutionContext> context =
+      llvm::make_unique<ExecutionContext>(std::move(phBindings));
+  std::promise<void> runPromise;
+  auto fut = runPromise.get_future();
+  llvm::Error runErr = llvm::Error::success();
+  runNetwork(
+      networkName, std::move(context),
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+        // Don't delete ph bindings since they were created from a passed in
+        // reference.
+        std::unique_ptr<PlaceholderBindings> phBind =
+            contextPtr->movePlaceholderBindings();
+        phBind.release();
+
+        runErr = std::move(err);
+        runPromise.set_value();
+      });
+
+  fut.wait();
+  return runErr;
 }
 
 RunIdentifierTy

@@ -91,9 +91,10 @@ public:
   /// operation. This function consumes the \p module so any pointers to data
   /// contained within the module should be considered invalid. If \p
   /// saturateHost is set to true the HostManager will try to use all available
-  /// devices on the host.
+  /// devices on the host. If \p profiling is true,the HostManager will check
+  /// that each function is not partitioned.
   llvm::Error addNetwork(std::unique_ptr<Module> module,
-                         bool saturateHost = false);
+                         bool saturateHost = false, bool profiling = false);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.
@@ -115,6 +116,13 @@ public:
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<ExecutionContext> context,
                              ResultCBTy callback);
+
+  /// A wrapper around runNetwork that provides a blocking interface for an
+  /// inference request. Runs the network provided in \p networkName using \p
+  /// bindings for placeholder bindings. \returns an llvm::Error indicating
+  /// success or failure.
+  llvm::Error runNetworkBlocking(llvm::StringRef networkName,
+                                 PlaceholderBindings &bindings);
   HostManager(std::vector<std::unique_ptr<DeviceConfig>> configs);
 
   /// Initialize the HostManager with the given \p configs creating one
