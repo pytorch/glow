@@ -93,7 +93,8 @@ bool writePngImage(Tensor *T, const char *filename,
                    llvm::ArrayRef<float> mean = zeroMean,
                    llvm::ArrayRef<float> stddev = oneStd);
 
-/// Read a png image and preprocess it according to several parameters.
+/// Read a png image and preprocess it according to several parameters. Create a
+/// tensor and store the preprocessed image data into this tensor.
 /// \param filename the png file to read.
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
@@ -106,6 +107,24 @@ Tensor readPngImageAndPreprocess(llvm::StringRef filename,
                                  ImageLayout imageLayout,
                                  llvm::ArrayRef<float> mean = zeroMean,
                                  llvm::ArrayRef<float> stddev = oneStd);
+
+/// Read a png image and preprocess it according to several parameters. Take a
+/// tensor as a parameter and store the preprocessed image data into this
+/// tensor.
+/// \param imageData the tensor into which the preprocessed image data
+///  will be stored.
+/// \param filename the png file to read.
+/// \param imageNormMode normalize values to this range.
+/// \param imageChannelOrder the order of color channels.
+/// \param imageLayout the order of dimensions (channel, height, and width).
+/// \param mean use special mean to normalize.
+/// \param stdev use special stddev to normalize.
+void readPngImageAndPreprocess(Tensor &imageData, llvm::StringRef filename,
+                               ImageNormalizationMode imageNormMode,
+                               ImageChannelOrder imageChannelOrder,
+                               ImageLayout imageLayout,
+                               llvm::ArrayRef<float> mean = zeroMean,
+                               llvm::ArrayRef<float> stddev = oneStd);
 
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
