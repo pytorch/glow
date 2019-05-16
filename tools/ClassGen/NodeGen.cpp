@@ -419,6 +419,12 @@ int main(int argc, char **argv) {
                     "input vector of length N the output is a Nx2 matrix with "
                     "(offset, lengths) packaged for each segment.");
 
+  BB.newNode("LengthsRangeFill")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Converts an input Lengths 1D vector into a range sequence.");
+
   BB.newNode("SparseToDense")
       .addInput("Indices")
       .addInput("Values")

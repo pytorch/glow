@@ -1545,6 +1545,14 @@ LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
   return addNode(new LengthsToRangesNode(name, outTy, lengths));
 }
 
+LengthsRangeFillNode *
+Function::createLengthsRangeFill(llvm::StringRef name, NodeValue lengths,
+                                 unsigned_t maxOutputSize) {
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(lengths.getType(), {maxOutputSize});
+  return addNode(new LengthsRangeFillNode(name, outTy, lengths));
+}
+
 SparseToDenseNode *Function::createSparseToDense(llvm::StringRef name,
                                                  NodeValue indices,
                                                  NodeValue values,

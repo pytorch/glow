@@ -2198,6 +2198,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::LengthsRangeFillInstKind: {
+    auto *LRFI = llvm::cast<LengthsRangeFillInst>(I);
+    auto *dest = LRFI->getDest();
+    auto *lengths = LRFI->getLengths();
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+
+    auto *lengthsSize = emitConstSizeT(builder, lengths->size());
+
+    // Dispatching function depending on the input type of Ranges.
+    auto *F = getFunction("lengths_range_fill", dest->getElementType());
+    createCall(builder, F, {lengthsPtr, destPtr, lengthsSize});
+    break;
+  }
+
   case Kinded::Kind::ScatterAssignInstKind: {
     auto *SAI = llvm::cast<ScatterAssignInst>(I);
     auto *data = SAI->getData();

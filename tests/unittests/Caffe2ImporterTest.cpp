@@ -1546,6 +1546,39 @@ TEST(caffe2, gatherRanges) {
   EXPECT_TRUE(gatherRanges->getLengths().dims().equals({2}));
 }
 
+/// Test loading a LengthsRangeFill op.
+TEST(caffe2, LengthsRangeFill) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/lengths_range_fill_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  Tensor lengths(ElemKind::Int32ITy, {3});
+
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"lengths"},
+                               {&lengths.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getOutputByName("result"));
+  }
+
+  // Verify structure: PH -> LengthsRangeFill -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *LRF = llvm::dyn_cast<LengthsRangeFillNode>(save->getInput().getNode());
+  ASSERT_TRUE(LRF);
+  EXPECT_TRUE(LRF->getLengths().dims().equals({3}));
+  EXPECT_EQ(LRF->getResult().dims().size(), 1);
+  // Proto specifies the max output size is 8.
+  EXPECT_TRUE(LRF->getResult().dims().equals({8}));
+}
+
 /// Verify that different fill types are loaded with the correct types.
 TEST(caffe2, tensorFillsTest) {
   ExecutionEngine EE{BackendKind::Interpreter};

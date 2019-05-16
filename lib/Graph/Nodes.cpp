@@ -981,6 +981,16 @@ bool LengthsToRangesNode::verify() const {
   return isValid;
 }
 
+bool LengthsRangeFillNode::verify() const {
+  bool isValid = checkType(getLengths(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getResult(), getLengths().getElementType(), this);
+  isValid &= expectCompareTrue("Lengths must be a 1D vector",
+                               getLengths().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Result must be a 1D vector",
+                               getResult().dims().size(), size_t(1), this);
+  return isValid;
+}
+
 bool SparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);

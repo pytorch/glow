@@ -125,6 +125,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                 RowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
             ElemKind::FloatTy);
 
+  case Kinded::Kind::LengthsRangeFillNodeKind:
   case Kinded::Kind::LengthsToRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
 

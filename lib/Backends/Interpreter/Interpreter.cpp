@@ -231,6 +231,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
             ElemKind::FloatTy);
 
+  case Kinded::Kind::LengthsRangeFillNodeKind:
   case Kinded::Kind::LengthsToRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
 
