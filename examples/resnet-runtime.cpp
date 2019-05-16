@@ -52,15 +52,13 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
 llvm::cl::opt<BackendKind> backend(
-                                    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
-                                    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                                                    "Use interpreter (default option)"),
-                                                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                                                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
-                                                     clEnumValN(BackendKind::Habana, "Habana", "Use Habana")
-                                                      ),
-                                    llvm::cl::init(BackendKind::Interpreter),
-                                    llvm::cl::cat(category));
+    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
+    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
+                                "Use interpreter (default option)"),
+                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
+                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
+                     clEnumValN(BackendKind::Habana, "Habana", "Use Habana")),
+    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(category));
 
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
