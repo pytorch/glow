@@ -148,6 +148,11 @@ llvm::cl::OptionCategory
                    "graphs by writing the IR/Graphs to "
                    "given files/stdout");
 
+llvm::cl::opt<std::string> dumpGraphDAGFileBeforeCompilationOpt(
+    "dump-graph-DAG-before-compile",
+    llvm::cl::desc("Specify the file to export the Graph in DOT format"),
+    llvm::cl::value_desc("file.dot"), llvm::cl::cat(modelExportCat));
+
 llvm::cl::opt<std::string> dumpGraphDAGFileOpt(
     "dump-graph-DAG",
     llvm::cl::desc("Specify the file to export the Graph in DOT format"),
@@ -258,6 +263,11 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
+  // Dump the DAG before compilation if needed.
+  if (!dumpGraphDAGFileBeforeCompilationOpt.empty()) {
+    F_->dumpDAG(dumpGraphDAGFileBeforeCompilationOpt.c_str());
+  }
+
   // Fold low-level operators into higher-level operators.
   // This is useful when compiling an input model where some high-level
   // operators have been lowered (this can be for instance a side effect of
