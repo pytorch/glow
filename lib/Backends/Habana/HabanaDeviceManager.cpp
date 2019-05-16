@@ -186,8 +186,10 @@ void HabanaDeviceManager::addNetwork(const Module *module,
       return;
     }
 
-    // Optimistically activate the topology
-    synActivateTopology(deviceId_, topologyId);
+    // Optimistically activate the topology if nothing else is loaded.
+    cv_.wait(lk, [this] { return inflightRequests_ == 0; });
+    chk(synActivateTopology(deviceId_, topologyId));
+    activeTopo_ = topologyId;
   }
 
   lk.unlock();
@@ -221,6 +223,9 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
   {
     std::lock_guard<std::mutex> lock(synapseMtx_);
     status = synUnloadTopology(deviceId_, topologyId);
+    if (topologyId == activeTopo_) {
+      activeTopo_ = INVALID_TOPOLOGY;
+    }
   }
 
   if (status != synSuccess) {
@@ -279,14 +284,10 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
   // If we need to switch topos, wait to drain the queue.
   {
     std::unique_lock<std::mutex> lock(instanceMtx_);
-    if (activeTopo_ == (uint64_t)-1) {
-      synActivateTopology(deviceId_, topologyId);
-      activeTopo_ = topologyId;
-    }
     if (topologyId != activeTopo_) {
       // FIXME: This can starve inactive topos.
       cv_.wait(lock, [this] { return inflightRequests_ == 0; });
-      synActivateTopology(deviceId_, topologyId);
+      chk(synActivateTopology(deviceId_, topologyId));
       activeTopo_ = topologyId;
     }
     inflightRequests_++;
