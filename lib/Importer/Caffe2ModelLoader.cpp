@@ -74,7 +74,8 @@ llvm::Error setTensorType(const caffe2::TensorProto &in, Tensor *T) {
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
     T->reset(ElemKind::Int32ITy, dim);
     return llvm::Error::success();
-  } else if (in.data_type() == caffe2::TensorProto::UINT8) {
+  } else if (in.data_type() == caffe2::TensorProto::UINT8 ||
+             in.data_type() == caffe2::TensorProto::INT8) {
     T->reset(ElemKind::Int8QTy, dim, 1.0, 0);
     return llvm::Error::success();
   } else {
@@ -91,11 +92,19 @@ llvm::Error setTensorType(const caffe2::QTensorProto &in, Tensor *T) {
     dim.push_back(d);
   }
 
-  if (in.data_type() == caffe2::TensorProto::UINT8) {
-    T->reset(ElemKind::Int8QTy, dim, in.scale(), in.bias() - OFFSETSHIFT);
+  if (in.axis() != 1) {
+    RETURN_ERR("axis must be 1");
+  }
+  auto scale = in.scales(0);
+  auto bias = in.biases(0);
+  if (in.data_type() == caffe2::TensorProto::INT8) {
+    T->reset(ElemKind::Int8QTy, dim, scale, bias);
+    return llvm::Error::success();
+  } else if (in.data_type() == caffe2::TensorProto::UINT8) {
+    T->reset(ElemKind::Int8QTy, dim, scale, bias - OFFSETSHIFT);
     return llvm::Error::success();
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
-    T->reset(ElemKind::Int32QTy, dim, in.scale(), in.bias());
+    T->reset(ElemKind::Int32QTy, dim, scale, bias);
     return llvm::Error::success();
   } else {
     RETURN_ERR("Only uint8 and int32 qtensors are supported");
