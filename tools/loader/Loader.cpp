@@ -323,8 +323,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
     backend_->save(F_, emitBundle, networkName);
   } else {
     // Emit IR for the graph and compile it.
-    auto error = hostManager_->addNetwork(std::move(M_), /*saturateHost*/ false,
-                                          profilingGraph());
+    auto error = hostManager_->addNetwork(std::move(M_), cctx);
     EXIT_ON_ERR(std::move(error));
   }
   if (dumpGraphOpt) {

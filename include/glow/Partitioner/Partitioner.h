@@ -238,14 +238,18 @@ public:
                      std::vector<Backend *> &backends);
 
   /// If there is no need to do any partition, just generate the DAGNode based
-  /// on current functions in this module.
+  /// on current functions in this module for backend \p backendKind found in \p
+  /// backendMap. \p cctx is used during optimization of the Function. \returns
+  /// whether there was an error encountered.
   llvm::Error
   createDAGWithoutPartition(BackendKind backendKind,
-                            std::map<BackendKind, BackendInfo> &backendMap);
+                            std::map<BackendKind, BackendInfo> &backendMap,
+                            const CompilationContext &cctx);
 
   /// Decompose each function in a module. Now we support partitioning a module
-  /// among different type of devices.
-  llvm::Error Partition();
+  /// among different type of devices. \p cctx is used during optimization of
+  /// the Function. \returns whether there was an error encountered.
+  llvm::Error Partition(const CompilationContext &cctx = CompilationContext());
 
   /// Get the partitions.
   DAGListTy &getPartitionResult() { return partitions_; }
