@@ -52,7 +52,6 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
 llvm::cl::opt<BackendKind> backend(
-<<<<<<< HEAD
     llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
     llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
                                 "Use interpreter (default option)"),
