@@ -208,6 +208,7 @@ TEST(Tensor, assignment) {
   size_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
+  testAssignment<uint8_t>(Type{ElemKind::UInt8QTy, dim, 1., 0});
   testAssignment<int16_t>(Type{ElemKind::Int16QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32QTy, dim, 1., 0});
   testAssignment<int32_t>(Type{ElemKind::Int32ITy, dim});
@@ -677,6 +678,9 @@ TEST(Tensor, zeroQuantizedTensor) {
   const int32_t offsetQ8 = 0;
   Tensor Q8T(ElemKind::Int8QTy, {3, 4, 5, 6}, 127, offsetQ8);
 
+  const int32_t offsetUQ8 = 3;
+  Tensor UQ8T(ElemKind::UInt8QTy, {3, 4, 5, 6}, 2, offsetUQ8);
+
   const int32_t offsetQ16 = 223;
   Tensor Q16T(ElemKind::Int16QTy, {3, 4, 5}, 1234.7, offsetQ16);
 
@@ -687,6 +691,12 @@ TEST(Tensor, zeroQuantizedTensor) {
   EXPECT_TRUE(Q8H.isZero());
   for (auto elem : Q8H) {
     EXPECT_EQ(elem, offsetQ8);
+  }
+
+  auto UQ8H = UQ8T.getHandle<uint8_t>();
+  EXPECT_TRUE(UQ8H.isZero());
+  for (auto elem : UQ8H) {
+    EXPECT_EQ(elem, offsetUQ8);
   }
 
   auto Q16H = Q16T.getHandle<int16_t>();

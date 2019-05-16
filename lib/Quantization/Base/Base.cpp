@@ -55,6 +55,8 @@ Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
   assert(tensor.getType().isFPType() && "Type not supported yet");
   if (Ty == ElemKind::Int8QTy) {
     quantizeTensorUtil<int8_t>(&tmp, tensor);
+  } else if (Ty == ElemKind::UInt8QTy) {
+    quantizeTensorUtil<uint8_t>(&tmp, tensor);
   } else if (Ty == ElemKind::Int16QTy) {
     quantizeTensorUtil<int16_t>(&tmp, tensor);
   } else if (Ty == ElemKind::Int32QTy) {
@@ -100,6 +102,8 @@ Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
   auto Ty = tensor.getType().getElementType();
   if (Ty == ElemKind::Int8QTy) {
     dequantizeTensorUtil<int8_t>(&tmp, tensor);
+  } else if (Ty == ElemKind::UInt8QTy) {
+    dequantizeTensorUtil<uint8_t>(&tmp, tensor);
   } else if (Ty == ElemKind::Int16QTy) {
     dequantizeTensorUtil<int16_t>(&tmp, tensor);
   } else if (Ty == ElemKind::Int32QTy) {
@@ -226,18 +230,26 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   int64_t qmax;
 
   switch (qTy) {
-  case ElemKind::Int8QTy:
+  case ElemKind::Int8QTy: {
     qmin = std::numeric_limits<int8_t>::min();
     qmax = std::numeric_limits<int8_t>::max();
     break;
-  case ElemKind::Int16QTy:
+  }
+  case ElemKind::UInt8QTy: {
+    qmin = std::numeric_limits<uint8_t>::min();
+    qmax = std::numeric_limits<uint8_t>::max();
+    break;
+  }
+  case ElemKind::Int16QTy: {
     qmin = std::numeric_limits<int16_t>::min();
     qmax = std::numeric_limits<int16_t>::max();
     break;
-  case ElemKind::Int32QTy:
+  }
+  case ElemKind::Int32QTy: {
     qmin = std::numeric_limits<int32_t>::min();
     qmax = std::numeric_limits<int32_t>::max();
     break;
+  }
   default:
     llvm_unreachable("Quantized type not supported");
   }

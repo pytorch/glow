@@ -55,6 +55,8 @@ static synDataType getSynType(ElemKind kind) {
     GLOW_UNREACHABLE("Unhandled ElemKind: Float16Ty");
   case ElemKind::Int8QTy:
     return syn_type_fixed;
+  case ElemKind::UInt8QTy:
+    return syn_type_fixed;
   case ElemKind::Int16QTy:
     return syn_type_int16;
   case ElemKind::Int32QTy:
