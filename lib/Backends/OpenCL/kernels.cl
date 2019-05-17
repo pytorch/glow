@@ -200,6 +200,14 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 /// \p name the name of the kernel
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
+
+/// The K16 kernel uses 8-element vector primitives on two contiguous 8-element
+/// blocks of data (blocks i and i+1) to produce a 16-element vectorized
+/// kernel. Consequently, the global ID needs to be multiplied by 2 so that
+/// each kernel invocation will load/store blocks that are not loaded/stored by
+/// other kernels. If this is not done, the kernel with global ID 0 will
+/// load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+/// blocks 1 and 2, etc.
 #define DEFINE_OPENCL_TERNARY_DATA_PARALLEL_KERNEL(name, type, body)           \
   __kernel void name##K##16(__global type * dest, __global type * cond,        \
                             __global type * lhs, __global type * rhs) {        \
@@ -260,6 +268,14 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 /// \p name the name of the kernel
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
+
+/// The K16 kernel uses 8-element vector primitives on two contiguous 8-element
+/// blocks of data (blocks i and i+1) to produce a 16-element vectorized
+/// kernel. Consequently, the global ID needs to be multiplied by 2 so that
+/// each kernel invocation will load/store blocks that are not loaded/stored by
+/// other kernels. If this is not done, the kernel with global ID 0 will
+/// load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+/// blocks 1 and 2, etc.
 #define DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL(name, type, body)            \
   __kernel void name##K##16(__global type * dest, __global type * lhs,         \
                             __global type * rhs) {                             \
@@ -372,6 +388,14 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 /// \p name the name of the kernel
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
+
+/// The K16 kernel uses 8-element vector primitives on two contiguous 8-element
+/// blocks of data (blocks i and i+1) to produce a 16-element vectorized
+/// kernel. Consequently, the global ID needs to be multiplied by 2 so that
+/// each kernel invocation will load/store blocks that are not loaded/stored by
+/// other kernels. If this is not done, the kernel with global ID 0 will
+/// load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+/// blocks 1 and 2, etc.
 #define DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL(name, type, body)             \
   __kernel void name##K##16(__global type * dest, __global type * src) {       \
     typedef float8 vtype;                                                      \
@@ -419,6 +443,14 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 /// \p name the name of the kernel
 /// \p type the type of the tensor elements and of the return value
 /// \p body the operation to be performed
+
+/// The K16 kernel uses 8-element vector primitives on two contiguous 8-element
+/// blocks of data (blocks i and i+1) to produce a 16-element vectorized
+/// kernel. Consequently, the global ID needs to be multiplied by 2 so that
+/// each kernel invocation will load/store blocks that are not loaded/stored by
+/// other kernels. If this is not done, the kernel with global ID 0 will
+/// load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+/// blocks 1 and 2, etc.
 #define DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(name, type,  \
                                                                   body)        \
   __kernel void name##K##16(__global type * dest, type val) {                  \
@@ -487,6 +519,48 @@ DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(splat_i8, char, SRC)
 #undef DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL_QUANTIZED_M
 #undef DEFINE_OPENCL_UNARY_DATA_PARALLEL_KERNEL
 
+__kernel void elementselectK16(__global float *dest, __global cl_int8_t *cond,
+                               __global float *lhs, __global float *rhs) {
+  // This kernel uses 8-element vector primitives on two contiguous 8-element
+  // blocks of data (blocks i and i+1) to produce a 16-element vectorized
+  // kernel. Consequently, the global ID needs to be multiplied by 2 so that
+  // each kernel invocation will load/store blocks that are not loaded/stored by
+  // other kernels. If this is not done, the kernel with global ID 0 will
+  // load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+  // blocks 1 and 2, etc.
+  size_t i = 2 * get_global_id(0);
+  float8 zeroVec = (float8)(0, 0, 0, 0, 0, 0, 0, 0);
+
+  vstore8(select(vload8(i, rhs), vload8(i, lhs),
+                 isnotequal(convert_float8(vload8(i, cond)), zeroVec)),
+          i, dest);
+  vstore8(select(vload8(i + 1, rhs), vload8(i + 1, lhs),
+                 isnotequal(convert_float8(vload8(i + 1, cond)), zeroVec)),
+          i + 1, dest);
+}
+
+__kernel void elementselectW16(__global void *mem, cl_uint32_t dest,
+                               cl_uint32_t cond, cl_uint32_t lhs,
+                               cl_uint32_t rhs) {
+  elementselectK16(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
+}
+
+__kernel void elementselectK8(__global float *dest, __global cl_int8_t *cond,
+                              __global float *lhs, __global float *rhs) {
+  size_t i = get_global_id(0);
+  float8 zeroVec = (float8)(0, 0, 0, 0, 0, 0, 0, 0);
+
+  vstore8(select(vload8(i, rhs), vload8(i, lhs),
+                 isnotequal(convert_float8(vload8(i, cond)), zeroVec)),
+          i, dest);
+}
+
+__kernel void elementselectW8(__global void *mem, cl_uint32_t dest,
+                              cl_uint32_t cond, cl_uint32_t lhs,
+                              cl_uint32_t rhs) {
+  elementselectK8(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
+}
+
 __kernel void elementselectK(__global float *dest, __global cl_int8_t *cond,
                              __global float *lhs, __global float *rhs) {
   size_t i = get_global_id(0);
@@ -504,7 +578,14 @@ __kernel void elementselectW(__global void *mem, cl_uint32_t dest,
 
 __kernel void elementcmplteK16(__global cl_int8_t *dest, __global float *LHS,
                                __global float *RHS) {
-  size_t i = get_global_id(0);
+  // This kernel uses 8-element vector primitives on two contiguous 8-element
+  // blocks of data (blocks i and i+1) to produce a 16-element vectorized
+  // kernel. Consequently, the global ID needs to be multiplied by 2 so that
+  // each kernel invocation will load/store blocks that are not loaded/stored by
+  // other kernels. If this is not done, the kernel with global ID 0 will
+  // load/store blocks 0 and 1, the kernel with global ID 1 will load/store on
+  // blocks 1 and 2, etc.
+  size_t i = 2 * get_global_id(0);
   vstore8(convert_char8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
   vstore8(convert_char8(islessequal(vload8(i + 1, LHS), vload8(i + 1, RHS))),
           i + 1, dest);
