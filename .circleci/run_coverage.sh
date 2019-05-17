@@ -1,20 +1,17 @@
 #!/bin/bash
-
 ninja all
 ninja glow_coverage
-
 COVERAGE_FILE="./glow_coverage/index.html"
 if [ ! -f "${COVERAGE_FILE}" ]; then
   echo "ERROR: ${COVERAGE_FILE} not found."
   exit 1
 fi
 
-# Travis does not allow using secrets (e.g., AWS credentials) on pull requests
-# from a fork. Upload coverage only if secure vars are set.
-if [ "${TRAVIS_SECURE_ENV_VARS}" != "false" ]; then
+# Upload coverage only on master branch.
+if [ "${CIRCLE_BRANCH}" == "master" ]; then
   echo "INFO: Uploading coverage to S3."
 
-  BRANCH_NAME="${TRAVIS_BRANCH}"
+  BRANCH_NAME="${CIRCLE_BRANCH}"
   COVERAGE_DIR="$(dirname "${COVERAGE_FILE}")"
   UPLOAD_LOCATION="fb-glow-assets/coverage/coverage-${BRANCH_NAME}"
 
