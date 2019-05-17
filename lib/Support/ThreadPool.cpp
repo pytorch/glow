@@ -17,51 +17,27 @@
 
 namespace glow {
 
-ThreadPool::ThreadPool(unsigned numWorkers) : shouldStop_(false) {
-  // Intialize all workers and make each one run threadPoolWorkerMain.
-  for (unsigned i = 0; i < numWorkers; i++) {
-    std::thread th(std::bind(&ThreadPool::threadPoolWorkerMain, this));
-    workers_.push_back(std::move(th));
-  }
-}
+ThreadExecutor::ThreadExecutor()
+    : shouldStop_(false), worker_([this]() { threadPoolWorkerMain(); }) {}
 
-ThreadPool::~ThreadPool() { stop(true); }
+ThreadExecutor::~ThreadExecutor() { stop(true); }
 
-std::future<void> ThreadPool::submit(std::packaged_task<void(void)> &&task) {
-  std::unique_lock<std::mutex> lock(workQueueMtx_);
-  auto future = task.get_future();
-  workQueue_.push(std::move(task));
-  lock.unlock();
-  queueNotEmpty_.notify_one();
-  return future;
-}
-
-void ThreadPool::stop(bool block) {
+void ThreadExecutor::stop(bool block) {
   // Lock mutex before signalling for threads to stop to make sure
-  // a thread can't wait on the condition variable after checking the
-  // *old* value of shouldStop_.
+  //   // a thread can't wait on the condition variable after checking the
+  //     // *old* value of shouldStop_.
   std::unique_lock<std::mutex> lock(workQueueMtx_);
 
-  // Signal to workers to stop.
   shouldStop_ = true;
-
-  // Notify all worker threads in case any are waiting on the condition
-  // variable.
   lock.unlock();
   queueNotEmpty_.notify_all();
 
-  if (!block) {
-    return;
+  if (block && worker_.joinable()) {
+    worker_.join();
   }
-
-  // Join all worker threads.
-  for (auto &w : workers_) {
-    w.join();
-  }
-  workers_.clear();
 }
 
-void ThreadPool::threadPoolWorkerMain() {
+void ThreadExecutor::threadPoolWorkerMain() {
   std::unique_lock<std::mutex> lock(workQueueMtx_, std::defer_lock);
 
   while (!shouldStop_) {
@@ -90,4 +66,43 @@ void ThreadPool::threadPoolWorkerMain() {
     workItem();
   }
 }
+
+std::future<void>
+ThreadExecutor::submit(std::packaged_task<void(void)> &&task) {
+  std::unique_lock<std::mutex> lock(workQueueMtx_);
+  auto future = task.get_future();
+  workQueue_.push(std::move(task));
+  lock.unlock();
+  queueNotEmpty_.notify_one();
+  return future;
+}
+
+ThreadPool::ThreadPool(unsigned numWorkers) {
+  // Intialize all workers and make each one run threadPoolWorkerMain.
+  workers_.reserve(kNumWorkers);
+  for (unsigned i = 0; i < numWorkers; i++) {
+    workers_.push_back(new ThreadExecutor());
+  }
+}
+
+ThreadPool::~ThreadPool() {
+  stop(true);
+  for (auto *w : workers_) {
+    delete w;
+  }
+  workers_.clear();
+}
+
+void ThreadPool::stop(bool block) {
+  // Signal to workers to stop.
+  for (auto *w : workers_) {
+    w->stop(block);
+  }
+}
+
+std::future<void> ThreadPool::submit(std::packaged_task<void(void)> &&task) {
+  ThreadExecutor *ex = getExecutor();
+  return ex->submit(std::move(task));
+}
+
 } // namespace glow
