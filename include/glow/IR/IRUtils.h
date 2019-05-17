@@ -130,6 +130,9 @@ Value *getAllocationOrigin(Value *V);
 /// \returns peels off the layers of tensorviews from a value \p V.
 Value *getOrigin(Value *V);
 
+/// \returns the offset into the Value returned by getOrigin.
+size_t getOriginOffset(Value *V);
+
 /// \returns peels off the layers of tensorviews from a value \p V.
 const Value *getOrigin(const Value *V);
 

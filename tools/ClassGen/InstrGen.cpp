@@ -508,7 +508,6 @@ int main(int argc, char **argv) {
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addMember(MemberType::VectorSizeT, "Offsets");
 
   BB.newInstr("Gather")

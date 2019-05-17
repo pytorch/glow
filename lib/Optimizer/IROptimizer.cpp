@@ -1597,9 +1597,7 @@ void performPeepholeOptimizations(IRFunction &M) {
           continue;
         }
 
-        auto *srcTV = dyn_cast<TensorViewInst>(src);
-        auto *destTV = dyn_cast<TensorViewInst>(dest);
-        if (srcTV && destTV && (srcTV->getOffsets() != destTV->getOffsets())) {
+        if (getOriginOffset(src) != getOriginOffset(dest)) {
           continue;
         }
 

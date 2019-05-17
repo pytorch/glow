@@ -51,3 +51,36 @@ const Value *glow::getOrigin(const Value *V) {
   }
   return V;
 }
+
+size_t glow::getOriginOffset(Value *V) {
+  size_t off = 0;
+
+  // Since each TensorView can either maintain or decrease the size of a buffer,
+  // the linearized offset of a TensorView into its underlying buffer can be
+  // computed by adding together the linearized offsets of intermediate
+  // TensorViews relative to their sources.
+  while (true) {
+    auto *TVI = dyn_cast<TensorViewInst>(V);
+    if (!TVI) {
+      return off;
+    }
+
+    llvm::ArrayRef<size_t> offsets = TVI->getOffsets();
+    llvm::ArrayRef<size_t> srcDims = TVI->getSrc()->getType()->dims();
+
+    size_t numSrcDims = srcDims.size();
+
+    // Iterate backwards in order to figure out how big the slices corresponding
+    // to each offset element are.
+    for (size_t i = 0, j = numSrcDims - 1; i < numSrcDims; ++i, --j) {
+      // For each offset, add into the linearized offset the offset value
+      // multiplied by the slice size corresponding to that offset.
+      off += offsets[j] * TVI->getSrc()->getType()->getSliceSize(j);
+    }
+
+    // Move on to the src of the TensorView that was just processed.
+    V = TVI->getSrc();
+  }
+
+  return off;
+}
