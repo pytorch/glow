@@ -434,7 +434,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 /// the number of DAGNodes) is larger than the number of devices. E.g:
 /// node1(6GB) -> node2(14GB) -> node3(6GB). The memory limitation is 16GB, and
 /// there is only 2 devices.
-void Partitioner::adjustLogicalDeviceID(DAGNode *DAG, int num) {}
+void Partitioner::adjustLogicalDeviceID() {}
 
 /// Duplicate the network to saturate the number of devices. For example: If a
 /// network is partitioned into two parts (\p logicalDeviceCount) and there are
@@ -466,9 +466,10 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount) {
 }
 
 /// Current only partition the representative function.
-void Partitioner::doPartitioning(llvm::StringRef funcName,
-                                 std::vector<Function *> funcs,
-                                 NodeToFunctionMap &mapping, bool saveDAG) {
+DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
+                                       std::vector<Function *> funcs,
+                                       NodeToFunctionMap &mapping,
+                                       bool saveDAG) {
   // Add a dummy node to make sure that a DAG has a single entrance.
   DAGNodePtr DAGRoot = llvm::make_unique<DAGNode>();
   DAGNodePtrVec nodes;
@@ -598,16 +599,7 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
     }
   }
 
-  // Adjust the logicalDevice for each DAGNode.
-  if (saveDAG) {
-    if (mapping.getPartitions().size() > deviceInfo_.size()) {
-      adjustLogicalDeviceID(root, mapping.getPartitions().size());
-    } else if (saturateHost_) {
-      // Attempt to saturate the host. Passing in the count of logical devices.
-      // Since logicalId starts at 0 we add one.
-      saturateHost(logicalID + 1);
-    }
-  }
+  return logicalID;
 }
 
 FunctionToBackendKindMapTy
@@ -799,17 +791,28 @@ llvm::Error Partitioner::Partition() {
   }
 
   // Step 3: do the real partitioning for the function list.
-  doPartitioning(origName, funcs, mapping, true);
+  DeviceIDTy logicalID = doPartitioning(origName, funcs, mapping, true);
 
-  // Step 4: clean up.
+  // Step 4 : Post-partition optimization - Adjust the logicalDevice for each
+  // DAGNode.
+  if (mapping.getPartitions().size() > deviceInfo_.size()) {
+    adjustLogicalDeviceID();
+  } else if (saturateHost_ && backends.size() == 1) {
+    // Attempt to saturate the host when there is only one type of backend.
+    // Passing in the count of logical devices. Since logicalId starts at 0 we
+    // add one.
+    saturateHost(logicalID);
+  }
+
+  // Step 5: clean up and verify the generate new functions.
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }
-
   auto funcList = module_->getFunctions();
   for (Function *subF : funcList) {
     (void)subF;
     assert(subF->verify() && "Conversion led to invalid function");
   }
+
   return llvm::Error::success();
 }

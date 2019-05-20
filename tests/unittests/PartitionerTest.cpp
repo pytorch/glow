@@ -195,13 +195,24 @@ TEST_F(PartitionerTest, Basic2) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{2048}, {2048}, {2048}};
-  Partitioner myPartitioner(&mod_, devices);
+  std::vector<DeviceInfo> devices = {{2048, BackendKind::Interpreter},
+                                     {2048, BackendKind::Interpreter},
+                                     {2048, BackendKind::Interpreter},
+                                     {2048, BackendKind::Interpreter}};
+  Partitioner myPartitioner(&mod_, devices, /* saturateHost */ true);
   auto err = myPartitioner.Partition();
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
   ASSERT_EQ(myList.size(), 1);
+
+  for (auto &dag : myList) {
+    for (auto &node : dag.nodes) {
+      // Since saturateHost is set true, in this case, there should be 2 copys
+      // of the partitions.
+      ASSERT_EQ(node->logicalDevices.size(), 2);
+    }
+  }
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
@@ -451,21 +462,35 @@ static void createSimpleModule(Module &mod) {
 TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
   {
     createSimpleModule(mod_);
-    BackendWithoutSub backendWithoutSub;
-    BackendWithoutMul backendWithoutMul;
+    BackendWithoutSub backendWithoutSub1, backendWithoutSub2;
+    BackendWithoutMul backendWithoutMul1, backendWithoutMul2;
     // Create two backends which support different ops, then do the partition by
     // assigning the ops to the corresponding abackends.
     std::vector<Backend *> backends;
-    backends.emplace_back(&backendWithoutSub);
-    backends.emplace_back(&backendWithoutMul);
+    backends.emplace_back(&backendWithoutSub1);
+    backends.emplace_back(&backendWithoutSub2);
+    backends.emplace_back(&backendWithoutMul1);
+    backends.emplace_back(&backendWithoutMul2);
     std::vector<DeviceInfo> devices = {{3072, BackendKind::CPU},
+                                       {3072, BackendKind::CPU},
+                                       {3072, BackendKind::Interpreter},
                                        {3072, BackendKind::Interpreter}};
-    auto partitioner = Partitioner(&mod_, devices, backends);
+    auto partitioner =
+        Partitioner(&mod_, devices, backends, /* saturateHost */ true);
     auto err = partitioner.Partition();
     EXPECT_FALSE(errToBool(std::move(err)));
     DAGListTy myList = std::move(partitioner.getPartitionResult());
     ASSERT_EQ(mod_.getFunctions().size(), 2);
     ASSERT_EQ(myList.size(), 1);
+
+    for (auto &dag : myList) {
+      for (auto &node : dag.nodes) {
+        // Although the saturateHost is set true, no saturating the host in
+        // heterogeneous partiton.
+        ASSERT_EQ(node->logicalDevices.size(), 1);
+      }
+    }
+
     mod_.clear();
   }
 }

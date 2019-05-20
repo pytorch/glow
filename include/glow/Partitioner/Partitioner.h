@@ -194,7 +194,7 @@ class Partitioner {
   /// Adjust a logicalDevice ID to each DAGNode. It is possible that two
   /// sub-functions need to be assigned into 1 device due to the memory
   /// constraits.
-  void adjustLogicalDeviceID(DAGNode *DAG, int num);
+  void adjustLogicalDeviceID();
 
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
@@ -205,8 +205,8 @@ class Partitioner {
   /// Given the node-function mapping, do the actual partitioning. If \p saveDAG
   /// is true, the DAG will be saved into partitions_, which is the final
   /// partition result.
-  void doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
-                      NodeToFunctionMap &mapping, bool saveDAG);
+  DeviceIDTy doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
+                            NodeToFunctionMap &mapping, bool saveDAG);
 
 public:
   /// \p parent is the module which contains the functions need to be divided.
