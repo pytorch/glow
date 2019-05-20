@@ -18,6 +18,7 @@
 #include "GlowOnnxifiManager.h"
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include <glog/logging.h>
 
 /// Allow defining names for onnxifi implementation.
 #ifndef GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER
@@ -465,8 +466,12 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     const onnxTensorDescriptorV1 *outputDescriptors,
     onnxMemoryFenceV1 *outputFence, onnxTraceEventList *traceEvents) {
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
-
-  if (!inputDescriptors || !outputDescriptors || !outputFence) {
+  if ((inputsCount && !inputDescriptors) ||
+      (outputsCount && !outputDescriptors) || !outputFence) {
+    LOG(ERROR) << "inputsCount " << inputsCount << ", outputsCount "
+               << outputsCount << ", inputDescriptors: " << inputDescriptors
+               << ", outputDescriptors: " << outputDescriptors
+               << ", outputFence: " << outputFence;
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
