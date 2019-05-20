@@ -38,8 +38,12 @@ public:
 
   /// The DummyDeviceManager is a simple wrapper for testing, if you need
   /// memory guards you should implement a DeviceManager for your device.
-  uint64_t getMaximumMemory() const override { return 100; }
-  uint64_t getAvailableMemory() const override { return 100; }
+  uint64_t getMaximumMemory() const override {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  uint64_t getAvailableMemory() const override {
+    return std::numeric_limits<uint64_t>::max();
+  }
   bool isMemoryAvailable(uint64_t) const override { return true; }
 
   /// Load the provided module into the device, readyCB will be called when
