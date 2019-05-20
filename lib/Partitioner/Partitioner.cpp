@@ -23,6 +23,23 @@
 
 #include <fstream>
 
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+
+/// -log-partition - Command line option to dump Partitioner logs.
+static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
+static llvm::cl::opt<bool>
+    logPartition("log-partition",
+                 llvm::cl::desc("Enable logging partition info"),
+                 llvm::cl::init(true), llvm::cl::cat(PartitionerCat));
+
+/// -dump-partition - Command line option to dump the graph of each partitions
+/// by calling F->dumpDAG().
+static llvm::cl::opt<bool>
+    dumpPartition("dump-partition",
+                  llvm::cl::desc("Enable dumping the graph of each partitions"),
+                  llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
+
 using namespace glow;
 using llvm::isa;
 
@@ -946,6 +963,12 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     if (memSize_ < backendMap_[backendName].memSize) {
       // No partition is needed. Create DAGNode and return. This root is alway a
       // dummy function.
+      if (logPartition) {
+        LOG(INFO) << "The model is too small for applying partition.\n"
+                  << "Model size : " << memSize_ << "\n"
+                  << "Device memory: " << backendMap_[backendName].memSize
+                  << "\n";
+      }
       return createDAGWithoutPartition(backendName, backendMap_, cctx);
     }
   } else {
@@ -1005,9 +1028,34 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }
+
   auto funcList = module_->getFunctions();
+  if (logPartition) {
+    LOG(INFO) << "The number of partitions is : " << funcList.size()
+              << ", and the DAG is dumped into DAG.dot file.\n";
+    dumpDAG("DAG.dot");
+  }
+
+  int i = 0;
   for (Function *subF : funcList) {
     (void)subF;
+    if (logPartition) {
+      LOG(INFO) << "\t Partition " << i << ":\n"
+                << "\t\t Name :\t" << subF->getName().str() << "\n"
+                << "\t\t BackendKind :\t"
+                << mapping.getPartitionBackendName(subF) << "\n"
+                << "\t\t Memory :\t"
+                << mapping.getGraphMemInfo(subF).getTotalMemSize() << "\n"
+                << "\t\t LogicalDeviceIDs :\t"
+                << mapping.getLogicalDeviceIDList(subF)[0] << "\n";
+    }
+    if (dumpPartition) {
+      subF->dumpDAG("partitionLogicalID" +
+                    std::to_string(mapping.getLogicalDeviceIDList(subF)[0]) +
+                    "__" + subF->getName().str() + "__" +
+                    mapping.getPartitionBackendName(subF) + ".dot");
+    }
+    i++;
     assert(subF->verify() && "Conversion led to invalid function");
   }
   return llvm::Error::success();
