@@ -59,6 +59,7 @@ class ExecutionState final {
 public:
   /// Constructor.
   explicit ExecutionState(RunIdentifierTy id, const DAGNode *root,
+                          ThreadExecutor *executor,
                           std::unique_ptr<ExecutionContext> resultContext,
                           ResultCBTy doneCb);
 
@@ -107,6 +108,9 @@ public:
   /// \returns the run ID for the execution.
   RunIdentifierTy getRunId() const { return runId_; }
 
+  /// \returns the Executor used for this run.
+  ThreadExecutor *getExecutor() { return executor_; }
+
   /// Whether or not this node has been initialized.
   bool initialized_{false};
 
@@ -134,9 +138,6 @@ private:
   std::atomic<unsigned> inflightNodes_;
   /// Value that is used to track if an Error was received.
   OneErrOnly errContainer_;
-  /// Mutex used by bindings insertion functions to make sure only one thread
-  /// writes to an ExecutionContext at a time.
-  std::mutex bindingsMtx_;
   /// Module for the network. This contains the PHs used by the functions in
   /// this network.
   Module *module_{nullptr};
@@ -144,6 +145,8 @@ private:
   const DAGNode *root_;
   /// Object pool for intermediate tensors.
   TensorPool intermediateTensorPool_;
+  /// Thread Executor used for this run.
+  ThreadExecutor *executor_;
 };
 
 /// This implementation of the Executor interface uses a thread pool to
@@ -189,13 +192,6 @@ private:
   ThreadPool threadPool_;
   /// Map of available DeviceManagers.
   const DeviceManagerMapTy &deviceManagers_;
-  /// Map from run ID to the ExecutionState containing the state for the run.
-  std::unordered_map<RunIdentifierTy, std::shared_ptr<ExecutionState>>
-      executionStates_;
-  /// Lock for executionStates_. This is needed to synchronize access to
-  /// executionStateLocks_ so that multiple threads and can perform insertion
-  /// and lookup concurrently.
-  std::mutex executionStatesMutex_;
   /// Barrier for making sure all asynchronous requests made to the
   /// DeviceManager return before allowing destruction of the executor.
   InflightBarrier inflightBarrier_;
