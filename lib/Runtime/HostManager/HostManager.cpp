@@ -121,10 +121,14 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
   // Issue an error as there are outstanding runs for the network
   if (networkIterator->second.refcount != 0) {
-    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-                    "Cannot remove a network since there are outstanding runs");
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+                    llvm::formatv("Cannot remove the network {0}, as there are "
+                                  "still outstanding runs",
+                                  networkName)
+                        .str());
   }
 
+  OneErrOnly err;
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
@@ -138,14 +142,14 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
             removeNetwork.set_value();
           });
       done.get();
-      errToBool(std::move(removeErr));
+      err.set(std::move(removeErr));
     }
     // Also remove compiledFunction from Provisioner.
     provisioner_->removeFunction(node->name);
   }
   networks_.erase(networkIterator);
 
-  return llvm::Error::success();
+  return err.get();
 }
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {

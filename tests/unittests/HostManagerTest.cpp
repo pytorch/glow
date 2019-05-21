@@ -61,7 +61,7 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   // Expect this to be an Error because multiple networks with the same name
   // have been added to HostManager
   errToBool(manager->addNetwork(std::move(module)));
-  ASSERT_FALSE(errToBool(
+  EXPECT_FALSE(errToBool(
       manager->removeNetwork("function" + std::to_string(functionNumber))));
 }
 
