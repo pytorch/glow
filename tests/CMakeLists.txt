@@ -86,6 +86,11 @@ add_output_check_test(NAME en2gr_quantization_test
                       COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_quantization_test.sh
                       REQUIRES MODELS RELEASE)
 
+# Create en2gr_cpu_partition_test OutputCheck test.
+add_output_check_test(NAME en2gr_cpu_partition_test
+                      COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_cpu_partition_test.sh
+                      REQUIRES MODELS RELEASE)
+
 # Create an OutputCheck test to run resnet-runtime-test.
 add_output_check_test(NAME resnet_runtime_test
                       COMMAND ${EXAMPLES_TESTS_DIR}/resnet-runtime-test.sh

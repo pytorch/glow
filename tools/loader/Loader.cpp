@@ -192,6 +192,11 @@ llvm::cl::opt<std::string> networkName(
                    "of the entry point to the network "
                    "and as a prefix for all the files that are generated."),
     llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<unsigned> numDevices("num-devices",
+                                   llvm::cl::desc("Number of Devices to use"),
+                                   llvm::cl::init(1), llvm::cl::value_desc("N"),
+                                   llvm::cl::cat(loaderCat));
 } // namespace
 
 llvm::StringRef Loader::getModelOptPath() {
@@ -440,8 +445,10 @@ Loader::Loader(int argc, char **argv) {
   }
   M_.reset(new Module);
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  auto config = llvm::make_unique<runtime::DeviceConfig>(ExecutionBackend);
-  configs.push_back(std::move(config));
+  for (unsigned int i = 0; i < numDevices; ++i) {
+    auto config = llvm::make_unique<runtime::DeviceConfig>(ExecutionBackend);
+    configs.push_back(std::move(config));
+  }
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);
   F_ = M_->createFunction(modelPathOpt[0]);
