@@ -62,9 +62,6 @@ class ONNXModelLoader
   /// ONNX model op_version;
   size_t opsetVersion_;
 
-  /// Mapping between ONNX names for inputs and actual Glow input vars.
-  llvm::StringMap<Placeholder *> onnxNameToInputVars_;
-
   /// Load Constant ONNX operator.
   llvm::Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                            const ArgumentDictionaryTy &dict);
@@ -159,11 +156,6 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   ONNXModelLoader(Function &F, llvm::Error *errPtr = nullptr);
-
-  /// \returns mapping between ONNX names and actual Glow input vars.
-  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
-    return onnxNameToInputVars_;
-  }
 
   /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
   /// true then this will load each graph input as a placeholder otherwise it

@@ -59,8 +59,6 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
     onnxLoader->deleteUnusedConstants();
 
-    loader->onnxNameToInputVars_ = onnxLoader->getInputVarsMapping();
-
     // Keep hold of the context
     loader->core_ = std::move(onnxLoader);
   } else {
@@ -86,8 +84,6 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     // This is to ensure that the same processing done with
     // the same network, even if order of operators is different.
     F.orderNodes();
-
-    loader->onnxNameToInputVars_ = c2Loader->getInputVarsMapping();
 
     c2Loader->deleteUnusedConstants();
 

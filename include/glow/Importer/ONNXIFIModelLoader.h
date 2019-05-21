@@ -34,13 +34,10 @@ private:
   /// The real loader. It can be ONNXModelLoader or Caffe2ModelLoader
   std::unique_ptr<ProtobufLoader> core_{nullptr};
 
-  /// Mapping between ONNX names for inputs and actual Glow input vars.
-  llvm::StringMap<Placeholder *> onnxNameToInputVars_;
-
 public:
   /// \returns mapping between ONNX names and actual Glow input vars.
   const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
-    return onnxNameToInputVars_;
+    return core_->getInputVarsMapping();
   }
 
   /// \returns mapping between ONNX names and actual Glow output nodes.

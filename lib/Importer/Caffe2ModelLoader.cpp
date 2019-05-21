@@ -1069,7 +1069,7 @@ Caffe2ModelLoader::loadInputsWithTensorProtoType(const caffe2::NetDef &net,
     Placeholder *placeholder;
     ASSIGN_VALUE_OR_RETURN_ERR(
         placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
-    nameToInputVars_.try_emplace(in.name(), placeholder);
+    inputVarsByName_.try_emplace(in.name(), placeholder);
   } else {
     Tensor T;
     RETURN_IF_ERR(setTensorType(in, &T));
