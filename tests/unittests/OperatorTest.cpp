@@ -6161,6 +6161,33 @@ TEST_P(OperatorTest, LengthsToRanges) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+/// Test that LengthsRangeFill works.
+TEST_P(OperatorTest, LengthsRangeFill) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  /*
+    LENGTHS = [4, 3, 1]
+    OUTPUT =  [0, 1, 2, 3, 0, 1, 2, 0]
+  */
+  auto *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {3}, "lengths", false);
+
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {4, 3, 1};
+
+  auto *LRF = F_->createLengthsRangeFill("LRF", lengths, /* maxOutputSize */ 8);
+  auto *S = F_->createSave("save", LRF);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::Int32ITy, {8});
+  expected.getHandle<int32_t>() = {0, 1, 2, 3, 0, 1, 2, 0};
+
+  EXPECT_TRUE(expected.isEqual(result));
+}
+
 /// Helper for testing BatchOneHot with different \p DTy.
 template <typename DataType>
 void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,

@@ -1093,6 +1093,16 @@ void libjit_gatherranges32_u(size_t *output, int32_t *lengths,
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
+void libjit_lengths_range_fill_i32(const int32_t *lengths, int32_t *output,
+                                   const size_t lengthsSize) {
+  size_t curIdx = 0;
+  for (size_t i = 0, e = lengthsSize; i < e; i++) {
+    for (int32_t j = 0, f = lengths[i]; j < f; j++) {
+      output[curIdx++] = j;
+    }
+  }
+}
+
 void libjit_scatterassign_f(float *data, const size_t *indices,
                             const float *slices, size_t numIndices,
                             size_t sliceSize) {

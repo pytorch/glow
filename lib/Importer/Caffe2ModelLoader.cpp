@@ -1049,6 +1049,22 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "LengthsRangeFill") {
+    NodeValue lengths;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(lengths.dims().size() == 1,
+                      "lengths must be a 1D vector.");
+
+    unsigned_t maxOutputSize;
+    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize,
+                               loadInt(dict.find("maxOutputSize")->second));
+
+    auto *LRF = G_.createLengthsRangeFill(opName, lengths, maxOutputSize);
+    RETURN_IF_ERR(addNodeAsOutput(op, LRF));
+
+    return llvm::Error::success();
+  }
+
   RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 

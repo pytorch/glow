@@ -285,6 +285,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"});
 
+  BB.newInstr("LengthsRangeFill")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Lengths", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int32ITy"});
+
   /// Converts the given sparse representation into a dense one.
   BB.newInstr("SparseToDense")
       .addOperand("Dest", OperandKind::Out)

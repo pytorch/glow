@@ -752,6 +752,14 @@ public:
   LengthsToRangesNode *createLengthsToRanges(llvm::StringRef name,
                                              NodeValue lengths);
 
+  /// Given a vector of \p lengths, \returns a LengthsRangeFillNode. This Node
+  /// calculates a range sequence given \p lengths, where the sum of the
+  /// elements of \p lengths must be no greater than \p maxOutputSize, which is
+  /// used to set the output type.
+  LengthsRangeFillNode *createLengthsRangeFill(llvm::StringRef name,
+                                               NodeValue lengths,
+                                               unsigned_t maxOutputSize);
+
   /// Implements an operation that converts the sparse representation given by
   /// the pair of \p indices and \p values into a dense representation.
   /// This representation contains each value of \p values at the corresponding

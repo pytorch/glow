@@ -1,0 +1,13 @@
+name: "lengths_ranges_fill"
+op {
+  input: "lengths"
+  output: "result"
+  name: ""
+  type: "LengthsRangeFill"
+  arg {
+    name: "maxOutputSize"
+    i: 8
+  }
+}
+external_input: "lengths"
+external_output: "result"

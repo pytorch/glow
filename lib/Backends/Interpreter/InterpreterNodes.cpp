@@ -2591,6 +2591,18 @@ void BoundInterpreterFunction::fwdLengthsToRangesInst(
   }
 }
 
+void BoundInterpreterFunction::fwdLengthsRangeFillInst(
+    const LengthsRangeFillInst *I) {
+  auto lengthsH = getTensor(I->getLengths())->getHandle<int32_t>();
+  auto resultH = getTensor(I->getDest())->getHandle<int32_t>();
+  size_t curIdx = 0;
+  for (size_t i = 0, e = lengthsH.dims()[0]; i < e; i++) {
+    for (int32_t j = 0, f = lengthsH.at({i}); j < f; j++) {
+      resultH.at({curIdx++}) = j;
+    }
+  }
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
     const SparseToDenseInst *I) {
