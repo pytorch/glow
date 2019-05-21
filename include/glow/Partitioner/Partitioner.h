@@ -143,6 +143,10 @@ class Partitioner {
   /// The backend pointers.
   std::vector<Backend *> backends_;
 
+  /// The map between BackendKind and its name. It is used for generating debug
+  /// info.
+  std::map<BackendKind, std::string> backendName_;
+
   /// The result of module partitioning.
   DAGListTy partitions_;
 
@@ -245,6 +249,11 @@ public:
 
   /// Get the partitions.
   DAGListTy &getPartitionResult() { return partitions_; }
+
+  /// Dump the partition result to a dot file. Since now all functions belong to
+  /// a function family and they have the same partition, we only dump the one
+  /// function's partition.
+  void dumpDAG(llvm::StringRef dotFilename) const;
 
   /// Get function for computeTime_
   ComputeTimeMapTy getComputeTime() const { return computeTime_; }

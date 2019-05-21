@@ -162,16 +162,7 @@ protected:
 
     // Pick a color based on the node kind.
     unsigned colorIdx = llvm::hash_value(llvm::StringRef(N->getKindName()));
-
-    static const char *colorNames[] = {
-        "AliceBlue",      "CadetBlue1",   "Coral",      "DarkOliveGreen1",
-        "DarkSeaGreen1",  "GhostWhite",   "Khaki1",     "LavenderBlush1",
-        "LemonChiffon1",  "LightSkyBlue", "MistyRose1", "MistyRose2",
-        "PaleTurquoise2", "PeachPuff1",   "PowderBlue", "Salmon",
-        "Thistle1",       "Thistle3",     "Wheat1",     "Yellow2",
-    };
-    unsigned arrayLen = sizeof(colorNames) / sizeof(colorNames[0]);
-    auto nodeColor = colorNames[colorIdx % arrayLen];
+    auto nodeColor = getDotFileNodeColor(colorIdx);
 
     if (isa<Constant>(N)) {
       os << "\tfillcolor=Snow3 color=DeepSkyBlue4\n";

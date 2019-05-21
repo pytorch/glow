@@ -58,6 +58,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 /// The char '\n' becomes '\'+'n' and quotes are handled correctly.
 std::string escapeDottyString(const std::string &str);
 
+/// \returns the node color based on \p index which is used in dot file.
+const char *getDotFileNodeColor(size_t index);
+
 /// Add quotes to the string \p in.
 inline std::string quote(const std::string &in) { return '"' + in + '"'; }
 

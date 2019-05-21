@@ -117,4 +117,17 @@ std::string legalizeName(llvm::StringRef name) {
   return legalName;
 }
 
+/// \returns the color based on \p index which is used in dot file.
+const char *getDotFileNodeColor(size_t index) {
+  static const char *colorNames[] = {
+      "AliceBlue",      "CadetBlue1",   "Coral",      "DarkOliveGreen1",
+      "DarkSeaGreen1",  "GhostWhite",   "Khaki1",     "LavenderBlush1",
+      "LemonChiffon1",  "LightSkyBlue", "MistyRose1", "MistyRose2",
+      "PaleTurquoise2", "PeachPuff1",   "PowderBlue", "Salmon",
+      "Thistle1",       "Thistle3",     "Wheat1",     "Yellow2",
+  };
+  unsigned arrayLen = sizeof(colorNames) / sizeof(colorNames[0]);
+  return colorNames[index % arrayLen];
+}
+
 } // namespace glow

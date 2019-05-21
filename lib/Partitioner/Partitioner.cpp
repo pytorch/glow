@@ -15,6 +15,13 @@
  */
 
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Support/Support.h"
+
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <fstream>
 
 using namespace glow;
 using llvm::isa;
@@ -33,6 +40,57 @@ static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
     }
   }
   return ret;
+}
+
+void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
+  if (partitions_.size() == 0)
+    return;
+  auto *root = partitions_[0].root.get();
+  llvm::outs() << "Writing dotty graph for DAG after graph partitioning: "
+               << dotFilename << '\n';
+  std::ofstream myfile;
+  myfile.open(dotFilename);
+  myfile << "digraph DAG {\n\trankdir=TB;\n";
+  // Dump DAGNodes
+  std::vector<DAGNode *> nodes;
+  llvm::SmallSet<DAGNode *, 10> used;
+  nodes.push_back(root);
+  int cur = 0;
+  int num = 1;
+  while (cur < num) {
+    auto *node = nodes[cur];
+    for (size_t i = 0; i < node->children.size(); i++) {
+      auto child = node->children[i];
+      DescriptionBuilder db(child->name.c_str());
+      db.addParam("BackendKind", backendName_.at(child->backendKind));
+      myfile << child->name << " [ label = \"" << escapeDottyString(db) << "\"";
+      myfile << "\tshape = \"record\"\n";
+      myfile << "\tstyle=\"filled,rounded\"\n";
+      auto colorIdx = llvm::hash_value(
+          llvm::StringRef(backendName_.at(child->backendKind)));
+      myfile << "\tfillcolor=" << getDotFileNodeColor(colorIdx) << "\n";
+      myfile << "penwidth = 2];\n";
+      if (used.count(child) == 0) {
+        nodes.push_back(child);
+        used.insert(child);
+        num++;
+      }
+    }
+    cur++;
+  }
+
+  // Dump edges.
+  for (size_t i = 0; i < nodes.size(); i++) {
+    auto *root = nodes[i];
+    for (size_t j = 0; j < root->children.size(); j++) {
+      auto child = root->children[j];
+      myfile << root->name << " -> " << child->name << ";";
+    }
+  }
+  myfile << "}";
+
+  myfile.close();
+  return;
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
@@ -729,6 +787,11 @@ llvm::Error Partitioner::Partition() {
   std::vector<Backend *> backends;
   std::vector<std::unique_ptr<Backend>> backendHolder;
   getBackendMap(backendMap, backendHolder, backends);
+
+  // Assign the backend name to its BackendKind.
+  for (size_t i = 0, e = backends.size(); i < e; i++) {
+    backendName_[backends[i]->getBackendKind()] = backends[i]->getBackendName();
+  }
 
   // Step 0: Find the representative function for running partitioning
   // algorithm.
