@@ -112,17 +112,18 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   return llvm::Error::success();
 }
 
-void HostManager::removeNetwork(llvm::StringRef networkName) {
+llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
-    return;
+    return llvm::Error::success();
   }
 
-  // TODO: should return an error here rather than asserting:
-  // https://github.com/pytorch/glow/issues/2855
-  assert(networkIterator->second.refcount == 0 &&
-         "Cannot remove a network since there are outstanding runs");
+  // Issue an error as there are outstanding runs for the network
+  if (networkIterator->second.refcount != 0) {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                    "Cannot remove a network since there are outstanding runs");
+  }
 
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
@@ -143,6 +144,8 @@ void HostManager::removeNetwork(llvm::StringRef networkName) {
     provisioner_->removeFunction(node->name);
   }
   networks_.erase(networkIterator);
+
+  return llvm::Error::success();
 }
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
