@@ -446,6 +446,7 @@ HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
 
 HabanaFunction::~HabanaFunction() {
   GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_));
+  GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_ + ".bin"));
 }
 
 void HabanaFunction::setupRuns() {}
