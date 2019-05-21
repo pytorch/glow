@@ -94,6 +94,8 @@ protected:
   llvm::StringMap<NodeValue> nodeValueByName_;
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
+  /// A map from names of the external inputs of the network to Variables.
+  llvm::StringMap<Placeholder *> inputVarsByName_;
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -150,9 +152,14 @@ public:
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;
   virtual ~ProtobufLoader() = default;
 
-  /// \returns mapping between ONNX names and actual Glow output nodes.
+  /// \returns mapping between external names and actual Glow output nodes.
   const llvm::StringMap<Placeholder *> &getOutputVarsMapping() const {
     return outputVarsByName_;
+  }
+
+  /// \returns mapping between external names and actual Glow input nodes.
+  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
+    return inputVarsByName_;
   }
 
   /// \returns the single final output of the network. The function assumes

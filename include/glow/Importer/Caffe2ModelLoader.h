@@ -64,9 +64,6 @@ class Caffe2ModelLoader
   /// file.
   llvm::Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);
 
-  /// Mapping between Caffe2 tensor names for inputs and actual Glow input vars.
-  llvm::StringMap<Placeholder *> nameToInputVars_;
-
   /// loadInputs calls this function for each member in its target arguments.
   /// Currently we are supporting two tensorprototypes:
   /// caffe2::TensorProto, caffe2::QTensorProto
@@ -106,13 +103,8 @@ public:
   /// in-memory serialized protobuf.
   /// Loads ModelProto from the in-memory serialized protobuf \p
   /// c2Model with the model size \p c2ModelSize.
-  llvm::Expected<caffe2::NetDef> loadProto(const void *c2Model,
-                                           size_t c2ModelSize);
-
-  /// \returns mapping between Caffe2 tensor names and actual Glow input vars.
-  const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
-    return nameToInputVars_;
-  }
+  static llvm::Expected<caffe2::NetDef> loadProto(const void *c2Model,
+                                                  size_t c2ModelSize);
 };
 
 } // namespace glow
