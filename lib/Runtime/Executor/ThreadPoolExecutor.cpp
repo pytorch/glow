@@ -58,10 +58,12 @@ void InflightBarrier::wait() {
 }
 
 ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
+                               ThreadExecutor *executor,
                                std::unique_ptr<ExecutionContext> resultContext,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
-      inflightNodes_(0), module_(root->module), root_(root) {}
+      inflightNodes_(0), module_(root->module), root_(root),
+      executor_(executor) {}
 
 void ExecutionState::init() {
   // Create a queue for the breadth-first traversal through the graph.
@@ -202,7 +204,6 @@ void ExecutionState::insertIntoTraceContext(std::vector<TraceEvent> &events) {
     return;
   }
 
-  std::lock_guard<std::mutex> lock(bindingsMtx_);
   std::move(
       events.begin(), events.end(),
       std::back_inserter(resultCtx_->getTraceContext()->getTraceEvents()));
@@ -262,26 +263,9 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   }
 
   std::shared_ptr<ExecutionState> executionState =
-      std::make_shared<ExecutionState>(runId, root, std::move(context),
-                                       std::move(cb));
+      std::make_shared<ExecutionState>(runId, root, threadPool_.getExecutor(),
+                                       std::move(context), std::move(cb));
   executionState->init();
-
-  bool runIdAlreadyTaken = false;
-  {
-    std::lock_guard<std::mutex> lock(executionStatesMutex_);
-    auto result = executionStates_.emplace(runId, executionState);
-    runIdAlreadyTaken = !result.second;
-  }
-
-  if (runIdAlreadyTaken) {
-    cb = executionState->getCallback();
-    cb(runId,
-       MAKE_ERR(
-           GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-           "ThreadPoolExecutor found another run with the same request id"),
-       executionState->getUniqueResultContextPtr());
-    return;
-  }
 
   // Execute all child nodes of root.
 
@@ -339,14 +323,14 @@ void ThreadPoolExecutor::executeDAGNode(
       [this, executionState,
        node](RunIdentifierTy id, llvm::Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
-        // Immediately move the handling of the result onto threadPool_ to
-        // avoid doing work on the DeviceManager thread.
-        this->threadPool_.submit([this, executionState, node,
-                                  err = std::move(err),
-                                  ctx = std::move(resultCtx)]() mutable {
-          this->handleDeviceManagerResult(executionState, std::move(err),
-                                          std::move(ctx), node);
-        });
+        // Immediately move the handling of the result onto this run's executor
+        // to avoid doing work on the DeviceManager thread.
+        executionState->getExecutor()->submit(
+            [this, executionState, node, err = std::move(err),
+             ctx = std::move(resultCtx)]() mutable {
+              this->handleDeviceManagerResult(executionState, std::move(err),
+                                              std::move(ctx), node);
+            });
       });
 }
 
@@ -388,6 +372,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
 
   if (traceContext) {
     TRACE_EVENT_END(traceContext, "ThreadPoolExecutor::handleResult");
+    // Lock is not necessary as we only access on this runs executor.
     executionState->insertIntoTraceContext(traceContext->getTraceEvents());
   }
 
@@ -400,10 +385,6 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     ResultCBTy cb = executionState->getCallback();
     cb(executionState->getRunId(), executionState->getErrorContainer().get(),
        executionState->getUniqueResultContextPtr());
-
-    // Clean up the state stored for the run.
-    std::lock_guard<std::mutex> lock(executionStatesMutex_);
-    executionStates_.erase(executionState->getRunId());
   }
 
   // Decrement the inflight barrier for the executor keeping track of all
