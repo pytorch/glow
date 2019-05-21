@@ -466,7 +466,12 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
     onnxMemoryFenceV1 *outputFence, onnxTraceEventList *traceEvents) {
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
-  if (!inputDescriptors || !outputDescriptors || !outputFence) {
+  if ((inputsCount && !inputDescriptors) ||
+      (outputsCount && !outputDescriptors) || !outputFence) {
+    llvm::errs() << "inputsCount " << inputsCount << ", outputsCount "
+                 << outputsCount << ", inputDescriptors: " << inputDescriptors
+                 << ", outputDescriptors: " << outputDescriptors
+                 << ", outputFence: " << outputFence;
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 
