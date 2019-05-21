@@ -19,24 +19,22 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-static llvm::cl::OptionCategory CPUBackendCat("Glow CPU DeviceManager Options");
-llvm::cl::opt<unsigned>
-    cpuMaxMem("cpu-memory", llvm::cl::desc("CPU DeviceManager maximum memory"),
-              llvm::cl::init(0), llvm::cl::cat(CPUBackendCat));
-
-using namespace glow;
-using namespace glow::runtime;
-
 namespace glow {
 namespace runtime {
+
+uint64_t GlowCPUMemory = 0;
+
+static llvm::cl::opt<uint64_t, /* ExternalStorage */ true>
+    GlowCPUMemoryOpt("cpu-memory",
+                     llvm::cl::desc("CPU DeviceManager maximum memory"),
+                     llvm::cl::location(GlowCPUMemory));
+
 DeviceManager *createCPUDeviceManager(std::unique_ptr<DeviceConfig> config) {
-  if (cpuMaxMem) {
-    return new CPUDeviceManager(std::move(config), cpuMaxMem);
+  if (GlowCPUMemory) {
+    return new CPUDeviceManager(std::move(config), GlowCPUMemory);
   }
   return new CPUDeviceManager(std::move(config));
 }
-} // namespace runtime
-} // namespace glow
 
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 
@@ -146,3 +144,5 @@ void CPUDeviceManager::runFunctionImpl(
   // Fire the resultCB.
   resultCB(id, llvm::Error::success(), std::move(context));
 }
+} // namespace runtime
+} // namespace glow
