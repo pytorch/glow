@@ -900,7 +900,10 @@ protected:
       lengths = lengthsConstant->getOutput();
     }
 
-    auto mask = getShape<int64_t>(dict.find("mask")->second);
+    auto maskIt = dict.find("mask");
+    RETURN_ERR_IF_NOT(maskIt != dict.end(),
+                      "Require mask when loading SparseToDenseMask.");
+    auto mask = getShape<int64_t>(maskIt->second);
 
     auto *node = G_.createSparseToDenseMask(
         loadOperatorName(op), indices, values, defaultValue, lengths, mask);
@@ -944,9 +947,11 @@ protected:
     RETURN_ERR_IF_NOT(ranges.dims()[2] == 2,
                       "Last dimension of ranges must be 2.");
 
+    auto maxOutputSizeIt = dict.find("maxOutputSize");
+    RETURN_ERR_IF_NOT(maxOutputSizeIt != dict.end(),
+                      "Require maxOutputSize when loading LengthsRangeFill.");
     unsigned_t maxOutputSize;
-    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize,
-                               loadInt(dict.find("maxOutputSize")->second));
+    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize, loadInt(maxOutputSizeIt->second));
 
     Node *GR = G_.createGatherRanges(loadOperatorName(op), data, ranges,
                                      maxOutputSize);
