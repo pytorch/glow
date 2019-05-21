@@ -1055,9 +1055,11 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1,
                       "lengths must be a 1D vector.");
 
+    auto maxOutputSizeIt = dict.find("maxOutputSize");
+    RETURN_ERR_IF_NOT(maxOutputSizeIt != dict.end(),
+                      "Require maxOutputSize when loading LengthsRangeFill.");
     unsigned_t maxOutputSize;
-    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize,
-                               loadInt(dict.find("maxOutputSize")->second));
+    ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize, loadInt(maxOutputSizeIt->second));
 
     auto *LRF = G_.createLengthsRangeFill(opName, lengths, maxOutputSize);
     RETURN_IF_ERR(addNodeAsOutput(op, LRF));
