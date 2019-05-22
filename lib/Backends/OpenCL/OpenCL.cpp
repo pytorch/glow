@@ -913,18 +913,92 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *BRA = dyn_cast<BatchedReduceAddInst>(&I)) {
-      assert(BRA->getAxis() == 0 && "No current support for non-zero axis.");
+      auto axis = BRA->getAxis();
 
+      // Determine and store the slice sizes of each input dimension excluding
+      // the reduce axis into batchSliceSizes. These are used by the kernel to
+      // index correctly into the input buffer. If the input has one dimension
+      // (that is also the reduce axis), store one slice of size 1 into
+      // batchSliceSizes.
+      auto batchDims = BRA->getBatch()->getType()->dims();
+      auto numBatchDims = batchDims.size();
+      std::vector<size_t> batchSliceSizes(
+          numBatchDims > 1 ? numBatchDims - 1 : 1, 1);
+      size_t currentSliceSize = 1, axisSliceSize = 1;
+      for (size_t i = batchSliceSizes.size() - 1, j = i; i >= 0; ++i) {
+        if (i == axis) {
+          axisSliceSize = currentSliceSize;
+        } else {
+          batchSliceSizes[j--] = currentSliceSize;
+        }
+
+        currentSliceSize *= batchDims[i];
+      }
+
+      // Determine and store the slice sizes of each output dimension excluding
+      // the reduce axis into destSliceSizes. These are used by the kernel to
+      // index correctly into the output buffer. If the output has zero
+      // dimensions store one slice of size 1 into destSliceSizes.
+      auto destDims = BRA->getDest()->getType()->dims();
+      std::vector<size_t> destDimsVec(destDims.begin(), destDims.end());
+      if (destDims.empty()) {
+        destDimsVec.emplace_back(1);
+      }
+      auto numDestDims = destDimsVec.size();
+      std::vector<size_t> destSliceSizes(numDestDims > 0 ? numDestDims : 1, 1);
+      for (size_t i = 2, e = destDimsVec.size(); i <= e; ++i) {
+        destSliceSizes[e - i] = destSliceSizes[e - i + 1] * destDimsVec[e - i];
+      }
+
+      // Allocate device buffers for batchSliceSizes and destSliceSizes.
+      size_t batchSlicesBufSize = batchSliceSizes.size() * sizeof(size_t);
+      size_t destSlicesBufSize = destSliceSizes.size() * sizeof(size_t);
+      cl_mem batchSlicesBuf = allocDeviceBuffer(batchSlicesBufSize);
+      cl_mem destSlicesBuf = allocDeviceBuffer(destSlicesBufSize);
+
+      // Copy batchSliceSizes and destSliceSizes from host to device.
+      cl_event writeBatchSlicesEvent{nullptr}, writeDestSlicesEvent{nullptr};
+      cl_int err = clEnqueueWriteBuffer(
+          commands_, batchSlicesBuf, /*blocking_write=*/CL_FALSE, /*offset=*/0,
+          batchSlicesBufSize, batchSliceSizes.data(),
+          /* num_events_in_wait_list */ 0,
+          /* event_list */ nullptr,
+          /* event */ kernelProfiling_ ? &writeBatchSlicesEvent : nullptr);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy BRA data to the device");
+      if (kernelProfiling_) {
+        kernelLaunches_.emplace_back(KernelLaunch("batchedReduceAddSliceData",
+                                                  "batchedReduceAddSliceData",
+                                                  writeBatchSlicesEvent));
+      }
+
+      err = clEnqueueWriteBuffer(
+          commands_, destSlicesBuf, /*blocking_write=*/CL_FALSE, /*offset=*/0,
+          destSlicesBufSize, destSliceSizes.data(),
+          /* num_events_in_wait_list */ 0,
+          /* event_list */ nullptr,
+          /* event */ kernelProfiling_ ? &writeDestSlicesEvent : nullptr);
+      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy BRA data to the device");
+      if (kernelProfiling_) {
+        kernelLaunches_.emplace_back(KernelLaunch("batchedReduceAddSliceData",
+                                                  "batchedReduceAddSliceData",
+                                                  writeDestSlicesEvent));
+      }
+
+      // Wait for the writes to finish.
+      clFinish(commands_);
+
+      // Create kernel and set arguments.
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
-      auto bdim = flattenCdr(BRA->getBatch()->dims());
-      setKernelArg<cl_uint>(kernel, numArgs + 1, bdim.first);
-      setKernelArg<cl_uint>(kernel, numArgs + 2, bdim.second);
+      setKernelArg(kernel, numArgs + 1, batchSlicesBuf);
+      setKernelArg(kernel, numArgs + 2, destSlicesBuf);
+      setKernelArg<cl_uint>(kernel, numArgs + 3, batchDims[axis]);
+      setKernelArg<cl_uint>(kernel, numArgs + 4, axisSliceSize);
 
       // Parallelize on each element in the slice.
-      enqueueKernel(I.getName(), commands_, kernel, deviceId_, {bdim.second},
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, destDimsVec,
                     kernelLaunches_);
       continue;
     }

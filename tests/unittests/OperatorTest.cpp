@@ -792,22 +792,33 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
   bindings.allocate(batch)->getHandle<DataType>() = {0, 1, 2, 3, 4,  5,
                                                      6, 7, 8, 9, 10, 11};
 
-  auto OT = uniqueTypeConditionallyQuantized(mod, DTy, {2, 2});
-  auto *R = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 1);
-  auto *save = F->createSave("save", R);
-  auto *result = bindings.allocate(save->getPlaceholder());
+  auto OT1 = uniqueTypeConditionallyQuantized(mod, DTy, {2, 2});
+  auto *R1 =
+      F->createBatchedReduceAdd("reduce.add.axis.1", OT1, batch, /* axis */ 1);
+  auto OT2 = uniqueTypeConditionallyQuantized(mod, DTy, {2, 3});
+  auto *R2 =
+      F->createBatchedReduceAdd("reduce.add.axis.2", OT2, batch, /* axis */ 2);
+  auto *save1 = F->createSave("save1", R1);
+  auto *save2 = F->createSave("save2", R2);
+
+  auto *result1 = bindings.allocate(save1->getPlaceholder());
+  auto *result2 = bindings.allocate(save2->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto expected = createTensorConditionallyQuantized(DTy, {2, 2});
-  expected.getHandle<DataType>() = {6, 9, 24, 27};
-  EXPECT_TRUE(result->isEqual(expected));
+  auto expected1 = createTensorConditionallyQuantized(DTy, {2, 2});
+  expected1.getHandle<DataType>() = {6, 9, 24, 27};
+  EXPECT_TRUE(result1->isEqual(expected1));
+
+  auto expected2 = createTensorConditionallyQuantized(DTy, {2, 3});
+  expected2.getHandle<DataType>() = {1, 5, 9, 13, 17, 21};
+  EXPECT_TRUE(result2->isEqual(expected2));
 }
 
 /// Test that batchedReduceAddWithAxis is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceAddWithAxis_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testBatchedReduceAddWithAxis<float>(bindings_, mod_, F_, EE_,
                                       ElemKind::FloatTy);
 }

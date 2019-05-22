@@ -619,18 +619,52 @@ __kernel void elementcmplteW(__global void *mem, cl_uint32_t dest,
 }
 
 __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
-                                cl_uint32_t numSlice, cl_uint32_t sliceSize) {
-  size_t s = get_global_id(0);
-  dest[s] = 0;
-  for (size_t n = 0; n < numSlice; n++) {
-    dest[s] += batch[n * sliceSize + s];
+                                __global cl_host_size_t *batchSliceSizes,
+                                __global cl_host_size_t *destSliceSize,
+                                cl_uint32_t numSlices,
+                                cl_uint32_t axisSliceSize) {
+  size_t workDim = get_work_dim();
+
+  // This is the component of the offset into batch that depends only on the
+  // kernel's global IDs.
+  size_t batchOffset = 0;
+
+  // This is the offset into dest. It depends only on the kernel's global IDs.
+  size_t destOffset = 0;
+
+  // Compute batchOffset and destOffset by multiplying the kernel's global IDs
+  // with the corresponding batch and dest slice sizes.
+  //
+  // For example, suppose the input shape is {3, 4, 5} and the reduce axis is 1.
+  // Then, the output shape is {3, 5}. In this case, batchSliceSizes is {4 * 5 =
+  // 20, 1} (axis 1 is missing) and destSliceSizes is {5, 1}. The global
+  // workspace this kernel was launched with has dimensions {3, 5} (one for each
+  // output element). A kernel with IDs {i, j} will add together elements
+  // {i, 0..4, j} and store the result in element {i, j}, so (i * 20 + j * 1)
+  // will be a component of every offset it uses to access batch, and (i * 5 + j
+  // * 1) will be the offset it uses to access dest. This is precisely what
+  // batchOffset and destOffset are. The loop below precomputes these offsets
+  // before the actual reduce.
+  for (size_t i = 0; i < workDim; ++i) {
+    size_t id = get_global_id(i);
+    batchOffset += id * batchSliceSizes[i];
+    destOffset += id * destSliceSize[i];
+  }
+
+  // Perform the actual reduce. Add the slice number * the slice size at the
+  // axis index to batchOffset to get the elements to add together.
+  dest[destOffset] = 0;
+  for (size_t n = 0; n < numSlices; n++) {
+    dest[destOffset] += batch[n * axisSliceSize + batchOffset];
   }
 }
 
-__kernel void batchedreduceaddW(__global void *mem, cl_uint32_t dest,
-                                cl_uint32_t batch, cl_uint32_t numSlice,
-                                cl_uint32_t sliceSize) {
-  batchedreduceaddK(&mem[dest], &mem[batch], numSlice, sliceSize);
+__kernel void
+batchedreduceaddW(__global void *mem, cl_uint32_t dest, cl_uint32_t batch,
+                  __global void *batchSliceSizes, __global void *destSliceSizes,
+                  cl_uint32_t numSlices, cl_uint32_t axisSliceSize) {
+  batchedreduceaddK(&mem[dest], &mem[batch], batchSliceSizes, destSliceSizes,
+                    numSlices, axisSliceSize);
 }
 
 __kernel void batchedaddK(__global float *dest, __global float *batch,
