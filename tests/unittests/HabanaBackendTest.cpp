@@ -1262,8 +1262,8 @@ TEST_F(HabanaBackendTest, Clip) {
   }
 }
 
-static void fill(Tensor *T, int val) {
-  auto H = T->getHandle();
+static void fill(Tensor &T, int val) {
+  auto H = T.getHandle();
   std::iota(H.begin(), H.end(), val);
 }
 
@@ -1271,22 +1271,22 @@ TEST_F(HabanaBackendTest, Copy) {
   auto *c = mod_.createConstant(ElemKind::FloatTy, {20}, "c");
   auto *p = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p", false);
   F_->createSave("s", c, p);
-  auto *ct = &c->getPayload();
+  auto &ct = c->getPayloadMutable();
   auto *pt = ctx_.allocate(p);
   fill(ct, 1);
 
   auto *c2 = mod_.createConstant(ElemKind::FloatTy, {20}, "c2");
   auto *p2 = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p2", false);
   F_->createSave("s2", c2, p2);
-  auto *c2t = &c2->getPayload();
+  auto &c2t = c2->getPayloadMutable();
   auto *p2t = ctx_.allocate(p2);
   fill(c2t, 21);
 
   EE_.compile(CompilationMode::Infer, F_);
   EE_.run(ctx_);
 
-  ASSERT_TRUE(ct->isEqual(*pt));
-  ASSERT_TRUE(c2t->isEqual(*p2t));
+  ASSERT_TRUE(ct.isEqual(*pt));
+  ASSERT_TRUE(c2t.isEqual(*p2t));
 }
 
 TEST_F(HabanaBackendTest, CopyPlaceholder) {
