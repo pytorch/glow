@@ -17,4 +17,4 @@
 set -euxo pipefail
 
 # CHECK: ich liebe Musik \.$
-$BIN/text-translator -m "${MODELS_DIR}/en2gr" -cpu -cpu-memory=500000000 -num-devices=2 <<< "I love music ."
+$BIN/text-translator -m "${MODELS_DIR}/en2gr" -cpu -cpu-memory=500000 -num-devices=2 <<< "I love music ."
