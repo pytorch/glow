@@ -567,7 +567,137 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
-  checkEventTimestamps(traceEvents);
+  // CompleteEvents are not necessarily monotonically increasing since they are
+  // added to the log when they end, not when they start.
+}
+
+/// Test that ScopedTraceBlocks can be nested.
+TEST(TraceEventsTest, nestedScopedEvents) {
+  ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+
+  TraceContext *tc = context.getTraceContext();
+
+  ScopedTraceBlock block_one(tc, "one");
+  {
+    ScopedTraceBlock block_two(tc, "two");
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+  }
+
+  {
+    ScopedTraceBlock block_three(tc, "three");
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+    {
+      ScopedTraceBlock block_four(tc, "four");
+      /* sleep_override */ std::this_thread::sleep_for(
+          std::chrono::milliseconds(1));
+    }
+  }
+
+  block_one.end();
+
+  auto &traceEvents = tc->getTraceEvents();
+  ASSERT_EQ(traceEvents.size(), 4);
+  llvm::StringMap<uint64_t> durations;
+  for (auto &tc : traceEvents) {
+    durations[tc.name] = tc.duration;
+  }
+
+  ASSERT_GE(durations["one"], durations["two"] + durations["three"]);
+  ASSERT_GE(durations["three"], durations["four"]);
+}
+
+/// Test that nesting scoped events work with the macro versions.
+TEST(TraceEventsTest, nestedScopedEventsMacro) {
+  ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+
+  TraceContext *tc = context.getTraceContext();
+
+  TRACE_EVENT_SCOPE(tc, "one");
+  {
+    TRACE_EVENT_SCOPE(tc, "two");
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+  }
+
+  {
+    TRACE_EVENT_SCOPE(tc, "three");
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+    {
+      TRACE_EVENT_SCOPE(tc, "four");
+      /* sleep_override */ std::this_thread::sleep_for(
+          std::chrono::milliseconds(1));
+    }
+  }
+
+  TRACE_EVENT_SCOPE_END();
+
+  auto &traceEvents = tc->getTraceEvents();
+  ASSERT_EQ(traceEvents.size(), 4);
+  llvm::StringMap<uint64_t> durations;
+  for (auto &tc : traceEvents) {
+    durations[tc.name] = tc.duration;
+  }
+
+  ASSERT_GE(durations["one"], durations["two"] + durations["three"]);
+  ASSERT_GT(durations["three"], durations["four"]);
+}
+
+/// Test that terminating a scoped event logs final timestamp at the end, not at
+/// scope exit.
+TEST(TraceEventsTest, nestedScopedEventsTerm) {
+  ExecutionContext context;
+  context.setTraceContext(
+      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+
+  TraceContext *tc = context.getTraceContext();
+
+  {
+    TRACE_EVENT_SCOPE_NAMED(tc, "one", one);
+    TRACE_EVENT_SCOPE_NAMED(tc, "two", two);
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+    TRACE_EVENT_SCOPE_END_NAMED(one);
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+  }
+
+  {
+    TRACE_EVENT_SCOPE_NAMED(tc, "three", three);
+    TRACE_EVENT_SCOPE_NAMED(tc, "four", four);
+    {
+      TRACE_EVENT_SCOPE_NAMED(tc, "five", five);
+      /* sleep_override */ std::this_thread::sleep_for(
+          std::chrono::milliseconds(1));
+      TRACE_EVENT_SCOPE_END_NAMED(four);
+      /* sleep_override */ std::this_thread::sleep_for(
+          std::chrono::milliseconds(1));
+    }
+    /* sleep_override */ std::this_thread::sleep_for(
+        std::chrono::milliseconds(1));
+  }
+
+  auto &traceEvents = tc->getTraceEvents();
+  ASSERT_EQ(traceEvents.size(), 5);
+  llvm::StringMap<uint64_t> durations;
+  for (auto &tc : traceEvents) {
+    durations[tc.name] = tc.duration;
+  }
+
+  // Two should have two sleeps to one's one.
+  ASSERT_GT(durations["two"], durations["one"]);
+
+  // Three includes both four and five but theres some overlap so can't just
+  // add.
+  ASSERT_GT(durations["three"], durations["four"]);
+  ASSERT_GT(durations["three"], durations["five"]);
+  ASSERT_GT(durations["five"], durations["four"]);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,

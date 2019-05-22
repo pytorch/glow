@@ -91,7 +91,8 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
                      baseMutableWeightVarsAddress);
   }
 
-  TRACE_EVENT_BEGIN(context, "findJitmainSymbol");
+  auto *traceContext = context->getTraceContext();
+  TRACE_EVENT_SCOPE_NAMED(traceContext, "findJitmainSymbol", fjEvent);
   auto sym = JIT_->findSymbol("jitmain");
   assert(sym && "Unable to JIT the code!");
   using JitFuncType =
@@ -100,11 +101,10 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
-    TRACE_EVENT_END(context, "findJitmainSymbol");
-    TRACE_EVENT_BEGIN(context, "execute");
+    TRACE_EVENT_SCOPE_END_NAMED(fjEvent);
+    TRACE_EVENT_SCOPE(traceContext, "execute");
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
-    TRACE_EVENT_END(context, "execute");
   } else {
     GLOW_UNREACHABLE("Error getting address");
   }
@@ -152,11 +152,26 @@ void LLVMCompiledFunction::translateTraceEvents(
 
     auto &traceEvents = traceContext->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {
-      uint64_t ts{0};
-      memcpy(&ts,
-             backingTensor->getUnsafePtr() + (event.index * traceInfo.dataSize),
-             traceInfo.dataSize);
-      traceEvents.push_back({event.name, ts, event.type, tid});
+      // If it's a complete event grab both timestamps.
+      if (event.type == TraceEvent::CompleteType) {
+        uint64_t start{0}, end{0};
+        memcpy(&start,
+               backingTensor->getUnsafePtr() +
+                   (event.startIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        memcpy(&end,
+               backingTensor->getUnsafePtr() +
+                   (event.endIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        traceEvents.push_back({event.name, start, end - start, tid});
+      } else {
+        uint64_t ts{0};
+        memcpy(&ts,
+               backingTensor->getUnsafePtr() +
+                   (event.startIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        traceEvents.push_back({event.name, ts, event.type, tid});
+      }
     }
   }
 }

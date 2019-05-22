@@ -82,11 +82,26 @@ void InterpreterFunction::translateTraceEvents(
     assert(backingTensor);
 
     for (const TraceInfo::Event &event : backing.second) {
-      uint64_t ts{0};
-      memcpy(&ts,
-             backingTensor->getUnsafePtr() + (event.index * traceInfo.dataSize),
-             traceInfo.dataSize);
-      traceEvents.push_back({event.name, ts, event.type, tid});
+      // If it's a complete event: grab both timestamps.
+      if (event.type == TraceEvent::CompleteType) {
+        uint64_t start{0}, end{0};
+        memcpy(&start,
+               backingTensor->getUnsafePtr() +
+                   (event.startIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        memcpy(&end,
+               backingTensor->getUnsafePtr() +
+                   (event.endIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        traceEvents.push_back({event.name, start, end - start, tid});
+      } else {
+        uint64_t ts{0};
+        memcpy(&ts,
+               backingTensor->getUnsafePtr() +
+                   (event.startIndex * traceInfo.dataSize),
+               traceInfo.dataSize);
+        traceEvents.push_back({event.name, ts, event.type, tid});
+      }
     }
   }
 }

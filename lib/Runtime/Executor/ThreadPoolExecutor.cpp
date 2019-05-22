@@ -339,7 +339,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   DCHECK_NOTNULL(executionState.get());
 
   TraceContext *traceContext = ctx->getTraceContext();
-  TRACE_EVENT_BEGIN(traceContext, "ThreadPoolExecutor::handleResult");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, "ThreadPoolExecutor::handleResult",
+                          traceEvent);
 
   auto runWasSuccess = !err;
 
