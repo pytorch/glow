@@ -26,7 +26,21 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/Support/CommandLine.h"
+
 namespace glow {
+
+llvm::cl::OptionCategory operatorTestCat("OperatorTest Category");
+
+unsigned parCloneCountOpt;
+llvm::cl::opt<unsigned, /* ExternalStorage */ true> parCloneCountI(
+    "parallel-clone-count",
+    llvm::cl::desc(
+        "Number of times to clone a graph in parallel. Intended to stress test "
+        "different backends. This option is not used by all unit "
+        "tests; for now you must check the test to see if so."),
+    llvm::cl::location(parCloneCountOpt), llvm::cl::Optional, llvm::cl::init(1),
+    llvm::cl::cat(operatorTestCat));
 
 using llvm::cast;
 
@@ -124,7 +138,7 @@ void compareAgainstInterpreter(BackendKind backendKind,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
                                ElemKind backendElemKind, float allowedError,
-                               bool enableRowwiseQuantization,
+                               unsigned count, bool enableRowwiseQuantization,
                                quantization::Schema schema) {
   ExecutionEngine IEE{BackendKind::Interpreter};
   ExecutionEngine BEE{backendKind};
@@ -133,6 +147,12 @@ void compareAgainstInterpreter(BackendKind backendKind,
   // Create the same network on the interpreter and the backend being tested.
   FunctionTensorPair IFT = createAndInitFunction(Ibindings, IEE);
   FunctionTensorPair BFT = createAndInitFunction(Bbindings, BEE);
+
+  // Clone the Function inside itself many times if desired.
+  std::unordered_set<Tensor *> resultTensors =
+      cloneFunInsideFun(BFT, &Bbindings, count);
+  assert(resultTensors.size() == count &&
+         "Should get the same number of Tensors back as count.");
 
   Function *IF = IFT.first;
   Function *BF = BFT.first;
@@ -161,7 +181,76 @@ void compareAgainstInterpreter(BackendKind backendKind,
     IEE.run(Ibindings);
   }
 
-  EXPECT_TRUE(IFT.second->isEqual(*BFT.second, allowedError));
+  // Compare each of our result tensors to the original.
+  for (Tensor *T : resultTensors) {
+    EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
+  }
+}
+
+std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
+                                               PlaceholderBindings *bindings,
+                                               unsigned count) {
+  Function *origF = FTP.first;
+
+  // Always save the original Function's Tensor, which we will keep around.
+  std::unordered_set<Tensor *> resultTensors;
+  resultTensors.insert(FTP.second);
+
+  // Nothing to do if we just want the one.
+  if (count == 1) {
+    return resultTensors;
+  }
+
+  Module *mod = origF->getParent();
+
+  // Clone the original Function to repeatedly add it to the original.
+  auto *cloneF = origF->clone("single_clone");
+
+  // We keep the original Function, then clone/add count-1 more.
+  for (size_t i = 1; i < count; i++) {
+    // Clone the clone, and then add all the new nodes to the original function.
+    auto *tmpF = cloneF->clone("tmp" + std::to_string(i));
+    std::unordered_set<Node *> clonedNodes;
+    bool foundSaveNode = false;
+    for (auto &N : tmpF->getNodes()) {
+      clonedNodes.insert(&N);
+
+      // For every Node we add, check if it uses a Placeholder node, and if so
+      // clone it in the Module so that CSE doesn't undo all our hard work.
+      for (size_t j = 0, f = N.getNumInputs(); j < f; j++) {
+        Placeholder *origPH = llvm::dyn_cast<Placeholder>(N.getNthInput(j));
+        if (!origPH) {
+          continue;
+        }
+
+        // Clone the Placeholder, allocate it in the bindings, and replace the
+        // usage of the original node to point to the clone.
+        Placeholder *clonePH = mod->createPlaceholder(
+            origPH->getType(), origPH->getName(), origPH->isTraining());
+        Tensor *oldT = bindings->get(origPH);
+        assert(oldT);
+        Tensor *newT = bindings->allocate(clonePH);
+        newT->assign(oldT);
+        N.setNthInput(j, clonePH);
+
+        // Save the result Tensors to return so we can compare the results of
+        // all of our clones.
+        if (llvm::isa<SaveNode>(N)) {
+          assert(!foundSaveNode &&
+                 "Can only handle Functions with a single SaveNode.");
+          foundSaveNode = true;
+          resultTensors.insert(newT);
+        }
+      }
+    }
+    for (auto &N : clonedNodes) {
+      origF->takeOwnershipOfNode(N);
+    }
+  }
+  // Now erase the clone we used to copy in, as it's no longer needed.
+  mod->eraseFunction(cloneF);
+
+  return resultTensors;
 }
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,

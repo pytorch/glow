@@ -29,6 +29,8 @@
 
 namespace glow {
 
+extern unsigned parCloneCountOpt;
+
 // A test harness to enable a test case for specific backends. A test suite
 // should subclass this and instantiate it as follows:
 //
@@ -206,12 +208,23 @@ using CreateAndInitFunction =
 /// Function it will be converted using the Converter. If
 /// \p enableRowwiseQuantization then rowwise quantization will be used for
 /// nodes that support it. \p schema represents the quantization schema to use,
-/// if applicable.
+/// if applicable. \p parallelCount represents the number of times to clone the
+/// Function inside itself, so that testing can be done on architectures that
+/// have parallel compute engines.
 void compareAgainstInterpreter(
     BackendKind backendKind, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
-    float allowedError = 0.0001, bool enableRowwiseQuantization = false,
+    float allowedError = 0.0001, unsigned parallelCount = 1,
+    bool enableRowwiseQuantization = false,
     quantization::Schema schema = quantization::Schema::Asymmetric);
+
+/// Given some \p FTP representing a Function with a single SaveNode and its
+/// Tensor output, duplicate the Nodes in the Function and their Placeholder
+/// inputs given \p bindings \p parallelCount times. \returns a set of Tensor
+/// pointers for each output of the cloned Function.
+std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
+                                               PlaceholderBindings *bindings,
+                                               unsigned parallelCount);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   BackendKind kind);
