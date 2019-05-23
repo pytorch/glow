@@ -22,16 +22,17 @@
 namespace glow {
 namespace runtime {
 
-uint64_t GlowCPUMemory = 0;
+unsigned GlowCPUMemory = 0;
 
-static llvm::cl::opt<uint64_t, /* ExternalStorage */ true>
-    GlowCPUMemoryOpt("cpu-memory",
-                     llvm::cl::desc("CPU DeviceManager maximum memory"),
-                     llvm::cl::location(GlowCPUMemory));
+static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowCPUMemoryOpt(
+    "cpu-memory",
+    llvm::cl::desc("CPU DeviceManager maximum memory in kilobytes."),
+    llvm::cl::location(GlowCPUMemory));
 
 DeviceManager *createCPUDeviceManager(std::unique_ptr<DeviceConfig> config) {
   if (GlowCPUMemory) {
-    return new CPUDeviceManager(std::move(config), GlowCPUMemory);
+    // Convert command line GlowCPUMemory to bytes from kilobytes.
+    return new CPUDeviceManager(std::move(config), GlowCPUMemory * 1024);
   }
   return new CPUDeviceManager(std::move(config));
 }

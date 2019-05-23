@@ -30,11 +30,11 @@ using namespace glow::runtime;
 namespace glow {
 namespace runtime {
 
-uint64_t GlowHabanaMemory = uint64_t{7} << 30; // 7 GB.
+unsigned GlowHabanaMemory = 7 << 20; // 7 GB.
 
-static llvm::cl::opt<uint64_t, true> GlowHabanaMemoryOpt(
+static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     "glow-habana-memory",
-    llvm::cl::desc("Amount of DRAM to allocate per Habana device"),
+    llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
     llvm::cl::location(GlowHabanaMemory));
 
 // TODO: A failed status probably shouldn't be an assert. We should
@@ -116,8 +116,8 @@ llvm::Error HabanaDeviceManager::init() {
 llvm::Error HabanaDeviceManager::updateMemoryUsage() {
   // TODO: Use synGetMemInfo once implemented.
 
-  totalMemory_ = GlowHabanaMemory;
-  freeMemory_ = GlowHabanaMemory;
+  totalMemory_ = GlowHabanaMemory * 1024;
+  freeMemory_ = GlowHabanaMemory * 1024;
 
   // Account for the size used by each function loaded on the card.
   for (const auto &pr : functions_) {
