@@ -1728,12 +1728,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstSizeTArray(builder, CG->getStrides());
     auto *pads = emitConstSizeTArray(builder, CG->getPads());
     auto *group = emitConstSizeT(builder, CG->getGroup());
+    auto *dilation = emitConstSizeT(builder, CG->getDilation());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcPtr, filterGradPtr, biasGradPtr,
                 filterPtr, destGradDims, srcDims, filterGradDims, kernels,
-                strides, pads, group});
+                strides, pads, group, dilation});
     break;
   }
 

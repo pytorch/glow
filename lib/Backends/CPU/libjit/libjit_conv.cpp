@@ -523,7 +523,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                const float *filterW, const size_t *outGdims,
                                const size_t *inWdims, const size_t *filterGdims,
                                const size_t *kernels, const size_t *strides,
-                               const size_t *pads, size_t group) {
+                               const size_t *pads, size_t group,
+                               size_t dilation) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
   size_t p = sizeof(float);
@@ -554,8 +555,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
 
             for (size_t kx = 0; kx < kernel_h; kx++) {
               for (size_t ky = 0; ky < kernel_w; ky++) {
-                ssize_t ax = x + kx;
-                ssize_t ay = y + ky;
+                ssize_t ax = x + kx * dilation;
+                ssize_t ay = y + ky * dilation;
 
                 if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
                     ay >= (ssize_t)inWdims[2]) {

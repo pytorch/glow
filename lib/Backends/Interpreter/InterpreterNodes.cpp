@@ -287,6 +287,7 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   auto biasG = getWeightHandle(I->getBiasGrad());
 
   size_t group = I->getGroup();
+  size_t dilation = I->getDilation();
 
   inG.clear();
   filterG.clear();
@@ -323,8 +324,8 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
             // For each element in the convolution-filter:
             for (size_t fx = 0; fx < kdim.height; fx++) {
               for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                ssize_t ox = x + fx * dilation;
+                ssize_t oy = y + fy * dilation;
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||

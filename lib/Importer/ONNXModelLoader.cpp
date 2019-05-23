@@ -487,8 +487,15 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  if (dict.count("dilations")) {
+    std::vector<unsigned_t> dilations(2, 1);
+    dilations = getShape<unsigned_t>(dict.at("dilations"));
+    RETURN_ERR_IF_NOT(dilations.size() == 2,
+                      "Conv: dilations must be specified for 2 axes.");
+    RETURN_ERR_IF_NOT(dilations[1] == dilations[0],
+                      "Conv: different dilation values along different axes "
+                      "are not supported currently. values must be same.");
+    dilation = dilations[0];
   }
 
   // Load the inputs
