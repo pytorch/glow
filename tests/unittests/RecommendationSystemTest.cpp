@@ -290,7 +290,7 @@ protected:
     // createRandomizedConstant invocation.
     auto internalTypeF = mod_.uniqueType(ElemKind::FloatTy, {1});
     auto internalTypeQ = mod_.uniqueType(ElemKind::Int8QTy, {1}, 1, 0);
-    auto internalBiasType = mod_.uniqueType(ElemKind::Int32QTy, {1}, 0.0002, 0);
+    auto internalBiasType = mod_.uniqueType(ElemKind::Int32QTy, {1}, 1e-11, 0);
 
     Node *start = N_;
     start = F_->createQuantize(
