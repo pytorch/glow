@@ -111,15 +111,23 @@ public:
     case ElemKind::Int8QTy: {
       auto *data = reinterpret_cast<int8_t *>(getData());
       std::fill(&data[0], &data[0] + size(), (int8_t)type_.getOffset());
-    } break;
+      break;
+    }
+    case ElemKind::UInt8QTy: {
+      auto *data = reinterpret_cast<uint8_t *>(getData());
+      std::fill(&data[0], &data[0] + size(), (uint8_t)type_.getOffset());
+      break;
+    }
     case ElemKind::Int16QTy: {
       auto *data = reinterpret_cast<int16_t *>(getData());
       std::fill(&data[0], &data[0] + size(), (int16_t)type_.getOffset());
-    } break;
+      break;
+    }
     case ElemKind::Int32QTy: {
       auto *data = reinterpret_cast<int32_t *>(getData());
       std::fill(&data[0], &data[0] + size(), (int32_t)type_.getOffset());
-    } break;
+      break;
+    }
     case ElemKind::UInt8FusedQTy: {
       assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
       assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
@@ -143,7 +151,8 @@ public:
         float zero = nearbyintf(-offset / scale);
         std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero));
       }
-    } break;
+      break;
+    }
     default:
       // Non-quantized tensors are set to 0.
       std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
@@ -367,6 +376,12 @@ public:
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
       return isEqualImpl<int8_t>(other, allowedError);
+    case ElemKind::UInt8QTy:
+      assert(getType().getScale() == other.getType().getScale() &&
+             "Scales must match.");
+      assert(getType().getOffset() == other.getType().getOffset() &&
+             "Offsets must match.");
+      return isEqualImpl<uint8_t>(other, allowedError);
     case ElemKind::Int16QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
