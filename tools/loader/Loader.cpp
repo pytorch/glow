@@ -63,16 +63,6 @@ llvm::cl::opt<bool>
             llvm::cl::desc("Specify whether to run with verbose output"),
             llvm::cl::Optional, llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<bool>
-    timeOpt("time",
-            llvm::cl::desc("Print timer output to stderr detailing how long it "
-                           "takes for the program to execute"),
-            llvm::cl::Optional, llvm::cl::cat(loaderCat));
-
-llvm::cl::opt<unsigned> iterationsOpt(
-    "iterations", llvm::cl::desc("Number of iterations to perform"),
-    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(loaderCat));
-
 llvm::cl::opt<std::string> dumpProfileFileOpt(
     "dump-profile",
     llvm::cl::desc("Perform quantization profiling for a given graph "
@@ -198,6 +188,18 @@ llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::init(1), llvm::cl::value_desc("N"),
                                    llvm::cl::cat(loaderCat));
 } // namespace
+
+// timeOpt and iterationsOpt are outside the namespace so they can be used by
+// the image-classifier.
+llvm::cl::opt<bool>
+    timeOpt("time",
+            llvm::cl::desc("Print timer output to stderr detailing how long it "
+                           "takes for the program to execute"),
+            llvm::cl::Optional, llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<unsigned> iterationsOpt(
+    "iterations", llvm::cl::desc("Number of iterations to perform"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
 llvm::StringRef Loader::getModelOptPath() {
   assert(modelPathOpt.size() == 1 &&
@@ -388,12 +390,12 @@ void Loader::compile(PlaceholderBindings &bindings) {
 void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
   assert(!emittingBundle() &&
          "No inference is performed in the bundle generation mode.");
-
+  unsigned iterations = iterationsOpt == 0 ? 1 : iterationsOpt;
   llvm::Timer timer("Infer", "Infer");
   if (timeOpt) {
     timer.startTimer();
   }
-  for (unsigned i = 0; i < iterationsOpt; i++) {
+  for (unsigned i = 0; i < iterations; i++) {
     auto runErr = hostManager_->runNetworkBlocking(modelPathOpt[0], bindings);
     EXIT_ON_ERR(std::move(runErr));
   }
@@ -401,7 +403,7 @@ void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
     timer.stopTimer();
     llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
                                   timer.getTotalTime().getWallTime() /
-                                      iterationsOpt / batchSize);
+                                      iterations / batchSize);
   }
 }
 
@@ -452,4 +454,5 @@ Loader::Loader(int argc, char **argv) {
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);
   F_ = M_->createFunction(modelPathOpt[0]);
+  functionName_ = modelPathOpt[0];
 }
