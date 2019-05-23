@@ -18,6 +18,7 @@
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include "llvm/Support/Format.h"
+#include <glog/logging.h>
 
 namespace glow {
 namespace onnxifi {
@@ -114,6 +115,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
 
   TRACE_EVENT_BEGIN(traceContext, "adjustInputs");
+  size_t totalInputOnnxTensorSize = 0;
+  size_t totalInputGlowTensorSize = 0;
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -159,7 +162,17 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
+    unsigned elementSize = inPhPtr->getType()->getElementSize();
+    totalInputOnnxTensorSize += inOnnxTensorSize * elementSize;
+    totalInputGlowTensorSize += inPhPtr->getType()->size() * elementSize;
   }
+  VLOG_EVERY_N(1, 100) << "Tensor size blow up from static sizing : "
+                       << totalInputOnnxTensorSize << " bytes to "
+                       << totalInputGlowTensorSize << " bytes ("
+                       << float(totalInputGlowTensorSize) /
+                              float(totalInputOnnxTensorSize)
+                       << " X)";
+
   TRACE_EVENT_END(traceContext, "adjustInputs");
   TRACE_EVENT_BEGIN(traceContext, "setOnnxifiOutputs");
 
