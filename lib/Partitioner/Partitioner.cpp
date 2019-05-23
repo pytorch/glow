@@ -578,7 +578,8 @@ DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
         // It is possible that one input is the output of anther function.
         if (Placeholder *ph = llvm::dyn_cast<Placeholder>(input.getNode())) {
           for (auto &user : ph->getUsers()) {
-            if (llvm::dyn_cast<SaveNode>(user.getUser())) {
+            if (auto *save = llvm::dyn_cast<SaveNode>(user.getUser())) {
+              placeholders[input] = save->getPlaceholder();
               inputF = mapping[user.getUser()];
               break;
             }
