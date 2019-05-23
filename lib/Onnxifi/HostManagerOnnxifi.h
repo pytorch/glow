@@ -37,7 +37,7 @@ public:
 
   onnxStatus addNetwork(std::unique_ptr<Module> module);
 
-  void removeNetwork(const Graph *graph) override;
+  onnxStatus removeNetwork(const Graph *graph) override;
 
   // \returns a unique_ptr to a new HostManager for the given BackendKind \p
   // kind.

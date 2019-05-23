@@ -98,7 +98,8 @@ public:
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.
-  void removeNetwork(llvm::StringRef networkName);
+  /// \returns an llvm::Error indicating success or failure of the operation.
+  llvm::Error removeNetwork(llvm::StringRef networkName);
 
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);

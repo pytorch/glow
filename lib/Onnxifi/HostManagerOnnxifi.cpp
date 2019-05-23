@@ -62,9 +62,15 @@ onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-void HostManagerBackendId::removeNetwork(const Graph *graph) {
+onnxStatus HostManagerBackendId::removeNetwork(const Graph *graph) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
-  hostManager_->removeNetwork(hostManagerGraph->getName());
+  auto error = hostManager_->removeNetwork(hostManagerGraph->getName());
+
+  if (errorToBool(std::move(error))) {
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
+
+  return ONNXIFI_STATUS_SUCCESS;
 }
 
 onnxStatus

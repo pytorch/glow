@@ -77,6 +77,8 @@ public:
     RUNTIME_REQUEST_REFUSED,
     // Runtime error, device wasn't found.
     RUNTIME_DEVICE_NOT_FOUND,
+    // Runtime error, network busy to perform any operation on it.
+    RUNTIME_NET_BUSY,
     // Compilation error; node unsupported after optimizations.
     COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
   };
@@ -144,6 +146,8 @@ private:
       return "RUNTIME_REQUEST_REFUSED";
     case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
       return "RUNTIME_DEVICE_NOT_FOUND";
+    case ErrorCode::RUNTIME_NET_BUSY:
+      return "RUNTIME_NET_BUSY";
     case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
       return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
     };

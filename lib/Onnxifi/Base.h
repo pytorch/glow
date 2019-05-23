@@ -61,7 +61,9 @@ public:
                           std::unique_ptr<ExecutionContext> context,
                           runtime::ResultCBTy callback) {}
 
-  virtual void removeNetwork(const Graph *graph) {}
+  virtual onnxStatus removeNetwork(const Graph *graph) {
+    return ONNXIFI_STATUS_SUCCESS;
+  }
 
 protected:
   bool useOnnx_;
