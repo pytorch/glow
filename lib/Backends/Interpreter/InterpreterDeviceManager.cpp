@@ -32,8 +32,9 @@ namespace runtime {
 DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
   if (interpreterMaxMem) {
     // Convert command line interpreterMaxMem to bytes from kilobytes.
-    return new InterpreterDeviceManager(config,
-                                        uint64_t{interpreterMaxMem} * 1024);
+    auto configNew = config;
+    configNew.setDeviceMemory(uint64_t{interpreterMaxMem} * 1024);
+    return new InterpreterDeviceManager(configNew);
   }
   return new InterpreterDeviceManager(config);
 }

@@ -32,7 +32,9 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowCPUMemoryOpt(
 DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   if (GlowCPUMemory) {
     // Convert command line GlowCPUMemory to bytes from kilobytes.
-    return new CPUDeviceManager(config, uint64_t{GlowCPUMemory} * 1024);
+    auto configNew = config;
+    configNew.setDeviceMemory(uint64_t{GlowCPUMemory} * 1024);
+    return new CPUDeviceManager(configNew);
   }
   return new CPUDeviceManager(config);
 }

@@ -375,6 +375,21 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
   EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
+TEST_F(HabanaBackendTest, SetDeviceMemory) {
+  uint64_t defaultMemory = (7 << 20);
+  auto configEmpty = glow::runtime::DeviceConfig(BackendKind::Habana);
+  auto configFull = glow::runtime::DeviceConfig(BackendKind::Habana);
+  configFull.setDeviceMemory(32768);
+  // With no commandline or deviceConfig, the memory should be default 7 <<20.
+  glow::runtime::HabanaDeviceManager device1(configEmpty, 1, 1);
+  llvm::Error err1 = device1.init();
+  EXPECT_EQ(defaultMemory * 1024, device1.getMaximumMemory());
+  // With only deviceConfig, the memory should be set by deviceConfig.
+  glow::runtime::HabanaDeviceManager device2(configFull, 1, 1);
+  llvm::Error err2 = device2.init();
+  EXPECT_EQ(32768, device2.getMaximumMemory());
+}
+
 TEST_F(HabanaBackendTest, ConvertFC) {
   HabanaBackend backend;
   auto *input =

@@ -114,8 +114,15 @@ llvm::Error HabanaDeviceManager::init() {
 llvm::Error HabanaDeviceManager::updateMemoryUsage() {
   // TODO: Use synGetMemInfo once implemented.
 
-  totalMemory_ = uint64_t{GlowHabanaMemory} * 1024;
-  freeMemory_ = uint64_t{GlowHabanaMemory} * 1024;
+  // Use GlowHabanaMemory if it is defined from GFLAGS or llvm params,
+  // otherwise, fall back to what config says.
+  uint64_t defaultMemory = 7 << 20;
+  if (GlowHabanaMemory == defaultMemory && config_.getDeviceMemory() != 0) {
+    totalMemory_ = config_.getDeviceMemory();
+  } else {
+    totalMemory_ = uint64_t{GlowHabanaMemory} * 1024;
+  }
+  freeMemory_ = totalMemory_;
 
   // Account for the size used by each function loaded on the card.
   for (const auto &pr : functions_) {

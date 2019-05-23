@@ -18,8 +18,10 @@
 #include "glow/Backends/DummyDeviceManager.h"
 
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
+#include "../../lib/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Runtime/RuntimeTypes.h"
 
 #include "gtest/gtest.h"
 
@@ -549,13 +551,30 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   EXPECT_TRUE(result2->isEqual(output2));
 }
 
+TEST(DeviceManagerTest, SetDeviceMemory) {
+  // Test Interpreter.
+  auto interpreterConfigEmpty = DeviceConfig(BackendKind::Interpreter);
+  auto interpreterConfigFull = DeviceConfig(BackendKind::Interpreter);
+  interpreterConfigFull.setDeviceMemory(32768);
+  // Only deviceConfig setting.
+  InterpreterDeviceManager interpreterDeviceSetByDeviceConfig(
+      interpreterConfigFull);
+  EXPECT_EQ(interpreterDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  // No setting at all, default memory size.
+  InterpreterDeviceManager interpreterDeviceDefault(interpreterConfigEmpty);
+  EXPECT_EQ(interpreterDeviceDefault.getMaximumMemory(), 2000000000);
+}
+
 #ifdef GLOW_WITH_CPU
 
 TEST(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   std::promise<const Module *> promise;
   std::future<const Module *> future;
-  CPUDeviceManager cpuCoreDevice(DeviceConfig(BackendKind::CPU), 1);
+
+  auto config = DeviceConfig(BackendKind::CPU);
+  config.setDeviceMemory(1);
+  CPUDeviceManager cpuCoreDevice(config);
   ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
 
   uint64_t expectedBytes = 1;
@@ -624,6 +643,17 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 
   EXPECT_FALSE(errToBool(cpuCoreDevice.stop()));
+
+  // Test CPU DeviceConfig.
+  auto cpuConfigEmpty = DeviceConfig(BackendKind::CPU);
+  auto cpuConfigFull = DeviceConfig(BackendKind::CPU);
+  cpuConfigFull.setDeviceMemory(32768);
+  // Only deviceConfig setting.
+  CPUDeviceManager cpuDeviceSetByDeviceConfig(cpuConfigFull);
+  EXPECT_EQ(cpuDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  // No setting at all, default memory size.
+  CPUDeviceManager cpuDeviceDefault(cpuConfigEmpty);
+  EXPECT_EQ(cpuDeviceDefault.getMaximumMemory(), 2000000000);
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {

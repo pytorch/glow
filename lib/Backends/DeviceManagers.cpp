@@ -16,7 +16,6 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Backends/DummyDeviceManager.h"
-
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 

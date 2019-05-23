@@ -149,7 +149,13 @@ llvm::Error OpenCLDeviceManager::init() {
   if (err != CL_SUCCESS) {
     RETURN_ERR("Error getting device memory limit");
   }
-  maxMemoryBytes_ = mem_size;
+
+  // If limited by deviceConfig, should allow less deviceMemory
+  if (config_.getDeviceMemory() != 0 && config_.getDeviceMemory() < mem_size) {
+    maxMemoryBytes_ = config_.getDeviceMemory();
+  } else {
+    maxMemoryBytes_ = mem_size;
+  }
 
   return llvm::Error::success();
 }
