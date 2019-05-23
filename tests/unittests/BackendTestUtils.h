@@ -79,10 +79,10 @@ static const auto all_backends = ::testing::Values(
 #endif // GLOW_WITH_CPU
 #ifdef GLOW_WITH_OPENCL
     BackendKind::OpenCL,
-#endif // GLOW_WITHOPENCL
-#ifdef ENABLE_HABANA_IN_TESTS
+#endif // GLOW_WITH_OPENCL
+#ifdef GLOW_WITH_HABANA
     BackendKind::Habana,
-#endif // ENABLE_HABANA_IN_TESTS
+#endif // GLOW_WITH_HABANA
     BackendKind::Interpreter);
 
 // Instantiate parameterized test suite with all available backends.
