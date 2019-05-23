@@ -24,6 +24,7 @@
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
+#include "glow/Support/CompilationLog.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -2606,6 +2607,9 @@ void glow::fold(Function *F, CompilationMode mode) {
 }
 
 void glow::optimize(Function *F, const CompilationContext &cctx) {
+  // Dump compilation log
+  CompilationScope cscope(F->getName(), "glow::optimize");
+
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2764,6 +2768,9 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
 // docs/GraphOptimizationPipeline.md
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    const CompilationContext &cctx) {
+  // Dump compilation log
+  CompilationScope cscope(F->getName(), "glow::optimizeFunction");
+
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 

@@ -19,6 +19,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/Optimizer.h"
+#include "glow/Support/CompilationLog.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -243,6 +244,9 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F,
 
 void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
                               bool clearOtherFunctions) {
+  // Dump compilation log
+  CompilationScope cscope(F->getName(), "ExecutionEngine::compile");
+
   llvm::StringRef name = F->getName();
 
   if (clearOtherFunctions) {

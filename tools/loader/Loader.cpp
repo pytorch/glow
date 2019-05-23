@@ -22,6 +22,7 @@
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/CompilationLog.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -272,6 +273,9 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
+  // Dump compilation log
+  CompilationScope cscope("", "Loader::compile");
+
   // Dump the DAG before compilation if needed.
   if (!dumpGraphDAGFileBeforeCompilationOpt.empty()) {
     F_->dumpDAG(dumpGraphDAGFileBeforeCompilationOpt.c_str());

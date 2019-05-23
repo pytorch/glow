@@ -21,6 +21,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "glow/Support/CompilationLog.h"
 #include <fstream>
 
 using namespace glow;
@@ -782,6 +783,8 @@ llvm::Error Partitioner::createDAGWithoutPartition(
 }
 
 llvm::Error Partitioner::Partition(const CompilationContext &cctx) {
+  CompilationScope cscope("", "Partitioner::Partition");
+
   // Prepare the mapping between BackendKind and BackendInfo.
   std::map<BackendKind, BackendInfo> backendMap;
   std::vector<Backend *> backends;
