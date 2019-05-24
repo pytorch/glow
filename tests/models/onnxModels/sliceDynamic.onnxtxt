@@ -1,0 +1,55 @@
+ir_version: 5
+producer_name: "test4glow"
+opset_import { 
+  version: 10
+}
+
+graph {
+  name: "test-model"
+  input {
+    name: "data"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  initializer {
+    dims: 4
+    data_type: 7
+    name: "starts"
+    raw_data: "\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000"
+  }
+  initializer {
+    dims: 4
+    data_type: 7
+    name: "ends"
+    raw_data: "\002\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000"
+  }
+  node {
+    input: "data"
+    input: "starts"
+    input: "ends"
+    output: "out"
+    name: "DynamicSlice"
+    op_type: "Slice"
+    domain: ""
+  }
+  output {
+    name: "out"
+  }
+}

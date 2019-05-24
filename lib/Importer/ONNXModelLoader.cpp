@@ -386,6 +386,15 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+/// Retrieves data from a constant Tensor and stores it in a vector.
+template <typename T>
+static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
+  auto constH = constT->getPayload().getHandle<T>();
+  for (size_t i = 0; i < constH.size(); ++i) {
+    vec.push_back(constH.at({i}));
+  }
+}
+
 llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                                        const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -394,28 +403,73 @@ llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   auto dims = data.dims();
   auto numDims = dims.size();
 
-  // Attributes 'starts' and 'ends' are mandatory and must be consistent.
-  RETURN_ERR_IF_NOT(dict.count("starts"),
-                    "Slice: attribute 'starts' is mandatory.");
-  RETURN_ERR_IF_NOT(dict.count("ends"),
-                    "Slice: attribute 'ends' is mandatory.");
-  auto starts = getShape<ssize_t>(dict.at("starts"));
-  auto ends = getShape<ssize_t>(dict.at("ends"));
+  std::vector<ssize_t> starts;
+  std::vector<ssize_t> ends;
+  // Attribute 'axes' is optional.
+  std::vector<ssize_t> axes;
+  if (this->opsetVersion_ >= 10) {
+    Constant *startsC = getConstantByNameOrNull(op.input(1));
+    Constant *endsC = getConstantByNameOrNull(op.input(2));
+
+    RETURN_ERR_IF_NOT(startsC, "Starts Tensor is not Constant.");
+    RETURN_ERR_IF_NOT(endsC, "Ends Tensor is not Constant.");
+
+    if (startsC->getElementType() == ElemKind::Int64ITy) {
+      helperSetter<int64_t>(startsC, starts);
+    } else if (startsC->getElementType() == ElemKind::Int32ITy) {
+      helperSetter<int32_t>(startsC, starts);
+    } else {
+      RETURN_ERR_IF_NOT(false, "Starts Tensor has unsupported type.");
+    }
+
+    if (endsC->getElementType() == ElemKind::Int64ITy) {
+      helperSetter<int64_t>(endsC, ends);
+    } else if (endsC->getElementType() == ElemKind::Int32ITy) {
+      helperSetter<int32_t>(endsC, ends);
+    } else {
+      RETURN_ERR_IF_NOT(false, "Ends Tensor has unsupported type.");
+    }
+
+    if (op.input_size() > 3) {
+      Constant *axesC = getConstantByNameOrNull(op.input(3));
+
+      RETURN_ERR_IF_NOT(startsC, "Axes Tensor is not Constant.");
+
+      if (axesC->getElementType() == ElemKind::Int64ITy) {
+        helperSetter<int64_t>(axesC, axes);
+      } else if (axesC->getElementType() == ElemKind::Int32ITy) {
+        helperSetter<int32_t>(axesC, axes);
+      } else {
+        RETURN_ERR_IF_NOT(false, "Axes Tensor has unsupported type.");
+      }
+
+      RETURN_ERR_IF_NOT(op.input_size() == 5,
+                        "Steps is not currently supported.");
+    }
+  } else {
+    // Attributes 'starts' and 'ends' are mandatory and must be consistent.
+    RETURN_ERR_IF_NOT(dict.count("starts"),
+                      "Slice: attribute 'starts' is mandatory.");
+    RETURN_ERR_IF_NOT(dict.count("ends"),
+                      "Slice: attribute 'ends' is mandatory.");
+    starts = getShape<ssize_t>(dict.at("starts"));
+    ends = getShape<ssize_t>(dict.at("ends"));
+
+    if (dict.count("axes")) {
+      // The ONNX spec is unclear so we consider that the 'axes' array may have
+      // any size. The constraints are:
+      // - the element value must be in range [0, numDims),
+      // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
+      // In case an axis is specified multiple times in 'axes', the later
+      // parameters will simply overwrite the previous ones.
+      axes = getShape<ssize_t>(dict.at("axes"));
+    }
+  }
   RETURN_ERR_IF_NOT(
       (starts.size() == ends.size()),
       "Slice: 'starts' and 'ends' arrays must have the same size.");
 
-  // Attribute 'axes' is optional.
-  std::vector<ssize_t> axes;
-  if (dict.count("axes")) {
-    // The ONNX spec is unclear so we consider that the 'axes' array may have
-    // any size. The constraints are:
-    // - the element value must be in range [0, numDims),
-    // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
-    // In case an axis is specified multiple times in 'axes', the later
-    // parameters will simply overwrite the previous ones.
-    axes = getShape<ssize_t>(dict.at("axes"));
-  } else {
+  if (axes.empty()) {
     for (size_t i = 0; i < numDims; i++) {
       axes.push_back(ssize_t(i));
     }
