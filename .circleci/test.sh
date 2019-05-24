@@ -58,7 +58,16 @@ case ${CIRCLE_JOB} in
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
         ;;
-
+    COVERAGE)
+        cd "${GLOW_SRC}"
+        cd build
+        ../.circleci/run_coverage.sh
+        ;;
+    CHECK_CLANG_FORMAT)
+        cd "${GLOW_SRC}"
+        sudo ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+        ./utils/format.sh check
+        ;;
     *)
         echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, TSAN, DEBUG, SHARED, RELEASE_WITH_EXPENSIVE_TESTS}."
         exit 1
