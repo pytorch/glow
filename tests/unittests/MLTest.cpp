@@ -1053,40 +1053,31 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // Training:
   runBatch(EE, bindings, 500, sampleCounter, {input, ex}, {&images, &labels});
 
-  // Lower everything before profiling. The loweredMap will be used when
-  // generating the profile to ensure all lowered components' profiles are
-  // contained.
   LoweredInfoMap loweredMapForProf;
-  Function *PF = F->clone("profile");
-  lower(PF, &loweredMapForProf);
+  CompilationContext cctxProf{&bindings, &loweredMapForProf};
+  cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
-  // Profiling:
-  glow::profileQuantization(bindings, PF);
-  EE.compile(CompilationMode::Infer, PF);
+  Function *PF = F->clone("profile");
+  EE.compile(PF, cctxProf);
   runBatch(EE, bindings, 100, sampleCounter, {input}, {&images});
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
 
-  // Get the quantization infos.
-  quantization::QuantizationConfiguration quantConfig{
-      quantization::generateNodeQuantizationInfos(bindings, PF,
-                                                  loweredMapForProf)};
-  quantConfig.assertAllNodesQuantized = true;
+  LoweredInfoMap loweredMapForQuant;
+  CompilationContext cctxQuant{&bindings, &loweredMapForQuant};
+  PrecisionConfiguration &precConfig = cctxQuant.precisionConfig;
+  cctxQuant.precisionConfig.quantMode = QuantizationMode::Quantize;
+  precConfig.quantConfig.infos = quantization::generateNodeQuantizationInfos(
+      bindings, PF, loweredMapForProf);
+  precConfig.quantConfig.assertAllNodesQuantized = true;
 
   // Softmax is not supported in Int8QTy, so signal the quantizer it's OK to
   // keep it unquantized.
-  KindSet doNotQuantizeKinds;
-  doNotQuantizeKinds.insert(Kinded::Kind::SoftMaxNodeKind);
+  precConfig.precisionModeKindSet.insert(Kinded::Kind::SoftMaxNodeKind);
 
-  // Build the new quantized graph.
-  LoweredInfoMap loweredMapForQuant;
-  lower(F, &loweredMapForQuant, EE.getBackend());
-  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                 loweredMapForQuant, doNotQuantizeKinds);
-
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(F, cctxQuant);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
@@ -1175,16 +1166,12 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
 
   // -- STEP2 - Profile and quantize the network. --
 
-  // Lower everything before profiling. The loweredMap will be used when
-  // generating the profile to ensure all lowered components' profiles are
-  // contained.
   LoweredInfoMap loweredMapForProf;
-  Function *PF = F->clone("profile");
-  lower(PF, &loweredMapForProf);
+  CompilationContext cctxProf{&bindings, &loweredMapForProf};
+  cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
-  // Profile the fully lowered 'F', 'PF'.
-  glow::profileQuantization(bindings, PF);
-  EE.compile(CompilationMode::Infer, PF);
+  Function *PF = F->clone("profile");
+  EE.compile(PF, cctxProf);
 
   // Run the graph to capture the profile.
   runBatch(EE, bindings, 100, sampleCounter, {input}, {&images});
@@ -1194,19 +1181,17 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // Set the execution backend to the backend that we test.
   EE.setBackend(GetParam());
 
-  // Get quantization infos.
-  quantization::QuantizationConfiguration quantConfig{
-      quantization::generateNodeQuantizationInfos(bindings, PF,
-                                                  loweredMapForProf)};
-  quantConfig.assertAllNodesQuantized = true;
-
-  // Build the new quantized graph.
   LoweredInfoMap loweredMapForQuant;
-  lower(F, &loweredMapForQuant, EE.getBackend());
-  quantization::quantizeFunction(F, quantConfig, *EE.getBackend(),
-                                 loweredMapForQuant);
+  CompilationContext cctxQuant{&bindings, &loweredMapForQuant};
+  cctxQuant.precisionConfig.quantMode = QuantizationMode::Quantize;
+  cctxQuant.loweredInfoMap = &loweredMapForQuant;
+  cctxQuant.bindings = &bindings;
+  cctxQuant.precisionConfig.quantConfig.infos =
+      quantization::generateNodeQuantizationInfos(bindings, PF,
+                                                  loweredMapForProf);
+  cctxQuant.precisionConfig.quantConfig.assertAllNodesQuantized = true;
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(F, cctxQuant);
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});

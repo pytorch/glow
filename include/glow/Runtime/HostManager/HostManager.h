@@ -86,15 +86,15 @@ class HostManager final {
 public:
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing
-  /// backends. Additionally DAGs are created for each function and stored
-  /// in networks_. Returns an llvm::Error containing the results of the
+  /// backends. Additionally DAGs are created for each function and stored in
+  /// networks_. \returns an llvm::Error containing the results of the
   /// operation. This function consumes the \p module so any pointers to data
-  /// contained within the module should be considered invalid. If \p
-  /// saturateHost is set to true the HostManager will try to use all available
-  /// devices on the host. If \p profiling is true,the HostManager will check
-  /// that each function is not partitioned.
+  /// contained within the module should be considered invalid. The function is
+  /// optimized based on \p cctx. If \p saturateHost is set to true the
+  /// HostManager will try to use all available devices on the host.
   llvm::Error addNetwork(std::unique_ptr<Module> module,
-                         bool saturateHost = false, bool profiling = false);
+                         const CompilationContext &cctx = CompilationContext(),
+                         bool saturateHost = false);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.

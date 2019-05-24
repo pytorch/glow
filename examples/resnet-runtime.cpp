@@ -151,8 +151,8 @@ int main(int argc, char **argv) {
   TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
   input = loadResnet50Model(inputType, module.get(), 0);
   phList = module->getPlaceholders();
-  EXIT_ON_ERR(
-      hostManager->addNetwork(std::move(module), /*saturateHost*/ true));
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), CompilationContext(),
+                                      /*saturateHost*/ true));
 
   llvm::outs() << "Loading files from " << inputDirectory << "\n";
   std::error_code code;

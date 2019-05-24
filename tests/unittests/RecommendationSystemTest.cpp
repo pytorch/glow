@@ -475,21 +475,18 @@ protected:
       concatPH = saveConcat->getPlaceholder();
     }
 
+    CompilationContext cctx;
     if (convertToFP16) {
-      KindSet keepOriginalPrecisionForNodes;
-      keepOriginalPrecisionForNodes.insert(
+      PrecisionConfiguration &precConfig = cctx.precisionConfig;
+      precConfig.convertToFP16 = convertToFP16;
+      precConfig.precisionModeKindSet.insert(
           Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
-      keepOriginalPrecisionForNodes.insert(
+      precConfig.precisionModeKindSet.insert(
           Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
-      TypeAToTypeBFunctionConverter converter(*F_, ElemKind::FloatTy,
-                                              ElemKind::Float16Ty,
-                                              &keepOriginalPrecisionForNodes);
-      converter.convert();
-      ::optimize(F_, glow::CompilationMode::Infer);
     }
 
     // Compile.
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(F_, cctx);
 
     // Run graph
     EE_.run(bindings_);

@@ -147,45 +147,24 @@ struct Model {
   void dumpGraphDAG(const char *filename) { F_->dumpDAG(filename); }
 
   void compile() {
+    CompilationContext cctx{&bindings, &loweredMap_};
+    PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+    ::glow::convertPlaceholdersToConstants(F_, bindings,
+                                           {input_, seqLength_, output_});
+
     if (!dumpProfileFileOpt.empty()) {
-      // Perform the high-level optimizations before instrumenting the graph.
-      // This optimization phase will remove stuff like repetitive transpose
-      // operations perform CSE, etc.
-      ::optimize(F_, glow::CompilationMode::Infer);
-
-      // Lower everything for profile and log lowered info in loweredMap_. Used
-      // later when creating quantization infos.
-      ::lower(F_, &loweredMap_);
-
-      // Instrument the graph to capture profiles for nodes' outputs.
-      glow::profileQuantization(bindings, F_);
+      precConfig.quantMode = QuantizationMode::Profile;
     }
 
     // Load the quantization profile and transform the graph.
     if (!loadProfileFileOpt.empty()) {
-      // The profiled graph was optimized before it was instrumentated. In this
-      // part of the code we repeat the same transformation in order to create
-      // the same graph structure.
-      glow::optimize(F_, CompilationMode::Infer);
-
-      // Lower however the backend prefers.
-      ::lower(F_, &loweredMap_, EE_.getBackend());
-
-      quantization::QuantizationConfiguration quantConfig{
-          deserializeFromYaml(loadProfileFileOpt)};
-
-      // Quantize the graph based on the captured profile.
-      quantization::quantizeFunction(F_, quantConfig, *EE_.getBackend(),
-                                     loweredMap_);
+      precConfig.quantMode = QuantizationMode::Quantize;
+      precConfig.quantConfig.infos = deserializeFromYaml(loadProfileFileOpt);
+      precConfig.quantConfig.assertAllNodesQuantized = true;
     }
 
-    // Do not create constants if we're profiling; the newly allocate histogram
-    // vars will erroneously become constants.
-    if (dumpProfileFileOpt.empty()) {
-      ::glow::convertPlaceholdersToConstants(F_, bindings,
-                                             {input_, seqLength_, output_});
-    }
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(F_, cctx);
   }
 
 private:

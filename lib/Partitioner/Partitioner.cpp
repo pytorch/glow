@@ -753,12 +753,11 @@ void Partitioner::getBackendMap(
 }
 
 llvm::Error Partitioner::createDAGWithoutPartition(
-    BackendKind backendKind, std::map<BackendKind, BackendInfo> &backendMap) {
+    BackendKind backendKind, std::map<BackendKind, BackendInfo> &backendMap,
+    const CompilationContext &cctx) {
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
       auto backend = backendMap[backendKind].backend;
-      CompilationContext cctx;
-      cctx.mode = CompilationMode::Infer;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
     std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
@@ -782,7 +781,7 @@ llvm::Error Partitioner::createDAGWithoutPartition(
   return llvm::Error::success();
 }
 
-llvm::Error Partitioner::Partition() {
+llvm::Error Partitioner::Partition(const CompilationContext &cctx) {
   // Prepare the mapping between BackendKind and BackendInfo.
   std::map<BackendKind, BackendInfo> backendMap;
   std::vector<Backend *> backends;
@@ -809,7 +808,7 @@ llvm::Error Partitioner::Partition() {
     if (memSize_ < backendMap[backendKind].memSize) {
       // No partition is needed. Create DAGNode and return. This root is alway a
       // dummy function.
-      return createDAGWithoutPartition(backendKind, backendMap);
+      return createDAGWithoutPartition(backendKind, backendMap, cctx);
     }
   } else {
     funcToBackend = backendBasedPartition(F_, backends);
@@ -818,8 +817,6 @@ llvm::Error Partitioner::Partition() {
 
   // Step 2 : optimize each functions based on its backend type and apply the
   // partition algorithm.
-  CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
   NodeToFunctionMap mapping;
   std::vector<Function *> funcs;
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {

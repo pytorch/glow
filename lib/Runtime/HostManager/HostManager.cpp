@@ -60,7 +60,8 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                                    bool saturateHost, bool profiling) {
+                                    const CompilationContext &cctx,
+                                    bool saturateHost) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto functions = module->getFunctions();
   for (auto &F : functions) {
@@ -80,9 +81,9 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     deviceInfo.push_back(info);
   }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
-  RETURN_IF_ERR(partitioner.Partition());
+  RETURN_IF_ERR(partitioner.Partition(cctx));
   auto nodeList = std::move(partitioner.getPartitionResult());
-  if (profiling) {
+  if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Check that all functions were not partitioned.
     for (auto &network : nodeList) {
       if (network.nodes.size() > 1) {

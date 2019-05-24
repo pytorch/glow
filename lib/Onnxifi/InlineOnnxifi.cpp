@@ -57,20 +57,16 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);
 
-  // -- Profile --
-  if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
-    lower(function_, &loweredMap_, executionEngine_.getBackend());
-    PlaceholderBindings dummyCtx;
-    profileQuantization(dummyCtx, function_);
-  }
+  PlaceholderBindings dummyBindings;
+  CompilationContext cctx{&dummyBindings, &loweredMap_};
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  precConfig.quantMode = quantizationMode_;
 
-  // -- Quantize --
-  if (quantizationStep_ == OnnxifiQuantizationStep::Quantize) {
-    quantization::QuantizationConfiguration quantConfig{
-        deserializeFromYaml(getProfileFile(modelHash_))};
-    quantConfig.schema = quantization::Schema::Symmetric;
-    quantization::quantizeFunction(function_, quantConfig,
-                                   *executionEngine_.getBackend(), loweredMap_);
+  // If quantizing, load quantization infos and setup the schema.
+  if (quantizationMode_ == QuantizationMode::Quantize) {
+    precConfig.quantConfig.infos =
+        deserializeFromYaml(getProfileFile(modelHash_));
+    precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
   executionEngine_.compile(CompilationMode::Infer, function_);
@@ -85,7 +81,7 @@ onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
   // Dump profile if requested.
   // TODO: enable configuration of quantization schema
-  if (quantizationStep_ == OnnxifiQuantizationStep::Profile) {
+  if (quantizationMode_ == QuantizationMode::Profile) {
     auto QI = quantization::generateNodeQuantizationInfos(
         *(ctx->getPlaceholderBindings()), function_, loweredMap_,
         quantization::Schema::Symmetric, ElemKind::Int8QTy);

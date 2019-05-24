@@ -56,61 +56,68 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
   return P;
 }
 
-/// Clone, profile, and run \p origF given the \p ctx and \p EE. \returns the
-/// quantization parameters from the profile, given the lowered info passed in
-/// via \p loweredMap, and the specified \p schema.
+/// Clone, profile, and run \p origF given the \p bindings and \p EE. \returns
+/// the quantization parameters from the profile given the specified \p schema.
 static std::vector<NodeQuantizationInfo>
 profileAndGetNodeQuantizationInfo(PlaceholderBindings &bindings,
                                   ExecutionEngine &EE, Function *origF,
                                   quantization::Schema schema) {
-  // Lower everything for profiling in a cloned PF, keeping track of lowered
-  // info in loweredMap, which is then used when generating QI.
+  LoweredInfoMap loweredMapForProf;
+  CompilationContext cctx{&bindings, &loweredMapForProf};
+  cctx.precisionConfig.quantMode = QuantizationMode::Profile;
+
   Function *profileF = origF->clone("profile");
-  LoweredInfoMap loweredMap;
-  lower(profileF, &loweredMap, EE.getBackend());
-  glow::profileQuantization(bindings, profileF);
-  EE.compile(CompilationMode::Infer, profileF);
+  EE.compile(profileF, cctx);
 
   EE.run(bindings);
 
   return quantization::generateNodeQuantizationInfos(bindings, profileF,
-                                                     loweredMap, schema);
+                                                     loweredMapForProf, schema);
 }
 
-/// Helper to profile and quantize \p IF and/or \p BF if \p interpElemKind or \p
-/// backendElemKind are a quantized type. \p ICtx is used during profiling. \p
-/// IEE and \p BEE are used when quantizing as well.
-static void profileAndQuantize(PlaceholderBindings &Ibindings,
-                               ExecutionEngine &IEE, ExecutionEngine &BEE,
-                               Function *&IF, Function *&BF,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind,
-                               quantization::Schema schema,
-                               bool enableRowwiseQuantization) {
-  quantization::QuantizationConfiguration quantConfig{
-      profileAndGetNodeQuantizationInfo(Ibindings, IEE, IF, schema)};
-  quantConfig.enableRowwise = enableRowwiseQuantization;
-  quantConfig.schema = schema;
-  quantConfig.assertAllNodesQuantized = true;
+/// Helper that sets up and \returns a pair of configs for both interpreter and
+/// backend being tested.
+static std::pair<CompilationContext, CompilationContext>
+setupInterpAndBackendConfigs(
+    Function *IF, ExecutionEngine &IEE, PlaceholderBindings &Ibindings,
+    LoweredInfoMap &ILIM, PlaceholderBindings &Bbindings, LoweredInfoMap &BLIM,
+    ElemKind interpElemKind, ElemKind backendElemKind,
+    quantization::Schema schema, bool enableRowwiseQuantization) {
+  CompilationContext cctxI{&Ibindings, &ILIM};
+  CompilationContext cctxB{&Bbindings, &BLIM};
+  PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
+  PrecisionConfiguration &precConfigB = cctxB.precisionConfig;
 
-  if (isQuantizedElemKind(interpElemKind)) {
-    quantConfig.precision = interpElemKind;
-    // Lower only as the backends prefer for actually quantizing.
-    LoweredInfoMap loweredMapForQuant;
-    lower(IF, &loweredMapForQuant, IEE.getBackend());
-    quantization::quantizeFunction(IF, quantConfig, *IEE.getBackend(),
-                                   loweredMapForQuant);
+  if (isQuantizedElemKind(interpElemKind) ||
+      isQuantizedElemKind(backendElemKind)) {
+    // If either interp or backend need to be quantized then we need to profile
+    // and get quantization infos.
+    auto NQIS = profileAndGetNodeQuantizationInfo(Ibindings, IEE, IF, schema);
+
+    if (isQuantizedElemKind(interpElemKind)) {
+      precConfigI.quantMode = QuantizationMode::Quantize;
+      precConfigI.quantConfig.infos = NQIS;
+      precConfigI.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigI.quantConfig.schema = schema;
+      precConfigI.quantConfig.precision = interpElemKind;
+      precConfigI.quantConfig.assertAllNodesQuantized = true;
+    }
+
+    if (isQuantizedElemKind(backendElemKind)) {
+      precConfigB.quantMode = QuantizationMode::Quantize;
+      precConfigB.quantConfig.infos = NQIS;
+      precConfigB.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigB.quantConfig.schema = schema;
+      precConfigB.quantConfig.precision = backendElemKind;
+      precConfigB.quantConfig.assertAllNodesQuantized = true;
+    }
   }
-  if (isQuantizedElemKind(backendElemKind)) {
-    quantConfig.precision = backendElemKind;
-    // Lower only as the backends prefer for actually quantizing.
-    LoweredInfoMap loweredMapForQuant;
-    lower(BF, &loweredMapForQuant, BEE.getBackend());
-    quantization::quantizeFunction(BF, quantConfig, *BEE.getBackend(),
-                                   loweredMapForQuant);
-  }
+
+  precConfigI.convertToFP16 = interpElemKind == ElemKind::Float16Ty;
+  precConfigB.convertToFP16 = backendElemKind == ElemKind::Float16Ty;
+
+  return std::make_pair(cctxI, cctxB);
 }
-
 } // namespace
 
 void compareAgainstInterpreter(BackendKind backendKind,
@@ -130,35 +137,27 @@ void compareAgainstInterpreter(BackendKind backendKind,
   Function *IF = IFT.first;
   Function *BF = BFT.first;
 
-  // If one or both functions will be quantized, then gather a profile the graph
-  // on the interpreter, and then quantize the Functions as requested.
-  const bool profAndQuant = isQuantizedElemKind(interpElemKind) ||
-                            isQuantizedElemKind(backendElemKind);
-  if (profAndQuant) {
-    profileAndQuantize(Ibindings, IEE, BEE, IF, BF, interpElemKind,
-                       backendElemKind, schema, enableRowwiseQuantization);
-  }
+  // Set up the configs for interpreter and backend. If one or both functions
+  // will be quantized, then gather a profile the graph on the interpreter, and
+  // then quantize the Functions as requested.
+  LoweredInfoMap ILIM, BLIM;
+  auto configs = setupInterpAndBackendConfigs(
+      IF, IEE, Ibindings, ILIM, Bbindings, BLIM, interpElemKind,
+      backendElemKind, schema, enableRowwiseQuantization);
+  CompilationContext &cctxI = configs.first;
+  CompilationContext &cctxB = configs.second;
 
-  if (interpElemKind == ElemKind::Float16Ty) {
-    TypeAToTypeBFunctionConverter converter(*IF, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty);
-    converter.convert();
-  }
-  if (backendElemKind == ElemKind::Float16Ty) {
-    TypeAToTypeBFunctionConverter converter(*BF, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty);
-    converter.convert();
-  }
-
-  BEE.compile(CompilationMode::Infer, BF);
+  BEE.compile(BF, cctxB);
   BEE.run(Bbindings);
 
-  // If we profiled above (always in FloatTy) then IF's result tensor is already
-  // set to the result of the original (FloatTy) IF. So if we did not run
-  // profiling, or if we did profile but also modified IF to be non-FloatTy,
-  // then we need to run again to get IF's result.
-  if (!profAndQuant || interpElemKind != ElemKind::FloatTy) {
-    IEE.compile(CompilationMode::Infer, IF);
+  // If we profiled inside of setupInterpAndBackendConfigs() (always in FloatTy)
+  // then IF's result tensor is already set to the result of the original
+  // (FloatTy) IF. So if we did not run profiling, or if we did profile but also
+  // modified IF to be non-FloatTy, then need to run again to get IF's result.
+  const bool alreadyProfiled = isQuantizedElemKind(interpElemKind) ||
+                               isQuantizedElemKind(backendElemKind);
+  if (!alreadyProfiled || interpElemKind != ElemKind::FloatTy) {
+    IEE.compile(IF, cctxI);
     IEE.run(Ibindings);
   }
 

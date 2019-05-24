@@ -23,18 +23,12 @@
 namespace glow {
 namespace onnxifi {
 
-enum class OnnxifiQuantizationStep : char {
-  None,     // Don't perform any quantization steps
-  Profile,  // Insert profiling nodes and dump quantization profiles
-  Quantize, // Load quantization profile and insert quantize/dequantize nodes
-};
-
 /// Onnxifi Graph whose run method just executes the underlying function on the
 /// same thread that calls its setIOAndRun function.
 class InlineGraph : public Graph {
 public:
-  InlineGraph(BackendPtr backendPtr, OnnxifiQuantizationStep quantizationStep)
-      : Graph(backendPtr), quantizationStep_(quantizationStep) {}
+  InlineGraph(BackendPtr backendPtr, QuantizationMode quantizationMode)
+      : Graph(backendPtr), quantizationMode_(quantizationMode) {}
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
   /// static trained weights \p weightDescriptors.
@@ -48,7 +42,7 @@ public:
 private:
   ExecutionEngine executionEngine_;
   Function *function_;
-  OnnxifiQuantizationStep quantizationStep_;
+  QuantizationMode quantizationMode_;
 
   /// A map between quantization profiling names of NodeValues that were lowered
   /// from each other. Maps to a set of NodeValues that were replaced by the

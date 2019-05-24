@@ -80,7 +80,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
 
   llvm::outs() << "Starting compile on " << (int)backendKind << ".\n";
   CompilationContext cctx;
-  cctx.mode = CompilationMode::Infer;
+  cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
   return backend->compile(F_, cctx.backendOpts);
