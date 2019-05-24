@@ -66,11 +66,6 @@ function(make_whole_archive DST SRC)
       # In MSVC, we will add whole archive in default.
       target_link_libraries(
           ${DST} INTERFACE -WHOLEARCHIVE:$<TARGET_FILE:${SRC}>)
-    else()
-      # Assume everything else is like gcc
-      target_link_libraries(${DST} INTERFACE
-        "-Wl,--whole-archive $<TARGET_FILE:${SRC}> -Wl,--no-whole-archive")
-      set_target_properties(${DST} PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")
     endif()
   else()
     target_link_libraries(${DST} INTERFACE ${SRC})
