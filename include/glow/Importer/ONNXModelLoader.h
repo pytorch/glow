@@ -187,6 +187,7 @@ public:
   /// serialized in \p modelDescFilename and populates the network into \p F.
   /// The types in \p types match the list of names \p tensorNames and used as
   /// inputs to the network.
+  /// If \p names and \p types are empty loader fills inputs automatically.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   ONNXModelLoader(const std::string &modelDescFilename,
