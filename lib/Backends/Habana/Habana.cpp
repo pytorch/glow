@@ -475,6 +475,7 @@ void HabanaFunction::execute(ExecutionContext *context) {
   // Set up input buffers and record bindings for enqueuing.
   TRACE_EVENT_BEGIN(tc, "copyInputs");
   auto *bindings = context->getPlaceholderBindings();
+  size_t copyInputsSizeInBytes = 0;
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
     if (!T) {
@@ -488,6 +489,7 @@ void HabanaFunction::execute(ExecutionContext *context) {
     eti.tensorSize = T->getSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
+    copyInputsSizeInBytes += eti.tensorSize;
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
     memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
@@ -521,10 +523,16 @@ void HabanaFunction::execute(ExecutionContext *context) {
     dumpTopologyInfo(deviceId, topologyId);
   }
   TRACE_EVENT_BEGIN(tc, "synEnqueue");
+  auto startSynEnqueueTime = TraceEvent::now();
   chk(synEnqueueByName(
       deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
       inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
+  auto timeSynEnqueueUs = TraceEvent::now() - startSynEnqueueTime;
   TRACE_EVENT_END(tc, "synEnqueue");
+  VLOG_EVERY_N(1, 100) << "PCI-e bandwidth for input copy = "
+                       << (float)copyInputsSizeInBytes /
+                              (float)timeSynEnqueueUs / 1e3
+                       << " GB/s";
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
