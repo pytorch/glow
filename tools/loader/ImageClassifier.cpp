@@ -297,17 +297,26 @@ template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
 template <typename ElemTy>
 static int processAndPrintResultsImpl(Tensor *SMT,
                                       llvm::ArrayRef<std::string> imageList) {
-  // Softmax should have at least two dims: batchSize, numLabels, and then
-  // optionally trailing 1s.
+  // Softmax should have at least two dimensions: batchSize (first dimension),
+  // numLabels (any other dimension), and optionally - 1 in all other
+  // dimensions. The value of numLabels should be greater than 1.
   assert(SMT->dims().size() >= 2 && "Softmax should have at least 2 dims.");
   const size_t batchSize = SMT->dims()[0];
-  (void)batchSize;
   assert(batchSize == imageList.size() &&
          "Softmax batch size must equal the input number of images.");
-  for (size_t i = 2; i < SMT->dims().size(); i++) {
-    assert(SMT->dims()[i] == 1 && "Trailing dims must be 1 for Softmax.");
+  size_t labelsDim = 0;
+  for (size_t i = 1; i < SMT->dims().size(); i++) {
+    if (SMT->dims()[i] > 1) {
+      assert(labelsDim == 0 && "More than one dimension of size > 1?");
+      labelsDim = i;
+    }
   }
-  const size_t numLabels = SMT->dims()[1];
+  assert(labelsDim != 0 && "Labels dimension not found!");
+  const size_t numLabels = SMT->dims()[labelsDim];
+  // Get a view with canonical layout {batches, labels}.
+  Tensor canonical = SMT->getUnowned({batchSize, numLabels});
+  SMT = &canonical;
+
   std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
 
   int retVal = 0;
