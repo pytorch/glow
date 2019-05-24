@@ -65,6 +65,31 @@ static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
   }
 }
 
+/// \returns true if all the functions have the valid save node format: i.e. no
+/// such pattern Save->Save.
+static bool checkSaveNode(Module &mod) {
+  for (auto F : mod.getFunctions()) {
+    for (const Node &N : F->getNodes()) {
+      if (N.getKind() != Kinded::Kind::SaveNodeKind) {
+        continue;
+      }
+      Placeholder *ph = llvm::dyn_cast<Placeholder>(N.getNthInput(0).getNode());
+      if (!ph) {
+        continue;
+      }
+      // If this SaveNode use the output of another SaveNode, it is an illegal
+      // pattern.
+      for (auto &user : ph->getUsers()) {
+        if (user.getUser() == &N || !llvm::dyn_cast<SaveNode>(user.getUser())) {
+          continue;
+        }
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 /// This one tests the model with this feature: after BFS, the memory
 /// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
@@ -132,6 +157,7 @@ TEST_F(PartitionerTest, Basic1) {
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
@@ -205,6 +231,7 @@ TEST_F(PartitionerTest, Basic2) {
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
   ASSERT_EQ(myList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
 
   for (auto &dag : myList) {
     for (auto &node : dag.nodes) {
@@ -482,6 +509,7 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
     DAGListTy myList = std::move(partitioner.getPartitionResult());
     ASSERT_EQ(mod_.getFunctions().size(), 2);
     ASSERT_EQ(myList.size(), 1);
+    ASSERT_TRUE(checkSaveNode(mod_));
 
     for (auto &dag : myList) {
       for (auto &node : dag.nodes) {
@@ -490,7 +518,6 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
         ASSERT_EQ(node->logicalDevices.size(), 1);
       }
     }
-
     mod_.clear();
   }
 }
