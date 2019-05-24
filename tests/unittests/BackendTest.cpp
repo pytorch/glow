@@ -499,3 +499,16 @@ INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values(BackendKind::CPU));
 INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest,
                         ::testing::Values(BackendKind::OpenCL));
 #endif // GLOW_WITH_OPENCL
+
+/// Check if the dump function works for Type.
+TEST(BackendTest, dumpType) {
+  Module mod;
+  TypeRef tyA = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  tyA->dump(os);
+  std::string mesA = tyA->toString();
+  std::string expectA = "float<1 x 32 x 32 x 3>";
+  EXPECT_EQ(mesA, expectA);
+  EXPECT_EQ(mesA, os.str());
+}

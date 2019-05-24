@@ -163,8 +163,14 @@ public:
   /// Get the pseudo-random number generator used by this module.
   PseudoRNG &getPRNG() { return PRNG_; }
 
-  /// Dumps the textual representation of the network.
+  /// Dump a textual representation of the Module into default output stream.
   void dump() const;
+
+  /// Dump a textual representation of the Module to std::string.
+  std::string toString() const;
+
+  /// Dump a textual representation of the Module into provided output stream.
+  void dump(llvm::raw_ostream &os) const;
 
   /// Dump a dotty graph that depicts the Module.
   void dumpDAG();
@@ -1077,8 +1083,14 @@ public:
   /// \returns true when the function is valid. False otherwise.
   bool verify() const;
 
-  /// Dumps the textual representation of the network.
+  /// Dump a textual representation of the Function into provided output stream.
   void dump() const;
+
+  /// Dump a textual representation of the Function to std::string.
+  std::string toString() const;
+
+  /// Dump a textual representation of the Function into default output stream.
+  void dump(llvm::raw_ostream &os) const;
 
   /// Dump a dotty graph that depicts the function into a file.
   /// \returns full path to the file.
@@ -1128,6 +1140,14 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
   { 0u, 2u, 3u, 1u }
 #define NHWC2NCHW                                                              \
   { 0u, 3u, 1u, 2u }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
 
 } // namespace glow
 

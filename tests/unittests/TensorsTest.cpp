@@ -16,6 +16,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Quantization/Base/Base.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "gtest/gtest.h"
 
@@ -907,4 +908,35 @@ TEST(Tensor, randomizeFused) {
       EXPECT_EQ(TH.at({i, j}), i * 10 + j);
     }
   }
+}
+
+/// Check if dump functions work for Tensor
+TEST(Tensor, dump) {
+  Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
+  std::string mes = T.toString();
+  std::string storageT1;
+  llvm::raw_string_ostream osT1(storageT1);
+  T.dump(osT1);
+  std::string expectMes = R"(shape: ( 4 )
+max: 1515.200  min: 1.200
+[1.200, 12.100, 51.000, 1515.200, ]
+)";
+  EXPECT_EQ(mes, expectMes);
+  EXPECT_EQ(mes, osT1.str());
+  std::string storageT2;
+  llvm::raw_string_ostream osT2(storageT2);
+  osT2 << T;
+  EXPECT_EQ(mes, osT2.str());
+  T.dump(2);
+  std::string expectMes2 = R"(shape: ( 4 )
+max: 1515.200  min: 1.200
+[1.200, 12.100, ...]
+)";
+  std::string storageT3;
+  llvm::raw_string_ostream osT3(storageT3);
+  // Only dump 2 elements.
+  T.dump(osT3, 2);
+  std::string mes2 = T.toString(2);
+  EXPECT_EQ(mes2, expectMes2);
+  EXPECT_EQ(mes2, osT3.str());
 }

@@ -100,6 +100,24 @@ void Module::dump() const {
   }
 }
 
+std::string Module::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+void Module::dump(llvm::raw_ostream &os) const {
+  os << "Module structure:\n";
+  for (auto v : getConstants()) {
+    os << v->getDebugDesc() << "\n";
+  }
+
+  for (auto f : functions_) {
+    os << "Function:" << f->getName() << "\n";
+  }
+}
+
 /// A helper class for visiting and generating the dotty graph file.
 class AbstractDottyPrinter {
 protected:
@@ -2547,7 +2565,21 @@ TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
 void Function::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
   for (auto &n : nodes_) {
-    llvm::outs() << n.getDebugDesc() << "\n";
+    llvm::outs() << n.getDebugDesc();
+  }
+}
+
+std::string Function::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+void Function::dump(llvm::raw_ostream &os) const {
+  os << "Graph structure " << getName() << ":\n";
+  for (auto &n : nodes_) {
+    os << n.getDebugDesc();
   }
 }
 
@@ -2973,3 +3005,28 @@ SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
   }
   return nullptr;
 }
+
+namespace glow {
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod) {
+  mod.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod) {
+  assert(mod != nullptr && "Null Pointer.");
+  mod->dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F) {
+  F.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
+  assert(F != nullptr && "Null Pointer.");
+  F->dump(os);
+  return os;
+}
+} // namespace glow

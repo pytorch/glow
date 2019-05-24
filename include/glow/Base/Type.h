@@ -532,6 +532,15 @@ struct Type final {
     return names[(int)Ty];
   }
 
+  /// Dump a textual representation of the Type into provided output stream.
+  void dump(llvm::raw_ostream &out) const;
+
+  /// Dump a textual representation of the Type into default output stream.
+  void dump() const;
+
+  /// Dump a textual representation of the Type to std::string.
+  std::string toString() const;
+
 private:
   /// Setup the internals of type that store the dimensions. This method is
   /// used by the constructor.
