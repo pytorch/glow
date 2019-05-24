@@ -37,14 +37,14 @@ case ${CIRCLE_JOB} in
     ASAN)
         # ASAN is not enabled in onnx, therefore we should skip it for now.
         # TODO: Enable ASAN test.
-        run_unit_tests test
+        run_unit_tests check
         ;;
     TSAN)
         # Run only Glow tests.
-        run_unit_tests test
+        run_unit_tests check
         ;;
     DEBUG)
-        run_unit_tests test
+        run_unit_tests check
         run_unit_tests test_unopt
         run_and_check_bundle YES
         run_and_check_bundle NO
