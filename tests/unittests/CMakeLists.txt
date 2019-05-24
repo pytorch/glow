@@ -214,17 +214,17 @@ add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:Gr
 LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_HABANA)
-
   add_executable(HabanaBackendTest
-          HabanaBackendTest.cpp)
+                 HabanaBackendTest.cpp)
   target_link_libraries(HabanaBackendTest
-          PRIVATE
-          ExecutionEngine
-          Graph
-          Habana
-          Optimizer
-          gtest
-          TestMain)
+                        PRIVATE
+                          Backends
+                          ExecutionEngine
+                          Graph
+                          Optimizer
+                          gtest
+                          TestMain)
+  target_include_directories(HabanaBackendTest PRIVATE "${SYNAPSE_INCLUDE_DIR}")
   add_glow_test(HabanaBackendTest ${GLOW_BINARY_DIR}/tests/HabanaBackendTest --gtest_output=xml:HabanaBackendTest.xml)
 
   add_executable(HabanaTest
