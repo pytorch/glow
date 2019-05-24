@@ -325,6 +325,15 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       RETURN_ERR("Unsupported Tensor format.",
                  GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
+    T->reset(ElemKind::BoolTy, dim);
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
   } else {
     RETURN_ERR("Only float and index tensors are supported",
                GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
