@@ -1136,7 +1136,12 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     RETURN_IF_ERR(setVersion(modelDef));
 
     ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-    RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
+
+    if (tensorNames.empty() && types.empty()) {
+      RETURN_IF_ERR(loadInputs(graphDef, true));
+    } else {
+      RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
+    }
 
     RETURN_IF_ERR(loadInitializers(graphDef));
     RETURN_IF_ERR(loadNetwork(graphDef));
