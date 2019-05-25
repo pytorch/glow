@@ -2549,6 +2549,9 @@ getChannelShuffleParams(const ReshapeNode &node) {
 
 // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
 static void foldChannelShuffle(Function *F) {
+  // FIXME: This optimization doesn't check its applicability carefully enough
+  // and kicks in when it shouldn't.  See GraphOptzTest.NoFoldChannelShuffle.
+  return;
 
   auto &nodes = F->getNodes();
   for (auto &node : nodes) {

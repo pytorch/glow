@@ -2092,6 +2092,9 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
 
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
+  // FIXME: foldChannelShuffle is disabled; see GraphOptimizer.cpp.
+  return;
+
   const size_t inputDims[] = {3, 136, 28, 28};
 
   Node *K =
@@ -2118,6 +2121,22 @@ TEST_F(GraphFold, foldChannelShuffle) {
   // Ensure Group and Kernel are as expected.
   EXPECT_EQ(CS->getGroup(), 4);
   EXPECT_EQ(CS->getKernel(), 1);
+}
+
+TEST_F(GraphFold, NoFoldChannelShuffle) {
+  auto Float = ElemKind::FloatTy;
+  auto *P = mod_.createPlaceholder(Float, {10, 8928}, "P", false);
+  auto *R1 = F_->createReshape("R1", P, {10, 186, 48});
+  auto *TR = F_->createTranspose("TR", R1, {0, 2, 1});
+  auto *R2 = F_->createReshape("R2", TR, {480, 186});
+  auto *save = F_->createSave("save", R2);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+
+  ::glow::fold(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_FALSE(llvm::isa<ChannelShuffleNode>(save->getInput()));
 }
 
 /// This test ensures that if there is a RescaleNode whose input has multiple
