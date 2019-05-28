@@ -329,6 +329,8 @@ TEST_P(OperatorTest, spaceToDepth_block2_Float) {
 }
 
 TEST_P(OperatorTest, pow) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);
   auto *Exp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Exp", false);
@@ -731,6 +733,7 @@ static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
 
 /// Test reduction down to a zero-dim tensor on FloatTy.
 TEST_P(OperatorTest, batchedReduceZeroDimResult_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testBatchedReduceZeroDimResult<float>(bindings_, mod_, F_, EE_,
                                         ElemKind::FloatTy);
 }
@@ -1322,6 +1325,7 @@ static void testPReluSimple(glow::PlaceholderBindings &bindings,
 
 /// Verify that the PRELU operator works correctly for Float.
 TEST_P(OperatorTest, PReluSimple_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testPReluSimple<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-32);
 }
 
@@ -1333,6 +1337,8 @@ TEST_P(OperatorTest, PReluSimple_Float16) {
 }
 
 TEST_P(OperatorTest, TopK) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
   auto *values =
@@ -1829,6 +1835,8 @@ TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt64) {
 /// is correct for tensors with 2 dimensions.
 /// Note: This assumes that Tensor::transpose is correct.
 TEST_P(OperatorTest, Transpose2Dims) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
   bindings_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
 
@@ -2050,6 +2058,8 @@ TEST_P(OperatorTest, GatherSizeT) {
 }
 
 TEST_P(OperatorTest, BatchedGather) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   /*
    DATA  = [
     [1.0, 1.2, 2.4, 4.5],
@@ -2096,6 +2106,8 @@ TEST_P(OperatorTest, BatchedGather) {
 }
 
 TEST_P(OperatorTest, ScatterAssign) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
       mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
@@ -2226,6 +2238,8 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 
 TEST_P(OperatorTest, IntMatMul) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {3, 3}, 0.60, 4);
@@ -2677,11 +2691,14 @@ createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, QuantizedTranspose) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   compareAgainstInterpreter(GetParam(), createAndInitTransposeNet,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.0045f);
 }
 
 TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   const size_t len = 1000;
 
   // In this test we check the correctness of the quantized Max, Min, Add,
@@ -2875,6 +2892,8 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
 }
 
 TEST_P(OperatorTest, FCGradientCheck) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
   // with reference values.
@@ -3364,6 +3383,8 @@ TEST_P(OperatorTest, Clip) {
 }
 
 TEST_P(OperatorTest, simpleCmpSelectPredication) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   // A simple test that checks predication of some values using the
   // compare-select pair of instructions. Keep doubling some values
   // until some condition is met.
@@ -3466,6 +3487,8 @@ TEST_P(OperatorTest, ChannelShuffle) {
 }
 
 TEST_P(OperatorTest, Squeeze) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
   bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -3567,6 +3590,7 @@ static void testExpandDims(glow::PlaceholderBindings &bindings,
 /// Check that the expand dims operator works, which is implemented with a
 /// reshape, in FloatTy.
 TEST_P(OperatorTest, ExpandDims_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testExpandDims<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -3649,6 +3673,8 @@ TEST_P(OperatorTest, Split_Int8) {
 }
 
 TEST_P(OperatorTest, IntRelu) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL)
+
   const float splatValue = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
@@ -3722,6 +3748,8 @@ TEST_P(OperatorTest, Fp16Splat) {
 }
 
 TEST_P(OperatorTest, GroupConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -3846,6 +3874,8 @@ TEST_P(OperatorTest, GroupConv3D) {
 /// the same as the first one's after-padding input. All other parameters of
 /// the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -3980,6 +4010,8 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 /// is the same as the first one's after-padding input. All other parameters
 /// of the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -4019,6 +4051,8 @@ TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
 /// is the same as the first one's after-padding input. All other parameters
 /// of the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -4251,6 +4285,8 @@ TEST_P(OperatorStatelessTest, Int8Log) {
 
 /// Check Non-square kernel for conv.
 TEST_P(OperatorTest, NonSquareKernelConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -4461,6 +4497,8 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
 
 /// Check Non-square stride for conv.
 TEST_P(OperatorTest, NonSquareStrideConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -4871,6 +4909,7 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
 
 /// Tests quantized batched-add arithmetic.
 TEST_P(OperatorTest, testQuantizedBatchAdd) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   // Test Int8QTy Slice.
   quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
   // Test Int32QTy Slice.
@@ -5575,6 +5614,8 @@ TEST_P(OperatorTest, ReshapeInt) {
 
 /// Verify that the Select operator works correctly.
 TEST_P(OperatorTest, Select) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "A", false);
   bindings_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
 
@@ -5599,6 +5640,8 @@ TEST_P(OperatorTest, Select) {
 
 /// Verify that the CmpLTE operator works correctly.
 TEST_P(OperatorTest, CmpLTE) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
   Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
   A->getPayloadMutable().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
@@ -6048,6 +6091,8 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
 /// The semantic of SoftMax is
 /// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).
 TEST_P(OperatorTest, SoftMax) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
@@ -6379,6 +6424,8 @@ TEST_P(OperatorTest, dotProduct1D_Int8) {
 // Test an ElementwiseLinear operator with both axis = 0 and axis = 1
 // arguments.
 TEST_P(OperatorTest, elementwiseLinear) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
   constexpr std::size_t kRows = 10;
   constexpr std::size_t kCols = 20;
 
