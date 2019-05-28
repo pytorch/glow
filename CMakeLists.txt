@@ -97,10 +97,22 @@ if (GLOW_WITH_OPENCL)
 endif ()
 
 if (GLOW_WITH_HABANA)
+  add_definitions(-DGLOW_WITH_HABANA=1)
+
+  # Find habanalabs libraries.
   list(APPEND CMAKE_PREFIX_PATH /usr/lib/habanalabs)
   find_path(SYNAPSE_INCLUDE_DIR synapse.h)
   find_library(SYNAPSE_LIB Synapse)
-  add_definitions(-DGLOW_WITH_HABANA=1)
+  find_library(TPCSIM_SHARED_LIB tpcsim_shared)
+  find_library(HL_THUNK_LIB hl-thunk)
+
+  # Create interface library to encapsulate necessary .so's.
+  add_library(Synapse INTERFACE)
+  target_link_libraries(Synapse
+    INTERFACE
+    "${SYNAPSE_LIB}"
+    "${TPCSIM_SHARED_LIB}"
+    "${HL_THUNK_LIB}")
 endif ()
 
 # Top level setup for external backends
