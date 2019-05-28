@@ -383,12 +383,66 @@ protected:
     }
   }
 
-  /// Builds a simple graph, returns back input var and save node through refs.
-  static void createSimpleRecSysGraph(
+  /// Creates a number of Sparse tables (FP32 or Int8Q), the Indices lookup and
+  /// the SpareLengthsSum Node tying it together.
+  static void createSparseWeightedGatherEmbeddings(
       Module &mod_, PlaceholderBindings &bindings_, Function *F_,
-      llvm::ArrayRef<Placeholder *> lengths, Placeholder *dense_data,
-      llvm::ArrayRef<size_t> emb_sizes, size_t emb_dim,
-      llvm::StringRef funcName, bool quantizeSLWS, bool quantizeFC) {
+      llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> tableSizes,
+      size_t embeddingDim, std::vector<NodeValue> &embeddings,
+      bool quantizeSLWS, uint32_t weights_size = 1000) {
+    for (size_t i = 0; i < lengths.size(); i++) {
+      fillStableRandomIndex(
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
+
+      size_t sum =
+          sumOfElements(bindings_.get(lengths[i])->getHandle<int32_t>());
+      auto *indices = mod_.createPlaceholder(
+          ElemKind::Int64ITy, {sum}, "indices" + std::to_string(i), false);
+      fillStableRandomIndex(bindings_.allocate(indices)->getHandle<int64_t>(),
+                            2001, 0, tableSizes[i]);
+
+      // Should be able to pass weights - fix later. Currently, just a
+      // randomized constant.
+      Constant *weightsConst = createRandomizedConstant(
+          mod_, mod_.uniqueType(ElemKind::FloatTy, {weights_size}),
+          {weights_size}, "weights" + std::to_string(i), 1.0f, 1.0000001f);
+
+      auto *weightIndices =
+          mod_.createPlaceholder(ElemKind::Int32ITy, {sum},
+                                 "weight_indices" + std::to_string(i), false);
+      fillStableRandomIndex(
+          bindings_.allocate(weightIndices)->getHandle<int32_t>(), 2001, 0,
+          sum - 1);
+
+      auto *weights = F_->createGather("weight_gather" + std::to_string(i),
+                                       weightsConst, weightIndices, 0);
+
+      // output is size {MB, embeddingDim_}
+      if (quantizeSLWS) {
+        Constant *data = createRandomFusedRowwiseQuantizedConstant(
+            mod_, {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i]);
+
+      } else {
+        Constant *data = createRandomizedConstant(
+            mod_,
+            mod_.uniqueType(ElemKind::FloatTy, {tableSizes[i], embeddingDim}),
+            {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        embeddings[i] = F_->createSparseLengthsWeightedSum(
+            "slws" + std::to_string(i), data, weights, indices, lengths[i]);
+      }
+    }
+  }
+
+  /// Builds a simple graph, returns back input var and save node through refs.
+  static void
+  createSimpleRecSysGraph(Module &mod_, PlaceholderBindings &bindings_,
+                          Function *F_, llvm::ArrayRef<Placeholder *> lengths,
+                          Placeholder *dense_data,
+                          llvm::ArrayRef<size_t> emb_sizes, size_t emb_dim,
+                          llvm::StringRef funcName, bool quantizeSLWS,
+                          bool quantizeFC, bool gatherWeights) {
     EXPECT_EQ(lengths.size(), emb_sizes.size());
 
     // First Dense embedding
@@ -406,8 +460,14 @@ protected:
 
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
-    createSparseEmbeddings(mod_, bindings_, F_, lengths, emb_sizes, emb_dim,
-                           embeddings, quantizeSLWS);
+    if (gatherWeights) {
+      createSparseWeightedGatherEmbeddings(mod_, bindings_, F_, lengths,
+                                           emb_sizes, emb_dim, embeddings,
+                                           quantizeSLWS);
+    } else {
+      createSparseEmbeddings(mod_, bindings_, F_, lengths, emb_sizes, emb_dim,
+                             embeddings, quantizeSLWS);
+    }
 
     // Interacting sparse and dense
     embeddings.push_back(RL);
@@ -448,7 +508,7 @@ protected:
   }
 
   void testRecSys(bool quantizeSLWS, bool quantizeFC, bool convertToFP16,
-                  bool checkConcat = false) {
+                  bool gatherWeights, bool checkConcat = false) {
     // Create the tables.
     std::vector<Placeholder *> sparseLengths(numberOfSparseTables);
     for (unsigned int i = 0; i < sparseLengths.size(); i++) {
@@ -463,7 +523,7 @@ protected:
     // Generate the network.
     createSimpleRecSysGraph(mod_, bindings_, F_, sparseLengths, denseData,
                             tableSizes, embeddingDim, "main", quantizeSLWS,
-                            quantizeFC);
+                            quantizeFC, gatherWeights);
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
     result = result1->getPlaceholder();
 
@@ -625,7 +685,8 @@ TEST_P(RecommendationSystemTest, RecSys_FP32) {
 
   testRecSys(/* quantizeSLWS */ false,
              /* quantizeFC */ false,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
@@ -633,7 +694,8 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ true,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
@@ -641,7 +703,8 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ false,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
@@ -649,7 +712,8 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ true,
-             /* convertToFP16 */ true);
+             /* convertToFP16 */ true,
+             /* gatherWeights */ false);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
@@ -657,7 +721,8 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ false,
-             /* convertToFP16 */ true);
+             /* convertToFP16 */ true,
+             /* gatherWeights */ false);
 }
 
 /// Partitioning Tests
@@ -670,7 +735,8 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
 
   testRecSys(/* quantizeSLWS */ false,
              /* quantizeFC */ false,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 
   deviceMemCapacity *= 2; // Double memory for this test
 
@@ -683,7 +749,8 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ false,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 
   deviceMemCapacity *= 2; // Double memory for this test
 
@@ -696,7 +763,8 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ true,
-             /* convertToFP16 */ false);
+             /* convertToFP16 */ false,
+             /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_.get(result)->clone(), bindings_);
@@ -707,7 +775,8 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ false,
-             /* convertToFP16 */ true);
+             /* convertToFP16 */ true,
+             /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_.get(result)->clone(), bindings_);
@@ -718,7 +787,8 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
 
   testRecSys(/* quantizeSLWS */ true,
              /* quantizeFC */ true,
-             /* convertToFP16 */ true);
+             /* convertToFP16 */ true,
+             /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_.get(result)->clone(), bindings_);
@@ -729,4 +799,29 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
   ENABLED_BACKENDS(CPU, Habana);
 
   testSLSQuant();
+}
+
+/// Test gathering weights for SLWS.
+TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
+  ENABLED_BACKENDS(CPU, Habana);
+
+  testRecSys(/* quantizeSLWS */ false,
+             /* quantizeFC */ false,
+             /* convertToFP16 */ false,
+             /* gatherWeights */ true);
+}
+
+/// Test gathering weights for SLWS.
+TEST_P(RecommendationSystemTest, RecSys_FP32_Medium_Gather_Weights) {
+  ENABLED_BACKENDS(CPU, Habana);
+
+  numberOfSparseTables = 15;
+  tableSizes = {800000, 600000, 700000, 900000, 1200000,
+                800000, 600000, 700000, 900000, 1200000,
+                800000, 600000, 700000, 900000, 1200000};
+  deviceMemCapacity = 1024 * 1024 * 512; // 512M.
+  testRecSys(/* quantizeSLWS */ false,
+             /* quantizeFC */ false,
+             /* convertToFP16 */ false,
+             /* gatherWeights */ true);
 }
