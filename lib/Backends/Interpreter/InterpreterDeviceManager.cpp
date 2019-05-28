@@ -34,7 +34,7 @@ createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config) {
   if (interpreterMaxMem) {
     // Convert command line interpreterMaxMem to bytes from kilobytes.
     return new InterpreterDeviceManager(std::move(config),
-                                        interpreterMaxMem * 1024);
+                                        uint64_t{interpreterMaxMem} * 1024);
   }
   return new InterpreterDeviceManager(std::move(config));
 }
