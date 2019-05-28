@@ -109,17 +109,19 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation) {
+                              unsigned_t dilation, bool checkBiasType = true) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
-  // Non quantization type check.
-  if (src.getElementType() == ElemKind::FloatTy) {
-    isValid &= checkType(bias, ElemKind::FloatTy, parent);
-  }
-  // Quantization type check.
-  if (src.getElementType() == ElemKind::Int8QTy) {
-    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+  if (checkBiasType) {
+    // Non quantization type check.
+    if (src.getElementType() == ElemKind::FloatTy) {
+      isValid &= checkType(bias, ElemKind::FloatTy, parent);
+    }
+    // Quantization type check.
+    if (src.getElementType() == ElemKind::Int8QTy) {
+      isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+    }
   }
   ShapeNHWC idim(src.getType()->dims());
   ShapeNHWC odim(dest.getType()->dims());
@@ -407,6 +409,41 @@ bool PadNode::verify() const {
 bool ConvolutionNode::verify() const {
   return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
                            Kernels_, Strides_, Pads_, Group_, Dilation_);
+}
+
+bool ChannelwiseQuantizedConvolutionNode::verify() const {
+  bool isValid = expectCompareTrue("Only groupwise quantization is supported.",
+                                   getGroupwise(), true, this);
+
+  if (!isValid) {
+    return false;
+  }
+
+  isValid = verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
+                              Kernels_, Strides_, Pads_, Group_,
+                              /* dilation */ 1, /* checkBiasType */ false);
+
+  isValid &= checkType(getBias(), ElemKind::FloatTy, this);
+  isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+
+  // check qparam types
+  isValid &= checkType(getOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
+
+  // check qparam dimensions
+  isValid &= expectCompareTrue("Offsets must be a 1D vector",
+                               getOffsets().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Scales must be a 1D vector",
+                               getScales().dims().size(), size_t(1), this);
+
+  // check qparam sizes
+  isValid &=
+      expectCompareTrue("There must be one filter offset qparam per group",
+                        getOffsets().dims()[0], size_t(getGroup()), this);
+  isValid &=
+      expectCompareTrue("There must be one filter scale qparam per group",
+                        getScales().dims()[0], size_t(getGroup()), this);
+  return isValid;
 }
 
 bool Convolution3DNode::verify() const {

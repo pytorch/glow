@@ -573,7 +573,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   TransposeNode *filterTransposeNode =
       G_.createTranspose(opName, filterValue, NCHW2NHWC);
 
-  // The structure of the conv weigts is: NHWC. We take the C, which is the
+  // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
   const NodeValue filterTransposedValue = filterTransposeNode->getResult();

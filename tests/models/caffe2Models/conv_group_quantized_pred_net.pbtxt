@@ -1,0 +1,41 @@
+name: "conv_group_quantized_test"
+op {
+  input: "input"
+  input: "conv_w"
+  input: "conv_b"
+  output: "conv_out"
+  type: "Int8Conv"
+  arg {
+    name: "kernel"
+    i: 1
+  }
+  arg {
+    name: "group"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+  arg {
+    name: "order"
+    s: "NHWC"
+  }
+  arg {
+    name: "Y_scale"
+    f: 3.14
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 5
+  }
+  arg {
+    name: "quantize_groupwise"
+    i: 1
+  }
+}
+external_output: "conv_out"

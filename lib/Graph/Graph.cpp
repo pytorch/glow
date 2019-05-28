@@ -2077,6 +2077,18 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
                       pads, group);
 }
 
+ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
+    llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
+    Constant *scales, Constant *offsets, TypeRef outTy,
+    llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
+  assertConvDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new ChannelwiseQuantizedConvolutionNode(
+      name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
+      group, /*Groupwise*/ true));
+}
+
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
                                          TypeRef outTy) {
   return addNode(new ConvertToNode(name, outTy, input));
