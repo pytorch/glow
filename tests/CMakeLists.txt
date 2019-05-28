@@ -4,6 +4,7 @@ add_subdirectory(unittests)
 add_subdirectory(images)
 add_subdirectory(benchmark)
 add_subdirectory(models)
+add_subdirectory(runtime_test)
 
 # External backends
 ExternalBackendsTest()
@@ -89,6 +90,11 @@ add_output_check_test(NAME en2gr_quantization_test
 # Create en2gr_cpu_partition_test OutputCheck test.
 add_output_check_test(NAME en2gr_cpu_partition_test
                       COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_cpu_partition_test.sh
+                      REQUIRES MODELS RELEASE)
+
+# Create en2gr_cpu_config_test OutputCheck test.
+add_output_check_test(NAME en2gr_cpu_config_test
+                      COMMAND ${TEXT_TRANSLATOR_TESTS_DIR}/en2gr_cpu_config_test.sh
                       REQUIRES MODELS RELEASE)
 
 # Create an OutputCheck test to run resnet-runtime-test.

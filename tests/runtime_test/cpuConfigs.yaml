@@ -1,0 +1,12 @@
+---
+- name:     Device1
+  kindName: CPU
+  parameters: |
+    "platformID":"1"
+    "deviceID" : "0"
+- name:     Device2
+  kindName: CPU
+  parameters: |
+    "platformID":"1"
+...
+

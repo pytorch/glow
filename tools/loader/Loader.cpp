@@ -31,6 +31,8 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <sstream>
+
 using namespace glow;
 
 /// -enable-rowwise : Command line option to enable rowwise quantized
@@ -174,6 +176,13 @@ llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
         "whitelist node kinds that are allowed to be left unquantized."),
     llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
+/// The device configs file used for Runtime.
+llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
+    "load-device-configs",
+    llvm::cl::desc("Load device configs used in Runtime"),
+    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(loaderCat));
+
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
@@ -269,6 +278,74 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
   }
 #include "glow/AutoGenNodes.def"
   GLOW_UNREACHABLE("Unknown node name.");
+}
+
+/// Helper to get the BackendKind type from a backend's \p name. Need to be
+/// updated if a new backend comes.
+static BackendKind getBackendKindFromName(std::string &name) {
+  const llvm::StringMap<BackendKind> mapping(
+      {{"CPU", BackendKind::CPU},
+       {"Interpreter", BackendKind::Interpreter},
+       {"OpenCL", BackendKind::OpenCL},
+       {"Habana", BackendKind::Habana}});
+  if (mapping.find(name) == mapping.end()) {
+    GLOW_UNREACHABLE("Unknown backendKind name.");
+  }
+  return mapping.lookup(name);
+}
+
+/// Helper to get the parameters in DeviceConfig from \p str. The \p str has
+/// multiple lines, and each line with this format : "str1" : "str2".
+static llvm::StringMap<std::string> getBackendParams(std::string &str) {
+  llvm::StringMap<std::string> ret{};
+  std::string s;
+  std::istringstream f(str.c_str());
+  while (getline(f, s, '\n')) {
+    // Abstract the mapping from each line's string:
+    // ""str1" : "str2"" => ret["str1"] = "str2";
+    size_t pos1, pos2, pos3, pos4;
+    pos1 = s.find('"');
+    assert(pos1 != std::string::npos && "invalid string format");
+    pos2 = s.find('"', pos1 + 1);
+    assert(pos2 != std::string::npos && "invalid string format");
+    pos3 = s.find('"', pos2 + 1);
+    assert(pos3 != std::string::npos && "invalid string format");
+    pos4 = s.find('"', pos3 + 1);
+    assert(pos4 != std::string::npos && "invalid string format");
+    ret[s.substr(pos1 + 1, pos2 - pos1 - 1)] =
+        s.substr(pos3 + 1, pos4 - pos3 - 1);
+  }
+  return ret;
+}
+
+/// If the device config file \p loadDeviceDoncfigsFile available, load \p
+/// configs from the file. Otherwise, create \p numDevices number of devices
+/// based on \p backendKind.
+static std::vector<std::unique_ptr<runtime::DeviceConfig>>
+generateDeviceConfigs(std::string &loadDeviceConfigsFile,
+                      unsigned int numDevices, BackendKind backendKind) {
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  if (loadDeviceConfigsFile.empty()) {
+    // If there is no device config file, use numDevices to generate the
+    // configs.
+    for (unsigned int i = 0; i < numDevices; ++i) {
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind);
+      configs.push_back(std::move(config));
+    }
+  } else {
+    // Get the configs from the config file.
+    std::vector<DeviceConfigHelper> lists;
+    lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFile);
+    for (unsigned int i = 0; i < lists.size(); ++i) {
+      auto backendKind = getBackendKindFromName(lists[i].kindName_);
+      auto name = lists[i].name_;
+      auto parameters = getBackendParams(lists[i].parameters_.str);
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind, name,
+                                                             parameters);
+      configs.push_back(std::move(config));
+    }
+  }
+  return configs;
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
@@ -401,11 +478,11 @@ Loader::Loader(int argc, char **argv) {
     caffe2NetWeightFilename_ = modelPathOpt[1];
   }
   M_.reset(new Module);
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(ExecutionBackend);
-    configs.push_back(std::move(config));
-  }
+
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
+      generateDeviceConfigs(loadDeviceConfigsFileOpt, numDevices,
+                            ExecutionBackend);
+
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);
   F_ = M_->createFunction(modelPathOpt[0]);
