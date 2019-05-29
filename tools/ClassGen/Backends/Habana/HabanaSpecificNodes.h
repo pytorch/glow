@@ -21,6 +21,7 @@ BB.newNode("HabanaFullyConnected")
     .addInput("Input")
     .addInput("Weights")
     .addInput("Bias")
+    .addMember(MemberType::Boolean, "DoRelu")
     .addResultFromCtorArg()
     .setDocstring(
         "This is a Habana-specific FC that combines weights and bias.");

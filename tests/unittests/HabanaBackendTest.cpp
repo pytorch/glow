@@ -1758,3 +1758,20 @@ TEST_F(HabanaBackendTest, BatchedGatherMultipleRuns) {
     }
   }
 }
+
+TEST_F(HabanaBackendTest, MergeFCRelu) {
+  auto *FCi = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "input", false);
+  auto *FCw = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "weight");
+  auto *FCb = mod_.createConstant(ElemKind::FloatTy, {2}, "bias");
+  auto *fcNode = F_->createFullyConnected("fc", FCi, FCw, FCb);
+  auto *relu = F_->createRELU("relu", fcNode);
+  F_->createSave("save", relu);
+
+  // Should have three nodes FC, Relu, save
+  ASSERT_EQ(F_->getNodes().size(), 3);
+
+  EE_.compile(CompilationMode::Infer, F_);
+
+  // Should have two nodes FC, save
+  ASSERT_EQ(F_->getNodes().size(), 2);
+}
