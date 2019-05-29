@@ -277,7 +277,10 @@ public:
   /// of steps to take in the input for each output cell. \p pads defines how
   /// many zero padding cells should be added to the input during convolution.
   /// \p group defines the number of groups the input and output channels should
-  /// be divided into and convolved separately.
+  /// be divided into and convolved separately. \p dilation defines factor by
+  /// which gap between 2 neighboring kernel elements is expanded along each
+  /// axis.
+
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               llvm::ArrayRef<unsigned_t> kernels,
@@ -291,7 +294,10 @@ public:
   /// of steps to take in the input for each output cell. \p pad defines how
   /// many zero padding cells should be added to the input during convolution.
   /// \p group defines the number of groups the input and output channels should
-  /// be divided into and convolved separately.
+  /// be divided into and convolved separately. \p dilation defines factor by
+  /// which gap between 2 neighboring kernel elements is expanded along each
+  /// axis.
+
   ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
                               NodeValue filter, NodeValue bias, TypeRef outTy,
                               unsigned_t kernel, unsigned_t stride,
@@ -928,7 +934,9 @@ public:
   /// to take in the input for each output cell. \p pads defines how many zero
   /// padding cells should be added to the input during convolution. \p group
   /// defines the number of groups the input and output channels should be
-  /// divided into and convolved separately.
+  /// divided into and convolved separately. \p dilation defines factor by
+  /// which gap between 2 neighboring kernel elements is expanded along each
+  /// axis.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
                               size_t outChannels,
@@ -943,7 +951,9 @@ public:
   /// take in the input for each output cell. \p pad defines how many zero
   /// padding cells should be added to the input during convolution. \p group
   /// defines the number of groups the input and output channels should be
-  /// divided into and convolved separately.
+  /// divided into and convolved separately.\p dilation defines factor by
+  /// which gap between 2 neighboring kernel elements is expanded along each
+  /// axis.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
                               size_t outChannels, unsigned_t kernel,

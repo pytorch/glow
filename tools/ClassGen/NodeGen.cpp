@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "and Group.");
+                    "Group and Dilation.");
 
   BB.newNode("Convolution3D")
       .addInput("Input")

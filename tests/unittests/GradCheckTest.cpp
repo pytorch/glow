@@ -393,6 +393,39 @@ TEST_P(GradCheck, gradientCheckDepthwiseConv) {
 
 TEST_P(GradCheck, gradientCheckGroupConv) { gradientCheckGroupConv(4, 2, EE_); }
 
+static void gradientCheckDilatedConv(size_t depth, size_t group,
+                                     size_t dilation, ExecutionEngine &EE_) {
+  PlaceholderBindings bindings;
+  size_t numDim = 10;
+
+  auto &mod = EE_.getModule();
+  Function *F = mod.createFunction("main");
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, depth},
+                                  "A", false);
+  auto *Ex = mod.createPlaceholder(ElemKind::FloatTy,
+                                   {1, numDim, numDim, depth}, "exp", false);
+
+  Node *O = F->createConv(bindings, "conv", A, depth, 2, 1, 1, group, dilation);
+  O = F->createRegression("reg", O, Ex);
+  auto *result = F->createSave("ret", O);
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, depth});
+  Tensor outputs(ElemKind::FloatTy, {1, numDim, numDim, depth});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+
+  inputsH.randomize(-1, 1, mod.getPRNG());
+  outputsH.randomize(-1, 1, mod.getPRNG());
+
+  performGradCheck(EE_, bindings, result, A, Ex, &inputs, &outputs, 0.001,
+                   0.04);
+}
+
+TEST_P(GradCheck, gradientCheckDilatedConv) {
+  gradientCheckDilatedConv(1, 1, 2, EE_);
+}
+
 TEST_P(InterpreterGrad, gradientCheckAvgPool) {
   PlaceholderBindings bindings;
   size_t numDim = 10;
