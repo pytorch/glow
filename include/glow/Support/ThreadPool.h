@@ -27,31 +27,31 @@
 
 namespace glow {
 
-/// An executor that runs Tasks on a single thread.
-class ThreadExecutor final {
 #ifdef WIN32
-  /// A copyable wrapper for a lambda function that has non-copyable objects in
-  /// its lambda capture.
-  /// This is useful for VS builds where std::packaged_tasks wraps a
-  /// std::function which must be copyable.
-  template <class F> struct shared_function {
-    std::shared_ptr<F> f;
-    shared_function() = delete;
-    shared_function(F &&f_) : f(std::make_shared<F>(std::move(f_))) {}
-    shared_function(shared_function const &) = default;
-    shared_function(shared_function &&) = default;
-    shared_function &operator=(shared_function const &) = default;
-    shared_function &operator=(shared_function &&) = default;
-    template <class... As> auto operator()(As &&... as) const {
-      return (*f)(std::forward<As>(as)...);
-    }
-  };
-  template <class F>
-  shared_function<std::decay_t<F>> make_shared_function(F &&f) {
-    return {std::forward<F>(f)};
+/// A copyable wrapper for a lambda function that has non-copyable objects in
+/// its lambda capture.
+/// This is useful for VS builds where std::packaged_tasks wraps a
+/// std::function which must be copyable.
+template <class F> struct shared_function {
+  std::shared_ptr<F> f;
+  shared_function() = delete;
+  shared_function(F &&f_) : f(std::make_shared<F>(std::move(f_))) {}
+  shared_function(shared_function const &) = default;
+  shared_function(shared_function &&) = default;
+  shared_function &operator=(shared_function const &) = default;
+  shared_function &operator=(shared_function &&) = default;
+  template <class... As> auto operator()(As &&... as) const {
+    return (*f)(std::forward<As>(as)...);
   }
+};
+template <class F>
+shared_function<std::decay_t<F>> make_shared_function(F &&f) {
+  return {std::forward<F>(f)};
+}
 #endif
 
+/// An executor that runs Tasks on a single thread.
+class ThreadExecutor final {
 public:
   /// Constructor. Initializes one thread backed by the workQueue_.
   ThreadExecutor();
