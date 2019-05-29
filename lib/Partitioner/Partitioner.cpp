@@ -46,8 +46,8 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
   if (partitions_.size() == 0)
     return;
   auto *root = partitions_[0].root.get();
-  llvm::outs() << "Writing dotty graph for DAG after graph partitioning: "
-               << dotFilename << '\n';
+  LOG(INFO) << "Writing dotty graph for DAG after graph partitioning: "
+            << dotFilename.str();
   std::ofstream myfile;
   myfile.open(dotFilename);
   myfile << "digraph DAG {\n\trankdir=TB;\n";

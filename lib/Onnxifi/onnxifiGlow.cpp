@@ -19,6 +19,8 @@
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
+#include <glog/logging.h>
+
 /// Allow defining names for onnxifi implementation.
 #ifndef GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER
 #define GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(name) name
@@ -441,7 +443,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetGraphIO)(
     onnxGraph graph, uint32_t inputsCount,
     const onnxTensorDescriptorV1 *inputDescriptors, uint32_t outputsCount,
     const onnxTensorDescriptorV1 *outputDescriptors) {
-  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxSetGraphIO\n";
+  LOG(ERROR) << "Use onnxSetIOAndRunGraph instead of onnxSetGraphIO";
   return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
@@ -451,7 +453,7 @@ EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxRunGraph)(
     onnxGraph graph, const onnxMemoryFenceV1 *inputFence,
     onnxMemoryFenceV1 *outputFence) {
-  llvm::errs() << "Use onnxSetIOAndRunGraph instead of onnxRunGraph\n";
+  LOG(ERROR) << "Use onnxSetIOAndRunGraph instead of onnxRunGraph";
   return ONNXIFI_STATUS_INTERNAL_ERROR;
 }
 
@@ -468,10 +470,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph)(
 
   if ((inputsCount && !inputDescriptors) ||
       (outputsCount && !outputDescriptors) || !outputFence) {
-    llvm::errs() << "inputsCount " << inputsCount << ", outputsCount "
-                 << outputsCount << ", inputDescriptors: " << inputDescriptors
-                 << ", outputDescriptors: " << outputDescriptors
-                 << ", outputFence: " << outputFence;
+    LOG(ERROR) << "inputsCount " << inputsCount << ", outputsCount "
+               << outputsCount << ", inputDescriptors: " << inputDescriptors
+               << ", outputDescriptors: " << outputDescriptors
+               << ", outputFence: " << outputFence;
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
 

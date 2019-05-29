@@ -107,7 +107,8 @@ void ProtobufLoader::deleteUnusedConstants() {
   for (auto &name : nodeValuesToRemove) {
     auto it = nodeValueByName_.find(name);
     auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
-    assert(c && "This should have been a Constant");
+    DCHECK(c) << "NodeValue with name " << name
+              << " was expected to have been a Constant";
     G_.getParent()->eraseConstant(c);
     nodeValueByName_.erase(it);
   }

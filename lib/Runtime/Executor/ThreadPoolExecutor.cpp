@@ -29,7 +29,7 @@ namespace runtime {
 
 void InflightBarrier::decrement(unsigned decr) {
   std::unique_lock<std::mutex> lock(mtx_);
-  assert(count_ >= decr && "Barrier decrement cannot be less than count!");
+  DCHECK_GE(count_, decr) << "Barrier decrement cannot be less than count!";
   count_ -= decr;
 
   // If count_ has hit zero, wake up all threads that are waiting.
@@ -146,9 +146,8 @@ ExecutionState::getUniqueNodeContextPtr(const DAGNode *node) {
   // constructor.
   auto ctxIt = inputCtxs_.find(node);
 
-  if (ctxIt == inputCtxs_.end()) {
-    assert(!"Input bindings not found but should exist!");
-  }
+  DCHECK(ctxIt != inputCtxs_.end())
+      << "Input bindings not found but should exist!";
 
   return std::move(ctxIt->second);
 }
@@ -164,9 +163,8 @@ bool ExecutionState::decrementInflightNodes(unsigned decrement) {
 
   // The decrement should never be more than the value of the counter at the
   // time of decrement.
-  if (previousValue < decrement) {
-    assert(!"More decrements than increments to inflight nodes!");
-  }
+  DCHECK_GE(previousValue, decrement)
+      << "More decrements than increments to inflight nodes!";
 
   // Return true when the counter hits zero.
   return (previousValue == decrement);
@@ -178,9 +176,8 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
   // been created in the constructor.
   auto it = nodeParentsDone_.find(node);
 
-  if (it == nodeParentsDone_.end()) {
-    assert(!"Node parents done counter should exist but not found!");
-  }
+  DCHECK(it != nodeParentsDone_.end())
+      << "Node parents done counter should exist but not found!";
 
   // fetch_add must be used here so that the function returns true to only
   // one caller.
@@ -190,9 +187,8 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
 
   // The new value of the counter cannot exceed the number of parents that
   // the node has.
-  if (newValue > numParents) {
-    assert(!"Node parents done counter incremented beyond limit!");
-  }
+  DCHECK_LE(newValue, numParents)
+      << "Node parents done counter incremented beyond limit!";
 
   // Return true only when the counter hits the total numer of parents.
   return (newValue == numParents);
@@ -219,7 +215,7 @@ void ExecutionState::removeIntermediatePlaceholders() {
 std::unique_ptr<ExecutionContext> ExecutionState::getUniqueResultContextPtr() {
   // The result PlaceholderBindings should have been been created in the
   // constructor.
-  assert(resultCtx_ && "Execution result bindings should exist!");
+  DCHECK_NOTNULL(resultCtx_.get());
   return std::move(resultCtx_);
 }
 
@@ -227,7 +223,7 @@ ExecutionContext *ExecutionState::getRawResultContextPtr() const {
   // The result PlaceholderBindings should have been been created in the
   // constructor and should not yet have been moved out if this function is
   // being called.
-  assert(resultCtx_ && "Execution result bindings should exist!");
+  DCHECK_NOTNULL(resultCtx_.get());
   return resultCtx_.get();
 }
 
@@ -287,7 +283,7 @@ void ThreadPoolExecutor::executeDAGNode(
     std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
                     "ThreadPoolExecutor::executeDAGNode");
-  assert(executionState->initialized_ && "Run state must be initialized");
+  DCHECK(executionState->initialized_) << "Run state must be initialized";
   // If execution has already failed due to another node, don't bother running
   // this one.
   if (executionState->getErrorContainer().containsErr()) {
@@ -340,7 +336,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
 
   // If executionState is null, that means that the object was deleted
   // while a node was executing. That should never happen.
-  assert(executionState && "Execution state should not be null");
+  DCHECK_NOTNULL(executionState.get());
 
   TraceContext *traceContext = ctx->getTraceContext();
   TRACE_EVENT_BEGIN(traceContext, "ThreadPoolExecutor::handleResult");

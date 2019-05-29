@@ -36,8 +36,8 @@ bool OneErrOnly::set(llvm::Error err) {
   } else {
     // No update happening so don't need the lock any more.
     lock.unlock();
-    llvm::errs() << "OneErrOnly already has an Error, discarding new Error: "
-                 << llvm::toString(std::move(err)) << "\n";
+    LOG(ERROR) << "OneErrOnly already has an Error, discarding new Error: "
+               << llvm::toString(std::move(err));
     return false;
   }
 }
