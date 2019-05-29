@@ -102,15 +102,10 @@ public:
 
     CompiledFunction *func = funcIt->second;
 
-    PlaceholderBindings &bindings = *(context->getPlaceholderBindings());
-
-    func->setupRuns();
-    func->beforeRun(bindings);
-    func->execute(context.get());
-    func->afterRun(bindings);
+    auto executeErr = func->execute(context.get());
 
     // Fire the resultCB.
-    callback(0, llvm::Error::success(), std::move(context));
+    callback(0, std::move(executeErr), std::move(context));
 
     return 0;
   }

@@ -19,8 +19,7 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Nodes.h"
-
-#include <unordered_map>
+#include "glow/Support/Error.h"
 
 namespace glow {
 
@@ -39,21 +38,8 @@ public:
   virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
   /// \p bindings providing mapping between Placeholder and populated tensor.
-  virtual void execute(ExecutionContext *context) = 0;
-
-  /// Does any needed initialization work for the Backend.
-  /// This includes device init constant memory allocation and copying to
-  /// device. \deprecated
-  virtual void setupRuns() { runsSetup_ = true; }
-
-  /// Per run setup. Copy inputs to device. \deprecated
-  virtual void beforeRun(const PlaceholderBindings &bindings) {}
-
-  /// Per run cleanup. Copy outputs from device. \deprecated
-  virtual void afterRun(const PlaceholderBindings &bindings) {}
-
-  /// Final cleanup. Release memory, reset device. \deprecated
-  virtual void tearDownRuns() { runsSetup_ = false; }
+  /// \returns an llvm::Error if an error ocurred during execution.
+  virtual llvm::Error execute(ExecutionContext *context) = 0;
 
   /// Getter for the runtimeBundle.
   runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
@@ -75,8 +61,6 @@ public:
   virtual BackendKind getCompileBackendKind() const = 0;
 
 protected:
-  /// Flag to ensure setupRuns is only called once.
-  bool runsSetup_{false};
   /// Contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;
 

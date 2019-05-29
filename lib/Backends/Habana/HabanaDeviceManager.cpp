@@ -298,7 +298,12 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
       llvm::make_unique<HabanaBindings>(deviceId_, topologyId);
   deviceBindings->setIOBuffer(ioBufferPool->get());
   ctx->setDeviceBindings(std::move(deviceBindings));
-  function->execute(ctx.get());
+
+  auto executeErr = function->execute(ctx.get());
+  if (executeErr) {
+    resultCB(runId, std::move(executeRes), std::move(ctx));
+    return;
+  }
 
   // Give the handle to the wait thread pool to wait on and call the callback
   // for.

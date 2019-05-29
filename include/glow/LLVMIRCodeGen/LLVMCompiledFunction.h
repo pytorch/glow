@@ -30,8 +30,7 @@ public:
 
   /// \name CompiledFunction interface
   ///@{
-  virtual ~LLVMCompiledFunction() override;
-  virtual void execute(ExecutionContext *context) override;
+  virtual llvm::Error execute(ExecutionContext *context) override;
 
   virtual void collectConstants(const Module *module) override;
 

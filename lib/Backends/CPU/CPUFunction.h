@@ -33,7 +33,7 @@ public:
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override = default;
-  void execute(ExecutionContext *context) override;
+  llvm::Error execute(ExecutionContext *context) override;
 
   /// \returns the Kind of Backend used to compile this function.
   virtual BackendKind getCompileBackendKind() const override {

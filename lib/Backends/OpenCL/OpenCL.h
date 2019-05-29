@@ -113,7 +113,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  void execute(ExecutionContext *context) override;
+  llvm::Error execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;

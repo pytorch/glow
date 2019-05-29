@@ -343,7 +343,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   context->setDeviceBindings(std::move(clBindings));
 
   // Run that function.
-  func->execute(context.get());
+  auto executeErr = func->execute(context.get());
 
   // Return the command queue.
   returnRunCommandQueue(commands);
@@ -352,5 +352,5 @@ void OpenCLDeviceManager::runFunctionImpl(
   TRACE_EVENT_END(context, "DM_run");
 
   // Fire the resultCB.
-  resultCB(id, llvm::Error::success(), std::move(context));
+  resultCB(id, std::move(executeErr), std::move(context));
 }

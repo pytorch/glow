@@ -26,8 +26,6 @@ LLVMCompiledFunction::LLVMCompiledFunction(
     const runtime::RuntimeBundle &runtimeBundle)
     : CompiledFunction(runtimeBundle), JIT_(std::move(JIT)) {}
 
-LLVMCompiledFunction::~LLVMCompiledFunction() { tearDownRuns(); }
-
 void LLVMCompiledFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
 }
@@ -68,7 +66,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   }
 }
 
-void LLVMCompiledFunction::execute(ExecutionContext *context) {
+llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -127,6 +125,8 @@ void LLVMCompiledFunction::execute(ExecutionContext *context) {
     auto ev = context->scopedEvent("processInstrumentation");
     translateTraceEvents(context);
   }
+
+  return llvm::Error::success();
 }
 
 void LLVMCompiledFunction::translateTraceEvents(
