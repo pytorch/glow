@@ -850,7 +850,7 @@ public:
     assert(low >= std::numeric_limits<ElemTy>::lowest() &&
            high <= std::numeric_limits<ElemTy>::max() &&
            "Cannot initialize outside range of representable values.");
-    std::uniform_int_distribution<int> dist(low, high);
+    std::uniform_int_distribution<long long> dist(low, high);
     switch (getElementType()) {
     default: {
       for (auto &elem : *this) {
