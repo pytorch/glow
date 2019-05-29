@@ -37,6 +37,8 @@ struct BackendInfo {
   size_t num = 0;
   /// The memory constraints for this backend kind.
   uint64_t memSize;
+  /// Backend Kind name.
+  std::string name;
   /// Backend pointer.
   Backend *backend = nullptr;
 };
@@ -69,10 +71,16 @@ class NodeToFunctionMap {
   /// Map of nodes in the original function to their target partition.
   NodeToFunctionMapTy nodeToFunction_;
 
+  /// Map of the partitions to the backendKind which will be used for compiling
+  /// this partition.
   FunctionToBackendKindMapTy functionToBackendKind_;
 
   /// Map of sub-functions to their memory consumption.
   PartitionCostMapTy partitionCost_;
+
+  /// Map of partitions and the logicalDeviceID. The partitions with the same
+  /// logcialDeviceID will be assigned into the same physical device.
+  std::map<Function *, std::vector<DeviceIDTy>> logicalDeviceIDMap_;
 
 public:
   /// Create a new partition \p F, and map it with \p backendKind.
@@ -93,6 +101,19 @@ public:
   /// Get list of functions contained in this map.
   const FunctionList &getPartitions() const { return functions_; }
 
+  /// Get the list of logical device ID related to this function \p F.
+  std::vector<DeviceIDTy> getLogicalDeviceIDList(Function *F) {
+    return logicalDeviceIDMap_[F];
+  }
+
+  void appendLogicalDeviceID(Function *F, DeviceIDTy id) {
+    if (logicalDeviceIDMap_.find(F) == logicalDeviceIDMap_.end()) {
+      logicalDeviceIDMap_.emplace(
+          std::make_pair(F, std::vector<DeviceIDTy>{id}));
+    } else {
+      logicalDeviceIDMap_[F].push_back(id);
+    }
+  }
   /// attach \p map to current mapping.
   void insert(NodeToFunctionMap &map) {
     FunctionList flist = map.getPartitions();
@@ -100,6 +121,8 @@ public:
       Function *func = *it;
       auto backendKind = map.getPartitionBackendKind(func);
       createPartition(func, backendKind);
+      GraphMemInfo cost = map.getGraphMemInfo(func);
+      setGraphMemInfo(func, cost);
     }
     for (auto it = map.begin(); it != map.end(); ++it) {
       Node *n = it->first;
@@ -143,9 +166,16 @@ class Partitioner {
   /// The backend pointers.
   std::vector<Backend *> backends_;
 
-  /// The map between BackendKind and its name. It is used for generating debug
-  /// info.
-  std::map<BackendKind, std::string> backendName_;
+  /// The map between BackendKind and BackendInfo.
+  std::map<BackendKind, BackendInfo> backendMap_;
+
+  /// The map between partitions and the logicalDeviceID. The partitions with
+  /// the same logcialDeviceID will be assigned into the same physical device.
+  std::map<Function *, std::vector<DeviceIDTy>> logicalIDMap_;
+
+  /// The number of logicalDevice IDs, i.e. the number of physical devices
+  /// needed after partitions.
+  DeviceIDTy logicalDeviceID_;
 
   /// The result of module partitioning.
   DAGListTy partitions_;
@@ -195,10 +225,15 @@ class Partitioner {
   NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory,
                                      BackendKind backendKind);
 
-  /// Adjust a logicalDevice ID to each DAGNode. It is possible that two
-  /// sub-functions need to be assigned into 1 device due to the memory
-  /// constraits.
-  void adjustLogicalDeviceID();
+  /// Assign a logicalDeviceID to each partition. It is possible that two
+  /// partitions need to be assigned into 1 device due to the number of physical
+  /// devices.
+  DeviceIDTy assignLogicalDeviceID(NodeToFunctionMap &partitions);
+
+  /// Check if this partition way \p partitions satisfies number of physical
+  /// devices restriction. I.e. check if the number of logical devices is less
+  /// than the given physical devices.
+  llvm::Error logicalDevicesValidation(NodeToFunctionMap &partitions);
 
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
@@ -209,8 +244,8 @@ class Partitioner {
   /// Given the node-function mapping, do the actual partitioning. If \p saveDAG
   /// is true, the DAG will be saved into partitions_, which is the final
   /// partition result.
-  DeviceIDTy doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
-                            NodeToFunctionMap &mapping, bool saveDAG);
+  void doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
+                      NodeToFunctionMap &mapping, bool saveDAG);
 
 public:
   /// \p parent is the module which contains the functions need to be divided.

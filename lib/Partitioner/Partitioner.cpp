@@ -26,6 +26,13 @@
 using namespace glow;
 using llvm::isa;
 
+// Sorted the std::pair<DAGNode *, uint64_t> based on the second from min to
+// max.
+auto sortMinMemory(const std::pair<Function *, uint64_t> &a,
+                   const std::pair<Function *, uint64_t> &b) -> bool {
+  return a.second <= b.second;
+}
+
 /// Check if the memory of \p node inputs is calculated already. \returns the
 /// total used memory after \p node is considered.
 static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
@@ -62,12 +69,13 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
     for (size_t i = 0; i < node->children.size(); i++) {
       auto child = node->children[i];
       DescriptionBuilder db(child->name.c_str());
-      db.addParam("BackendKind", backendName_.at(child->backendKind));
-      myfile << child->name << " [ label = \"" << escapeDottyString(db) << "\"";
+      const std::string &backendName = backendMap_.at(child->backendKind).name;
+      db.addParam("BackendKind", backendName);
+      myfile << "\"" << escapeDottyString(child->name) << "\""
+             << " [ label = \"" << escapeDottyString(db) << "\"";
       myfile << "\tshape = \"record\"\n";
       myfile << "\tstyle=\"filled,rounded\"\n";
-      auto colorIdx = llvm::hash_value(
-          llvm::StringRef(backendName_.at(child->backendKind)));
+      auto colorIdx = llvm::hash_value(llvm::StringRef(backendName));
       myfile << "\tfillcolor=" << getDotFileNodeColor(colorIdx) << "\n";
       myfile << "penwidth = 2];\n";
       if (used.count(child) == 0) {
@@ -84,7 +92,10 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
     auto *root = nodes[i];
     for (size_t j = 0; j < root->children.size(); j++) {
       auto child = root->children[j];
-      myfile << root->name << " -> " << child->name << ";";
+      myfile << "\"" << escapeDottyString(root->name) << "\""
+             << " -> "
+             << "\"" << escapeDottyString(child->name) << "\""
+             << ";";
     }
   }
   myfile << "}";
@@ -93,12 +104,38 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
   return;
 }
 
+llvm::Error
+Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
+  std::map<BackendKind, std::set<DeviceIDTy>> partitionsNum;
+  for (auto &func : partitions.getPartitions()) {
+    auto backendKind = partitions.getPartitionBackendKind(func);
+    if (partitionsNum.find(backendKind) == partitionsNum.end()) {
+      partitionsNum.emplace(
+          std::make_pair(backendKind, std::set<DeviceIDTy>{}));
+    }
+    auto logicalIDList = partitions.getLogicalDeviceIDList(func);
+    for (size_t i = 0, e = logicalIDList.size(); i < e; i++) {
+      partitionsNum[backendKind].insert(logicalIDList[i]);
+    }
+    RETURN_ERR_IF_NOT(
+        partitionsNum[backendKind].size() <= backendMap_[backendKind].num,
+        llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
+                      "is fewer than the required minimal partitions({2}).",
+                      backendMap_[backendKind].name,
+                      backendMap_[backendKind].num,
+                      partitionsNum[backendKind].size())
+            .str());
+  }
+  return llvm::Error::success();
+}
+
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
                          const std::vector<Backend *> &backends,
                          bool saturateHost, bool optimized)
     : module_(parent), deviceInfo_(devices), backends_(backends),
       saturateHost_(saturateHost), optimized_(optimized) {
   memSize_ = module_->getConstantsSize();
+  logicalDeviceID_ = 0;
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
@@ -106,6 +143,7 @@ Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
     : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost),
       optimized_(optimized) {
   memSize_ = module_->getConstantsSize();
+  logicalDeviceID_ = 0;
 }
 
 Function *Partitioner::selectRepFunc(Module *parent, uint64_t &memSize) {
@@ -488,11 +526,117 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   return mapping;
 }
 
-/// Adjust the logicalDevice ID for each DAGNode. This happens when \p num (i.e.
-/// the number of DAGNodes) is larger than the number of devices. E.g:
-/// node1(6GB) -> node2(14GB) -> node3(6GB). The memory limitation is 16GB, and
-/// there is only 2 devices.
-void Partitioner::adjustLogicalDeviceID() {}
+/// Assign the logicalDevice ID to each partition. The partitions with the same
+/// logicalDevice ID will be assigned on the same physical devices. E.g: there
+/// are 3 partitions node1(6GB) -> node2(14GB) -> node3(6GB). But we only have 2
+/// devices with 16GB memory. The logicalDevice ID assigning rules are:
+/// 1. For each type of backend, if the number of available physical devices is
+/// equal or larger than the number of partitions, different partitions are
+/// assigned with a different logicalDevice ID(i.e. each partition will be put
+/// on a different physical device for execution). E.g. we have 3 partitions
+/// node1->node2->node3, and 3 devices, the logicalDevice ID for each partition
+/// with be (node1, 0), (node2, 1), and (node3, 2).
+/// 2. For each type of backend, if the number of available physical devices is
+/// smaller than the number of partitions, and we can find a way to put all
+/// partitions on those pysical devices, this assignment will be applied and the
+/// partitions on the same physical devices will be assigned the same
+/// logicalDevice ID.  E.g: there are 3 partitions node1(6GB) -> node2(14GB) ->
+/// node3(6GB). But we only have 2 devices with 16GB memory. The assignment will
+/// be : (node1, 0), (node2, 1), (node3, 0).
+/// 3. For each type of backend, if the number of available physical devices is
+/// smaller than the number of partitions, and we can not find a way to put all
+/// partitions on those pysical devices, we assign defferent partitions with
+/// different logicalDevice ID.  E.g: there are 3 partitions node1(6GB) ->
+/// node2(14GB) -> node3(6GB). But we only have 1 device with 16GB memory. The
+/// assignment will be : (node1, 0), (node2, 1), (node3, 2). That is, even we
+/// can put node1 and node3 on the same device, we won't do it.
+DeviceIDTy Partitioner::assignLogicalDeviceID(NodeToFunctionMap &mapping) {
+  DeviceIDTy logicalDeviceID = 0;
+
+  std::map<BackendKind, std::vector<Function *>> backendFuncMap;
+  for (auto &func : mapping.getPartitions()) {
+    // Traverse the paritions, and get list of partitions with each backendKind.
+    auto backendKind = mapping.getPartitionBackendKind(func);
+    if (backendFuncMap.find(backendKind) == backendFuncMap.end()) {
+      backendFuncMap.emplace(backendKind, std::vector<Function *>{func});
+    } else {
+      backendFuncMap[backendKind].push_back(func);
+    }
+  }
+
+  // For each type of the backend, assign the logicalDevice ID.
+  for (const auto &p : backendFuncMap) {
+    if (mapping.getPartitions().size() <= backendMap_[p.first].num) {
+      // There is enough device with this backendKind, no need to adjust the
+      // logical ID.
+      for (auto &func : p.second) {
+        mapping.appendLogicalDeviceID(func, logicalDeviceID++);
+      }
+      continue;
+    }
+    // Get the list of functions with current BackendKind, and sort it based on
+    // used memory from min to max.
+    std::vector<std::pair<Function *, uint64_t>> nodeSize;
+    for (size_t i = 0, e = p.second.size(); i < e; i++) {
+      Function *function = p.second[i];
+      uint64_t totalMem = mapping.getGraphMemInfo(function).getTotalMemSize();
+      nodeSize.push_back(std::make_pair(p.second[i], totalMem));
+    }
+    std::sort(nodeSize.begin(), nodeSize.end(), sortMinMemory);
+
+    // Assume we have n devices(NOTE: here the n devices have the same avaiable
+    // memory size, and the following algorithm can find the accurate result. If
+    // the memory size are differnt, this assignment issue will be a NP problem
+    // -- multiple knapsack problem, and the following algorithm becomes greedy
+    // and the result may not be optimal), and m partitions, where m > n. If
+    // these m partitions can be assigned to n devices, there must be 1 device
+    // have at least (m - 1)/n + 1 partitions(Pigeonhole principle). Based on
+    // this theory, the algorithm is: Given N devices, and M partitions:
+    // Step 1 : sort the partitions from min to max based on their memory usage.
+    std::sort(nodeSize.begin(), nodeSize.end(), sortMinMemory);
+    // Step 2 : let n = N, m = M.
+    size_t m = p.second.size();
+    size_t n = backendMap_[p.first].num;
+    while (m > 0) {
+      // Step 3 : find the first k partitions whose total memory usage still
+      // under the memory limitation (k should be max).
+      uint64_t usedMem = 0;
+      size_t numOfPartitionsWithSameID = (m - 1) / n + 1;
+      size_t start = p.second.size() - m;
+      size_t i;
+      for (i = start; i < p.second.size(); i++) {
+        if (usedMem + nodeSize[i].second > backendMap_[p.first].memSize) {
+          break;
+        }
+        usedMem += nodeSize[i].second;
+      }
+      // Step 4 : if k = start - i found in step 3 is smaller than (m - 1) / n +
+      // 1, this means we can't find a proper assignment to fit the number of
+      // devices. Assign each partition with a unique logicalDevice ID and
+      // return.
+      if (i - start < numOfPartitionsWithSameID) {
+        // Can't find a proper assignment. Assign each partition a unique
+        // logicalDevice ID and return;
+        logicalDeviceID = 0;
+        for (auto &func : mapping.getPartitions()) {
+          mapping.appendLogicalDeviceID(func, logicalDeviceID++);
+        }
+        return logicalDeviceID;
+      }
+
+      // Step 5 : Assign these partitions which are assigned to one device with
+      // the same logical ID.
+      for (size_t j = start; j < i; j++) {
+        mapping.appendLogicalDeviceID(nodeSize[j].first, logicalDeviceID);
+      }
+      logicalDeviceID++;
+      // Step 6 : Update the left number of devices and partitions.
+      n--;
+      m = m - (i - start);
+    }
+  }
+  return logicalDeviceID;
+}
 
 /// Duplicate the network to saturate the number of devices. For example: If a
 /// network is partitioned into two parts (\p logicalDeviceCount) and there are
@@ -524,10 +668,9 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount) {
 }
 
 /// Current only partition the representative function.
-DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
-                                       std::vector<Function *> funcs,
-                                       NodeToFunctionMap &mapping,
-                                       bool saveDAG) {
+void Partitioner::doPartitioning(llvm::StringRef funcName,
+                                 std::vector<Function *> funcs,
+                                 NodeToFunctionMap &mapping, bool saveDAG) {
   // Add a dummy node to make sure that a DAG has a single entrance.
   DAGNodePtr DAGRoot = llvm::make_unique<DAGNode>();
   DAGNodePtrVec nodes;
@@ -550,14 +693,13 @@ DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
 
   // For any dependency that crosses a partition, add a placeholder and save
   // node. Record the dependence in the function graph.
-  DeviceIDTy logicalID = 0;
   std::unordered_map<NodeValue, Placeholder *> placeholders;
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
       std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
-      subDAG->logicalDevices = {logicalID++};
+      subDAG->logicalDevices = mapping.getLogicalDeviceIDList(subF);
       subDAG->backendKind = mapping.getPartitionBackendKind(subF);
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
@@ -600,7 +742,7 @@ DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
         if (funcDAG.find(inputF) == funcDAG.end()) {
           std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
-          subDAG->logicalDevices = {logicalID++};
+          subDAG->logicalDevices = mapping.getLogicalDeviceIDList(inputF);
           subDAG->backendKind = mapping.getPartitionBackendKind(inputF);
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
@@ -657,8 +799,6 @@ DeviceIDTy Partitioner::doPartitioning(llvm::StringRef funcName,
       root->children.push_back(funcDAG[subF]);
     }
   }
-
-  return logicalID;
 }
 
 FunctionToBackendKindMapTy
@@ -737,6 +877,9 @@ void Partitioner::getBackendMap(
     if (backendMap.find(backendKind) == backendMap.end()) {
       BackendInfo backendInfo;
       backendInfo.num = 1;
+      // We assume that for the same type of devices, the available memory size
+      // is the same.
+      // TODO : will improve the algorithm for different memory size.
       backendInfo.memSize = deviceInfo_[i].availableMemory;
       if (hasBackends) {
         backendInfo.backend = backends_[i];
@@ -744,6 +887,7 @@ void Partitioner::getBackendMap(
         backendsHolder.emplace_back(createBackend(backendKind));
         backendInfo.backend = backendsHolder[n++].get();
       }
+      backendInfo.name = (backendInfo.backend)->getBackendName();
       backendMap[backendKind] = backendInfo;
       backends.push_back(backendMap[backendKind].backend);
     } else {
@@ -783,15 +927,9 @@ llvm::Error Partitioner::createDAGWithoutPartition(
 
 llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Prepare the mapping between BackendKind and BackendInfo.
-  std::map<BackendKind, BackendInfo> backendMap;
   std::vector<Backend *> backends;
   std::vector<std::unique_ptr<Backend>> backendHolder;
-  getBackendMap(backendMap, backendHolder, backends);
-
-  // Assign the backend name to its BackendKind.
-  for (size_t i = 0, e = backends.size(); i < e; i++) {
-    backendName_[backends[i]->getBackendKind()] = backends[i]->getBackendName();
-  }
+  getBackendMap(backendMap_, backendHolder, backends);
 
   // Step 0: Find the representative function for running partitioning
   // algorithm.
@@ -805,10 +943,10 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     auto backendKind = backends[0]->getBackendKind();
     funcToBackend[F_] = backendKind;
 
-    if (memSize_ < backendMap[backendKind].memSize) {
+    if (memSize_ < backendMap_[backendKind].memSize) {
       // No partition is needed. Create DAGNode and return. This root is alway a
       // dummy function.
-      return createDAGWithoutPartition(backendKind, backendMap, cctx);
+      return createDAGWithoutPartition(backendKind, backendMap_, cctx);
     }
   } else {
     funcToBackend = backendBasedPartition(F_, backends);
@@ -821,9 +959,8 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   std::vector<Function *> funcs;
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     auto *func = i->first;
-    auto *backend = backendMap[i->second].backend;
-    auto availMem = backendMap[i->second].memSize;
-    auto num = backendMap[i->second].num;
+    auto *backend = backendMap_[i->second].backend;
+    auto availMem = backendMap_[i->second].memSize;
     funcs.push_back(func);
     assert(func->verify() && "Conversion led to invalid function");
     // Step 2.1 : Optimize a function if it has not been optimized yet.
@@ -839,30 +976,29 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     // Step 2.3 : Apply graph partitioning algrithm to find out the partition.
     NodeToFunctionMap partitionMap =
         selectPartitions(func, availMem, i->second);
-
-    RETURN_ERR_IF_NOT(
-        partitionMap.getPartitions().size() <= num,
-        llvm::formatv(
-            "Partition failed: the number of given ({0}) devices ({1}) is "
-            "fewer than the required minimal partitions ({2}).",
-            backend->getBackendName(), num, partitionMap.getPartitions().size())
-            .str());
-
     mapping.insert(partitionMap);
   }
 
-  // Step 3: do the real partitioning for the function list.
-  DeviceIDTy logicalID = doPartitioning(origName, funcs, mapping, true);
+  // Step 4 : assign each partition with a logical device id. The partitions
+  // with the same logical device id will be assigned into the same physical
+  // device.
+  logicalDeviceID_ = assignLogicalDeviceID(mapping);
 
-  // Step 4 : Post-partition optimization - Adjust the logicalDevice for each
+  // Check if the number of logical devices is less than the given physical
+  // devices.
+  RETURN_IF_ERR(logicalDevicesValidation(mapping));
+
+  // Step 5 : do the real partitioning for the function list.
+  doPartitioning(origName, funcs, mapping, true);
+
+  // Step 6 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
-  if (mapping.getPartitions().size() > deviceInfo_.size()) {
-    adjustLogicalDeviceID();
-  } else if (saturateHost_ && backends.size() == 1) {
+  if (saturateHost_ && backends.size() == 1 &&
+      mapping.getPartitions().size() < deviceInfo_.size()) {
     // Attempt to saturate the host when there is only one type of backend.
     // Passing in the count of logical devices. Since logicalId starts at 0 we
     // add one.
-    saturateHost(logicalID);
+    saturateHost(logicalDeviceID_);
   }
 
   // Step 5: clean up and verify the generate new functions.
@@ -874,6 +1010,5 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     (void)subF;
     assert(subF->verify() && "Conversion led to invalid function");
   }
-
   return llvm::Error::success();
 }
