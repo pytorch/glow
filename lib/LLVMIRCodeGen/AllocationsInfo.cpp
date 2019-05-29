@@ -15,6 +15,7 @@
  */
 
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Graph.h"
@@ -51,8 +52,15 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
     allocatedAddress_[w] = addr;
   }
 
+  // Placeholders should be allocated in a order of
+  // intput|inputOutput|output|neither.
+  auto contiguousPlaceholders =
+      getContiguousPlaceHolder(F->findPlaceholders(), *F);
+
   // Compute the offsets and total memory requirements for Placeholders.
-  for (auto &v : F->findPlaceholders()) {
+  for (auto it = contiguousPlaceholders.begin();
+       it != contiguousPlaceholders.end(); it++) {
+    auto &v = it->addr;
     // Get the WeightVar for each Placeholder to calculate offsets.
     assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));

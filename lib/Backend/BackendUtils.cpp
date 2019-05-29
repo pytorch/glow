@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Backend/BackendUtils.h"
+#include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -84,14 +85,17 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   return it->second;
 }
 
-/// If \p PH is an output placeholder, \returns true.
-/// This is determined by checking if the PH has a user which uses the PH as an
-/// overwritten input.
-bool isOutput(const Placeholder *PH) {
+namespace glow {
+
+bool isOutput(const Placeholder *PH, const Function &F) {
   for (const auto &use : PH->getUsers()) {
     // Look through the inputs of the PH's users. If an input is overwritten
     // check if it's the PH, if it is return true.
     auto *user = use.getUser();
+    // Consider only users inside the same function.
+    if (user->getParent() != &F) {
+      continue;
+    }
     for (unsigned i = 0, numInputs = user->getNumInputs(); i < numInputs; i++) {
       // If the input is not overwritten we can continue.
       if (!user->isOverwrittenNthInput(i)) {
@@ -106,10 +110,13 @@ bool isOutput(const Placeholder *PH) {
   return false;
 }
 
-/// If \p PH is an input placeholder, \returns true.
-bool isInput(const Placeholder *PH) {
+bool isInput(const Placeholder *PH, const Function &F) {
   // Check that the PH is the input to a saveNode or is used by a non saveNode.
   for (const auto &use : PH->getUsers()) {
+    // Consider only users inside the same function.
+    if (use.getUser()->getParent() != &F) {
+      continue;
+    }
     // Check if PH is an input to a saveNode.
     if (auto *save = dyn_cast<SaveNode>(use.getUser())) {
       auto input = save->getInput();
@@ -122,6 +129,109 @@ bool isInput(const Placeholder *PH) {
   }
   return false;
 }
+
+bool isOutput(const Placeholder *PH, const IRFunction &F) {
+  auto *weight = F.getWeightForNode(PH);
+  assert(weight && "Weight for a node was not found");
+  for (const auto &use : ValueUses(weight)) {
+    Instruction *user = use.get();
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    OperandKind kind = use.getOperand().second;
+    if (kind == OperandKind::Out || kind == OperandKind::InOut) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isInput(const Placeholder *PH, const IRFunction &F) {
+  // Check that the PH is always used as an @in parameter by the current
+  // function.
+  auto *weight = F.getWeightForNode(PH);
+  assert(weight && "Weight for a node was not found");
+  for (const auto &use : ValueUses(weight)) {
+    Instruction *user = use.get();
+    // Ignore deallocs.
+    if (isa<DeallocActivationInst>(user)) {
+      continue;
+    }
+    OperandKind kind = use.getOperand().second;
+    if (kind == OperandKind::In || kind == OperandKind::InOut) {
+      return true;
+    }
+  }
+  return false;
+}
+
+template <typename FUN, typename ARR>
+ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
+                                                const FUN &F) {
+  // Pure input placeholders.
+  std::vector<const Placeholder *> intputPlaceholders;
+  // Pure output placeholders.
+  std::vector<const Placeholder *> outputPlaceholders;
+  // Input&output placeholders.
+  std::vector<const Placeholder *> inputOutputPlaceholders;
+  // Neither input nor output placeholders.
+  std::vector<const Placeholder *> emptyPlaceholders;
+  // Return value.
+  ContiguousPlaceholders ret;
+
+  for (auto &v : holders) {
+    if (isInput(v, F)) {
+      if (!isOutput(v, F)) {
+        intputPlaceholders.push_back(v);
+      } else {
+        inputOutputPlaceholders.push_back(v);
+      }
+    } else {
+      if (isOutput(v, F)) {
+        outputPlaceholders.push_back(v);
+      } else {
+        emptyPlaceholders.push_back(v);
+      }
+    }
+  }
+
+  for (auto &v : intputPlaceholders) {
+    PlaceholderInputOutputInfo holder;
+    holder.addr = v;
+    holder.isInput = true;
+    holder.isOutput = false;
+    ret.push_back(holder);
+  }
+
+  for (auto &v : inputOutputPlaceholders) {
+    PlaceholderInputOutputInfo holder;
+    holder.addr = v;
+    holder.isInput = true;
+    holder.isOutput = true;
+    ret.push_back(holder);
+  }
+
+  for (auto &v : outputPlaceholders) {
+    PlaceholderInputOutputInfo holder;
+    holder.addr = v;
+    holder.isInput = false;
+    holder.isOutput = true;
+    ret.push_back(holder);
+  }
+
+  for (auto &v : emptyPlaceholders) {
+    PlaceholderInputOutputInfo holder;
+    holder.addr = v;
+    holder.isInput = false;
+    holder.isOutput = false;
+    ret.push_back(holder);
+  }
+
+  return ret;
+}
+
+} // namespace glow
 
 runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
@@ -144,15 +254,22 @@ runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
   }
 
   // Allocate placeholders.
-  for (auto const *V : F.findPlaceholders()) {
+  // Placeholders should be allocated in a order of Input|InputOutput|Output.
+  auto contiguousPlaceholders =
+      getContiguousPlaceHolder(F.findPlaceholders(), F);
+
+  // Compute the offsets for Placeholders.
+  for (auto it = contiguousPlaceholders.begin();
+       it != contiguousPlaceholders.end(); it++) {
+    auto &V = it->addr;
     auto size = V->getType()->getSizeInBytes();
     auto offset = placeholders.allocate(size, V);
     runtime::RuntimeSymbolInfo symbol;
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
-    symbol.output = isOutput(V);
-    symbol.input = isInput(V);
+    symbol.output = it->isOutput;
+    symbol.input = it->isInput;
     symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(V->getName(), symbol);
   }
@@ -187,9 +304,14 @@ runtime::RuntimeBundle::create(const IRFunction &F,
   }
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
 
+  // Placeholders should be allocated in a order of Input|InputOutput|Output.
+  auto contiguousPlaceholders =
+      getContiguousPlaceHolder(F.findPlaceholders(), F);
+
   // Compute the offsets for Placeholders.
-  for (auto &v : F.findPlaceholders()) {
-    // Get the WeightVar for each Placeholder to calculate offsets.
+  for (auto it = contiguousPlaceholders.begin();
+       it != contiguousPlaceholders.end(); it++) {
+    auto &v = it->addr;
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F.getWeightForNode(v));
     auto numBytes = w->getSizeInBytes();
@@ -198,15 +320,14 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.offset = addr;
     symbol.size = numBytes;
     symbol.type = *w->getType();
-    symbol.output = isOutput(v);
-    symbol.input = isInput(v);
+    symbol.output = it->isOutput;
+    symbol.input = it->isInput;
     symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(std::string(v->getName()), symbol);
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
 
   // Compute the offsets for Activations.
-
   for (const auto &I : F.getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();

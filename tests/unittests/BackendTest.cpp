@@ -27,6 +27,14 @@
 
 using namespace glow;
 
+/// An enum to indicate what type placholder it is.
+enum class PlaceholderType {
+  InputPlaceholder = 0,
+  InputOutputPlaceholder = 1,
+  OutputPlaceholder = 2,
+  NonePlaceholder = 3
+};
+
 class BackendTest : public ::testing::TestWithParam<BackendKind> {
 public:
   ExecutionEngine EE_{GetParam()};
@@ -163,6 +171,83 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   // Check that tensor views are labelled correctly.
   EXPECT_EQ(table.find("tensorview_reshape")->second.input, false);
   EXPECT_EQ(table.find("tensorview_reshape")->second.output, false);
+}
+
+// Test if the placeholders are allocated contiguously as
+// Input|InputOutput|Output.
+TEST(RuntimeBundle, ContiguousPlaceholder) {
+  ExecutionEngine EE;
+  PlaceholderBindings bindings;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Tensor inputs(ElemKind::FloatTy, {1, 4});
+  inputs.getHandle() = {1, 1.2f, 0.5f, 1.3f};
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "A", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "B", false);
+  auto *Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, 4}, "E", false);
+  auto *add = F->createAdd("add", A, Ex);
+  auto *sub = F->createSub("sub", B, add);
+  F->createSave("ret", sub);
+
+  LoweredInfoMap loweredMap;
+  CompilationContext cctx{&bindings, &loweredMap};
+  cctx.precisionConfig.quantMode = QuantizationMode::Profile;
+
+  bindings.allocate(A);
+  bindings.allocate(Ex);
+  EE.compile(F, cctx);
+
+  auto &table = EE.getCompiledFunction().getRuntimeBundle().getSymbolTable();
+
+  std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
+  // Only check placeholders.
+  for (auto v : table) {
+    if (v.second.symbolCategory == glow::runtime::SymbolCategory::Placeholder) {
+      tableContainer.push_back(v.second);
+    }
+  }
+  // Sort the placeholders by offset.
+  sort(tableContainer.begin(), tableContainer.end(),
+       [](const glow::runtime::RuntimeSymbolInfo &a,
+          const glow::runtime::RuntimeSymbolInfo &b) {
+         return (a.offset < b.offset);
+       });
+
+  // Define the order of placeholders.
+  auto order = [](glow::runtime::RuntimeSymbolInfo i) -> PlaceholderType {
+    if (i.input) {
+      if (!i.output) {
+        // input only
+        return PlaceholderType::InputPlaceholder;
+      } else {
+        // input & output
+        return PlaceholderType::InputOutputPlaceholder;
+      }
+    } else {
+      if (i.output) {
+        // output only
+        return PlaceholderType::OutputPlaceholder;
+      } else {
+        // neither
+        return PlaceholderType::NonePlaceholder;
+      }
+    }
+  };
+  // The order function of placeholders should be increasing.
+  PlaceholderType prev = PlaceholderType::InputPlaceholder;
+  bool flag = true;
+  for (auto v : tableContainer) {
+    PlaceholderType tmp = order(v);
+    if (tmp > prev) {
+      prev = tmp;
+    } else if (tmp < prev) {
+      flag = false;
+      break;
+    }
+  }
+
+  EXPECT_EQ(flag, true);
 }
 
 TEST_P(BackendTest, simpleInference) {
