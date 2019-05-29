@@ -23,6 +23,7 @@ BB.newBackendSpecificInstr("HabanaFullyConnected")
     .addOperand("Src", OperandKind::In)
     .addOperand("Weights", OperandKind::In)
     .addOperand("Bias", OperandKind::In)
+    .addMember(MemberType::Boolean, "DoRelu")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Weights"});
 
