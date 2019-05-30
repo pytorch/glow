@@ -47,8 +47,9 @@ BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
 void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   std::error_code EC;
   llvm::raw_fd_ostream weightsFile(weightsFileName, EC, llvm::sys::fs::F_None);
-  GLOW_ASSERT(!EC &&
-              "Could not open the output file for saving the bundle weights");
+  CHECK(!EC) << "Could not open the output file for saving the bundle weights "
+                "with file name: "
+             << weightsFileName.str();
   // Serialize only constant weights.
   // Do not serialize mutable weights representing inputs and outputs, because
   // it should be configurable and set by the client.
@@ -144,8 +145,9 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
   llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);
-  GLOW_ASSERT(!EC &&
-              "Could not open the output file for saving the bundle code");
+  CHECK(!EC) << "Could not open the output file for saving the bundle "
+                "code with file name: "
+             << fileName.str();
   if (fileName.endswith(".bc")) {
     // Emit the bitcode file.
     llvm::WriteBitcodeToFile(M, outputFile);
@@ -160,11 +162,8 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
       std::string bundleObjectCodeOutputOpt =
           " -o " + (outputDir + "/" + bundleName + ".o").str();
       cmd += bundleObjectCodeOutputOpt;
-      if (system(cmd.c_str())) {
-        llvm::errs() << "Error running external LLVM compiler:\n"
-                     << cmd << "\n";
-        GLOW_UNREACHABLE("Error running external LLVM compiler");
-      }
+      CHECK(!system(cmd.c_str()))
+          << "Error running external LLVM compiler: " << cmd;
     }
   } else if (fileName.endswith(".o")) {
     // Emit the object file.
@@ -239,10 +238,12 @@ void BundleSaver::emitBundleEntryFunction() {
 //   SymbolTableEntry *symbolTable;
 // };
 void BundleSaver::emitBundleConfig() {
-  auto symbolTable = irgen_->getModule().getGlobalVariable(
-      irgen_->getMainEntryName() + "SymbolTable", true);
-  GLOW_ASSERT(symbolTable &&
-              "Expected to find a symbol table for the AOT bundle");
+  auto symbolTableName = irgen_->getMainEntryName() + "SymbolTable";
+  auto symbolTable =
+      irgen_->getModule().getGlobalVariable(symbolTableName, true);
+  CHECK(symbolTable)
+      << "Expected to find a symbol table for the AOT bundle with name: "
+      << symbolTableName;
   // Get the integer type having the same size in bits as uint64_t.
   auto *uint64TType = irgen_->getBuilder().getIntNTy(sizeof(uint64_t) * 8);
   auto symbolTableEntryTy = symbolTable->getType()->getPointerElementType();

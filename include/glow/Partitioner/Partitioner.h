@@ -82,8 +82,8 @@ public:
   }
 
   BackendKind getPartitionBackendKind(Function *F) {
-    assert(functionToBackendKind_.find(F) != functionToBackendKind_.end() &&
-           "Unknown partition");
+    DCHECK(functionToBackendKind_.find(F) != functionToBackendKind_.end())
+        << "Unknown partition in Function: " << F->getName().str();
     return functionToBackendKind_.find(F)->second;
   }
 
