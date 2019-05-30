@@ -75,11 +75,11 @@ public:
     // Lines generally should be formatted like "the 9876543", where the
     // trailing number is not relevant for inference.
     auto spaceIdx = line.find(" ");
-    assert(spaceIdx != llvm::StringRef::npos &&
-           "Unexpected format for dict file.");
+    DCHECK(spaceIdx != llvm::StringRef::npos)
+        << "Unexpected format for dict file.";
 
     auto word = line.take_front(spaceIdx);
-    assert(word != "" && "Did not find word correctly.");
+    DCHECK_GT(word.size(), 0) << "Did not find word correctly.";
 
     word2index_[word] = index2word_.size();
     index2word_.push_back(word);
@@ -144,8 +144,8 @@ static void encodeString(const llvm::StringRef sentence,
   }
   encodedWords.push_back(eosIdx);
 
-  GLOW_ASSERT(encodedWords.size() <= maxInputLenOpt &&
-              "Sentence length exceeds maxInputLen.");
+  CHECK_LE(encodedWords.size(), maxInputLenOpt)
+      << "Sentence length exceeds maxInputLen.";
 
   // Pad the rest of the input.
   while (encodedWords.size() != maxInputLenOpt) {
@@ -312,8 +312,8 @@ int main(int argc, char **argv) {
   Tensor prevScores(ElemKind::FloatTy, {1});
   Tensor prevToken(ElemKind::Int64ITy, {1});
 
-  assert(!loader.getCaffe2NetDescFilename().empty() &&
-         "Only supporting Caffe2 currently.");
+  DCHECK(!loader.getCaffe2NetDescFilename().empty())
+      << "Only supporting Caffe2 currently.";
 
   constexpr char const *inputNames[5] = {"encoder_inputs", "attn_weights",
                                          "prev_hypos_indices", "prev_scores",
@@ -336,7 +336,7 @@ int main(int argc, char **argv) {
   // if requested from command line.
   loader.compile(bindings);
 
-  assert(!emittingBundle() && "Bundle mode has not been tested.");
+  DCHECK(!emittingBundle()) << "Bundle mode has not been tested.";
 
   Placeholder *outputTokenBeamList =
       EXIT_ON_ERR(LD.getOutputByName("output_token_beam_list"));

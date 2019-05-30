@@ -23,6 +23,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Timer.h"
 
+#include <glog/logging.h>
+
 #include <string>
 
 //----------------------------------------------------------------------------//
@@ -78,12 +80,12 @@ static size_t clipASCII(char c) {
 /// then only load the first slice of inputText.
 static void loadText(Tensor &inputText, Tensor &nextChar, llvm::StringRef text,
                      bool train) {
-  assert(text.size() > 2 && "The buffer must contain at least two chars");
+  DCHECK_GT(text.size(), 2) << "The buffer must contain at least two chars";
   inputText.zero();
   nextChar.zero();
 
   auto idim = inputText.dims();
-  assert(idim.size() == 3 && "invalid input tensor");
+  DCHECK_EQ(idim.size(), 3) << "invalid input tensor";
   auto B = idim[0];
   auto S = idim[1];
 
@@ -148,8 +150,8 @@ static std::unique_ptr<llvm::MemoryBuffer> loadFile(llvm::StringRef filename) {
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileBufOrErr =
       llvm::MemoryBuffer::getFileOrSTDIN(filename);
   if (!fileBufOrErr) {
-    llvm::errs() << "Error! Failed to open file: " << filename << "\n";
-    llvm::errs() << fileBufOrErr.getError().message() << "\n";
+    LOG(ERROR) << "Error! Failed to open file: " << filename.str() << "\n";
+    LOG(ERROR) << fileBufOrErr.getError().message() << "\n";
     exit(-1);
   }
 
@@ -209,7 +211,7 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, " The char-rnn test\n\n");
   auto mb = loadFile(inputFilename);
   auto text = mb.get()->getBuffer();
-  llvm::outs() << "Loaded " << text.size() << " chars.\n";
+  LOG(INFO) << "Loaded " << text.size() << " chars.\n";
   PlaceholderBindings bindings;
 
   const size_t numSteps = 50;
@@ -217,7 +219,7 @@ int main(int argc, char **argv) {
   const size_t batchSize = text.size() - numSteps;
   const size_t hiddenSize = 256;
 
-  GLOW_ASSERT(text.size() > numSteps && "Text is too short");
+  CHECK_GT(text.size(), numSteps) << "Text is too short";
   TrainingConfig TC;
 
   ExecutionEngine EE(executionBackend);
@@ -249,10 +251,9 @@ int main(int argc, char **argv) {
     EE.compile(CompilationMode::Train, TF);
 
     // Train the network on the whole input.
-    llvm::outs() << "Iteration " << i + 1 << "/" << numEpochs;
+    LOG(INFO) << "Iteration " << i + 1 << "/" << numEpochs;
     runBatch(EE, bindings, batchSize / minibatchSize, sampleCounter, {X, Y},
              {&thisCharTrain, &nextCharTrain});
-    llvm::outs() << ".\n";
 
     //// Use the trained network to generate some text ////
     auto *res =

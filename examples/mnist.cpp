@@ -21,7 +21,8 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <cassert>
+#include <glog/logging.h>
+
 #include <fstream>
 
 using namespace glow;
@@ -47,14 +48,8 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   std::ifstream imgInput("mnist_images.bin", std::ios::binary);
   std::ifstream labInput("mnist_labels.bin", std::ios::binary);
 
-  if (!imgInput.is_open()) {
-    llvm::errs() << "Error loading mnist_images.bin\n";
-    std::exit(EXIT_FAILURE);
-  }
-  if (!labInput.is_open()) {
-    llvm::errs() << "Error loading mnist_labels.bin\n";
-    std::exit(EXIT_FAILURE);
-  }
+  CHECK(imgInput.is_open()) << "Error loading mnist_images.bin";
+  CHECK(labInput.is_open()) << "Error loading mnist_labels.bin";
 
   std::vector<char> images((std::istreambuf_iterator<char>(imgInput)),
                            (std::istreambuf_iterator<char>()));
@@ -62,8 +57,8 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
                            (std::istreambuf_iterator<char>()));
   float *imagesAsFloatPtr = reinterpret_cast<float *>(&images[0]);
 
-  GLOW_ASSERT(labels.size() * 28 * 28 * sizeof(float) == images.size() &&
-              "The size of the image buffer does not match the labels vector");
+  CHECK_EQ(labels.size() * 28 * 28 * sizeof(float), images.size())
+      << "The size of the image buffer does not match the labels vector";
 
   size_t idx = 0;
 
@@ -79,20 +74,20 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
     }
   }
   size_t numImages = labels.size();
-  GLOW_ASSERT(numImages && "No images were found.");
+  CHECK_GT(numImages, 0) << "No images were found.";
   return numImages;
 }
 
 /// This test classifies digits from the MNIST labeled dataset.
 void testMNIST() {
   PlaceholderBindings bindings;
-  llvm::outs() << "Loading the mnist database.\n";
+  LOG(INFO) << "Loading the mnist database.";
 
   Tensor imageInputs;
   Tensor labelInputs;
 
   unsigned numImages = loadMNIST(imageInputs, labelInputs);
-  llvm::outs() << "Loaded " << numImages << " images.\n";
+  LOG(INFO) << "Loaded " << numImages << " images.";
 
   unsigned minibatchSize = 8;
 
@@ -138,14 +133,14 @@ void testMNIST() {
 
   const int numIterations = 30;
 
-  llvm::outs() << "Training.\n";
+  LOG(INFO) << "Training.";
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
   for (int epoch = 0; epoch < 60; epoch++) {
-    llvm::outs() << "Training - epoch #" << epoch << "\n";
+    LOG(INFO) << "Training - epoch #" << epoch;
 
     timer.startTimer();
 
@@ -157,7 +152,7 @@ void testMNIST() {
 
     timer.stopTimer();
   }
-  llvm::outs() << "Validating.\n";
+  LOG(INFO) << "Validating.";
 
   ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {A, result->getPlaceholder()});
@@ -196,8 +191,7 @@ void testMNIST() {
 
   llvm::outs() << "Results: guessed/total:" << rightAnswer << "/"
                << minibatchSize * 10 << "\n";
-  GLOW_ASSERT(rightAnswer >= 74 &&
-              "Did not classify as many digits as expected");
+  CHECK_GE(rightAnswer, 74) << "Did not classify as many digits as expected";
 }
 
 int main(int argc, char **argv) {

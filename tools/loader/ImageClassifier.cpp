@@ -217,8 +217,8 @@ using FloatIndexPair = std::pair<float, size_t>;
 /// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
 template <typename ElemTy>
 static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H) {
-  assert(topKCount <= H.size() && "Function requires k < number of labels.");
-  assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
+  DCHECK_LE(topKCount, H.size()) << "Function requires k < number of labels.";
+  DCHECK_EQ(H.dims().size(), 1) << "H must be a Handle of a 1d Tensor.";
 
   // Use a priority queue of pairs of floats (probabilities) to size_t (indices)
   // to determine the top K pairs, and then return the indices from it.
@@ -286,7 +286,7 @@ static int checkExpectedLabel(llvm::ArrayRef<FloatIndexPair> topKPairs,
 
 /// Apply the softmax function to the given handle.
 template <typename ElemTy> static void applySoftmax(Handle<ElemTy> H) {
-  assert(H.dims().size() == 1 && "H must be a Handle of a 1d Tensor.");
+  DCHECK_EQ(H.dims().size(), 1) << "H must be a Handle of a 1d Tensor.";
   float denominator = 0.0f;
 
   for (auto elem : H) {
@@ -307,18 +307,18 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   // Softmax should have at least two dimensions: batchSize (first dimension),
   // numLabels (any other dimension), and optionally - 1 in all other
   // dimensions. The value of numLabels should be greater than 1.
-  assert(SMT->dims().size() >= 2 && "Softmax should have at least 2 dims.");
+  DCHECK_GE(SMT->dims().size(), 2) << "Softmax should have at least 2 dims.";
   const size_t batchSize = SMT->dims()[0];
-  assert(batchSize == imageList.size() &&
-         "Softmax batch size must equal the input number of images.");
+  DCHECK_EQ(batchSize, imageList.size())
+      << "Softmax batch size must equal the input number of images.";
   size_t labelsDim = 0;
   for (size_t i = 1; i < SMT->dims().size(); i++) {
     if (SMT->dims()[i] > 1) {
-      assert(labelsDim == 0 && "More than one dimension of size > 1?");
+      DCHECK_EQ(labelsDim, 0) << "More than one dimension of size > 1?";
       labelsDim = i;
     }
   }
-  assert(labelsDim != 0 && "Labels dimension not found!");
+  DCHECK_NE(labelsDim, 0) << "Labels dimension not found!";
   const size_t numLabels = SMT->dims()[labelsDim];
   // Get a view with canonical layout {batches, labels}.
   Tensor canonical = SMT->getUnowned({batchSize, numLabels});
@@ -459,17 +459,17 @@ int main(int argc, char **argv) {
   Loader loader(argc, argv);
 
   if (inputImageListFile.empty() && inputImageFilenames.size() == 0) {
-    llvm::errs()
-        << "Args: Either positional inputImageFilenames or -inputImageListFile "
-           "must be used to specify input images.\n";
+    llvm::errs() << "Args: Either positional inputImageFilenames or "
+                    "-inputImageListFile "
+                    "must be used to specify input images.\n";
     std::exit(1);
   }
 
   if (!inputImageListFile.empty()) {
-    GLOW_ASSERT(
-        inputImageFilenames.size() == 0 &&
-        "When using -input-image-list-file all Input images must be specified "
-        "using -input-image-list-file option.");
+    CHECK_EQ(inputImageFilenames.size(), 0)
+        << "When using -input-image-list-file all Input images must be "
+           "specified "
+           "using -input-image-list-file option.";
     parseInputImageList(inputImageListFile);
   }
 
@@ -488,23 +488,23 @@ int main(int argc, char **argv) {
   const bool streamInputFilenamesMode =
       inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
 
-  GLOW_ASSERT(!(streamInputFilenamesMode && emittingBundle()) &&
-              "Cannot emit a bundle and also stream inputs.");
+  CHECK(!(streamInputFilenamesMode && emittingBundle()))
+      << "Cannot emit a bundle and also stream inputs.";
 
   // Mini-batch mode.
   const bool miniBatchMode = miniBatch > 0;
-  GLOW_ASSERT(((!miniBatchMode) || (!streamInputFilenamesMode)) &&
-              "The minibatch option is not compatible with the stream input "
-              "image mode.");
-  GLOW_ASSERT(
-      ((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)) &&
-      "The number of input images must be a multiple of the mini-batch.");
+  CHECK(((!miniBatchMode) || (!streamInputFilenamesMode)))
+      << "The minibatch option is not compatible with the stream input "
+         "image mode.";
+  CHECK(((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)))
+      << "The number of input images must be a multiple of the mini-batch.";
 
-  GLOW_ASSERT(((!iterationsOpt) || (!miniBatchMode) ||
-               (iterationsOpt % miniBatch == 0)) &&
-              "Benchmark count must be a multiple of the mini-batch.");
+  CHECK(((!iterationsOpt) || (!miniBatchMode) ||
+         (iterationsOpt % miniBatch == 0)))
+      << "Benchmark count must be a multiple of the mini-batch.";
 
-  // Used to make sure we only compile once, and run only once if not streaming.
+  // Used to make sure we only compile once, and run only once if not
+  // streaming.
   bool isFirstRun = true;
 
   // These will be set during the first run.
@@ -563,9 +563,11 @@ int main(int argc, char **argv) {
       inputImagePH = inputOutputPair.first;
       outputPH = inputOutputPair.second;
     }
-    assert(inputImagePH && outputPH && "Input and output must be valid.");
-    GLOW_ASSERT(inputImagePH->dims() == inputImageData.dims() &&
-                "New input shape does not match the compiled function.");
+    CHECK(inputImagePH) << "Input must be valid.";
+    CHECK(outputPH) << "Output must be valid.";
+    CHECK(inputImagePH->dims() == inputImageData.dims())
+        << "New input shape does not match the compiled function: "
+        << inputImagePH->dims() << " vs " << inputImageData.dims();
 
     // Convert the raw input to fp16. This must be done every time we get new
     // image data.

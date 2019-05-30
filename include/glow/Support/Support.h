@@ -38,9 +38,8 @@ llvm::raw_ostream &errs();
 llvm::raw_ostream &dbgs();
 
 /// Stream LLVM's ArrayRef into the given output stream.
-template <typename E>
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
-                              const llvm::ArrayRef<E> list) {
+template <typename Stream, typename E>
+Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   os << '[';
   // Print the array without a trailing comma.
   for (size_t i = 0, e = list.size(); i < e; i++) {
