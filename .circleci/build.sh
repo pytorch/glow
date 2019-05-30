@@ -28,6 +28,12 @@ if [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT" ]; then
     # Install Glow dependencies
     sudo apt-get update
 
+    # Redirect clang
+    sudo ln -s /usr/bin/clang-8 /usr/bin/clang
+    sudo ln -s /usr/bin/clang++-8 /usr/bin/clang++
+    sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
+    sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
+
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 else
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
