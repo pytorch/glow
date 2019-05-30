@@ -26,11 +26,6 @@ run_and_check_bundle() {
     echo "Successfully completed checking lenet_mnist bundle with QUANTIZE=${1}"
 }
 
-run_onnxifi() {
-    cd ${GLOW_SRC}
-    ./tests/onnxifi/test.sh
-}
-
 # Run unit tests and bundle tests.
 cd "${GLOW_BUILD_DIR}"
 case ${CIRCLE_JOB} in
@@ -48,7 +43,6 @@ case ${CIRCLE_JOB} in
         run_unit_tests test_unopt
         run_and_check_bundle YES
         run_and_check_bundle NO
-        run_onnxifi
         ;;
 
     SHARED)
