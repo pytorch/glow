@@ -438,12 +438,14 @@ TEST_P(BackendCorrectnessTest, convOps) {
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0004);
+                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0004f,
+                            parCloneCountOpt);
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                            ElemKind::Int8QTy, ElemKind::Int8QTy);
+                            ElemKind::Int8QTy, ElemKind::Int8QTy, 0.0001f,
+                            parCloneCountOpt);
 }
 
 TEST_P(CPUOnly, complexNet1) {

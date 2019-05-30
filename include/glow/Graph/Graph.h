@@ -262,6 +262,14 @@ public:
     return N;
   }
 
+  /// Take ownership of \p N by removing it from its original Function, add it
+  /// to the current Function, and also unique its name.
+  void takeOwnershipOfNode(Node *N) {
+    N->getParent()->getNodes().remove(N);
+    N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
+    nodes_.push_back(N);
+  }
+
   /// Get the pseudo-random number generator used by this module.
   PseudoRNG &getPRNG() { return getParent()->getPRNG(); }
 
