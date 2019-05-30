@@ -1406,6 +1406,12 @@ static void importSliceTest(std::string fileName, const char *inputName,
   }
 }
 
+TEST(onnx, importSliceDynamicNoAxes) {
+  importSliceTest("sliceDynamic.onnxtxt", "data", {2, 3, 3, 3} /* input */,
+                  {0, 1, 1, 1} /* starts */, /* ends: {2, 2, 3, 3} */
+                  {2, 1, 2, 2} /* output */);
+}
+
 TEST(onnx, importSliceAxesFull) {
   importSliceTest("sliceAxesFull.onnxtxt", "data", {2, 3, 3, 3} /* input */,
                   {0, 1, 1, 2} /* starts */, /* ends: {1, 2, 3, 3} */
