@@ -3,6 +3,11 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 else()
   find_program(CLANG_BIN clang++)
 endif()
+
+if(NOT CLANG_BIN)
+  message(SEND_ERROR "unable to find clang, cannot build the CPU runtime")
+endif()
+
 if(MSVC)
     set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/$(Configuration)/bin/llvm-link)
 else()
