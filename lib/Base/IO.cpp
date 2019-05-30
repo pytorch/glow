@@ -18,6 +18,8 @@
 
 #include "llvm/Support/FileSystem.h"
 
+#include <glog/logging.h>
+
 #include <cstdio>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -26,23 +28,23 @@ namespace glow {
 
 void writeToFile(const Tensor &T, llvm::StringRef filename) {
   FILE *fp = fopen(filename.data(), "wb");
-  GLOW_ASSERT(fp);
+  CHECK(fp) << "Failed to open file: " << filename.str();
   auto nitems = fwrite(&T.getType(), sizeof(Type), 1, fp);
-  GLOW_ASSERT(nitems == 1);
+  CHECK_EQ(nitems, 1);
   nitems = fwrite(T.getUnsafePtr(), T.getType().getElementSize(), T.size(), fp);
-  GLOW_ASSERT(nitems == T.size());
+  CHECK_EQ(nitems, T.size());
   fclose(fp);
 }
 
 void readFromFile(Tensor &T, llvm::StringRef filename) {
   FILE *fp = fopen(filename.data(), "rb");
-  GLOW_ASSERT(fp);
+  CHECK(fp) << "Failed to open file: " << filename.str();
   Type type;
   auto nitems = fread(&type, sizeof(Type), 1, fp);
-  GLOW_ASSERT(nitems == 1);
+  CHECK_EQ(nitems, 1);
   T.reset(type);
   nitems = fread(T.getUnsafePtr(), T.getType().getElementSize(), T.size(), fp);
-  GLOW_ASSERT(nitems == T.size());
+  CHECK_EQ(nitems, T.size());
   fclose(fp);
 }
 

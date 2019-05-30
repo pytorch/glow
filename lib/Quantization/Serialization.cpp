@@ -23,6 +23,8 @@
 #include "llvm/Support/YAMLTraits.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <glog/logging.h>
+
 namespace llvm {
 namespace yaml {
 
@@ -47,7 +49,7 @@ void serializeToYaml(llvm::StringRef fileName,
                      llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
   std::error_code EC;
   llvm::raw_fd_ostream outputStream(fileName, EC, llvm::sys::fs::F_None);
-  GLOW_ASSERT(!EC && "Unable to create output stream");
+  CHECK(!EC) << "Unable to create output stream";
 
   llvm::yaml::Output yout(outputStream);
   // LLVM_YAML_IS_SEQUENCE_VECTOR cannot serialize ArrayRef.
@@ -62,13 +64,14 @@ deserializeFromYaml(llvm::StringRef fileName) {
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
       llvm::MemoryBuffer::getFileAsStream(fileName);
-  GLOW_ASSERT(!text.getError() && "Unable to open file");
+  CHECK(!text.getError()) << "Unable to open file with name: "
+                          << fileName.str();
 
   std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
   llvm::yaml::Input yin(buffer->getBuffer());
   yin >> result;
 
-  GLOW_ASSERT(!yin.error() && "Error reading yaml file");
+  CHECK(!yin.error()) << "Error reading yaml file";
 
   return result;
 }

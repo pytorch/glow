@@ -125,9 +125,13 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
           if (GlowDumpDebugTraces) {
             llvm::SmallString<64> path;
-            GLOW_ASSERT(!llvm::sys::fs::createTemporaryFile("glow-trace",
-                                                            "json", path));
-            traceContext->dump(path);
+            auto tempFileRes =
+                llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+            if (!tempFileRes) {
+              LOG(ERROR) << "Failed to create temp file for Glow trace events";
+            } else {
+              traceContext->dump(path);
+            }
           }
         }
 
