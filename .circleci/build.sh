@@ -44,6 +44,8 @@ hash cmake ninja
 GLOW_DIR=$PWD
 cd ${GLOW_DIR}
 mkdir build && cd build
+CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
 CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
