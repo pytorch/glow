@@ -792,7 +792,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
 
       if (NI->getInput().getType()->isQuantizedType()) {
         auto params = llvm::make_unique<synFCParams>();
-        params->activation.reluEnable = false;
+        params->activation.reluEnable = NI->getDoRelu();
         chk(synFullyConnected(
             tensors[NI->getInput()].get(), tensors[NI->getWeights()].get(),
             tensors[NI->getBias()].get(), tensors[NI].get(), *params, ""));
@@ -803,7 +803,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
         inputs.push_back(tensors[NI->getWeights()].get());
         inputs.push_back(tensors[NI->getBias()].get());
 
-        auto params = makeFCFPParams(false);
+        auto params = makeFCFPParams(NI->getDoRelu());
         chk(synCreateGenericNode(
             inputs.data(), &tensors[NI].get(), 3, 1, params.get(),
             getKernelName("fully_connected", NI->getResult().getElementType())
@@ -1469,7 +1469,24 @@ bool fuseConvRelu(Function *F, HabanaConvolutionNode &conv, ReluNode &relu) {
   return true;
 }
 
-/// Fuse any sum of Conv + Node into Node -> FusedConvAdd.
+/// Fuse fully connected followed by relu into a single FusedFCRelu node.
+bool fuseFCRelu(Function *F, HabanaFullyConnectedNode &fc, ReluNode &relu) {
+  // fully connected should have only a single use.
+  if (!fc.getResult().hasOneUse()) {
+    return false;
+  }
+
+  auto fusedOpName = fc.getName().str() + "." + relu.getName().str() + ".fused";
+  auto *fusedNode = new HabanaFullyConnectedNode(
+      fusedOpName, relu.getResult().getType(), fc.getInput(), fc.getWeights(),
+      fc.getBias(), /*doRelu=*/true);
+  F->addNode(fusedNode);
+
+  relu.getResult().replaceAllUsesOfWith(fusedNode);
+  return true;
+}
+
+/// Fuse any sum of Conv + Nodse into Node -> FusedConvAdd.
 bool fuseConvAdd(Function *F, AddNode &add) {
   // Perform this transformation:
   // Conv --> Add
@@ -1627,10 +1644,20 @@ bool HabanaBackend::transformPostLowering(
           F->createTranspose("weight_transpose", FC->getWeights(), {1, 0});
       auto *NF = F->addNode(
           new HabanaFullyConnectedNode(FC->getName(), FC->getResult().getType(),
-                                       FC->getInput(), weights, FC->getBias()));
+                                       FC->getInput(), weights, FC->getBias(),
+                                       /*doRelu=*/false));
       FC->getResult().replaceAllUsesOfWith(NF);
       changed = true;
       continue;
+    }
+
+    // Fuse fully connected followed by relu.
+    if (auto *relu = llvm::dyn_cast<ReluNode>(&node)) {
+      if (auto *fc = llvm::dyn_cast<HabanaFullyConnectedNode>(
+              relu->getInput().getNode())) {
+        changed |= fuseFCRelu(F, *fc, *relu);
+        continue;
+      }
     }
 
     // Replace Conv with HabanaConv for better control over code generation.
