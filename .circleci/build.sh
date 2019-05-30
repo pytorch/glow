@@ -26,6 +26,8 @@ install_pocl() {
 
 if [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT" ]; then
     # Install Glow dependencies
+    sudo apt-get update
+
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 else
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
