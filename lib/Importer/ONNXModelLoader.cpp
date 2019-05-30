@@ -1202,6 +1202,12 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
 
     RETURN_IF_ERR(loadInitializers(graphDef));
+
+    if (tensorNames.empty() && types.empty()) {
+      // Detect inputs without initializers and create placeholders.
+      RETURN_IF_ERR(loadInputs(graphDef, /* loadInputsAsPlaceholders */ true));
+    }
+
     RETURN_IF_ERR(loadNetwork(graphDef));
 
     RETURN_IF_ERR(setOutputNodes(graphDef));
