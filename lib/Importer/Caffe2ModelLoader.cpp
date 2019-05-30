@@ -1236,8 +1236,9 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
       T.reset(ElemKind::Int8QTy, dim, 0.0, 0);
       auto TH = T.getHandle<int8_t>();
-      assert(dict["values"]->strings().size() == 1 &&
-             "Expect single string input for GivenTensorByteStringToUInt8Fill");
+      RETURN_ERR_IF_NOT(
+          dict["values"]->strings().size() == 1,
+          "Expect single string input for GivenTensorByteStringToUInt8Fill");
       const std::string str = dict["values"]->strings().Get(0);
 
       // We're loading unsigned data into Int8QTy, so we use OFFSETSHIFT to
@@ -1429,10 +1430,10 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     float tensorMax;
     ASSIGN_VALUE_OR_RETURN_ERR(tensorMax, loadFloat(dict["max"]));
 
-#ifndef NDEBUG
-    llvm::outs() << "The model contains UniformFill operator, which generates"
-                 << " random numbers. This could be source of discrepancy.\n";
-#endif // NDEBUG
+    DLOG(INFO)
+        << "The model contains UniformFill operator, which generates random "
+           "numbers. This could be source of discrepancy.";
+
     // Uniformly generate random numbers in [tensorMin; tensorMax).
     for (auto &elem : TH) {
       elem = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);

@@ -19,6 +19,8 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Support/TensorPool.h"
 
+#include <glog/logging.h>
+
 using namespace glow;
 
 bool PlaceholderBindings::compare(const PlaceholderBindings *A,
@@ -76,7 +78,8 @@ PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
 }
 
 void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
-  assert(!map_.count(P) && "Placeholder already registered");
+  DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
+                         << "\" already registered";
   // Take ownership over the tensor.
   Tensor *t = new Tensor(std::move(T));
   map_[P] = t;
@@ -84,14 +87,15 @@ void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
 }
 
 void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
-  assert(!map_.count(P) && "Placeholder already registered");
+  DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
+                         << "\" already registered";
   map_[P] = T;
   nameMap_[P->getName()] = P;
 }
 
 size_t PlaceholderBindings::count(Placeholder *P) const {
-  assert((map_.size() == nameMap_.size()) &&
-         "Placeholder map and name map out of sync");
+  DCHECK_EQ(map_.size(), nameMap_.size())
+      << "Placeholder map and name map out of sync";
   return map_.count(P);
 }
 
@@ -110,8 +114,9 @@ void PlaceholderBindings::clear() {
 }
 
 void PlaceholderBindings::erase(Placeholder *P) {
-  assert(nameMap_.count(P->getName()) &&
-         "Placeholder must already be registered");
+  DCHECK(nameMap_.count(P->getName()))
+      << "Placeholder with name \"" << P->getName().str()
+      << "\" already registered";
   nameMap_.erase(P->getName());
 
   auto *T = map_[P];
@@ -136,7 +141,8 @@ PlaceholderBindings PlaceholderBindings::clone() const {
 }
 
 Tensor *PlaceholderBindings::allocate(Placeholder *P) {
-  assert(!map_.count(P) && "Placeholder already registered");
+  DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
+                         << "\" already registered";
   Tensor *T = new Tensor(P->getType());
   map_[P] = T;
   nameMap_[P->getName()] = P;
@@ -183,8 +189,8 @@ uint64_t PlaceholderBindings::getDataSize() const {
 PlaceholderBindings::PlaceholderBindings(
     llvm::ArrayRef<Placeholder *> placeholders,
     llvm::ArrayRef<Tensor *> inputs) {
-  assert(placeholders.size() == inputs.size() &&
-         "Invalid number of placeholders");
+  DCHECK_EQ(placeholders.size(), inputs.size())
+      << "Invalid number of placeholders";
 
   for (size_t i = 0, e = placeholders.size(); i < e; i++) {
     auto *orig = inputs[i];

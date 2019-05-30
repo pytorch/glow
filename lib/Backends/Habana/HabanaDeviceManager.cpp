@@ -301,7 +301,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
   auto executeErr = function->execute(ctx.get());
   if (executeErr) {
-    resultCB(runId, std::move(executeRes), std::move(ctx));
+    resultCB(runId, std::move(executeErr), std::move(ctx));
     return;
   }
 

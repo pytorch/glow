@@ -44,8 +44,8 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   } else {
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
-    llvm::errs() << "Error when loading protobuf: "
-                 << llvm::toString(loaderOrErr.takeError()) << "\n";
+    LOG(ERROR) << "Error when loading protobuf: "
+               << llvm::toString(loaderOrErr.takeError());
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -64,15 +64,14 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
   }
 
   if (!function->verify()) {
-    llvm::errs() << "ONNXIFI: Function verification failed.\n";
+    LOG(ERROR) << "ONNXIFI: Function verification failed.";
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
   const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
     if (!glowBackend_->isOpSupported(node)) {
-      llvm::errs() << "ONNXIFI: Not supported op: " << node.getDebugDesc()
-                   << "\n";
+      LOG(ERROR) << "ONNXIFI: Not supported op: " << node.getDebugDesc();
       // TODO: Use a more specific ONNXIFI error code here to denote what about
       // this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -137,9 +136,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     }
 
     if (inOnnxTensorSize > inPhPtr->getType()->size()) {
-      llvm::errs() << "Input tensor is too large: " << inOnnxTensorSize
-                   << " vs " << inPhPtr->getType()->size() << ": "
-                   << inOnnxTensor.name << "\n";
+      LOG(ERROR) << "Input tensor is too large: " << inOnnxTensorSize << " vs "
+                 << inPhPtr->getType()->size() << ": " << inOnnxTensor.name;
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 
@@ -198,9 +196,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     // Check that tensor provided by onnxifi is the correct size.
     if (!outPhPtr->dims().equals(outOnnxTensorDims)) {
-      llvm::errs() << "Output tensor is the wrong shape: " << outOnnxTensorSize
-                   << " total dims vs " << outPhPtr->getType()->size() << ": "
-                   << outOnnxTensor.name << "\n";
+      LOG(ERROR) << "Output tensor is the wrong shape: " << outOnnxTensorSize
+                 << " total dims vs " << outPhPtr->getType()->size() << ": "
+                 << outOnnxTensor.name;
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 

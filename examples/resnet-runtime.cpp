@@ -25,6 +25,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 
+#include <glog/logging.h>
+
 #include <chrono>
 #include <future>
 
@@ -71,7 +73,7 @@ Placeholder *loadResnet50Model(TypeRef inputType, Module *module,
                                unsigned int count) {
   Function *F = module->createFunction("resnet50" + std::to_string(count));
 
-  llvm::outs() << "Loading resnet50 model.\n";
+  LOG(INFO) << "Loading resnet50 model.";
 
   const char inputName[] = "gpu_0/data";
   Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
@@ -102,6 +104,8 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
                 ->getHandle()
                 .minMaxArg()
                 .second;
+        // This output is verified by OutputCheck in tests so must be written to
+        // stdout.
         llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
 
         if (!tracePath.empty()) {
@@ -114,7 +118,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
           finished.set_value();
         }
       });
-  llvm::outs() << "Started run ID: " << runid << "\n";
+  LOG(INFO) << "Started run ID: " << runid;
 }
 
 /// Run ResNet concurrently on the number CPU Devices provided by the user.
@@ -122,8 +126,7 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "Run ResNet concurrently on a fixed number of CPU devices");
 
-  llvm::outs() << "Initializing " << numDevices
-               << " CPU Devices on HostManager.\n";
+  LOG(INFO) << "Initializing " << numDevices << " CPU Devices on HostManager.";
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
@@ -154,12 +157,12 @@ int main(int argc, char **argv) {
   EXIT_ON_ERR(hostManager->addNetwork(std::move(module), CompilationContext(),
                                       /*saturateHost*/ true));
 
-  llvm::outs() << "Loading files from " << inputDirectory << "\n";
+  LOG(INFO) << "Loading files from " << inputDirectory;
   std::error_code code;
   llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
   if (code.value()) {
-    llvm::errs() << "Couldn't read from directory: " << inputDirectory
-                 << " - code" << code.value() << "\n";
+    LOG(ERROR) << "Couldn't read from directory: " << inputDirectory
+               << " - code" << code.value() << "\n";
     exit(code.value());
   }
 
@@ -205,7 +208,7 @@ int main(int argc, char **argv) {
 
   finished.get_future().wait();
 
-  llvm::outs() << "Finished classifying " << started << " images.\n";
+  LOG(INFO) << "Finished classifying " << started << " images.";
 
   if (!tracePath.empty()) {
     traceContext->dump(tracePath, "resnet-runtime");

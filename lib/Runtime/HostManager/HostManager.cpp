@@ -23,6 +23,8 @@
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
+#include <glog/logging.h>
+
 #include <future>
 #include <queue>
 
@@ -162,8 +164,9 @@ llvm::Error HostManager::clearHost() {
   // shutdown the executor, blocking on any current inflight and prevent new
   // requests from being serviced.
   executor_->shutdown();
-  assert(activeRequestCount_ == 0 &&
-         "All requests should be finished when shutting down HostManager.");
+
+  DCHECK_EQ(activeRequestCount_, 0)
+      << "All requests should be finished when shutting down HostManager.";
 
   std::lock_guard<std::mutex> networkLock(networkLock_);
   OneErrOnly errContainer;

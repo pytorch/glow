@@ -22,6 +22,8 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <glog/logging.h>
+
 namespace glow {
 /// NOTE This should not be used directly, instead use EXIT_ON_ERR or
 /// TEMP_EXIT_ON_ERR. Callable that takes an llvm::Error or llvm::Expected<T>
@@ -227,8 +229,8 @@ private:
 /// otherwise.
 inline bool errToBool(llvm::Error err) {
   if (static_cast<bool>(err)) {
-    llvm::errs() << "Converting error to boolean: "
-                 << llvm::toString(std::move(err)) << "\n";
+    LOG(ERROR) << "Converting error to boolean: "
+               << llvm::toString(std::move(err));
     return true;
   }
   return false;

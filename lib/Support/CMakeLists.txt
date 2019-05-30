@@ -6,7 +6,8 @@ add_library(Support
               ThreadPool.cpp)
 target_link_libraries(Support
                       PUBLIC
-                        LLVMSupport)
+                        LLVMSupport
+                        glog::glog)
 add_library(TensorPool
               TensorPool.cpp)
 target_link_libraries(TensorPool
