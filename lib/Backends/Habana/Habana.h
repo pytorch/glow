@@ -202,19 +202,7 @@ public:
 
   const std::string &getRecipeName() const { return recipeName_; }
 
-  void execute(ExecutionContext *context) override;
-
-  /// Allocates on device buffer and copies Constant weights to device.
-  void setupRuns() override;
-
-  /// Per run setup, copies Inputs from \p ctx to on device memory.
-  void beforeRun(const PlaceholderBindings &ctx) override;
-
-  /// Copies outputs from device to tensors in \p ctx.
-  void afterRun(const PlaceholderBindings &ctx) override;
-
-  /// Final cleanup.
-  void tearDownRuns() override;
+  llvm::Error execute(ExecutionContext *context) override;
   ///@}
 
   /// \returns the Kind of Backend used to compile this function.

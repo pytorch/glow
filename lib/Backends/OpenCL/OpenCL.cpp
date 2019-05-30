@@ -539,7 +539,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-void OpenCLFunction::execute(ExecutionContext *context) {
+llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
   (void)context;
 
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
@@ -1427,6 +1427,8 @@ void OpenCLFunction::execute(ExecutionContext *context) {
     }
     kernelLaunches_.clear();
   }
+
+  return llvm::Error::success();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {

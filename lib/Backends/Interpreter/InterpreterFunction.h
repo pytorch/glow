@@ -57,7 +57,7 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  void execute(ExecutionContext *context) override;
+  llvm::Error execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
@@ -93,7 +93,7 @@ public:
 
   ~BoundInterpreterFunction();
 
-  void execute(IRFunction *F, ExecutionContext *context);
+  llvm::Error execute(IRFunction *F, ExecutionContext *context);
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.

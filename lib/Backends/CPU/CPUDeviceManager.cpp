@@ -138,13 +138,13 @@ void CPUDeviceManager::runFunctionImpl(
   CompiledFunction *func = funcIt->second;
 
   // Run that function.
-  func->execute(context.get());
+  auto executeErr = func->execute(context.get());
 
   // End the TraceEvent early to avoid time in the CB.
   TRACE_EVENT_END(context->getTraceContext(), eventName)
 
   // Fire the resultCB.
-  resultCB(id, llvm::Error::success(), std::move(context));
+  resultCB(id, std::move(executeErr), std::move(context));
 }
 } // namespace runtime
 } // namespace glow

@@ -102,7 +102,9 @@ class MockBackend : public Backend {
     MockFunction(const runtime::RuntimeBundle &bundle)
         : CompiledFunction(bundle) {}
 
-    void execute(ExecutionContext *) override {}
+    llvm::Error execute(ExecutionContext *) override {
+      return llvm::Error::success();
+    }
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;
@@ -135,7 +137,9 @@ class MockBackendCustomIRGen : public Backend {
     MockFunction(const runtime::RuntimeBundle &bundle)
         : CompiledFunction(bundle) {}
 
-    void execute(ExecutionContext *) override {}
+    llvm::Error execute(ExecutionContext *) override {
+      return llvm::Error::success();
+    }
 
     BackendKind getCompileBackendKind() const override {
       return BackendKind::Interpreter;

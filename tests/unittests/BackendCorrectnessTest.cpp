@@ -251,11 +251,7 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
-  function->setupRuns();
-  function->beforeRun(*ctx->getPlaceholderBindings());
-  function->execute(ctx.get());
-  function->afterRun(*ctx->getPlaceholderBindings());
-  function->tearDownRuns();
+  ASSERT_FALSE(errToBool(function->execute(ctx.get())));
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

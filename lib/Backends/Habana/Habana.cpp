@@ -451,11 +451,7 @@ HabanaFunction::~HabanaFunction() {
   GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_ + ".bin"));
 }
 
-void HabanaFunction::setupRuns() {}
-
-void HabanaFunction::beforeRun(const PlaceholderBindings &ctx) {}
-
-void HabanaFunction::execute(ExecutionContext *context) {
+llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   auto *tc = context->getTraceContext();
   TRACE_EVENT_BEGIN(tc, "execute");
 
@@ -538,11 +534,8 @@ void HabanaFunction::execute(ExecutionContext *context) {
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
                                    std::move(outputInfo)));
   TRACE_EVENT_END(tc, "execute");
+  return llvm::Error::success();
 }
-
-void HabanaFunction::afterRun(const PlaceholderBindings &ctx) {}
-
-void HabanaFunction::tearDownRuns() {}
 
 static std::unique_ptr<synConvolutionParams> makeSynConvolutionParams(
     llvm::ArrayRef<unsigned_t> kernel, llvm::ArrayRef<unsigned_t> stride,

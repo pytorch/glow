@@ -33,8 +33,6 @@ InterpreterFunction::~InterpreterFunction() {
     delete p.second;
   }
   constants_.clear();
-
-  tearDownRuns();
 }
 
 void InterpreterFunction::collectConstants(const Module *module) {
@@ -51,13 +49,14 @@ void InterpreterFunction::collectConstants(const Module *module) {
   }
 }
 
-void InterpreterFunction::execute(ExecutionContext *context) {
+llvm::Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
-  boundFunc.execute(F_.get(), context);
+  auto res = boundFunc.execute(F_.get(), context);
   {
     auto ev = context->scopedEvent("processInstrumentation");
     translateTraceEvents(context);
   }
+  return res;
 }
 
 void InterpreterFunction::translateTraceEvents(
@@ -164,8 +163,8 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-void BoundInterpreterFunction::execute(IRFunction *F,
-                                       ExecutionContext *context) {
+llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
+                                              ExecutionContext *context) {
   {
     auto ev = context->scopedEvent("registerTensors");
     // Register the concrete tensors that back the placeholder tensors.
@@ -206,4 +205,6 @@ void BoundInterpreterFunction::execute(IRFunction *F,
       externalTensors_.erase(w);
     }
   }
+
+  return llvm::Error::success();
 }
