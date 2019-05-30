@@ -1642,3 +1642,18 @@ TEST(onnx, batchNormPR2304) {
       llvm::dyn_cast<BatchNormalizationNode>(trNode->getInput().getNode());
   EXPECT_NE(nullptr, bnNode);
 }
+
+/// Test constructor for auto loading inputs case.
+TEST(onnx, autoLoadInputs) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/batchNormPR2304.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Tensor inputTensor(ElemKind::FloatTy, {1, 2, 10, 10});
+  llvm::StringRef inputName = "input";
+  ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+  auto inputs = onnxLD.getInputVarsMapping();
+  EXPECT_EQ(inputs.size(), 1);
+  EXPECT_TRUE(inputTensor.getType().isEqual(inputs[inputName]->getType()));
+}
