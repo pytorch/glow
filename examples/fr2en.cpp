@@ -21,6 +21,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Timer.h"
 
+#include <glog/logging.h>
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -365,11 +367,11 @@ void Model::translate(const std::vector<std::string> &batch) {
       words.push_back(word);
     words.push_back("EOS");
 
-    GLOW_ASSERT(words.size() <= MAX_LENGTH && "sentence is too long.");
+    CHECK_LE(words.size(), MAX_LENGTH) << "sentence is too long.";
 
     for (size_t i = 0; i < words.size(); i++) {
       auto iter = fr_.word2index_.find(words[i]);
-      GLOW_ASSERT(iter != fr_.word2index_.end() && "Unknown word.");
+      CHECK(iter != fr_.word2index_.end()) << "Unknown word: " << words[i];
       input.getHandle<int64_t>().at({j, i}) = iter->second;
     }
     seqLength.getHandle<int64_t>().at({j}) =

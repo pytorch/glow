@@ -20,7 +20,7 @@ namespace glow {
 
 Backend *createBackend(BackendKind backendKind) {
   auto *backend = FactoryRegistry<BackendKind, Backend>::get(backendKind);
-  GLOW_ASSERT(backend != nullptr && "Cannot find registered backend");
+  CHECK(backend) << "Cannot find registered backend";
   return backend;
 }
 

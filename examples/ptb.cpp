@@ -22,8 +22,9 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Timer.h"
 
+#include <glog/logging.h>
+
 #include <algorithm>
-#include <cassert>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -61,10 +62,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
                  size_t vocabSize, size_t minibatchSize, size_t maxNumWords) {
 
   std::ifstream ptbInput("ptb/simple-examples/data/ptb.train.txt");
-  if (!ptbInput.is_open()) {
-    llvm::errs() << "Error loading ptb.train.txt\n";
-    std::exit(EXIT_FAILURE);
-  }
+  CHECK(ptbInput.is_open()) << "Error loading ptb.train.txt";
 
   std::vector<std::string> words;
   std::string line;
@@ -85,7 +83,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
   words = std::vector<std::string>(words.begin(), words.begin() + maxNumWords);
   size_t numWords = words.size();
 
-  GLOW_ASSERT(numWords && "No words were found.");
+  CHECK_GT(numWords, 0) << "No words were found.";
 
   std::map<std::string, int> counter;
   // Counter of words occurences in the input text
@@ -169,7 +167,7 @@ unsigned loadPTB(Tensor &inputWords, Tensor &targetWords, size_t numSteps,
 /// For reference, we expect the usage of an LSTM instead of the current
 /// simple RNN block will improve the perplexity to ~20.
 void testPTB() {
-  llvm::outs() << "Loading the ptb database.\n";
+  LOG(INFO) << "Loading the ptb database.";
 
   Tensor inputWords;
   Tensor targetWords;
@@ -186,7 +184,7 @@ void testPTB() {
 
   unsigned numWords = loadPTB(inputWords, targetWords, numSteps, vocabSize,
                               minibatchSize, maxNumWords);
-  llvm::outs() << "Loaded " << numWords << " words.\n";
+  LOG(INFO) << "Loaded " << numWords << " words.";
   ExecutionEngine EE(executionBackend);
   PlaceholderBindings bindings;
 
@@ -198,7 +196,7 @@ void testPTB() {
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  llvm::outs() << "Building\n";
+  LOG(INFO) << "Building";
 
   auto *X = mod.createPlaceholder(
       ElemKind::FloatTy, {minibatchSize, vocabSize * numSteps}, "input", false);
@@ -231,7 +229,7 @@ void testPTB() {
   auto *result = bindings.allocate(save->getPlaceholder());
 
   if (!dumpInitialGraphDAGFileOpt.empty()) {
-    llvm::outs() << "Dumping initial graph\n";
+    LOG(INFO) << "Dumping initial graph";
     F->dumpDAG(dumpInitialGraphDAGFileOpt.c_str());
   }
 
@@ -240,13 +238,13 @@ void testPTB() {
   EE.compile(CompilationMode::Train, TF);
 
   if (!dumpTrainingGraphDAGFileOpt.empty()) {
-    llvm::outs() << "Dumping training graph\n";
+    LOG(INFO) << "Dumping training graph";
     TF->dumpDAG(dumpTrainingGraphDAGFileOpt.c_str());
   }
 
   size_t numBatches = (numWords / minibatchSize - 1) / numSteps;
 
-  llvm::outs() << "Training for " << numBatches << " rounds\n";
+  LOG(INFO) << "Training for " << numBatches << " rounds";
 
   float metricValues[numEpochs];
 

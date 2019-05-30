@@ -144,8 +144,8 @@ static void encodeString(const llvm::StringRef sentence,
   }
   encodedWords.push_back(eosIdx);
 
-  GLOW_ASSERT(encodedWords.size() <= maxInputLenOpt &&
-              "Sentence length exceeds maxInputLen.");
+  CHECK_LE(encodedWords.size(), maxInputLenOpt)
+      << "Sentence length exceeds maxInputLen.";
 
   // Pad the rest of the input.
   while (encodedWords.size() != maxInputLenOpt) {

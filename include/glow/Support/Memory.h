@@ -18,7 +18,8 @@
 
 #include "glow/Support/Compiler.h"
 
-#include <cassert>
+#include <glog/logging.h>
+
 #include <cstdlib>
 
 namespace glow {
@@ -28,13 +29,13 @@ constexpr unsigned TensorAlignment = 64;
 
 /// Allocate \p size bytes of memory aligned to \p align bytes.
 inline void *alignedAlloc(size_t size, size_t align) {
-  assert(align >= sizeof(void *) && "Alignment too small.");
-  assert(align % sizeof(void *) == 0 &&
-         "Alignment is not a multiple of the machine word size.");
+  DCHECK_GE(align, sizeof(void *)) << "Alignment too small.";
+  DCHECK_EQ(align % sizeof(void *), 0)
+      << "Alignment is not a multiple of the machine word size.";
   void *ptr;
   int res = glow_aligned_malloc(&ptr, align, size);
-  GLOW_ASSERT(res == 0 && "posix_memalign failed");
-  GLOW_ASSERT((size_t)ptr % align == 0 && "Alignment failed");
+  CHECK_EQ(res, 0) << "posix_memalign failed";
+  CHECK_EQ((size_t)ptr % align, 0) << "Alignment failed";
   return ptr;
 }
 
