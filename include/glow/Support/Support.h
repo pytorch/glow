@@ -119,6 +119,31 @@ inline void report(llvm::StringRef str) { report(str.data()); }
 /// can be inspected under debugger.
 std::string legalizeName(llvm::StringRef name);
 
+/// Data structure for multi string format used in yaml file.
+struct MultiLineStr {
+  std::string str;
+};
+
+/// Data structure used to read the yaml file for Device Configs.
+struct DeviceConfigHelper {
+  /// Device Name.
+  std::string name_;
+  /// BackendKind name.
+  std::string kindName_;
+  /// A string with multi lines. Each line represents a param.
+  MultiLineStr parameters_;
+  DeviceConfigHelper() = default;
+  DeviceConfigHelper(std::string &name, std::string &kindName)
+      : name_(name), kindName_(kindName) {}
+  DeviceConfigHelper(std::string &kindName, std::string &name,
+                     MultiLineStr &parameters)
+      : name_(name), kindName_(kindName), parameters_(parameters) {}
+};
+
+/// Deserialize quantization infos from the file \p fileName.
+std::vector<DeviceConfigHelper>
+deserializeDeviceConfigFromYaml(llvm::StringRef fileName);
+
 /// Printf-like formatting for std::string.
 const std::string strFormat(const char *format, ...)
 #ifndef _MSC_VER

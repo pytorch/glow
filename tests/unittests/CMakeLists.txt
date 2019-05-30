@@ -522,7 +522,9 @@ target_link_libraries(UtilsTest
                         Testing
                         gtest
                         TestMain)
-add_glow_test(UtilsTest ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml)
+add_glow_test(NAME UtilsTest 
+              COMMAND ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}

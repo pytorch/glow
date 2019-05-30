@@ -18,6 +18,10 @@
 #include "glow/Testing/StrCheck.h"
 #include "gtest/gtest.h"
 
+#ifndef GLOW_DATA_PATH
+#define GLOW_DATA_PATH
+#endif
+
 using namespace glow;
 using glow::StrCheck;
 
@@ -45,4 +49,32 @@ TEST(Support, legalizeName) {
   // Check that a legal name won't be converted.
   std::string str3 = legalizeName("abc_1aBc");
   EXPECT_TRUE(str3.compare("abc_1aBc") == 0);
+}
+
+/// Check the reading Device config from a yaml file.
+TEST(Support, loadYamlFile) {
+  std::string yamlFilename(GLOW_DATA_PATH "tests/runtime_test/cpuConfigs.yaml");
+  std::vector<DeviceConfigHelper> lists;
+  lists = deserializeDeviceConfigFromYaml(yamlFilename);
+  EXPECT_EQ(lists.size(), 2);
+  // Check the loading items.
+  // The config file is:
+  //---
+  //- name:     Device1
+  //  kindName: CPU
+  //  parameters: |
+  //  "platformID":"1"
+  //    "deviceID" : "0"
+  //    - name:     Device2
+  //  kindName: CPU
+  //  parameters: |
+  //  "platformID":"1"
+  //...
+  EXPECT_EQ(lists[0].kindName_, "CPU");
+  EXPECT_EQ(lists[0].name_, "Device1");
+  EXPECT_EQ(lists[0].parameters_.str,
+            "\"platformID\":\"1\"\n\"deviceID\" : \"0\"\n");
+  EXPECT_EQ(lists[1].kindName_, "CPU");
+  EXPECT_EQ(lists[1].name_, "Device2");
+  EXPECT_EQ(lists[1].parameters_.str, "\"platformID\":\"1\"\n");
 }
