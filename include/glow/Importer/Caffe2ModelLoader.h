@@ -66,6 +66,10 @@ class Caffe2ModelLoader
   /// Load the Conv or ConvRelu operators.
   Error loadConv(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
 
+  /// Load the ConvTranspose operator.
+  Error loadConvTranspose(const caffe2::OperatorDef &op,
+                          ArgumentDictionaryTy &dict);
+
   /// Load the Int8Conv or Int8ConvRelu operators.
   Error loadConvQuantized(const caffe2::OperatorDef &op,
                           ArgumentDictionaryTy &dict);

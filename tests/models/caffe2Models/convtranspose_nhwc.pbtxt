@@ -1,0 +1,29 @@
+name: "convTranspose_test"
+op {
+  input: "inputs"
+  input: "convTranspose_w"
+  input: "convTranspose_b"
+  output: "convTranspose_out"
+  type: "ConvTranspose"
+  arg {
+    name: "order"
+    s: "NHWC"
+  }
+  arg {
+    name: "kernel"
+    i: 3
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "group"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+}
+external_output: "convTranspose_out"

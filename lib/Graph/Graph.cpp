@@ -673,6 +673,34 @@ static void check3DKernelSize(ShapeNHWDC idim,
          "Kernel size is too large");
 }
 
+/// Check that the dimensions that are passed in when the ConvTranspose is
+/// constructed are correct.
+static void assertConvTransposeDims(NodeValue input, NodeValue filter,
+                                    NodeValue bias,
+                                    llvm::ArrayRef<unsigned_t> kernels,
+                                    llvm::ArrayRef<unsigned_t> strides,
+                                    llvm::ArrayRef<unsigned_t> pads,
+                                    unsigned_t group) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  (void)idim;
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+
+  // NOTE: here the N in NHWC is abnormal because it is the number of filters
+  // (and therefore the number of output channels of the conv) and not the
+  // batch size. The rest of the dimensions are representative of the input
+  // dimensions to the convolution.
+  ShapeNHWC filterDims(filter.dims());
+  (void)filterDims;
+
+  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
+         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
+         "Invalid filter dims");
+
+  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
+}
+
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
@@ -774,6 +802,28 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
   llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
   return createConv3D(name, input, filter, bias, outTy, kernels, strides, pads,
                       group);
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation) {
+  assertConvTransposeDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new ConvTransposeNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group, dilation));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+    unsigned_t group, unsigned_t dilation) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConvTranspose(name, input, filter, bias, outTy, kernels, strides,
+                             pads, group, dilation);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
@@ -1086,6 +1136,8 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
       currLayout = "NCHW";
     } else if (compareShuffle(NHWC2HWNC)) {
       currLayout = "HWNC";
+    } else if (compareShuffle(CNHW2NHWC)) {
+      currLayout = "NHWC";
     }
   }
 
@@ -2507,6 +2559,65 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
       group));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  ShapeHW kdim(kernels);
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
+         "buffer too small for selected stride");
+
+  assert(group > 0 && "group should be larger than 0");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  assert(outChannels % group == 0 && "outChannels must be divisible by groups");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+
+  std::array<dim_t, 4> outDims = {
+      {idim.n, outSz.first, outSz.second, outChannels}};
+
+  // Allocate the Filter and Bias tensors.
+  std::array<dim_t, 4> filterDim = {
+      {outChannels, kdim.height, kdim.width, idim.c / group}};
+  size_t fanIn = kdim.height * kdim.width * idim.c;
+  ElemKind inputTy = input.getType()->getElementType();
+  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+         "Convolution on non-floating point type?");
+  auto *filter =
+      getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
+
+  auto *bias =
+      getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
+  bindings.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1,
+                                getPRNG());
+
+  bindings.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn,
+                                  getPRNG());
+
+  auto OT = getParent()->uniqueType(inputTy, outDims);
+
+  return addNode(new ConvTransposeNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group, dilation));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    dim_t outChannels, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+    unsigned_t group, unsigned_t dilation) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConvTranspose(bindings, name, input, outChannels, kernels,
+                             strides, pads, group, dilation);
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,

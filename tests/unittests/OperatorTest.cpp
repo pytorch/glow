@@ -6057,13 +6057,340 @@ TEST_P(OperatorTest, Fp16Splat) {
   }
 }
 
+/// ConvTranspose with easy to calculate output values. 2x2 input, 1-ch input,
+/// 2-ch output.
+TEST_P(OperatorTest, sanityConvTranspose2OutCh) {
+  CHECK_IF_ENABLED()
+
+  float biasVal[2] = {1.1, 2.2};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4.,  5., 6.,  7.,
+                                             8., 9., 10., 3., 4.,  5.,
+                                             6., 7., 8.,  9., 10., 11.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
+  bindings_.allocate(bias)->getHandle() = biasVal;
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {0, 0, 0, 0});
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 2});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {0, 0, 0, 0}, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 4, 4, 2};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 4 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 12 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 17 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 12 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 18 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 49 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 63 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 41 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 36 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 91 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 105 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 65 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 32 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 76 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 85 + biasVal[0]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 50 + biasVal[0]);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 6 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 17 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 22 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 1}), 15 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), 24 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 1}), 63 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 1}), 77 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 1}), 49 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 1}), 42 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 1}), 105 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 1}), 119 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 1}), 73 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 1}), 36 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 1}), 85 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 1}), 94 + biasVal[1]);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 1}), 55 + biasVal[1]);
+}
+
+/// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTranspose1OutCh) {
+  CHECK_IF_ENABLED()
+
+  float biasVal = 2.4;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 3}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 3., 4., 5.,
+                                            4., 5., 6., 5., 6., 7.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 3}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {
+      2., 3., 4., 3., 4., 5., 4.,  5., 6.,  5.,  6.,  7.,  6., 7.,
+      8., 7., 8., 9., 8., 9., 10., 9., 10., 11., 10., 11., 12.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->getHandle() = {biasVal};
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {0, 0, 0, 0});
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {0, 0, 0, 0}, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 4, 4, 1};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 29 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 76 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 97 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 62 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 103 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 257 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 311 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 190 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 175 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 419 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 473 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 280 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 137 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 316 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 349 + biasVal);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 200 + biasVal);
+}
+
+/// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTransposeStrided) {
+  CHECK_IF_ENABLED()
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6.,
+                                             7., 8., 9., 10.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {2, 2}, {0, 0, 0, 0});
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {2, 2}, {0, 0, 0, 0}, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 5, 5, 1};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 14);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 9);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 4, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 29);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 4, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 70);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 42);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 4, 0}), 50);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 53);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 4, 0}), 35);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 0, 0}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 1, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 80);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 45);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 50);
+}
+
+/// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTransposePads) {
+  CHECK_IF_ENABLED()
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6.,
+                                             7., 8., 9., 10.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {1, 1, 1, 1});
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {1, 1, 1, 1}, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 2, 2, 1};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 49);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 63);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 91);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 105);
+}
+
+/// Compare ConvTranspose with equivalent Convolution, no strides.
+/// TODO - need version with Strides (dilate input).
+template <unsigned_t kernel, unsigned_t stride, unsigned_t pad, unsigned_t idim>
+static void convTransposeConvCompare(glow::PlaceholderBindings &bindings,
+                                     glow::Module &mod, glow::Function *F,
+                                     glow::ExecutionEngine &EE) {
+  unsigned_t Cpad = kernel - pad - 1;
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 4> Cpads = {Cpad, Cpad, Cpad, Cpad};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, idim, idim, 1},
+                                      "input", false);
+  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+
+  auto *filterConv = mod.createPlaceholder(
+      ElemKind::FloatTy, {1, kernel, kernel, 1}, "filterC", false);
+  bindings.allocate(filterConv)
+      ->getHandle()
+      .randomize(-10.0, 10.0, mod.getPRNG());
+  auto FCH = bindings.get(filterConv)->getHandle();
+
+  auto *filterConvTr = mod.createPlaceholder(
+      ElemKind::FloatTy, {1, kernel, kernel, 1}, "filterD", false);
+  auto FDH = bindings.allocate(filterConvTr)->getHandle();
+  for (dim_t i = 0; i < kernel * kernel; i++) {
+    FDH.raw(i) = FCH.raw(kernel * kernel - i - 1);
+  }
+
+  auto *bias = mod.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outHW =
+      calculateConvTransposeOutputDims(idim, idim, kernels, strides, pads);
+
+  auto outTy =
+      mod.uniqueType(ElemKind::FloatTy, {1, outHW.first, outHW.second, 1});
+
+  ConvolutionNode *CN = F->createConv("conv", input, filterConv, bias, outTy,
+                                      kernels, strides, Cpads, 1, 1);
+  ConvTransposeNode *DN =
+      F->createConvTranspose("ConvTranspose", input, filterConvTr, bias, outTy,
+                             kernels, strides, pads, 1, 1);
+
+  SaveNode *SC = F->createSave("saveC", CN);
+  bindings.allocate(SC->getPlaceholder());
+
+  SaveNode *SD = F->createSave("saveD", DN);
+  bindings.allocate(SD->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings, {input, SC->getPlaceholder(), SD->getPlaceholder()});
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  outHW = calculateConvPoolOutputDims(idim, idim, kernels, strides, Cpads, 1);
+
+  auto resultConv = bindings.get(SC->getPlaceholder())->getHandle();
+  auto resultConvTranspose = bindings.get(SD->getPlaceholder())->getHandle();
+
+  std::vector<dim_t> expectedDims = {1, outHW.first, outHW.second, 1};
+  ASSERT_TRUE(resultConv.dims().vec() == expectedDims);
+  ASSERT_TRUE(resultConvTranspose.dims().vec() == expectedDims);
+
+  for (dim_t i = 0; i < outHW.first; i++) {
+    for (dim_t j = 0; j < outHW.second; j++) {
+      EXPECT_FLOAT_EQ(static_cast<float>(resultConv.at({0, i, j, 0})),
+                      static_cast<float>(resultConvTranspose.at({0, i, j, 0})));
+    }
+  }
+}
+
+TEST_P(OperatorTest, ConvTransposeonvolutionCompareSimpleK8S1P0I3) {
+  ENABLED_BACKENDS("Interpreter", "CPU");
+  convTransposeConvCompare<8, 1, 0, 3>(bindings_, mod_, F_, EE_);
+}
+
+TEST_P(OperatorTest, ConvTransposeConvolutionCompareSimpleK6S1P1I4) {
+  ENABLED_BACKENDS("Interpreter", "CPU");
+  convTransposeConvCompare<6, 1, 1, 4>(bindings_, mod_, F_, EE_);
+}
+
+TEST_P(OperatorTest, ConvTransposeConvolutionCompareSimpleK5S1P2I3) {
+  ENABLED_BACKENDS("Interpreter", "CPU");
+  convTransposeConvCompare<5, 1, 2, 3>(bindings_, mod_, F_, EE_);
+}
+
 TEST_P(OperatorTest, GroupConvolution) {
   CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
-  for (size_t i = 0; i < 2 * 8; i++) {
+  for (dim_t i = 0; i < 2 * 8; i++) {
     IH.raw(i) = i + 1;
   }
 

@@ -266,6 +266,15 @@ protected:
       return getBiasType(
           getTargetTypeForInput(use, Convolution3DNode::InputIdx),
           getTargetTypeForInput(use, Convolution3DNode::FilterIdx));
+    } else if (use.getKind() == glow::Kinded::Kind::ConvTransposeNodeKind &&
+               idx == ConvTransposeNode::BiasIdx) {
+      // Get the input and weights types. This ensures the types will be
+      // quantized. This is often the case when calling into this function from
+      // canConvert(), as we have not yet converted the inputs.
+      return getBiasType(
+          getTargetTypeForInput(use, ConvTransposeNode::InputIdx),
+          getTargetTypeForInput(use, ConvTransposeNode::FilterIdx));
+
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
       // Get the input and weights types. This ensures the types will be

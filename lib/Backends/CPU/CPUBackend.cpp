@@ -221,6 +221,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int8QTy ||
             NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
+  case Kinded::Kind::ConvTransposeNodeKind:
+    // TODO - not quantized support yet in libjit.
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});

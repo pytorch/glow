@@ -1940,6 +1940,72 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ConvTransposeInstKind: {
+    auto *CI = cast<ConvTransposeInst>(I);
+    auto *dest = CI->getDest();
+    auto *src = CI->getSrc();
+    auto *filter = CI->getFilter();
+    auto *bias = CI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterPtr = emitValueAddress(builder, filter);
+    auto *biasPtr = emitValueAddress(builder, bias);
+
+    assert(CI->getDilation() == 1 && "Dilation != 1 is not supported.");
+    assert(CI->getGroup() == 1 && "Group != 1 is not supported.");
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterDims = emitValueDims(builder, filter);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    auto *kernels = emitConstDimTArray(builder, CI->getKernels());
+    auto *strides = emitConstDimTArray(builder, CI->getStrides());
+    auto *pads = emitConstDimTArray(builder, CI->getPads());
+    auto *group = emitConstDimT(builder, CI->getGroup());
+    auto *dilation = emitConstDimT(builder, CI->getDilation());
+
+    const char *kernelName = "conv_transpose";
+
+    auto *F = getFunction(kernelName, dest->getElementType());
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *filterTy = filter->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
+
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = srcTy->getScale() * filterTy->getScale();
+
+      // Calculate the scaling parameters for the bias and output.
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // output calculation.
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      createCall(builder, F,
+                 {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  destOffset, srcOffset, filterOffset, outPre, outPost,
+                  outScale, dilation});
+    } else {
+      createCall(builder, F,
+                 {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  dilation});
+    }
+    break;
+  }
+
   case Kinded::Kind::CrossEntropyLossInstKind: {
     auto *CI = cast<CrossEntropyLossInst>(I);
     auto *P = CI->getP();

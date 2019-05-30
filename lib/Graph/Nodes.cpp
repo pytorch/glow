@@ -248,6 +248,57 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   return isValid;
 }
 
+static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
+                                llvm::ArrayRef<unsigned_t> kernels,
+                                llvm::ArrayRef<unsigned_t> strides,
+                                llvm::ArrayRef<unsigned_t> pads,
+                                unsigned_t group, unsigned_t dilation) {
+  const Node *parent = dest.getNode();
+  bool isValid = checkType(src, dest.getElementType(), parent);
+  isValid &= checkType(src, filter.getElementType(), parent);
+  ShapeNHWC idim(src.getType()->dims());
+  ShapeNHWC odim(dest.getType()->dims());
+  PaddingTLBR pdim(pads);
+  ShapeHW kdim(kernels);
+  // TODO: any kernel size check in respect to input ? In contrast to Conv,
+  // seems kernel can be any size.
+
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, dim_t(0), parent);
+
+  isValid &= expectCompareTrue("Stride should be less than kernel.",
+                               strides[0] <= kernels[0], true, parent);
+
+  isValid &= expectCompareTrue("Stride should be less than kernel.",
+                               strides[1] <= kernels[1], true, parent);
+
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, dim_t(0), parent);
+
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+  (void)outSz;
+  isValid &=
+      expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+
+  isValid &=
+      expectCompareTrue("Invalid output dimension HT", odim.h, outSz.first,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("Invalid output dimension WT", odim.w, outSz.second,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+
+  isValid &= expectCompareTrue("Invalid output dimension CT", odim.c % group,
+                               dim_t(0), parent);
+
+  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                              idim.c / (dim_t)group};
+  isValid &=
+      expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
+                        llvm::makeArrayRef(filterDims), parent);
+  return isValid;
+}
+
 static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                  NodeValue bias, NodeValue dest) {
   const Node *parent = dest.getNode();
@@ -524,6 +575,11 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
 bool Convolution3DNode::verify() const {
   return verifyConvolution3D(getInput(), getResult(), getFilter(), getBias(),
                              Kernels_, Strides_, Pads_, Group_);
+}
+
+bool ConvTransposeNode::verify() const {
+  return verifyConvTranspose(getInput(), getResult(), getFilter(), Kernels_,
+                             Strides_, Pads_, Group_, Dilation_);
 }
 
 /// Verify that types of an input and its gradient are the same.

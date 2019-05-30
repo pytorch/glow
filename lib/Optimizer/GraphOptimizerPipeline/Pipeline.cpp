@@ -28,6 +28,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // is usually at most 2 or 3 iterations.
       {FunctionPassID::SinkCode, ConvergenceMode::UntilFixedPoint},
 
+      // ConvTranspose + BiasAdd
+      {FunctionPassID::ConvTransposeBiasAddFold},
+
       // Transposes that don't move data are optimized into Reshapes, which
       // enables further optimizations.
       {FunctionPassID::OptimizeTransposeIntoReshape},

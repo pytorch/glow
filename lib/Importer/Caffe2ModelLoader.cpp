@@ -562,6 +562,91 @@ Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
   return foldStatus;
 }
 
+Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
+                                           ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs:
+  std::vector<unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getSizeHW(dict, "stride", 1));
+  std::vector<unsigned_t> pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels, getSizeHW(dict, "kernel", 0));
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
+  }
+  std::string order = "NCHW";
+  if (dict.count("order")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+  }
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
+  }
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  Constant *weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(weight, getConstantByName(op.input(1)));
+
+  // Transpose the weights to the right format. Glow expects to read the
+  // weights in the format CRSK.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  // Caffe2 "ConvTranspose" op always stores the weight as KCRS.
+  Tensor wT;
+  weight->getPayload().transpose(&wT, CNHW2NHWC);
+  weight = G_.getParent()->createConstant(weight->getName(), std::move(wT));
+
+  // The structure of the conv weights is: CRSK. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  dim_t depth = weight->dims()[0];
+
+  // We expect the input to be NHWC.
+  NodeValue finalIn;
+  if (order == "NCHW") {
+    finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+  } else {
+    finalIn = in;
+  }
+
+  TypeRef finalInType = finalIn.getType();
+
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(finalInType->dims());
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+
+  // Try to find a loaded bias constant.
+  Constant *bias = nullptr;
+  if (op.input_size() > 2) {
+    const auto &biasName = op.input(2);
+    bias = getConstantByNameOrNull(biasName);
+  }
+  // Construct the bias constant if one wasn't found.
+  if (!bias) {
+    Tensor b(ElemKind::FloatTy, {depth});
+    b.zero();
+    bias = G_.getParent()->createConstant("conv.bias", std::move(b));
+  }
+
+  TypeRef outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  Node *node = G_.createConvTranspose(opName, finalIn, weight, bias, outTy,
+                                      kernels, strides, pads, group, dilation);
+
+  if (order == "NCHW") {
+    // Transpose the output back.
+    node = G_.createTranspose(opName, node, NHWC2NCHW);
+  }
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
@@ -577,6 +662,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
+  }
+
+  if (typeName == "ConvTranspose") {
+    return loadConvTranspose(op, dict);
   }
 
   if (typeName == "Int8Conv" || typeName == "Int8ConvRelu") {
