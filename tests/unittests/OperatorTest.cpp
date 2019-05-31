@@ -3841,6 +3841,8 @@ TEST_P(OperatorTest, GroupConvolution) {
 }
 
 TEST_P(OperatorTest, DilatedConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 1, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
