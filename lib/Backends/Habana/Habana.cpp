@@ -116,33 +116,6 @@ struct synPoolParams {
         dilW(1), dilH(1), poolingConvention(0) {}
 };
 
-/// Habana Synapse device.
-class Device final {
-  /// Device identifier, used for Synapse API calls.
-  uint32_t id_;
-
-public:
-  /// Initialize the device.
-  Device() {
-    chk(synInitialize());
-    chk(synAcquireDevice(&id_, nullptr));
-  }
-
-  /// Destroy the device.
-  ~Device() { chk(synDestroy()); }
-
-  /// Non-copyable, non-movable.
-  ///@{
-  Device(const Device &) = delete;
-  Device(Device &&) = delete;
-  Device &operator=(const Device &) = delete;
-  Device &operator=(Device &&) = delete;
-  ///@}
-
-  /// Get the stored identifier.
-  uint32_t getID() const { return id_; }
-};
-
 /// Enum describing how the tensor will be used by the model.
 enum class IOType {
   /// Intermediate result between nodes.
@@ -411,7 +384,7 @@ bool HabanaWaitHandle::wait() {
 }
 
 /// Retrieve and dump debug info about a topology.
-void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
+static void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   uint32_t numOfInputs;
   uint32_t numOfOutputs;
   uint32_t numOfIntermediates;
@@ -736,7 +709,7 @@ static bool usedInFunction(Placeholder *V, Function *F) {
   return false;
 }
 
-IOPlaceholders findIOPlaceholders(Function *F) {
+static IOPlaceholders findIOPlaceholders(Function *F) {
   IOPlaceholders io;
   for (auto &V : F->getParent()->getPlaceholders()) {
     if (!usedInFunction(V, F)) {
