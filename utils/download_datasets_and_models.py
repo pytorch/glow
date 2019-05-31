@@ -162,6 +162,7 @@ def download(path, filename, url):
 
 def download_caffe2_models(outDir, models):
     for modelname in models:
+        print("For model ", modelname);
         for filename in ["predict_net.pbtxt", "predict_net.pb", "init_net.pb"]:
             path = os.path.join(outDir, modelname)
             url = "http://fb-glow-assets.s3.amazonaws.com/models/{}/{}".format(
