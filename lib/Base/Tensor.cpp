@@ -515,3 +515,11 @@ void Tensor::convertToType(ElemKind newTy) {
   }
   *this = std::move(tmp);
 }
+
+size_t Tensor::getUnpaddedSizeInBytes() const {
+  if (unpaddedSize_) {
+    return unpaddedSize_;
+  } else {
+    return type_.getSizeInBytes();
+  }
+}

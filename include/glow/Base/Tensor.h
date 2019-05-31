@@ -69,6 +69,11 @@ private:
   /// The TensorPool that is managing this Tensor (if any).
   TensorPool *tensorPool_{nullptr};
 
+  /// Size in bytes of the unpadded region memory. This is useful  communicating
+  /// the actual size of the data, this allows for copying only inputs and not
+  /// padding to the device.
+  size_t unpaddedSize_{0};
+
   template <class ElemTy> friend class Handle;
 
   /// \returns a pointer to the tensor data buffer.
@@ -77,6 +82,10 @@ private:
 public:
   /// \returns true if it is an unowned tensor.
   bool isUnowned() const { return isUnowned_; }
+
+  /// \returns the size of the unpadded memory region. If unpaddedSize_ is not
+  /// set return the size of the entire payload.
+  size_t getUnpaddedSizeInBytes() const;
 
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
@@ -206,9 +215,11 @@ public:
 
   /// Construct an unowned tensor provided an existing payload buffer.
   /// This constructor can be used when there is a need to work with
-  /// "externally" managed payload buffers using Tensor APIs.
-  Tensor(void *data, TypeRef ty)
-      : data_(reinterpret_cast<char *>(data)), type_(*ty), isUnowned_{false} {
+  /// "externally" managed payload buffers using Tensor APIs. Additionally \p
+  /// unpaddedSize can be set to indicate actual size of the inputs.
+  Tensor(void *data, TypeRef ty, size_t unpaddedSize = 0)
+      : data_(reinterpret_cast<char *>(data)),
+        type_(*ty), isUnowned_{false}, unpaddedSize_{unpaddedSize} {
     // Mark as unowned.
     isUnowned_ = true;
   }
