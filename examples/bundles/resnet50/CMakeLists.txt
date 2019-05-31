@@ -1,44 +1,31 @@
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/bundles)
 set(RESNET50_BUNDLE_DIR ${GLOW_BINARY_DIR}/examples/bundles/resnet50)
 set(RESNET50_GLOW_S3 "http://fb-glow-assets.s3.amazonaws.com/models/resnet50")
 set(RESNET50_NET_FILES predict_net.pbtxt predict_net.pb init_net.pb)
 set(MODEL_INPUT_NAME "gpu_0/data")
 set(IMAGES ${GLOW_SOURCE_DIR}/tests/images/imagenet)
-set(RUNTIME_OUTPUT_DIRECTORY ${RESNET50_BUNDLE_DIR})
 
-# Run Commands
-# ============
-# Regular
-add_custom_command(
-  OUTPUT
-    RunBundleCommand
-  COMMAND
-    ResNet50Bundle ${IMAGES}/*.png
-  DEPENDS
-    ResNet50Bundle
-)
-add_custom_target(RunResNet50Bundle DEPENDS RunBundleCommand ResNet50Bundle)
+# Output directories for regular and quantized outputs
+set(BUNDLE_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/resnet50)
+set(QUANTIZED_BUNDLE_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/quantized_resnet50)
 
-# Quantized
-add_custom_command(
-  OUTPUT
-    RunQuantizedBundleCommand
-  COMMAND
-    QuantizedResNet50Bundle ${IMAGES}/*.png
-  DEPENDS
-    QuantizedResNet50Bundle
+add_custom_target(ResNet50BundleDir ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${BUNDLE_OUTPUT_DIRECTORY}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
 )
-add_custom_target(RunQuantizedResNet50Bundle DEPENDS RunQuantizedBundleCommand QuantizedResNet50Bundle)
 
 # Final Executables
 # =================
 # Regular
 add_executable(ResNet50Bundle $<TARGET_OBJECTS:ResNet50BundleMain>)
-target_link_libraries(ResNet50Bundle ${RESNET50_BUNDLE_DIR}/resnet50.o png)
+set_target_properties(ResNet50Bundle PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${BUNDLE_OUTPUT_DIRECTORY})
+target_link_libraries(ResNet50Bundle ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o png)
 add_dependencies(ResNet50Bundle ResNet50BundleMain ResNet50BundleNet)
 
 # Quantized
 add_executable(QuantizedResNet50Bundle $<TARGET_OBJECTS:ResNet50BundleMain>)
-target_link_libraries(QuantizedResNet50Bundle ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o png)
+set_target_properties(QuantizedResNet50Bundle PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY})
+target_link_libraries(QuantizedResNet50Bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o png)
 add_dependencies(QuantizedResNet50Bundle ResNet50BundleMain QuantizedResNet50BundleNet)
 
 # Glow Bundles
@@ -46,41 +33,41 @@ add_dependencies(QuantizedResNet50Bundle ResNet50BundleMain QuantizedResNet50Bun
 # Regular Bundle
 add_custom_command(
   OUTPUT
-    ${RESNET50_BUNDLE_DIR}/resnet50.o
+    ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o
   COMMAND
     image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1
     -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -cpu -emit-bundle ${RESNET50_BUNDLE_DIR}
+    -cpu -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY}
   DEPENDS
-    image-classifier
+    image-classifier ResNet50BundleDir
 )
-add_custom_target(ResNet50BundleNet DEPENDS ${RESNET50_BUNDLE_DIR}/resnet50.o ResNet50BundleNetFiles)
+add_custom_target(ResNet50BundleNet DEPENDS ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o ResNet50BundleNetFiles)
 
 # Quantization Profile
 add_custom_command(
   OUTPUT
     ${RESNET50_BUNDLE_DIR}/profile.yml
   COMMAND
-    image-classifier ${IMAGES}/*.png -image-mode=0to1
+    image-classifier ${IMAGES}/*.png -i=0to1
     -dump-profile=${RESNET50_BUNDLE_DIR}/profile.yml
     -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
   DEPENDS
-    image-classifier
+  image-classifier
 )
 add_custom_target(ResNet50BundleQuantizationProfile DEPENDS ${RESNET50_BUNDLE_DIR}/profile.yml ResNet50BundleNetFiles)
 
 # Quantized Bundle
 add_custom_command(
   OUTPUT
-    ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o
+    ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o
   COMMAND
-    image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1 -load-profile=profile.yml -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax
+    image-classifier ${IMAGES}/dog_207.png -g -i=0to1 -load-profile=profile.yml -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax
     -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -cpu -emit-bundle ${RESNET50_BUNDLE_DIR} && mv ${RESNET50_BUNDLE_DIR}/resnet50.o ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o
+    -cpu -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
   DEPENDS
-    image-classifier
+  image-classifier ResNet50BundleDir
 )
-add_custom_target(QuantizedResNet50BundleNet DEPENDS ${RESNET50_BUNDLE_DIR}/quantized_resnet50.o ResNet50BundleQuantizationProfile)
+add_custom_target(QuantizedResNet50BundleNet DEPENDS ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o ResNet50BundleQuantizationProfile)
 
 # Other
 # =====
@@ -100,5 +87,3 @@ foreach(file ${RESNET50_NET_FILES})
 )
 endforeach()
 add_custom_target(ResNet50BundleNetFiles DEPENDS ${RESNET50_NET_FILES})
-
-unset(RUNTIME_OUTPUT_DIRECTORY)

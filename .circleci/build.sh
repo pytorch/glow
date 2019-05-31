@@ -75,6 +75,7 @@ elif [[ "$CIRCLE_JOB" == "RELEASE_WITH_EXPENSIVE_TESTS" ]]; then
     )
     CMAKE_ARGS+=("-DGLOW_MODELS_DIR=$MODELS_DIR")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
+    CMAKE_ARGS+=("-DGLOW_WITH_BUNDLES=ON")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
     sudo apt-get install wget 

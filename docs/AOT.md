@@ -20,7 +20,7 @@ executables. Example:
   $ninja ResNet50Bundle
   ...
 
-  $./bin/resnet50 cat.png
+  $./resnet50 cat.png
   Result: 285
 ```
 
@@ -170,13 +170,10 @@ The CMakeLists.txt provides the following targets:
   *  Once everything is setup, it invokes the compiled network model by calling the
      `resnet50` function from the `resnet50.o` object file.
 * `ResNet50Bundle`: it links the user-defined `main.o` and auto-generated `resnet50.o` into a standalone executable file called `resnet50`
-* `RunResNet50Bundle`: it runs this standalone executable with imagenet images as inputs and outputs the results of the network model execution.
-
 ### Quantized network
+
 All of the aforementioned targets have quantized versions in CMakeLists.txt named
-`QuantizedResNet50BundleNet`, `QuantizedResNet50Bundle`, `RunQuantizedResNet50Bundle`.
-For example, to run the quantized bundle, you just need to execute:
-* `ninja RunQuantizedResNet50Bundle`
+`QuantizedResNet50BundleNet`, `QuantizedResNet50Bundle`.
 
 This run performs almost the same steps as non-quantized Resnet50 version
 except it emits bundle based on the quantization profile:
