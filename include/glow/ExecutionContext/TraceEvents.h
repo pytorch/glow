@@ -35,6 +35,7 @@ struct TraceEvent {
   static constexpr auto BeginType = "B";
   static constexpr auto EndType = "E";
   static constexpr auto InstantType = "I";
+  static constexpr auto CompleteType = "X";
 
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
@@ -50,6 +51,9 @@ struct TraceEvent {
   /// same row of the trace.
   int tid;
 
+  /// Duration of the event (for Complete events).
+  uint64_t duration{0};
+
   /// Arbitrary TraceEvent arguments (from spec).
   std::map<std::string, std::string> args;
 
@@ -59,6 +63,11 @@ struct TraceEvent {
   TraceEvent(llvm::StringRef n, uint64_t ts, llvm::StringRef c, int t,
              std::map<std::string, std::string> a)
       : name(n), timestamp(ts), type(c), tid(t), args(a) {}
+
+  TraceEvent(llvm::StringRef n, uint64_t ts, uint64_t dur, int t,
+             std::map<std::string, std::string> a = {})
+      : name(n), timestamp(ts), type(CompleteType), tid(t), duration(dur),
+        args(a) {}
 
   static void
   dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
@@ -90,7 +99,8 @@ struct TraceInfo {
   size_t dataSize{0};
 
   struct Event {
-    size_t index;
+    size_t startIndex;
+    size_t endIndex;
     std::string name;
     std::string type;
 
@@ -101,13 +111,20 @@ struct TraceInfo {
   std::map<Placeholder *, std::vector<Event>> events;
 
   void add(Placeholder *PH, size_t index, std::string name, std::string type) {
-    events[PH].push_back({index, std::move(name), std::move(type), ""});
+    events[PH].push_back({index, 0, std::move(name), std::move(type), ""});
   }
 
   void add(Placeholder *PH, size_t index, std::string name, std::string type,
            std::string context) {
     events[PH].push_back(
-        {index, std::move(name), std::move(type), std::move(context)});
+        {index, 0, std::move(name), std::move(type), std::move(context)});
+  }
+
+  /// Add data for a Complete TraceEvent.
+  void add(Placeholder *PH, size_t startIndex, size_t endIndex,
+           std::string name, std::string context = "") {
+    events[PH].push_back({startIndex, endIndex, std::move(name),
+                          TraceEvent::CompleteType, std::move(context)});
   }
 };
 
@@ -120,8 +137,8 @@ enum class TraceLevel {
   DEBUG     // Full debug events with extra information.
 };
 
-/// A context for storing TraceEvents throughout a run (ie. between partitioned
-/// CompiledFunctions).
+/// A context for storing TraceEvents throughout a run (ie. between
+/// partitioned CompiledFunctions).
 class TraceContext {
   /// The list of materialized Events filled out with timestamp and metadata.
   std::vector<TraceEvent> traceEvents_;
@@ -150,33 +167,39 @@ public:
   /// Sets the level of verbosity for TraceEvents.
   void setTraceLevel(TraceLevel level) { traceLevel_ = level; }
 
-  /// Logs a new TraceEvent at the current time with the given \p name, \p type
-  /// and optionally additional attributes.
+  /// Logs a new TraceEvent at the current time with the given \p name, \p
+  /// type and optionally additional attributes.
   void
   logTraceEvent(llvm::StringRef name,
                 llvm::StringRef type = TraceEvent::InstantType,
                 std::map<std::string, std::string> additionalAttributes = {});
 
-  // Logs a new TraceEvent at the provided \p timestamp, with the given \p name,
-  // \p type and optionally additional attributes.
+  // Logs a new TraceEvent at the provided \p timestamp, with the given \p
+  // name, \p type and optionally additional attributes.
   void
   logTraceEvent(llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
                 std::map<std::string, std::string> additionalAttributes = {});
+
+  /// Logs a new TraceEvent with the Complete event type, the start time is
+  /// provided and uses the current time to determine duration.
+  void logCompleteTraceEvent(
+      llvm::StringRef name, uint64_t startTimestamp,
+      std::map<std::string, std::string> additionalAttributes = {});
 
   /// Sets the human readable \p name for thread \tid.
   void setThreadName(int tid, llvm::StringRef name);
   /// \returns the list of human readable thread names.
   std::map<int, std::string> &getThreadNames() { return threadNames_; }
 
-  /// Dumps all TraceEvents in json format to the given \p filename, optionally
-  /// with a provided \p processName.
+  /// Dumps all TraceEvents in json format to the given \p filename,
+  /// optionally with a provided \p processName.
   void dump(llvm::StringRef filename, const std::string &processName = "");
 
   /// Moves all TraceEvents and thread names in \p other into this context.
   void merge(TraceContext *other);
 
-  /// Moves all TraceEvents and thread names in \p other into this context. This
-  /// version is destructive of the other TraceContext.
+  /// Moves all TraceEvents and thread names in \p other into this context.
+  /// This version is destructive of the other TraceContext.
   void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
 };
 
@@ -210,6 +233,17 @@ public:
 /// Logs a new TraceEvent which begins and ends in the current scope block.
 #define TRACE_EVENT_SCOPE(ctx, name) ScopedTraceBlock __event__(ctx, name);
 
+/// Logs a new scoped TraceEvent with the provided name, allowing multiple
+/// within the same scope.
+#define TRACE_EVENT_SCOPE_NAMED(ctx, name, objName)                            \
+  ScopedTraceBlock objName(ctx, name);
+
+/// End a scoped TraceEvent before its scope exits.
+#define TRACE_EVENT_SCOPE_END() __event__.end();
+
+/// End a named scoped TraceEvent before its scope exits.
+#define TRACE_EVENT_SCOPE_END_NAMED(name) name.end();
+
 /// Helper class which uses RAII for the start and end times of a TraceEvent.
 /// At creation will create a "begin" TraceEvent and at destuction (or end())
 /// will create an "end" TraceEvent.
@@ -220,12 +254,15 @@ class ScopedTraceBlock {
   /// The name of the event.
   llvm::StringRef name_;
 
+  /// Timestamp of the beginning of this event.
+  uint64_t startTimestamp_;
+
   /// Additional metadata associated with the event, which will be visible in
   /// the properties display of the event in the tracing visualizer.
   std::map<std::string, std::string> args_;
 
-  /// Whether this event has already logged the "end" event, to avoid logging it
-  /// twice.
+  /// Whether this event has already logged the "end" event, to avoid logging
+  /// it twice.
   bool end_{false};
 
 public:

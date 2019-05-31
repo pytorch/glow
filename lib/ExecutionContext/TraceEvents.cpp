@@ -48,6 +48,10 @@ void TraceEvent::dumpTraceEvents(
       file << ", \"tid\": " << event.tid;
     }
 
+    if (event.type == CompleteType) {
+      file << ", \"dur\": " << event.duration;
+    }
+
     if (!event.args.empty()) {
       file << ", \"args\": {";
       bool first{true};
@@ -97,6 +101,21 @@ void TraceContext::logTraceEvent(
   }
 }
 
+void TraceContext::logCompleteTraceEvent(
+    llvm::StringRef name, uint64_t startTimestamp,
+    std::map<std::string, std::string> additionalAttributes) {
+  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+    return;
+  }
+
+  TraceEvent ev(name, startTimestamp, TraceEvent::now() - startTimestamp,
+                TraceEvent::getThreadId(), std::move(additionalAttributes));
+  {
+    std::lock_guard<std::mutex> l(lock_);
+    traceEvents_.push_back(std::move(ev));
+  }
+}
+
 void TraceContext::setThreadName(int tid, llvm::StringRef name) {
   threadNames_[tid] = name;
 }
@@ -119,12 +138,10 @@ void TraceContext::merge(TraceContext *other) {
 
 ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
     : context_(context), name_(name) {
-  if (context_) {
-    context_->logTraceEvent(name_, TraceEvent::BeginType, std::move(args_));
-  }
+  startTimestamp_ = TraceEvent::now();
 
   // A local memory fence to prevent the compiler reordering instructions to
-  // before taking the begin timestamp.
+  // before taking the start timestamp.
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
@@ -142,7 +159,7 @@ void ScopedTraceBlock::end() {
   std::atomic_signal_fence(std::memory_order_seq_cst);
 
   if (!end_ && context_) {
-    context_->logTraceEvent(name_, TraceEvent::EndType, std::move(args_));
+    context_->logCompleteTraceEvent(name_, startTimestamp_, std::move(args_));
   }
   end_ = true;
 }

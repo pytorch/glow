@@ -1580,6 +1580,26 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
   }
   cl_ulong total = 0;
 
+  // The device uses a different clock domain, so we'll assume that the last
+  // timestamp and now are close and get the difference between the two
+  // timestamps, which we can use to pull event timestamps in to the
+  // system_clock domain.
+  // TODO: synchronize clocks better, this can be off the thread was yielded
+  // since getting the timestamp in updatePlaceholders.
+  int64_t tsOffset =
+      std::chrono::system_clock().now().time_since_epoch().count();
+
+  if (!kernelLaunches_.empty()) {
+    auto &event = kernelLaunches_.back().event_;
+    cl_ulong time_end;
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
+                            &time_end, NULL);
+
+    // Get the difference between the last event's end and the tsOffset
+    // timestamp.
+    tsOffset -= (time_end / 1000);
+  }
+
   std::unordered_map<std::string, cl_ulong> kernelToDuration;
   auto &traceEvents = context->getTraceContext()->getTraceEvents();
   int tid = TraceEvent::getThreadId();
@@ -1595,13 +1615,13 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
     auto &name = kl.name_;
     auto &type = kl.type_;
     assert(!name.empty() && "Kernel name cannot be empty");
-    cl_ulong time_start;
-    cl_ulong time_end;
+    cl_ulong timeStart;
+    cl_ulong timeEnd;
 
     clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
-                            sizeof(time_start), &time_start, NULL);
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
-                            &time_end, NULL);
+                            sizeof(timeStart), &timeStart, NULL);
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(timeEnd),
+                            &timeEnd, NULL);
 
     if (type == "checkpoint") {
       const auto &it = manualTraceEvents_.find(name);
@@ -1614,18 +1634,24 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
                           ->getHandle<int64_t>();
         const TraceInfo::Event *ev = it->second.second;
 
-        handle.at({ev->index, 0}) = time_end / 1000;
-        traceEvents.push_back({ev->name, time_end / 1000, ev->type, tid});
+        // Convert into usec and move into system_clock domain.
+        auto timestamp = (timeEnd / 1000) + tsOffset;
+
+        handle.at({ev->startIndex, 0}) = timestamp;
+        traceEvents.push_back({ev->name, timestamp, ev->type, tid});
       }
     } else {
-      traceEvents.push_back(
-          {name, time_start / 1000, "B", tid, {{"type", type}}});
-      traceEvents.push_back({name, time_end / 1000, "E", tid});
+      // Duration should be usec.
+      auto duration = (timeEnd - timeStart) / 1000;
+      // Convert into usec and move into system_clock domain.
+      auto startUs = (timeStart / 1000) + tsOffset;
+
+      traceEvents.push_back({name, startUs, duration, tid, {{"type", type}}});
     }
 
     if (clDoProfile) {
       // Duration (in nanoseconds).
-      double duration = time_end - time_start;
+      double duration = timeEnd - timeStart;
       kernelToDuration[type] += duration;
       total += duration;
       llvm::outs() << "OpenCl execution time for a launch of kernel " << type

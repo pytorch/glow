@@ -112,8 +112,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     traceContext = ctx->getTraceContext();
   }
   TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, "adjustInputs", aiEvent);
 
-  TRACE_EVENT_BEGIN(traceContext, "adjustInputs");
   size_t totalInputOnnxTensorSize = 0;
   size_t totalInputGlowTensorSize = 0;
   // Create tensors for input placeholders
@@ -172,8 +172,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               float(totalInputOnnxTensorSize)
                        << " X)";
 
-  TRACE_EVENT_END(traceContext, "adjustInputs");
-  TRACE_EVENT_BEGIN(traceContext, "setOnnxifiOutputs");
+  TRACE_EVENT_SCOPE_END_NAMED(aiEvent);
+  TRACE_EVENT_SCOPE_NAMED(traceContext, "setOnnxifiOutputs", soEvent);
 
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
@@ -208,8 +208,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
     ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(outputTensor));
   }
+  TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
-  TRACE_EVENT_END(traceContext, "setOnnxifiOutputs");
   return run(std::move(ctx), outputEvent, traceEvents);
 }
 

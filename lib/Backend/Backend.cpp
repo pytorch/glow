@@ -114,7 +114,6 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 
   traceInfo.enabled = true;
   traceInfo.autoInstrumented = true;
-  std::string lastName = "";
   size_t index = 0;
 
   // For each instruction, insert a TraceEventInst to record the timestamp,
@@ -130,14 +129,9 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
     }
 
     auto instName = I.getName();
-    // End the previous event.
-    if (lastName != "") {
-      traceInfo.add(backingPH, index, lastName, "E");
-    }
 
     // Start a new event.
-    traceInfo.add(backingPH, index, instName, "B");
-    lastName = instName;
+    traceInfo.add(backingPH, index, index + 1, instName);
 
     it = instructions.insert(it, new TraceEventInst(instName.str() + "_trace",
                                                     backingWeight, index++));
@@ -146,9 +140,6 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
     it++;
     it++;
   }
-
-  // Add one more for the end of the function.
-  traceInfo.add(backingPH, index, lastName, "E");
 
   IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
 }
