@@ -93,8 +93,7 @@ public:
   /// optimized based on \p cctx. If \p saturateHost is set to true the
   /// HostManager will try to use all available devices on the host.
   llvm::Error addNetwork(std::unique_ptr<Module> module,
-                         const CompilationContext &cctx = CompilationContext(),
-                         bool saturateHost = false);
+                         CompilationContext &cctx, bool saturateHost = false);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.

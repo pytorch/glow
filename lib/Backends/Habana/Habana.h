@@ -243,7 +243,7 @@ public:
   bool shouldLower(const Node *N) const override;
 
   bool transformPostLowering(Function *F,
-                             const CompilationContext &cctx) const override;
+                             CompilationContext &cctx) const override;
 
   bool shouldShareBuffers() const override { return false; }
   /// @}

@@ -34,10 +34,10 @@ class Placeholder;
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, const CompilationContext &cctx);
+void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, const CompilationContext &cctx);
+void fold(Function *F, CompilationContext &cctx);
 void fold(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
@@ -76,7 +76,7 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
 llvm::Error optimizeFunction(Function *F, const Backend &B,
-                             const CompilationContext &cctx);
+                             CompilationContext &cctx);
 
 } // namespace glow
 

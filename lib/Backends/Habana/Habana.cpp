@@ -1605,8 +1605,8 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 
 } // namespace
 
-bool HabanaBackend::transformPostLowering(
-    Function *F, const CompilationContext &cctx) const {
+bool HabanaBackend::transformPostLowering(Function *F,
+                                          CompilationContext &cctx) const {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Separate any Slice nodes into several that only slice in one dimension

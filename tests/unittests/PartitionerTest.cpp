@@ -152,7 +152,8 @@ TEST_F(PartitionerTest, Basic1) {
                                      {3072, BackendKind::Interpreter},
                                      {3072, BackendKind::Interpreter}};
   Partitioner myPartitioner(&mod_, devices, false, true);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
@@ -226,7 +227,8 @@ TEST_F(PartitionerTest, Basic2) {
                                      {2048, BackendKind::Interpreter},
                                      {2048, BackendKind::Interpreter}};
   Partitioner myPartitioner(&mod_, devices, /* saturateHost */ true);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
@@ -304,7 +306,8 @@ TEST_F(PartitionerTest, Error1) {
 
   std::vector<DeviceInfo> devices = {{2048}};
   Partitioner myPartitioner(&mod_, devices);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_TRUE(errToBool(std::move(err)));
 }
 
@@ -375,7 +378,8 @@ TEST_F(PartitionerTest, Basic1Roofline) {
       {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
       {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
@@ -423,7 +427,8 @@ TEST_F(PartitionerTest, SelectRepFunc) {
 
   Partitioner myPartitioner(&mod_, {{1000000}, {1000000}, {1000000}});
 
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 }
 
@@ -506,7 +511,8 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
                                        {3072, BackendKind::Interpreter}};
     auto partitioner =
         Partitioner(&mod_, devices, backends, /* saturateHost */ true);
-    auto err = partitioner.Partition();
+    CompilationContext cctx;
+    auto err = partitioner.Partition(cctx);
     EXPECT_FALSE(errToBool(std::move(err)));
     DAGListTy myList = std::move(partitioner.getPartitionResult());
     ASSERT_EQ(mod_.getFunctions().size(), 2);

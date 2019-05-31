@@ -86,7 +86,7 @@ public:
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
   virtual bool transformPostLowering(Function *F,
-                                     const CompilationContext &cctx) const {
+                                     CompilationContext &cctx) const {
     return false;
   }
 

@@ -304,7 +304,8 @@ protected:
     }
 
     // Add the module to the HostManager instance.
-    bool error = errToBool(hostManager_->addNetwork(std::move(mod)));
+    CompilationContext cctx;
+    bool error = errToBool(hostManager_->addNetwork(std::move(mod), cctx));
     if (error) {
       state.SkipWithError("Unable to set up host manager - failed to add "
                           "module!");

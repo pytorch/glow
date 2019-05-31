@@ -60,7 +60,8 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
 
   // Expect this to be an Error because multiple networks with the same name
   // have been added to HostManager
-  errToBool(manager->addNetwork(std::move(module)));
+  CompilationContext cctx;
+  errToBool(manager->addNetwork(std::move(module), cctx));
   EXPECT_FALSE(errToBool(
       manager->removeNetwork("function" + std::to_string(functionNumber))));
 }
@@ -70,7 +71,8 @@ TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
 TEST_F(HostManagerTest, addNetwork) {
   auto module = setupModule(6);
   auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
+  CompilationContext cctx;
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 }
 
 TEST_F(HostManagerTest, runNetwork) {
@@ -88,7 +90,8 @@ TEST_F(HostManagerTest, runNetwork) {
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
+  CompilationContext cctx;
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 
   std::promise<void> runNetwork;
   auto ready = runNetwork.get_future();

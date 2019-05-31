@@ -244,12 +244,12 @@ public:
   llvm::Error
   createDAGWithoutPartition(BackendKind backendKind,
                             std::map<BackendKind, BackendInfo> &backendMap,
-                            const CompilationContext &cctx);
+                            CompilationContext &cctx);
 
   /// Decompose each function in a module. Now we support partitioning a module
   /// among different type of devices. \p cctx is used during optimization of
   /// the Function. \returns whether there was an error encountered.
-  llvm::Error Partition(const CompilationContext &cctx = CompilationContext());
+  llvm::Error Partition(CompilationContext &cctx);
 
   /// Get the partitions.
   DAGListTy &getPartitionResult() { return partitions_; }

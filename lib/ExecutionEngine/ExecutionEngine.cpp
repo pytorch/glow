@@ -241,7 +241,7 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F,
   compile(F, cctx, clearOtherFunctions);
 }
 
-void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
+void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
                               bool clearOtherFunctions) {
   llvm::StringRef name = F->getName();
 
@@ -266,7 +266,7 @@ void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
   insertCompiledFunction(name, std::move(func));
 }
 
-void ExecutionEngine::save(Function *F, const CompilationContext &cctx,
+void ExecutionEngine::save(Function *F, CompilationContext &cctx,
                            llvm::StringRef outputDir,
                            llvm::StringRef networkName) {
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));

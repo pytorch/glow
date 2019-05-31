@@ -87,7 +87,7 @@ different modes.
 
 ```
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   const CompilationContext &cctx);
+                                   CompilationContext &cctx);
 ```
 
 An error is returned if something goes wrong during the optimization pipeline,
