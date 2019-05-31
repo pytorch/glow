@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "BackendTestUtils.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -23,24 +25,27 @@
 
 #include "llvm/ADT/STLExtras.h"
 
+#include <functional>
+
 using namespace glow;
 using llvm::cast;
 
-class ConvCorrectnessTest : public ::testing::TestWithParam<BackendKind> {
-protected:
-  BackendKind backendKind_{GetParam()};
-};
+class ConvCorrectnessTest : public BackendStatelessTest {};
+
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(ConvCorrectnessTest,
+                                         ConvCorrectnessTest);
 
 /// Create a simple network that has a single fp convolution.
-void singleConvNet(Tensor *input, Tensor *out, BackendKind kind,
-                   size_t convDepth, size_t kernel, size_t stride, size_t pad) {
-  PlaceholderBindings bindings;
-  ExecutionEngine EE(kind);
+static FunctionTensorPair
+createAndInitConvNet(glow::PlaceholderBindings &bindings,
+                     glow::ExecutionEngine &EE, size_t size, size_t convDepth,
+                     size_t kernel, size_t stride, size_t pad) {
+  PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = mod.createPlaceholder(input->getElementType(), input->dims(),
-                                    "var", false);
-  bindings.allocate(var)->assign(input);
+  auto *var = mod.createPlaceholder(ElemKind::FloatTy,
+                                    {1, size, size, convDepth}, "var", false);
+  bindings.allocate(var)->getHandle().initXavier(1, PRNG);
 
   auto *conv =
       F->createConv(bindings, "conv", var, convDepth, kernel, stride, pad, 1);
@@ -50,39 +55,43 @@ void singleConvNet(Tensor *input, Tensor *out, BackendKind kind,
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
   convertPlaceholdersToConstants(F, bindings, {var, result->getPlaceholder()});
 
-  EE.compile(CompilationMode::Infer, F);
-
-  updateInputPlaceholders(bindings, {var}, {input});
-  EE.run(bindings);
-  out->assign(resultTensor);
+  return std::make_pair(F, resultTensor);
 }
 
-/// Test a few configurations of the fp convolution by comparing the results to
-/// the interpreter.
-TEST_P(ConvCorrectnessTest, convTest) {
-  PseudoRNG PRNG;
+/// Helper to test sweeping across a variety of configurations of a convolution
+/// by comparing the results to the Interpreter given some \p allowedError. \p b
+/// is the backend to compare the Interpreter against. \p interpK and
+/// \p backendK are the element kinds to use for the Interpreter and backend,
+/// respectively.
+static void testParamSweepConv(BackendKind b, ElemKind interpK,
+                               ElemKind backendK, float allowedError) {
   for (size_t depth : {8, 64}) {
     for (size_t kernel : {1, 3}) {
       for (size_t size : {7, 5, 15}) {
-        Tensor input(ElemKind::FloatTy, {1, size, size, depth});
-        input.getHandle().initXavier(1, PRNG);
-        Tensor out1;
-        Tensor out2;
-        singleConvNet(&input, &out1, backendKind_, depth, kernel, 1, 0);
-        singleConvNet(&input, &out2, BackendKind::Interpreter, depth, kernel, 1,
-                      0);
-        EXPECT_TRUE(out1.isEqual(out2, 0.001));
+        auto boundF = std::bind(createAndInitConvNet, std::placeholders::_1,
+                                std::placeholders::_2, size, depth, kernel,
+                                /* stride */ 1, /* pad */ 0);
+        compareAgainstInterpreter(b, boundF, interpK, backendK, allowedError,
+                                  parCloneCountOpt);
       }
     }
   }
 }
 
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, ConvCorrectnessTest,
-                        ::testing::Values(BackendKind::CPU));
-#endif // GLOW_WITH_CPU
+/// Compare backend against the interpreter in Float.
+TEST_P(ConvCorrectnessTest, convTest_Float) {
+  ENABLED_BACKENDS(CPU, OpenCL);
+  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.001f);
+}
 
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, ConvCorrectnessTest,
-                        ::testing::Values(BackendKind::OpenCL));
-#endif // GLOW_WITH_OPENCL
+/// Compare backend against the interpreter in Int8.
+TEST_P(ConvCorrectnessTest, convTest_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
+}
+
+/// Compare backend against the interpreter in FP16.
+TEST_P(ConvCorrectnessTest, convTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+}

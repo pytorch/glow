@@ -80,6 +80,7 @@ add_executable(ConvTest
                ConvTest.cpp)
 target_link_libraries(ConvTest
                       PRIVATE
+                        BackendTestUtils
                         Graph
                         IR
                         ExecutionEngine
@@ -522,7 +523,7 @@ target_link_libraries(UtilsTest
                         Testing
                         gtest
                         TestMain)
-add_glow_test(NAME UtilsTest 
+add_glow_test(NAME UtilsTest
               COMMAND ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
