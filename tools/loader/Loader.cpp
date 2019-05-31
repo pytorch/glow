@@ -269,6 +269,24 @@ static bool commandLineIsInvalid() {
   return false;
 }
 
+void glow::parseCommandLine(int argc, char **argv) {
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  llvm::cl::ParseCommandLineOptions(
+      argc, argv,
+      " The Glow compiler\n\n"
+      "Glow is a compiler for neural network accelerators.\n");
+
+  if (commandLineIsInvalid()) {
+    std::exit(1);
+  }
+
+  if (modelPathOpt.size() > 2) {
+    llvm::errs() << "-model flag should have either 1 or 2 paths assigned. "
+                    "Please see flag's description.\n";
+    std::exit(1);
+  }
+}
+
 /// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
 /// \p nodeName (e.g. Add).
 static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
@@ -449,23 +467,7 @@ void Loader::generateAndSerializeQuantizationInfos(
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 
-Loader::Loader(int argc, char **argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::cl::ParseCommandLineOptions(
-      argc, argv,
-      " The Glow compiler\n\n"
-      "Glow is a compiler for neural network accelerators.\n");
-
-  if (commandLineIsInvalid()) {
-    std::exit(1);
-  }
-
-  if (modelPathOpt.size() > 2) {
-    llvm::errs() << "-model flag should have either 1 or 2 paths assigned. "
-                    "Please see flag's description.\n";
-    std::exit(1);
-  }
-
+Loader::Loader() {
   if (modelPathOpt.size() == 1) {
     if (llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";

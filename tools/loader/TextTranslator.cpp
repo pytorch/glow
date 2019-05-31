@@ -291,9 +291,10 @@ static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
 int main(int argc, char **argv) {
   PlaceholderBindings bindings;
 
-  // The loader verifies/initializes command line parameters, and initializes
+  // Verify/initialize command line parameters, and then loader initializes
   // the ExecutionEngine and Function.
-  Loader loader(argc, argv);
+  parseCommandLine(argc, argv);
+  Loader loader;
 
   // Load the source and dest dictionaries.
   auto modelDir = loader.getModelOptPath();
