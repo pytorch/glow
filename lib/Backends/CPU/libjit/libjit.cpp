@@ -1698,6 +1698,7 @@ libjit_dump_tensor(uint8_t *tensor, size_t *tensorDim, size_t numDimsTensor,
     FloatTy,       // 32-bit float type (float)
     Float16Ty,     // 16-bit float type (half, fp16)
     Int8QTy,       // 8-bit quantized type (int8_t)
+    UInt8QTy,      // unsigned 8-bit quantized type (uint8_t)
     Int16QTy,      // 16-bit quantized type (int16_t)
     Int32QTy,      // 32-bit quantized type (int32_t)
     Int32ITy,      // 32-bit index type (int32_t)
