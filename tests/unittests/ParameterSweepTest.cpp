@@ -30,10 +30,11 @@
 using namespace glow;
 using llvm::cast;
 
-class ConvCorrectnessTest : public BackendStatelessTest {};
+class ConvSweepTest : public BackendStatelessTest {};
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(ConvSweepTest, ConvSweepTest);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(ConvCorrectnessTest,
-                                         ConvCorrectnessTest);
+class MatMulSweepTest : public BackendStatelessTest {};
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(MatMulSweepTest, MatMulSweepTest);
 
 /// Create a simple network that has a single fp convolution.
 static FunctionTensorPair
@@ -79,19 +80,80 @@ static void testParamSweepConv(BackendKind b, ElemKind interpK,
 }
 
 /// Compare backend against the interpreter in Float.
-TEST_P(ConvCorrectnessTest, convTest_Float) {
+TEST_P(ConvSweepTest, convTest_Float) {
   ENABLED_BACKENDS(CPU, OpenCL);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.001f);
 }
 
 /// Compare backend against the interpreter in Int8.
-TEST_P(ConvCorrectnessTest, convTest_Int8) {
+TEST_P(ConvSweepTest, convTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
 }
 
 /// Compare backend against the interpreter in FP16.
-TEST_P(ConvCorrectnessTest, convTest_Float16) {
+TEST_P(ConvSweepTest, convTest_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
+}
+
+/// Create a simple network that has a single fp batch mat mul.
+static FunctionTensorPair
+createAndInitMatMulNet(glow::PlaceholderBindings &bindings,
+                       glow::ExecutionEngine &EE, size_t N, size_t A, size_t Z,
+                       size_t B) {
+  PseudoRNG PRNG;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, {N, A, Z}, "LHS", false);
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, {N, Z, B}, "RHS", false);
+  bindings.allocate(LHS)->getHandle().initXavier(10, PRNG);
+  bindings.allocate(RHS)->getHandle().initXavier(10, PRNG);
+
+  auto *R = F->createBatchMatMul("BMM", LHS, RHS);
+
+  auto *save = F->createSave("save", R);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Helper to test sweeping across a variety of configurations of a MatMul by
+/// comparing the results to the Interpreter given some \p allowedError. \p b is
+/// the backend to compare the Interpreter against. \p interpK and \p backendK
+/// are the element kinds to use for the Interpreter and backend, respectively.
+static void testParamSweepMatMul(BackendKind b, ElemKind interpK,
+                                 ElemKind backendK, float allowedError) {
+  // Multiplying LHS {N, A, Z} by RHS {N, Z, B} to get result {N, A, B}.
+  for (size_t N : {1, 4, 16, 24}) {
+    for (size_t A = 10; A <= 16; A++) {
+      for (size_t Z : {32, 64, 128, 256}) {
+        size_t B = A;
+        auto boundF = std::bind(createAndInitMatMulNet, std::placeholders::_1,
+                                std::placeholders::_2, N, A, Z, B);
+        compareAgainstInterpreter(b, boundF, interpK, backendK, allowedError,
+                                  parCloneCountOpt);
+      }
+    }
+  }
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(MatMulSweepTest, matMulTest_Float) {
+  ENABLED_BACKENDS(CPU, OpenCL);
+  testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                       0.0001f);
+}
+
+/// Compare backend against the interpreter in Int8.
+TEST_P(MatMulSweepTest, matMulTest_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f);
+}
+
+/// Compare backend against the interpreter in FP16.
+TEST_P(MatMulSweepTest, matMulTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
+                       0.005f);
 }
