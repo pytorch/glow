@@ -101,13 +101,6 @@ if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
 
-
-    # Build onnxifi test driver (Only for DEBUG mode)
-    if [[ "$CIRCLE_JOB" == DEBUG ]]; then
-        cd "${GLOW_DIR}"
-        ./tests/onnxifi/build_onnxifi_tests.sh
-    fi
-
     # Report sccache hit/miss stats
     if hash sccache 2>/dev/null; then
         sccache --show-stats
