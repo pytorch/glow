@@ -1219,9 +1219,10 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
 
   chk(synDestroyGraph());
 
-  return llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
-                                           recipeName, std::move(ios.inputs),
-                                           std::move(ios.outputs));
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
+                                        recipeName, std::move(ios.inputs),
+                                        std::move(ios.outputs)));
 }
 
 static bool isQuantizedType(ElemKind kind) {

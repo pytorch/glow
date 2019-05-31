@@ -147,7 +147,8 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      std::move(compiledFunc));
 }
 
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,

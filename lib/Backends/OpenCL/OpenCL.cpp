@@ -1720,7 +1720,8 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
     bundle.collectConstants(F->getParent());
   }
 
-  return compiledFunc;
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      std::move(compiledFunc));
 }
 
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
