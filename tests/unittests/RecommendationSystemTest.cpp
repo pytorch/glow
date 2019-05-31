@@ -250,7 +250,7 @@ protected:
     auto *end_bias = createRandomizedConstant(mod_, internalType, {output_dim},
                                               "end_bias", 0, 0.00001);
     auto *end_weight = createRandomizedConstant(
-        mod_, internalType, {int_dim, output_dim}, "end_weight", -0.003, 0.003);
+        mod_, internalType, {int_dim, output_dim}, "end_weight", -0.001, 0.003);
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, emb_dim}
