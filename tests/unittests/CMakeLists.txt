@@ -76,9 +76,9 @@ add_glow_test(NAME Caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(ConvTest
-               ConvTest.cpp)
-target_link_libraries(ConvTest
+add_executable(ParameterSweepTest
+               ParameterSweepTest.cpp)
+target_link_libraries(ParameterSweepTest
                       PRIVATE
                         BackendTestUtils
                         Graph
@@ -88,9 +88,9 @@ target_link_libraries(ConvTest
                         Support
                         gtest
                         TestMain)
-add_glow_test(ConvTest
-              ${GLOW_BINARY_DIR}/tests/ConvTest)
-LIST(APPEND UNOPT_TESTS ./tests/ConvTest -optimize-ir=false &&)
+add_glow_test(ParameterSweepTest
+              ${GLOW_BINARY_DIR}/tests/ParameterSweepTest)
+LIST(APPEND UNOPT_TESTS ./tests/ParameterSweepTest -optimize-ir=false &&)
 
 add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)
