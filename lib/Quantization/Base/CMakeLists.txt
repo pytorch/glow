@@ -3,6 +3,7 @@ add_library(QuantizationBase
               Base.cpp)
 target_link_libraries(QuantizationBase
   PRIVATE
-  LLVMSupport)
+  LLVMSupport
+  Base)
 
 add_dependencies(QuantizationBase AutoGen)
