@@ -245,7 +245,6 @@ protected:
   }
 
   llvm::Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -254,7 +253,7 @@ protected:
     T.getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
-    RETURN_IF_ERR(createAndRegisterConstant(opName, std::move(T)));
+    RETURN_IF_ERR(createAndRegisterConstant(op.output(0), std::move(T)));
 
     return llvm::Error::success();
   }
