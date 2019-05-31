@@ -9,7 +9,7 @@ target_include_directories(Habana
 
 target_link_libraries(Habana
                       PUBLIC
-                        "${SYNAPSE_LIB}"
+                        Synapse
                       PRIVATE
                         Backend
                         Base
