@@ -107,30 +107,30 @@ std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
   case ImageNormalizationMode::kneg128to127:
     return {-128., 127.};
   default:
-    GLOW_ASSERT(false && "Image format not defined.");
+    LOG(FATAL) << "Image format not defined.";
   }
 }
 
 std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
   // open file and test for it being a png.
   FILE *fp = fopen(filename, "rb");
-  GLOW_ASSERT(fp && "Can't open image file.");
+  CHECK(fp) << "Can't open image file with name: " << filename;
 
   unsigned char header[8];
   size_t fread_ret = fread(header, 1, 8, fp);
-  GLOW_ASSERT(fread_ret == 8 && !png_sig_cmp(header, 0, 8) &&
-              "Invalid image file signature.");
+  CHECK_EQ(fread_ret, 8) << "fread failed for file: " << filename;
+  CHECK_EQ(png_sig_cmp(header, 0, 8), 0) << "Invalid image file signature.";
 
   // Initialize stuff.
   png_structp png_ptr =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  GLOW_ASSERT(png_ptr && "Image initialization failed.");
+  CHECK(png_ptr) << "Image initialization failed.";
 
   png_infop info_ptr = png_create_info_struct(png_ptr);
-  GLOW_ASSERT(info_ptr && "Could not get png info.");
+  CHECK(info_ptr) << "Could not get png info.";
 
   int sjmpGetPtr = setjmp(png_jmpbuf(png_ptr));
-  GLOW_ASSERT(!sjmpGetPtr && "Failed getting png_ptr.");
+  CHECK(!sjmpGetPtr) << "Failed getting png_ptr.";
 
   png_init_io(png_ptr, fp);
   png_set_sig_bytes(png_ptr, 8);
@@ -205,15 +205,15 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   const size_t numChannels = isGray ? 1 : 3;
 
   (void)bit_depth;
-  assert(bit_depth == 8 && "Invalid image");
-  assert((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
-          color_type == PNG_COLOR_TYPE_RGB || isGray) &&
-         "Invalid image");
+  DCHECK_EQ(bit_depth, 8) << "Invalid image";
+  DCHECK((color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
+          color_type == PNG_COLOR_TYPE_RGB || isGray))
+      << "Invalid image";
   bool hasAlpha = (color_type == PNG_COLOR_TYPE_RGB_ALPHA);
 
   int number_of_passes = png_set_interlace_handling(png_ptr);
   (void)number_of_passes;
-  assert(number_of_passes == 1 && "Invalid image");
+  DCHECK_EQ(number_of_passes, 1) << "Invalid image";
 
   png_read_update_info(png_ptr, info_ptr);
 
@@ -298,8 +298,8 @@ bool glow::writePngImage(Tensor *T, const char *filename,
 
   auto odim = H.dims();
   constexpr size_t numChannels = 3;
-  assert(odim[2] == numChannels &&
-         "Currently only supports saving RGB images without alpha.");
+  DCHECK_EQ(odim[2], numChannels)
+      << "Currently only supports saving RGB images without alpha.";
 
   size_t width = odim[0];
   size_t height = odim[1];
@@ -378,7 +378,7 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
   auto range = normModeToRange(imageNormMode);
   bool loadSuccess =
       !readPngImage(&imageData, filename.data(), range, mean, stddev);
-  GLOW_ASSERT(loadSuccess && "Error reading input image.");
+  CHECK(loadSuccess) "Error reading input image from file: " << filename.str();
   size_t imgHeight = imageData.dims()[0];
   size_t imgWidth = imageData.dims()[1];
   size_t numChannels = imageData.dims()[2];
@@ -411,8 +411,8 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                                    ImageNormalizationMode imageNormMode,
                                    ImageChannelOrder imageChannelOrder,
                                    ImageLayout imageLayout) {
-  assert(!filenames.empty() &&
-         "There must be at least one filename in filenames.");
+  DCHECK(!filenames.empty())
+      << "There must be at least one filename in filenames.";
   size_t numImages = filenames.size();
 
   // Get image dimensions and check if grayscale or color.
@@ -426,11 +426,10 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
   llvm::ArrayRef<float> mean;
   llvm::ArrayRef<float> stddev;
   if (!meanValues.empty()) {
-    GLOW_ASSERT(meanValues.size() == numChannels &&
-                "Number of mean values != input channels");
-    GLOW_ASSERT(
-        !useImagenetNormalization &&
-        "-mean and -use-imagenet-normalization cannot be used together.");
+    CHECK_EQ(meanValues.size(), numChannels)
+        << "Number of mean values != input channels";
+    CHECK(!useImagenetNormalization)
+        << "-mean and -use-imagenet-normalization cannot be used together.";
     mean = meanValues;
   } else if (useImagenetNormalization) {
     mean = imagenetNormMean;
@@ -439,11 +438,10 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
   }
 
   if (!stddevValues.empty()) {
-    GLOW_ASSERT(stddevValues.size() == numChannels &&
-                "Number of stddev values != input channels");
-    GLOW_ASSERT(
-        !useImagenetNormalization &&
-        "-stddev and -use-imagenet-normalization cannot be used together.");
+    CHECK_EQ(stddevValues.size(), numChannels)
+        << "Number of stddev values != input channels";
+    CHECK(!useImagenetNormalization)
+        << "-stddev and -use-imagenet-normalization cannot be used together.";
     stddev = stddevValues;
   } else if (useImagenetNormalization) {
     stddev = imagenetNormStd;
@@ -469,9 +467,9 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
     Tensor localCopy =
         readPngImageAndPreprocess(filenames[n], imageNormMode,
                                   imageChannelOrder, imageLayout, mean, stddev);
-    assert(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
-                      inputImageData->dims().begin() + 1) &&
-           "All images must have the same dimensions");
+    DCHECK(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
+                      inputImageData->dims().begin() + 1))
+        << "All images must have the same dimensions";
     IIDH.insertSlice(localCopy, n);
   }
 }

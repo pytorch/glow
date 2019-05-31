@@ -184,7 +184,7 @@ void LLVMIRGen::initCodeGen() {
   instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc", libjitBC_);
-  GLOW_ASSERT(llmodule_.get() && "Unable to load the JIT library.");
+  CHECK(llmodule_.get()) << "Unable to load the JIT library.";
 
   // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
   // a static compiler, but not necessary for a JIT. Let's disable it by
@@ -508,12 +508,7 @@ void LLVMIRGen::markArgAsUnspecialized(llvm::Value *val) {
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
   auto *F = llmodule_->getFunction("libjit_" + name);
-#ifndef NDEBUG
-  if (!F) {
-    llvm::errs() << "Unable to load the function: libjit_" << name << "\n";
-  }
-#endif
-  GLOW_ASSERT(F && "Unable to load the function");
+  CHECK(F) << "Unable to load the function: libjit_" << name;
   return F;
 }
 
@@ -521,12 +516,7 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
                                        ElemKind elemTy) {
   auto get = [this](llvm::StringRef funcName) {
     auto *F = llmodule_->getFunction(funcName);
-#ifndef NDEBUG
-    if (!F) {
-      llvm::errs() << "Unable to load the function: " << funcName << "\n";
-    }
-#endif
-    GLOW_ASSERT(F && "Unable to load the function");
+    CHECK(F) << "Unable to load the function: " << funcName.str();
     return F;
   };
   switch (elemTy) {
@@ -1428,8 +1418,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         break;
       }
     }
-    GLOW_ASSERT(scalesT.getUnsafePtr() != nullptr &&
-                "Can't find the variable.");
+    CHECK(scalesT.getUnsafePtr()) << "Can't find the variable.";
 
     auto scalesH = scalesT.getHandle();
     size_t rowNum = scalesH.dims()[0];

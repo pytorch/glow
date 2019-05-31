@@ -148,7 +148,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           inPhPtr, new Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else {
       Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
-      assert(inputTensor);
+      DCHECK(inputTensor) << "Tensorpool tensor not found for input "
+                          << inOnnxTensor.name;
       // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
       // valid case for empty tensor, skip copying
       if (inOnnxBuffer) {
@@ -223,9 +224,9 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
   std::vector<onnxTraceEvent *> traceEventsVec;
   for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {
     auto *traceEvent = new onnxTraceEvent();
-    assert(
-        glowTraceEvent.type.size() == 1 &&
-        "Events with types longer than a single char not supported by onnxifi");
+    DCHECK_EQ(glowTraceEvent.type.size(), 1)
+        << "Events with types longer than a single char not supported by "
+           "onnxifi";
     traceEvent->eventType = glowTraceEvent.type[0];
     traceEvent->timestamp = glowTraceEvent.timestamp;
     traceEvent->tid = glowTraceEvent.tid;
@@ -239,13 +240,13 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
 
   traceEvents->numEvents = traceEventsVec.size();
   traceEvents->traceEvents = new onnxTraceEvent *[traceEventsVec.size()];
-  assert(traceEvents->traceEvents);
+  DCHECK(traceEvents->traceEvents);
   std::copy(traceEventsVec.begin(), traceEventsVec.end(),
             traceEvents->traceEvents);
 }
 
 void Graph::releaseTraceEvents(onnxTraceEventList *traceEvents) {
-  assert(traceEvents);
+  DCHECK(traceEvents);
   for (uint64_t i = 0; i < traceEvents->numEvents; ++i) {
     onnxTraceEvent *traceEvent = traceEvents->traceEvents[i];
     delete traceEvent;
