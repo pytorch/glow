@@ -297,7 +297,7 @@ int main(int argc, char **argv) {
   Loader loader;
 
   // Load the source and dest dictionaries.
-  auto modelDir = loader.getModelOptPath();
+  auto modelDir = loader.getModelOptDir();
   srcVocab.loadDictionaryFromFile(modelDir.str() + "/src_dictionary.txt");
   dstVocab.loadDictionaryFromFile(modelDir.str() + "/dst_dictionary.txt");
 

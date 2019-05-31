@@ -87,7 +87,10 @@ public:
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
-  llvm::StringRef getModelOptPath();
+  static llvm::StringRef getModelOptPath();
+  /// Getter for the model path, expected to be a directory.
+  /// \pre (modelPathOpt.size() == 1)
+  static llvm::StringRef getModelOptDir();
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information. \p bindings bind specific

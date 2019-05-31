@@ -211,6 +211,11 @@ llvm::cl::opt<unsigned> iterationsOpt(
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
 llvm::StringRef Loader::getModelOptPath() {
+  assert(modelPathOpt.size() == 1 && "Model path must be a single path.");
+  return modelPathOpt[0];
+}
+
+llvm::StringRef Loader::getModelOptDir() {
   assert(modelPathOpt.size() == 1 &&
          llvm::sys::fs::is_directory(*modelPathOpt.begin()) &&
          "Model path must be a single directory.");
