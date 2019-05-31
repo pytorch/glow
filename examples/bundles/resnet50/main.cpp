@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <assert.h>
+#include <inttypes.h>
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -183,6 +184,7 @@ static void loadImagesAndPreprocess(const std::vector<std::string> &filenames,
     size_t dims[3];
     bool loadSuccess = !readPngImage(filenames[n].c_str(), range, imageT, dims);
     assert(loadSuccess && "Error reading input image.");
+    (void)loadSuccess;
 
     assert((dims[0] == DEFAULT_HEIGHT && dims[1] == DEFAULT_WIDTH) &&
            "All images must have the same Height and Width");
@@ -273,13 +275,13 @@ const SymbolTableEntry &getMutableWeightVar(const BundleConfig &config,
 
 /// Allocate an aligned block of memory.
 void *alignedAlloc(const BundleConfig &config, size_t size) {
-  const size_t alignment = 64;
   void *ptr;
   // Properly align the memory region.
   int res = posix_memalign(&ptr, config.alignment, size);
   assert(res == 0 && "posix_memalign failed");
-  assert((size_t)ptr % alignment == 0 && "Wrong alignment");
+  assert((size_t)ptr % config.alignment == 0 && "Wrong alignment");
   memset(ptr, 0, size);
+  (void)res;
   return ptr;
 }
 
@@ -299,7 +301,8 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
   uint8_t *baseConstantWeightVarsAddr =
       static_cast<uint8_t *>(alignedAlloc(config, fileSize));
   printf("Allocated weights of size: %lu\n", fileSize);
-  printf("Expected weights of size: %lu\n", config.constantWeightVarsMemSize);
+  printf("Expected weights of size: %" PRIu64 "\n",
+         config.constantWeightVarsMemSize);
   assert(fileSize == config.constantWeightVarsMemSize &&
          "Wrong weights file size");
   int result = fread(baseConstantWeightVarsAddr, fileSize, 1, weightsFile);
@@ -318,7 +321,7 @@ static uint8_t *initConstantWeights(const char *weightsFileName,
 static uint8_t *allocateMutableWeightVars(const BundleConfig &config) {
   auto *weights = static_cast<uint8_t *>(
       alignedAlloc(config, config.mutableWeightVarsMemSize));
-  printf("Allocated mutable weight variables of size: %lu\n",
+  printf("Allocated mutable weight variables of size: %" PRIu64 "\n",
          config.mutableWeightVarsMemSize);
   return weights;
 }

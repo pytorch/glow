@@ -1,0 +1,3 @@
+Result: 285
+Result: 207
+Result: 340
