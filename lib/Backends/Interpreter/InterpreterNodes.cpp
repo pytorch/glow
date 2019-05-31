@@ -95,7 +95,7 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(inV);
@@ -134,8 +134,8 @@ void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
             float sum = 0;
             for (size_t fx = 0; fx < kdim.height; fx++) {
               for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                ssize_t ox = x + fx * dilation;
+                ssize_t oy = y + fy * dilation;
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -165,7 +165,7 @@ template <typename ElemTy, typename AccumulatorTy>
 void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
@@ -219,8 +219,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
             AccumulatorTy sum = 0;
             for (size_t fx = 0; fx < kdim.height; fx++) {
               for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                ssize_t ox = x + fx * dilation;
+                ssize_t oy = y + fy * dilation;
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -266,14 +266,14 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
     dispatchQuantizedWithAccumulationImpl(
         fwdConvolutionInstQuantizedImpl, I->getSrc()->getElementType(),
         I->getSrc(), I->getDest(), I->getFilter(), I->getBias(), kernelSizes,
-        strides, pads, group);
+        strides, pads, group, I->getDilation());
     return;
   }
 
-  dispatchFloatingPointImpl(fwdConvolutionInstFloatImpl,
-                            I->getSrc()->getElementType(), I->getSrc(),
-                            I->getDest(), I->getFilter(), I->getBias(),
-                            kernelSizes, strides, pads, group);
+  dispatchFloatingPointImpl(
+      fwdConvolutionInstFloatImpl, I->getSrc()->getElementType(), I->getSrc(),
+      I->getDest(), I->getFilter(), I->getBias(), kernelSizes, strides, pads,
+      group, I->getDilation());
 }
 
 void BoundInterpreterFunction::fwdConvolutionGradInst(
@@ -287,6 +287,7 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   auto biasG = getWeightHandle(I->getBiasGrad());
 
   size_t group = I->getGroup();
+  size_t dilation = I->getDilation();
 
   inG.clear();
   filterG.clear();
@@ -323,8 +324,8 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
             // For each element in the convolution-filter:
             for (size_t fx = 0; fx < kdim.height; fx++) {
               for (size_t fy = 0; fy < kdim.width; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                ssize_t ox = x + fx * dilation;
+                ssize_t oy = y + fy * dilation;
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||

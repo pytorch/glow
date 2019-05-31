@@ -303,7 +303,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
                           const size_t *inWdims, const size_t *filterWdims,
                           const size_t *biasWdims, const size_t *kernelSizes,
                           const size_t *strides, const size_t *pads,
-                          size_t group, unsigned depthUnroll) {
+                          size_t group, unsigned depthUnroll, size_t dilation) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;
@@ -363,8 +363,10 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
 
                   // Calculate the specific input x,y that we process in this
                   // iteration.
-                  ssize_t inx = (ssize_t)outx * stride_h - pad_t + fx;
-                  ssize_t iny = (ssize_t)outy * stride_w - pad_l + fy;
+                  ssize_t inx =
+                      (ssize_t)outx * stride_h - pad_t + fx * dilation;
+                  ssize_t iny =
+                      (ssize_t)outy * stride_w - pad_l + fy * dilation;
 
                   // Ignore index access below zero (this is due to padding).
                   if (inx < 0 || iny < 0 || inx >= (ssize_t)inWdims[1] ||
@@ -417,14 +419,17 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   }           // For each N, the sample in the batch.
 }
 
-void libjit_convolution_i8(
-    int8_t *outW, const int8_t *inW, const int8_t *filterW,
-    const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
-    const size_t *filterWdims, const size_t *biasWdims,
-    const size_t *kernelSizes, const size_t *strides, const size_t *pads,
-    size_t group, int32_t outOffset, int32_t inOffset, int32_t filterOffset,
-    int32_t biasOffset, int32_t biasPre, int32_t biasPost, int32_t biasScale,
-    int32_t outPre, int32_t outPost, int32_t outScale, unsigned depthUnroll) {
+void libjit_convolution_i8(int8_t *outW, const int8_t *inW,
+                           const int8_t *filterW, const int32_t *biasW,
+                           const size_t *outWdims, const size_t *inWdims,
+                           const size_t *filterWdims, const size_t *biasWdims,
+                           const size_t *kernelSizes, const size_t *strides,
+                           const size_t *pads, size_t group, int32_t outOffset,
+                           int32_t inOffset, int32_t filterOffset,
+                           int32_t biasOffset, int32_t biasPre,
+                           int32_t biasPost, int32_t biasScale, int32_t outPre,
+                           int32_t outPost, int32_t outScale,
+                           unsigned depthUnroll, size_t dilation) {
   size_t inChannels = inWdims[3];
   size_t outChannels = outWdims[3];
   size_t inCperG = inChannels / group;
@@ -459,8 +464,8 @@ void libjit_convolution_i8(
             // For each element in the convolution-filter:
             for (size_t fx = 0; fx < kernel_h; fx++) {
               for (size_t fy = 0; fy < kernel_w; fy++) {
-                ssize_t ox = x + fx;
-                ssize_t oy = y + fy;
+                ssize_t ox = x + fx * dilation;
+                ssize_t oy = y + fy * dilation;
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims[1] ||
@@ -518,7 +523,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                const float *filterW, const size_t *outGdims,
                                const size_t *inWdims, const size_t *filterGdims,
                                const size_t *kernels, const size_t *strides,
-                               const size_t *pads, size_t group) {
+                               const size_t *pads, size_t group,
+                               size_t dilation) {
   // NHWC format is assumed
   // Clear inG, filterG, and biasG
   size_t p = sizeof(float);
@@ -549,8 +555,8 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
 
             for (size_t kx = 0; kx < kernel_h; kx++) {
               for (size_t ky = 0; ky < kernel_w; ky++) {
-                ssize_t ax = x + kx;
-                ssize_t ay = y + ky;
+                ssize_t ax = x + kx * dilation;
+                ssize_t ay = y + ky * dilation;
 
                 if (ax < 0 || ay < 0 || ax >= (ssize_t)inWdims[1] ||
                     ay >= (ssize_t)inWdims[2]) {

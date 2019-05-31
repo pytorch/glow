@@ -160,7 +160,7 @@ TEST(IR, allInstrs) {
 
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, {7, 7}, {2, 2},
-                                  {3, 3, 3, 3}, 1);
+                                  {3, 3, 3, 3}, 1, 1);
     builder.createMaxPoolInst("", I4, I0, {7, 7}, {2, 2}, {3, 3, 3, 3});
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);

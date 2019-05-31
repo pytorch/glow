@@ -580,8 +580,8 @@ static void lowerGroupConvolutionNode(Function *F, LoweredInfoMap *loweredMap,
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
     convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
-                                  bias_slice, outTy, kernels, strides, pads,
-                                  1));
+                                  bias_slice, outTy, kernels, strides, pads, 1,
+                                  BNG.getDilation()));
   }
   auto *result = F->createConcat(BNG.getName(), convs, 3);
   replaceAllUsesOfWith(loweredMap, BNG.getResult(), result);

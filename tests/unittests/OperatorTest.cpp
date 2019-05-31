@@ -3840,6 +3840,47 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+TEST_P(OperatorTest, DilatedConvolution) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 1, 1}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  for (size_t i = 0; i < 4; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  for (size_t i = 0; i < 3; i++)
+    for (size_t j = 0; j < 3; j++) {
+      FH.at({0, i, j, 0}) = 1;
+    }
+  FH.at({0, 1, 1, 0}) = 0;
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 1, 1});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 2, 1, 2);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<size_t> expectedDims = {1, 4, 1, 1};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 3);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 2);
+}
+
 /// Test Conv3D with group size of 2 to make sure that group 3d convolution
 /// works as expected.
 TEST_P(OperatorTest, GroupConv3D) {

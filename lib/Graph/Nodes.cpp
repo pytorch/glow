@@ -108,8 +108,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads,
-                              unsigned_t group) {
+                              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
+                              unsigned_t dilation) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
@@ -134,8 +134,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, size_t(0), parent);
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
+                                           pads, dilation);
   isValid &=
       expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
   isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
@@ -406,7 +406,7 @@ bool PadNode::verify() const {
 
 bool ConvolutionNode::verify() const {
   return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
-                           Kernels_, Strides_, Pads_, Group_);
+                           Kernels_, Strides_, Pads_, Group_, Dilation_);
 }
 
 bool Convolution3DNode::verify() const {
@@ -444,7 +444,7 @@ bool ConvolutionGradNode::verify() const {
   isValid &= verifyConvolution(
       getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
       getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
-      Strides_, Pads_, Group_);
+      Strides_, Pads_, Group_, Dilation_);
   return isValid;
 }
 

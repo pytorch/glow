@@ -54,6 +54,11 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
     return nullptr;
   }
 
+  // This optimization is not supported with Dilation currently.
+  if (CN->getDilation() != 1) {
+    return nullptr;
+  }
+
   // Create a new constant filter with the layout [D/8, K, K, C, 8];
   TypeRef filterTy = filter->getType();
   auto dims = filterTy->dims();

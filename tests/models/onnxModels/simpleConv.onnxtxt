@@ -28,6 +28,12 @@ graph {
       ints: 1
       type: INTS
     }
+    attribute {
+      name: "dilations"
+      ints: 1
+      ints: 1
+      type: INTS
+    }    
   }
   name: "test-model"
   initializer {

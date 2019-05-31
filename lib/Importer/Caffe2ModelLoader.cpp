@@ -269,6 +269,11 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
     }
 
+    unsigned_t dilation = 1;
+    if (dict.count("dilation")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
+    }
+
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -303,8 +308,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     // Calculate the size and allocate the output buffer.
     ShapeNHWC idim = ShapeNHWC(finalInType->dims());
-    auto outSz =
-        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
+                                             pads, dilation);
     std::array<size_t, 4> outDims = {
         {idim.n, outSz.first, outSz.second, depth}};
 
@@ -366,7 +371,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     }
 
     Node *node = G_.createConv(opName, finalIn, filter, bias, outTy, kernels,
-                               strides, pads, group);
+                               strides, pads, group, dilation);
     if (typeName == "ConvRelu") {
       node = G_.createRELU(opName + ".relu", node);
     }
