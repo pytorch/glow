@@ -265,7 +265,7 @@ void BundleSaver::emitBundleConfig() {
                              irgen_->getAllocationsInfo().activationsMemSize_),
 
       llvm::ConstantInt::get(uint64TType, TensorAlignment),
-      llvm::ConstantInt::get(uint64TType, F_->findConstants().size()),
+      llvm::ConstantInt::get(uint64TType, F_->findPlaceholders().size()),
 
       symbolTable));
 }
