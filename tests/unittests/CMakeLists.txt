@@ -88,9 +88,8 @@ target_link_libraries(ParameterSweepTest
                         Support
                         gtest
                         TestMain)
-add_glow_test(ParameterSweepTest
+add_glow_test(EXPENSIVE ParameterSweepTest
               ${GLOW_BINARY_DIR}/tests/ParameterSweepTest)
-LIST(APPEND UNOPT_TESTS ./tests/ParameterSweepTest -optimize-ir=false &&)
 
 add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)

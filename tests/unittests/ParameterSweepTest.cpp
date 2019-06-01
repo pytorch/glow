@@ -30,11 +30,8 @@
 using namespace glow;
 using llvm::cast;
 
-class ConvSweepTest : public BackendStatelessTest {};
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(ConvSweepTest, ConvSweepTest);
-
-class MatMulSweepTest : public BackendStatelessTest {};
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(MatMulSweepTest, MatMulSweepTest);
+class SweepTest : public BackendStatelessTest {};
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(SweepTest, SweepTest);
 
 /// Create a simple network that has a single fp convolution.
 static FunctionTensorPair
@@ -80,19 +77,19 @@ static void testParamSweepConv(BackendKind b, ElemKind interpK,
 }
 
 /// Compare backend against the interpreter in Float.
-TEST_P(ConvSweepTest, convTest_Float) {
+TEST_P(SweepTest, convTest_Float) {
   ENABLED_BACKENDS(CPU, OpenCL);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.001f);
 }
 
 /// Compare backend against the interpreter in Int8.
-TEST_P(ConvSweepTest, convTest_Int8) {
+TEST_P(SweepTest, convTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
 }
 
 /// Compare backend against the interpreter in FP16.
-TEST_P(ConvSweepTest, convTest_Float16) {
+TEST_P(SweepTest, convTest_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f);
 }
@@ -139,21 +136,85 @@ static void testParamSweepMatMul(BackendKind b, ElemKind interpK,
 }
 
 /// Compare backend against the interpreter in Float.
-TEST_P(MatMulSweepTest, matMulTest_Float) {
+TEST_P(SweepTest, matMulTest_Float) {
   ENABLED_BACKENDS(CPU, OpenCL);
   testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                        0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
-TEST_P(MatMulSweepTest, matMulTest_Int8) {
+TEST_P(SweepTest, matMulTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f);
 }
 
 /// Compare backend against the interpreter in FP16.
-TEST_P(MatMulSweepTest, matMulTest_Float16) {
+TEST_P(SweepTest, matMulTest_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testParamSweepMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                        0.005f);
+}
+
+/// Create a simple network that has a single fp FC.
+static FunctionTensorPair
+createAndInitFullyConnectedNet(glow::PlaceholderBindings &bindings,
+                               glow::ExecutionEngine &EE, size_t A, size_t Z,
+                               size_t B) {
+  PseudoRNG PRNG;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  auto *IP = mod.createPlaceholder(ElemKind::FloatTy, {A, Z}, "input", false);
+  auto *WC = mod.createConstant(ElemKind::FloatTy, {Z, B}, "weights");
+  auto *BC = mod.createConstant(ElemKind::FloatTy, {B}, "bias");
+  bindings.allocate(IP)->getHandle().randomize(-0.2, 0.2, mod.getPRNG());
+  BC->getPayloadMutable().getHandle().randomize(0, 0.000005, mod.getPRNG());
+  WC->getPayloadMutable().getHandle().randomize(-0.4, 0.4, mod.getPRNG());
+
+  auto *FC = F->createFullyConnected("FC", IP, WC, BC);
+  auto *save = F->createSave("save", FC);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Helper to test sweeping across a variety of configurations of a
+/// FullyConnected by comparing the results to the Interpreter given some \p
+/// allowedError. \p b is the backend to compare the Interpreter against. \p
+/// interpK and \p backendK are the element kinds to use for the Interpreter and
+/// backend, respectively.
+static void testParamSweepFullyConnected(BackendKind b, ElemKind interpK,
+                                         ElemKind backendK,
+                                         float allowedError) {
+  for (size_t A : {1, 4, 16, 64}) {
+    for (size_t Z : {256, 512, 1024, 2048, 4096}) {
+      for (size_t B : {64, 256, 1024}) {
+        auto boundF =
+            std::bind(createAndInitFullyConnectedNet, std::placeholders::_1,
+                      std::placeholders::_2, A, Z, B);
+        compareAgainstInterpreter(b, boundF, interpK, backendK, allowedError,
+                                  parCloneCountOpt);
+      }
+    }
+  }
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SweepTest, FCTest_Float) {
+  ENABLED_BACKENDS(CPU, OpenCL);
+  testParamSweepFullyConnected(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                               0.0001f);
+}
+
+/// Compare backend against the interpreter in Int8.
+TEST_P(SweepTest, FCTest_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  testParamSweepFullyConnected(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
+                               0.065f);
+}
+
+/// Compare backend against the interpreter in FP16.
+TEST_P(SweepTest, FCTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testParamSweepFullyConnected(GetParam(), ElemKind::FloatTy,
+                               ElemKind::Float16Ty, 0.004f);
 }
