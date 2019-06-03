@@ -2777,7 +2777,7 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // model converters, like converters from Tensorflow to ONNX). In this
   // situation, such folding can then enable more optimizations and also improve
   // the performance backends that support natively such high-level operators.
-  ::glow::fold(F, cctx.compMode);
+  ::glow::fold(F, cctx);
 
   // Optimize the graph.
   ::glow::optimize(F, cctx);
