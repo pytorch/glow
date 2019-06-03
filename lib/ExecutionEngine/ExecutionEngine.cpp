@@ -255,11 +255,10 @@ void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
 
   for (const Node &N : F->getNodes()) {
-    if (!backend_->isOpSupported(N)) {
-      llvm::errs() << "Unsupported operator: " << N.getDebugDesc() << "\n";
-      GLOW_UNREACHABLE(
-          "Backend must support all nodes after high-level optimizations.");
-    }
+    CHECK(backend_->isOpSupported(N))
+        << "Backend must support all nodes after high-level optimizations but "
+           "encountered unsupported operator: "
+        << N.getDebugDesc();
   }
 
   auto func = backend_->compile(F, cctx.backendOpts);

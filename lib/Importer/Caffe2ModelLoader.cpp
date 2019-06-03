@@ -1210,7 +1210,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_IF_ERR(
           fillTensor<int64_t>(T, ElemKind::Int64ITy, dim, values->ints()));
     } else {
-      GLOW_UNREACHABLE("Unhandled GivenTensorFill type");
+      RETURN_ERR(strFormat("Unhandled tensor fill type: %s", typeName.c_str()));
     }
     RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(T)));
     return llvm::Error::success();

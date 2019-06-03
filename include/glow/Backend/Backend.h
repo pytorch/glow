@@ -77,7 +77,7 @@ public:
   /// files with this name.
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef networkName) const {
-    GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
+    LOG(FATAL) << "Saving a bundle is not supported by the backend";
   }
 
   /// Used by the compiler during graph optimization and before code generation,

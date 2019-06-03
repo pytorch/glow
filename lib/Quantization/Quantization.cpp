@@ -339,12 +339,12 @@ protected:
 
     // Quantizer may be set up to die if a node is only skipped during
     // quantization because the backend does not support it as quantized.
-    if (!isOpSupported && assertAllNodesQuantized_) {
-      llvm::errs() << B_.getBackendName()
-                   << " Backend does not support node as quantized in "
-                   << Type::getElementName(quantizationPrecision_) << ":\n"
-                   << node.getDebugDesc();
-      GLOW_UNREACHABLE("Quantizer failed on converting some node.");
+    if (assertAllNodesQuantized_) {
+      CHECK(isOpSupported) << B_.getBackendName()
+                           << " Backend does not support node as quantized in "
+                           << Type::getElementName(quantizationPrecision_).str()
+                           << ":\n"
+                           << node.getDebugDesc();
     }
 
     return isOpSupported;

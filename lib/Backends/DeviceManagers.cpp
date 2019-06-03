@@ -40,7 +40,7 @@ createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 DeviceManager *
 createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with CPU support");
+  LOG(FATAL) << "Must compile with CPU support";
 }
 #endif
 
@@ -52,7 +52,7 @@ createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 DeviceManager *
 createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with OpenCL support");
+  LOG(FATAL) << "Must compile with OpenCL support";
 }
 #endif
 
@@ -63,7 +63,7 @@ createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
 DeviceManager *
 createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with Habana support");
+  LOG(FATAL) << "Must compile with Habana support";
 }
 #endif
 } // namespace runtime
@@ -86,7 +86,7 @@ DeviceManager::createDeviceManager(BackendKind backendKind,
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
     // device.
-    llvm::errs() << "Warning: Creating a DummyDeviceManager.\n";
+    LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
     return new DummyDeviceManager(backendKind, std::move(config));
   }
 

@@ -94,7 +94,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto *traceContext = context->getTraceContext();
   TRACE_EVENT_SCOPE_NAMED(traceContext, "findJitmainSymbol", fjEvent);
   auto sym = JIT_->findSymbol("jitmain");
-  assert(sym && "Unable to JIT the code!");
+  DCHECK(sym) << "Unable to JIT the code!";
   using JitFuncType =
       void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
                uint8_t * activations);
@@ -106,7 +106,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
   } else {
-    GLOW_UNREACHABLE("Error getting address");
+    RETURN_ERR("Error getting address");
   }
 
   {
@@ -148,7 +148,8 @@ void LLVMCompiledFunction::translateTraceEvents(
   int tid = TraceEvent::getThreadId();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);
-    assert(backingTensor);
+    DCHECK(backingTensor) << "Could not get backing tensor for Placeholder: "
+                          << backing.first->getName().str();
 
     auto &traceEvents = traceContext->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {

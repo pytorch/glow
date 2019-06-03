@@ -533,7 +533,8 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   case ElemKind::BoolTy:
     return get("libjit_" + name + "_b");
   default:
-    GLOW_UNREACHABLE("Unsupported element type");
+    LOG(FATAL) << "Unsupported element type: "
+               << Type::getElementName(elemTy).str();
   }
 }
 
@@ -1018,7 +1019,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
                                    "buffer.element.addr");
     } else {
-      GLOW_UNREACHABLE("Type is not supported.");
+      LOG(FATAL) << "Type is not supported";
     }
 
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1325,12 +1326,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   }
 
   default:
-#ifndef NDEBUG
-    llvm::errs() << "Cannot select the instruction:\n";
-    I->dump(llvm::errs());
-    llvm::errs() << "\n";
-#endif
-    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
+    std::string sBuf;
+    llvm::raw_string_ostream s(sBuf);
+    I->dump(s);
+    LOG(FATAL) << "Cannot select the instruction: " << s.str();
   }
 }
 
@@ -1550,7 +1549,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       } else if (sliceTy->getElementType() == ElemKind::Int32QTy) {
         F = getFunction("batchedadd_i32", dest->getElementType());
       } else {
-        GLOW_UNREACHABLE("Type is not supported.");
+        LOG(FATAL) << "Type is not supported: "
+                   << Type::getElementName(sliceTy->getElementType()).str();
       }
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize, destOffset,
@@ -2382,12 +2382,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   default:
-#ifndef NDEBUG
-    llvm::errs() << "Cannot select the instruction:\n";
-    I->dump(llvm::errs());
-    llvm::errs() << "\n";
-#endif
-    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
+    std::string sBuf;
+    llvm::raw_string_ostream s(sBuf);
+    I->dump(s);
+    LOG(FATAL) << "Cannot select the instruction: " << s.str();
   }
 }
 
