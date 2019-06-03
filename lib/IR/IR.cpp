@@ -474,6 +474,13 @@ void Value::dump(llvm::raw_ostream &out) const { dumpIR(this, out); }
 
 void Value::dump() const { dumpIR(this, llvm::outs()); }
 
+std::string Value::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
 void Value::dumpInContext(llvm::raw_ostream &out) const {
   dumpIRInContext(this, out);
 }
@@ -573,6 +580,13 @@ void IRFunction::dump(llvm::raw_ostream &OS) const {
   OS.flush();
 }
 
+std::string IRFunction::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
 //===----------------------------------------------------------------------===//
 // InstructionTraits<Instruction> Implementation
 //===----------------------------------------------------------------------===//
@@ -597,3 +611,28 @@ void InstructionTraits::removeNodeFromList(Instruction *I) {
   assert(I->getParent() && "Not in a list!");
   I->setParent(nullptr);
 }
+
+namespace glow {
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Value &V) {
+  V.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Value *V) {
+  assert(V != nullptr && "Null Pointer.");
+  V->dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction &irf) {
+  irf.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf) {
+  assert(irf != nullptr && "Null Pointer.");
+  irf->dump(os);
+  return os;
+}
+} // namespace glow

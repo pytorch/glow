@@ -54,4 +54,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TypeRef &type) {
   }
   return os << *type;
 }
+
+void Type::dump(llvm::raw_ostream &out) const { out << this; }
+
+void Type::dump() const { dump(llvm::outs()); }
+
+std::string Type::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  os << this;
+  return os.str();
+}
+
 } // namespace glow

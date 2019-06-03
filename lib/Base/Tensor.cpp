@@ -330,6 +330,36 @@ void glow::dumpImpl(const Tensor *T, unsigned maxNumElem) {
 
 void glow::dumpImpl(const Tensor *T) { dumpImpl(T, llvm::outs()); }
 
+// Dump functions.
+void Tensor::dump(llvm::raw_ostream &os) const { dumpImpl(this, os); }
+
+void Tensor::dump() const { dumpImpl(this, llvm::outs()); }
+
+std::string Tensor::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dumpImpl(this, os);
+  return os.str();
+}
+
+void Tensor::dump(llvm::raw_ostream &os, unsigned maxNumElem) const {
+  dumpImpl(this, os, maxNumElem);
+}
+
+void Tensor::dump(unsigned maxNumElem) const {
+  dumpImpl(this, llvm::outs(), maxNumElem);
+}
+
+std::string Tensor::toString(unsigned maxNumElem) const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dumpImpl(this, os, maxNumElem);
+  return os.str();
+}
+
+/// Dump a textual representation of a specific number of elements in the Tensor
+/// to std::string.
+
 void glow::genericTranspose(const Tensor *src, Tensor *dest,
                             llvm::ArrayRef<unsigned_t> shuffle) {
   DCHECK(src->dims().size() == shuffle.size())
@@ -523,3 +553,17 @@ size_t Tensor::getUnpaddedSizeInBytes() const {
     return type_.getSizeInBytes();
   }
 }
+
+namespace glow {
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Tensor &t) {
+  t.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Tensor *t) {
+  assert(t != nullptr && "Null Pointer.");
+  t->dump(os);
+  return os;
+}
+
+} // namespace glow

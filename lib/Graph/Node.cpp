@@ -258,6 +258,12 @@ std::string Node::getDebugDesc() const {
   }
 }
 
+void Node::dump(llvm::raw_ostream &out) const { out << this->getDebugDesc(); }
+
+void Node::dump() const { dump(llvm::outs()); }
+
+std::string Node::toString() const { return this->getDebugDesc(); }
+
 Node *Node::clone() const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
@@ -281,6 +287,20 @@ void Node::destroyNode(Node *N) {
     llvm_unreachable("Unhandled node");
   }
 }
+
+namespace glow {
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node &node) {
+  node.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node *node) {
+  assert(node != nullptr && "Null Pointer.");
+  node->dump(os);
+  return os;
+}
+} // namespace glow
 
 //===----------------------------------------------------------------------===//
 //                       Nodes verification

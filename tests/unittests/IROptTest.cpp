@@ -884,3 +884,47 @@ TEST(Optimizer, copyEliminationTensorViewBuffer) {
       instrs.begin(), instrs.end(),
       [](const Instruction &I) -> bool { return isa<TensorViewInst>(&I); }));
 }
+
+/// Check if dump functions work for Value and IRFunction.
+TEST(Optimizer, dumpDataStructure) {
+  Module mod;
+  Function *F = mod.createFunction("inoutCopy");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  Value *input = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "input",
+                                    WeightVar::MutabilityKind::Mutable);
+  // Dump Value.
+  std::string storageV1;
+  llvm::raw_string_ostream osV1(storageV1);
+  input->dump(osV1);
+  std::string mesV = input->toString();
+  std::string expectMesV = R"(%input = WeightVar float<2 x 64> mutable)";
+  EXPECT_EQ(mesV, expectMesV);
+  EXPECT_EQ(mesV, osV1.str());
+  std::string storageV2;
+  llvm::raw_string_ostream osV2(storageV2);
+  osV2 << input;
+  EXPECT_EQ(mesV, osV2.str());
+  // Dump IRFunction.
+  std::string storageIRF1;
+  llvm::raw_string_ostream osIRF1(storageIRF1);
+  M.dump(osIRF1);
+  std::string mesI = M.toString();
+  std::string expectMesI = R"(function inoutCopy
+declare {
+  %input = WeightVar float<2 x 64> mutable // size: 512
+
+  ; size = 512 bytes
+}
+
+code {
+}
+)";
+  EXPECT_EQ(mesI, expectMesI);
+  EXPECT_EQ(mesI, osIRF1.str());
+  std::string storageIRF2;
+  llvm::raw_string_ostream osIRF2(storageIRF2);
+  osIRF2 << M;
+  EXPECT_EQ(mesI, osIRF2.str());
+}

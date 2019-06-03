@@ -1672,3 +1672,75 @@ TEST(Graph, GetOutputSaveTest) {
   EXPECT_NE(nullptr, FoundNode);
   EXPECT_EQ(SN2, FoundNode);
 }
+
+/// Check if dump functions work for Node, Function and Module.
+TEST(Graph, testDumpStructure) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  PlaceholderBindings bindings;
+  Node *K = MD.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 100, 3},
+                                 "input", true);
+  // Test Node
+  std::string storageN1;
+  llvm::raw_string_ostream osN1(storageN1);
+  K->dump(osN1);
+  std::string mesN = K->toString();
+  std::string expectMes = R"(Placeholder
+name : "input"
+output : float<4 x 320 x 200 x 100 x 3>
+users : 0
+trainable : 1
+)";
+  EXPECT_EQ(mesN, expectMes);
+  EXPECT_EQ(mesN, osN1.str());
+  std::string storageN2;
+  llvm::raw_string_ostream osN2(storageN2);
+  osN2 << K;
+  EXPECT_EQ(mesN, osN2.str());
+  // Test Function
+  Placeholder *I =
+      MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  Function *F2 = MD.createFunction("F2");
+  F2->createTopK("topk", I, 3);
+  std::string storageF1;
+  llvm::raw_string_ostream osF1(storageF1);
+  F2->dump(osF1);
+  std::string mesF = F2->toString();
+  std::string expectMesF = R"(Graph structure F2:
+TopK
+name : topk
+Input : float<10 x 10>
+K : 3
+users : 0
+Values : float<10 x 3>
+Indices : index64<10 x 3>
+)";
+  EXPECT_EQ(mesF, expectMesF);
+  EXPECT_EQ(mesF, osF1.str());
+  std::string storageF2;
+  llvm::raw_string_ostream osF2(storageF2);
+  osF2 << F2;
+  EXPECT_EQ(mesF, osF2.str());
+  // Test Module
+  MD.createConstant(ElemKind::FloatTy, {1, 1}, "dummy");
+  std::string storageM1;
+  llvm::raw_string_ostream osM1(storageM1);
+  MD.dump(osM1);
+  std::string mesM = MD.toString();
+  std::string expectMesM = R"(Module structure:
+Constant
+name : "dummy"
+output : float<1 x 1>
+users : 0
+
+Function:F
+Function:F2
+)";
+  EXPECT_EQ(mesM, expectMesM);
+  EXPECT_EQ(mesM, osM1.str());
+  std::string storageM2;
+  llvm::raw_string_ostream osM2(storageM2);
+  osM2 << MD;
+  EXPECT_EQ(mesM, osM2.str());
+}
