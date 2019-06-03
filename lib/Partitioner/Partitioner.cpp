@@ -754,7 +754,7 @@ void Partitioner::getBackendMap(
 
 llvm::Error Partitioner::createDAGWithoutPartition(
     BackendKind backendKind, std::map<BackendKind, BackendInfo> &backendMap,
-    const CompilationContext &cctx) {
+    CompilationContext &cctx) {
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
       auto backend = backendMap[backendKind].backend;
@@ -781,7 +781,7 @@ llvm::Error Partitioner::createDAGWithoutPartition(
   return llvm::Error::success();
 }
 
-llvm::Error Partitioner::Partition(const CompilationContext &cctx) {
+llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Prepare the mapping between BackendKind and BackendInfo.
   std::map<BackendKind, BackendInfo> backendMap;
   std::vector<Backend *> backends;

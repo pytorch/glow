@@ -202,7 +202,7 @@ public:
   compile(Function *F, const BackendOptions &opts) const override;
 
   bool transformPostLowering(Function *F,
-                             const CompilationContext &cctx) const override;
+                             CompilationContext &cctx) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 

@@ -621,7 +621,8 @@ protected:
     std::cout << numDevices << " devices of size " << memSize << "\n";
     std::vector<DeviceInfo> devices(numDevices, {memSize, backendKind});
     Partitioner myPartitioner(&mod_, devices);
-    EXIT_ON_ERR(myPartitioner.Partition());
+    CompilationContext cctx;
+    EXIT_ON_ERR(myPartitioner.Partition(cctx));
 
     DAGListTy myList = std::move(myPartitioner.getPartitionResult());
     std::cout << "Partitions = " << mod_.getFunctions().size() << std::endl;

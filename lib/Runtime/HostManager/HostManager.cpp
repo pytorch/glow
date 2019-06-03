@@ -62,7 +62,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                                    const CompilationContext &cctx,
+                                    CompilationContext &cctx,
                                     bool saturateHost) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto functions = module->getFunctions();

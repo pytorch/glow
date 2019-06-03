@@ -53,7 +53,8 @@ void HostManagerBackendId::runNetwork(const Graph *graph,
 }
 
 onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
-  auto err = hostManager_->addNetwork(std::move(module));
+  CompilationContext cctx;
+  auto err = hostManager_->addNetwork(std::move(module), cctx);
 
   if (errToBool(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;

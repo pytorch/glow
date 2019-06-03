@@ -2585,7 +2585,7 @@ static void foldChannelShuffle(Function *F) {
   }
 }
 
-void glow::fold(Function *F, const CompilationContext &cctx) {
+void glow::fold(Function *F, CompilationContext &cctx) {
   (void)cctx;
   // Get Reshape nodes merged into constants to simplify folding.
   optimizeReshape(F);
@@ -2606,7 +2606,7 @@ void glow::fold(Function *F, CompilationMode mode) {
   fold(F, cctx);
 }
 
-void glow::optimize(Function *F, const CompilationContext &cctx) {
+void glow::optimize(Function *F, CompilationContext &cctx) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2731,7 +2731,7 @@ static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
 /// PrecisionConfiguration found in \p cctx. This could include quantization,
 /// profiling, and FP16 conversion.
 static void transformForPrecisionMode(const Backend &B, Function *F,
-                                      const CompilationContext &cctx) {
+                                      CompilationContext &cctx) {
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
 
   switch (precConfig.quantMode) {
@@ -2764,7 +2764,7 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   const CompilationContext &cctx) {
+                                   CompilationContext &cctx) {
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
