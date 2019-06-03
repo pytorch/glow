@@ -42,7 +42,7 @@ void LLVMCompiledFunction::loadPlaceholders(
     auto symbolInfo = it->second;
     auto payload = PH.second->getUnsafePtr();
     auto addr = symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     // copy PH to allocated memory.
     memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
   }
@@ -59,7 +59,7 @@ void LLVMCompiledFunction::updatePlaceholders(
     }
     auto symbolInfo = it->second;
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     auto addr = PH.second->getUnsafePtr();
     // copy PH from allocated memory.
     memcpy(addr, payload, numBytes);

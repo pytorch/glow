@@ -141,6 +141,74 @@ TEST_P(DeviceManagerTest, Basic) {
   EXPECT_TRUE(result1->isEqual(output1));
 }
 
+// Test that the DeviceManager correctly supports virtual padding.
+TEST_P(DeviceManagerTest, PartialTensorCopy) {
+  // Temporarily disable this test for Habana.
+  if (backendKind == BackendKind::Habana) {
+    return;
+  }
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+
+  // Create function of batch size 2.
+  Function *F = module->createFunction("main");
+  auto *input =
+      module->createPlaceholder(ElemKind::FloatTy, {2}, "main_input", false);
+  auto *output =
+      module->createPlaceholder(ElemKind::FloatTy, {2}, "main_output", false);
+  auto *p = F->createTanh("tanh2", input);
+  F->createSave("ret", p, output);
+
+  std::vector<std::unique_ptr<CompiledFunction>> backing;
+  FunctionMapTy functions =
+      compileFunctions(backendKind, module.get(), backing);
+
+  std::promise<const Module *> promise;
+  std::future<const Module *> future;
+  std::tie(promise, future) = getFutureHelper<const Module *>();
+
+  device->addNetwork(module.get(), std::move(functions),
+                     [&promise](const Module *module, llvm::Error err) {
+                       callbackHelper(promise, module, std::move(err));
+                     });
+
+  future.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(future.get(), module.get());
+
+  std::unique_ptr<ExecutionContext> context =
+      llvm::make_unique<ExecutionContext>();
+  context->getPlaceholderBindings()->allocate(output);
+
+  Tensor input1(ElemKind::FloatTy, {1});
+  auto size = input->getType()->getSizeInBytes() / 2;
+  Tensor *virtualPaddedInput =
+      new Tensor(input1.getUnsafePtr(), input->getType(), size);
+
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(0.5);
+  output1.getHandle().clear(std::tanh(0.5));
+
+  context->getPlaceholderBindings()->insert(input, virtualPaddedInput);
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture;
+
+  std::tie(runPromise, runFuture) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
+  device->runFunction("main", std::move(context),
+                      [&runPromise](RunIdentifierTy, llvm::Error err,
+                                    std::unique_ptr<ExecutionContext> context) {
+                        callbackHelper(runPromise, std::move(context),
+                                       std::move(err));
+                      });
+
+  runFuture.wait_for(std::chrono::seconds(2));
+  context = runFuture.get();
+  ASSERT_TRUE(context);
+  Tensor *result1 = context->getPlaceholderBindings()->get(
+      module->getPlaceholderByName("main_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::tanh(0.5));
+}
+
 TEST_P(DeviceManagerTest, MultiRun) {
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;

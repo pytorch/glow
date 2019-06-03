@@ -482,7 +482,7 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getSizeInBytes();
+    eti.tensorSize = T->getUnpaddedSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
     copyInputsSizeInBytes += eti.tensorSize;
@@ -504,7 +504,7 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getSizeInBytes();
+    eti.tensorSize = T->getUnpaddedSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
     outputInfo.push_back(eti);
