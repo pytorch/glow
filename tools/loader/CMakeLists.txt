@@ -53,7 +53,7 @@ add_executable(x-model-builder
   Loader.cpp
   XModelBuilder.cpp)
 
-target_link_libraries(model-runner
+target_link_libraries(x-model-builder
                       PRIVATE
                         Backends
                         Base
