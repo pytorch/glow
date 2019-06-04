@@ -1699,7 +1699,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   return function;
 }
 
-std::unique_ptr<CompiledFunction>
+llvm::Expected<std::unique_ptr<CompiledFunction>>
 OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
 

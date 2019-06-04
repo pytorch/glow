@@ -702,7 +702,7 @@ static IOPlaceholders findIOPlaceholders(Function *F) {
   return io;
 }
 
-std::unique_ptr<CompiledFunction>
+llvm::Expected<std::unique_ptr<CompiledFunction>>
 HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
@@ -733,10 +733,9 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<TensorHandle> tempTensors;
 
   for (const auto &I : F->getNodes()) {
-    if (!isOpSupported(I)) {
-      llvm::errs() << "Unsupported operator: " << I.getDebugDesc() << "\n";
-      GLOW_UNREACHABLE("Unsupported operator");
-    }
+    RETURN_ERR_IF_NOT(isOpSupported(I), strFormat("Unsupported operator: %s",
+                                                  I.getDebugDesc().c_str()));
+
     switch (I.getKind()) {
     case Kinded::Kind::HabanaFullyConnectedNodeKind: {
       auto *NI = llvm::cast<HabanaFullyConnectedNode>(&I);
@@ -1205,8 +1204,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       break;
     }
     default: {
-      llvm::errs() << "Unhandled node: " << I.getDebugDesc() << "\n";
-      GLOW_UNREACHABLE("Unhandled node");
+      RETURN_ERR(strFormat("Unhandled node: %s", I.getDebugDesc().c_str()));
       break;
     }
     }

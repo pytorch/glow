@@ -95,7 +95,11 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
         opts.collectConstants = false;
         for (size_t i = 0, e = backends_.size(); i < e; i++) {
           if (backends_[i]->getBackendKind() == nodeBackendKind) {
-            auto compiled = backends_[i]->compile(function, opts);
+            auto compiledOrErr = backends_[i]->compile(function, opts);
+            if (!compiledOrErr) {
+              return compiledOrErr.takeError();
+            }
+            auto compiled = std::move(*compiledOrErr);
             node->runtimeBundle =
                 llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
             functions_.emplace(node->name, std::move(compiled));

@@ -1503,7 +1503,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
-  auto compiledFunction = backend->compile(F_, cctx.backendOpts);
+  auto compiledFunction = EXIT_ON_ERR(backend->compile(F_, cctx.backendOpts));
   functions.emplace(F_->getName(), compiledFunction.get());
 
   // Add the function to each device.

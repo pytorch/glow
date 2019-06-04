@@ -178,7 +178,7 @@ public:
   BackendKind getBackendKind() const override { return BackendKind::CPU; }
   std::string getBackendName() const override { return "MockCPUBackend"; }
 
-  std::unique_ptr<CompiledFunction>
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }

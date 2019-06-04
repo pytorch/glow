@@ -262,8 +262,11 @@ void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
     }
   }
 
-  auto func = backend_->compile(F, cctx.backendOpts);
-  insertCompiledFunction(name, std::move(func));
+  if (auto funcOrErr = backend_->compile(F, cctx.backendOpts)) {
+    insertCompiledFunction(name, std::move(*funcOrErr));
+  } else {
+    EXIT_ON_ERR(funcOrErr.takeError());
+  }
 }
 
 void ExecutionEngine::save(Function *F, CompilationContext &cctx,

@@ -46,7 +46,7 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
-  std::unique_ptr<CompiledFunction>
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;

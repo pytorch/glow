@@ -83,7 +83,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
-  return backend->compile(F_, cctx.backendOpts);
+  return EXIT_ON_ERR(backend->compile(F_, cctx.backendOpts));
 }
 
 std::future<void> addToDevice(unsigned int id, DeviceManager *device,

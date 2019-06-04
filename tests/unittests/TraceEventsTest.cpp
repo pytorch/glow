@@ -269,8 +269,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
-  EE_.insertCompiledFunction(F->getName(),
-                             backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      F->getName(), EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -309,8 +309,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
-  EE_.insertCompiledFunction(F->getName(),
-                             backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      F->getName(), EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -361,10 +361,12 @@ TEST_P(TraceEventsTest, twoCompiles) {
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
 
   std::string name = F->getName();
-  EE_.insertCompiledFunction(name, backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      name, EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   std::string name2 = name + "2";
-  EE_.insertCompiledFunction(name2, backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      name2, EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});

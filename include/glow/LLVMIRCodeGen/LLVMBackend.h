@@ -63,7 +63,7 @@ public:
   virtual std::unique_ptr<CompiledFunction>
   compileIRWithoutConstants(IRFunction *IR) const;
 
-  virtual std::unique_ptr<CompiledFunction>
+  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   virtual void save(Function *F, llvm::StringRef outputDir,

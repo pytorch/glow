@@ -125,7 +125,7 @@ void setUpDeviceManagerCommon(
   for (auto *function : mod->getFunctions()) {
     EXIT_ON_ERR(::glow::optimizeFunction(function, *backend, cctx));
     std::unique_ptr<CompiledFunction> compiledFunction =
-        backend->compile(function);
+        EXIT_ON_ERR(backend->compile(function));
     funcs.insert(std::make_pair(function->getName(), compiledFunction.get()));
     deviceManagerFunctions.insert(
         std::make_pair(function->getName(), std::move(compiledFunction)));
