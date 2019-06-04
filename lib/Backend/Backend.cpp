@@ -40,7 +40,7 @@ TraceInfo Backend::buildManualTraceInfo(Function *F) const {
 
 void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   if (getTraceEventDataSize() == 0) {
-    GLOW_UNREACHABLE("Auto instrumentation not supported on this backend");
+    LOG(ERROR) << "Auto instrumentation not supported on this backend";
     return;
   }
 

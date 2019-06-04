@@ -165,7 +165,7 @@ protected:
       break;
     }
     default:
-      GLOW_UNREACHABLE("unsupported type");
+      LOG(FATAL) << "Unsupported type: " << type->getElementName().str();
     }
 
     return c;

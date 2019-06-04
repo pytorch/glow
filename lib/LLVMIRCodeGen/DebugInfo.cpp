@@ -355,7 +355,7 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
     memoryAreaKind = MemoryAreaKind::MutableWeightsMemoryArea;
     break;
   default:
-    GLOW_UNREACHABLE("Unknown memory area kind");
+    LOG(FATAL) << "Unknown memory area kind";
   }
   }
 

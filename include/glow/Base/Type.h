@@ -23,6 +23,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
+#include <glog/logging.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -472,7 +474,7 @@ struct Type final {
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
-    GLOW_UNREACHABLE("Invalid type.");
+    LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }
 
   /// \returns true if the type of this Tensor is one of the quantized types.
@@ -515,7 +517,7 @@ struct Type final {
     case ElemKind::BoolTy:
       return sizeof(bool);
     }
-    GLOW_UNREACHABLE("Invalid type.");
+    LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }
 
   /// \return the textual name of the element.

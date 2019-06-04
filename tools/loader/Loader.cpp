@@ -277,7 +277,7 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
     return Kinded::Kind::CLASS##Kind;                                          \
   }
 #include "glow/AutoGenNodes.def"
-  GLOW_UNREACHABLE("Unknown node name.");
+  LOG(FATAL) << "Unknown node name: " << nodeName.str();
 }
 
 /// Helper to get the BackendKind type from a backend's \p name. Need to be
@@ -288,9 +288,8 @@ static BackendKind getBackendKindFromName(std::string &name) {
        {"Interpreter", BackendKind::Interpreter},
        {"OpenCL", BackendKind::OpenCL},
        {"Habana", BackendKind::Habana}});
-  if (mapping.find(name) == mapping.end()) {
-    GLOW_UNREACHABLE("Unknown backendKind name.");
-  }
+  CHECK(mapping.find(name) != mapping.end())
+      << "Unknown backendKind name: " << name;
   return mapping.lookup(name);
 }
 

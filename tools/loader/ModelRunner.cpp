@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
       outputT->getHandle<int8_t>().dump();
       break;
     default:
-      GLOW_UNREACHABLE("Unexpected output type");
+      LOG(FATAL) << "Unexpected output type";
     }
 
     // If profiling, generate and serialize the quantization infos now that we
