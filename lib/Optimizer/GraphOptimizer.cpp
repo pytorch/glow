@@ -2789,11 +2789,11 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     // should be lowered. loweredInfoMap logs what is lowered from what for
     // later use when creating quantization infos. Also pass the precision mode
     // kind set as nodes to not lower, specified higher up in the stack.
-    ::glow::lower(F, cctx.loweredInfoMap, /* backend */ nullptr,
+    ::glow::lower(F, cctx, /* backend */ nullptr,
                   precConfig.precisionModeKindSet);
   } else {
     // Lower based on the backend's preferences.
-    ::glow::lower(F, cctx.loweredInfoMap, &B);
+    ::glow::lower(F, cctx, &B);
   }
 
   // Transform given precision mode; may quantize, convert to fp16, or

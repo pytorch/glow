@@ -369,7 +369,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   bindings.allocate(S->getPlaceholder());
 
   LoweredInfoMap loweredMapForQuant;
-  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
+  ::glow::lower(F, cctx, EE.getBackend());
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -463,7 +464,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   EXPECT_EQ(biasTQP.offset, 0);
 
   LoweredInfoMap loweredMapForQuant;
-  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
+  ::glow::lower(F, cctx, EE.getBackend());
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -1977,7 +1979,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
   LoweredInfoMap loweredMapForProf;
-  lower(profileF, &loweredMapForProf);
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForProf);
+  lower(profileF, cctx);
 
   // Check that the lowered graph only contains the lowered components of the
   // FC (MM and BA) and not the FC itself.
@@ -2041,7 +2044,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
 
   // Lower the function given the backend's preferences for lowering.
   LoweredInfoMap loweredMapForQuant;
-  lower(backendF, &loweredMapForQuant, backendEE.getBackend());
+  CompilationContext cctx2(/* bindings */ nullptr, &loweredMapForQuant);
+  lower(backendF, cctx2, backendEE.getBackend());
 
   // Check that the backend lowered the function as expected.
   auto *floatFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);

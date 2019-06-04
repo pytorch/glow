@@ -44,17 +44,19 @@ static void replaceAllUsesOfWith(LoweredInfoMap *loweredMap, NodeValue oldNV,
                       oldNV.getNode()->getKind()));
 }
 
-static void lowerAddGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerAddGradNode(Function *F, CompilationContext &cctx,
                              const AddGradNode &node) {
   /// The chain rule for addition:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
   auto outG = node.getGradOfOriginalOutputNamedResult();
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedLHS(), outG);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), outG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
+                       outG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(),
+                       outG);
 }
 
-static void lowerMulGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerMulGradNode(Function *F, CompilationContext &cctx,
                              const MulGradNode &node) {
   /// The chain rule for multiplication:
   /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
@@ -65,11 +67,13 @@ static void lowerMulGradNode(Function *F, LoweredInfoMap *loweredMap,
 
   auto *lhsResult = F->createMul("mul.grad.rhs", outG, RHS);
   auto *rhsResult = F->createMul("mul.grad.lhs", outG, LHS);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedLHS(), lhsResult);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), rhsResult);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
+                       lhsResult);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(),
+                       rhsResult);
 }
 
-static void lowerSubGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerSubGradNode(Function *F, CompilationContext &cctx,
                              const SubGradNode &node) {
   /// The chain rule for subtraction:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
@@ -77,10 +81,11 @@ static void lowerSubGradNode(Function *F, LoweredInfoMap *loweredMap,
   auto outG = node.getGradOfOriginalOutputNamedResult();
   auto *zero = F->createSplat("zero", outG.getType(), 0);
   auto *sub = F->createSub("sub.grad", zero, outG);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedLHS(), outG);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), sub);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
+                       outG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(), sub);
 }
-static void lowerDivGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerDivGradNode(Function *F, CompilationContext &cctx,
                              const DivGradNode &node) {
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
@@ -98,34 +103,38 @@ static void lowerDivGradNode(Function *F, LoweredInfoMap *loweredMap,
   auto *squareRhs = F->createMul("square.rhs", RHS, RHS);
   auto *rhsResult = F->createDiv("div.grad", mulLhsGrad, squareRhs);
 
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedLHS(), lhsResult);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedRHS(), rhsResult);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
+                       lhsResult);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(),
+                       rhsResult);
 }
 
-static void lowerRegressionNode(LoweredInfoMap *loweredMap,
+static void lowerRegressionNode(CompilationContext &cctx,
                                 const RegressionNode &node) {
   auto input = node.getInput();
-  replaceAllUsesOfWith(loweredMap, node.getResult(), input);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), input);
 }
 
-static void lowerRegressionGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                                     const RegressionGradNode &node) {
   auto outG = node.getInput();
 
   auto *inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
   auto *expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
 
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedInput(), inputG);
-  replaceAllUsesOfWith(loweredMap, node.getGradOfInputNamedExpected(), expG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedInput(),
+                       inputG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedExpected(),
+                       expG);
 }
 
-static void lowerFullyConnectedNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
   auto W = FC.getWeights();
   TypeRef OT = FC.getResult().getType();
   auto *mul = F->createMatMul("fc.dot", OT, FC.getInput(), W);
   auto *add = F->createBatchedAdd("fc.add.bias", OT, mul, FC.getBias());
-  replaceAllUsesOfWith(loweredMap, FC.getResult(), add);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, FC.getResult(), add);
 
   if (FC.hasPredicate()) {
     add->setPredicate(FC.getPredicate());
@@ -133,7 +142,7 @@ static void lowerFullyConnectedNode(Function *F, LoweredInfoMap *loweredMap,
   }
 }
 
-static void lowerFullyConnectedGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
                                         const FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
@@ -143,20 +152,21 @@ static void lowerFullyConnectedGradNode(Function *F, LoweredInfoMap *loweredMap,
   auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
   auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
   auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
-  replaceAllUsesOfWith(loweredMap, FCG.getGradOfInputNamedInput(), dx);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.
   Node *x2 = F->createFlatten("fcg.x", FCG.getInput(), 1);
   auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
   auto *dw = F->createMatMul("fcg.dot", x2T, dout);
-  replaceAllUsesOfWith(loweredMap, FCG.getGradOfInputNamedWeights(), dw);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedWeights(),
+                       dw);
 
   // db = reduce(dout).
   auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout, /* axis */ 0);
-  replaceAllUsesOfWith(loweredMap, FCG.getGradOfInputNamedBias(), db);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedBias(), db);
 }
 
-static void lowerReluGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerReluGradNode(Function *F, CompilationContext &cctx,
                               const ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
@@ -165,10 +175,10 @@ static void lowerReluGradNode(Function *F, LoweredInfoMap *loweredMap,
       F->createCmpLTE("relugrad", RG.getOriginalOutputForResult(), zero);
   auto *res = F->createSelect("relugrad", cond, zero,
                               RG.getGradOfOriginalOutputNamedResult());
-  replaceAllUsesOfWith(loweredMap, RG.getGradOfInputNamedInput(), res);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RG.getGradOfInputNamedInput(), res);
 }
 
-static void lowerTanhGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerTanhGradNode(Function *F, CompilationContext &cctx,
                               const TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
@@ -183,10 +193,11 @@ static void lowerTanhGradNode(Function *F, LoweredInfoMap *loweredMap,
 
   auto *grad = F->createMul("tanh.one.sq", oneSubsq,
                             THG.getGradOfOriginalOutputNamedResult());
-  replaceAllUsesOfWith(loweredMap, THG.getGradOfInputNamedInput(), grad);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, THG.getGradOfInputNamedInput(),
+                       grad);
 }
 
-static void lowerSigmoidGradNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
                                  const SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
@@ -202,19 +213,20 @@ static void lowerSigmoidGradNode(Function *F, LoweredInfoMap *loweredMap,
 
   auto *grad = F->createMul("sigg.one.sq", expr1,
                             THG.getGradOfOriginalOutputNamedResult());
-  replaceAllUsesOfWith(loweredMap, THG.getGradOfInputNamedInput(), grad);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, THG.getGradOfInputNamedInput(),
+                       grad);
 }
 
-static void lowerReluNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerReluNode(Function *F, CompilationContext &cctx,
                           const ReluNode &R) {
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
   auto *relu =
       F->createMax("relu", R.getResult().getType(), zero, R.getInput());
-  replaceAllUsesOfWith(loweredMap, R.getResult(), relu);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
 }
 
-static void lowerPReluNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerPReluNode(Function *F, CompilationContext &cctx,
                            const PReluNode &R) {
   // PRelu is :
   // slope * x    if x < 0
@@ -225,10 +237,10 @@ static void lowerPReluNode(Function *F, LoweredInfoMap *loweredMap,
   auto *mul = F->createMul("mul", R.getSlope(), R.getInput());
   auto *prelu = F->createSelect("prelu", cmplgt, R.getInput(), mul);
 
-  replaceAllUsesOfWith(loweredMap, R.getResult(), prelu);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), prelu);
 }
 
-static void lowerPadNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerPadNode(Function *F, CompilationContext &cctx,
                          const PadNode &P) {
   auto *outputType = P.getResult().getType();
   auto dims = outputType->dims();
@@ -253,10 +265,10 @@ static void lowerPadNode(Function *F, LoweredInfoMap *loweredMap,
 
   auto *insert =
       F->createInsertTensor(P.getName(), constant, P.getInput(), orig);
-  replaceAllUsesOfWith(loweredMap, P.getResult(), insert);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, P.getResult(), insert);
 }
 
-static void lowerSGDNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerSGDNode(Function *F, CompilationContext &cctx,
                          const SGDNode &SGD) {
   NodeValue W = SGD.getWeight();
   NodeValue G = SGD.getGradient();
@@ -320,10 +332,10 @@ static void lowerSGDNode(Function *F, LoweredInfoMap *loweredMap,
   }
 
   auto *newW = F->createAdd("newW", W, dx);
-  replaceAllUsesOfWith(loweredMap, SGD.getUpdatedWeight(), newW);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, SGD.getUpdatedWeight(), newW);
 }
 
-static void lowerBatchNormalizationNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
                                         const BatchNormalizationNode &BN) {
   auto in = BN.getInput();
   auto out = BN.getResult();
@@ -364,11 +376,10 @@ static void lowerBatchNormalizationNode(Function *F, LoweredInfoMap *loweredMap,
   newResult = F->createMul("mul_coef", newResult, coefB);
   newResult = F->createAdd("result", newResult, betaB);
 
-  replaceAllUsesOfWith(loweredMap, BN.getResult(), newResult);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), newResult);
 }
 
-static void lowerMeanVarNormalizationNode(Function *F,
-                                          LoweredInfoMap *loweredMap,
+static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
                                           const MeanVarNormalizationNode &MVN) {
   auto in = MVN.getInput();
 
@@ -442,12 +453,12 @@ static void lowerMeanVarNormalizationNode(Function *F,
       "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
       F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, inVar));
 
-  replaceAllUsesOfWith(loweredMap, MVN.getNewMean(), newMean);
-  replaceAllUsesOfWith(loweredMap, MVN.getNewVar(), newVar);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, MVN.getNewMean(), newMean);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, MVN.getNewVar(), newVar);
 }
 
 static void lowerBatchNormalizationGradNode(Function *F,
-                                            LoweredInfoMap *loweredMap,
+                                            CompilationContext &cctx,
                                             BatchNormalizationGradNode &BNG) {
   auto inW = BNG.getInput();
   auto outG = BNG.getGradOfOriginalOutputNamedResult();
@@ -532,19 +543,24 @@ static void lowerBatchNormalizationGradNode(Function *F,
                             F->createMul("hmu_coef2", hmu, coef2));
 
   auto *inG = F->createMul("inG", coef1, inBrackets);
-  replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedInput(), inG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedInput(),
+                       inG);
 
-  replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedBias(), sumDy);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedBias(),
+                       sumDy);
 
   auto *gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
-  replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedScale(), gammaG);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedScale(),
+                       gammaG);
 
   auto *zeroSplat = F->createSplat("zeroSplat", var.getType(), 0);
-  replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedMean(), zeroSplat);
-  replaceAllUsesOfWith(loweredMap, BNG.getGradOfInputNamedVar(), zeroSplat);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedMean(),
+                       zeroSplat);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedVar(),
+                       zeroSplat);
 }
 
-static void lowerGroupConvolutionNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
   // a Concatenation of smaller dimension Convolutions. Input channels will be
@@ -584,11 +600,11 @@ static void lowerGroupConvolutionNode(Function *F, LoweredInfoMap *loweredMap,
                                   BNG.getDilation()));
   }
   auto *result = F->createConcat(BNG.getName(), convs, 3);
-  replaceAllUsesOfWith(loweredMap, BNG.getResult(), result);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getResult(), result);
 }
 
 static void lowerSigmoidCrossEntropyWithLogitsNode(
-    Function *F, LoweredInfoMap *loweredMap,
+    Function *F, CompilationContext &cctx,
     const SigmoidCrossEntropyWithLogitsNode &SCEL) {
   // Following Caffe2 implementation closely to lower this Node.
   // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
@@ -625,11 +641,12 @@ static void lowerSigmoidCrossEntropyWithLogitsNode(
   auto *reducedSigmoidXent = F->createBatchedReduceMean(
       "sigmoid.xent.lowered", sigmoidXent, lgt.dims().size() - 1);
 
-  replaceAllUsesOfWith(loweredMap, SCEL.getResult(), reducedSigmoidXent);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, SCEL.getResult(),
+                       reducedSigmoidXent);
 }
 
 /// Lower Tile nodes to InsertTensor nodes with correct axis and count.
-static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerTileNode(Function *F, CompilationContext &cctx,
                           const TileNode &TN) {
   auto input = TN.getInput();
 
@@ -640,10 +657,10 @@ static void lowerTileNode(Function *F, LoweredInfoMap *loweredMap,
 
   auto *IN = F->createInsertTensor(TN.getName(), zero, input, start,
                                    TN.getCount(), TN.getAxis());
-  replaceAllUsesOfWith(loweredMap, TN.getResult(), IN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, TN.getResult(), IN);
 }
 
-static void lowerChannelShuffleNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
                                     const ChannelShuffleNode &CSN) {
   auto input = CSN.getInput();
   auto group = CSN.getGroup();
@@ -671,10 +688,10 @@ static void lowerChannelShuffleNode(Function *F, LoweredInfoMap *loweredMap,
       F->createTranspose(CSN.getName().str() + ".transpose", R1, transpose);
 
   auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims);
-  replaceAllUsesOfWith(loweredMap, CSN.getResult(), R2);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, CSN.getResult(), R2);
 }
 
-static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerBatchReduceMeanNode(Function *F, CompilationContext &cctx,
                                      const BatchedReduceMeanNode &BRM) {
   auto input = BRM.getBatch();
 
@@ -711,13 +728,13 @@ static void lowerBatchReduceMeanNode(Function *F, LoweredInfoMap *loweredMap,
   // Element-wise divide to produce the reduced mean with outTy provided.
   auto *DN = F->createDiv(BRM.getName().str() + ".div", outTy, BRA, SN);
 
-  replaceAllUsesOfWith(loweredMap, BRM.getResult(), DN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
 /// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
 /// inputs, a Splat node created using value from \p RN as the other input, and
 /// an IsNaN node as the comparator input.
-static void lowerReplaceNaNNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerReplaceNaNNode(Function *F, CompilationContext &cctx,
                                 const ReplaceNaNNode &RN) {
   // Create IsNaN node.
   auto *INN = F->createIsNaN(RN.getName().str() + ".isNaN", RN.getInput());
@@ -730,12 +747,12 @@ static void lowerReplaceNaNNode(Function *F, LoweredInfoMap *loweredMap,
   auto *SN =
       F->createSelect(RN.getName().str() + ".select", INN, S, RN.getInput());
 
-  replaceAllUsesOfWith(loweredMap, RN.getResult(), SN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getResult(), SN);
 }
 
 /// Implement BatchMatMul \p BMMN in \p F via a series of Slices, MatMuls, and a
 /// final Concat.
-static void lowerBatchMatMulNode(Function *F, LoweredInfoMap *loweredMap,
+static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
                                  const BatchMatMulNode &BMMN) {
   auto name = BMMN.getName();
   NodeValue lhs = BMMN.getLHS();
@@ -774,67 +791,68 @@ static void lowerBatchMatMulNode(Function *F, LoweredInfoMap *loweredMap,
   ReshapeNode *RN =
       F->createReshape(name.str() + ".reshapeResult", CN, {numBatches, N, P});
 
-  replaceAllUsesOfWith(loweredMap, BMMN.getResult(), RN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BMMN.getResult(), RN);
 }
 
-/// Lowers \p node given Function \p. If \p loweredMap is not a nullptr, it will
-/// log the lowering info of what was replaced by what via output names.
-static void lowerNode(Function *F, Node *node, LoweredInfoMap *loweredMap) {
+/// Lowers \p node given Function \p. \p cctx contains a mapping of loweredMap
+/// that will log the lowering info of what was replaced by what via output
+/// names.
+static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
   if (auto *RN = dyn_cast<RegressionNode>(node)) {
-    lowerRegressionNode(loweredMap, *RN);
+    lowerRegressionNode(cctx, *RN);
   } else if (auto *RGN = dyn_cast<RegressionGradNode>(node)) {
-    lowerRegressionGradNode(F, loweredMap, *RGN);
+    lowerRegressionGradNode(F, cctx, *RGN);
   } else if (auto *EMG = dyn_cast<AddGradNode>(node)) {
-    lowerAddGradNode(F, loweredMap, *EMG);
+    lowerAddGradNode(F, cctx, *EMG);
   } else if (auto *EMG = dyn_cast<MulGradNode>(node)) {
-    lowerMulGradNode(F, loweredMap, *EMG);
+    lowerMulGradNode(F, cctx, *EMG);
   } else if (auto *EMG = dyn_cast<SubGradNode>(node)) {
-    lowerSubGradNode(F, loweredMap, *EMG);
+    lowerSubGradNode(F, cctx, *EMG);
   } else if (auto *EMG = dyn_cast<DivGradNode>(node)) {
-    lowerDivGradNode(F, loweredMap, *EMG);
+    lowerDivGradNode(F, cctx, *EMG);
   } else if (auto *FC = dyn_cast<FullyConnectedNode>(node)) {
-    lowerFullyConnectedNode(F, loweredMap, *FC);
+    lowerFullyConnectedNode(F, cctx, *FC);
   } else if (auto *FCG = dyn_cast<FullyConnectedGradNode>(node)) {
-    lowerFullyConnectedGradNode(F, loweredMap, *FCG);
+    lowerFullyConnectedGradNode(F, cctx, *FCG);
   } else if (auto *RG = dyn_cast<ReluGradNode>(node)) {
-    lowerReluGradNode(F, loweredMap, *RG);
+    lowerReluGradNode(F, cctx, *RG);
   } else if (auto *R = dyn_cast<ReluNode>(node)) {
-    lowerReluNode(F, loweredMap, *R);
+    lowerReluNode(F, cctx, *R);
   } else if (auto *R = dyn_cast<PReluNode>(node)) {
-    lowerPReluNode(F, loweredMap, *R);
+    lowerPReluNode(F, cctx, *R);
   } else if (auto *P = dyn_cast<PadNode>(node)) {
-    lowerPadNode(F, loweredMap, *P);
+    lowerPadNode(F, cctx, *P);
   } else if (auto *THG = dyn_cast<TanhGradNode>(node)) {
-    lowerTanhGradNode(F, loweredMap, *THG);
+    lowerTanhGradNode(F, cctx, *THG);
   } else if (auto *SG = dyn_cast<SigmoidGradNode>(node)) {
-    lowerSigmoidGradNode(F, loweredMap, *SG);
+    lowerSigmoidGradNode(F, cctx, *SG);
   } else if (auto *SGD = dyn_cast<SGDNode>(node)) {
-    lowerSGDNode(F, loweredMap, *SGD);
+    lowerSGDNode(F, cctx, *SGD);
   } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-    lowerBatchNormalizationNode(F, loweredMap, *BN);
+    lowerBatchNormalizationNode(F, cctx, *BN);
   } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
-    lowerMeanVarNormalizationNode(F, loweredMap, *MVN);
+    lowerMeanVarNormalizationNode(F, cctx, *MVN);
   } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {
-    lowerBatchNormalizationGradNode(F, loweredMap, *BNG);
+    lowerBatchNormalizationGradNode(F, cctx, *BNG);
   } else if (auto *SCEL = dyn_cast<SigmoidCrossEntropyWithLogitsNode>(node)) {
-    lowerSigmoidCrossEntropyWithLogitsNode(F, loweredMap, *SCEL);
+    lowerSigmoidCrossEntropyWithLogitsNode(F, cctx, *SCEL);
   } else if (auto *RMN = dyn_cast<BatchedReduceMeanNode>(node)) {
-    lowerBatchReduceMeanNode(F, loweredMap, *RMN);
+    lowerBatchReduceMeanNode(F, cctx, *RMN);
   } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
     if (CN->getGroup() > 1)
-      lowerGroupConvolutionNode(F, loweredMap, *CN);
+      lowerGroupConvolutionNode(F, cctx, *CN);
   } else if (auto *TN = dyn_cast<TileNode>(node)) {
-    lowerTileNode(F, loweredMap, *TN);
+    lowerTileNode(F, cctx, *TN);
   } else if (auto *CSN = dyn_cast<ChannelShuffleNode>(node)) {
-    lowerChannelShuffleNode(F, loweredMap, *CSN);
+    lowerChannelShuffleNode(F, cctx, *CSN);
   } else if (auto *RN = dyn_cast<ReplaceNaNNode>(node)) {
-    lowerReplaceNaNNode(F, loweredMap, *RN);
+    lowerReplaceNaNNode(F, cctx, *RN);
   } else if (auto *BMMN = dyn_cast<BatchMatMulNode>(node)) {
-    lowerBatchMatMulNode(F, loweredMap, *BMMN);
+    lowerBatchMatMulNode(F, cctx, *BMMN);
   }
 }
 
-void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B,
+void glow::lower(Function *F, CompilationContext &cctx, const Backend *B,
                  const KindSet &doNotLowerKinds) {
   auto &nodes = F->getNodes();
   for (auto &N : nodes) {
@@ -844,7 +862,7 @@ void glow::lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B,
     if (doNotLowerKinds.count(N.getKind())) {
       continue;
     }
-    lowerNode(F, &N, loweredMap);
+    lowerNode(F, &N, cctx);
   }
 
   for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;) {

@@ -89,7 +89,8 @@ TEST(Graph, simpleTestConv) {
   F->dump();
   auto filePath = F->dumpDAG();
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
@@ -113,7 +114,8 @@ TEST(Graph, simpleTestConv3D) {
   F->dump();
   auto filePath = F->dumpDAG();
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
@@ -138,7 +140,8 @@ TEST(Graph, simpleTestConvCustomLower) {
   F->dump();
   auto filePath = F->dumpDAG();
   auto backend = MockBackendCustomIRGen();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(MockBackendCustomIRGen());
   M.dump();
@@ -170,7 +173,8 @@ TEST(Graph, float16Conv) {
   EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
 
   IRFunction M(F);
 
@@ -203,7 +207,8 @@ TEST(Graph, float16Conv3D) {
   EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
 
   IRFunction M(F);
 
@@ -238,7 +243,8 @@ TEST(Graph, float16BatchNorm) {
   EXPECT_EQ(BN->getVar().getElementType(), ElemKind::Float16Ty);
 
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
 
   EXPECT_TRUE(std::all_of(
       F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
@@ -376,7 +382,8 @@ TEST(Graph, simpleTestFC) {
   F->dump();
   auto filePath = F->dumpDAG();
   auto backend = MockBackend();
-  lower(F, /* loweredMap */ nullptr, &backend);
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
   ::optimize(F, CompilationMode::Train);
   M.generateIR(backend);
   M.dump();
@@ -672,7 +679,8 @@ unsigned getConvNodeSize(BackendKind kind) {
   F->createSave("save", CN);
 
   std::unique_ptr<Backend> backend(createBackend(kind));
-  lower(F, /* loweredMap */ nullptr, backend.get());
+  CompilationContext cctx;
+  lower(F, cctx, backend.get());
 
   unsigned count = 0;
   for (auto &n : F->getNodes()) {
@@ -1611,7 +1619,8 @@ TEST(Graph, GroupTestConvNoLower) {
   // Now lower, but prevent ConvolutionNodeKinds from being lowered.
   KindSet doNotLower;
   doNotLower.insert(Kinded::Kind::ConvolutionNodeKind);
-  lower(F, /* loweredMap */ nullptr, &backend, doNotLower);
+  CompilationContext cctx;
+  lower(F, cctx, &backend, doNotLower);
 
   {
     // Now have lowered but should still have a single Conv node with group = 8.
