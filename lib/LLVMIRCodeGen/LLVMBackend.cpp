@@ -130,7 +130,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   return createCompiledFunction(std::move(JIT), runtimeInfo);
 }
 
-std::unique_ptr<CompiledFunction>
+llvm::Expected<std::unique_ptr<CompiledFunction>>
 LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
@@ -147,7 +147,8 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      std::move(compiledFunc));
 }
 
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,

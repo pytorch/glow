@@ -52,23 +52,29 @@ public:
   /// Generate code for a vector of functions, \p functions. All compilations
   /// use the same settings provided by \p opts. This allows the compiler to
   /// support shared constants between functions.
-  virtual std::vector<std::unique_ptr<CompiledFunction>>
+  virtual llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>
   compileFunctions(llvm::ArrayRef<Function *> functions,
                    BackendOptions &opts) const {
     std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
     for (auto &function : functions) {
-      compiledFunctions.push_back(compile(function, opts));
+      if (auto resOrErr = compile(function, opts)) {
+        compiledFunctions.push_back(std::move(*resOrErr));
+      } else {
+        return resOrErr.takeError();
+      }
     }
-    return compiledFunctions;
+    return llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
+        std::move(compiledFunctions));
   }
 
-  virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
+  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
+  compile(Function *F) const {
     BackendOptions opts;
     return compile(F, opts);
   }
 
   /// Generate code for input function \param F given settings in \p opts.
-  virtual std::unique_ptr<CompiledFunction>
+  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution

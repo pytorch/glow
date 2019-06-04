@@ -20,6 +20,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "gtest/gtest.h"
 
+#include <glog/logging.h>
+
 #include "synapse.h"
 
 #include "perf_lib_layer_params.h"

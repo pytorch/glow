@@ -244,7 +244,7 @@ TEST_P(BackendTest, CompileWithoutConstants) {
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   BackendOptions opts;
   opts.collectConstants = false;
-  auto function = backend->compile(F, opts);
+  auto function = EXIT_ON_ERR(backend->compile(F, opts));
 }
 
 /// Test that the runtimeBundle includes only symbols from its function and not
@@ -267,8 +267,8 @@ TEST_P(BackendTest, BundleFunctionSymbolsOnly) {
   bindings2.allocate(save2->getPlaceholder());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  auto function = backend->compile(F);
-  auto function2 = backend->compile(F2);
+  auto function = EXIT_ON_ERR(backend->compile(F));
+  auto function2 = EXIT_ON_ERR(backend->compile(F2));
   auto table1 = function->getRuntimeBundle().getSymbolTable();
   auto table2 = function2->getRuntimeBundle().getSymbolTable();
   /// Make sure no symbol in table1 is in table2.
@@ -295,8 +295,8 @@ TEST_P(BackendTest, BundleSharedConstant) {
   bindings2.allocate(save2->getPlaceholder());
 
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
-  auto function = backend->compile(F);
-  auto function2 = backend->compile(F2);
+  auto function = EXIT_ON_ERR(backend->compile(F));
+  auto function2 = EXIT_ON_ERR(backend->compile(F2));
   auto table1 = function->getRuntimeBundle().getSymbolTable();
   auto table2 = function2->getRuntimeBundle().getSymbolTable();
   /// Make sure X is in both tables.

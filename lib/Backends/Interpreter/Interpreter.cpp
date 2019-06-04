@@ -25,7 +25,7 @@
 
 using namespace glow;
 
-std::unique_ptr<CompiledFunction>
+llvm::Expected<std::unique_ptr<CompiledFunction>>
 Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
@@ -42,7 +42,8 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      std::move(compiledFunc));
 }
 
 std::unique_ptr<CompiledFunction>
