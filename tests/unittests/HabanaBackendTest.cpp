@@ -61,7 +61,8 @@ TEST_F(HabanaBackendTest, SurroundTile) {
   SaveNode *SN = F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Invoke dead code elimination.
@@ -112,7 +113,8 @@ TEST_F(HabanaBackendTest, DoNotSurroundTile) {
   F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
 
   // Graph should not change since input to Tile is already 4D.
   EXPECT_FALSE(changed);
@@ -140,7 +142,8 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -213,7 +216,8 @@ TEST_F(HabanaBackendTest, FuseConvAdd) {
   SaveNode *SN = F_->createSave("save", AN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -303,7 +307,8 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -378,7 +383,8 @@ TEST_F(HabanaBackendTest, ConvertFC) {
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {16}, "bias");
   auto *FC = F_->createFullyConnected("fc", input, weight, bias);
   auto *save = F_->createSave("save", FC);
-  backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  backend.transformPostLowering(F_, cctx);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaFullyConnectedNode>(save->getInput()));
 }
@@ -391,7 +397,8 @@ TEST_F(HabanaBackendTest, ConvertConv) {
   ConvolutionNode *conv = F_->createConv(ctx_, "conv", input, 3, 5, 1, 2, 1);
   SaveNode *save = F_->createSave("save", conv);
 
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaConvolutionNode>(save->getInput()));
