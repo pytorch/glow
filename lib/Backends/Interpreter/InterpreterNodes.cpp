@@ -2312,6 +2312,103 @@ void BoundInterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
                             I->getData()->getElementType(), I)
 }
 
+void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
+    const SparseLengthsSumInst *I) {
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength <= indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<int8_t>();
+  auto OH = out->getHandle<int8_t>();
+
+  auto TQP = [](Tensor *T) {
+    return TensorQuantizationParams{T->getType().getScale(),
+                                    T->getType().getOffset()};
+  };
+  using namespace quantization;
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    std::vector<float> accum(lineSize, 0.0f);
+    for (int32_t j = 0; j < LH.raw(i); j++) {
+      size_t offsetIn = IH.raw(curIdx) * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        accum[k] += dequantize(DH.raw(offsetIn++), TQP(data));
+      }
+      curIdx++;
+    }
+    size_t offsetOut = i * lineSize;
+    for (size_t k = 0; k < lineSize; k++) {
+      OH.raw(offsetOut++) = quantize(accum[k], TQP(out));
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
+    const SparseLengthsSumInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength <= indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      size_t offsetIn = IH.raw(curIdx++) * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++)
+        OH.raw(offsetOut++) += DH.raw(offsetIn++);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdSparseLengthsSumInst(
+    const SparseLengthsSumInst *I) {
+  if (I->getDest()->getType()->isQuantizedType()) {
+    return fwdSparseLengthsSumInstI8Impl(I);
+  }
+  dispatchFloatingPointImpl(fwdSparseLengthsSumInstFloatImpl,
+                            I->getData()->getElementType(), I);
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
     const SparseLengthsWeightedSumInst *I) {

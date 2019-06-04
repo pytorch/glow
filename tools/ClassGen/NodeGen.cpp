@@ -374,6 +374,18 @@ int main(int argc, char **argv) {
                     "Lengths[1] slices are added together and stored in "
                     "Result[1], etc.");
 
+  BB.newNode("SparseLengthsSum")
+      .addInput("Data")
+      .addInput("Indices")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Data "
+                    "indexed by Indices vector, and then accumulates them into "
+                    "len(Lengths) entries: first Lengths[0] slices are "
+                    "aggregated to Result[0], next Lengths[1] slices are "
+                    "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
+                    "equal to len(Indices).");
+
   BB.newNode("SparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Weights")

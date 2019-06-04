@@ -253,7 +253,6 @@ void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
          "A function with this name has already been compiled.");
 
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
-
   for (const Node &N : F->getNodes()) {
     CHECK(backend_->isOpSupported(N))
         << "Backend must support all nodes after high-level optimizations but "

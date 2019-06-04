@@ -1190,15 +1190,13 @@ TEST(onnx, importSparseLengthsSum) {
   // Verify structure: PH, PH ->  SparseLengthsSum -> Save -> PH.
   //                  PH -> Splat /
   ASSERT_EQ(mod.getPlaceholders().size(), 4);
-  ASSERT_EQ(F->getNodes().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 2);
   auto *save = getSaveNodeFromDest(output);
-  auto *LS =
-      llvm::dyn_cast<SparseLengthsWeightedSumNode>(save->getInput().getNode());
+  auto *LS = llvm::dyn_cast<SparseLengthsSumNode>(save->getInput().getNode());
   ASSERT_TRUE(LS);
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getData()));
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getIndices()));
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
-  ASSERT_TRUE(llvm::isa<SplatNode>(LS->getWeights()));
 }
 
 /// Test loading LengthsSum from an ONNX model.
