@@ -1508,7 +1508,7 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
     }
     auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};
@@ -1537,7 +1537,7 @@ void OpenCLFunction::updatePlaceholders(PlaceholderBindings *bindings) {
     }
     auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
     auto buf = PH.second->getUnsafePtr();
     cl_event event{nullptr};
