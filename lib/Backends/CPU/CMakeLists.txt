@@ -24,7 +24,21 @@ set(CPURunttimeCompilationOptions
       -fno-finite-math-only
       -g0
       -emit-llvm
-      -O0)
+      -O0
+
+      #
+      # When building for a custom target, use this as an example of how to 
+      # set up cross-compilation correctly. Then, when building bundles,
+      # do not forget to specify the -target= option with the same target
+      # string.
+      #
+
+      # --sysroot=/usr/arm-linux-gnueabihf/
+      # -target armv7-neon-linux-gnueabihf 
+      # -g
+      # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
+      # -march=i386
+      )
 
 set(libjit_files "libjit;libjit_conv;libjit_matmul")
 
