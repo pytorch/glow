@@ -53,12 +53,12 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  glow::lower(function, /* loweredMap */ nullptr, glowBackend_.get());
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  glow::lower(function, cctx, glowBackend_.get());
 
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
   if (glowBackend_->transformPostLowering(function, cctx)) {
     glow::DCE(function);
   }

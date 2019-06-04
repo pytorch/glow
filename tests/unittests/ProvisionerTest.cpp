@@ -32,7 +32,8 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
     auto *B = mod->createConstant(ElemKind::FloatTy, {1024}, "B");
     auto *FC = F->createFullyConnected("FC", X, W, B);
     F->createSave("save", FC);
-    lower(F, nullptr);
+    CompilationContext cctx;
+    lower(F, cctx);
   }
   return mod;
 }
