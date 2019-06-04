@@ -173,7 +173,7 @@ private:
 
 /// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
 /// an error, the program will exit.
-#define EXIT_ON_ERR(...) (exitOnErr(__VA_ARGS__))
+#define EXIT_ON_ERR(...) (glow::exitOnErr(__VA_ARGS__))
 
 /// A temporary placeholder for EXIT_ON_ERR. This should be used only during
 /// refactoring to temporarily place an EXIT_ON_ERR and should eventually be

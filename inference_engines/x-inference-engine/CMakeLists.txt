@@ -10,7 +10,7 @@ set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_library(xinfer.a STATIC x_inference_lib.c)
+add_library(xinfer STATIC x_inference_lib.c)
 if (LIB_ONLY)
     message("Will only build the library")
 else()
