@@ -78,6 +78,10 @@ PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
 }
 
 void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
+  DCHECK(T.getType().isEqual(*P->getType()))
+      << "Placeholder " << P->getName().str() << " has type "
+      << P->getType()->toString() << " but Tensor has type "
+      << T.getType().toString() << "\n";
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";
   // Take ownership over the tensor.
