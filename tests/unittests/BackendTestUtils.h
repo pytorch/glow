@@ -51,17 +51,24 @@ extern unsigned parCloneCountOpt;
 //   // Regular test code.
 //   ...
 // }
-class BackendStatelessTest : public ::testing::TestWithParam<BackendKind> {
-protected:
-  bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {
-    return enabledBackends.find(GetParam()) != enabledBackends.end();
+#define DECLARE_STATELESS_BACKEND_TEST(CLASS_NAME, CONFIG_NAME)                \
+  class CLASS_NAME : public ::testing::TestWithParam<CONFIG_NAME> {            \
+  protected:                                                                   \
+    bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {      \
+      return enabledBackends.find(getBackendKind()) != enabledBackends.end();  \
+    }                                                                          \
+    const BackendKind Interpreter = BackendKind::Interpreter;                  \
+    const BackendKind CPU = BackendKind::CPU;                                  \
+    const BackendKind OpenCL = BackendKind::OpenCL;                            \
+    const BackendKind Habana = BackendKind::Habana;                            \
+                                                                               \
+  public:                                                                      \
+    BackendKind getBackendKind() { return std::get<0>(GetParam()); }           \
   }
 
-  const BackendKind Interpreter = BackendKind::Interpreter;
-  const BackendKind CPU = BackendKind::CPU;
-  const BackendKind OpenCL = BackendKind::OpenCL;
-  const BackendKind Habana = BackendKind::Habana;
-};
+/// Note that we use std::tuple<BackendKind> here to match other tests which are
+/// parameterized across many other values, e.g. those in ParameterSweepTest.
+DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<BackendKind>);
 
 class BackendTest : public BackendStatelessTest {
 public:
@@ -70,7 +77,7 @@ public:
   ~BackendTest() override { mod_.clear(); }
 
 protected:
-  ExecutionEngine EE_{GetParam()};
+  ExecutionEngine EE_{getBackendKind()};
   Module &mod_;
   Function *F_;
 };
@@ -90,6 +97,12 @@ static const auto all_backends = ::testing::Values(
 // Instantiate parameterized test suite with all available backends.
 #define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(prefix, test_case_name)       \
   INSTANTIATE_TEST_CASE_P(prefix, test_case_name, all_backends)
+
+// Instantiate parameterized test suite with all available backends.
+#define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(                     \
+    prefix, test_case_name, combine)                                           \
+  INSTANTIATE_TEST_CASE_P(prefix, test_case_name,                              \
+                          ::testing::Combine(all_backends, combine))
 
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.

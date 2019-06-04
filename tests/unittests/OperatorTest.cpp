@@ -2241,9 +2241,9 @@ COMPARE_ARITH_FUN(Min)
 #define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_, ...)                            \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f,    \
-                              parCloneCountOpt);                               \
+    compareAgainstInterpreter(                                                 \
+        getBackendKind(), createAndInitBasic##_OP_NAME_##Test,                 \
+        ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f, parCloneCountOpt);       \
   }
 COMPARE_ARITH_FLOAT_VS_INT8(Add, Interpreter, CPU, OpenCL)
 COMPARE_ARITH_FLOAT_VS_INT8(Sub, Interpreter, CPU, OpenCL)
@@ -2256,9 +2256,9 @@ COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
 #define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,   \
-                              parCloneCountOpt);                               \
+    compareAgainstInterpreter(                                                 \
+        getBackendKind(), createAndInitBasic##_OP_NAME_##Test,                 \
+        ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f, parCloneCountOpt);      \
   }
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Add, Interpreter)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub, Interpreter)
@@ -2394,40 +2394,40 @@ createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth10) {
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth8) {
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f,
                             parCloneCountOpt);
 }
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendKind(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
 }
@@ -2455,7 +2455,7 @@ createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, IntConcat) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicConcatTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicConcatTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
 }
@@ -2515,7 +2515,7 @@ createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, IntFC) {
-  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
 }
@@ -2523,7 +2523,7 @@ TEST_P(OperatorStatelessTest, IntFC) {
 /// Test FC with Float16.
 TEST_P(OperatorStatelessTest, FC_Float16) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f,
                             parCloneCountOpt);
 }
@@ -2732,7 +2732,7 @@ createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, QuantizedTranspose) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
-  compareAgainstInterpreter(GetParam(), createAndInitTransposeNet,
+  compareAgainstInterpreter(getBackendKind(), createAndInitTransposeNet,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.0045f,
                             parCloneCountOpt);
 }
@@ -4304,14 +4304,14 @@ createAndInitBasicTanhTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Tanh_Float16) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.001f,
                             parCloneCountOpt);
 }
@@ -4365,7 +4365,7 @@ createAndInitBasicLogTest(glow::PlaceholderBindings &bindings,
 /// Verify that a quantized Log works correctly.
 TEST_P(OperatorStatelessTest, Int8Log) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicLogTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicLogTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.1f,
                             parCloneCountOpt);
 }
@@ -4756,7 +4756,7 @@ createAndInitBasicSigmoidTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicSigmoidTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicSigmoidTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
 }
@@ -6104,7 +6104,7 @@ createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
 /// Test RowwiseQuantizedFullyConnected Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicRowwiseFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
                             parCloneCountOpt,
                             /* enableRowwiseQuantization */ true);
@@ -6114,7 +6114,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
   ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
-      GetParam(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      getBackendKind(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
       /* enableRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
@@ -6171,7 +6171,7 @@ createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
 /// Test RowwiseQuantizedSLWS Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicSLWSTest,
+  compareAgainstInterpreter(getBackendKind(), createAndInitBasicSLWSTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
                             parCloneCountOpt,
                             /* enableRowwiseQuantization */ true);

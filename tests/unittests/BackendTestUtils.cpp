@@ -144,6 +144,11 @@ void compareAgainstInterpreter(BackendKind backendKind,
   ExecutionEngine BEE{backendKind};
   PlaceholderBindings Ibindings, Bbindings;
 
+  LOG(INFO) << "Comparing Interpreter with precision "
+            << Type::getElementName(interpElemKind).str() << " against "
+            << BEE.getBackend()->getBackendName() << " with precision "
+            << Type::getElementName(backendElemKind).str();
+
   // Create the same network on the interpreter and the backend being tested.
   FunctionTensorPair IFT = createAndInitFunction(Ibindings, IEE);
   FunctionTensorPair BFT = createAndInitFunction(Bbindings, BEE);
