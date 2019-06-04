@@ -54,6 +54,31 @@ int main(int argc, char **argv) {
                     "this node and all of its ancestor nodes. Generally "
                     "intended to save the final result of a network.");
 
+  BB.newNode("Send")
+      .addInput("Input")
+      .addInput("Address")
+      .addInput("Output")
+      .addExtraMethod("Placeholder *getPlaceholder() const;",
+                      "Placeholder *SendNode::getPlaceholder() const { return "
+                      "llvm::cast<Placeholder>(Output_.getNode()); };")
+      .addOverwrittenInput("Output")
+      .setHasSideEffects(true)
+      .setDocstring(
+          "Sends the Tensor to the Receive nodes listening on the same "
+          "Address.");
+
+  BB.newNode("Receive")
+      .addInput("Address")
+      .addInput("Output")
+      .addExtraMethod(
+          "Placeholder *getPlaceholder() const;",
+          "Placeholder *ReceiveNode::getPlaceholder() const { return "
+          "llvm::cast<Placeholder>(Output_.getNode()); };")
+      .addOverwrittenInput("Output")
+      .addResultFromCtorArg()
+      .setHasSideEffects(true)
+      .setDocstring("Receives a Tensor sent by a SendNode to Address");
+
   //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//

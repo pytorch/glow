@@ -17,14 +17,23 @@
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
+#include <future>
 
 namespace glow {
+
+using TensorPipeTy = std::pair<std::future<Tensor>, std::promise<Tensor>>;
+using TensorPipeMapTy = std::map<uintptr_t, TensorPipeTy>;
+using FunctionTensorPipeMapMapTy = std::map<std::string, TensorPipeMapTy>;
+
 namespace runtime {
 
 /// A class controlling a single "Interpreter Device", a thread of execution in
 /// the IR-Interpreter. Many InterpreterFunctions may be added, but only one
 /// inference is executed at a time.
 class InterpreterDeviceManager : public QueueBackedDeviceManager {
+  /// Map from function name -> map of tensor pipes for that function.
+  FunctionTensorPipeMapMapTy functionsToTensorPipes_;
+
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
@@ -44,12 +53,19 @@ public:
                            size_t maxMemory = 2000000000)
       : QueueBackedDeviceManager(config), maxMemoryBytes_(maxMemory) {}
 
+  virtual ~InterpreterDeviceManager();
+
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.
   uint64_t getMaximumMemory() const override;
 
-  /// Returns the amount of memory in bytes currently availbe on the device.
+  /// Returns the amount of memory in bytes currently available on the device.
   uint64_t getAvailableMemory() const override;
+
+  /// \returns the device address of the Placeholder \p P in the function \p
+  /// function.
+  llvm::Expected<uintptr_t>
+  getPlaceholderAddress(std::string function, const Placeholder *P) override;
 
   /// Returns true if a function requiring the \p estimate size will fit on the
   /// device. This is not a promise as memory cost could vary due to alignment,

@@ -18,6 +18,7 @@
 #include "glow/Backends/DummyDeviceManager.h"
 
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
+#include "../../lib/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/Optimizer.h"
 

@@ -423,6 +423,20 @@ target_link_libraries(RecommendationSystemTest
                         TestMain)
 add_glow_test(EXPENSIVE RecommendationSystemTest ${GLOW_BINARY_DIR}/tests/RecommendationSystemTest --gtest_output=xml:RecommendationSystemTest.xml)
 
+add_executable(PeerToPeerTest
+               PeerToPeerTest.cpp)
+target_link_libraries(PeerToPeerTest
+                      PRIVATE
+                        Backend
+                        Backends
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Optimizer
+                        gtest
+                        TestMain)
+add_glow_test(PeerToPeerTest ${GLOW_BINARY_DIR}/tests/PeerToPeerTest --gtest_output=xml:PeerToPeerTest.xml)
+
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest
                  ProvisionerTest.cpp)

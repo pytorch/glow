@@ -1602,6 +1602,25 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
   return addNode(new SaveNode(name, input, output));
 }
 
+SendNode *Function::createSend(llvm::StringRef name, NodeValue input,
+                               Placeholder *address) {
+  // Create a Placeholder to store the input of the Send node (for debugging).
+  auto *dest = getParent()->createPlaceholder(
+      input.getType(), name.str() + "PH", /*isTrainable=*/false);
+  auto *send = new SendNode(name, input, address, dest);
+  return addNode(send);
+}
+
+ReceiveNode *Function::createReceive(llvm::StringRef name, TypeRef outTy,
+                                     Placeholder *address) {
+  // Create a Placeholder to store the output of the Receive node (for
+  // debugging).
+  auto *dest = getParent()->createPlaceholder(outTy, name.str() + "PH",
+                                              /*isTrainable=*/false);
+  auto *recv = new ReceiveNode(name, outTy, address, dest);
+  return addNode(recv);
+}
+
 QuantizationProfileNode *
 Function::createQuantizationProfile(PlaceholderBindings &bindings,
                                     llvm::StringRef name, NodeValue input) {

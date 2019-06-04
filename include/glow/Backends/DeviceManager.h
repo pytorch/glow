@@ -104,6 +104,18 @@ public:
   /// fit on the device.
   virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
 
+  /// \returns whether peer-to-peer communication is supported by the device.
+  virtual bool isPeerToPeerSupported() const { return false; }
+
+  /// \returns the device address of the Placeholder \p P in the function \p
+  /// function or an error if the device does not support peer to peer
+  /// communication.
+  virtual llvm::Expected<uintptr_t>
+  getPlaceholderAddress(std::string function, const Placeholder *P) {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                    "Backend does not support peer to peer communication");
+  }
+
   /// \returns the DeviceConfig which initialized this device.
   const DeviceConfig &getDeviceConfig() { return config_; }
 };

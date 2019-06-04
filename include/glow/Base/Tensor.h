@@ -441,6 +441,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
+    case ElemKind::AddrTy:
+      return isEqualImpl<uintptr_t>(other, /*allowedError=*/0, verbose);
     }
 
     // This is to make compiler happy. It can never reach this point as switch

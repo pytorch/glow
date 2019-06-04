@@ -73,6 +73,24 @@ int main(int argc, char **argv) {
       .dataParallel();
 
   //===--------------------------------------------------------------------===//
+  //                   Peer-to-Peer Communication
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Send")
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Addr", OperandKind::In)
+      .setType("Src->getType()")
+      .inplaceOperand({"Src", "Addr"})
+      .autoVerify(VerifyKind::NoVerify);
+
+  BB.newInstr("Recv")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Addr", OperandKind::In)
+      .setType("Dest->getType()")
+      .inplaceOperand({"Dest", "Addr"})
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
   //                   Convolution / Pool / FC
   //===--------------------------------------------------------------------===//
 

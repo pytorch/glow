@@ -349,6 +349,30 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createCopyInst(N->getName(), dest, src);
     break;
   }
+  case glow::Kinded::Kind::SendNodeKind: {
+    auto *S = cast<SendNode>(N);
+    auto *src = valueForNode(S->getInput());
+    auto *dest = valueForNode(S->getOutput());
+    auto *addr = valueForNode(S->getAddress());
+    // Create a send instruction to send the data and a copy instruction to copy
+    // the data into a local buffer (for inspection).
+    builder_.createSendInst(N->getName(), src, addr);
+    builder_.createCopyInst(N->getName().str() + ".copy", dest, src);
+    break;
+  }
+  case glow::Kinded::Kind::ReceiveNodeKind: {
+    auto *R = cast<ReceiveNode>(N);
+    auto *dest = builder_.createAllocActivationInst(N->getName(),
+                                                    R->getResult().getType());
+    auto *addr = valueForNode(R->getAddress());
+    auto *out = valueForNode(R->getOutput());
+    // Create a receive instruction to receive the data and a copy instruction
+    // to copy the data into a local buffer (for inspection).
+    builder_.createRecvInst(N->getName(), dest, addr);
+    builder_.createCopyInst(N->getName().str() + ".copy", out, dest);
+    registerIR(N, dest);
+    break;
+  }
   case glow::Kinded::Kind::ConstantKind: {
     auto *V = cast<Constant>(N);
     auto *W = builder_.createWeightVar(V->getType(), V->getName(),

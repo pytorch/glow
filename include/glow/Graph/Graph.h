@@ -838,6 +838,18 @@ public:
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
                        Placeholder *output);
 
+  /// Creates a SendNode named \p name that sends \p input to \p address. A
+  /// ReceiveNode that listens on the same address will receive the sent data.
+  /// The node also writes the input to a Placeholder.
+  SendNode *createSend(llvm::StringRef name, NodeValue input,
+                       Placeholder *address);
+
+  /// Creates a ReceiveNode named \p name that receives a Tensor of type \p
+  /// outTy by listening on \p address and writes the data to its output. The
+  /// node also writes the input to a Placeholder.
+  ReceiveNode *createReceive(llvm::StringRef name, TypeRef outTy,
+                             Placeholder *address);
+
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input in PlaceholderBindings \p bindings. Capture observed node name in
   /// quantization profile node as original node can be replaced during lowering

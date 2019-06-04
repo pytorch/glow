@@ -54,6 +54,8 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
+  bool isPeerToPeerSupported() const override { return true; }
+
   /// @}
   //
   /// \returns the size of metrics collected for a single TraceEvent.

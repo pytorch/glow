@@ -38,12 +38,61 @@ DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
   return new InterpreterDeviceManager(config);
 }
 
+InterpreterDeviceManager::~InterpreterDeviceManager() {
+  // Fulfil any outstanding tensor pipe promises because you can't destroy them
+  // otherwise for some reason.
+  for (auto &p : functionsToTensorPipes_) {
+    for (auto &q : p.second) {
+      auto &promise = q.second.second;
+      promise.set_value(Tensor());
+    }
+  }
+}
+
 uint64_t InterpreterDeviceManager::getMaximumMemory() const {
   return maxMemoryBytes_;
 }
 
 uint64_t InterpreterDeviceManager::getAvailableMemory() const {
   return maxMemoryBytes_ - usedMemoryBytes_;
+}
+
+llvm::Expected<uintptr_t>
+InterpreterDeviceManager::getPlaceholderAddress(std::string function,
+                                                const Placeholder *P) {
+  // Peer-to-peer communication is implemented in the Interpreter backend using
+  // future-promise pairs (refered to a as a tensor pipe). Each (functionName,
+  // placeholder) pair maps to a tensor pipe that can be used to send/receive a
+  // Tensor.
+
+  // Convert P to uintptr_t since that's what's stored in the map.
+  uintptr_t addr = reinterpret_cast<uintptr_t>(P);
+
+  // Try to get the map from uintptr_t -> pair<future, promise> for the
+  // function. This should have been created when the function was added to the
+  // device.
+  auto mapIt = functionsToTensorPipes_.find(function);
+
+  DCHECK(mapIt != functionsToTensorPipes_.end()) << "Function not added";
+
+  auto &tensorPipes = mapIt->second;
+
+  // Try to find the tensor pipe for the given Placeholder.
+  auto pipeIt = tensorPipes.find(addr);
+
+  if (pipeIt == tensorPipes.end()) {
+    // If the tensor pipe doesn't already exist, create one.
+    std::promise<Tensor> p;
+    tensorPipes.insert(
+        std::make_pair(addr, std::make_pair(p.get_future(), std::move(p))));
+    pipeIt = tensorPipes.find(addr);
+  }
+
+  // Return the *address* of the tensor pipe. After it is bound to the address
+  // Placeholder of a SendNode or ReceiveNode, the interpreter implementations
+  // of these operations will use the future (Receive) or promise (Send) part of
+  // the pipe as is appropriate.
+  return reinterpret_cast<uintptr_t>(&pipeIt->second);
 }
 
 bool InterpreterDeviceManager::isMemoryAvailable(uint64_t estimate) const {
@@ -88,6 +137,11 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
     }
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
+
+    // Create a map of tensor pipes for the added function to facilitate
+    // peer-to-peer communication of tensors.
+    functionsToTensorPipes_.insert(
+        std::make_pair(func.first, TensorPipeMapTy()));
   }
 
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
@@ -102,6 +156,10 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
+
+    // Destroy the map of peer-to-peer communication tensor pipes for the
+    // function being evicted.
+    functionsToTensorPipes_.erase(functionName);
   } else {
     err =
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,

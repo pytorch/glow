@@ -128,6 +128,9 @@ public:
     return false;
   }
 
+  /// \returns whether peer-to-peer communication is supported by the backend.
+  virtual bool isPeerToPeerSupported() const { return false; }
+
   virtual size_t getTraceEventDataSize() const { return 0; }
 
 protected:

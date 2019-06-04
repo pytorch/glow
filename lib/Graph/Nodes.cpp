@@ -1271,6 +1271,28 @@ bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }
 
+bool SendNode::verify() const {
+  // Input and output should have the same type.
+  bool isValid = checkSameType(getInput(), getOutput(), this);
+  // The type of the address input should be AddrTy.
+  isValid &= checkType(getAddress(), ElemKind::AddrTy, this);
+  // Only one address can be used at one time. Sending to multiple recipients
+  // requires multiple SendNodes.
+  isValid &= getAddress().getType()->size() == 1;
+
+  return isValid;
+}
+
+bool ReceiveNode::verify() const {
+  // The type of the address input should be AddrTy.
+  bool isValid = checkType(getAddress(), ElemKind::AddrTy, this);
+  // Only one address can be used at one time. Receiving a value from multiple
+  // addresses is not supported.
+  isValid &= getAddress().getType()->size() == 1;
+
+  return isValid;
+}
+
 bool LogNode::verify() const {
   if (getResult().getType()->isQuantizedType()) {
     return checkSameShape(getInput(), getResult(), this);

@@ -25,6 +25,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
+#include <future>
 
 using namespace glow;
 
@@ -983,6 +984,56 @@ void BoundInterpreterFunction::fwdCrossEntropyLossGradInst(
     size_t y = Labels.raw(n);
     PGrad.at({n, y}) = -1 / P.at({n, y}); // * CEGrad.at({0})
   }
+}
+
+//===----------------------------------------------------------------------===//
+//                       Peer-to-peer Communication
+//===----------------------------------------------------------------------===//
+
+void BoundInterpreterFunction::fwdSendInst(const SendInst *I) {
+  using TensorPipeTy = std::pair<std::future<Tensor>, std::promise<Tensor>>;
+
+  auto inT = getTensor(I->getSrc());
+  auto addrT = getTensor(I->getAddr());
+
+  auto AH = addrT->getHandle<uintptr_t>();
+
+  assert(AH.size() == 1 && "Can only send to one device address");
+
+  // The value in the address input should be the address of a TensorPipeTy.
+  auto pipe = reinterpret_cast<TensorPipeTy *>(AH.raw(0));
+
+  // Set the value of the promise part of the tensor pipe.
+  auto &promise = pipe->second;
+  promise.set_value(inT->clone());
+}
+
+void BoundInterpreterFunction::fwdRecvInst(const RecvInst *I) {
+  using TensorPipeTy = std::pair<std::future<Tensor>, std::promise<Tensor>>;
+
+  auto outT = getTensor(I->getDest());
+  auto addrT = getTensor(I->getAddr());
+
+  auto AH = addrT->getHandle<uintptr_t>();
+
+  assert(AH.size() == 1 && "Can only receive from one device address");
+
+  // The value in the address input should be the address of a TensorPipeTy.
+  auto pipe = reinterpret_cast<TensorPipeTy *>(AH.raw(0));
+
+  // Read the value written by some SendNode using the future part of the tensor
+  // pipe.
+  auto &future = pipe->first;
+
+  future.wait();
+  auto t = future.get();
+
+  // Copy the received Tensor to the output buffer.
+  outT->copyRawFrom(&t);
+
+  // Refresh the tensor pipe so it can be used again.
+  std::promise<Tensor> promise;
+  *pipe = std::make_pair(promise.get_future(), std::move(promise));
 }
 
 //===----------------------------------------------------------------------===//
