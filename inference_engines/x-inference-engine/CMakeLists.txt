@@ -8,7 +8,19 @@ set(CMAKE_BINARY_DIR ./bin)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
+# TARGET SPECIFIC SETUP
+set(TARGET_COMPILE_FLAGS # "-static"
+)
+set(TARGET_LINKER_FLAGS # "-static"
+)
+# set(CMAKE_C_COMPILER /usr/bin/arm-linux-gnueabihf-gcc)
+# set(CMAKE_CXX_COMPILER /usr/bin/arm-linux-gnueabihf-g++)
+
 include_directories(${PROJECT_SOURCE_DIR})
+
+set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} ${TARGET_COMPILE_FLAGS})
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} ${TARGET_COMPILE_FLAGS})
+set(CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS} ${TARGET_LINKER_FLAGS})
 
 add_library(xinfer STATIC x_inference_lib.c)
 if (LIB_ONLY)
