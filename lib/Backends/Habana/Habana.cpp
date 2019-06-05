@@ -1212,10 +1212,13 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
 
   // Compile the graph.
   auto recipeName = getRecipeFile();
-  CompilationAttribute compileParams[1];
+  CompilationAttribute compileParams[2];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipeName.c_str()));
+  compileParams[1].type = AUX_DRAM_ALLOC_THRESHOLD;
+  compileParams[1].u64 = 20*1024*1024;
+
+  chk(synCompileGraph(compileParams, 2, recipeName.c_str()));
 
   chk(synDestroyGraph());
 
