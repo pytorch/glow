@@ -1273,6 +1273,24 @@ TEST(onnx, constant) {
   ASSERT_EQ(F->getNodes().size(), 1);
 }
 
+/// Test loading ConstantOfShape from an ONNX model.
+TEST(onnx, constantOfShape) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/constantOfShape.onnxtxt");
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_NE(output, nullptr);
+  }
+  // ConstantOfShape -> Save -> PH
+  ASSERT_EQ(mod.getPlaceholders().size(), 1);
+  ASSERT_EQ(F->getNodes().size(), 2);
+}
+
 /// Test loading ExpandDims from an ONNX model.
 TEST(onnx, expandDims) {
   ExecutionEngine EE;

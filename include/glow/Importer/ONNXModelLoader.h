@@ -128,6 +128,10 @@ class ONNXModelLoader
   llvm::Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
                                const ArgumentDictionaryTy &dict);
 
+  /// Load ConstantOfShape ONNX operator.
+  llvm::Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
