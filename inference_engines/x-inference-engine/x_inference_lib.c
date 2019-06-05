@@ -239,8 +239,6 @@ get_io_offsets(const struct NetworkData *network_data, size_t *in_offset, size_t
     input_name_len = strlen(network_data->input_tensor_name);
     output_name_len = strlen(network_data->output_tensor_name);
 
-    printf("Num symbols: %d\n", network_data->bundle_config->num_symbols);
-
     for (symbol_index = 0; symbol_index < network_data->bundle_config->num_symbols; ++symbol_index) {
         if (strncmp(network_data->input_tensor_name, network_data->bundle_config->symbols[symbol_index].name, input_name_len) == 0) {
             *in_offset = network_data->bundle_config->symbols[symbol_index].offset;
