@@ -391,11 +391,33 @@ static void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
 }
 
 HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
-                               const std::string &recipeName,
-                               PlaceholderList &&inputs,
-                               PlaceholderList &&outputs)
-    : CompiledFunction(bundle), recipeName_(recipeName),
-      inputs_(std::move(inputs)), outputs_(std::move(outputs)) {}
+                               const std::string &recipeName, Function *F)
+    : CompiledFunction(bundle), recipeName_(recipeName) {
+  findIOPlaceholders(F);
+}
+
+/// \returns true if \p V is used in \p F; false otherwise.
+static bool usedInFunction(const Placeholder *V, const Function *F) {
+  for (auto const &U : V->getUsers()) {
+    if (U.getUser()->getParent() == F) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void HabanaFunction::findIOPlaceholders(Function *F) {
+  for (auto const &V : F->getParent()->getPlaceholders()) {
+    if (!usedInFunction(V, F)) {
+      continue;
+    }
+    if (getOutputSave(F, V)) {
+      outputs_.push_back(V);
+    } else {
+      inputs_.push_back(V);
+    }
+  }
+}
 
 HabanaFunction::~HabanaFunction() {
   GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_));
@@ -671,44 +693,12 @@ allocateGraphTensors(Function *F) {
   return tensors;
 }
 
-namespace {
-struct IOPlaceholders {
-  PlaceholderList inputs;
-  PlaceholderList outputs;
-};
-} // namespace
-
-static bool usedInFunction(Placeholder *V, Function *F) {
-  for (auto const &U : V->getUsers()) {
-    if (U.getUser()->getParent() == F) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static IOPlaceholders findIOPlaceholders(Function *F) {
-  IOPlaceholders io;
-  for (auto &V : F->getParent()->getPlaceholders()) {
-    if (!usedInFunction(V, F)) {
-      continue;
-    }
-    if (getOutputSave(F, V)) {
-      io.outputs.push_back(V);
-    } else {
-      io.inputs.push_back(V);
-    }
-  }
-  return io;
-}
-
 llvm::Expected<std::unique_ptr<CompiledFunction>>
 HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
   // Allocate all the tensors.
   auto tensors = allocateGraphTensors(F);
-  auto ios = findIOPlaceholders(F);
 
   // Keep references to any node parameters
   // until the compilation is done.
@@ -1221,8 +1211,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
 
   return llvm::Expected<std::unique_ptr<CompiledFunction>>(
       llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
-                                        recipeName, std::move(ios.inputs),
-                                        std::move(ios.outputs)));
+                                        recipeName, F));
 }
 
 static bool isQuantizedType(ElemKind kind) {
