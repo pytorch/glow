@@ -193,8 +193,7 @@ class HabanaFunction final : public CompiledFunction {
 public:
   /// Constructor.
   HabanaFunction(const runtime::RuntimeBundle &bundle,
-                 const std::string &recipeName, PlaceholderList &&inputs,
-                 PlaceholderList &&outputs);
+                 const std::string &recipeName, Function *F);
 
   /// @name CompiledFunction interface
   ///@{
@@ -215,7 +214,9 @@ public:
   const PlaceholderList &getOutputs() const { return outputs_; }
 
 private:
-  Function *F_;
+  /// Build the list of input and output placeholders.
+  void findIOPlaceholders(Function *F);
+
   std::string recipeName_;
   PlaceholderList inputs_;
   PlaceholderList outputs_;
