@@ -228,8 +228,8 @@ void Partitioner::initOpComputeTime(Function *F) {
     }
 
     // Repeat for outputs
-    if (node.getNumResults() > 0) {
-      auto myty = node.getType(0);
+    for (size_t i = 0, e = node.getNumResults(); i < e; i++) {
+      auto myty = node.getType(i);
       uint64_t sizeOutput = myty->getSizeInBytes();
       if (sizeOutput > sramCapacity) {
         sizeDram += sizeOutput;

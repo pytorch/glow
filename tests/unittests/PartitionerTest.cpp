@@ -529,3 +529,41 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
     mod_.clear();
   }
 }
+
+/// Check the function getGraphMemInfo to handle more than one outputs of a
+/// single Node in PartitionerUtils.cpp
+TEST_F(PartitionerTest, getGraphMemInfo) {
+  auto *inp1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *inp2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
+
+  auto *R1 = F_->createTopK("TopK1", inp1, 2);
+  auto *R2 = F_->createTopK("TopK2", inp2, 2);
+
+  // Concat the values and indices separately, both on the 0th dimension,
+  // matching the shapes of the values and indices variables above.
+  auto *CV =
+      F_->createConcat("Concat.Values", {R1->getValues(), R2->getValues()}, 0);
+  auto *CI = F_->createConcat("Concat.Indices",
+                              {R1->getIndices(), R2->getIndices()}, 0);
+
+  auto *saveValues = F_->createSave("Save.Values", CV);
+  auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
+
+  std::set<Node *> nodes1, nodes2;
+  nodes1.insert(R1);
+  nodes1.insert(R2);
+  nodes2.insert(CV);
+  nodes2.insert(CI);
+  nodes2.insert(saveValues);
+  nodes2.insert(saveIndices);
+  GraphMemInfo res1 = getGraphMemInfo(nodes1);
+  GraphMemInfo res2 = getGraphMemInfo(nodes2);
+  GraphMemInfo ref1(48, 96, 0);
+  GraphMemInfo ref2(96, 96, 0);
+  EXPECT_EQ(res1, ref1);
+  EXPECT_EQ(res2, ref2);
+}
