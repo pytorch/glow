@@ -674,26 +674,42 @@ public:
   template <class T, class U>
   using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
 
+#define BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                 \
+  constexpr size_t numInputs = sizeof...(Args);                                \
+  static_assert(numInputs == NUM_INPUTS,                                       \
+                "Invalid input passed in to commonCreateBroadcast.");          \
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {inputArgs...});
+
 #define DECLARE_BROADCAST_NODE(NODE_NAME, NUM_INPUTS)                          \
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
                           Args &&... inputArgs) {                              \
-    constexpr size_t numInputs = sizeof...(Args);                              \
-    static_assert(numInputs == NUM_INPUTS,                                     \
-                  "Invalid input passed in to createNodeWithBroadcast.");      \
-    std::vector<NodeValue> inputs = broadcastInputs(axis, {inputArgs...});     \
+    BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
 
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
-  /// automatically.
+  /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
 
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically for multi directional broadcast.
+  template <class T, class... Args>
+  typename enable_if_same_t<T, SelectNode>::type *
+  createNodeWithBroadcast(const std::string &name, int axis,
+                          Args &&... inputArgs) {
+    BROADCAST_FUNC_COMMON_CODE(3)
+    return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
+                        inputs[2]);
+  }
+
+#undef BROADCAST_FUNC_COMMON_CODE
 #undef DECLARE_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 

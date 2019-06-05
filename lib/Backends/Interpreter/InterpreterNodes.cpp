@@ -1162,6 +1162,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<float16_t>().clear(I->getValue());
   }
 
+  if (k == ElemKind::BoolTy) {
+    return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
+  }
+
   if (k == ElemKind::Int8QTy) {
     // Quantize the requested floating point splat value into the correct
     // integer representation.

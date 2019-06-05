@@ -69,13 +69,17 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
 
-  case Kinded::Kind::DivNodeKind:
     // InsertTensor ==> Copy + InsertTensor. Copy supports everything
     // ReshapeNode above supports, so InsertTensor is the limiting factor.
   case Kinded::Kind::InsertTensorNodeKind:
     // Concat ==> Splat + Insert. Both only support the following.
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SplatNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+         ElemKind::BoolTy});
+
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
