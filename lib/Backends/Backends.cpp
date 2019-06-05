@@ -19,8 +19,14 @@
 namespace glow {
 
 Backend *createBackend(BackendKind backendKind) {
-  auto *backend = FactoryRegistry<BackendKind, Backend>::get(backendKind);
-  CHECK(backend) << "Cannot find registered backend";
+  const std::string &backendName = BackendKindToString(backendKind);
+  return createBackend(backendName);
+}
+
+Backend *createBackend(llvm::StringRef backendName) {
+  auto *backend = FactoryRegistry<std::string, Backend>::get(backendName);
+  CHECK(backend) << strFormat("Cannot find registered backend: %s",
+                              backendName.data());
   return backend;
 }
 
