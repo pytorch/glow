@@ -141,22 +141,30 @@ getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
 }
 
 uint64_t getOutMemPerNode(const std::set<Node *> &nodes, const Node *node) {
-  for (size_t i = 0, e = node->getNumResults(); i < e; i++) {
-    for (auto &U : node->getNthResult(i).getNode()->getUsers()) {
-      Node *user = U.getUser();
-      if (nodes.count(user) == 0) {
-        // Find the user that doesn't belong to this subgraph.
-        // If a node has several users, the memory usage is only counted once.
-        return node->getType(i)->getSizeInBytes();
+  uint64_t ret = 0;
+  // Assume that for each Node, the max number of outputs is 5 so far.
+  llvm::SmallSet<size_t, 5> used;
+  for (const auto &U : node->getUsers()) {
+    const Node *user = U.getUser();
+    if (nodes.find(const_cast<Node *>(user)) != nodes.end()) {
+      continue;
+    }
+    // Find the user that doesn't belong to this subgraph.
+    // If a node has several users, the memory usage is only counted once.
+    for (size_t idx = 0, end = user->getNumInputs(); idx < end; idx++) {
+      NodeValue val = user->getNthInput(idx);
+      if (val.getNode() == node && used.count(val.getResNo()) == 0) {
+        ret += node->getType(val.getResNo())->getSizeInBytes();
+        used.insert(val.getResNo());
       }
     }
   }
-  return 0;
+  return ret;
 }
 
 GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
   GraphMemInfo ret;
-  std::set<Node *> nSet;
+  std::set<NodeValue> nSet;
   for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     // For Save onde, the only required memory is for output.
@@ -168,13 +176,14 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
     // Check the inputs of each node in this subgraph and decide if it
     // contributes to the memory usage:
     for (size_t i = 0, e = cur->getNumInputs(); i < e; i++) {
-      Node *node = cur->getNthInput(i).getNode();
-      if (nodes.count(node) || nSet.count(node)) {
+      NodeValue nodeVal = cur->getNthInput(i);
+      Node *node = nodeVal.getNode();
+      if (nodes.count(node) || nSet.count(nodeVal)) {
         // This input belongs to this subgraph or it has been considered
         // already, nothing to do.
         continue;
       }
-      nSet.insert(node);
+      nSet.insert(nodeVal);
       Storage *in = llvm::dyn_cast<Storage>(node);
       if (in) {
         uint64_t size = in->getType()->getSizeInBytes();
@@ -189,12 +198,7 @@ GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
         // In this case, this input is neither a storage type node nor belongs
         // to this subgraph. Therefore, when creating paritions, we need to add
         // a PlaceHolder for the data from outside.
-        for (auto &U : node->getUsers()) {
-          if (U.getUser() == cur) {
-            ret.inMemSize += node->getType(0)->getSizeInBytes();
-            break;
-          }
-        }
+        ret.inMemSize += nodeVal.getType()->getSizeInBytes();
       }
     }
     // Check the outputs of each node in this subgraph and decide if it

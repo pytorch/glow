@@ -33,12 +33,23 @@ struct GraphMemInfo {
   uint64_t constMemSize;
 
   GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
+  GraphMemInfo(uint64_t inMem, uint64_t outMem, uint64_t constMem)
+      : inMemSize(inMem), outMemSize(outMem), constMemSize(constMem){};
 
   // Get the total memory size of each partition.
   uint64_t getTotalMemSize() const {
     return inMemSize + outMemSize + constMemSize;
   }
+
+  bool equals(const GraphMemInfo &other) const {
+    return inMemSize == other.inMemSize && outMemSize == other.outMemSize &&
+           constMemSize == other.constMemSize;
+  }
 };
+
+inline bool operator==(const GraphMemInfo &LHS, const GraphMemInfo &RHS) {
+  return LHS.equals(RHS);
+}
 
 /// A list of <nodelist> with BFS order.
 using BFSLevel = std::vector<std::vector<Node *>>;
