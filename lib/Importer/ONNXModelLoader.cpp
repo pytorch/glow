@@ -1050,6 +1050,41 @@ ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error
+ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict) {
+  Tensor T(ElemKind::FloatTy, {1});
+  T.getHandle().raw(0) = 0.0;
+
+  if (dict.count("value")) {
+    RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
+    RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
+    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy,
+                      "Value must have float type");
+  }
+
+  TypeRef ty;
+  if (op.input_size() > 0) {
+    Constant *in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+    // Must be 1D tensor of int64_t.
+    RETURN_ERR_IF_NOT(in->dims().size() == 1, "Input must be a 1D vector.");
+    RETURN_ERR_IF_NOT(in->getType()->getElementType() == ElemKind::Int64ITy,
+                      "Input element type must be Int64ITy.");
+    // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
+    auto TH = in->getPayload().getHandle<int64_t>();
+    llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
+                                         (const size_t *)TH.end()};
+    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, outputDims);
+  } else {
+    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, {1});
+  }
+
+  Node *SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+  RETURN_IF_ERR(addNodeAsOutput(op, SN));
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1112,6 +1147,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
+  }
+  if (typeName == "ConstantOfShape") {
+    return loadConstantOfShape(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",
