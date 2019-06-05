@@ -165,6 +165,96 @@ TEST(caffe2, convNHWC) {
   EXPECT_EQ(mod.getConstants().size(), 2);
 }
 
+/// Test loading ChannelwiseQuantizedConvolutionNode op from a Caffe2 model.
+/// The input is N*H*W*C (1*1*1*4), the kernel is 1,
+/// stride is 1, pad is 1, group is 2.
+TEST(caffe2, convGroupQuantized) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/conv_group_quantized_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/conv_group_quantized_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  Tensor input(ElemKind::Int8QTy, {1, 1, 1, 4}, 1.0, 0);
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  // High level check on the content of the graph. We have 1
+  // ChannelwiseQuantizedConvolutionNode and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *groupwiseConv = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(
+      saveNode->getInput().getNode());
+  ASSERT_TRUE(groupwiseConv);
+
+  // Check params.
+  std::vector<unsigned> expectedKernelsAndStrides = {1, 1};
+  std::vector<unsigned> expectedPads = {1, 1, 1, 1};
+  EXPECT_EQ(groupwiseConv->getKernels(),
+            llvm::makeArrayRef(expectedKernelsAndStrides));
+  EXPECT_EQ(groupwiseConv->getStrides(),
+            llvm::makeArrayRef(expectedKernelsAndStrides));
+  EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
+  EXPECT_EQ(groupwiseConv->getGroup(), 2);
+  EXPECT_EQ(groupwiseConv->getGroupwise(), true);
+
+  // Check constant inputs.
+  Constant *filterConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getFilter().getNode());
+  Constant *biasConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getBias().getNode());
+  Constant *scalesConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getScales().getNode());
+  Constant *offsetsConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getOffsets().getNode());
+
+  ASSERT_TRUE(filterConstant);
+  ASSERT_TRUE(biasConstant);
+  ASSERT_TRUE(scalesConstant);
+  ASSERT_TRUE(offsetsConstant);
+
+  const auto filterH = filterConstant->getPayload().getHandle<int8_t>();
+  const auto biasH = biasConstant->getPayload().getHandle<float>();
+  const auto scalesH = scalesConstant->getPayload().getHandle<float>();
+  const auto offsetsH = offsetsConstant->getPayload().getHandle<int32_t>();
+
+  for (size_t i = 0; i < filterH.size(); ++i) {
+    EXPECT_EQ(filterH.raw(i), i % 2);
+  }
+
+  for (size_t i = 0; i < biasH.size(); ++i) {
+    EXPECT_EQ(biasH.raw(i), 7);
+  }
+
+  for (size_t i = 0; i < scalesH.size(); ++i) {
+    EXPECT_EQ(scalesH.raw(i), 6);
+  }
+
+  for (size_t i = 0; i < offsetsH.size(); ++i) {
+    EXPECT_EQ(offsetsH.raw(i), 5);
+  }
+
+  // We have 2 placeholders: 1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 4 constants: Bias, Weights, and Weights' separate scales and
+  // offsets.
+  EXPECT_EQ(mod.getConstants().size(), 4);
+}
+
 /// Test loading MaxPool with NHWC order input.
 TEST(caffe2, maxPoolNHWC) {
   ExecutionEngine EE{BackendKind::Interpreter};

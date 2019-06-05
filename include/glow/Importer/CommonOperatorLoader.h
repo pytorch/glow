@@ -33,42 +33,43 @@
 #include <vector>
 
 namespace glow {
+/// Result of loading a weight, potentially with additional offsets and
+/// scales tensors containing quantization parameters only if the loaded weight
+/// was found to have multiple quantization parameters.
+struct LoadWeightResult {
+  /// Main Glow tensor, this is always non-null.
+  std::unique_ptr<Tensor> t;
+  /// Glow tensor containing quantization offsets. This should only be non-null
+  /// if there is more than 1 quantization parameter found.
+  std::unique_ptr<Tensor> offsets;
+  /// Glow tensor containing quantization scales. This should only be non-null
+  /// if there is more than 1 quantization parameter found.
+  std::unique_ptr<Tensor> scales;
+};
 
-/// Contains loaders for operators, which are common to ONNX and Caffe2 formats.
-/// Every loader method adds necessary nodes to property G_, which is inherited
-/// from ProtobufLoader class, therefore modifying the class instance itself.
+/// Contains loaders for operators, which are common to ONNX and Caffe2
+/// formats. Every loader method adds necessary nodes to property G_, which
+/// is inherited from ProtobufLoader class, therefore modifying the class
+/// instance itself.
 template <typename OpType, typename AttrType>
 class CommonOperatorLoader : public ProtobufLoader {
-
-  /// Result of loadWeight function.
-  struct LoadWeightResult {
-    /// Main Glow tensor loaded from the onnxTensorDescriptorV1, this is always
-    /// non-null.
-    std::unique_ptr<Tensor> t;
-    /// Glow tensor containing quantization biases. This should only be non-null
-    /// if there is more than 1 quantization parameter in the
-    /// onnxTensorDescriptorV1.
-    std::unique_ptr<Tensor> biases;
-    /// Glow tensor containing quantization scales. This should only be non-null
-    /// if there is more than 1 quantization parameter in the
-    /// onnxTensorDescriptorV1.
-    std::unique_ptr<Tensor> scales;
-  };
-
-  /// Loads the onnxTensorDescriptorV1 \p and \returns a LoadWeightResult where
-  /// result.t is the main contents of the the onnxTensorDescriptorV1 and
-  /// result.biases and result.scales are the quantization scales and offsets of
-  /// the onnxTensorDescriptorV1 if there were more than 1. If there is exactly
-  /// 1 scale and offset then result.t will be a quantized glow tensor.
-  static llvm::Expected<LoadWeightResult>
+  /// Loads the onnxTensorDescriptorV1 \p in and \returns a LoadWeightResult
+  /// where result.t is the main contents of the the onnxTensorDescriptorV1 and
+  /// result.offsets and result.scales are the quantization scales and offsets
+  /// of the onnxTensorDescriptorV1 if there were more than 1. If there is
+  /// exactly 1 scale and offset then result.t will be a quantized glow tensor.
+  inline llvm::Expected<LoadWeightResult>
   loadWeight(const onnxTensorDescriptorV1 &in) {
     // Only support CPU memory tensors.
     if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
       RETURN_ERR("Only support CPU memory tensors.");
     }
 
+    // Number of qparams in the onnxTensorDescriptor.
+    const size_t qparams = static_cast<size_t>(in.quantizationParams);
+
     // Only support quantizationAxis=1 for now.
-    if (in.quantizationParams > 0 && in.quantizationAxis != 1) {
+    if (qparams > 0 && in.quantizationAxis != 1) {
       RETURN_ERR(strFormat(
           "Glow can only import quantized tensors with quantizationAxis=1 but "
           "the tensor %s has quantizationAxis=%u",
@@ -86,22 +87,16 @@ class CommonOperatorLoader : public ProtobufLoader {
       dims.push_back(in.shape[i]);
     }
 
+    // Load unquantized tensor.
     if (in.quantizationParams == 0) {
       if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
         Type ty(ElemKind::FloatTy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
-      } else if (in.dataType == ONNXIFI_DATATYPE_UINT64 ||
-                 in.dataType == ONNXIFI_DATATYPE_INT64) {
-        const bool inDataSigned = in.dataType == ONNXIFI_DATATYPE_INT64;
-        Type ty(ElemKind::Int64ITy, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
-        for (size_t i = 0; i < result.t->size(); ++i) {
-          RETURN_ERR_IF_NOT(
-              (inDataSigned || ((int64_t *)in.buffer)[i] >= 0),
-              "Disallow overflow of loaded UINT64 data into Int64ITy.");
-        }
       } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
         Type ty(ElemKind::Int32ITy, dims);
+        *result.t = Tensor((void *)in.buffer, &ty);
+      } else if (in.dataType == ONNXIFI_DATATYPE_INT64) {
+        Type ty(ElemKind::Int64ITy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
       } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
         // Must copy the weights here because we will need to modify them by
@@ -112,34 +107,61 @@ class CommonOperatorLoader : public ProtobufLoader {
         for (size_t i = 0; i < TH.size(); ++i) {
           TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
         }
-      } else {
-        RETURN_ERR("Only float and index tensors are supported.");
-      }
-    } else if (in.quantizationParams == 1) {
-      if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
-        // Must copy the weights here because we will need to modify them by
-        // adjusting for OFFSETSHIFT.
-        result.t->reset(ElemKind::Int8QTy, dims, in.scales[0],
-                        in.biases[0] - OFFSETSHIFT);
-
-        auto TH = result.t->template getHandle<int8_t>();
-        uint8_t *data = (uint8_t *)in.buffer;
-        for (size_t i = 0; i < TH.size(); ++i) {
-          TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+      } else if (in.dataType == ONNXIFI_DATATYPE_UINT64) {
+        Type ty(ElemKind::Int64ITy, dims);
+        *result.t = Tensor((void *)in.buffer, &ty);
+        for (size_t i = 0; i < result.t->size(); ++i) {
+          RETURN_ERR_IF_NOT(
+              ((int64_t *)in.buffer)[i] >= 0,
+              "Disallow overflow of loaded UINT64 data into Int64ITy.");
         }
-      } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-        Type ty(ElemKind::Int32QTy, dims, in.scales[0], in.biases[0]);
-        *result.t = Tensor((void *)in.buffer, &ty);
-      } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
-        Type ty(ElemKind::Int8QTy, dims, in.scales[0], in.biases[0]);
-        *result.t = Tensor((void *)in.buffer, &ty);
       } else {
-        RETURN_ERR("Only uint8 and int32 quantized tensors are supported.");
+        RETURN_ERR(strFormat(
+            "Only float, index, and uint8 unquantized tensors are supported, "
+            "got input with ONNXIFI_DATATYPE: %zu",
+            static_cast<size_t>(in.dataType)));
       }
+
+      return llvm::Expected<LoadWeightResult>(std::move(result));
+    }
+
+    // Load quantized tensor with either a single or multiple qparams.
+    float scale = 1.0;
+    int32_t offset = 0;
+
+    // If multiple qparams are present then load them as tensors and use the
+    // the default qparams for the result.t otherwise use the first (only)
+    // qparams.
+    if (in.quantizationParams == 1) {
+      scale = in.scales[0];
+      offset = in.biases[0];
     } else {
-      // TODO: implement multiple quantization parameters case.
-      RETURN_ERR(
-          "Multiple quantization parameters per tensor not supported yet.");
+      Type scalesTy(ElemKind::FloatTy, llvm::makeArrayRef({qparams}));
+      Type offsetsTy(ElemKind::Int32ITy, llvm::makeArrayRef({qparams}));
+      result.scales = llvm::make_unique<Tensor>((void *)in.scales, &scalesTy);
+      result.offsets = llvm::make_unique<Tensor>((void *)in.biases, &offsetsTy);
+    }
+
+    if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      // Must copy the weights here because we will need to modify them by
+      // adjusting for OFFSETSHIFT.
+      result.t->reset(ElemKind::Int8QTy, dims, scale, offset - OFFSETSHIFT);
+
+      auto TH = result.t->getHandle<int8_t>();
+      uint8_t *data = (uint8_t *)in.buffer;
+      for (size_t i = 0; i < TH.size(); ++i) {
+        TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+      }
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
+      Type ty(ElemKind::Int32QTy, dims, scale, offset);
+      *result.t = Tensor((void *)in.buffer, &ty);
+    } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
+      Type ty(ElemKind::Int8QTy, dims, scale, offset);
+      *result.t = Tensor((void *)in.buffer, &ty);
+    } else {
+      RETURN_ERR(strFormat("Only uint8, int32, and int8, quantized tensors are "
+                           "supported, got input with ONNXIFI_DATATYPE: %zu",
+                           static_cast<size_t>(in.dataType)));
     }
 
     return llvm::Expected<LoadWeightResult>(std::move(result));
@@ -1136,26 +1158,25 @@ protected:
     for (uint32_t i = 0; i < weightsCount; ++i) {
       const char *name = weightDescriptors[i].name;
 
-      LoadWeightResult loadWeightResult;
+      LoadWeightResult loadResult;
       if (auto resOrErr = loadWeight(weightDescriptors[i])) {
-        loadWeightResult = std::move(*resOrErr);
+        loadResult = std::move(*resOrErr);
       } else {
         return resOrErr.takeError();
       }
 
-      RETURN_IF_ERR(
-          createAndRegisterConstant(name, std::move(*loadWeightResult.t)));
+      RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*loadResult.t)));
 
-      if (loadWeightResult.biases) {
-        auto biasesName = strFormat("%s_loaded_biases", name);
+      if (loadResult.offsets) {
+        auto offsetsName = strFormat("%s_loaded_offsets", name);
         RETURN_IF_ERR(createAndRegisterConstant(
-            biasesName, std::move(*loadWeightResult.biases)));
+            offsetsName, std::move(*loadResult.offsets)));
       }
 
-      if (loadWeightResult.scales) {
+      if (loadResult.scales) {
         auto scalesName = strFormat("%s_loaded_scales", name);
-        RETURN_IF_ERR(createAndRegisterConstant(
-            scalesName, std::move(*loadWeightResult.scales)));
+        RETURN_IF_ERR(createAndRegisterConstant(scalesName,
+                                                std::move(*loadResult.scales)));
       }
     }
 

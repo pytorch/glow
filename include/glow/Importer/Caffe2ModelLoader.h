@@ -60,8 +60,16 @@ class Caffe2ModelLoader
   /// in the network.
   llvm::Error loadOperator(const caffe2::OperatorDef &op);
 
-  /// Reads a network (weights or structure) from the serialized protocol buffer
-  /// file.
+  /// Load the Conv or ConvRelu operators.
+  llvm::Error loadConv(const caffe2::OperatorDef &op,
+                       ArgumentDictionaryTy &dict);
+
+  /// Load the Int8Conv or Int8ConvRelu operators.
+  llvm::Error loadConvQuantized(const caffe2::OperatorDef &op,
+                                ArgumentDictionaryTy &dict);
+
+  /// Reads a network (weights or structure) from the serialized protocol
+  /// buffer file.
   llvm::Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);
 
   /// loadInputs calls this function for each member in its target arguments.
