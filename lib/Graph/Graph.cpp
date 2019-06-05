@@ -2573,6 +2573,48 @@ TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
   return addNode(new TraceEventNode(name, data, eventName, eventType, index));
 }
 
+WhereNode *Function::createWhere(llvm::StringRef name, NodeValue condition,
+                                 NodeValue X, NodeValue Y) {
+  auto cDims = condition.dims();
+  auto xDims = X.dims();
+  auto yDims = Y.dims();
+
+  auto *xNode = X.getNode();
+  auto *yNode = Y.getNode();
+  auto *cNode = condition.getNode();
+
+  assert((cDims.size() == xDims.size() && cDims.size() == yDims.size()) &&
+         "All three inputs in to Where must have same number of dimensions.");
+  llvm::SmallVector<size_t, 4> oDims;
+  for (int i = 0; i < xDims.size(); ++i) {
+    assert(xDims[i] == yDims[i] || xDims[i] == 1 ||
+           yDims[i] == 1 && "Dimensions must be equal or be broadcast.");
+    oDims.push_back(std::max(xDims[i], yDims[i]));
+  }
+
+  int i = 0;
+  for (; i < cDims.size(); ++i) {
+    if (oDims[i] != cDims[i]) {
+      break;
+    }
+  }
+  for (; i < cDims.size(); ++i) {
+    if (cDims[i] != 1) {
+      assert(false && "Condition dimensions must either much in entirety or "
+                      "match first k dimensions and be 1 in rest.");
+    }
+  }
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(X.getType(), oDims);
+  if (xDims != yDims) {
+    xNode =
+        createBroadcast(xNode->getName().str() + "_broadcast", xNode, oDims, 0);
+    yNode =
+        createBroadcast(yNode->getName().str() + "_broadcast", yNode, oDims, 0);
+  }
+  return addNode(new WhereNode(name, outTy, cNode, xNode, yNode));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

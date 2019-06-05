@@ -2399,6 +2399,38 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::WhereInstKind: {
+    auto *WHRI = llvm::cast<WhereInst>(I);
+    auto *cond = WHRI->getCondition();
+    auto *x = WHRI->getX();
+    auto *y = WHRI->getY();
+    auto *dst = WHRI->getOut();
+
+    auto oDim = flattenCdr(x->dims());
+    auto cDim = flattenCdr(cond->dims());
+    auto SizeTType = builder.getIntNTy(getLibjitSizeTWidth());
+    llvm::SmallVector<llvm::Constant *, 2> oDimsV = {
+        llvm::ConstantInt::get(SizeTType, oDim.first),
+        llvm::ConstantInt::get(SizeTType, oDim.second)};
+    auto *oDimArrayVal = emitConstArray(builder, oDimsV, SizeTType);
+
+    llvm::SmallVector<llvm::Constant *, 2> cDimsV = {
+        llvm::ConstantInt::get(SizeTType, cDim.first),
+        llvm::ConstantInt::get(SizeTType, cDim.second)};
+    auto *cDimArrayVal = emitConstArray(builder, cDimsV, SizeTType);
+
+    auto *condPtr = emitValueAddress(builder, cond);
+    auto *xPtr = emitValueAddress(builder, x);
+    auto *yPtr = emitValueAddress(builder, y);
+    auto *dstPtr = emitValueAddress(builder, dst);
+
+    auto *F = getFunction("where", dst->getElementType());
+
+    createCall(builder, F,
+               {dstPtr, condPtr, xPtr, yPtr, oDimArrayVal, cDimArrayVal});
+    break;
+  }
+
   default:
     std::string sBuf;
     llvm::raw_string_ostream s(sBuf);

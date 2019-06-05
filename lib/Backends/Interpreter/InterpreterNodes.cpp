@@ -3018,3 +3018,56 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     llvm_unreachable("Type not supported");
   }
 }
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdWhereInstImpl(glow::WhereInst const *I) {
+  Value *condV = I->getCondition();
+  Value *xV = I->getX();
+  Value *yV = I->getY();
+  Value *outV = I->getOut();
+
+  auto cH = getTensor(condV)->getHandle<bool>();
+  auto xH = getTensor(xV)->getHandle<ElemTy>();
+  auto yH = getTensor(yV)->getHandle<ElemTy>();
+  auto oH = getTensor(outV)->getHandle<ElemTy>();
+
+  auto oDim = flattenCdr(oH.dims());
+  auto cDim = flattenCdr(cH.dims());
+
+  size_t step = oDim.second / cDim.second;
+
+  // For each layer in the batch:
+  for (size_t n = 0; n < oDim.first; n++) {
+    size_t cBase = cH.getElementPtr({n});
+    size_t xBase = xH.getElementPtr({n});
+    size_t yBase = yH.getElementPtr({n});
+    size_t oBase = oH.getElementPtr({n});
+
+    // For each element in the slice.
+    for (size_t i = 0; i < cDim.second; i++) {
+      bool whichToPick = cH.raw(cBase + i);
+      for (size_t k = 0; k < step; ++k) {
+        size_t index = i * step + k;
+        if (whichToPick) {
+          oH.raw(oBase + index) = xH.raw(xBase + index);
+        } else {
+          oH.raw(oBase + index) = yH.raw(yBase + index);
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdWhereInst(glow::WhereInst const *I) {
+  switch (I->getX()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdWhereInstImpl<float>(I);
+    break;
+  case ElemKind::Int8QTy:
+    fwdWhereInstImpl<int8_t>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+    break;
+  }
+}

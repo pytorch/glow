@@ -64,6 +64,275 @@ static Tensor createTensorConditionallyQuantized(ElemKind T,
   return isQuantizedElemKind(T) ? Tensor(T, dims, 1.0, 0) : Tensor(T, dims);
 }
 
+template <typename DataType>
+glow::Handle<DataType>
+whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
+            glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+            llvm::ArrayRef<DataType> xValues, llvm::ArrayRef<DataType> yValues,
+            llvm::ArrayRef<bool> cValues, llvm::ArrayRef<size_t> xDims,
+            llvm::ArrayRef<size_t> yDims, llvm::ArrayRef<size_t> condDims) {
+  auto *cond = createPlaceholderConditionallyQuantized(mod, ElemKind::BoolTy,
+                                                       condDims, "cond", false);
+  auto *X =
+      createPlaceholderConditionallyQuantized(mod, DTy, xDims, "X", false);
+
+  auto *Y =
+      createPlaceholderConditionallyQuantized(mod, DTy, yDims, "Y", false);
+
+  bindings.allocate(cond)->getHandle<bool>() = cValues;
+
+  bindings.allocate(X)->getHandle<DataType>() = xValues;
+
+  bindings.allocate(Y)->getHandle<DataType>() = yValues;
+
+  auto *whr = F->createWhere("Where", cond, X, Y);
+
+  auto *save = F->createSave("save", whr);
+  auto *saveAlloc = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  return saveAlloc->getHandle<DataType>();
+}
+
+TEST_P(OperatorTest, where_2d_broadcast_x_y_i8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  llvm::SmallVector<int8_t, 16> xValues = {3, 5, 7};
+
+  llvm::SmallVector<int8_t, 16> yValues = {2, 4, 6};
+
+  llvm::SmallVector<bool, 4> cValues = {1, 0, 1};
+
+  llvm::SmallVector<size_t, 4> condDims = {3, 1, 1};
+
+  llvm::SmallVector<size_t, 4> xDims = {1, 3, 1};
+  llvm::SmallVector<size_t, 4> yDims = {3, 1, 1};
+
+  Handle<int8_t> saveH =
+      whereHelper<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, xValues,
+                          yValues, cValues, xDims, yDims, condDims);
+
+  llvm::SmallVector<int8_t, 16> refResults = {3, 5, 7, 4, 4, 4, 3, 5, 7};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2] - 1; ++k) {
+        std::cout << (int32_t)saveH.at({i, j, k}) << " ,";
+      }
+      std::cout << (int32_t)saveH.at({i, j, saveH.dims()[2] - 1}) << std::endl;
+    }
+  }
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        EXPECT_EQ(refResults[counter++], saveH.at({i, j, k}));
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, where_2d_wise_i8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  llvm::SmallVector<int8_t, 16> xValues = {
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<int8_t, 16> yValues = {
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<bool, 4> cValues = {1, 0, 1, 0};
+
+  llvm::SmallVector<size_t, 4> condDims = {2, 2, 1, 1};
+
+  llvm::SmallVector<size_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<size_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<int8_t> saveH =
+      whereHelper<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, xValues,
+                          yValues, cValues, xDims, yDims, condDims);
+
+  llvm::SmallVector<int8_t, 16> refResults = {
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, where_2d_wise_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  llvm::SmallVector<float, 16> xValues = {
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  llvm::SmallVector<float, 16> yValues = {
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  llvm::SmallVector<bool, 4> cValues = {1, 0, 1, 0};
+
+  llvm::SmallVector<size_t, 4> condDims = {2, 2, 1, 1};
+
+  llvm::SmallVector<size_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<size_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<float> saveH =
+      whereHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                         yValues, cValues, xDims, yDims, condDims);
+
+  llvm::SmallVector<float, 16> refResults = {
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, where_row_wise_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  llvm::SmallVector<bool, 4> cValues = {1, 1, 1, 0, 0, 1, 0, 0};
+
+  llvm::SmallVector<size_t, 4> condDims = {2, 4, 1};
+
+  llvm::SmallVector<size_t, 4> xDims = {2, 4, 4};
+  llvm::SmallVector<size_t, 4> yDims = {2, 4, 4};
+
+  llvm::SmallVector<float, 16> xValues = {
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  llvm::SmallVector<float, 16> yValues = {
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  Handle<float> saveH =
+      whereHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                         yValues, cValues, xDims, yDims, condDims);
+
+  llvm::SmallVector<float, 16> refResults = {
+      1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      7.0f, 8.0f, 9.0f, 2.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+      3.0f, 4.0f, 5.0f, 7.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+      4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+  };
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k}));
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, where_element_wise_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  llvm::SmallVector<size_t, 4> condDims = {1, 4, 4};
+
+  llvm::SmallVector<size_t, 4> xDims = {1, 4, 4};
+  llvm::SmallVector<size_t, 4> yDims = {1, 4, 4};
+
+  llvm::SmallVector<bool, 4> cValues = {1, 1, 1, 0, 0, 1, 0, 0,
+                                        0, 1, 0, 1, 1, 0, 1, 0};
+
+  llvm::SmallVector<float, 16> xValues = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f,
+                                          6.0f, 3.0f, 7.0f, 8.0f, 9.0f, 2.0f,
+                                          3.0f, 5.0f, 7.0f, 1.0f};
+
+  llvm::SmallVector<float, 16> yValues = {3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f,
+                                          0.0f, 6.0f, 4.0f, 2.0f, 1.0f, 8.0f,
+                                          5.0f, 9.0f, 2.0f, 6.0f};
+
+  Handle<float> saveH =
+      whereHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                         yValues, cValues, xDims, yDims, condDims);
+
+  llvm::SmallVector<float, 16> refResults = {1.0f, 2.0f, 3.0f, 7.0f, 2.0f, 5.0f,
+                                             0.0f, 6.0f, 4.0f, 8.0f, 1.0f, 2.0f,
+                                             3.0f, 9.0f, 7.0f, 6.0f};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k}));
+      }
+    }
+  }
+}
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,

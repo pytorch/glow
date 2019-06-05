@@ -315,6 +315,11 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 
+  case Kinded::Kind::WhereNodeKind:
+    // check that x.type == y.type == out.type is done in node verification.
+    return NI.getOutElemTy(WhereNode::OutIdx) == ElemKind::FloatTy ||
+           NI.getOutElemTy(WhereNode::OutIdx) == ElemKind::Int8QTy;
+
   default:
     return false;
   }

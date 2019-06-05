@@ -1094,6 +1094,10 @@ public:
                                    llvm::StringRef eventType, Node *data,
                                    unsigned index);
 
+  /// Creates Where Node.
+  WhereNode *createWhere(llvm::StringRef name, NodeValue condition, NodeValue X,
+                         NodeValue Y);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

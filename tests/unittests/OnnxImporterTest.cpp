@@ -1707,3 +1707,37 @@ TEST(onnx, shape) {
     EXPECT_EQ(result.raw(i), expectedValues[i]);
   }
 }
+
+TEST(onnx, importWhere) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Where.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor Condition(ElemKind::BoolTy, {1, 4, 4});
+    Tensor X(ElemKind::FloatTy, {1, 4, 4});
+    Tensor Y(ElemKind::FloatTy, {1, 4, 4});
+
+    Condition.zero();
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"Condition", "X", "Y"},
+                           {&Condition.getType(), &X.getType(), &Y.getType()},
+                           *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  WhereNode *WHR = llvm::dyn_cast<WhereNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(WHR);
+  EXPECT_EQ(WHR->dims(0)[0], 1);
+  EXPECT_EQ(WHR->dims(0)[1], 4);
+  EXPECT_EQ(WHR->dims(0)[2], 4);
+}

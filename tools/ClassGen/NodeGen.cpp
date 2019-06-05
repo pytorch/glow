@@ -779,6 +779,21 @@ int main(int argc, char **argv) {
           "and Rescale nodes.");
 
   //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Where")
+      .addInput("Condition")
+      .addInput("X")
+      .addInput("Y")
+      .addResultFromCtorArg("Out")
+      .setDocstring("Return elements, either from X or Y, depending on "
+                    "condition (with Numpy-style broadcasting support). Where "
+                    "behaves like numpy.where with three parameters: "
+                    "https://docs.scipy.org/doc/numpy/reference/generated/"
+                    "numpy.where.html");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 

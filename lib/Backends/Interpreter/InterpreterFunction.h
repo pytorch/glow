@@ -257,6 +257,9 @@ private:
                                    TensorQuantizationParams &destQ);
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
+
+  template <typename ElemTy> void fwdWhereInstImpl(glow::WhereInst const *I);
+
   ///@}
 };
 

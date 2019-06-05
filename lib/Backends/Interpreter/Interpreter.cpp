@@ -365,6 +365,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     // These work regardless of the underlying type.
     return true;
 
+  case Kinded::Kind::WhereNodeKind:
+    // check that x.type == y.type == out.type is done in node verification.
+    return NI.getOutElemTy(WhereNode::OutIdx) == ElemKind::FloatTy ||
+           NI.getOutElemTy(WhereNode::OutIdx) == ElemKind::Int8QTy;
+
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},

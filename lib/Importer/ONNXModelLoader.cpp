@@ -1085,6 +1085,24 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+  // Input Type
+  NodeValue conditionNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(conditionNV, getNodeValueByName(op.input(0)));
+  NodeValue xNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(1)));
+  NodeValue yNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(2)));
+
+  // Create Node
+  std::string opName = loadOperatorName(op);
+  Node *N = G_.createWhere(opName, conditionNV, xNV, yNV);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1150,6 +1168,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ConstantOfShape") {
     return loadConstantOfShape(op, dict);
+  }
+  if (typeName == "Where") {
+    return loadWhere(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",

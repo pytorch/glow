@@ -1286,6 +1286,16 @@ bool SpaceToDepthNode::verify() const {
   return sameType && dimTransform;
 }
 
+bool WhereNode::verify() const {
+  NodeValue X = getX();
+  NodeValue Y = getY();
+
+  if (X.getType() != Y.getType()) {
+    return false;
+  }
+  return true;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }

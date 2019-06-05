@@ -725,6 +725,29 @@ libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
     }
   }
 }
+
+template <typename ElemTy>
+static void libjit_where(ElemTy *dstPtr, const bool *condPtr,
+                         const ElemTy *xPtr, const ElemTy *yPtr,
+                         const size_t *oDim, const size_t *cDim) {
+  size_t step = oDim[1] / cDim[1];
+
+  for (size_t n = 0; n < oDim[0]; n++) {
+    size_t base = n * oDim[1];
+    size_t cBase = n * cDim[1];
+    for (size_t i = 0; i < cDim[1]; ++i) {
+      bool whichToPick = condPtr[cBase + i];
+      for (size_t k = 0; k < step; ++k) {
+        size_t index = i * step + k;
+        if (whichToPick) {
+          dstPtr[base + index] = xPtr[base + index];
+        } else {
+          dstPtr[base + index] = yPtr[base + index];
+        }
+      }
+    }
+  }
+}
 } // namespace
 
 extern "C" {
@@ -1843,4 +1866,15 @@ libjit_quantization_profile(float *inputTensor, size_t tensorSize,
     existingHistogram[newBin]++;
   }
 }
+void libjit_where_f(float *dstPtr, const bool *condPtr, const float *xPtr,
+                    const float *yPtr, const size_t *oDim, const size_t *cDim) {
+  libjit_where<float>(dstPtr, condPtr, xPtr, yPtr, oDim, cDim);
+}
+
+void libjit_where_i8(int8_t *dstPtr, const bool *condPtr, const int8_t *xPtr,
+                     const int8_t *yPtr, const size_t *oDim,
+                     const size_t *cDim) {
+  libjit_where<int8_t>(dstPtr, condPtr, xPtr, yPtr, oDim, cDim);
+}
+
 } // extern "C"

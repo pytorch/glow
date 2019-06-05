@@ -648,6 +648,18 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Where")
+      .addOperand("Out", OperandKind::Out)
+      .addOperand("Condition", OperandKind::In)
+      .addOperand("X", OperandKind::In)
+      .addOperand("Y", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType, {"X", "Y", "Out"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 
