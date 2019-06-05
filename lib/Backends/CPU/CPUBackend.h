@@ -37,7 +37,8 @@ public:
   BackendKind getBackendKind() const override { return BackendKind::CPU; }
   virtual ~CPUBackend() override = default;
 
-  std::string getBackendName() const override { return "CPU"; }
+  std::string getBackendName() const override { return getName(); }
+  static std::string getName() { return "CPU"; }
 
   bool transformPostLowering(Function *F,
                              CompilationContext &cctx) const override;

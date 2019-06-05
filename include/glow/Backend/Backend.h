@@ -160,11 +160,13 @@ public:
 };
 
 /// Perform Backend Factory registration.
-#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass, BackendName)  \
+#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass)               \
   class FactoryName : public BaseFactory<std::string, Backend> {               \
   public:                                                                      \
     Backend *create() override { return new BackendClass(); }                  \
-    std::string getRegistrationKey() const override { return BackendName; }    \
+    std::string getRegistrationKey() const override {                          \
+      return BackendClass::getName();                                          \
+    }                                                                          \
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
