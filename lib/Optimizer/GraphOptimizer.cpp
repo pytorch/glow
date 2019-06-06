@@ -1686,7 +1686,8 @@ struct ConstsEqDedup {
     // Only dedup Constants if their data matches exactly, so allowed error is
     // 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(),
-                                     /* allowedError */ 0.0);
+                                     /* allowedError */ 0.0,
+                                     /* verbose */ false);
   }
 };
 

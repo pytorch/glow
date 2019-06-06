@@ -381,8 +381,11 @@ public:
   std::string toString(unsigned maxNumElem) const;
 
   /// \returns true if the content of the other tensor \p other is identical to
-  /// this one.
-  bool isEqual(const Tensor &other, float allowedError = 0.0001) const {
+  /// this one, given some \p allowedError. If \p verbose and the tensors are
+  /// not equal, then we will log information about the mismatch (number of
+  /// elements exceeding allowed error; maximum error and location found; etc.).
+  bool isEqual(const Tensor &other, float allowedError = 0.0001,
+               bool verbose = true) const {
     if (other.dims() != dims()) {
       return false;
     }
@@ -400,44 +403,44 @@ public:
 
     switch (getElementType()) {
     case ElemKind::FloatTy:
-      return isEqualImpl<float>(other, allowedError);
+      return isEqualImpl<float>(other, allowedError, verbose);
     case ElemKind::Float16Ty:
-      return isEqualImpl<float16_t>(other, allowedError);
+      return isEqualImpl<float16_t>(other, allowedError, verbose);
     case ElemKind::Int8QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
-      return isEqualImpl<int8_t>(other, allowedError);
+      return isEqualImpl<int8_t>(other, allowedError, verbose);
     case ElemKind::UInt8QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
-      return isEqualImpl<uint8_t>(other, allowedError);
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::Int16QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
-      return isEqualImpl<int16_t>(other, allowedError);
+      return isEqualImpl<int16_t>(other, allowedError, verbose);
     case ElemKind::Int32QTy:
       assert(getType().getScale() == other.getType().getScale() &&
              "Scales must match.");
       assert(getType().getOffset() == other.getType().getOffset() &&
              "Offsets must match.");
-      return isEqualImpl<int32_t>(other, allowedError);
+      return isEqualImpl<int32_t>(other, allowedError, verbose);
     case ElemKind::Int32ITy:
-      return isEqualImpl<int32_t>(other, allowedError);
+      return isEqualImpl<int32_t>(other, allowedError, verbose);
     case ElemKind::Int64ITy:
-      return isEqualImpl<int64_t>(other, allowedError);
+      return isEqualImpl<int64_t>(other, allowedError, verbose);
       // Note: We can use isEqualImpl() here because the scales/offsets will be
       // compared as if they were data, so we will return false if any rowwise
       // scale/offset do not match.
     case ElemKind::UInt8FusedQTy:
-      return isEqualImpl<uint8_t>(other, allowedError);
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
-      return isEqualImpl<bool>(other, allowedError);
+      return isEqualImpl<bool>(other, allowedError, verbose);
     }
 
     // This is to make compiler happy. It can never reach this point as switch
@@ -559,18 +562,37 @@ private:
   }
 
   template <class ElemTy>
-  bool isEqualImpl(const Tensor &other, float allowedError) const {
+  bool isEqualImpl(const Tensor &other, float allowedError,
+                   bool verbose) const {
     auto const *myData = getRawDataPointer<ElemTy>();
     auto const *otherData = other.getRawDataPointer<ElemTy>();
+    double maxFoundError = 0.0;
+    size_t maxFoundErrorIdx = 0, numExceedingError = 0;
     for (size_t i = 0, e = size(); i < e; i++) {
       double delta = myData[i] - otherData[i];
+      delta = std::abs(delta);
       // Since any comparison with NAN returns false, we use a negated condition
       // so that this function correctly returns false when delta is NAN.
-      if (!(std::abs(delta) <= allowedError)) {
-        return false;
+      if (!(delta <= allowedError)) {
+        if (!verbose) {
+          return false;
+        }
+        numExceedingError += 1;
+        if (!(delta <= maxFoundError)) {
+          maxFoundError = delta;
+          maxFoundErrorIdx = i;
+        }
       }
     }
-    return true;
+    if (numExceedingError != 0) {
+      LOG(INFO) << "Tensors not equal: " << numExceedingError << " out of "
+                << size() << " elements exceeded allowed error threshold "
+                << allowedError << ". Maximum error found was " << maxFoundError
+                << " at index " << maxFoundErrorIdx << ": "
+                << myData[maxFoundErrorIdx] << " vs. "
+                << otherData[maxFoundErrorIdx];
+    }
+    return numExceedingError == 0;
   }
 };
 
