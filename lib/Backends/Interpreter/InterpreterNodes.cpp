@@ -16,6 +16,7 @@
 
 #include "Interpreter.h"
 
+#include "glow/Graph/ConstantFolding.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Base/Profile.h"
@@ -1086,40 +1087,11 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdGatherInstImpl(const glow::GatherInst *I) {
   Tensor *dataT = getTensor(I->getData());
-  auto &dataTy = dataT->getType();
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *outT = getTensor(I->getDest());
   unsigned_t batchDims = I->getBatchDims();
 
-  size_t out_p = 0;
-  unsigned elementSize = dataTy.getElementSize();
-  // The size of the sample in the batch.
-  size_t dataSampleSize = dataTy.getSliceSize(batchDims) * elementSize;
-  // The size of the slices that we gather.
-  size_t dataSliceSize = dataTy.getSliceSize(batchDims + 1) * elementSize;
-
-  // Calculate the size of each sample in the batch.
-  size_t numSamples = (dataT->size() * elementSize) / dataSampleSize;
-
-  // Calculate number of samples in the batch.
-  size_t batchSize = dataTy.dims()[batchDims];
-  (void)batchSize;
-
-  // For each sample in the batch:
-  for (size_t sample = 0; sample < numSamples; sample++) {
-    size_t sampleStart = sample * dataSampleSize;
-
-    // For each slice (small fragment) that we copy from the source memory:
-    for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-      size_t slice = indicesT->getHandle<ElemTy>().raw(i);
-      assert(slice < batchSize && "Invalid index seen during Gather operation");
-      std::copy(
-          &dataT->getUnsafePtr()[sampleStart + dataSliceSize * slice],
-          &dataT->getUnsafePtr()[sampleStart + dataSliceSize * (slice + 1)],
-          &outT->getUnsafePtr()[out_p]);
-      out_p += dataSliceSize;
-    }
-  }
+  constantFoldGather<ElemTy>(outT, dataT, indicesT, batchDims);
 }
 
 void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
