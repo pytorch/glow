@@ -321,9 +321,13 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 }
 
 bool CPUBackend::shouldLower(const Node *N) const {
-  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+  switch (N->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
-  return true;
+  default:
+    return true;
+  }
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(

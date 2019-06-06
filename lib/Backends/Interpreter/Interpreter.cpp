@@ -392,7 +392,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 }
 
 bool Interpreter::shouldLower(const Node *N) const {
-  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+  switch (N->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
-  return true;
+  default:
+    return true;
+  }
 }
