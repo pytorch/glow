@@ -16,6 +16,7 @@
 
 #include "glow/Graph/Nodes.h"
 #include "glow/Base/Type.h"
+#include "glow/Graph/ConstantFolding.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Support/Support.h"
@@ -1176,6 +1177,26 @@ bool GatherNode::verify() const {
   isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                            getData().getType(), this);
   return isValid;
+}
+
+Tensor GatherNode::constantFold(const Constant *constData,
+                                const Constant *constIndices) const {
+  Tensor outT(getResult().getType());
+  const Tensor *dataT = &constData->getPayload();
+  const Tensor *indexT = &constIndices->getPayload();
+  const unsigned_t batchDims = getBatchDims();
+  switch (constIndices->getElementType()) {
+  case ElemKind::Int64ITy:
+    constantFoldGather<int64_t>(&outT, dataT, indexT, batchDims);
+    break;
+  case ElemKind::Int32ITy:
+    constantFoldGather<int32_t>(&outT, dataT, indexT, batchDims);
+    break;
+  default:
+    llvm_unreachable("Unsupported type for indices input of Gather.");
+  }
+
+  return outT;
 }
 
 bool GatherRangesNode::verify() const {

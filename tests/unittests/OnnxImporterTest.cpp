@@ -1368,6 +1368,31 @@ TEST(onnx, gatherRanges) {
   EXPECT_TRUE(gatherRanges->getLengths().dims().equals({2}));
 }
 
+/// Test loading Gather with constant folding from an ONNX model.
+TEST(onnx, gatherConstantFoldingAndReshape) {
+  // This test verifies that Gather gets constant-folded, so that the argument
+  // of the reshape becomes constant.
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/gatherConstantFolding.onnxtxt");
+  PlaceholderBindings bindings;
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {1, 2, 4, 3});
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+  }
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  auto result = bindings.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {1, 4, 3, 2};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+}
+
 static void importSliceTest(std::string fileName, const char *inputName,
                             const llvm::ArrayRef<size_t> inputShape,
                             const llvm::ArrayRef<size_t> starts,

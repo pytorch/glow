@@ -578,6 +578,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addMember(MemberType::Unsigned, "BatchDims")
       .addResultFromCtorArg()
+      .addConstantFolding()
       .setDocstring("Gathers entries of the outer-most dimension of Data "
                     "indexed by Indices, and concatenates them. Output tensor "
                     "will have dimensions: {I_0, I_1, ... I_n, D_1, D_2, ... "

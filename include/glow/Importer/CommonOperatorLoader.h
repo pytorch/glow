@@ -952,8 +952,14 @@ protected:
       batchDims = axis;
     }
 
-    Node *GN = G_.createGather(loadOperatorName(op), data, indices, batchDims);
-    RETURN_IF_ERR(addNodeAsOutput(op, GN));
+    GatherNode *GN =
+        G_.createGather(loadOperatorName(op), data, indices, batchDims);
+    if (GN->isConstantFoldable()) {
+      Tensor CF = GN->constantFold();
+      RETURN_IF_ERR(createAndRegisterConstant(op.output(0), std::move(CF)));
+    } else {
+      RETURN_IF_ERR(addNodeAsOutput(op, GN));
+    }
     return llvm::Error::success();
   }
 
