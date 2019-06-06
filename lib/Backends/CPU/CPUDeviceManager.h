@@ -40,10 +40,8 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   const uint64_t functionCost_{1};
 
 public:
-  CPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
-                   size_t maxMemory = 2000000000)
-      : QueueBackedDeviceManager(BackendKind::CPU, std::move(config)),
-        maxMemoryBytes_(maxMemory) {}
+  CPUDeviceManager(const DeviceConfig &config, size_t maxMemory = 2000000000)
+      : QueueBackedDeviceManager(config), maxMemoryBytes_(maxMemory) {}
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.

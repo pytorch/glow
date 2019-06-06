@@ -45,9 +45,8 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
       config->name = "config" + std::to_string(deviceCount);
     }
 
-    auto backendKind = config->backendKind;
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
-        DeviceManager::createDeviceManager(backendKind, std::move(config)));
+        DeviceManager::createDeviceManager(*config));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
 

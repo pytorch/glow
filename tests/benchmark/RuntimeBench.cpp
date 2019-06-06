@@ -109,7 +109,8 @@ void setUpDeviceManagerCommon(
 
   // Create and initialize the DeviceManager instance.
   deviceManager = std::unique_ptr<DeviceManager>(
-      DeviceManager::createDeviceManager(backend->getBackendKind()));
+      DeviceManager::createDeviceManager(
+        DeviceConfig(backend->getBackendKind())));
   bool error = errToBool(deviceManager->init());
 
   if (error) {

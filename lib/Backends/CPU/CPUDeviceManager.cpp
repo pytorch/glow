@@ -29,13 +29,12 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowCPUMemoryOpt(
     llvm::cl::desc("CPU DeviceManager maximum memory in kilobytes."),
     llvm::cl::location(GlowCPUMemory));
 
-DeviceManager *createCPUDeviceManager(std::unique_ptr<DeviceConfig> config) {
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   if (GlowCPUMemory) {
     // Convert command line GlowCPUMemory to bytes from kilobytes.
-    return new CPUDeviceManager(std::move(config),
-                                uint64_t{GlowCPUMemory} * 1024);
+    return new CPUDeviceManager(config, uint64_t{GlowCPUMemory} * 1024);
   }
-  return new CPUDeviceManager(std::move(config));
+  return new CPUDeviceManager(config);
 }
 
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }

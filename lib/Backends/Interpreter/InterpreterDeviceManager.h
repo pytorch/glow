@@ -40,10 +40,9 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   const uint64_t functionCost_{1};
 
 public:
-  InterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
+  InterpreterDeviceManager(const DeviceConfig &config,
                            size_t maxMemory = 2000000000)
-      : QueueBackedDeviceManager(BackendKind::Interpreter, std::move(config)),
-        maxMemoryBytes_(maxMemory) {}
+      : QueueBackedDeviceManager(config), maxMemoryBytes_(maxMemory) {}
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.

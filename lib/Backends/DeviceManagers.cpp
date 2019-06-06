@@ -29,16 +29,13 @@ namespace runtime {
 /// when you define a new DeviceManager.
 
 /// Create a new instance of the interpreter Device.
-DeviceManager *
-createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
 
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend DeviceManager.
-DeviceManager *
-createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   (void)config;
   LOG(FATAL) << "Must compile with CPU support";
 }
@@ -46,22 +43,18 @@ createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
-DeviceManager *
-createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   (void)config;
   LOG(FATAL) << "Must compile with OpenCL support";
 }
 #endif
 
 #if defined(GLOW_WITH_HABANA)
-DeviceManager *
-createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   (void)config;
   LOG(FATAL) << "Must compile with Habana support";
 }
@@ -69,25 +62,23 @@ createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
 } // namespace runtime
 } // namespace glow
 
-DeviceManager *
-DeviceManager::createDeviceManager(BackendKind backendKind,
-                                   std::unique_ptr<DeviceConfig> config) {
-  switch (backendKind) {
+DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
+  switch (config.backendKind) {
   case BackendKind::Interpreter:
-    return createInterpreterDeviceManager(std::move(config));
+    return createInterpreterDeviceManager(config);
   case BackendKind::OpenCL:
-    return createOCLDeviceManager(std::move(config));
+    return createOCLDeviceManager(config);
   case BackendKind::CPU:
-    return createCPUDeviceManager(std::move(config));
+    return createCPUDeviceManager(config);
   case BackendKind::Habana:
-    return createHabanaDeviceManager(std::move(config));
+    return createHabanaDeviceManager(config);
   default:
     // As a fallback to make developing new Backends easier we'll create a
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
     // device.
     LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
-    return new DummyDeviceManager(backendKind, std::move(config));
+    return new DummyDeviceManager(config);
   }
 
   // This is to make compiler happy. It can never reach this point as switch

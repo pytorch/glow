@@ -42,9 +42,8 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
 #define chk(X) GLOW_ASSERT((X) == synSuccess)
 
 /// Factory function for creating a HabanaDeviceManager.
-DeviceManager *
-createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
-  return new HabanaDeviceManager(std::move(config));
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
+  return new HabanaDeviceManager(config);
 }
 } // namespace runtime
 } // namespace glow
@@ -54,11 +53,10 @@ unsigned HabanaDeviceManager::numActiveDevices_{0};
 std::mutex HabanaDeviceManager::synapseMtx_;
 std::atomic<RunIdentifierTy> HabanaDeviceManager::runIdentifier_;
 
-HabanaDeviceManager::HabanaDeviceManager(std::unique_ptr<DeviceConfig> config,
+HabanaDeviceManager::HabanaDeviceManager(const DeviceConfig &config,
                                          unsigned numRunners,
                                          unsigned numWaiters)
-    : DeviceManager(BackendKind::Habana, std::move(config)),
-      numRunners_(numRunners), numWaiters_(numWaiters) {}
+    : DeviceManager(config), numRunners_(numRunners), numWaiters_(numWaiters) {}
 
 HabanaDeviceManager::~HabanaDeviceManager() {
   // If a device was never successfully acquired, there's nothing to clean up.
