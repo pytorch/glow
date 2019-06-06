@@ -6,6 +6,10 @@
 .DS_Store
 *.so
 *.dylib
+*.egg-info
+*.egg
+*.eggs
+*.pyc
 
 GPATH
 GRTAGS
