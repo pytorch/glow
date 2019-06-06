@@ -38,6 +38,21 @@ enum class BackendKind {
   Habana,      // Compile and run the code on a Habana accelerator.
 };
 
+/// Stop gap measure while migrating from BackendKind to backend names.
+/// TODO: Remove this after migration.
+inline std::string BackendKindToString(BackendKind kind) {
+  switch (kind) {
+  case BackendKind::Interpreter:
+    return "Interpreter";
+  case BackendKind::OpenCL:
+    return "OpenCL";
+  case BackendKind::CPU:
+    return "CPU";
+  case BackendKind::Habana:
+    return "Habana";
+  }
+}
+
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -128,7 +143,11 @@ protected:
 };
 
 /// Create a backend of kind \p kind.
+/// Deprecated. Moving gradualy to the createBackend based on the backend name.
 Backend *createBackend(BackendKind backendKind);
+
+/// Create a backend based on the registered backend name \p backendName.
+Backend *createBackend(llvm::StringRef backendName);
 
 // Backends that use Glow low-level IR should inherit from this class. It allows
 // for unit tests to create low-level IR to compile and run.
@@ -141,16 +160,15 @@ public:
 };
 
 /// Perform Backend Factory registration.
-#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass,               \
-                                      SpecificBackendKind)                     \
-  class FactoryName : public BaseFactory<BackendKind, Backend> {               \
+#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass)               \
+  class FactoryName : public BaseFactory<std::string, Backend> {               \
   public:                                                                      \
     Backend *create() override { return new BackendClass(); }                  \
-    BackendKind getRegistrationKey() const override {                          \
-      return BackendKind::SpecificBackendKind;                                 \
+    std::string getRegistrationKey() const override {                          \
+      return BackendClass::getName();                                          \
     }                                                                          \
   };                                                                           \
-  static RegisterFactory<BackendKind, FactoryName, Backend>                    \
+  static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
 
 } // namespace glow

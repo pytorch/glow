@@ -234,7 +234,8 @@ public:
 
   BackendKind getBackendKind() const override { return BackendKind::Habana; }
 
-  std::string getBackendName() const override { return "Habana"; }
+  std::string getBackendName() const override { return getName(); }
+  static std::string getName() { return "Habana"; }
 
   llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;

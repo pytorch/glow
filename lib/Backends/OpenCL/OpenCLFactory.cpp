@@ -18,6 +18,6 @@
 
 namespace glow {
 
-REGISTER_GLOW_BACKEND_FACTORY(OpenCLFactory, OCLBackend, OpenCL);
+REGISTER_GLOW_BACKEND_FACTORY(OpenCLFactory, OCLBackend);
 
 } // namespace glow

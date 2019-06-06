@@ -18,6 +18,6 @@
 
 namespace glow {
 
-REGISTER_GLOW_BACKEND_FACTORY(CPUFactory, CPUBackend, CPU);
+REGISTER_GLOW_BACKEND_FACTORY(CPUFactory, CPUBackend);
 
 } // namespace glow
