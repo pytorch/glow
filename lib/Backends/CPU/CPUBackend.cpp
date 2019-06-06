@@ -36,7 +36,7 @@ using namespace glow;
 /// The resulting file is included here to compile the bitcode image into our
 /// library.
 static const unsigned char libjit_bc[] = {
-#include "glow/CPU/libjit_bc.inc"
+#include "libjit.inc"
 };
 static const size_t libjit_bc_size = sizeof(libjit_bc);
 
