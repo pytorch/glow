@@ -343,6 +343,57 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   }
 }
 
+void NodeBuilder::emitConstantFolding(std::ostream &os) const {
+  if (!hasConstantFolding_) {
+    return;
+  }
+
+  assert(nodeInputs_.size() > 0 &&
+         "Node should have at least one input for constant-folding!");
+  assert(nodeOutputs_.size() == 1 &&
+         "Constant-folding is only supported for single-output nodes so far.");
+
+  os << "  bool isConstantFoldable() const {\n    return ";
+
+  bool first = true;
+  for (const auto &inName : nodeInputs_) {
+    if (first) {
+      first = false;
+    } else {
+      os << " && ";
+    }
+    os << "llvm::isa<Constant>(get" << inName << "())";
+  }
+  os << ";\n  }\n\n";
+
+  os << "  Tensor constantFold() const {\n";
+  os << "    assert(isConstantFoldable() && \"Must be!\");\n";
+  os << "    return constantFold(";
+  first = true;
+  for (const auto &inName : nodeInputs_) {
+    if (first) {
+      first = false;
+    } else {
+      os << ", ";
+    }
+    os << "llvm::cast<Constant>(get" << inName << "())";
+  }
+  os << ");\n";
+  os << "  }\n\n";
+
+  os << "  Tensor constantFold(";
+  first = true;
+  for (const auto &inName : nodeInputs_) {
+    if (first) {
+      first = false;
+    } else {
+      os << ", ";
+    }
+    os << "const Constant *const" << inName;
+  }
+  os << ") const;\n\n";
+}
+
 void NodeBuilder::emitEdges(std::ostream &os) const {
   os << "\nunsigned " << name_ << "Node::getNumInputs() const {\n"
      << "  return " << nodeInputs_.size();
@@ -625,6 +676,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
   emitIndicesEnum(os);
   emitCtor(os);
   emitSettersGetters(os);
+  emitConstantFolding(os);
 
   os << "  unsigned getNumInputs() const;\n"
      << "  std::string getInputName(unsigned idx) const;\n"

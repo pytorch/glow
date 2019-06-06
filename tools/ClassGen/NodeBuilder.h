@@ -147,6 +147,8 @@ class NodeBuilder {
   bool hasSideEffects_{false};
   /// Specifies if this Node is backend specific.
   bool isBackendSpecific_{false};
+  /// There is a rule to constant-fold this node.
+  bool hasConstantFolding_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -226,6 +228,11 @@ public:
                      "input of a node");
   }
 
+  NodeBuilder &addConstantFolding() {
+    hasConstantFolding_ = true;
+    return *this;
+  }
+
   /// Constructs a new gradient node that is based on the current node that we
   /// are building. The gradient node will produce one gradient output for each
   /// input. The rule is that each output becomes an input (named "Output", to
@@ -254,6 +261,9 @@ private:
 
   /// Emit setters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;
+
+  /// Emit constant folding check and implementation function.
+  void emitConstantFolding(std::ostream &os) const;
 
   /// Emit getters for input/output names and input nodes.
   void emitEdges(std::ostream &os) const;
