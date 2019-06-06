@@ -8,8 +8,5 @@ target_link_libraries(Support
                       PUBLIC
                         LLVMSupport
                         glog::glog)
-add_library(TensorPool
-              TensorPool.cpp)
-target_link_libraries(TensorPool
-                      PRIVATE
-                        Base)
+
+add_subdirectory(TensorPool)
