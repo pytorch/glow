@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/NodeValue.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 
 using namespace glow;
@@ -50,6 +51,12 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
     assert(site->getNode() == node_ && "Invalid user");
     assert(site->getResNo() == getResNo() && "Invalid list of uses");
     site->setOperand(v.getNode(), v.getResNo());
+  }
+
+  // Log all nodes replacement.
+  if (getNode()->getParent()) {
+    getNode()->getParent()->getLogContext().logNodeReplacement(getNode(),
+                                                               v.getNode());
   }
 }
 
