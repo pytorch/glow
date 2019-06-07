@@ -1293,6 +1293,7 @@ bool HabanaBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
+  case Kinded::Kind::ConvolutionNodeKind:
     return false;
   default:
     return true;
