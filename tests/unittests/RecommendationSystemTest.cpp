@@ -412,7 +412,7 @@ protected:
                                  "weight_indices" + std::to_string(i), false);
       fillStableRandomIndex(
           bindings_.allocate(weightIndices)->getHandle<int32_t>(), 2001, 0,
-          sum - 1);
+          weights_size - 1);
 
       auto *weights = F_->createGather("weight_gather" + std::to_string(i),
                                        weightsConst, weightIndices, 0);
