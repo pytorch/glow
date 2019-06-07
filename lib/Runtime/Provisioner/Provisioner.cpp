@@ -18,6 +18,7 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Support/Debug.h"
 
 #include <future>
 #include <map>
@@ -56,7 +57,8 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   }
 }
 
-llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
+llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
+                                   CompilationContext &cctx) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
   // For each network visit all the partitions (nodes) and add the node to each
@@ -73,6 +75,18 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
       }
     }
   }
+  if (cctx.backendOpts.collectConstants) {
+    // @todo(nickg) must use VLOG_EVERY_N temporarily here due to old glog
+    // version.
+    VLOG_EVERY_N(1, 1000)
+        << "Warning: collectConstants is set in a Runtime compile, "
+           "ignoring it.";
+  }
+
+  // Set collectConstants to false, this is because the DeviceManager will
+  // handle moving constants to the device, this way we can eliminate one
+  // copy operation.
+  cctx.backendOpts.collectConstants = false;
 
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   std::map<DeviceIDTy, BackendKind> logicalDeviceBackendKind;
@@ -88,14 +102,10 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module) {
       auto it = functions_.find(node->name);
       if (it == functions_.end()) {
         Function *function = module.getFunction(node->name);
-        BackendOptions opts;
-        // Set collectConstants to false, this is because the DeviceManager will
-        // handle moving constants to the device, this way we can eliminate one
-        // copy operation.
-        opts.collectConstants = false;
         for (size_t i = 0, e = backends_.size(); i < e; i++) {
           if (backends_[i]->getBackendKind() == nodeBackendKind) {
-            auto compiledOrErr = backends_[i]->compile(function, opts);
+            auto compiledOrErr =
+                backends_[i]->compile(function, cctx.backendOpts);
             if (!compiledOrErr) {
               return compiledOrErr.takeError();
             }
