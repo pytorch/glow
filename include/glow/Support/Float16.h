@@ -19,6 +19,7 @@
 #include "fp16.h"
 
 #include <cstdint>
+#include <iostream>
 
 namespace glow {
 
@@ -66,6 +67,12 @@ public:
   operator float() const { return fp16_ieee_to_fp32_value(data_); }
   operator long long() const { return static_cast<long long>(data_); }
 }; // End class float16.
+
+/// Allow float16_t to be passed to an ostream.
+inline std::ostream &operator<<(std::ostream &os, const float16 &b) {
+  os << float(b);
+  return os;
+}
 
 } // End namespace glow.
 

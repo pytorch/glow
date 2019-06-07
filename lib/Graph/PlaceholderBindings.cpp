@@ -50,7 +50,9 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
     const auto *tensorB =
         B->get(B->getPlaceholderByName(placeholder->getName()));
 
-    if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
+    if (!tensorA || !tensorB ||
+        !tensorA->isEqual(*tensorB, /* allowedError */ 0.0001,
+                          /* verbose */ false)) {
       return false;
     }
   }
