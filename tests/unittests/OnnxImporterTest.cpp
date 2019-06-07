@@ -1675,3 +1675,37 @@ TEST(onnx, autoLoadInputs) {
   EXPECT_EQ(inputs.size(), 1);
   EXPECT_TRUE(inputTensor.getType().isEqual(inputs[inputName]->getType()));
 }
+
+TEST(onnx, shape) {
+  ExecutionEngine EE{BackendKind::Interpreter};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/shape.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = res->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1};
+  std::vector<int64_t> expectedValues = {4};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
