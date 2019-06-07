@@ -72,7 +72,8 @@ TEST_F(ProvisionerTest, provisionDag) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    std::unique_ptr<DeviceManager> device(new CPUDeviceManager);
+    std::unique_ptr<DeviceManager> device(
+        new CPUDeviceManager(DeviceConfig(BackendKind::CPU)));
     devices.emplace(i, std::move(device));
   }
   auto provisioner = Provisioner(devices);
@@ -87,7 +88,8 @@ TEST_F(ProvisionerTest, provisionDagFail) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    std::unique_ptr<DeviceManager> device(new CPUDeviceManager(nullptr, 1000));
+    std::unique_ptr<DeviceManager> device(
+        new CPUDeviceManager(DeviceConfig(BackendKind::CPU), 1000));
     devices.emplace(i, std::move(device));
   }
   auto provisioner = Provisioner(devices);

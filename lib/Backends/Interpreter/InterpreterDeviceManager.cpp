@@ -29,14 +29,13 @@ llvm::cl::opt<unsigned> interpreterMaxMem(
 namespace glow {
 namespace runtime {
 
-DeviceManager *
-createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config) {
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
   if (interpreterMaxMem) {
     // Convert command line interpreterMaxMem to bytes from kilobytes.
-    return new InterpreterDeviceManager(std::move(config),
+    return new InterpreterDeviceManager(config,
                                         uint64_t{interpreterMaxMem} * 1024);
   }
-  return new InterpreterDeviceManager(std::move(config));
+  return new InterpreterDeviceManager(config);
 }
 
 uint64_t InterpreterDeviceManager::getMaximumMemory() const {

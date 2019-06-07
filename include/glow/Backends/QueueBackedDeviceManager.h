@@ -33,9 +33,8 @@ protected:
   std::atomic<RunIdentifierTy> nextIdentifier_{1};
 
 public:
-  QueueBackedDeviceManager(BackendKind backend,
-                           std::unique_ptr<DeviceConfig> config)
-      : DeviceManager(backend, std::move(config)), workThread_(1) {}
+  QueueBackedDeviceManager(const DeviceConfig &config)
+      : DeviceManager(config), workThread_(1) {}
 
   virtual ~QueueBackedDeviceManager() {
     llvm::toString(stop(true)); // will join workThread_

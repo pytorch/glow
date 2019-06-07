@@ -113,7 +113,8 @@ int main(int argc, char **argv) {
 
   std::array<DeviceManager *, supportedBackends.size()> devices;
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
-    devices[i] = DeviceManager::createDeviceManager(supportedBackends[i]);
+    devices[i] =
+        DeviceManager::createDeviceManager(DeviceConfig(supportedBackends[i]));
     EXIT_ON_ERR(devices[i]->init());
   }
 

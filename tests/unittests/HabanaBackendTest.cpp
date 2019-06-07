@@ -1462,7 +1462,8 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
   std::vector<std::unique_ptr<DeviceManager>> deviceManagers;
 
   for (unsigned i = 0; i < maxDeviceManagers; ++i) {
-    DeviceManager *deviceManager = new glow::runtime::HabanaDeviceManager();
+    DeviceManager *deviceManager = new glow::runtime::HabanaDeviceManager(
+        runtime::DeviceConfig(BackendKind::Habana));
 
     if (deviceManager->init()) {
       delete deviceManager;

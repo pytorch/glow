@@ -33,7 +33,7 @@ class DeviceManagerTest : public ::testing::TestWithParam<BackendKind> {
 public:
   void SetUp() override {
     backendKind = GetParam();
-    device.reset(DeviceManager::createDeviceManager(backendKind));
+    device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendKind)));
     ASSERT_TRUE(device.get());
     ASSERT_FALSE(errToBool(device->init()));
   }
@@ -555,7 +555,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   std::promise<const Module *> promise;
   std::future<const Module *> future;
-  CPUDeviceManager cpuCoreDevice(nullptr, 1);
+  CPUDeviceManager cpuCoreDevice(DeviceConfig(BackendKind::CPU), 1);
   ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
 
   uint64_t expectedBytes = 1;
@@ -627,7 +627,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
-  DummyDeviceManager deviceManager(BackendKind::Interpreter);
+  DummyDeviceManager deviceManager{DeviceConfig(BackendKind::Interpreter)};
   ASSERT_FALSE(errToBool(deviceManager.init()));
 
   auto module = makeBasicModule();

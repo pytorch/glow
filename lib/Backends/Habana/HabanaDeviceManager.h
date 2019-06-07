@@ -112,7 +112,7 @@ class HabanaDeviceManager : public DeviceManager {
 
 public:
   /// Constructor.
-  HabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr,
+  HabanaDeviceManager(const DeviceConfig &config,
                       unsigned numRunners = kNumRunners,
                       unsigned numWaiters = kNumWaiters);
 

@@ -91,7 +91,7 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   std::string name_;
 
 public:
-  OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+  OpenCLDeviceManager(const DeviceConfig &config);
 
   ~OpenCLDeviceManager();
 

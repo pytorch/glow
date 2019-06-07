@@ -44,8 +44,8 @@ extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
 namespace runtime {
-DeviceManager *createOCLDeviceManager(std::unique_ptr<DeviceConfig> config) {
-  return new OpenCLDeviceManager(std::move(config));
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
+  return new OpenCLDeviceManager(config);
 }
 } // namespace runtime
 } // namespace glow
@@ -71,23 +71,23 @@ cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   GLOW_ASSERT(buf && "Allocation failed!");
   return buf;
 }
-OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
-    : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
+OpenCLDeviceManager::OpenCLDeviceManager(const DeviceConfig &config)
+    : QueueBackedDeviceManager(config) {}
 
 llvm::Error OpenCLDeviceManager::parseConfig() {
-  auto it = config_->parameters.find("deviceId");
+  auto it = config_.parameters.find("deviceId");
   unsigned value;
-  if (it != config_->parameters.end()) {
+  if (it != config_.parameters.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
     clDeviceId = value;
   }
-  it = config_->parameters.find("platformId");
-  if (it != config_->parameters.end()) {
+  it = config_.parameters.find("platformId");
+  if (it != config_.parameters.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
     clPlatformId = value;
   }
-  it = config_->parameters.find("doProfile");
-  if (it != config_->parameters.end()) {
+  it = config_.parameters.find("doProfile");
+  if (it != config_.parameters.end()) {
     if (it->second == "true") {
       clDoProfile = true;
     } else if (it->second == "false") {
@@ -107,9 +107,7 @@ llvm::Error OpenCLDeviceManager::init() {
   // options from the OpenCl Backend.
 
   // Check if parameters are in map.
-  if (config_) {
-    RETURN_IF_ERR(parseConfig());
-  }
+  RETURN_IF_ERR(parseConfig());
 
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
