@@ -28,8 +28,8 @@ using llvm::isa;
 
 // Sorted the std::pair<DAGNode *, uint64_t> based on the second from min to
 // max.
-auto sortMinMemory(const std::pair<Function *, uint64_t> &a,
-                   const std::pair<Function *, uint64_t> &b) -> bool {
+bool sortMinMemory(const std::pair<Function *, uint64_t> &a,
+                   const std::pair<Function *, uint64_t> &b) {
   return a.second <= b.second;
 }
 
