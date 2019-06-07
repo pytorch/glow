@@ -30,7 +30,7 @@ using llvm::isa;
 // max.
 bool sortMinMemory(const std::pair<Function *, uint64_t> &a,
                    const std::pair<Function *, uint64_t> &b) {
-  return a.second <= b.second;
+  return a.second < b.second;
 }
 
 /// Check if the memory of \p node inputs is calculated already. \returns the
