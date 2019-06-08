@@ -854,6 +854,9 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 
 void glow::lower(Function *F, CompilationContext &cctx, const Backend *B,
                  const KindSet &doNotLowerKinds) {
+  // Log the start of current log scope.
+  LOG_SCOPE(F->getLogContext(), "glow::lower")
+
   auto &nodes = F->getNodes();
   for (auto &N : nodes) {
     if (B && !B->shouldLower(&N)) {

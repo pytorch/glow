@@ -17,6 +17,7 @@
 #define GLOW_GRAPH_GRAPH_H
 
 #include "glow/Base/Type.h"
+#include "glow/Graph/Log.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Quantization/Base/Base.h"
 
@@ -222,11 +223,17 @@ class Function final : public Named {
   /// A reference to the owner of the function.
   Module *parent_;
 
+  /// The log context associated with this function.
+  LogContext logCtx_;
+
 public:
   Function(Module *parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent) {}
 
   ~Function();
+
+  /// Return the log context.
+  LogContext &getLogContext() { return logCtx_; }
 
   /// Add placeholder for metadata such as profiling.
   void addMetadataPlaceholder(Placeholder *PH) {
@@ -265,6 +272,10 @@ public:
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
     nodes_.push_back(N);
+
+    // Log the node creation.
+    logCtx_.logNodeCreation(N);
+
     return N;
   }
 

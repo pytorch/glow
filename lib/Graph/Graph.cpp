@@ -327,6 +327,7 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
+  logCtx_.dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
@@ -2688,7 +2689,12 @@ void Module::eraseConstant(ConstList::iterator I) {
   constants_.erase(I);
 }
 
-void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
+void Function::eraseNode(NodesList::iterator I) {
+  // Log node deletion.
+  logCtx_.logNodeDeletion(*I);
+
+  nodes_.erase(I);
+}
 
 Constant *Module::getConstantByName(llvm::StringRef name) const {
   for (auto *V : getConstants()) {

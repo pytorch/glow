@@ -17,6 +17,7 @@
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -2587,6 +2588,9 @@ static void foldChannelShuffle(Function *F) {
 }
 
 void glow::fold(Function *F, CompilationContext &cctx) {
+  // Log the start of current log scope.
+  LOG_SCOPE(F->getLogContext(), "glow::fold")
+
   (void)cctx;
   // Get Reshape nodes merged into constants to simplify folding.
   optimizeReshape(F);
@@ -2608,6 +2612,9 @@ void glow::fold(Function *F, CompilationMode mode) {
 }
 
 void glow::optimize(Function *F, CompilationContext &cctx) {
+  // Log the start of current log scope.
+  LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2766,6 +2773,9 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
 // docs/GraphOptimizationPipeline.md
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    CompilationContext &cctx) {
+  // Log the start of current log scope.
+  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 

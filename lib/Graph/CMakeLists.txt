@@ -25,6 +25,7 @@ add_library(Graph
             Node.cpp
             Nodes.cpp
             NodeValue.cpp
+            Log.cpp
             PlaceholderBindings.cpp
             Graph.cpp
             Grad.cpp
