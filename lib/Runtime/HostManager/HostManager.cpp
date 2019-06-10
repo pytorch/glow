@@ -19,7 +19,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Partitioner/Partitioner.h"
-#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
@@ -53,7 +53,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
-  executor_.reset(createExecutor(devices_));
+  executor_.reset(new ThreadPoolExecutor(devices_));
 
   return llvm::Error::success();
 }

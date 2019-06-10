@@ -105,16 +105,16 @@ target_link_libraries(DeviceManagerTest
                         TestMain)
 add_glow_test(DeviceManagerTest ${GLOW_BINARY_DIR}/tests/DeviceManagerTest --gtest_output=xml:DeviceManagerTest.xml)
 
-add_executable(ExecutorTest
-        ExecutorTest.cpp)
-target_link_libraries(ExecutorTest
+add_executable(ThreadPoolExecutorTest
+        ThreadPoolExecutorTest.cpp)
+target_link_libraries(ThreadPoolExecutorTest
         PRIVATE
         Backends
         Executor
         Graph
         gtest
         TestMain)
-add_glow_test(ExecutorTest ${GLOW_BINARY_DIR}/tests/ExecutorTest --gtest_output=xml:ExecutorTest.xml)
+add_glow_test(ThreadPoolExecutorTest ${GLOW_BINARY_DIR}/tests/ThreadPoolExecutorTest --gtest_output=xml:ThreadPoolExecutorTest.xml)
 
 add_executable(Float16Test
                Float16Test.cpp)

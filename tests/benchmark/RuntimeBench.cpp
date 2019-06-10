@@ -18,7 +18,7 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Optimizer/Optimizer.h"
-#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include "CPUBackend.h"
@@ -108,9 +108,9 @@ void setUpDeviceManagerCommon(
   }
 
   // Create and initialize the DeviceManager instance.
-  deviceManager = std::unique_ptr<DeviceManager>(
-      DeviceManager::createDeviceManager(
-        DeviceConfig(backend->getBackendKind())));
+  deviceManager =
+      std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
+          DeviceConfig(backend->getBackendKind())));
   bool error = errToBool(deviceManager->init());
 
   if (error) {
@@ -412,7 +412,8 @@ protected:
 
   virtual void setUpExecutor(benchmark::State &state) {
     setUpDeviceManagers(state);
-    executor_ = std::unique_ptr<Executor>(createExecutor(deviceManagers_));
+    executor_ =
+        std::unique_ptr<Executor>(new ThreadPoolExecutor(deviceManagers_));
     setUpDAG(state);
   }
 
