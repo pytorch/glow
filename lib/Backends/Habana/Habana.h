@@ -249,6 +249,8 @@ public:
 
   bool shouldShareBuffers() const override { return false; }
   /// @}
+
+  static bool isVersionBiggerEqualTo(std::string versionToCompare);
 };
 
 } // namespace glow
