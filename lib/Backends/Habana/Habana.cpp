@@ -736,11 +736,20 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
         inputs.push_back(tensors[NI->getBias()].get());
 
         auto params = makeFCFPParams(NI->getDoRelu());
+        const char *fcLayoutIn[3] = {"CB", "CK", ""};
+        const char *fcLayoutOut[1] = {"KB"};
+        const char **inLayout = {nullptr};
+        const char **outLayout = {nullptr};
+        if (isVersionBiggerEqualTo("0.1.9")) {
+          inLayout = fcLayoutIn;
+          outLayout = fcLayoutOut;
+        }
+
         chk(synCreateGenericNode(
             inputs.data(), &tensors[NI].get(), 3, 1, params.get(),
             getKernelName("fully_connected", NI->getResult().getElementType())
                 .c_str(),
-            NI->getName().data(), nullptr, nullptr));
+            NI->getName().data(), inLayout, outLayout));
         multiInputs.emplace_back(std::move(inputs));
         fcFp32Params.emplace_back(std::move(params));
       }
@@ -1644,4 +1653,20 @@ bool HabanaBackend::transformPostLowering(Function *F,
   }
 
   return changed;
+}
+
+bool HabanaBackend::isVersionBiggerEqualTo(std::string versionToCompare) {
+  const char *habanaVersion = synGetVersion();
+  int myMajor, myMinor, myPath;
+  sscanf(habanaVersion, "%d.%d.%d", &myMajor, &myMinor, &myPath);
+  int toMajor, toMinor, toPath;
+  sscanf(versionToCompare.c_str(), "%d.%d.%d", &toMajor, &toMinor, &toPath);
+  if (toMajor <= myMajor) {
+    if (toMinor <= myMinor) {
+      if (toPath <= myPath) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
