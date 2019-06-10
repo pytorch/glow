@@ -2,7 +2,8 @@ add_library(Optimizer
               IROptimizer.cpp
               GraphOptimizer.cpp
               Lower.cpp
-              Quantization.cpp)
+              Quantization.cpp
+              TrainingPreparation.cpp)
 
 target_link_libraries(Optimizer
                       PRIVATE
@@ -10,5 +11,4 @@ target_link_libraries(Optimizer
                         Converter
                         Graph
                         IR
-                        Quantization
-                        QuantizationBase)
+                        Quantization)

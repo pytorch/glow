@@ -222,7 +222,7 @@ getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
 llvm::Expected<caffe2::NetDef>
 Caffe2ModelLoader::loadProtoFile(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.");
+  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files " + filename);
 
   caffe2::NetDef net;
 

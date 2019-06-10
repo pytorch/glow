@@ -103,3 +103,5 @@ endif()
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()
+
+add_subdirectory(training)
