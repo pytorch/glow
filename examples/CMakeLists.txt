@@ -16,6 +16,7 @@ target_link_libraries(mnist
                         Backends
                         ExecutionEngine
                         Graph
+                        Importer
                         IR
                         Optimizer
                         Support
