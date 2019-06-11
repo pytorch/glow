@@ -408,6 +408,34 @@ protected:
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
+  static llvm::Expected<NodeValue>
+  handleBatchMatMulTranspose(Function &F, ArgumentDictionaryTy &dict,
+                             llvm::StringRef key, NodeValue input) {
+    if (!dict.count(key)) {
+      return input;
+    }
+
+    int isTransposed;
+    ASSIGN_VALUE_OR_RETURN_ERR(isTransposed, loadInt(dict[key]));
+    if (isTransposed == 1) {
+      auto dimsSize = input.dims().size();
+      RETURN_ERR_IF_NOT(dimsSize >= 2,
+                        "C2 specs say rank of inputs must be >= 2");
+
+      std::vector<unsigned_t> shuffle;
+      unsigned_t i;
+      for (i = 0; i < dimsSize - 2; ++i) {
+        shuffle.push_back(i);
+      }
+      shuffle.push_back(i + 1);
+      shuffle.push_back(i);
+
+      return F.createTranspose(input.getNode()->getName().str() + ".transpose",
+                               input, shuffle);
+    }
+
+    return input;
+  }
 
   llvm::Error loadBatchMatMul(const OpType &op, ArgumentDictionaryTy &dict,
                               bool isBatched) {
@@ -417,37 +445,10 @@ protected:
     NodeValue RHS;
     ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-    bool transLHS = false;
-    if (dict.count("trans_a")) {
-      int trans_a;
-      ASSIGN_VALUE_OR_RETURN_ERR(trans_a, loadInt(dict["trans_a"]));
-      transLHS = trans_a == 1;
-    }
-
-    (void)transLHS;
-    RETURN_ERR_IF_NOT(!transLHS, "Don't support transpose lhs for now.");
-
-    bool transRHS = false;
-    if (dict.count("trans_b")) {
-      int trans_b;
-      ASSIGN_VALUE_OR_RETURN_ERR(trans_b, loadInt(dict["trans_b"]));
-      transRHS = trans_b == 1;
-    }
-
-    if (transRHS) {
-      // The semantic of the transpose in that context is:
-      // swap the last two dimensions.
-      unsigned_t nbDims = RHS.dims().size();
-      RETURN_ERR_IF_NOT(nbDims >= 2, "C2 specs say rank of RHS must be >= 2");
-      std::vector<unsigned_t> shuffle;
-      unsigned_t i;
-      for (i = 0; i < nbDims - 2; ++i) {
-        shuffle.push_back(i);
-      }
-      shuffle.push_back(i + 1);
-      shuffle.push_back(i);
-      RHS = G_.createTranspose("RHS.transpose", RHS, shuffle);
-    }
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        LHS, handleBatchMatMulTranspose(G_, dict, "trans_a", LHS));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        RHS, handleBatchMatMulTranspose(G_, dict, "trans_b", RHS));
 
     Node *node = nullptr;
 
