@@ -144,7 +144,8 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
   case ElemKind::BoolTy:
     return name + "_bW";
   default:
-    GLOW_UNREACHABLE("Unsupported element type");
+    LOG(FATAL) << "Unsupported data type: "
+               << Type::getElementName(elemTy).str();
   }
 }
 
@@ -609,7 +610,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
           }
         }
       } else {
-        GLOW_UNREACHABLE("Invalid instruction.");
+        LOG(FATAL) << "Invalid instruction: " << I.getName().str();
       }
 
       cl_kernel kernel = createKernel(kernelName);
@@ -1401,8 +1402,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
-    llvm::errs() << "Cannot select: " << I.getKindName() << "\n";
-    GLOW_UNREACHABLE("compilation failed");
+    LOG(FATAL) << "Compilation failed, cannot select: " << I.getKindName();
   }
 
   enqueueEvent.end();

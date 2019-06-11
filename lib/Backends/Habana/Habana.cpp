@@ -51,8 +51,6 @@ static synDataType getSynType(ElemKind kind) {
   switch (kind) {
   case ElemKind::FloatTy:
     return syn_type_single;
-  case ElemKind::Float16Ty:
-    GLOW_UNREACHABLE("Unhandled ElemKind: Float16Ty");
   case ElemKind::Int8QTy:
     return syn_type_fixed;
   case ElemKind::UInt8QTy:
@@ -69,10 +67,9 @@ static synDataType getSynType(ElemKind kind) {
     return syn_type_int32;
   case ElemKind::UInt8FusedQTy:
     return syn_type_fixed;
-  case ElemKind::BoolTy:
-    GLOW_UNREACHABLE("Unhandled ElemKind: BoolTy");
+  default:
+    LOG(FATAL) << "Unsupported data type: " << Type::getElementName(kind).str();
   }
-  GLOW_UNREACHABLE("Unhandled data type");
 }
 
 static const char *getKernelSuffix(ElemKind kind) {
@@ -84,7 +81,7 @@ static const char *getKernelSuffix(ElemKind kind) {
   case ElemKind::FloatTy:
     return "_f32";
   default:
-    GLOW_UNREACHABLE("Unhandled data type");
+    LOG(FATAL) << "Unsupported data type: " << Type::getElementName(kind).str();
   }
 }
 
