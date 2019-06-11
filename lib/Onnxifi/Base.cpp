@@ -224,10 +224,7 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
   std::vector<onnxTraceEvent *> traceEventsVec;
   for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {
     auto *traceEvent = new onnxTraceEvent();
-    DCHECK_EQ(glowTraceEvent.type.size(), 1)
-        << "Events with types longer than a single char not supported by "
-           "onnxifi";
-    traceEvent->eventType = glowTraceEvent.type[0];
+    traceEvent->eventType = glowTraceEvent.type;
     traceEvent->timestamp = glowTraceEvent.timestamp;
     traceEvent->tid = glowTraceEvent.tid;
     traceEvent->duration = 0;

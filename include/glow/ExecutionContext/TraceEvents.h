@@ -32,10 +32,10 @@ class PlaceholderBindings;
 /// https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU
 struct TraceEvent {
   /// Event Types.
-  static constexpr auto BeginType = "B";
-  static constexpr auto EndType = "E";
-  static constexpr auto InstantType = "I";
-  static constexpr auto CompleteType = "X";
+  static constexpr auto BeginType = 'B';
+  static constexpr auto EndType = 'E';
+  static constexpr auto InstantType = 'I';
+  static constexpr auto CompleteType = 'X';
 
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
@@ -45,7 +45,7 @@ struct TraceEvent {
 
   /// Type of the event, a (usually) one char code (see Event Descriptions in
   /// the Trace Event Format spec). e.g. 'B' for begin event, 'E' for end event.
-  std::string type;
+  char type;
 
   /// Thread Id for this event. All Events on the same tid will be shown on the
   /// same row of the trace.
@@ -57,10 +57,10 @@ struct TraceEvent {
   /// Arbitrary TraceEvent arguments (from spec).
   std::map<std::string, std::string> args;
 
-  TraceEvent(llvm::StringRef n, uint64_t ts, llvm::StringRef c, int t)
+  TraceEvent(llvm::StringRef n, uint64_t ts, char c, int t)
       : name(n), timestamp(ts), type(c), tid(t) {}
 
-  TraceEvent(llvm::StringRef n, uint64_t ts, llvm::StringRef c, int t,
+  TraceEvent(llvm::StringRef n, uint64_t ts, char c, int t,
              std::map<std::string, std::string> a)
       : name(n), timestamp(ts), type(c), tid(t), args(a) {}
 
@@ -102,7 +102,7 @@ struct TraceInfo {
     size_t startIndex;
     size_t endIndex;
     std::string name;
-    std::string type;
+    char type;
 
     // additional info per backend. May not be present.
     std::string context;
@@ -110,11 +110,11 @@ struct TraceInfo {
 
   std::map<Placeholder *, std::vector<Event>> events;
 
-  void add(Placeholder *PH, size_t index, std::string name, std::string type) {
+  void add(Placeholder *PH, size_t index, std::string name, char type) {
     events[PH].push_back({index, 0, std::move(name), std::move(type), ""});
   }
 
-  void add(Placeholder *PH, size_t index, std::string name, std::string type,
+  void add(Placeholder *PH, size_t index, std::string name, char type,
            std::string context) {
     events[PH].push_back(
         {index, 0, std::move(name), std::move(type), std::move(context)});
@@ -170,14 +170,13 @@ public:
   /// Logs a new TraceEvent at the current time with the given \p name, \p
   /// type and optionally additional attributes.
   void
-  logTraceEvent(llvm::StringRef name,
-                llvm::StringRef type = TraceEvent::InstantType,
+  logTraceEvent(llvm::StringRef name, char type = TraceEvent::InstantType,
                 std::map<std::string, std::string> additionalAttributes = {});
 
   // Logs a new TraceEvent at the provided \p timestamp, with the given \p
   // name, \p type and optionally additional attributes.
   void
-  logTraceEvent(llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
+  logTraceEvent(llvm::StringRef name, char type, uint64_t timestamp,
                 std::map<std::string, std::string> additionalAttributes = {});
 
   /// Logs a new TraceEvent with the Complete event type, the start time is

@@ -92,9 +92,8 @@ public:
   }
 
   // Compares generated TraceEvents with their expected names and types.
-  void checkEventMetadata(
-      const std::vector<TraceEvent> &traceEvents,
-      std::vector<std::pair<std::string, std::string>> expected) {
+  void checkEventMetadata(const std::vector<TraceEvent> &traceEvents,
+                          std::vector<std::pair<std::string, char>> expected) {
 
     ASSERT_EQ(traceEvents.size(), expected.size());
     unsigned index = 0;
@@ -149,10 +148,10 @@ TEST_P(TraceEventsTest, manualEvents) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
-  checkEventMetadata(traceEvents, {{"first half", "B"},
-                                   {"first half", "E"},
-                                   {"second half", "B"},
-                                   {"second half", "E"}});
+  checkEventMetadata(traceEvents, {{"first half", 'B'},
+                                   {"first half", 'E'},
+                                   {"second half", 'B'},
+                                   {"second half", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -196,7 +195,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GE(traceEvents.size(), numEvents);
-  checkEventMetadata(traceEvents, {{"second half", "B"}, {"second half", "E"}});
+  checkEventMetadata(traceEvents, {{"second half", 'B'}, {"second half", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -240,7 +239,7 @@ TEST_P(TraceEventsTest, internalGap) {
 
   ASSERT_GE(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents,
-                     {{"middle section", "B"}, {"middle section", "E"}});
+                     {{"middle section", 'B'}, {"middle section", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -405,11 +404,11 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  std::vector<std::pair<std::string, std::string>> expected;
+  std::vector<std::pair<std::string, char>> expected;
   for (unsigned eventId = 0; eventId < numEvents; ++eventId) {
     std::string name = "event_" + std::to_string(eventId);
     F->createTraceEvent(name, "X", eventData, eventId);
-    expected.push_back({name, "X"});
+    expected.push_back({name, 'X'});
   }
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());

@@ -169,10 +169,10 @@ int main(int argc, char **argv) {
 
   std::vector<TraceEvent> allEvents;
 
-  allEvents.push_back({"thread_name", 0, "M", 0, {{"name", "CPU"}}});
-  allEvents.push_back({"thread_name", 0, "M", 1, {{"name", "Interpreter"}}});
+  allEvents.push_back({"thread_name", 0, 'M', 0, {{"name", "CPU"}}});
+  allEvents.push_back({"thread_name", 0, 'M', 1, {{"name", "Interpreter"}}});
 #if (GLOW_WITH_OPENCL)
-  allEvents.push_back({"thread_name", 0, "M", 2, {{"name", "OpenCL"}}});
+  allEvents.push_back({"thread_name", 0, 'M', 2, {{"name", "OpenCL"}}});
 #endif
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {

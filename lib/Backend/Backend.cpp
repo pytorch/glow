@@ -29,8 +29,11 @@ TraceInfo Backend::buildManualTraceInfo(Function *F) const {
       Placeholder *backing =
           llvm::dyn_cast<Placeholder>(TEN->getData().getNode());
       assert(backing);
-      info.add(backing, TEN->getIndex(), TEN->getEventName(),
-               TEN->getEventType());
+      char type = TraceEvent::InstantType;
+      if (!TEN->getEventType().empty()) {
+        type = TEN->getEventType()[0];
+      }
+      info.add(backing, TEN->getIndex(), TEN->getEventName(), type);
       info.enabled = true;
     }
   }
@@ -93,16 +96,16 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   if (!backingPH) {
     // Build a Placeholder to a backing tensor with space to fit all
     // timestamps.
-    backingPH =
-        F->getParent()->createPlaceholder(type, name, /* isTrainable */ false);
+    backingPH = F->getParent()->createPlaceholder(type, name,
+                                                  /* isTrainable */ false);
     assert(backingPH);
   }
 
   // Add Placeholder to the graph so we can add it to the runtimeBundle later.
   F->addMetadataPlaceholder(backingPH);
 
-  // If we don't have a weight we need to create one too, whether or not we just
-  // created a Placeholder.
+  // If we don't have a weight we need to create one too, whether or not we
+  // just created a Placeholder.
   if (!backingWeight) {
     // Create an associated weight and add it to the IR.
     backingWeight =
