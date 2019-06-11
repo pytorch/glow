@@ -90,8 +90,9 @@ TEST_F(ProvisionerTest, provisionDagFail) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    std::unique_ptr<DeviceManager> device(
-        new CPUDeviceManager(DeviceConfig(BackendKind::CPU), 1000));
+    auto config = DeviceConfig(BackendKind::CPU);
+    config.setDeviceMemory(1000);
+    std::unique_ptr<DeviceManager> device(new CPUDeviceManager(config));
     devices.emplace(i, std::move(device));
   }
 

@@ -130,7 +130,8 @@ struct DeviceConfig {
   const BackendKind backendKind;
   /// A human readable name to identify the device.
   std::string name;
-
+  /// Device memory size in bytes.
+  uint64_t deviceMemory = 0;
   /// A map of configuration parameters.
   llvm::StringMap<std::string> parameters{};
 
@@ -143,6 +144,14 @@ struct DeviceConfig {
       : backendKind(kind), name(name), parameters(parameters) {}
 
   bool hasName() const { return name != ""; }
+
+  void setDeviceMemory(uint64_t memSize) { deviceMemory = memSize; }
+
+  uint64_t getDeviceMemory() const { return deviceMemory; }
+
+  uint64_t getDeviceMemory(uint64_t defaultMemory) const {
+    return deviceMemory == 0 ? defaultMemory : deviceMemory;
+  }
 };
 
 } // namespace runtime

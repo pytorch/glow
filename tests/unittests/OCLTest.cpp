@@ -16,12 +16,13 @@
 
 #include "BackendTestUtils.h"
 
+#include "../../lib/Backends/OpenCL/OpenCLDeviceManager.h"
+#include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-
 #include "gtest/gtest.h"
 
 using namespace glow;
@@ -104,4 +105,30 @@ TEST(OpenCLCorrectnessTest, tanhConcatTest) {
   inferTanhConcatNet(&I1, &I2, &I3, &out2, BackendKind::Interpreter);
 
   EXPECT_TRUE(out1.isEqual(out2));
+}
+
+TEST(OpenCLCorrectnessTest, SetDeviceMemory) {
+  using namespace glow;
+  using namespace runtime;
+  // Test OpenCL BackendKind::OpenCL.
+  auto openCLConfigEmpty = DeviceConfig(BackendKind::OpenCL);
+  auto openCLConfigFull = DeviceConfig(BackendKind::OpenCL);
+  openCLConfigFull.setDeviceMemory(32768);
+  // Default device memory size is from OpenCL device info.
+  // This memory size can be limited by deviceConfig.
+  // No setting at all, default memory size from OpenCL device info.
+  OpenCLDeviceManager openCLDeviceDefault(openCLConfigEmpty);
+  llvm::Error err1 = openCLDeviceDefault.init();
+  uint64_t memSize = openCLDeviceDefault.getMaximumMemory();
+  // If limited by deviceConfig.
+  OpenCLDeviceManager openCLDeviceSetByDeviceConfig(openCLConfigFull);
+  llvm::Error err2 = openCLDeviceSetByDeviceConfig.init();
+  EXPECT_EQ(openCLDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  // If devicConfig defines larger memory size than the OpenCL device info,
+  // then fall back to default.
+  auto openCLConfigLarger = DeviceConfig(BackendKind::OpenCL);
+  openCLConfigLarger.setDeviceMemory(memSize + 10000);
+  OpenCLDeviceManager openCLDeviceLarger(openCLConfigLarger);
+  llvm::Error err3 = openCLDeviceLarger.init();
+  EXPECT_EQ(openCLDeviceLarger.getMaximumMemory(), memSize);
 }
