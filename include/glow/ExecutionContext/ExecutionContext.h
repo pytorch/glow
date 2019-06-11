@@ -129,7 +129,7 @@ public:
 
   /// A helper function to log a TraceEvent at the current time, if there is a
   /// TraceContext available.
-  void logTraceEvent(llvm::StringRef name, llvm::StringRef type = "i",
+  void logTraceEvent(llvm::StringRef name, char type = TraceEvent::InstantType,
                      std::map<std::string, std::string> args = {}) {
     TraceContext *traceContext = getTraceContext();
     if (traceContext) {

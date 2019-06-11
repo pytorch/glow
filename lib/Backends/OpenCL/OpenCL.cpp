@@ -1882,8 +1882,12 @@ TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {
 
       Placeholder *backing =
           llvm::dyn_cast<Placeholder>(TEN->getData().getNode());
-      info.add(backing, TEN->getIndex(), TEN->getEventName(),
-               TEN->getEventType(), TEN->getName());
+      char type = TraceEvent::InstantType;
+      if (!TEN->getEventType().empty()) {
+        type = TEN->getEventType()[0];
+      }
+      info.add(backing, TEN->getIndex(), TEN->getEventName(), type,
+               TEN->getName());
       info.enabled = true;
     }
   }

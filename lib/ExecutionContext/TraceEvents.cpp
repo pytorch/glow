@@ -82,13 +82,13 @@ size_t TraceEvent::getThreadId() {
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, llvm::StringRef type,
+    llvm::StringRef name, char type,
     std::map<std::string, std::string> additionalAttributes) {
   logTraceEvent(name, type, TraceEvent::now(), std::move(additionalAttributes));
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
+    llvm::StringRef name, char type, uint64_t timestamp,
     std::map<std::string, std::string> additionalAttributes) {
   if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
     return;
