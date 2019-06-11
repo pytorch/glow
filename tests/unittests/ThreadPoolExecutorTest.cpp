@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ThreadPool.h"
@@ -601,13 +601,12 @@ private:
 class ThreadPoolExecutorTest : public ::testing::Test {
 protected:
   ThreadPoolExecutorTest()
-      : executor_(std::shared_ptr<Executor>(
-            createExecutor(deviceManagerMap_, ExecutorKind::ThreadPool))),
+      : executor_(std::make_shared<ThreadPoolExecutor>((deviceManagerMap_))),
         testBuilder_(executor_, deviceManagerMap_) {}
   ~ThreadPoolExecutorTest() = default;
 
   /// The Executor being tested.
-  std::shared_ptr<Executor> executor_;
+  std::shared_ptr<ThreadPoolExecutor> executor_;
   /// An ExecutorTestBuilder instance for creating tests.
   ExecutorTestBuilder testBuilder_;
   /// DeviceManager map for initializing executor_.

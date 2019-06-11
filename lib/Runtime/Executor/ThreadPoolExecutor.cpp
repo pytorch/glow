@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#include "ThreadPoolExecutor.h"
-
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 

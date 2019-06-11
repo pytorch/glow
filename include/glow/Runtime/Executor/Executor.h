@@ -30,11 +30,6 @@ namespace runtime {
 
 class DeviceManager;
 
-/// This enum lists the available executors.
-enum class ExecutorKind {
-  ThreadPool, // Executor backed by a thread pool.
-};
-
 /// This is an interface to an executor that can run and results the results of
 /// a partitioned graph.
 class Executor {
@@ -57,12 +52,6 @@ public:
   /// and prevent new requests from being initiated.
   virtual void shutdown() = 0;
 };
-
-/// Create an executor of kind \p kind that will call into the DeviceManager
-/// instances provided in \deviceManagers. \returns a pointer to the
-/// executor.
-Executor *createExecutor(const DeviceManagerMapTy &deviceManagers,
-                         ExecutorKind executorKind = ExecutorKind::ThreadPool);
 
 } // namespace runtime
 } // namespace glow
