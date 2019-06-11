@@ -85,7 +85,7 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   std::map<std::string, std::shared_ptr<OpenCLBuffer>> buffers_;
 
   /// Allocate a device buffer of required \p size.
-  cl_mem allocDeviceBuffer(uint64_t size);
+  llvm::Expected<cl_mem> allocDeviceBuffer(uint64_t size);
 
   /// Device name.
   std::string name_;
