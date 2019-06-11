@@ -31,9 +31,20 @@
 using namespace glow;
 using namespace runtime;
 
-HostManager::HostManager(std::vector<std::unique_ptr<DeviceConfig>> configs) {
+HostManager::HostManager(const HostConfig &hostConfig) : config_(hostConfig) {}
+
+HostManager::HostManager(
+    std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs) {
   // TODO: move all initialization out of constructor.
-  TEMP_EXIT_ON_ERR(init(std::move(configs)));
+  TEMP_EXIT_ON_ERR(init(std::move(deviceConfigs)));
+}
+
+HostManager::HostManager(
+    std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs,
+    const HostConfig &hostConfig)
+    : config_(hostConfig) {
+  // TODO: move all initialization out of constructor.
+  TEMP_EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
 
 llvm::Error
@@ -53,7 +64,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
-  executor_.reset(new ThreadPoolExecutor(devices_));
+  executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
 
   return llvm::Error::success();
 }
@@ -237,15 +248,15 @@ HostManager::runNetwork(llvm::StringRef networkName,
   }
 
   size_t activeRequestCount = activeRequestCount_++;
-  if (activeRequestCount >= activeRequestLimit_) {
+  if (activeRequestCount >= config_.maxActiveRequests) {
     activeRequestCount_--;
     network->refcount--;
     callback(
         currentRun,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
                  strFormat("The number of allowed requests has been exceeded. "
-                           "active requests: %lu allowed requests: %u",
-                           activeRequestCount, activeRequestLimit_)),
+                           "active requests: %lu allowed requests: %zu",
+                           activeRequestCount, config_.maxActiveRequests)),
         std::move(context));
     return currentRun;
   }

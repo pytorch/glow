@@ -59,10 +59,8 @@ class HostManager final {
   /// concurrency in runNetwork.
   std::atomic<size_t> totalRequestCount_{0};
 
-  /// Limit maximum count of networks run at once. Hardcoded for now this
-  /// should be a configurable value. Above this limit the HostManager will
-  /// refuse additional request and return Failed.
-  const unsigned int activeRequestLimit_ = 100;
+  /// Configuration parameters for this Runtime Host.
+  const HostConfig config_{};
 
   /// A map from a networkName to a network, which is represented by struct DAG.
   std::unordered_map<std::string, NetworkData> networks_;
@@ -84,6 +82,19 @@ class HostManager final {
   std::unique_ptr<Provisioner> provisioner_;
 
 public:
+  /// Default constructor.
+  HostManager() = default;
+
+  /// Constructor that takes configuration options.
+  HostManager(const HostConfig &hostConfig);
+
+  /// Constructor that takes a list of Devices to use.
+  HostManager(std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs);
+
+  /// Constructor that takes both Devices and the configuration.
+  HostManager(std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs,
+              const HostConfig &hostConfig);
+
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing
   /// backends. Additionally DAGs are created for each function and stored in
@@ -123,8 +134,6 @@ public:
   /// success or failure.
   llvm::Error runNetworkBlocking(llvm::StringRef networkName,
                                  PlaceholderBindings &bindings);
-  HostManager(std::vector<std::unique_ptr<DeviceConfig>> configs);
-
   /// Initialize the HostManager with the given \p configs creating one
   /// DeviceManager for each config listed.
   llvm::Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);

@@ -154,6 +154,15 @@ struct DeviceConfig {
   }
 };
 
+/// Options configuring Host components of the Runtime, such as the Partitioner
+/// and Executor.
+struct HostConfig {
+  /// Number of outstanding or concurrent networks before rate limiting.
+  size_t maxActiveRequests{100};
+  /// Number of threads to allocate to the Executor.
+  size_t executorThreads{3};
+};
+
 } // namespace runtime
 } // namespace glow
 #endif // GLOW_RUNTIME_RUNTIMETYPES_H
