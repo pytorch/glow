@@ -201,8 +201,7 @@ protected:
   /// Creates a Multi-layer perceptron network consisting of start & end FCs
   /// with \p intermediate_layers hidden layers.
   ///   * All weights and biases are random.
-  ///   * All internal activations are RELU, however the final layer has no
-  ///   activation attached.
+  ///   * All internal activations are RELU.
   ///   * Parent node \p N_ has output dimension \p input_dim.
   ///   * Hidden layers have dimension of \p int_dim * int_dim.
   ///   * Output layer has output dimension \p output_dim.
@@ -255,7 +254,9 @@ protected:
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, emb_dim}
 
-    return end_layer;
+    last = F_->createRELU("relu3", end_layer);
+
+    return last;
   }
 
   /// Creates a rowwise quantized Multi-layer perceptron network consisting of
@@ -343,6 +344,7 @@ protected:
         quantization::Asymmetric,
         /* transposeWeight */ true);
 
+    end_layer = F_->createRELU("relu", end_layer);
     end_layer = F_->createDequantize("mlp_dequant", end_layer);
 
     return end_layer;
@@ -456,7 +458,6 @@ protected:
       bottom_MLP = createMLP(mod_, bindings_, F_, dense_data,
                              dense_data->dims()[1], 1024, emb_dim, 3);
     }
-    auto *RL = F_->createRELU("relu", bottom_MLP);
 
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
@@ -470,22 +471,24 @@ protected:
     }
 
     // Interacting sparse and dense
-    embeddings.push_back(RL);
+    embeddings.push_back(bottom_MLP);
     std::cout << "Number of embeddings concatenated: " << embeddings.size()
               << std::endl;
     auto *CN = F_->createConcat("concat", embeddings,
                                 1); // Output is size {MB, emb_dim*n}
-    auto *reshaped = F_->createReshape(
-        "reshape", CN,
-        {RL->dims(0)[0], embeddings.size(), emb_dim}); // {MB, n, emb_dim}
+    auto *reshaped =
+        F_->createReshape("reshape", CN,
+                          {bottom_MLP->dims(0)[0], embeddings.size(),
+                           emb_dim}); // {MB, n, emb_dim}
     auto *transposed = F_->createTranspose("transpose", reshaped,
                                            {0, 2, 1}); // {MB, emb_dim, n}
     auto *dot = F_->createBatchMatMul("dot_products", reshaped,
                                       transposed); // {MB, n, n}
-    auto *reshapeDot = F_->createReshape(
-        "reshapeDot", dot,
-        {RL->dims(0)[0], embeddings.size() * embeddings.size()}); // {MB, n^2}
-    auto *interact = F_->createConcat("interact", {reshapeDot, RL},
+    auto *reshapeDot =
+        F_->createReshape("reshapeDot", dot,
+                          {bottom_MLP->dims(0)[0],
+                           embeddings.size() * embeddings.size()}); // {MB, n^2}
+    auto *interact = F_->createConcat("interact", {reshapeDot, bottom_MLP},
                                       1); // {MB, n^2 + emb_dim}
 
     // MLP at the top
@@ -498,10 +501,8 @@ protected:
                           1024, 1, 3);
     }
 
-    auto *Out = F_->createRELU("relu", top_MLP);
-
     // Output
-    auto *save = F_->createSave("save", Out);
+    auto *save = F_->createSave("save", top_MLP);
     bindings_.allocate(save->getPlaceholder());
 
     return;
