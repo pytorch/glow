@@ -408,6 +408,7 @@ protected:
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();
   }
+
   static llvm::Expected<NodeValue>
   handleBatchMatMulTranspose(Function &F, ArgumentDictionaryTy &dict,
                              llvm::StringRef key, NodeValue input) {
