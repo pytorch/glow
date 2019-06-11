@@ -62,6 +62,12 @@ llvm::cl::opt<BackendKind> backend(
                      clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
     llvm::cl::init(BackendKind::CPU), llvm::cl::cat(category));
 
+llvm::cl::opt<bool>
+    autoInstrument("auto-instrument",
+                   llvm::cl::desc("Add instrumentation for operator tracing"),
+                   llvm::cl::Optional, llvm::cl::init(false),
+                   llvm::cl::cat(category));
+
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
 
@@ -155,6 +161,7 @@ int main(int argc, char **argv) {
   input = loadResnet50Model(inputType, module.get(), 0);
   phList = module->getPlaceholders();
   CompilationContext cctx;
+  cctx.backendOpts.autoInstrument = autoInstrument;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx,
                                       /*saturateHost*/ true));
 

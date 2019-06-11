@@ -97,7 +97,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   }
 
-  RETURN_IF_ERR(provisioner_->provision(nodeList, *module));
+  RETURN_IF_ERR(provisioner_->provision(nodeList, *module, cctx));
 
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each

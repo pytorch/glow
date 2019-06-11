@@ -76,8 +76,10 @@ TEST_F(ProvisionerTest, provisionDag) {
         new CPUDeviceManager(DeviceConfig(BackendKind::CPU)));
     devices.emplace(i, std::move(device));
   }
+
+  CompilationContext cctx;
   auto provisioner = Provisioner(devices);
-  auto err = provisioner.provision(networks, *mod.get());
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
   EXPECT_FALSE(errToBool(std::move(err)));
 }
@@ -92,8 +94,10 @@ TEST_F(ProvisionerTest, provisionDagFail) {
         new CPUDeviceManager(DeviceConfig(BackendKind::CPU), 1000));
     devices.emplace(i, std::move(device));
   }
+
+  CompilationContext cctx;
   auto provisioner = Provisioner(devices);
-  auto err = provisioner.provision(networks, *mod.get());
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
   EXPECT_TRUE(errToBool(std::move(err)));
 }
