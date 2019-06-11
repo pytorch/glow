@@ -2342,7 +2342,6 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
     return TensorQuantizationParams{T->getType().getScale(),
                                     T->getType().getOffset()};
   };
-  using namespace quantization;
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
@@ -2350,13 +2349,13 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
     for (int32_t j = 0; j < LH.raw(i); j++) {
       size_t offsetIn = IH.raw(curIdx) * lineSize;
       for (size_t k = 0; k < lineSize; k++) {
-        accum[k] += dequantize(DH.raw(offsetIn++), TQP(data));
+        accum[k] += quantization::dequantize(DH.raw(offsetIn++), TQP(data));
       }
       curIdx++;
     }
     size_t offsetOut = i * lineSize;
     for (size_t k = 0; k < lineSize; k++) {
-      OH.raw(offsetOut++) = quantize(accum[k], TQP(out));
+      OH.raw(offsetOut++) = quantization::quantize(accum[k], TQP(out));
     }
   }
 }

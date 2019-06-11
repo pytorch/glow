@@ -376,8 +376,8 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
          checkSameType(dest, expected, dest.getNode());
 }
 
-static bool verifySparseLengthsdSum(NodeValue dest, NodeValue data,
-                                    NodeValue indices, NodeValue lengths) {
+static bool verifySparseLengthsSum(NodeValue dest, NodeValue data,
+                                   NodeValue indices, NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
@@ -935,8 +935,8 @@ bool BatchedReduceMeanNode::verify() const {
 }
 
 bool SparseLengthsSumNode::verify() const {
-  return verifySparseLengthsdSum(getResult(), getData(), getIndices(),
-                                 getLengths());
+  return verifySparseLengthsSum(getResult(), getData(), getIndices(),
+                                getLengths());
 }
 
 bool SparseLengthsWeightedSumNode::verify() const {
