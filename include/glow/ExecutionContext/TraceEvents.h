@@ -36,6 +36,8 @@ struct TraceEvent {
   static constexpr auto EndType = 'E';
   static constexpr auto InstantType = 'I';
   static constexpr auto CompleteType = 'X';
+  /// MetadataType is used for the thread name mapping.
+  static constexpr auto MetadataType = 'M';
 
   /// Human readable name for the item, will be used to match up begin and end.
   std::string name;
