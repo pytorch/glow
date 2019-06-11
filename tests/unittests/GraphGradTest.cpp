@@ -178,8 +178,8 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   EE.compile(CompilationMode::Infer, F);
 
   // Check that the Placeholder has multiple users, because at least one write
-  /// node will be added.
-  EXPECT_GE(A->getNumUsers(), 1);
+  // node will be added.
+  EXPECT_GT(A->getNumUsers(), 1);
 }
 
 /// Check that we can differentiate functions that use ConvertToNode.
