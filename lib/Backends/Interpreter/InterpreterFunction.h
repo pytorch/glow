@@ -238,6 +238,10 @@ private:
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
 
+  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
+  template <typename ElemTy>
+  void fwdSparseLengthsSumInstFloatImpl(const SparseLengthsSumInst *I);
+
   void
   fwdSparseLengthsWeightedSumInstI8Impl(const SparseLengthsWeightedSumInst *I);
   template <typename ElemTy>

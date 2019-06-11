@@ -376,6 +376,20 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
          checkSameType(dest, expected, dest.getNode());
 }
 
+static bool verifySparseLengthsSum(NodeValue dest, NodeValue data,
+                                   NodeValue indices, NodeValue lengths) {
+  bool isValid = checkType(dest, data.getElementType(), dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Lengths must be a 1D vector", lengths.dims().size(),
+                        size_t(1), dest.getNode());
+  return isValid;
+}
+
 static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
                                            NodeValue weights, NodeValue indices,
                                            NodeValue lengths) {
@@ -918,6 +932,11 @@ bool BatchedReduceMeanNode::verify() const {
       expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
                         this, CompareOperatorGreaterThan<size_t>());
   return isValid;
+}
+
+bool SparseLengthsSumNode::verify() const {
+  return verifySparseLengthsSum(getResult(), getData(), getIndices(),
+                                getLengths());
 }
 
 bool SparseLengthsWeightedSumNode::verify() const {

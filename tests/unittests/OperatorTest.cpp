@@ -5082,6 +5082,7 @@ TEST_P(OperatorTest, SparseLengthsSum) {
   };
 
   auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 

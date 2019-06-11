@@ -794,6 +794,18 @@ static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BMMN.getResult(), RN);
 }
 
+static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
+                                      const SparseLengthsSumNode &SLSN) {
+  auto ty = F->getParent()->uniqueTypeWithNewShape(
+      SLSN.getData().getType(), {SLSN.getIndices().dims()[0]});
+  auto *ones = F->createSplat(SLSN.getName().str() + ".ones", ty, 1.0);
+  auto *SLWSN = F->createSparseLengthsWeightedSum(
+      SLSN.getName().str(), SLSN.getData(), ones, SLSN.getIndices(),
+      SLSN.getLengths());
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, SLSN.getResult(), SLWSN);
+}
+
 /// Lowers \p node given Function \p. \p cctx contains a mapping of loweredMap
 /// that will log the lowering info of what was replaced by what via output
 /// names.
@@ -849,6 +861,8 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     lowerReplaceNaNNode(F, cctx, *RN);
   } else if (auto *BMMN = dyn_cast<BatchMatMulNode>(node)) {
     lowerBatchMatMulNode(F, cctx, *BMMN);
+  } else if (auto *SLSN = dyn_cast<SparseLengthsSumNode>(node)) {
+    lowerSparseLengthsSumNode(F, cctx, *SLSN);
   }
 }
 

@@ -1374,13 +1374,15 @@ LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
   return addNode(new LengthsSumNode(name, outTy, data, lengths));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
-                                 NodeValue indices, NodeValue lengths) {
-  auto ty =
-      getParent()->uniqueTypeWithNewShape(data.getType(), {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return createSparseLengthsWeightedSum(name, data, ones, indices, lengths);
+SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
+                                                       NodeValue data,
+                                                       NodeValue indices,
+                                                       NodeValue lengths) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
 }
 
 SparseLengthsWeightedSumNode *
