@@ -1275,3 +1275,45 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     EXIT_ON_ERR(setup());
   }
 }
+
+ONNXModelLoader::ONNXModelLoader(
+    const void *model, uint32_t modelSize, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+    bool loadInputsAsPlaceholders, llvm::Error *errPtr)
+    : CommonOperatorLoader({}, {}, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // raised.
+  auto setup = [&]() -> llvm::Error {
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    RETURN_IF_ERR(setVersion(modelDef));
+
+    RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
+
+    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholders));
+
+    RETURN_IF_ERR(loadInitializers(graphDef));
+
+    RETURN_IF_ERR(loadNetwork(graphDef));
+
+    RETURN_IF_ERR(setOutputNodes(graphDef));
+
+    deleteUnusedConstants();
+
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}

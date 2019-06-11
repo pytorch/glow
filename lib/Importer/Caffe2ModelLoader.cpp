@@ -1690,3 +1690,43 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     EXIT_ON_ERR(setup());
   }
 }
+
+Caffe2ModelLoader::Caffe2ModelLoader(
+    const void *model, uint32_t modelSize, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+    bool loadInputsAsPlaceholders, llvm::Error *errPtr)
+    : CommonOperatorLoader({}, {}, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the Caffe2ModelLoader and return any llvm::Errors that were
+  // raised.
+  auto setup = [&]() -> llvm::Error {
+    caffe2::NetDef networkDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(networkDef, loadProto(model, modelSize));
+
+    RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
+
+    RETURN_IF_ERR(loadInputs(networkDef, loadInputsAsPlaceholders));
+
+    // TODO: in Caffe2ModelLoader, setOutputNodes is actually inside
+    // loadNetwork, maybe we should make it a separate function?
+    RETURN_IF_ERR(loadNetwork(networkDef));
+
+    // This is to ensure that the same processing done with
+    // the same network, even if order of operators is different.
+    F.orderNodes();
+
+    deleteUnusedConstants();
+
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}

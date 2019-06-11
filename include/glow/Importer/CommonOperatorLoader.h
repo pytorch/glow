@@ -184,12 +184,11 @@ class CommonOperatorLoader : public ProtobufLoader {
     return llvm::Error::success();
   }
 
-public:
+protected:
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
                        llvm::ArrayRef<TypeRef> types, Function &F)
       : ProtobufLoader(names, types, F) {}
 
-protected:
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
 
