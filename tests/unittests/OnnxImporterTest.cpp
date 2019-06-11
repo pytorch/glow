@@ -817,7 +817,7 @@ TEST(onnx, importBatchMatMul) {
   PlaceholderBindings bindings;
   Placeholder *output;
   {
-    Tensor inputs_0(ElemKind::FloatTy, {20, 7, 40});
+    Tensor inputs_0(ElemKind::FloatTy, {20, 40, 7});
     Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
     ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
@@ -834,9 +834,9 @@ TEST(onnx, importBatchMatMul) {
   EXPECT_EQ(result.dims().vec(), expectedDims);
 
   // High level check on the content of the graph.
-  // We have 1 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
+  // We have 2 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
   // reshape, 1 save.
-  EXPECT_EQ(F->getNodes().size(), 1 + 20 * 5 + 3);
+  EXPECT_EQ(F->getNodes().size(), 2 + 20 * 5 + 3);
   // With have 2 inputs and one outputs.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
