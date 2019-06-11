@@ -62,13 +62,13 @@ static llvm::Expected<unsigned> parseInputAsUnsigned(std::string input) {
   return parsed;
 }
 
-cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
+llvm::Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, alignment);
   auto buf =
       clCreateBuffer(context_, CL_MEM_READ_WRITE, size, nullptr, nullptr);
-  GLOW_ASSERT(buf && "Allocation failed!");
+  RETURN_ERR_IF_NOT(buf, "Allocation failed!");
   return buf;
 }
 OpenCLDeviceManager::OpenCLDeviceManager(const DeviceConfig &config)
@@ -222,12 +222,19 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
         module,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
                  "Failed to add network: could not create CL command queue."));
+    return;
   }
 
   // Copy constants to device.
   auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
               bundle.getActivationsSize();
-  auto deviceBuffer = allocDeviceBuffer(size);
+  cl_mem deviceBuffer;
+  if (auto autoDeviceBufferOrErr = allocDeviceBuffer(size)) {
+    deviceBuffer = *autoDeviceBufferOrErr;
+  } else {
+    readyCB(module, autoDeviceBufferOrErr.takeError());
+    return;
+  }
   auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
   if (bundle.getConstants()) {
     auto buf = bundle.getConstants();
@@ -237,7 +244,10 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
         commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
         valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    if (err != CL_SUCCESS) {
+      readyCB(module, MAKE_ERR("Unable to copy data to the device"));
+      return;
+    }
     clFinish(commands);
   }
   usedMemoryBytes_ += sizeInBytes;
@@ -263,7 +273,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     buffer->incrementUsers();
   }
 
-  assert(usedMemoryBytes_ <= maxMemoryBytes_);
+  DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
   clReleaseCommandQueue(commands);
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
@@ -279,7 +289,7 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
     auto size = buffer->getSize();
     buffers_.erase(functionName);
     if (users == 0) {
-      assert(usedMemoryBytes_ >= size);
+      DCHECK_GE(usedMemoryBytes_, size);
       usedMemoryBytes_ -= size;
     }
   } else {
@@ -293,7 +303,7 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
   if (evictCB) {
     evictCB(functionName, std::move(err));
   } else {
-    llvm::errs() << llvm::toString(std::move(err));
+    LOG(ERROR) << llvm::toString(std::move(err));
   }
 }
 
