@@ -673,7 +673,7 @@ TEST_F(ThreadPoolExecutorTest, SingleNode) {
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -703,7 +703,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Mutex for accessing threadsReady and testsPassed.
@@ -792,7 +792,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   std::atomic<unsigned> testsPassed{0};
@@ -846,7 +846,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNode) {
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -894,7 +894,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeWithFailure) {
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -949,7 +949,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeMultiDevice) {
   // map (which the ExecutorTestBuilder has a reference to).
   for (DeviceIDTy deviceId : {testDeviceIdA, testDeviceIdB, testDeviceIdC}) {
     auto deviceManager = llvm::make_unique<TestDeviceManager>(
-        deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+        deviceManagerThreads, DeviceConfig("Interpreter"));
     deviceManagerMap_.emplace(deviceId, std::move(deviceManager));
   }
 
@@ -1000,7 +1000,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
   // map (which the ExecutorTestBuilder has a reference to).
   auto deviceManager = llvm::make_unique<TestDeviceManager>(
-      deviceManagerThreads, DeviceConfig(BackendKind::Interpreter));
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Mutex for accessing threadsReady and testsPassed.

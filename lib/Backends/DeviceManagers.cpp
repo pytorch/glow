@@ -62,16 +62,15 @@ DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
 } // namespace glow
 
 DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
-  switch (config.backendKind) {
-  case BackendKind::Interpreter:
+  if (config.backendName == "Interpreter") {
     return createInterpreterDeviceManager(config);
-  case BackendKind::OpenCL:
+  } else if (config.backendName == "OpenCL") {
     return createOCLDeviceManager(config);
-  case BackendKind::CPU:
+  } else if (config.backendName == "CPU") {
     return createCPUDeviceManager(config);
-  case BackendKind::Habana:
+  } else if (config.backendName == "Habana") {
     return createHabanaDeviceManager(config);
-  default:
+  } else {
     // As a fallback to make developing new Backends easier we'll create a
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
@@ -79,8 +78,4 @@ DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
     LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
     return new DummyDeviceManager(config);
   }
-
-  // This is to make compiler happy. It can never reach this point as switch
-  // always covers all possible values.
-  llvm_unreachable("unreachable");
 }

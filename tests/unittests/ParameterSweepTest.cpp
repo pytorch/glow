@@ -33,12 +33,12 @@ using llvm::cast;
 /// This matches the signature that is used for the parameterized tests here,
 /// i.e. those passing three parameters via a single ::testing::Combine() into
 /// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST().
-using ThreeIntTupleConfig = std::tuple<BackendKind, std::tuple<int, int, int>>;
+using ThreeIntTupleConfig = std::tuple<std::string, std::tuple<int, int, int>>;
 
-#define SET_BACKEND_KIND_AND_THREE_INT_PARAMS(CONFIG, BACKEND_KIND, PARAM1,    \
+#define SET_BACKEND_KIND_AND_THREE_INT_PARAMS(CONFIG, BACKEND_NAME, PARAM1,    \
                                               PARAM2, PARAM3)                  \
   std::tuple<int, int, int> threeIntTupleParams;                               \
-  std::tie(BACKEND_KIND, threeIntTupleParams) = CONFIG;                        \
+  std::tie(BACKEND_NAME, threeIntTupleParams) = CONFIG;                        \
   std::tie(PARAM1, PARAM2, PARAM3) = threeIntTupleParams;
 
 //===--------------------------------------------------------------------===//
@@ -75,7 +75,7 @@ createAndInitConvNet(glow::PlaceholderBindings &bindings,
 /// the element kinds to use for the Interpreter and backend, respectively.
 static void testParamSweepConv(ThreeIntTupleConfig config, ElemKind interpK,
                                ElemKind backendK, float allowedError) {
-  BackendKind backend;
+  std::string backend;
   size_t size, depth, kernel;
   SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, size, depth, kernel)
 
@@ -149,7 +149,7 @@ createAndInitBatchMatMulNet(glow::PlaceholderBindings &bindings,
 static void testParamSweepBatchMatMul(ThreeIntTupleConfig config,
                                       ElemKind interpK, ElemKind backendK,
                                       float allowedError) {
-  BackendKind backend;
+  std::string backend;
   size_t N, A, Z;
   SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, N, A, Z);
   size_t B = A;
@@ -225,7 +225,7 @@ createAndInitFCNet(glow::PlaceholderBindings &bindings,
 /// the element kinds to use for the Interpreter and backend, respectively.
 static void testParamSweepFC(ThreeIntTupleConfig config, ElemKind interpK,
                              ElemKind backendK, float allowedError) {
-  BackendKind backend;
+  std::string backend;
   size_t A, Z, B;
   SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, A, Z, B);
 

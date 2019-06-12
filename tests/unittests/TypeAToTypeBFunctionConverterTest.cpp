@@ -25,7 +25,7 @@
 
 using namespace glow;
 
-struct AllBackends : public ::testing::TestWithParam<BackendKind> {
+struct AllBackends : public ::testing::TestWithParam<std::string> {
 protected:
   ExecutionEngine EE_{GetParam()};
 };
@@ -906,13 +906,12 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, AllBackends, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, AllBackends, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, AllBackends,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, AllBackends, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL

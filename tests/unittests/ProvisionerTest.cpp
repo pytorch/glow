@@ -49,13 +49,13 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
     rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
     firstNode->logicalDevices = {0, 1};
-    firstNode->backendKind = BackendKind::CPU;
+    firstNode->backendName = "CPU";
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
       auto newChild = llvm::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       newChild->logicalDevices = {0};
-      newChild->backendKind = BackendKind::CPU;
+      newChild->backendName = "CPU";
       currentFunction++;
       firstNode->children.push_back(newChild.get());
       nodes.push_back(std::move(newChild));
@@ -73,7 +73,7 @@ TEST_F(ProvisionerTest, provisionDag) {
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
     std::unique_ptr<DeviceManager> device(
-        new CPUDeviceManager(DeviceConfig(BackendKind::CPU)));
+        new CPUDeviceManager(DeviceConfig("CPU")));
     devices.emplace(i, std::move(device));
   }
 
@@ -90,7 +90,7 @@ TEST_F(ProvisionerTest, provisionDagFail) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    auto config = DeviceConfig(BackendKind::CPU);
+    auto config = DeviceConfig("CPU");
     config.setDeviceMemory(1000);
     std::unique_ptr<DeviceManager> device(new CPUDeviceManager(config));
     devices.emplace(i, std::move(device));

@@ -324,7 +324,7 @@ struct HyphenNetwork {
 } // namespace
 
 TEST(HyphenTest, network) {
-  ExecutionEngine EE(BackendKind::CPU);
+  ExecutionEngine EE("CPU");
 
   // Convert the training data to word windows and labels.
   vector<string> words;
@@ -377,6 +377,6 @@ TEST(HyphenTest, network) {
   EXPECT_EQ(net.inferenceErrors(EE, "cpu", inputs, hyphens, TC), 0);
 
   // See of the interpreter gets the same result.
-  EE.setBackend(BackendKind::Interpreter);
+  EE.setBackend("Interpreter");
   EXPECT_EQ(net.inferenceErrors(EE, "interpreter", inputs, hyphens, TC), 0);
 }

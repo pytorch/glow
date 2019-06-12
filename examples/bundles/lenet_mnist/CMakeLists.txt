@@ -37,7 +37,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/3_1020.png -g -i=0to1
     -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -cpu -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY}
   DEPENDS
     image-classifier LeNetMnistBundleDir
 )
@@ -63,7 +63,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/3_1020.png -g -i=0to1 -load-profile=profile.yml
     -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -cpu -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
   DEPENDS
   image-classifier LeNetMnistBundleDir
 )

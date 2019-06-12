@@ -124,14 +124,10 @@ llvm::cl::list<std::string> doNotLowerNodesForProfilingOpt(
     llvm::cl::value_desc("NodeNames (e.g. Convolution,FullyConnected)"),
     llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<BackendKind> ExecutionBackend(
-    llvm::cl::desc("Backend to use:"),
-    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter"),
-                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
-                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
-    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
+llvm::cl::opt<std::string> ExecutionBackend(
+    "backend",
+    llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
+    llvm::cl::init("Interpreter"), llvm::cl::cat(loaderCat));
 
 /// Debugging options.
 llvm::cl::OptionCategory
@@ -303,19 +299,6 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
   LOG(FATAL) << "Unknown node name: " << nodeName.str();
 }
 
-/// Helper to get the BackendKind type from a backend's \p name. Need to be
-/// updated if a new backend comes.
-static BackendKind getBackendKindFromName(std::string &name) {
-  const llvm::StringMap<BackendKind> mapping(
-      {{"CPU", BackendKind::CPU},
-       {"Interpreter", BackendKind::Interpreter},
-       {"OpenCL", BackendKind::OpenCL},
-       {"Habana", BackendKind::Habana}});
-  CHECK(mapping.find(name) != mapping.end())
-      << "Unknown backendKind name: " << name;
-  return mapping.lookup(name);
-}
-
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
 /// multiple lines, and each line with this format : "str1" : "str2".
 static llvm::StringMap<std::string> getBackendParams(std::string &str) {
@@ -345,13 +328,13 @@ static llvm::StringMap<std::string> getBackendParams(std::string &str) {
 /// based on \p backendKind.
 static std::vector<std::unique_ptr<runtime::DeviceConfig>>
 generateDeviceConfigs(std::string &loadDeviceConfigsFile,
-                      unsigned int numDevices, BackendKind backendKind) {
+                      unsigned int numDevices, llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   if (loadDeviceConfigsFile.empty()) {
     // If there is no device config file, use numDevices to generate the
     // configs.
     for (unsigned int i = 0; i < numDevices; ++i) {
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind);
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
       configs.push_back(std::move(config));
     }
   } else {
@@ -359,10 +342,10 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
     std::vector<DeviceConfigHelper> lists;
     lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFile);
     for (unsigned int i = 0; i < lists.size(); ++i) {
-      auto backendKind = getBackendKindFromName(lists[i].kindName_);
+      auto backendName = lists[i].kindName_;
       auto name = lists[i].name_;
       auto parameters = getBackendParams(lists[i].parameters_.str);
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind, name,
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
                                                              parameters);
       configs.push_back(std::move(config));
     }

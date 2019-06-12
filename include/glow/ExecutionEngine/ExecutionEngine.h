@@ -60,13 +60,13 @@ class ExecutionEngine final {
                    CompiledFunction &compiledFunction);
 
 public:
-  ExecutionEngine(BackendKind backendKind = BackendKind::Interpreter);
+  ExecutionEngine(llvm::StringRef backend = "Interpreter");
 
   ~ExecutionEngine();
 
-  /// Set the code generator kind to \p backendKind. New code will be generated
+  /// Set the code generator to \p backend. New code will be generated
   /// using this backend.
-  void setBackend(BackendKind backendKind);
+  void setBackend(llvm::StringRef backend);
 
   /// Set the code generator to a custom \p backend. If \p ownsBackend is false
   /// then ExecutionEngine will use the given backend without owning it which

@@ -35,10 +35,8 @@ public:
   ~CPUFunction() override = default;
   llvm::Error execute(ExecutionContext *context) override;
 
-  /// \returns the Kind of Backend used to compile this function.
-  virtual BackendKind getCompileBackendKind() const override {
-    return BackendKind::CPU;
-  }
+  /// \returns the backend used to compile this function.
+  virtual std::string getCompileBackendName() const override { return "CPU"; }
   ///@}
   //
 };

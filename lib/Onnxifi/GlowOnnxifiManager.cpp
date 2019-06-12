@@ -24,17 +24,18 @@ GlowOnnxifiManager &GlowOnnxifiManager::get() {
   return manager;
 }
 
-BackendIdPtr GlowOnnxifiManager::createBackendId(glow::BackendKind kind,
+BackendIdPtr GlowOnnxifiManager::createBackendId(llvm::StringRef backendName,
                                                  bool useOnnx,
                                                  bool forQuantization) {
   std::lock_guard<std::mutex> lock(m_);
 
   BackendIdPtr backendId;
   if (forQuantization) {
-    backendId = new onnxifi::BackendId(kind, useOnnx);
+    backendId = new onnxifi::BackendId(backendName, useOnnx);
   } else {
-    auto hostManager = getOrCreateHostManager(kind);
-    backendId = new onnxifi::HostManagerBackendId(hostManager, kind, useOnnx);
+    auto hostManager = getOrCreateHostManager(backendName);
+    backendId =
+        new onnxifi::HostManagerBackendId(hostManager, backendName, useOnnx);
   }
 
   auto res = backendIds_.insert(backendId);
@@ -93,19 +94,19 @@ GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend,
 }
 
 std::shared_ptr<runtime::HostManager>
-GlowOnnxifiManager::getOrCreateHostManager(BackendKind backendKind) {
+GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   std::shared_ptr<runtime::HostManager> hostManager;
 
-  auto it = hostManagers_.find(backendKind);
+  auto it = hostManagers_.find(backendName);
 
   if (it != hostManagers_.end()) {
     hostManager = it->second.lock();
   }
 
   if (!hostManager) {
-    hostManager = onnxifi::HostManagerBackendId::createHostManager(backendKind);
+    hostManager = onnxifi::HostManagerBackendId::createHostManager(backendName);
     assert(hostManager);
-    hostManagers_[backendKind] = hostManager;
+    hostManagers_[backendName] = hostManager;
   }
 
   return hostManager;

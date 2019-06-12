@@ -26,19 +26,19 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
-  setBackend(backendKind);
+ExecutionEngine::ExecutionEngine(llvm::StringRef backend) {
+  setBackend(backend);
 }
 
-/// Set the code generator kind to \p backendKind.
-void ExecutionEngine::setBackend(BackendKind backendKind) {
-  setBackend(createBackend(backendKind));
+/// Set the code generator kind to \p backend.
+void ExecutionEngine::setBackend(llvm::StringRef backend) {
+  setBackend(createBackend(backend));
 }
 
 /// Set the code generator to the given \p backend.
 void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
   bool differentKinds = (backend_ == nullptr || backend == nullptr) ||
-                        backend->getBackendKind() != backend_->getBackendKind();
+                        backend->getBackendName() != backend_->getBackendName();
   if (ownsBackend_) {
     delete backend_;
   }
@@ -55,7 +55,7 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
     if (backend) {
       device_ = std::unique_ptr<runtime::DeviceManager>(
           runtime::DeviceManager::createDeviceManager(
-              runtime::DeviceConfig(backend->getBackendKind())));
+              runtime::DeviceConfig(backend->getBackendName())));
       EXIT_ON_ERR(device_->init());
     }
   }

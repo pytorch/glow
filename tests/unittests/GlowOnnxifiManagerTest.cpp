@@ -24,7 +24,7 @@ using namespace glow::onnxifi;
 
 TEST(GlowOnnxifiManagerTest, BackendIdTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+  auto *backendId = manager.createBackendId("Interpreter",
                                             /*use_onnx*/ true);
   // BackendId is valid after it has been added to the manager.
   EXPECT_TRUE(manager.isValid(backendId));
@@ -39,7 +39,7 @@ TEST(GlowOnnxifiManagerTest, BackendIdTest) {
 
 TEST(GlowOnnxifiManagerTest, BackendTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+  auto *backendId = manager.createBackendId("Interpreter",
                                             /*use_onnx*/ true);
 
   auto *backend = manager.createBackend(backendId);
@@ -72,7 +72,7 @@ TEST(GlowOnnxifiManagerTest, EventTest) {
 
 TEST(GlowOnnxifiManagerTest, GraphTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+  auto *backendId = manager.createBackendId("Interpreter",
                                             /*use_onnx*/ true);
 
   auto *backend = manager.createBackend(backendId);
@@ -95,7 +95,7 @@ TEST(GlowOnnxifiManagerTest, GraphTest) {
 
 void createAndDestroyManagerObjects() {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
+  auto *backendId = manager.createBackendId("Interpreter",
                                             /*use_onnx*/ true);
 
   auto *backend = manager.createBackend(backendId);

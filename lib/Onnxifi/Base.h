@@ -40,10 +40,11 @@ class Graph;
 class BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind, whether to use onnx or caffe2 for models
+  /// given Glow backend \p backendName, whether to use onnx or caffe2 for
+  /// models
   /// (\p useOnnx)
-  BackendId(glow::BackendKind kind, bool useOnnx)
-      : useOnnx_(useOnnx), glowBackend_(createBackend(kind)) {}
+  BackendId(llvm::StringRef backendName, bool useOnnx)
+      : useOnnx_(useOnnx), glowBackend_(createBackend(backendName)) {}
 
   virtual ~BackendId() = default;
 

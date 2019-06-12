@@ -89,7 +89,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   for (auto &device : devices_) {
     DeviceInfo info = DeviceInfo();
     info.availableMemory = device.second->getAvailableMemory();
-    info.backendKind = device.second->getBackendKind();
+    info.backendName = device.second->getBackendName();
     deviceInfo.push_back(info);
   }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);

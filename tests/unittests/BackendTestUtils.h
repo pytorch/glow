@@ -54,21 +54,21 @@ extern unsigned parCloneCountOpt;
 #define DECLARE_STATELESS_BACKEND_TEST(CLASS_NAME, CONFIG_NAME)                \
   class CLASS_NAME : public ::testing::TestWithParam<CONFIG_NAME> {            \
   protected:                                                                   \
-    bool isEnabledBackend(const std::set<BackendKind> &enabledBackends) {      \
-      return enabledBackends.find(getBackendKind()) != enabledBackends.end();  \
+    bool isEnabledBackend(const std::set<std::string> &enabledBackends) {      \
+      return enabledBackends.find(getBackendName()) != enabledBackends.end();  \
     }                                                                          \
-    const BackendKind Interpreter = BackendKind::Interpreter;                  \
-    const BackendKind CPU = BackendKind::CPU;                                  \
-    const BackendKind OpenCL = BackendKind::OpenCL;                            \
-    const BackendKind Habana = BackendKind::Habana;                            \
+    const std::string Interpreter = "Interpreter";                             \
+    const std::string CPU = "CPU";                                             \
+    const std::string OpenCL = "OpenCL";                                       \
+    const std::string Habana = "Habana";                                       \
                                                                                \
   public:                                                                      \
-    BackendKind getBackendKind() { return std::get<0>(GetParam()); }           \
+    std::string getBackendName() { return std::get<0>(GetParam()); }           \
   }
 
 /// Note that we use std::tuple<BackendKind> here to match other tests which are
 /// parameterized across many other values, e.g. those in ParameterSweepTest.
-DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<BackendKind>);
+DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<std::string>);
 
 class BackendTest : public BackendStatelessTest {
 public:
@@ -77,22 +77,22 @@ public:
   ~BackendTest() override { mod_.clear(); }
 
 protected:
-  ExecutionEngine EE_{getBackendKind()};
+  ExecutionEngine EE_{getBackendName()};
   Module &mod_;
   Function *F_;
 };
 
 static const auto all_backends = ::testing::Values(
 #ifdef GLOW_WITH_CPU
-    BackendKind::CPU,
+    "CPU",
 #endif // GLOW_WITH_CPU
 #ifdef GLOW_WITH_OPENCL
-    BackendKind::OpenCL,
+    "OpenCL",
 #endif // GLOW_WITH_OPENCL
 #ifdef GLOW_WITH_HABANA
-    BackendKind::Habana,
+    "Habana",
 #endif // GLOW_WITH_HABANA
-    BackendKind::Interpreter);
+    "Interpreter");
 
 // Instantiate parameterized test suite with all available backends.
 #define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(prefix, test_case_name)       \
@@ -121,16 +121,10 @@ class MockBackend : public Backend {
       return llvm::Error::success();
     }
 
-    BackendKind getCompileBackendKind() const override {
-      return BackendKind::Interpreter;
-    }
+    std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
-
-  std::string getBackendName() const override { return "MockBackend"; }
+  std::string getBackendName() const override { return "Interpreter"; }
 
   llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
@@ -156,16 +150,10 @@ class MockBackendCustomIRGen : public Backend {
       return llvm::Error::success();
     }
 
-    BackendKind getCompileBackendKind() const override {
-      return BackendKind::Interpreter;
-    }
+    std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
-
-  std::string getBackendName() const override { return "MockBackend"; }
+  std::string getBackendName() const override { return "Interpreter"; }
 
   llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
@@ -217,7 +205,7 @@ using CreateAndInitFunction =
 /// Given a method \p createAndInitFunction that creates and initializes a
 /// FloatTy Function with a single output Tensor, \returns a bool representing
 /// if the output Tensor of executing the Function on the Interpreter backend is
-/// equal to executing it on a backend of kind \p backendKind. \p interpElemKind
+/// equal to executing it on a backend \p backendName. \p interpElemKind
 /// and \p backendElemKind represent the desired ElemKinds for their respective
 /// functions to use. If either require quantization then a profile will first
 /// be gathered on the Interpreter, and then that profile will be used to
@@ -229,7 +217,7 @@ using CreateAndInitFunction =
 /// Function inside itself, so that testing can be done on architectures that
 /// have parallel compute engines.
 void compareAgainstInterpreter(
-    BackendKind backendKind, CreateAndInitFunction createAndInitFunction,
+    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
     float allowedError = 0.0001, unsigned parallelCount = 1,
     bool enableRowwiseQuantization = false,
@@ -244,68 +232,68 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                unsigned parallelCount);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
-                  BackendKind kind);
+                  llvm::StringRef kind);
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
-                  Tensor *out, BackendKind kind);
+                  Tensor *out, llvm::StringRef kind);
 
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
-                                        BackendKind kind);
+                                        llvm::StringRef kind);
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *bias, Tensor *selected,
                                         llvm::ArrayRef<size_t> shape1,
                                         llvm::ArrayRef<size_t> shape2,
-                                        Tensor *out, BackendKind kind);
+                                        Tensor *out, llvm::StringRef kind);
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
-                     BackendKind kind);
+                     llvm::StringRef kind);
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
-                     BackendKind kind);
+                     llvm::StringRef kind);
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
-                            llvm::ArrayRef<int8_t> table, BackendKind kind);
+                            llvm::ArrayRef<int8_t> table, llvm::StringRef kind);
 
-void inferGroupConv(Tensor *out, BackendKind kind);
+void inferGroupConv(Tensor *out, llvm::StringRef kind);
 
-void inferNonSquarePaddingConv(Tensor *out, BackendKind kind);
+void inferNonSquarePaddingConv(Tensor *out, llvm::StringRef kind);
 
-void inferNonSquareKernelConv(Tensor *out, BackendKind kind);
+void inferNonSquareKernelConv(Tensor *out, llvm::StringRef kind);
 
-void inferNonSquareStrideConv(Tensor *out, BackendKind kind);
+void inferNonSquareStrideConv(Tensor *out, llvm::StringRef kind);
 
-void inferConvDKKC8(Tensor *out, BackendKind kind);
+void inferConvDKKC8(Tensor *out, llvm::StringRef kind);
 
-void inferSmallConv(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind);
 
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, Tensor *out, BackendKind kind);
+                     Tensor *selected, Tensor *out, llvm::StringRef kind);
 
-void inferBasicConvNet(Tensor *inputs, Tensor *out, BackendKind kind,
+void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
                        size_t convDepth);
 
 void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
-                        Tensor *out, BackendKind kind);
+                        Tensor *out, llvm::StringRef kind);
 
 FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
                                            ExecutionEngine &EE);
 
-void inferMixedNet(Tensor *inputs, Tensor *out, BackendKind kind);
+void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind);
 
 void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
-                      Tensor *inputs4, Tensor *out, BackendKind kind);
+                      Tensor *inputs4, Tensor *out, llvm::StringRef kind);
 
 void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
-                     BackendKind kind);
+                     llvm::StringRef kind);
 
-void inferExtract3D(Tensor *input, Tensor *out, BackendKind kind);
+void inferExtract3D(Tensor *input, Tensor *out, llvm::StringRef kind);
 
-void inferMaxSplat(Tensor *input, Tensor *out, BackendKind kind);
+void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind);
 
 } // namespace glow

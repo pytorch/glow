@@ -118,9 +118,9 @@ public:
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
 
-  /// \returns the Kind of Backend used to compile this function.
-  virtual BackendKind getCompileBackendKind() const override {
-    return BackendKind::OpenCL;
+  /// \returns the backend used to compile this function.
+  virtual std::string getCompileBackendName() const override {
+    return "OpenCL";
   }
   ///@}
 
@@ -190,8 +190,6 @@ public:
   /// This is the implementation of the Backend interface.
   ///@{
   ~OCLBackend() override = default;
-
-  BackendKind getBackendKind() const override { return BackendKind::OpenCL; }
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "OpenCL"; }

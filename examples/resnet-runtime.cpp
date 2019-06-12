@@ -53,14 +53,10 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::desc("Write trace logs to disk"),
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
-llvm::cl::opt<BackendKind> backend(
-    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
-    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter (default option)"),
-                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
-                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
-    llvm::cl::init(BackendKind::CPU), llvm::cl::cat(category));
+llvm::cl::opt<std::string>
+    backend("backend",
+            llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
+            llvm::cl::Optional, llvm::cl::init("CPU"), llvm::cl::cat(category));
 
 llvm::cl::opt<bool>
     autoInstrument("auto-instrument",

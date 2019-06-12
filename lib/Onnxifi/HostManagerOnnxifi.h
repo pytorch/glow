@@ -26,11 +26,11 @@ namespace onnxifi {
 class HostManagerBackendId : public BackendId {
 public:
   /// Create Glow ONNXIFI backend identifier using HostManager with the
-  /// given Glow backend \p kind, whether to use onnx or caffe2 for models
+  /// given Glow backend \p kindName, whether to use onnx or caffe2 for models
   /// (\p useOnnx).
   HostManagerBackendId(std::shared_ptr<runtime::HostManager> hostManager,
-                       glow::BackendKind kind, bool useOnnx)
-      : BackendId(kind, useOnnx), hostManager_(hostManager) {}
+                       llvm::StringRef backendName, bool useOnnx)
+      : BackendId(backendName, useOnnx), hostManager_(hostManager) {}
 
   void runNetwork(const Graph *graph, std::unique_ptr<ExecutionContext> context,
                   runtime::ResultCBTy callback) override;
@@ -39,10 +39,10 @@ public:
 
   onnxStatus removeNetwork(const Graph *graph) override;
 
-  // \returns a unique_ptr to a new HostManager for the given BackendKind \p
-  // kind.
+  // \returns a unique_ptr to a new HostManager for the given Backend \p
+  // backendName.
   static std::unique_ptr<runtime::HostManager>
-  createHostManager(glow::BackendKind kind);
+  createHostManager(llvm::StringRef backendName);
 
 private:
   std::shared_ptr<runtime::HostManager> hostManager_;

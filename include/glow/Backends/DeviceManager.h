@@ -44,15 +44,11 @@ using FunctionMapTy = std::map<std::string, CompiledFunction *>;
 /// Interface managing a specific instance of a device.
 class DeviceManager {
 protected:
-  /// Type of Backend for this Device.
-  BackendKind backend_;
-
   /// Configuration object for the device.
   DeviceConfig config_;
 
 public:
-  DeviceManager(const DeviceConfig &config)
-      : backend_(config.backendKind), config_(config) {}
+  DeviceManager(const DeviceConfig &config) : config_(config) {}
   virtual ~DeviceManager() {}
 
   /// Create a device manager based on the device config \p config.
@@ -90,8 +86,8 @@ public:
     return llvm::Error::success();
   };
 
-  /// \returns the type of Backend that powers this Device.
-  BackendKind getBackendKind() { return backend_; }
+  /// \returns the name of backend that powers this Device.
+  llvm::StringRef getBackendName() { return config_.backendName; }
 
   /// \returns the maximum memory (in bytes) available on the device.
   virtual uint64_t getMaximumMemory() const = 0;

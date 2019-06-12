@@ -194,7 +194,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
       return;
     }
 
-    if (func.second->getCompileBackendKind() != BackendKind::OpenCL) {
+    if (func.second->getCompileBackendName() != "OpenCL") {
       readyCB(
           module,
           MAKE_ERR(

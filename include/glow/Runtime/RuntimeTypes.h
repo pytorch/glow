@@ -50,7 +50,7 @@ struct DeviceInfo {
   /// Available memory on device in bytes.
   uint64_t availableMemory;
   /// Backend Type.
-  BackendKind backendKind;
+  std::string backendName;
   /// Available SRAM capacity in bytes.
   uint64_t sramCapacity;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.
@@ -75,8 +75,8 @@ struct DAGNode {
   std::vector<DAGNode *> parents;
   /// IDs of the deviceManagers that this network is assigned to.
   std::vector<DeviceIDTy> deviceIDs;
-  /// Backend kind for this network.
-  BackendKind backendKind;
+  /// Backend name for this network.
+  std::string backendName;
   /// The logicalDevice is an output of the Partitioner to indicate that two
   /// networks should be assigned to the same device. Multiple logical devices
   /// indicates the network should be duplicated.
@@ -122,12 +122,12 @@ using DAGListTy = std::vector<DAG>;
 
 /// This is the base class for DeviceManager configurations. Any specific
 /// device can extend this class to contain information to identify
-/// and configure the device manager. Additionally it needs to set it's kind_
-/// member variable to it's correct BackendKind.
+/// and configure the device manager. Additionally it needs to set it's backend
+/// member variable to it's correct Backend.
 struct DeviceConfig {
-  /// An enum indicating what kind of backend this config is for. It is used in
+  /// Backend used for this config. It is used in
   /// checking the type of config before casting to a derived class.
-  const BackendKind backendKind;
+  const std::string backendName;
   /// A human readable name to identify the device.
   std::string name;
   /// Device memory size in bytes.
@@ -135,13 +135,13 @@ struct DeviceConfig {
   /// A map of configuration parameters.
   llvm::StringMap<std::string> parameters{};
 
-  DeviceConfig(BackendKind kind) : backendKind(kind) {}
-  DeviceConfig(BackendKind kind, std::string name)
-      : backendKind(kind), name(name) {}
+  DeviceConfig(llvm::StringRef backendName) : backendName(backendName) {}
+  DeviceConfig(llvm::StringRef backendName, llvm::StringRef name)
+      : backendName(backendName), name(name) {}
 
-  DeviceConfig(BackendKind kind, std::string name,
+  DeviceConfig(llvm::StringRef backendName, llvm::StringRef name,
                llvm::StringMap<std::string> parameters)
-      : backendKind(kind), name(name), parameters(parameters) {}
+      : backendName(backendName), name(name), parameters(parameters) {}
 
   bool hasName() const { return name != ""; }
 

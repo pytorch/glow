@@ -66,7 +66,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
       return;
     }
 
-    if (func.second->getCompileBackendKind() != BackendKind::CPU) {
+    if (func.second->getCompileBackendName() != "CPU") {
       readyCB(
           module,
           MAKE_ERR(

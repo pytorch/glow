@@ -69,13 +69,13 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
     for (size_t i = 0; i < node->children.size(); i++) {
       auto child = node->children[i];
       DescriptionBuilder db(child->name.c_str());
-      const std::string &backendName = backendMap_.at(child->backendKind).name;
-      db.addParam("BackendKind", backendName);
+      const std::string &backendName = backendMap_.at(child->backendName).name;
+      db.addParam("BackendName", backendName);
       myfile << "\"" << escapeDottyString(child->name) << "\""
              << " [ label = \"" << escapeDottyString(db) << "\"";
       myfile << "\tshape = \"record\"\n";
       myfile << "\tstyle=\"filled,rounded\"\n";
-      auto colorIdx = llvm::hash_value(llvm::StringRef(backendName));
+      auto colorIdx = llvm::hash_value(backendName);
       myfile << "\tfillcolor=" << getDotFileNodeColor(colorIdx) << "\n";
       myfile << "penwidth = 2];\n";
       if (used.count(child) == 0) {
@@ -106,24 +106,23 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
 
 llvm::Error
 Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
-  std::map<BackendKind, std::set<DeviceIDTy>> partitionsNum;
+  std::map<std::string, std::set<DeviceIDTy>> partitionsNum;
   for (auto &func : partitions.getPartitions()) {
-    auto backendKind = partitions.getPartitionBackendKind(func);
-    if (partitionsNum.find(backendKind) == partitionsNum.end()) {
-      partitionsNum.emplace(
-          std::make_pair(backendKind, std::set<DeviceIDTy>{}));
+    auto backendName = partitions.getPartitionBackendName(func);
+    if (partitionsNum.find(backendName) == partitionsNum.end()) {
+      partitionsNum.emplace(backendName, std::set<DeviceIDTy>{});
     }
     auto logicalIDList = partitions.getLogicalDeviceIDList(func);
     for (size_t i = 0, e = logicalIDList.size(); i < e; i++) {
-      partitionsNum[backendKind].insert(logicalIDList[i]);
+      partitionsNum[backendName].insert(logicalIDList[i]);
     }
     RETURN_ERR_IF_NOT(
-        partitionsNum[backendKind].size() <= backendMap_[backendKind].num,
+        partitionsNum[backendName].size() <= backendMap_[backendName].num,
         llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
                       "is fewer than the required minimal partitions({2}).",
-                      backendMap_[backendKind].name,
-                      backendMap_[backendKind].num,
-                      partitionsNum[backendKind].size())
+                      backendMap_[backendName].name,
+                      backendMap_[backendName].num,
+                      partitionsNum[backendName].size())
             .str());
   }
   return llvm::Error::success();
@@ -488,7 +487,7 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
 /// Assign nodes to partitions and return the mapping.
 NodeToFunctionMap Partitioner::selectPartitions(Function *F,
                                                 uint64_t availableMemory,
-                                                BackendKind backendKind) {
+                                                llvm::StringRef backendName) {
   NodeToFunctionMap mapping;
   BFSLevel bfs = getBFSLevel(F);
   size_t level = bfs.size();
@@ -499,7 +498,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   Function *newF;
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
-  mapping.createPartition(newF, backendKind);
+  mapping.createPartition(newF, backendName);
   std::set<Storage *> usedStorage;
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
@@ -509,7 +508,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       if (newMem > availableMemory) {
         newF = F->getParent()->createFunction(
             std::string(F->getName()) + "_part" + std::to_string(++color));
-        mapping.createPartition(newF, backendKind);
+        mapping.createPartition(newF, backendName);
         mem = memUsage_[N];
         usedStorage = newStorage;
       } else {
@@ -553,14 +552,14 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
 DeviceIDTy Partitioner::assignLogicalDeviceID(NodeToFunctionMap &mapping) {
   DeviceIDTy logicalDeviceID = 0;
 
-  std::map<BackendKind, std::vector<Function *>> backendFuncMap;
+  std::map<std::string, std::vector<Function *>> backendFuncMap;
   for (auto &func : mapping.getPartitions()) {
     // Traverse the paritions, and get list of partitions with each backendKind.
-    auto backendKind = mapping.getPartitionBackendKind(func);
-    if (backendFuncMap.find(backendKind) == backendFuncMap.end()) {
-      backendFuncMap.emplace(backendKind, std::vector<Function *>{func});
+    auto backendName = mapping.getPartitionBackendName(func);
+    if (backendFuncMap.find(backendName) == backendFuncMap.end()) {
+      backendFuncMap.emplace(backendName, std::vector<Function *>{func});
     } else {
-      backendFuncMap[backendKind].push_back(func);
+      backendFuncMap[backendName].push_back(func);
     }
   }
 
@@ -700,7 +699,7 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
       std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
       subDAG->name = subF->getName();
       subDAG->logicalDevices = mapping.getLogicalDeviceIDList(subF);
-      subDAG->backendKind = mapping.getPartitionBackendKind(subF);
+      subDAG->backendName = mapping.getPartitionBackendName(subF);
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -743,7 +742,7 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
           std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
           subDAG->logicalDevices = mapping.getLogicalDeviceIDList(inputF);
-          subDAG->backendKind = mapping.getPartitionBackendKind(inputF);
+          subDAG->backendName = mapping.getPartitionBackendName(inputF);
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
@@ -806,7 +805,7 @@ Partitioner::backendBasedPartition(Function *F,
                                    std::vector<Backend *> &backends) {
   FunctionToBackendKindMapTy ret;
   NodeToFunctionMap mapping;
-  llvm::DenseMap<Node *, BackendKind> nodeToBackendKind;
+  llvm::DenseMap<Node *, std::string> nodeToBackendName;
 
   // For each node find a backend that supports it.
   for (auto &N : F->getNodes()) {
@@ -816,11 +815,11 @@ Partitioner::backendBasedPartition(Function *F,
       // TODO: the logic here need to be improved.
       if (backend->shouldLower(&N) || backend->isOpSupported(N)) {
         // Put this node into a partition for this backend.
-        nodeToBackendKind[&N] = backend->getBackendKind();
+        nodeToBackendName[&N] = backend->getBackendName();
         break;
       }
     }
-    assert(nodeToBackendKind.find(&N) != nodeToBackendKind.end() &&
+    assert(nodeToBackendName.find(&N) != nodeToBackendName.end() &&
            "Node is not supported by any of the provided backends");
   }
 
@@ -830,19 +829,19 @@ Partitioner::backendBasedPartition(Function *F,
   Function *newF;
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
-  BackendKind backendKind = nodeToBackendKind[bfs[level - 1][0]];
-  mapping.createPartition(newF, backendKind);
-  ret[newF] = backendKind;
+  auto backendName = nodeToBackendName[bfs[level - 1][0]];
+  mapping.createPartition(newF, backendName);
+  ret[newF] = backendName;
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
       Node *N = bfs[i][j];
-      auto bk = nodeToBackendKind[N];
-      if (bk != backendKind) {
-        backendKind = bk;
+      auto bk = nodeToBackendName[N];
+      if (bk != backendName) {
+        backendName = bk;
         newF = F->getParent()->createFunction(
             std::string(F->getName()) + "_part" + std::to_string(++color));
-        mapping.createPartition(newF, backendKind);
-        ret[newF] = backendKind;
+        mapping.createPartition(newF, backendName);
+        ret[newF] = backendName;
       }
       mapping.add(N, newF);
     }
@@ -857,7 +856,7 @@ Partitioner::backendBasedPartition(Function *F,
 }
 
 void Partitioner::getBackendMap(
-    std::map<BackendKind, BackendInfo> &backendMap,
+    std::map<std::string, BackendInfo> &backendMap,
     std::vector<std::unique_ptr<Backend>> &backendsHolder,
     std::vector<Backend *> &backends) {
   // If the backends are created already, we use them directly.
@@ -869,12 +868,12 @@ void Partitioner::getBackendMap(
 
   int n = 0;
   for (size_t i = 0, e = deviceInfo_.size(); i < e; i++) {
-    BackendKind backendKind = deviceInfo_[i].backendKind;
+    std::string backendName = deviceInfo_[i].backendName;
     if (hasBackends) {
-      assert(backends_[i]->getBackendKind() == backendKind &&
+      assert(backends_[i]->getBackendName() == backendName &&
              "Backend Type mismatch.");
     }
-    if (backendMap.find(backendKind) == backendMap.end()) {
+    if (backendMap.find(backendName) == backendMap.end()) {
       BackendInfo backendInfo;
       backendInfo.num = 1;
       // We assume that for the same type of devices, the available memory size
@@ -884,24 +883,24 @@ void Partitioner::getBackendMap(
       if (hasBackends) {
         backendInfo.backend = backends_[i];
       } else {
-        backendsHolder.emplace_back(createBackend(backendKind));
+        backendsHolder.emplace_back(createBackend(backendName));
         backendInfo.backend = backendsHolder[n++].get();
       }
       backendInfo.name = (backendInfo.backend)->getBackendName();
-      backendMap[backendKind] = backendInfo;
-      backends.push_back(backendMap[backendKind].backend);
+      backendMap[backendName] = backendInfo;
+      backends.push_back(backendMap[backendName].backend);
     } else {
-      backendMap[backendKind].num += 1;
+      backendMap[backendName].num += 1;
     }
   }
 }
 
 llvm::Error Partitioner::createDAGWithoutPartition(
-    BackendKind backendKind, std::map<BackendKind, BackendInfo> &backendMap,
+    llvm::StringRef backendName, std::map<std::string, BackendInfo> &backendMap,
     CompilationContext &cctx) {
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
-      auto backend = backendMap[backendKind].backend;
+      auto backend = backendMap[backendName].backend;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
     std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
@@ -911,7 +910,7 @@ llvm::Error Partitioner::createDAGWithoutPartition(
     std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
     DAG1->logicalDevices = {0};
     DAG1->name = F->getName();
-    DAG1->backendKind = backendKind;
+    DAG1->backendName = backendName;
     DAG1->parents.push_back(DAG0.get());
     DAG0->children.push_back(DAG1.get());
     DAGNodePtrVec nodes;
@@ -940,13 +939,13 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   std::string origName(F_->getName().data());
   if (backends.size() == 1) {
     // Only one type of backends, no need to backendKind based partition.
-    auto backendKind = backends[0]->getBackendKind();
-    funcToBackend[F_] = backendKind;
+    auto backendName = backends[0]->getBackendName();
+    funcToBackend[F_] = backendName;
 
-    if (memSize_ < backendMap_[backendKind].memSize) {
+    if (memSize_ < backendMap_[backendName].memSize) {
       // No partition is needed. Create DAGNode and return. This root is alway a
       // dummy function.
-      return createDAGWithoutPartition(backendKind, backendMap_, cctx);
+      return createDAGWithoutPartition(backendName, backendMap_, cctx);
     }
   } else {
     funcToBackend = backendBasedPartition(F_, backends);

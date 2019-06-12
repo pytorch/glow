@@ -59,9 +59,7 @@ public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// \returns the kind of Backend this is.
-  virtual BackendKind getBackendKind() const = 0;
-
+  // \returns backend name.
   virtual std::string getBackendName() const = 0;
 
   /// Generate code for a vector of functions, \p functions. All compilations
