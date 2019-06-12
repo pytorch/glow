@@ -201,15 +201,13 @@ protected:
   /// Creates a Multi-layer perceptron network consisting of start & end FCs
   /// with \p intermediate_layers hidden layers.
   ///   * All weights and biases are random.
-  ///   * All internal activations are RELU, however the final layer has no
-  ///   activation attached.
+  ///   * All internal activations are RELU.
   ///   * Parent node \p N_ has output dimension \p input_dim.
   ///   * Hidden layers have dimension of \p int_dim * int_dim.
   ///   * Output layer has output dimension \p output_dim.
-  static Node *createMLP(Module &mod_, PlaceholderBindings &bindings,
-                         Function *F_, Node *N_, size_t input_dim,
-                         size_t int_dim, size_t output_dim,
-                         size_t intermediate_layers) {
+  static NodeValue createMLP(Module &mod_, Function *F_, Node *N_,
+                             size_t input_dim, size_t int_dim,
+                             size_t output_dim, size_t intermediate_layers) {
     assert(intermediate_layers > 0);
 
     // Type object for the internal layers.
@@ -255,7 +253,9 @@ protected:
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, emb_dim}
 
-    return end_layer;
+    auto *RN = F_->createRELU("relu3", end_layer);
+
+    return RN->getResult();
   }
 
   /// Creates a rowwise quantized Multi-layer perceptron network consisting of
@@ -273,16 +273,14 @@ protected:
   ///   * weights to be Float32 and convert to Int8 fused rowwise quantized
   ///     Tensors internally
   ///   * Biases are Int32 quantized.
-  static Node *createQuantizedMLP(Module &mod_, PlaceholderBindings &bindings,
-                                  Function *F_, Node *N_, size_t input_dim,
-                                  size_t int_dim, size_t output_dim,
-                                  size_t intermediate_layers) {
+  static NodeValue createQuantizedMLP(Module &mod_, Function *F_, NodeValue N_,
+                                      size_t input_dim, size_t int_dim,
+                                      size_t output_dim,
+                                      size_t intermediate_layers) {
     // Must have intermediate layers.
     assert(intermediate_layers > 0);
 
-    // Must have a single input.
-    assert(N_->getNumResults() == 1);
-    const size_t minibatchSize = N_->dims(0)[0];
+    const size_t minibatchSize = N_.dims()[0];
 
     // Type objects for the internal types.
     // Note: dimension argument is a placeholder and will get filled out by each
@@ -291,10 +289,8 @@ protected:
     auto internalTypeQ = mod_.uniqueType(ElemKind::Int8QTy, {1}, 1, 0);
     auto internalBiasType = mod_.uniqueType(ElemKind::Int32QTy, {1}, 1e-11, 0);
 
-    Node *start = N_;
-    start = F_->createQuantize(
-        "mlp_quant", N_,
-        mod_.uniqueTypeWithNewShape(internalTypeQ, N_->dims(0)));
+    auto *start = F_->createQuantize(
+        "mlp_quant", N_, mod_.uniqueTypeWithNewShape(internalTypeQ, N_.dims()));
 
     /// Initial.
     auto *initial_bias = createRandomizedConstant(mod_, internalBiasType,
@@ -336,16 +332,16 @@ protected:
         mod_, internalTypeF, {int_dim, output_dim}, "end_weight", -0.03, 0.03);
 
     // Output is size {MB, emb_dim}
-    Node *end_layer;
-    end_layer = F_->createRowwiseQuantizedFullyConnected(
+    auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", last, end_weight, end_bias,
         mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, output_dim}),
         quantization::Asymmetric,
         /* transposeWeight */ true);
 
-    end_layer = F_->createDequantize("mlp_dequant", end_layer);
+    auto *RN = F_->createRELU("relu", end_layer);
+    auto *DQN = F_->createDequantize("mlp_dequant", RN);
 
-    return end_layer;
+    return DQN->getResult();
   }
 
   /// Creates a number of Sparse tables (FP32 or Int8Q), the Indices lookup and
@@ -448,15 +444,14 @@ protected:
     // First Dense embedding
     fillStableRandomData(bindings_.allocate(dense_data)->getHandle(), 2001,
                          0.001);
-    Node *bottom_MLP;
+    NodeValue bottom_MLP;
     if (quantizeFC) {
-      bottom_MLP = createQuantizedMLP(mod_, bindings_, F_, dense_data,
+      bottom_MLP = createQuantizedMLP(mod_, F_, dense_data,
                                       dense_data->dims()[1], 1024, emb_dim, 3);
     } else {
-      bottom_MLP = createMLP(mod_, bindings_, F_, dense_data,
-                             dense_data->dims()[1], 1024, emb_dim, 3);
+      bottom_MLP = createMLP(mod_, F_, dense_data, dense_data->dims()[1], 1024,
+                             emb_dim, 3);
     }
-    auto *RL = F_->createRELU("relu", bottom_MLP);
 
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
@@ -470,38 +465,36 @@ protected:
     }
 
     // Interacting sparse and dense
-    embeddings.push_back(RL);
+    embeddings.push_back(bottom_MLP);
     std::cout << "Number of embeddings concatenated: " << embeddings.size()
               << std::endl;
     auto *CN = F_->createConcat("concat", embeddings,
                                 1); // Output is size {MB, emb_dim*n}
     auto *reshaped = F_->createReshape(
         "reshape", CN,
-        {RL->dims(0)[0], embeddings.size(), emb_dim}); // {MB, n, emb_dim}
+        {bottom_MLP.dims()[0], embeddings.size(), emb_dim}); // {MB, n, emb_dim}
     auto *transposed = F_->createTranspose("transpose", reshaped,
                                            {0, 2, 1}); // {MB, emb_dim, n}
     auto *dot = F_->createBatchMatMul("dot_products", reshaped,
                                       transposed); // {MB, n, n}
-    auto *reshapeDot = F_->createReshape(
-        "reshapeDot", dot,
-        {RL->dims(0)[0], embeddings.size() * embeddings.size()}); // {MB, n^2}
-    auto *interact = F_->createConcat("interact", {reshapeDot, RL},
-                                      1); // {MB, n^2 + emb_dim}
+    auto *reshapeDot =
+        F_->createReshape("reshapeDot", dot,
+                          {bottom_MLP.dims()[0],
+                           embeddings.size() * embeddings.size()}); // {MB, n^2}
+    NodeValue interact = F_->createConcat("interact", {reshapeDot, bottom_MLP},
+                                          1); // {MB, n^2 + emb_dim}
 
     // MLP at the top
     Node *top_MLP;
     if (quantizeFC) {
-      top_MLP = createQuantizedMLP(mod_, bindings_, F_, interact,
-                                   interact->dims(0)[1], 1024, 1, 3);
+      top_MLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1], 1024,
+                                   1, 3);
     } else {
-      top_MLP = createMLP(mod_, bindings_, F_, interact, interact->dims(0)[1],
-                          1024, 1, 3);
+      top_MLP = createMLP(mod_, F_, interact, interact.dims()[1], 1024, 1, 3);
     }
 
-    auto *Out = F_->createRELU("relu", top_MLP);
-
     // Output
-    auto *save = F_->createSave("save", Out);
+    auto *save = F_->createSave("save", top_MLP);
     bindings_.allocate(save->getPlaceholder());
 
     return;
