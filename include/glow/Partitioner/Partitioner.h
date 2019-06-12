@@ -170,7 +170,7 @@ class Partitioner {
   std::map<BackendKind, BackendInfo> backendMap_;
 
   /// The map between partitions and the logicalDeviceID. The partitions with
-  /// the same logcialDeviceID will be assigned into the same physical device.
+  /// the same logicalDeviceID will be assigned into the same physical device.
   std::map<Function *, std::vector<DeviceIDTy>> logicalIDMap_;
 
   /// The number of logicalDevice IDs, i.e. the number of physical devices
@@ -296,6 +296,9 @@ public:
 
   /// Get function for computeTime_
   ComputeTimeMapTy getComputeTime() const { return computeTime_; }
+
+  /// Get function for memUsage_
+  MemUsageMapTy getMemUsage() const { return memUsage_; }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H

@@ -412,6 +412,34 @@ TEST_F(PartitionerTest, Basic1Roofline) {
     ASSERT_EQ(expected, res);
   }
 
+  // check memUsage
+  std::unordered_map<std::string, float> expectedMemUsage{
+      {"initial_sigmoid", 0},
+      {"left_sigmoid2", 0},
+      {"fc_add_bias3", 64},
+      {"right_sigmoid1", 0},
+      {"mul", 0},
+      {"fc_add_bias2", 32},
+      {"ret", 0},
+      {"fc_dot", 2176},
+      {"left_sigmoid1", 0},
+      {"fc_add_bias", 64},
+      {"fc_dot1", 1024},
+      {"right_sigmoid2", 0},
+      {"fc_add_bias1", 64},
+      {"fc_dot2", 512},
+      {"fc_dot3", 1024},
+      {"fc_dot4", 512},
+      {"fc_add_bias4", 32},
+  };
+  ASSERT_EQ(myPartitioner.getMemUsage().size(), expectedMemUsage.size());
+  for (auto &el : myPartitioner.getMemUsage()) {
+    Node *n = el.first;
+    float expected = expectedMemUsage[nodeNamesMap[n].c_str()];
+    float res = el.second;
+    ASSERT_EQ(expected, res);
+  }
+
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
 }
