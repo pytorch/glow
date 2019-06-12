@@ -205,10 +205,9 @@ protected:
   ///   * Parent node \p N_ has output dimension \p input_dim.
   ///   * Hidden layers have dimension of \p int_dim * int_dim.
   ///   * Output layer has output dimension \p output_dim.
-  static NodeValue createMLP(Module &mod_, PlaceholderBindings &bindings,
-                             Function *F_, Node *N_, size_t input_dim,
-                             size_t int_dim, size_t output_dim,
-                             size_t intermediate_layers) {
+  static NodeValue createMLP(Module &mod_, Function *F_, Node *N_,
+                             size_t input_dim, size_t int_dim,
+                             size_t output_dim, size_t intermediate_layers) {
     assert(intermediate_layers > 0);
 
     // Type object for the internal layers.
@@ -274,10 +273,10 @@ protected:
   ///   * weights to be Float32 and convert to Int8 fused rowwise quantized
   ///     Tensors internally
   ///   * Biases are Int32 quantized.
-  static NodeValue
-  createQuantizedMLP(Module &mod_, PlaceholderBindings &bindings, Function *F_,
-                     NodeValue N_, size_t input_dim, size_t int_dim,
-                     size_t output_dim, size_t intermediate_layers) {
+  static NodeValue createQuantizedMLP(Module &mod_, Function *F_, NodeValue N_,
+                                      size_t input_dim, size_t int_dim,
+                                      size_t output_dim,
+                                      size_t intermediate_layers) {
     // Must have intermediate layers.
     assert(intermediate_layers > 0);
 
@@ -447,11 +446,11 @@ protected:
                          0.001);
     NodeValue bottom_MLP;
     if (quantizeFC) {
-      bottom_MLP = createQuantizedMLP(mod_, bindings_, F_, dense_data,
+      bottom_MLP = createQuantizedMLP(mod_, F_, dense_data,
                                       dense_data->dims()[1], 1024, emb_dim, 3);
     } else {
-      bottom_MLP = createMLP(mod_, bindings_, F_, dense_data,
-                             dense_data->dims()[1], 1024, emb_dim, 3);
+      bottom_MLP = createMLP(mod_, F_, dense_data, dense_data->dims()[1], 1024,
+                             emb_dim, 3);
     }
 
     // Sparse Embeddings
@@ -488,11 +487,10 @@ protected:
     // MLP at the top
     Node *top_MLP;
     if (quantizeFC) {
-      top_MLP = createQuantizedMLP(mod_, bindings_, F_, interact,
-                                   interact.dims()[1], 1024, 1, 3);
+      top_MLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1], 1024,
+                                   1, 3);
     } else {
-      top_MLP = createMLP(mod_, bindings_, F_, interact, interact.dims()[1],
-                          1024, 1, 3);
+      top_MLP = createMLP(mod_, F_, interact, interact.dims()[1], 1024, 1, 3);
     }
 
     // Output
