@@ -62,7 +62,7 @@ public:
     return it->second->create();
   }
 
-private:
+  /// \returns all registered factories.
   static FactoryMap &factories() {
     static FactoryMap *factories = new FactoryMap();
     return *factories;
