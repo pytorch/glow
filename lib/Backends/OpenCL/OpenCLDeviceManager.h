@@ -44,7 +44,7 @@ class OpenCLBuffer {
   const size_t size_{0};
 
 public:
-  ~OpenCLBuffer() { clReleaseMemObject(buffer_); }
+  ~OpenCLBuffer();
 
   OpenCLBuffer(cl_mem buffer, size_t size) : buffer_(buffer), size_(size) {}
 
