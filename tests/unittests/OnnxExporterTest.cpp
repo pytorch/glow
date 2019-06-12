@@ -95,7 +95,8 @@ TEST(exporter, onnxModels) {
         name.find("castToInt64.onnxtxt") != std::string::npos ||
         name.find("castToInt32.onnxtxt") != std::string::npos ||
         name.find("Where.onnxtxt") != std::string::npos ||
-        name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos) {
+        name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos ||
+        name.find("Less.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore invalid input files: " << name << "\n";
       continue;

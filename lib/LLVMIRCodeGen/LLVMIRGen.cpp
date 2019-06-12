@@ -1175,18 +1175,35 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
-  case Kinded::Kind::ElementCmpLTEInstKind: {
-    auto *CI = cast<ElementCmpLTEInst>(I);
-    auto *dest = CI->getDest();
-    auto *lhs = CI->getLHS();
-    auto *rhs = CI->getRHS();
+  case Kinded::Kind::ElementCmpLTEInstKind:
+  case Kinded::Kind::ElementCmpLTInstKind: {
+    Value *dest = nullptr;
+    Value *lhs = nullptr;
+    Value *rhs = nullptr;
+    std::string kernelName;
+
+    if (auto *CLTEI = dyn_cast<ElementCmpLTEInst>(I)) {
+      dest = CLTEI->getDest();
+      lhs = CLTEI->getLHS();
+      rhs = CLTEI->getRHS();
+      kernelName = "element_cmp_lte_kernel";
+    } else if (auto *CLTI = dyn_cast<ElementCmpLTInst>(I)) {
+      dest = CLTI->getDest();
+      lhs = CLTI->getLHS();
+      rhs = CLTI->getRHS();
+      kernelName = "element_cmp_lt_kernel";
+    } else {
+      llvm_unreachable(
+          "Missmatch between Instruction Kind and instruction instance.");
+    }
+
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
     auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
     auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_lte_kernel", lhs->getElementType());
+    auto *F = getFunction(kernelName.c_str(), lhs->getElementType());
 
     if (lhs->getType()->isQuantizedType()) {
       auto *lhsTy = lhs->getType();

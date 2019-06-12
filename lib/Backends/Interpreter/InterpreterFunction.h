@@ -186,7 +186,8 @@ private:
   template <typename ElemTy>
   void fwdBatchedAddInstFloatImpl(const BatchedAddInst *I);
 
-  template <typename ElemTy>
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
   void fwdElementCmpEQInstImpl(const glow::ElementCmpEQInst *I);
 
   template <typename ElemTy>
@@ -218,8 +219,19 @@ private:
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
-  template <typename ElemTy>
-  void fwdElementCmpLTEInstFloatImpl(const ElementCmpLTEInst *I);
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpLTEInstImpl(const ElementCmpLTEInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpLTInstImpl(const ElementCmpLTInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy, typename InstCmpKind>
+  void
+  fwdElementCmpHelperImpl(const InstCmpKind *I,
+                          std::function<bool(CmpTy LHS, CmpTy RHS)> cmpHelper);
 
   template <typename ElemTy>
   void fwdElementPowInstFloatImpl(const ElementPowInst *I);

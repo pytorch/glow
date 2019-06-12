@@ -70,6 +70,293 @@ static Tensor createTensorConditionallyQuantized(ElemKind T,
 }
 
 template <typename DataType>
+glow::Handle<bool>
+lessHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
+           glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+           llvm::ArrayRef<DataType> xValues, llvm::ArrayRef<DataType> yValues,
+           llvm::ArrayRef<size_t> xDims, llvm::ArrayRef<size_t> yDims) {
+  auto *X = createPlaceholderConditionallyQuantized(mod, DTy, xDims, "X",
+                                                    /* isTrainable */ false);
+
+  auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, yDims, "Y",
+                                                    /* isTrainable */ false);
+
+  bindings.allocate(llvm::dyn_cast<Placeholder>(X))->getHandle<DataType>() =
+      xValues;
+
+  bindings.allocate(llvm::dyn_cast<Placeholder>(Y))->getHandle<DataType>() =
+      yValues;
+
+  auto *cmpr =
+      F->createNodeWithBroadcast<CmpLTNode>("cmpLT", /* axis */ -1, X, Y);
+
+  auto *save = F->createSave("save", cmpr);
+  auto *saveAlloc = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  return saveAlloc->getHandle<bool>();
+}
+
+TEST_P(OperatorTest, less_int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  int8_t xValues[] = {3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  int8_t yValues[] = {3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {2, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, xValues,
+                         yValues, xDims, yDims);
+
+  bool refResults[] = {
+      false, true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+  };
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_floatCases) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+  float yValues[] = {5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_float16Cases) {
+  ENABLED_BACKENDS(Interpreter);
+
+  float16 xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+  float16 yValues[] = {5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          xValues, yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_int64Cases) {
+  ENABLED_BACKENDS(Interpreter);
+
+  int64_t xValues[] = {1, 2, 3, 4, 5};
+
+  int64_t yValues[] = {5, 4, 3, 2, 1};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  float yValues[] = {3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {2, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+  };
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_broadcast_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  float yValues[] = {3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {1, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_int32Cases) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  int32_t xValues[] = {1, 2, 3, 4, 5};
+  int32_t yValues[] = {5, 4, 3, 2, 1};
+
+  size_t xDims[] = {1, 1, 1, 5};
+  size_t yDims[] = {1, 1, 1, 5};
+
+  Handle<bool> saveH =
+      lessHelper<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+template <typename DataType>
 glow::Handle<DataType>
 whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
             glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
