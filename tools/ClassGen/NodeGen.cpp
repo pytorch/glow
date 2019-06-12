@@ -442,6 +442,21 @@ int main(int argc, char **argv) {
                     "Offsets are appended to the end of each row. Thus, Data "
                     "must be a two-dimensional tensor.");
 
+  BB.newNode("FusedRowwiseQuantizedSparseLengthsSum")
+      .addInput("Data")
+      .addInput("Indices")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Data "
+                    "indexed by Indices vector, and then accumulates them into "
+                    "len(Lengths) entries: first Lengths[0] slices are "
+                    "aggregated to Result[0], next Lengths[1] slices are "
+                    "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
+                    "equal to len(Indices). The input "
+                    "data is fused rowwise-quantized, where the Scales and "
+                    "Offsets are appended to the end of each row. Thus, Data "
+                    "must be a two-dimensional tensor.");
+
   BB.newNode("LengthsToRanges")
       .addInput("Lengths")
       .addResultFromCtorArg()

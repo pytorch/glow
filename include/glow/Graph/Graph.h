@@ -764,14 +764,14 @@ public:
   /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
   /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
   /// I.e. sum(Lengths) must be equal to len(Indices).
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+  FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Constant *data, NodeValue indices,
                                               NodeValue lengths);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+  FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Tensor &data, NodeValue indices,
                                               NodeValue lengths);
@@ -780,7 +780,7 @@ public:
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      Tensor &data,
+                                                      NodeValue data,
                                                       NodeValue weights,
                                                       NodeValue indices,
                                                       NodeValue lengths);
@@ -790,7 +790,7 @@ public:
   /// internally.
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      Constant *data,
+                                                      Tensor &data,
                                                       NodeValue weights,
                                                       NodeValue indices,
                                                       NodeValue lengths);
