@@ -47,6 +47,8 @@ namespace runtime {
 DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   return new OpenCLDeviceManager(config);
 }
+
+OpenCLBuffer::~OpenCLBuffer() { clReleaseMemObject(buffer_); }
 } // namespace runtime
 } // namespace glow
 
