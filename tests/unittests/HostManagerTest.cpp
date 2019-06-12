@@ -194,10 +194,15 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
 
   llvm::Error runErr = llvm::Error::success();
 
+  std::shared_ptr<std::mutex> lock = std::make_shared<std::mutex>();
+  std::unique_lock<std::mutex> guard(*lock);
+
   /// Don't care a about the first one.
   hostManager->runNetwork("main", std::move(context),
-                          [](RunIdentifierTy runID, llvm::Error err,
-                             std::unique_ptr<ExecutionContext> context_) {});
+                          [lock](RunIdentifierTy runID, llvm::Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+                            std::unique_lock<std::mutex> guard(*lock);
+                          });
 
   hostManager->runNetwork(
       "main", std::move(context2),
@@ -208,4 +213,5 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
 
   // Don't need a future, error CB called inline.
   EXPECT_TRUE(errToBool(std::move(runErr)));
+  guard.unlock();
 }

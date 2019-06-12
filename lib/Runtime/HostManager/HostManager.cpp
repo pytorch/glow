@@ -266,7 +266,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
       [this, callback,
        name = networkName.str()](RunIdentifierTy runID, llvm::Error err,
                                  std::unique_ptr<ExecutionContext> context) {
-        --activeRequestCount_;
         {
           std::lock_guard<std::mutex> networkLock(networkLock_);
           auto it = networks_.find(name);
@@ -276,6 +275,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
         }
         TRACE_EVENT_INSTANT(context->getTraceContext(), "finish_" + name);
         callback(runID, std::move(err), std::move(context));
+        --activeRequestCount_;
       });
   return currentRun;
 }
