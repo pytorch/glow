@@ -39,6 +39,8 @@ private:
   std::string currentFullScope_;
 
 public:
+  LogContext() { addLogMetaData(); };
+
   /// Add content into the contents vector.
   void addLogContent(llvm::StringRef logContent);
 
@@ -62,6 +64,11 @@ public:
 
   /// Logs the node deletion.
   void logNodeDeletion(const Node &deletedNode);
+
+private:
+  /// Add log metadata which includes version number and latest commit's info
+  /// (hash, date).
+  void addLogMetaData();
 };
 
 /// Logs a new log scope.
