@@ -33,7 +33,7 @@ void defaultTensorInitializer(Function *F, Node *node, unsigned inputIdx,
       size_t fanIn = kdim.height * kdim.width * idim.c;
       tensor->init(Tensor::InitKind::Xavier, fanIn, F->getPRNG());
     } else if (ConvolutionNode::BiasIdx == inputIdx) {
-      tensor->init(Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
+      tensor->init(glow::Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
     }
     break;
   }
