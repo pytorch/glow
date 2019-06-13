@@ -121,6 +121,7 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
   device_->runFunction(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
@@ -189,6 +190,7 @@ void ExecutionEngine::insertCompiledFunction(
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
   llvm::Error addErr = llvm::Error::success();
+  (void)!!addErr; // Mark Error as checked before it's assigned to.
   device_->addNetwork(&M_, std::move(functionMap),
                       [&addPromise, &addErr](const Module *, llvm::Error err) {
                         addErr = std::move(err);

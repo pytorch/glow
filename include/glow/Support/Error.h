@@ -248,7 +248,6 @@ template <typename T> llvm::Error takeErr(llvm::Expected<T> e) {
 /// added when the class already holds an Error, it will discard the new Error
 /// in favor of the original one. All methods in OneErrOnly are thread-safe.
 class OneErrOnly {
-private:
   llvm::Error err_ = llvm::Error::success();
   std::mutex m_;
 

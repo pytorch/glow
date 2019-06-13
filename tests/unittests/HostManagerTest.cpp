@@ -102,7 +102,7 @@ TEST_F(HostManagerTest, runNetwork) {
   auto ready = runNetwork.get_future();
 
   llvm::Error runErr = llvm::Error::success();
-
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
   hostManager->runNetwork("main", std::move(context),
                           [&runNetwork, &saveTensor, &context, &runErr](
                               RunIdentifierTy runID, llvm::Error err,
@@ -121,6 +121,7 @@ TEST_F(HostManagerTest, runNetwork) {
 
   // reset runErr
   runErr = llvm::Error::success();
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
 
   std::promise<void> newRun;
   ready = newRun.get_future();
@@ -193,6 +194,7 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
   auto context2 = llvm::make_unique<ExecutionContext>();
 
   llvm::Error runErr = llvm::Error::success();
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
 
   std::shared_ptr<std::mutex> lock = std::make_shared<std::mutex>();
   std::unique_lock<std::mutex> guard(*lock);

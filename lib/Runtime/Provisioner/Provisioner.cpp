@@ -158,9 +158,10 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
 
         // Load functions on device.
         DeviceIDTy logicalID = logicalDeviceSize[i].first;
-        llvm::Error addErr = llvm::Error::success();
         std::promise<void> addPromise;
         auto ready = addPromise.get_future();
+        llvm::Error addErr = llvm::Error::success();
+        (void)!!addErr; // Mark Error as checked before it's assigned to.
         devices_[deviceID]->addNetwork(
             &module, functionMaps[logicalID],
             [&addErr, &addPromise](const Module *, llvm::Error err) {

@@ -146,8 +146,9 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
       std::promise<void> removeNetwork;
-      llvm::Error removeErr = llvm::Error::success();
       auto done = removeNetwork.get_future();
+      llvm::Error removeErr = llvm::Error::success();
+      (void)!!removeErr; // Mark Error as checked before it's assigned to.
       devices_[device]->evictNetwork(
           node->name,
           [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
@@ -203,6 +204,7 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
   runNetwork(
       networkName, std::move(context),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,

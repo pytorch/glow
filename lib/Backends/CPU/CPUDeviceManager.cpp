@@ -101,22 +101,16 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
 
 void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                         EvictFunctionCBTy evictCB) {
-  llvm::Error err = llvm::Error::success();
-
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
-    err =
+    evictCB(
+        functionName,
         MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
                  llvm::formatv("Could not find function with name {0} to evict",
                                functionName)
-                     .str());
-  }
-
-  if (evictCB) {
-    evictCB(functionName, std::move(err));
-  } else {
-    llvm::errs() << llvm::toString(std::move(err));
+                     .str()));
+    return;
   }
 }
 

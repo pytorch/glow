@@ -289,8 +289,6 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                            EvictFunctionCBTy evictCB) {
-  llvm::Error err = llvm::Error::success();
-
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
     auto users = buffer->decrementUsers();
@@ -301,17 +299,11 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
       usedMemoryBytes_ -= size;
     }
   } else {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {} to evict",
-                               functionName)
-                     .str());
-  }
-
-  if (evictCB) {
-    evictCB(functionName, std::move(err));
-  } else {
-    LOG(ERROR) << llvm::toString(std::move(err));
+    evictCB(functionName,
+            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                     strFormat("Could not find function with name %s to evict",
+                               functionName.c_str())));
+    return;
   }
 }
 

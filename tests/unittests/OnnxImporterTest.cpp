@@ -1530,6 +1530,7 @@ static void importPad(std::string fileName, const char *inputName,
                 inputShape[3]);
     if (expectLoadError) {
       llvm::Error err = llvm::Error::success();
+      (void)!!err; // Mark Error as checked before it's assigned to.
       ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
       EXPECT_TRUE(errToBool(std::move(err)));
       return;

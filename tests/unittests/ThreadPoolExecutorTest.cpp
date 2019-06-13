@@ -51,20 +51,13 @@ public:
                     EvictFunctionCBTy evictCB) override {
     // Erase the entry so that the same function name can be used to register
     // another result.
-    llvm::Error err = llvm::Error::success();
 
     if (!resultMap_.erase(functionName)) {
-      err = MAKE_ERR(
-          GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-          llvm::formatv("Could not find function with name {0} to evict",
-                        functionName)
-              .str());
-    }
-
-    if (evictCB) {
-      evictCB(functionName, std::move(err));
-    } else {
-      llvm::errs() << llvm::toString(std::move(err));
+      evictCB(
+          functionName,
+          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   strFormat("Could not find function with name %s to evict",
+                             functionName.c_str())));
     }
   }
 
@@ -641,9 +634,10 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   std::unique_ptr<ExecutionContext> executorOutputContext;
 
   // Call Executor::run().
-  llvm::Error runErr = llvm::Error::success();
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
+  llvm::Error runErr = llvm::Error::success();
+  (void)!!runErr; // Mark Error as checked before it's assigned to.
   executor_->run(nullptr, std::move(testContext), testRunId,
                  [&runErr, &promise, &executorRunId, &executorOutputContext](
                      RunIdentifierTy runId, llvm::Error err,
