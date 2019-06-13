@@ -60,7 +60,7 @@ struct FunctionNameComparator {
 using FunctionToNodesMapTy =
     std::map<Function *, NodesSetTy, FunctionNameComparator>;
 
-using FunctionToBackendKindMapTy =
+using FunctionToBackendNameMapTy =
     std::map<Function *, std::string, FunctionNameComparator>;
 
 class NodeToFunctionMap {
@@ -73,7 +73,7 @@ class NodeToFunctionMap {
 
   /// Map of the partitions to the backend which will be used for compiling
   /// this partition.
-  FunctionToBackendKindMapTy functionToBackendName_;
+  FunctionToBackendNameMapTy functionToBackendName_;
 
   /// Map of sub-functions to their memory consumption.
   PartitionCostMapTy partitionCost_;
@@ -239,7 +239,7 @@ class Partitioner {
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
 
-  FunctionToBackendKindMapTy
+  FunctionToBackendNameMapTy
   backendBasedPartition(Function *F, std::vector<Backend *> &backends);
 
   /// Given the node-function mapping, do the actual partitioning. If \p saveDAG

@@ -66,7 +66,7 @@ extern unsigned parCloneCountOpt;
     std::string getBackendName() { return std::get<0>(GetParam()); }           \
   }
 
-/// Note that we use std::tuple<BackendKind> here to match other tests which are
+/// Note that we use std::tuple<std::string> here to match other tests which are
 /// parameterized across many other values, e.g. those in ParameterSweepTest.
 DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<std::string>);
 

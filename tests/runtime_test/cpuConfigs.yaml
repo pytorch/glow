@@ -1,11 +1,11 @@
 ---
 - name:     Device1
-  kindName: CPU
+  backendName: CPU
   parameters: |
     "platformID":"1"
     "deviceID" : "0"
 - name:     Device2
-  kindName: CPU
+  backendName: CPU
   parameters: |
     "platformID":"1"
 ...

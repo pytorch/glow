@@ -325,7 +325,7 @@ static llvm::StringMap<std::string> getBackendParams(std::string &str) {
 
 /// If the device config file \p loadDeviceDoncfigsFile available, load \p
 /// configs from the file. Otherwise, create \p numDevices number of devices
-/// based on \p backendKind.
+/// based on \p backendName.
 static std::vector<std::unique_ptr<runtime::DeviceConfig>>
 generateDeviceConfigs(std::string &loadDeviceConfigsFile,
                       unsigned int numDevices, llvm::StringRef backendName) {
@@ -342,7 +342,7 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
     std::vector<DeviceConfigHelper> lists;
     lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFile);
     for (unsigned int i = 0; i < lists.size(); ++i) {
-      auto backendName = lists[i].kindName_;
+      auto backendName = lists[i].backendName_;
       auto name = lists[i].name_;
       auto parameters = getBackendParams(lists[i].parameters_.str);
       auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
