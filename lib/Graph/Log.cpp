@@ -22,9 +22,29 @@
 
 namespace glow {
 
+/// Log version number.
+static constexpr auto logVersionNo_ = "v1.0.0";
+
 static llvm::cl::opt<bool>
     dumpCompilationLogOpt("dump-compilation-log", llvm::cl::init(false),
                           llvm::cl::desc("Dump compilation log"));
+
+void LogContext::addLogMetaData() {
+  addLogContent("<!-- Log Version: ");
+  addLogContent(logVersionNo_);
+  addLogContent(" -->\n");
+#ifdef GIT_SHA1
+  addLogContent("<!-- Log commit sha1: ");
+  addLogContent(GIT_SHA1);
+  addLogContent(" -->\n");
+#endif
+#ifdef GIT_DATE
+  addLogContent("<!-- Log commit date: ");
+  addLogContent(GIT_DATE);
+  addLogContent(" -->\n");
+#endif
+  addLogContent("\n");
+}
 
 void LogContext::addLogContent(llvm::StringRef logContent) {
   logContents_.push_back(logContent);
