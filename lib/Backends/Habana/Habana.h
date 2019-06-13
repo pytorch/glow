@@ -155,6 +155,35 @@ private:
   std::vector<EnqueueTensorInfo> outputInfo_;
 };
 
+class HabanaBackend final : public Backend {
+public:
+  /// Constructor.
+  HabanaBackend() = default;
+
+  /// @name Backend methods.
+  /// This is the implementation of the Backend interface.
+  ///@{
+  ~HabanaBackend() override = default;
+
+  std::string getBackendName() const override { return getName(); }
+  static std::string getName() { return "Habana"; }
+
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  compile(Function *F, const BackendOptions &opts) const override;
+
+  bool isOpSupported(const NodeInfo &NI) const override;
+
+  bool shouldLower(const Node *N) const override;
+
+  bool transformPostLowering(Function *F,
+                             CompilationContext &cctx) const override;
+
+  bool shouldShareBuffers() const override { return false; }
+  /// @}
+
+  static bool isVersionBiggerEqualTo(std::string versionToCompare);
+};
+
 class HabanaBindings : public DeviceBindings {
 public:
   HabanaBindings(uint32_t deviceId, uint64_t topologyId)
@@ -218,35 +247,6 @@ private:
   std::string recipeName_;
   PlaceholderList inputs_;
   PlaceholderList outputs_;
-};
-
-class HabanaBackend final : public Backend {
-public:
-  /// Constructor.
-  HabanaBackend() = default;
-
-  /// @name Backend methods.
-  /// This is the implementation of the Backend interface.
-  ///@{
-  ~HabanaBackend() override = default;
-
-  std::string getBackendName() const override { return getName(); }
-  static std::string getName() { return "Habana"; }
-
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
-  compile(Function *F, const BackendOptions &opts) const override;
-
-  bool isOpSupported(const NodeInfo &NI) const override;
-
-  bool shouldLower(const Node *N) const override;
-
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
-
-  bool shouldShareBuffers() const override { return false; }
-  /// @}
-
-  static bool isVersionBiggerEqualTo(std::string versionToCompare);
 };
 
 } // namespace glow
