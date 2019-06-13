@@ -79,10 +79,12 @@ createAndInitConvNet(glow::PlaceholderBindings &bindings,
 /// Helper to test sweeping across a variety of configurations of a convolution
 /// by comparing the results to the Interpreter given some \p allowedError.
 /// \p config contains the backend to compare the Interpreter against, plus the
-/// specific configuration to run for this test. \p interpK and \p backendK are
-/// the element kinds to use for the Interpreter and backend, respectively.
-static void testParamSweepConv(ThreeIntTupleConfig config, ElemKind interpK,
-                               ElemKind backendK, float allowedError) {
+/// specific configuration to run for this test. \p interpElemKind and \p
+/// backendElemKind are the element kinds to use for the Interpreter and
+/// backend, respectively.
+static void testParamSweepConv(ThreeIntTupleConfig config,
+                               ElemKind interpElemKind,
+                               ElemKind backendElemKind, float allowedError) {
   std::string backend;
   size_t size, depth, kernel;
   SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, size, depth, kernel)
@@ -93,8 +95,8 @@ static void testParamSweepConv(ThreeIntTupleConfig config, ElemKind interpK,
   auto boundF = std::bind(createAndInitConvNet, std::placeholders::_1,
                           std::placeholders::_2, size, depth, kernel,
                           /* stride */ 1, /* pad */ 0);
-  compareAgainstInterpreter(backend, boundF, interpK, backendK, allowedError,
-                            parCloneCountOpt);
+  compareAgainstInterpreter(backend, boundF, interpElemKind, backendElemKind,
+                            allowedError, parCloneCountOpt);
 }
 
 DECLARE_STATELESS_BACKEND_TEST(ConvSweepTest, ThreeIntTupleConfig);
@@ -152,10 +154,12 @@ createAndInitBatchMatMulNet(glow::PlaceholderBindings &bindings,
 /// Helper to test sweeping across a variety of configurations of a BatchMatMul
 /// by comparing the results to the Interpreter given some \p allowedError.
 /// \p config contains the backend to compare the Interpreter against, plus the
-/// specific configuration to run for this test. \p interpK and \p backendK are
-/// the element kinds to use for the Interpreter and backend, respectively.
+/// specific configuration to run for this test. \p interpElemKind and \p
+/// backendElemKind are the element kinds to use for the Interpreter and
+/// backend, respectively.
 static void testParamSweepBatchMatMul(ThreeIntTupleConfig config,
-                                      ElemKind interpK, ElemKind backendK,
+                                      ElemKind interpElemKind,
+                                      ElemKind backendElemKind,
                                       float allowedError) {
   std::string backend;
   size_t N, A, Z;
@@ -168,8 +172,8 @@ static void testParamSweepBatchMatMul(ThreeIntTupleConfig config,
   // Multiplying LHS {N, A, Z} by RHS {N, Z, B} to get result {N, A, B}.
   auto boundF = std::bind(createAndInitBatchMatMulNet, std::placeholders::_1,
                           std::placeholders::_2, N, A, Z, B);
-  compareAgainstInterpreter(backend, boundF, interpK, backendK, allowedError,
-                            parCloneCountOpt);
+  compareAgainstInterpreter(backend, boundF, interpElemKind, backendElemKind,
+                            allowedError, parCloneCountOpt);
 }
 
 DECLARE_STATELESS_BACKEND_TEST(BatchMatMulSweepTest, ThreeIntTupleConfig);
@@ -229,10 +233,12 @@ createAndInitFCNet(glow::PlaceholderBindings &bindings,
 /// Helper to test sweeping across a variety of configurations of a FC by
 /// comparing the results to the Interpreter given some \p allowedError.
 /// \p config contains the backend to compare the Interpreter against, plus the
-/// specific configuration to run for this test. \p interpK and \p backendK are
-/// the element kinds to use for the Interpreter and backend, respectively.
-static void testParamSweepFC(ThreeIntTupleConfig config, ElemKind interpK,
-                             ElemKind backendK, float allowedError) {
+/// specific configuration to run for this test. \p interpElemKind and \p
+/// backendElemKind are the element kinds to use for the Interpreter and
+/// backend, respectively.
+static void testParamSweepFC(ThreeIntTupleConfig config,
+                             ElemKind interpElemKind, ElemKind backendElemKind,
+                             float allowedError) {
   std::string backend;
   size_t A, Z, B;
   SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, A, Z, B);
@@ -242,8 +248,8 @@ static void testParamSweepFC(ThreeIntTupleConfig config, ElemKind interpK,
 
   auto boundF = std::bind(createAndInitFCNet, std::placeholders::_1,
                           std::placeholders::_2, A, Z, B);
-  compareAgainstInterpreter(backend, boundF, interpK, backendK, allowedError,
-                            parCloneCountOpt);
+  compareAgainstInterpreter(backend, boundF, interpElemKind, backendElemKind,
+                            allowedError, parCloneCountOpt);
 }
 
 DECLARE_STATELESS_BACKEND_TEST(FCSweepTest, ThreeIntTupleConfig);
@@ -310,10 +316,12 @@ createAndInitConcatNet(glow::PlaceholderBindings &bindings,
 /// Helper to test sweeping across a variety of configurations of a Concat by
 /// comparing the results to the Interpreter given some \p allowedError.
 /// \p config contains the backend to compare the Interpreter against, plus the
-/// specific configuration to run for this test. \p interpK and \p backendK are
-/// the element kinds to use for the Interpreter and backend, respectively.
-static void testParamSweepConcat(FourIntTupleConfig config, ElemKind interpK,
-                                 ElemKind backendK, float allowedError) {
+/// specific configuration to run for this test. \p interpElemKind and \p
+/// backendElemKind are the element kinds to use for the Interpreter and
+/// backend, respectively.
+static void testParamSweepConcat(FourIntTupleConfig config,
+                                 ElemKind interpElemKind,
+                                 ElemKind backendElemKind, float allowedError) {
   std::string backend;
   size_t numInputs, numDims, maxLength, axis;
   SET_BACKEND_KIND_AND_FOUR_INT_PARAMS(config, backend, numInputs, numDims,
@@ -330,8 +338,8 @@ static void testParamSweepConcat(FourIntTupleConfig config, ElemKind interpK,
   auto boundF =
       std::bind(createAndInitConcatNet, std::placeholders::_1,
                 std::placeholders::_2, numInputs, numDims, maxLength, axis);
-  compareAgainstInterpreter(backend, boundF, interpK, backendK, allowedError,
-                            parCloneCountOpt);
+  compareAgainstInterpreter(backend, boundF, interpElemKind, backendElemKind,
+                            allowedError, parCloneCountOpt);
 }
 
 DECLARE_STATELESS_BACKEND_TEST(ConcatSweepTest, FourIntTupleConfig);
