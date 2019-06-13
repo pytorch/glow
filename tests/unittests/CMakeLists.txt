@@ -76,21 +76,6 @@ add_glow_test(NAME Caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(ParameterSweepTest
-               ParameterSweepTest.cpp)
-target_link_libraries(ParameterSweepTest
-                      PRIVATE
-                        BackendTestUtils
-                        Graph
-                        IR
-                        ExecutionEngine
-                        Optimizer
-                        Support
-                        gtest
-                        TestMain)
-add_glow_test(EXPENSIVE ParameterSweepTest
-              ${GLOW_BINARY_DIR}/tests/ParameterSweepTest)
-
 add_executable(DeviceManagerTest
                DeviceManagerTest.cpp)
 target_link_libraries(DeviceManagerTest
