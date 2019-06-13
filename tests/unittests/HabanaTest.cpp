@@ -1237,7 +1237,7 @@ TEST_F(Habana, SparseLengthsSum) {
   synTensor sls1Inputs[] = {dataT, i1T, i11T, sbT};
   ns_SparseLengthsSum::Params sls1Params;
   sls1Params.mode = SEPARATE_SC_ZP;
-  synCreateGenericNode(sls1Inputs, &save1T, 3, 1, (void *)&sls1Params,
+  synCreateGenericNode(sls1Inputs, &save1T, 4, 1, (void *)&sls1Params,
                        "sparse_lengths_sum_f32", "sls1", nullptr, nullptr);
 
   // Compile graph.
