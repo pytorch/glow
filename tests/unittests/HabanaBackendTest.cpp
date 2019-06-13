@@ -1514,7 +1514,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 
   // Compile function.
   glow::runtime::FunctionMapTy functions;
-  auto backend = std::unique_ptr<Backend>(createBackend(BackendKind::Habana));
+  auto backend = std::unique_ptr<Backend>(createBackend("Habana"));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
