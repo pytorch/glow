@@ -5047,7 +5047,7 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 TEST_P(OperatorTest, SparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
 
   /*
     DATA  = [
@@ -5150,7 +5150,7 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
 
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -5376,7 +5376,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum) {
 }
 
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  =   [[2.0, -0.5, 13]]
@@ -5435,7 +5435,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
 }
 
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  = [
@@ -5485,6 +5485,83 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result, 0.03));
+}
+
+/// Test SLS when some input tensors are constants.
+TEST_P(OperatorTest, ConstantSLS) {
+  auto *data = mod_.createConstant(ElemKind::FloatTy, {1024, 32}, "data");
+  auto *indices = mod_.createConstant(ElemKind::Int64ITy, {314}, "indices");
+  auto *lengths = mod_.createConstant(ElemKind::Int32ITy, {20}, "lengths");
+
+  // data
+  auto DH = data->getPayload().getHandle();
+  for (size_t i = 0; i < 1024; i++) {
+    for (size_t j = 0; j < 32; j++) {
+      DH.at({i, j}) = (float)i;
+    }
+  }
+
+  // indices
+  auto IH = indices->getHandle<int64_t>();
+  std::iota(IH.begin(), IH.end(), 0);
+
+  // lengths
+  auto LH = lengths->getHandle<int32_t>();
+  LH.clear(16);
+  for (size_t ldx : {1, 2, 6, 13, 14, 19}) {
+    LH.at({ldx}) = 15;
+  }
+
+  auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *S = F_->createSave("save", R);
+  auto *out = bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  std::vector<float> expected = {120,  345,  570,  856,  1112, 1368, 1515,
+                                 1864, 2120, 2376, 2632, 2888, 3144, 3180,
+                                 3405, 3880, 4136, 4392, 4648, 4590};
+  auto OH = out->getHandle();
+  for (size_t i = 0; i < 20; i++) {
+    for (size_t j = 0; j < 32; j++) {
+      EXPECT_EQ(OH.at({i, j}), expected[i]);
+    }
+  }
+}
+
+/// Test SLS when some "lengths" inputs are zero.
+TEST_P(OperatorTest, SLSWithZeroLengths) {
+  ENABLED_BACKENDS(CPU, Habana);
+
+  compareAgainstInterpreter(
+      getBackendKind(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        auto &mod = EE.getModule();
+        auto *F = mod.createFunction("main");
+        constexpr size_t embedWidth = 1000;
+        Tensor data(ElemKind::FloatTy, {embedWidth, 8});
+        data.getHandle().randomize(-1, 1, mod.getPRNG());
+        Constant *weights =
+            mod.createConstant(ElemKind::FloatTy, {3000}, "weights");
+        weights->getPayloadMutable().getHandle().clear(1.0f);
+        auto *indices =
+            mod.createPlaceholder(ElemKind::Int64ITy, {3000}, "indices", false);
+        auto *lengths =
+            mod.createPlaceholder(ElemKind::Int32ITy, {1000}, "lengths", false);
+        bindings.allocate(indices)->getHandle<int64_t>().randomize(
+            0, embedWidth - 1, mod.getPRNG());
+        auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+        LH.clear(0);
+        std::fill(LH.begin(), LH.begin() + 13, 20);
+
+        auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            "RQSLWS", data, weights, indices, lengths);
+        auto *S = F->createSave("save", R);
+        auto *res = bindings.allocate(S->getPlaceholder());
+        return std::make_pair(F, res);
+      },
+      ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, SparseToDense) {
