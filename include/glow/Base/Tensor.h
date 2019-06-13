@@ -348,6 +348,7 @@ public:
     std::swap(type_, other.type_);
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
+    std::swap(unpaddedSize_, other.unpaddedSize_);
   }
 
   /// Move assignment operator.
@@ -356,6 +357,7 @@ public:
     std::swap(type_, other.type_);
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
+    std::swap(unpaddedSize_, other.unpaddedSize_);
     return *this;
   }
 

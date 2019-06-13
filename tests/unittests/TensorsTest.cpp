@@ -940,3 +940,14 @@ max: 1515.200  min: 1.200
   EXPECT_EQ(mes2, expectMes2);
   EXPECT_EQ(mes2, osT3.str());
 }
+
+/// Test unpadded size.
+TEST(Tensor, unpaddedSize) {
+  Tensor partial(ElemKind::FloatTy, {11});
+  auto paddedType = Type::newShape(partial.getType(), {256});
+  auto bytes = partial.getSizeInBytes();
+  Tensor T(partial.getUnsafePtr(), &paddedType, bytes);
+  EXPECT_EQ(T.getUnpaddedSizeInBytes(), bytes);
+  auto moved = std::move(T);
+  EXPECT_EQ(moved.getUnpaddedSizeInBytes(), bytes);
+}
