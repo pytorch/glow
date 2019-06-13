@@ -158,7 +158,7 @@ private:
 class HabanaBindings : public DeviceBindings {
 public:
   HabanaBindings(uint32_t deviceId, uint64_t topologyId)
-      : DeviceBindings(BackendKind::Habana), deviceId_(deviceId),
+      : DeviceBindings(HabanaBackend::getName()), deviceId_(deviceId),
         topologyId_(topologyId) {}
 
   virtual ~HabanaBindings() {}

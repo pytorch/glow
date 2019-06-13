@@ -18,11 +18,6 @@
 
 namespace glow {
 
-Backend *createBackend(BackendKind backendKind) {
-  const std::string &backendName = BackendKindToString(backendKind);
-  return createBackend(backendName);
-}
-
 Backend *createBackend(llvm::StringRef backendName) {
   auto *backend = FactoryRegistry<std::string, Backend>::get(backendName);
 

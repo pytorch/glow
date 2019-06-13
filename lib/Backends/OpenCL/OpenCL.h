@@ -232,7 +232,7 @@ namespace runtime {
 struct OpenCLDeviceBindings : DeviceBindings {
   OpenCLDeviceBindings(cl_mem buffer, cl_command_queue commands,
                        cl_device_id device, cl_context ctx)
-      : DeviceBindings(BackendKind::OpenCL), deviceBuffer{buffer},
+      : DeviceBindings(OCLBackend::getName()), deviceBuffer{buffer},
         commandQueue{commands}, deviceId{device}, context{ctx} {}
 
   /// CL memory buffer. Currently this contains both mutable and immutable
