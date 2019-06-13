@@ -5535,7 +5535,7 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
   ENABLED_BACKENDS(CPU, Habana);
 
   compareAgainstInterpreter(
-      getBackendKind(),
+      getBackendName(),
       [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
         auto &mod = EE.getModule();
         auto *F = mod.createFunction("main");
