@@ -203,67 +203,64 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                   func.first)
                   .str()));
     }
-  }
-  // Collect constants once, since currently the bundle grabs everything in the
-  // module.
-  auto &bundle = functions.begin()->second->getRuntimeBundle();
-  if (bundle.getConstants() == nullptr) {
-    bundle.collectConstants(module);
-  }
-  size_t sizeInBytes = bundle.getConstantWeightSize();
-  if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
-    // Free the constants.
-    bundle.freeConstants();
-    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                             "Failed to add network: not enough memory"));
-    return;
-  }
 
-  // Create a command queue to copy constants to the device and compile the
-  // function.
-  cl_int err;
-  auto traceInfo = functions.begin()->second->getTraceInfo();
-  cl_command_queue commands =
-      clCreateCommandQueue(context_, deviceId_, 0, &err);
-  if (!commands) {
-    readyCB(
-        module,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                 "Failed to add network: could not create CL command queue."));
-    return;
-  }
-
-  // Copy constants to device.
-  auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
-              bundle.getActivationsSize();
-  cl_mem deviceBuffer;
-  if (auto autoDeviceBufferOrErr = allocDeviceBuffer(size)) {
-    deviceBuffer = *autoDeviceBufferOrErr;
-  } else {
-    readyCB(module, autoDeviceBufferOrErr.takeError());
-    return;
-  }
-  auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
-  if (bundle.getConstants()) {
-    auto buf = bundle.getConstants();
-    size_t valueOffset = 0;
-    cl_event event{nullptr};
-    cl_int err = clEnqueueWriteBuffer(
-        commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
-        valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
-    if (err != CL_SUCCESS) {
-      readyCB(module, MAKE_ERR("Unable to copy data to the device"));
+    auto &bundle = func.second->getRuntimeBundle();
+    if (bundle.getConstants() == nullptr) {
+      bundle.collectConstants(module);
+    }
+    size_t sizeInBytes = bundle.getConstantWeightSize();
+    if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
+      // Free the constants.
+      bundle.freeConstants();
+      readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                               "Failed to add network: not enough memory"));
       return;
     }
-    clFinish(commands);
-  }
-  usedMemoryBytes_ += sizeInBytes;
-  // Compile the CL program.
-  // Add to the function name lookup map.
-  // Add shared pointer to the buffer to buffers. This way the buffer will be
-  // freed after the last reference is removed.
-  for (const auto &func : functions) {
+
+    // Create a command queue to copy constants to the device and compile the
+    // function.
+    cl_int err;
+    cl_command_queue commands =
+        clCreateCommandQueue(context_, deviceId_, 0, &err);
+    if (!commands) {
+      readyCB(module,
+              MAKE_ERR(
+                  GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                  "Failed to add network: could not create CL command queue."));
+      return;
+    }
+
+    // Copy constants to device.
+    auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
+                bundle.getActivationsSize();
+    cl_mem deviceBuffer;
+    if (auto autoDeviceBufferOrErr = allocDeviceBuffer(size)) {
+      deviceBuffer = *autoDeviceBufferOrErr;
+    } else {
+      readyCB(module, autoDeviceBufferOrErr.takeError());
+      return;
+    }
+    auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
+    if (bundle.getConstants()) {
+      auto buf = bundle.getConstants();
+      size_t valueOffset = 0;
+      cl_event event{nullptr};
+      err = clEnqueueWriteBuffer(
+          commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
+          valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+          /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
+      if (err != CL_SUCCESS) {
+        readyCB(module, MAKE_ERR("Unable to copy data to the device"));
+        return;
+      }
+      clFinish(commands);
+    }
+    usedMemoryBytes_ += sizeInBytes;
+    // Compile the CL program.
+    // Add to the function name lookup map.
+    // Add shared pointer to the buffer to buffers. This way the buffer will be
+    // freed after the last reference is removed.
+
     // Configure the kernels by providing the size of size_t on the host size.
     // This is required to e.g. properly pass struct parameters of types like
     // ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the host
@@ -279,10 +276,10 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
-  }
 
-  DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
-  clReleaseCommandQueue(commands);
+    DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
+    clReleaseCommandQueue(commands);
+  }
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
