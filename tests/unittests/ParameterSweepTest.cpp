@@ -34,12 +34,20 @@ using llvm::cast;
 /// i.e. those passing three parameters via a single ::testing::Combine() into
 /// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST().
 using ThreeIntTupleConfig = std::tuple<std::string, std::tuple<int, int, int>>;
+using FourIntTupleConfig =
+    std::tuple<std::string, std::tuple<int, int, int, int>>;
 
 #define SET_BACKEND_KIND_AND_THREE_INT_PARAMS(CONFIG, BACKEND_NAME, PARAM1,    \
                                               PARAM2, PARAM3)                  \
   std::tuple<int, int, int> threeIntTupleParams;                               \
   std::tie(BACKEND_NAME, threeIntTupleParams) = CONFIG;                        \
   std::tie(PARAM1, PARAM2, PARAM3) = threeIntTupleParams;
+
+#define SET_BACKEND_KIND_AND_FOUR_INT_PARAMS(CONFIG, BACKEND_KIND, PARAM1,     \
+                                             PARAM2, PARAM3, PARAM4)           \
+  std::tuple<int, int, int, int> fourIntTupleParams;                           \
+  std::tie(BACKEND_KIND, fourIntTupleParams) = CONFIG;                         \
+  std::tie(PARAM1, PARAM2, PARAM3, PARAM4) = fourIntTupleParams;
 
 //===--------------------------------------------------------------------===//
 //                   Convolution Parameter Sweep Tests
@@ -262,4 +270,102 @@ TEST_P(FCSweepTest, FCTest_Int8) {
 TEST_P(FCSweepTest, FCTest_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.004f);
+}
+
+//===--------------------------------------------------------------------===//
+//                   Concat Parameter Sweep Tests
+//===--------------------------------------------------------------------===//
+
+/// Create a simple network that has a single fp Concat.
+static FunctionTensorPair
+createAndInitConcatNet(glow::PlaceholderBindings &bindings,
+                       glow::ExecutionEngine &EE, size_t numInputs,
+                       size_t numDims, size_t maxLength, size_t axis) {
+  PseudoRNG PRNG;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Make leading dimensions smaller than trailing. Reduces size of tests and is
+  // also in line with typical tests.
+  std::vector<size_t> dims(numDims, maxLength);
+  for (size_t i = 0; i < numDims; i++) {
+    dims[numDims - 1 - i] /= std::pow(2, i);
+  }
+
+  std::vector<NodeValue> inputs(numInputs);
+  for (size_t i = 0; i < numInputs; i++) {
+    auto *IP = mod.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+    bindings.allocate(IP)->getHandle().randomize(-0.2, 0.2, mod.getPRNG());
+    assert(IP);
+    inputs[i] = IP->getOutput();
+  }
+
+  auto *concat = F->createConcat("concat", inputs, axis);
+  auto *save = F->createSave("save", concat);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Helper to test sweeping across a variety of configurations of a Concat by
+/// comparing the results to the Interpreter given some \p allowedError.
+/// \p config contains the backend to compare the Interpreter against, plus the
+/// specific configuration to run for this test. \p interpK and \p backendK are
+/// the element kinds to use for the Interpreter and backend, respectively.
+static void testParamSweepConcat(FourIntTupleConfig config, ElemKind interpK,
+                                 ElemKind backendK, float allowedError) {
+  std::string backend;
+  size_t numInputs, numDims, maxLength, axis;
+  SET_BACKEND_KIND_AND_FOUR_INT_PARAMS(config, backend, numInputs, numDims,
+                                       maxLength, axis);
+  // Exit if axis outside of numDims.
+  if (axis >= numDims) {
+    return;
+  }
+
+  LOG(INFO) << "\n\tTesting Concat with numInputs: " << numInputs
+            << "; numDims: " << numDims << "; maxLength: " << maxLength
+            << "; axis: " << axis << "\n";
+
+  auto boundF =
+      std::bind(createAndInitConcatNet, std::placeholders::_1,
+                std::placeholders::_2, numInputs, numDims, maxLength, axis);
+  compareAgainstInterpreter(backend, boundF, interpK, backendK, allowedError,
+                            parCloneCountOpt);
+}
+
+DECLARE_STATELESS_BACKEND_TEST(ConcatSweepTest, FourIntTupleConfig);
+
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+    SweepTest, ConcatSweepTest,
+    ::testing::Combine(/* numInputs */ ::testing::Values(1, 2, 4, 8, 16, 32, 64,
+                                                         128, 192, 256),
+                       /* numDims */ ::testing::Range(1, 4),
+                       /* maxLength */ ::testing::Values(16, 32, 64, 128),
+                       /* axis */ ::testing::Range(0, 3)));
+
+/// Compare backend against the interpreter in Float.
+TEST_P(ConcatSweepTest, ConcatTest_Float) {
+  ENABLED_BACKENDS(CPU, OpenCL);
+  testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0f);
+}
+
+/// Compare backend against the interpreter in Int8. Note that we do not use the
+/// same ElemKind for the Interpreter; this is because the backend will
+/// quantize/dequantize the input/result anyway, so the comparison wouldn't be
+/// purely on data movement.
+TEST_P(ConcatSweepTest, ConcatTest_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
+                       0.002f);
+}
+
+/// Compare backend against the interpreter in Float16. Note that we do not use
+/// the same ElemKind for the Interpreter; this is because the backend will
+/// down/up convert the input/result anyway, so the comparison wouldn't be
+/// purely on data movement.
+TEST_P(ConcatSweepTest, ConcatTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
+                       0.0001f);
 }
