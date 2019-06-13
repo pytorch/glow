@@ -32,8 +32,7 @@ using namespace glow;
 class HabanaBackendTest : public ::testing::Test {
 protected:
   HabanaBackendTest()
-      : EE_(BackendKind::Habana), mod_(EE_.getModule()),
-        F_(mod_.createFunction("main")) {}
+      : EE_("Habana"), mod_(EE_.getModule()), F_(mod_.createFunction("main")) {}
   ~HabanaBackendTest() = default;
 
   template <ElemKind kind, typename ElemTy> void testFCHelper();
@@ -377,8 +376,8 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
 
 TEST_F(HabanaBackendTest, SetDeviceMemory) {
   uint64_t defaultMemory = (7 << 20);
-  auto configEmpty = glow::runtime::DeviceConfig(BackendKind::Habana);
-  auto configFull = glow::runtime::DeviceConfig(BackendKind::Habana);
+  auto configEmpty = glow::runtime::DeviceConfig("Habana");
+  auto configFull = glow::runtime::DeviceConfig("Habana");
   configFull.setDeviceMemory(32768);
   // With no commandline or deviceConfig, the memory should be default 7 <<20.
   glow::runtime::HabanaDeviceManager device1(configEmpty, 1, 1);
@@ -1477,8 +1476,8 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
   std::vector<std::unique_ptr<DeviceManager>> deviceManagers;
 
   for (unsigned i = 0; i < maxDeviceManagers; ++i) {
-    DeviceManager *deviceManager = new glow::runtime::HabanaDeviceManager(
-        runtime::DeviceConfig(BackendKind::Habana));
+    DeviceManager *deviceManager =
+        new glow::runtime::HabanaDeviceManager(runtime::DeviceConfig("Habana"));
 
     if (deviceManager->init()) {
       delete deviceManager;
