@@ -419,7 +419,7 @@ TEST(Graph, QuantizationProfileNodes) {
   LoweredInfoMap loweredMapForProf;
   CompilationContext cctx{&bindings, &loweredMapForProf};
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
-  std::unique_ptr<Backend> backend(createBackend(BackendKind::Interpreter));
+  std::unique_ptr<Backend> backend(createBackend("Interpreter"));
   EXIT_ON_ERR(::optimizeFunction(F, *backend, cctx));
 
   size_t numberOfProfileNodes =
@@ -668,7 +668,7 @@ TEST(Graph, nodesWithPredicates) {
 }
 
 // Return the number of ConvolutionNode after lower.
-unsigned getConvNodeSize(BackendKind kind) {
+unsigned getConvNodeSize(llvm::StringRef kind) {
   Module mod;
   Function *F = mod.createFunction("main");
   IRFunction M(F);
@@ -689,7 +689,7 @@ unsigned getConvNodeSize(BackendKind kind) {
     }
   }
 
-  if (kind == BackendKind::Interpreter) {
+  if (kind == "Interpreter") {
     EXPECT_EQ(count, 1);
   }
 
@@ -699,16 +699,16 @@ unsigned getConvNodeSize(BackendKind kind) {
 // Check the unrolling grouped convolution opt status:
 // -- disabled for Interpreter, CPU and OpenCL backend,
 TEST(Graph, disableUnrollingGroupConv) {
-  unsigned numberOfNodesInterpreter = getConvNodeSize(BackendKind::Interpreter);
+  unsigned numberOfNodesInterpreter = getConvNodeSize("Interpreter");
   (void)numberOfNodesInterpreter;
 
 #ifdef GLOW_WITH_CPU
-  unsigned numberOfNodesCPU = getConvNodeSize(BackendKind::CPU);
+  unsigned numberOfNodesCPU = getConvNodeSize("CPU");
   EXPECT_EQ(numberOfNodesCPU, numberOfNodesInterpreter);
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-  unsigned numberOfNodesOpenCL = getConvNodeSize(BackendKind::OpenCL);
+  unsigned numberOfNodesOpenCL = getConvNodeSize("OpenCL");
   EXPECT_EQ(numberOfNodesOpenCL, numberOfNodesInterpreter);
 #endif // GLOW_WITH_OPENCL
 }

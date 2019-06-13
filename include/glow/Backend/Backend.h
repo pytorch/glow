@@ -31,28 +31,6 @@ class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
 
-enum class BackendKind {
-  Interpreter, // Execute the network with the built-in interpreter.
-  OpenCL,      // Run the code on an OpenCL device.
-  CPU,         // Compile and run the code on the host.
-  Habana,      // Compile and run the code on a Habana accelerator.
-};
-
-/// Stop gap measure while migrating from BackendKind to backend names.
-/// TODO: Remove this after migration.
-inline std::string BackendKindToString(BackendKind kind) {
-  switch (kind) {
-  case BackendKind::Interpreter:
-    return "Interpreter";
-  case BackendKind::OpenCL:
-    return "OpenCL";
-  case BackendKind::CPU:
-    return "CPU";
-  case BackendKind::Habana:
-    return "Habana";
-  }
-}
-
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -139,10 +117,6 @@ protected:
   /// Modifies \p IR and updates \p traceInfo.
   void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
 };
-
-/// Create a backend of kind \p kind.
-/// Deprecated. Moving gradualy to the createBackend based on the backend name.
-Backend *createBackend(BackendKind backendKind);
 
 /// Create a backend based on the registered backend name \p backendName.
 Backend *createBackend(llvm::StringRef backendName);
