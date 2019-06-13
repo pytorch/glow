@@ -406,7 +406,7 @@ TEST_P(BackendTest, compileVectorOfFunctions) {
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   BackendOptions opts;
   auto functionOrErr = backend->compileFunctions(functions, opts);
-  EXPECT_TRUE((bool)functionOrErr);
+  ASSERT_TRUE((bool)functionOrErr);
 }
 
 /// This test checks that we can compile a function without depending on the

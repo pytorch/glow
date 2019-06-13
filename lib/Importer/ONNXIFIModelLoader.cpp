@@ -29,8 +29,7 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
 
   std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader());
   llvm::Error loaderConstructionErr = llvm::Error::success();
-  // Mark Error as checked before it's assigned to.
-  (void)!!loaderConstructionErr;
+  MARK_ERR_CHECKED(loaderConstructionErr);
 
   if (use_onnx) {
     std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(

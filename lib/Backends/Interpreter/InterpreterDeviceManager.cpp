@@ -108,6 +108,7 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                functionName.c_str())));
     return;
   }
+  evictCB(functionName, llvm::Error::success());
 }
 
 void InterpreterDeviceManager::runFunctionImpl(

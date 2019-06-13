@@ -160,16 +160,15 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
         DeviceIDTy logicalID = logicalDeviceSize[i].first;
         std::promise<void> addPromise;
         auto ready = addPromise.get_future();
-        llvm::Error addErr = llvm::Error::success();
-        (void)!!addErr; // Mark Error as checked before it's assigned to.
+        std::unique_ptr<llvm::Error> addErr;
         devices_[deviceID]->addNetwork(
             &module, functionMaps[logicalID],
             [&addErr, &addPromise](const Module *, llvm::Error err) {
-              addErr = std::move(err);
+              addErr = llvm::make_unique<llvm::Error>(std::move(err));
               addPromise.set_value();
             });
         ready.wait();
-        RETURN_IF_ERR(addErr);
+        RETURN_IF_ERR(*DCHECK_NOTNULL(addErr.get()));
         // Set deviceID for each node added
         for (auto &node : logicalDevices[logicalID]) {
           node->deviceIDs.push_back(deviceID);

@@ -245,7 +245,7 @@ void testMNISTLoadAndTraining() {
   const char *inputName = "data";
 
   llvm::Error errPtr = llvm::Error::success();
-  (void)!!errPtr; // Mark Error as checked before it's assigned to.
+  MARK_ERR_CHECKED(errPtr);
   // Load and compile LeNet MNIST model.
   glow::Caffe2ModelLoader loader("lenet_mnist/predict_net.pb",
                                  "lenet_mnist/init_net.pb", {inputName},

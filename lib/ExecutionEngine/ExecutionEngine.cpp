@@ -120,20 +120,19 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  (void)!!runErr; // Mark Error as checked before it's assigned to.
+  std::unique_ptr<llvm::Error> runErr;
   device_->runFunction(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();
-        runErr = std::move(err);
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
         runPromise.set_value();
       });
 
   fut.wait();
-  EXIT_ON_ERR(std::move(runErr));
+  EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(runErr.get())));
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {
@@ -189,15 +188,14 @@ void ExecutionEngine::insertCompiledFunction(
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
-  (void)!!addErr; // Mark Error as checked before it's assigned to.
+  std::unique_ptr<llvm::Error> addErr;
   device_->addNetwork(&M_, std::move(functionMap),
                       [&addPromise, &addErr](const Module *, llvm::Error err) {
-                        addErr = std::move(err);
+                        addErr = llvm::make_unique<llvm::Error>(std::move(err));
                         addPromise.set_value();
                       });
   fut.wait();
-  EXIT_ON_ERR(std::move(addErr));
+  EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(addErr.get())));
 }
 
 void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,

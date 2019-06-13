@@ -224,6 +224,18 @@ private:
     }                                                                          \
   } while (0)
 
+/// Marks the given llvm::Error as checked as long as it's value is equal to
+/// llvm::Error::success(). This macro should be used as little as possible but
+/// but is useful for example for creating dummy Errors that can be passed into
+/// fallible constructor by reference to be filled in the event an Error occurs.
+#define MARK_ERR_CHECKED(err)                                                  \
+  do {                                                                         \
+    bool success = !(err);                                                     \
+    (void)success;                                                             \
+    assert(success && "MARK_ERR_CHECKED should not be called on an "           \
+                      "llvm::Error that contains an actual error.");           \
+  } while (0)
+
 /// Marks the Error \p err as as checked. \returns true if it contains an
 /// error value and prints the message in the error value, returns false
 /// otherwise.

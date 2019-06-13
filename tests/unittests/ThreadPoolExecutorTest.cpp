@@ -58,7 +58,9 @@ public:
           MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
                    strFormat("Could not find function with name %s to evict",
                              functionName.c_str())));
+      return;
     }
+    evictCB(functionName, llvm::Error::success());
   }
 
   /// Look up the previously registered response for \p functionName and
@@ -636,19 +638,18 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   // Call Executor::run().
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  (void)!!runErr; // Mark Error as checked before it's assigned to.
+  std::unique_ptr<llvm::Error> runErr;
   executor_->run(nullptr, std::move(testContext), testRunId,
                  [&runErr, &promise, &executorRunId, &executorOutputContext](
                      RunIdentifierTy runId, llvm::Error err,
                      std::unique_ptr<ExecutionContext> context) {
                    executorRunId = runId;
                    executorOutputContext = std::move(context);
-                   runErr = std::move(err);
+                   runErr = llvm::make_unique<llvm::Error>(std::move(err));
                    promise.set_value();
                  });
 
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 
   EXPECT_EQ(executorRunId, testRunId);
 
