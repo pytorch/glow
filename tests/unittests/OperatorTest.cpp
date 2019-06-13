@@ -25,6 +25,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <numeric>
+
 using namespace glow;
 
 class OperatorStatelessTest : public BackendStatelessTest {};
